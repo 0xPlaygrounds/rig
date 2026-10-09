@@ -14,7 +14,7 @@ use std::time::UNIX_EPOCH;
 use rig::harness_protocol::{Home, SessionId, first_errors};
 
 use super::config::Config;
-use super::project::{self, PACKAGE, RigSource};
+use super::project::{self, PACKAGE, RIG_CRATES, RigSource};
 use super::{BEVY_VERSION, Result, home};
 
 /// Whether a build that is already known gets staged again.
@@ -95,11 +95,12 @@ pub fn compile(
 
 fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildLog) -> Result<()> {
     let config = Config::load(&home.config())?;
-    project::generate(home, &config, &RigSource::detect()?)?;
+    let source = RigSource::detect()?;
+    project::generate(home, &config, &source)?;
     // `/reload` shows these lines, and cargo's, until cargo's counter
     // appears.
     log.say("Resolving dependencies…");
-    check_bevy(home, &config, log)?;
+    check_bevy(home, &config, &project::rig_version(&source), log)?;
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
@@ -354,9 +355,11 @@ fn stamp(binary: &Path) -> Result<String> {
 }
 
 /// Resolves the project (writing `Cargo.lock`) and fails, in plain words,
-/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`].
-fn check_bevy(home: &Home, config: &Config, log: &mut BuildLog) -> Result<()> {
+/// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
+/// other than the agent's.
+fn check_bevy(home: &Home, config: &Config, rig_version: &str, log: &mut BuildLog) -> Result<()> {
     let packages = tree(home, &[], log)?;
+    check_rig(&packages, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
         let (name, version) = package(line)?;
         (["bevy_app", "bevy_ecs"].contains(&name) && version != BEVY_VERSION)
@@ -389,6 +392,32 @@ fn check_bevy(home: &Home, config: &Config, log: &mut BuildLog) -> Result<()> {
         ),
     }
     .into())
+}
+
+/// Fails, in plain words, when a plugin pulls in a second copy of one of
+/// the rig crates, such as rig-harness from crates.io beside the
+/// checkout's: its types would not be the agent's, which are at
+/// `rig_version`.
+fn check_rig(packages: &[String], rig_version: &str) -> Result<()> {
+    for name in RIG_CRATES {
+        let mut copies: Vec<&str> = packages
+            .iter()
+            .map(|line| line.trim_end_matches(" (*)"))
+            .filter(|line| package(line).is_some_and(|(package, _)| package == name))
+            .collect();
+        copies.sort_unstable();
+        copies.dedup();
+        if let [first, second, ..] = copies.as_slice() {
+            return Err(format!(
+                "the agent project has two copies of `{name}`: {first} and {second}. A plugin \
+                 must use the agent's rig crates: depend on `{name} = \"{rig_version}\"` (a \
+                 version, not a path or git source); with RIG_SOURCE the agent project patches \
+                 that version to the checkout. `rig plugin new` writes it so."
+            )
+            .into());
+        }
+    }
+    Ok(())
 }
 
 /// The lines of `cargo tree` over the agent project with `args`, one

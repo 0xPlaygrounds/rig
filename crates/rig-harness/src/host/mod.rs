@@ -1,11 +1,12 @@
 //! How this app runs as a process: the session directory and its log, the
 //! project context it reads, `/reload`, and
-//! the `rig` launcher protocol.
+//! the `rig` launcher protocol, with what the model knows about extending itself.
 //! The host depends on the core; the core never depends on the host.
 
 pub mod compaction;
 pub mod context;
 pub mod defaults;
+mod extending;
 pub mod headless;
 pub mod launcher;
 pub mod reload;

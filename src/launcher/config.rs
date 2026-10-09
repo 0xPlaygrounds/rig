@@ -3,6 +3,7 @@
 //! strings.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
@@ -33,10 +34,11 @@ plugin = "rig_harness::builtin::SubagentsPlugin"
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"
 
-# A plugin from another crate:
+# A plugin from another crate. `rig plugin new <name>` makes one in
+# plugins/<name> and adds its entry; `rig plugin check` checks this file.
 # [[plugin]]
 # crate = "rig-hello"               # the package name
-# path = "../rig-hello"             # exactly one of: path (relative to this file),
+# path = "plugins/rig-hello"        # exactly one of: path (relative to this file),
 #                                   # git (with optional branch or rev), version
 # plugin = "rig_hello::HelloPlugin"
 # bevy_features = []                # extra Bevy features the plugin needs
@@ -67,7 +69,7 @@ pub struct Package {
 }
 
 /// Where a plugin package comes from.
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Source {
     /// A local directory, made absolute against the directory of
     /// `plugins.toml`.
@@ -83,6 +85,25 @@ pub enum Source {
     },
     /// A crates.io version requirement.
     Version(String),
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Path(path) => write!(f, "path {}", path.display()),
+            Self::Git { url, branch, rev } => {
+                write!(f, "git {url}")?;
+                if let Some(branch) = branch {
+                    write!(f, ", branch {branch}")?;
+                }
+                if let Some(rev) = rev {
+                    write!(f, ", rev {rev}")?;
+                }
+                Ok(())
+            }
+            Self::Version(version) => write!(f, "version {version}"),
+        }
+    }
 }
 
 enum Value {
@@ -108,6 +129,23 @@ impl Config {
         let base = path.parent().unwrap_or(Path::new("."));
         parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
     }
+}
+
+/// Adds `entry`, the text of one `[[plugin]]` table, at the end of the
+/// plugin list at `path` (made from the template when missing), and
+/// checks the result; nothing is written when it is not valid.
+pub fn append(path: &Path, entry: &str) -> Result<Config> {
+    Config::load(path)?;
+    let mut text = fs::read_to_string(path)?;
+    if !text.is_empty() && !text.ends_with('\n') {
+        text.push('\n');
+    }
+    text.push('\n');
+    text.push_str(entry);
+    let base = path.parent().unwrap_or(Path::new("."));
+    let config = parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    fs::write(path, text)?;
+    Ok(config)
 }
 
 /// Parses `text`; relative plugin paths are relative to `base`.

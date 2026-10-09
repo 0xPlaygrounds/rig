@@ -319,33 +319,10 @@ cd rig && cargo install --path . --root /some/dir
 RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
-Plugins are Bevy plugins. A plugin crate depends on `rig-harness` (or on
-`rig-ecs` alone, re-exported as `rig_harness::rig_ecs`) and on Bevy
-crates at exactly `=0.20.0`, and registers tools and slash commands the
-same way the built-in ones are registered:
-
-```rust,ignore
-use rig_harness::prelude::*;
-
-#[derive(Default)]
-pub struct HelloPlugin;
-
-impl Plugin for HelloPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_command("hello", "Say hello", hello);
-        // app.add_tool(MyTool) adds any rig_core::tool::Tool. A tool that
-        // blocks wraps that work in `blocking(|| ...)`.
-    }
-}
-
-fn hello(In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>) {
-    notices.write(Notice::info(args.agent, "Hello!"));
-}
-```
-
-List it in `$RIG_HOME/plugins.toml` and run `/reload`. The built-in tools,
-the built-in commands, the subagents and the terminal view are entries in the
-same list, so any of them can be removed or replaced:
+Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
+rebuilds the agent with them and restarts in the same session. The built-in
+tools, the built-in commands, the subagents and the terminal view are entries
+in the same list, so any of them can be removed or replaced:
 
 ```toml
 [[plugin]]
@@ -361,11 +338,20 @@ plugin = "rig_harness::builtin::SubagentsPlugin"
 plugin = "rig_harness::tui::TuiPlugin"
 
 [[plugin]]
-crate = "rig-hello"               # the package name
-path = "../rig-hello"             # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
-plugin = "rig_hello::HelloPlugin" # implements Plugin + Default
+crate = "hello"                   # the package name
+path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
+plugin = "hello::HelloPlugin"     # implements Plugin + Default
 bevy_features = []                # optional extra Bevy features
 ```
+
+`rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
+any workspace, and adds its entry; `rig plugin list` shows the list and
+`rig plugin check` checks it without a build. A plugin crate depends on
+`rig-harness` alone and registers tools, slash commands, tool renderers,
+terminal panels or a window the way the built-in ones do, never by editing
+rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
+shows each kind with an example. An agent started by the launcher knows all
+this from its system prompt, so it can write and add its own plugins.
 
 Code mode is an optional plugin crate, `rig-steel`, not in the default list.
 Its `SteelPlugin` adds the `run_steel` tool: the model writes one

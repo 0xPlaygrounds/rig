@@ -1,10 +1,11 @@
 //! The launcher's parts: the locks on `RIG_HOME` (whose layout, shared with
-//! the agent, is [`rig::harness_protocol`]), the `plugins.toml` plugin list, the
-//! generated agent project, its build, and the run loop.
+//! the agent, is [`rig::harness_protocol`]), the `plugins.toml` plugin list and
+//! `rig plugin`, the generated agent project, its build, and the run loop.
 
 pub mod build;
 pub mod config;
 pub mod home;
+pub mod plugin;
 pub mod project;
 pub mod run;
 
@@ -15,5 +16,4 @@ pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 /// launcher regenerates and rebuilds the agent.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// The one Bevy version of the agent and of every plugin.
-pub const BEVY_VERSION: &str = "0.20.0";
+pub use rig::harness_protocol::BEVY_VERSION;

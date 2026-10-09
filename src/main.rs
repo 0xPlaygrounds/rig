@@ -8,18 +8,21 @@ mod launcher;
 
 use std::process::ExitCode;
 
+use launcher::plugin::USAGE as PLUGIN_USAGE;
 use launcher::run::Start;
 use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation};
 
 const USAGE: &str = "\
-Usage: rig [session] [mode] | rig build | rig help
+Usage: rig [session] [mode] | rig build | rig plugin <command> | rig help
 
   rig                    Build the agent if needed and run it. In a directory
                          whose last session did not quit cleanly, that session
                          resumes.
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
+";
 
+const SESSION: &str = "
 Session (a print run starts a new one unless told otherwise):
   -r, --resume <id>      Resume the session <id>, in the directory it ran in.
                          In the agent, /resume lists the sessions.
@@ -44,14 +47,19 @@ fn main() -> ExitCode {
         .as_slice()
     {
         ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
+        ["plugin", command @ ..] => {
+            launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
+        }
         ["help" | "--help" | "-h"] => {
-            print!("{USAGE}{INVOCATION_USAGE}{ENVIRONMENT}");
+            print!("{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{ENVIRONMENT}");
             Ok(ExitCode::SUCCESS)
         }
         _ => match parse(&args) {
             Ok((start, invocation)) => launcher::run::run(&home, start, &invocation),
             Err(failure) => {
-                eprint!("error: {failure}\n\n{USAGE}{INVOCATION_USAGE}{ENVIRONMENT}");
+                eprint!(
+                    "error: {failure}\n\n{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{ENVIRONMENT}"
+                );
                 return ExitCode::from(2);
             }
         },

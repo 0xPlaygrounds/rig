@@ -15,6 +15,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// the staged build.
 pub const RELOAD_EXIT_CODE: u8 = 75;
 
+/// The one Bevy version of the agent and of every plugin: a Bevy plugin
+/// only works with the exact Bevy version of its app.
+pub const BEVY_VERSION: &str = "0.20.0";
+
 /// The environment variables of the protocol.
 pub mod env {
     /// The root of every rig directory, `~/.rig` when unset. The launcher
@@ -148,6 +152,13 @@ impl Home {
     /// `plugins.toml`, the plugin list.
     pub fn config(&self) -> PathBuf {
         self.root.join("plugins.toml")
+    }
+
+    /// `plugins/`, where `rig plugin new` makes plugin crates, outside any
+    /// workspace: `plugins/<name>` is listed in `plugins.toml` as
+    /// `path = "plugins/<name>"`.
+    pub fn plugins(&self) -> PathBuf {
+        self.root.join("plugins")
     }
 
     /// `defaults.json`, the model and reasoning setting a new session

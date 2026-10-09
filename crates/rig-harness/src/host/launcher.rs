@@ -1,7 +1,8 @@
 //! The agent's side of the `rig` launcher protocol
-//! ([`rig::harness_protocol`]): the launcher's path for rebuilds, its startup
-//! notice, the failed build it started after, and the ready file that tells
-//! it this build started.
+//! ([`rig::harness_protocol`]): the launcher's path for rebuilds, the system
+//! prompt section on extending the agent with plugins, the launcher's
+//! startup notice, the failed build it started after, and the ready file
+//! that tells it this build started.
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
@@ -26,12 +27,21 @@ use rig_ecs::journal::SessionLog;
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
 
-/// Shows the launcher's startup notice, hands a failed build to the
-/// primary agent, and writes the ready file.
+/// Tells the model it is the rig harness and how it extends itself
+/// (`extending`), shows the launcher's startup notice, hands a failed build
+/// to the primary agent, and writes the ready file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
+        // Only an agent the launcher started can rebuild itself with
+        // plugins, so only it is told how.
+        if let Some(launcher) = executable() {
+            app.world_mut().spawn((
+                Name::new("prompt:rig_harness"),
+                super::extending::section(std::path::Path::new(&launcher)),
+            ));
+        }
         app.add_systems(Startup, launcher_notice)
             .add_systems(Update, deliver_build_failure)
             .add_systems(Last, signal_ready);

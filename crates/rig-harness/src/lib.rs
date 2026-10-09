@@ -40,57 +40,15 @@
 //! }
 //! ```
 //!
-//! # A window beside the terminal
-//!
-//! A plugin opens a Bevy window with [`windowed`]: Bevy's `DefaultPlugins`
-//! without the log, task pools, signal handler and loop that
-//! [`HeadlessPlugins`] already set. Its `WinitPlugin` then runs the app's
-//! loop. In the plugin's `finish`, where winit's event loop exists, it
-//! points the [`Wake`](rig_ecs::calls::Wake) at that loop, so agent
-//! activity and terminal input wake the window's loop instead of a poll:
-//!
-//! ```ignore
-//! use std::time::Duration;
-//! use bevy::prelude::*;
-//! use bevy::window::ExitCondition;
-//! use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-//! use rig_harness::prelude::{RunMode, Wake};
-//!
-//! #[derive(Default)]
-//! pub struct DashboardPlugin;
-//!
-//! impl Plugin for DashboardPlugin {
-//!     fn build(&self, app: &mut App) {
-//!         if app.world().get_resource::<RunMode>().is_some_and(RunMode::is_headless) {
-//!             return;
-//!         }
-//!         // Closing the window leaves the agent running.
-//!         let window = WindowPlugin {
-//!             exit_condition: ExitCondition::DontExit,
-//!             ..default()
-//!         };
-//!         // Frames when woken, and at least every second as without a window.
-//!         let mode = UpdateMode::reactive_low_power(Duration::from_secs(1));
-//!         app.add_plugins(rig_harness::windowed(DefaultPlugins.set(window)))
-//!             .insert_resource(WinitSettings { focused_mode: mode, unfocused_mode: mode });
-//!     }
-//!
-//!     fn finish(&self, app: &mut App) {
-//!         if let Some(proxy) = app.world().get_resource::<EventLoopProxyWrapper>() {
-//!             let proxy = (**proxy).clone();
-//!             app.insert_resource(Wake::new(move || {
-//!                 proxy.send_event(WinitUserEvent::WakeUp).ok();
-//!             }));
-//!         }
-//!     }
-//! }
-//! ```
-//!
-//! The plugin crate depends on `bevy` with the features it draws with, at
-//! the version rig-harness uses.
+//! [`plugin_guide`] shows each kind of extension with an example: tools,
+//! slash commands, tool renderers, terminal panels, turns, saved state,
+//! timers, and a window beside the terminal ([`windowed`]). The `rig`
+//! launcher makes a plugin crate with `rig plugin new <name>`.
 
 pub mod attach;
 pub mod builtin;
+#[doc = include_str!("../PLUGINS.md")]
+pub mod plugin_guide {}
 pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
@@ -154,7 +112,7 @@ impl PluginGroup for RigHarnessPlugins {
 /// sleeps until [`Wake`](rig_ecs::calls::Wake)d. Added after
 /// [`RigHarnessPlugins`], whose session the log writes to; a windowing plugin
 /// added later through [`windowed`] sets its own runner in place of this
-/// loop (see the crate docs).
+/// loop (see [`plugin_guide`]).
 pub struct HeadlessPlugins;
 
 impl PluginGroup for HeadlessPlugins {
@@ -174,8 +132,8 @@ impl PluginGroup for HeadlessPlugins {
 
 /// `plugins`, such as Bevy's `DefaultPlugins`, without what
 /// [`HeadlessPlugins`] already sets: the log, the task pools, the signal
-/// handler and the loop. Its windowing plugin then runs the loop; the crate
-/// docs show how a window plugin wakes it.
+/// handler and the loop. Its windowing plugin then runs the loop;
+/// [`plugin_guide`] shows how a window plugin wakes it.
 pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
     let mut plugins = plugins.build();
     if plugins.contains::<LogPlugin>() {

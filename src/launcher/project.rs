@@ -62,6 +62,67 @@ fn is_checkout(path: &Path) -> bool {
     path.join("crates/rig-harness/Cargo.toml").is_file()
 }
 
+/// The rig crates a plugin may depend on, which the agent and its plugins
+/// must share: one copy of each in the agent's dependency graph.
+pub const RIG_CRATES: [&str; 5] = ["rig", "rig-core", "rig-ecs", "rig-tools", "rig-harness"];
+
+/// The `[patch.crates-io]` table that builds [`RIG_CRATES`] from
+/// `checkout`, so a plugin that names their crates.io release (as
+/// `rig plugin new` writes it) uses the agent's own.
+pub fn rig_patch(checkout: &Path) -> String {
+    let mut text = String::from("[patch.crates-io]\n");
+    for name in RIG_CRATES {
+        let path = match name {
+            "rig" => checkout.to_path_buf(),
+            name => checkout.join("crates").join(name),
+        };
+        text.push_str(&format!("{name} = {{ path = {} }}\n", quoted_path(&path)));
+    }
+    text
+}
+
+/// The version of the rig crates the agent is built from: the checkout's
+/// workspace version, else this launcher's.
+pub fn rig_version(source: &RigSource) -> String {
+    let RigSource::Local(checkout) = source else {
+        return VERSION.to_owned();
+    };
+    fs::read_to_string(checkout.join("Cargo.toml"))
+        .ok()
+        .and_then(|manifest| manifest_string(&manifest, "workspace.package", "version"))
+        .unwrap_or_else(|| VERSION.to_owned())
+}
+
+/// The string `key` of the table `[table]` of a Cargo manifest, such as the
+/// `name` of `[package]`, when it is written as `key = "value"`.
+pub fn manifest_string(manifest: &str, table: &str, key: &str) -> Option<String> {
+    let mut current = String::new();
+    for line in manifest.lines() {
+        let line = line.trim();
+        if let Some(header) = line
+            .strip_prefix('[')
+            .and_then(|line| line.strip_suffix(']'))
+        {
+            current = header.trim().to_owned();
+            continue;
+        }
+        if current != table {
+            continue;
+        }
+        let Some((name, value)) = line.split_once('=') else {
+            continue;
+        };
+        if name.trim() == key {
+            let value = value.trim();
+            return value
+                .strip_prefix('"')
+                .and_then(|value| value.split_once('"'))
+                .map(|(value, _)| value.to_owned());
+        }
+    }
+    None
+}
+
 /// Writes the agent project for `config`.
 pub fn generate(home: &Home, config: &Config, source: &RigSource) -> Result<()> {
     let project = home.project();
@@ -150,15 +211,8 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
     }
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
-        text.push_str(&format!(
-            "\n[patch.crates-io]\nrig = {{ path = {} }}\nrig-harness = {{ path = {} }}\n\
-             rig-ecs = {{ path = {} }}\nrig-core = {{ path = {} }}\nrig-tools = {{ path = {} }}\n",
-            quoted_path(checkout),
-            quoted_path(&checkout.join("crates/rig-harness")),
-            quoted_path(&checkout.join("crates/rig-ecs")),
-            quoted_path(&checkout.join("crates/rig-core")),
-            quoted_path(&checkout.join("crates/rig-tools")),
-        ));
+        text.push('\n');
+        text.push_str(&rig_patch(checkout));
     }
     text.push_str(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\
@@ -199,7 +253,7 @@ fn cargo_config(home: &Home) -> String {
 }
 
 /// Writes `contents` to `path` unless it already holds them.
-fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
+pub fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     if fs::read_to_string(path).is_ok_and(|current| current == contents) {
         return Ok(());
     }
@@ -210,12 +264,12 @@ fn write_if_changed(path: &Path, contents: &str) -> Result<()> {
     Ok(())
 }
 
-fn quoted_path(path: &Path) -> String {
+pub fn quoted_path(path: &Path) -> String {
     quoted(&path.to_string_lossy())
 }
 
 /// A TOML basic string.
-fn quoted(text: &str) -> String {
+pub fn quoted(text: &str) -> String {
     let mut quoted = String::from("\"");
     for c in text.chars() {
         match c {
