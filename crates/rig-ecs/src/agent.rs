@@ -97,6 +97,10 @@ pub struct Conversation {
     /// is added or taken out.
     #[serde(default)]
     halted: Option<Halt>,
+    /// The `seq` of the log record that began each message, while the
+    /// session is logged.
+    #[serde(skip)]
+    seqs: Vec<u64>,
 }
 
 /// Why the user's last message is left without an answer.
@@ -157,11 +161,17 @@ impl Conversation {
         self.awaits_model()
     }
 
-    /// Adds `message`, whose content came from `origin`: a user message
-    /// goes into the last message when that is the user's too, such as the
-    /// tool results the model waits for, so user and model keep taking
-    /// turns. Whether it went into the last one.
-    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>) -> bool {
+    /// The `seq` of the log record that began message `message`, if it was
+    /// logged.
+    pub(crate) fn seq(&self, message: usize) -> Option<u64> {
+        self.seqs.get(message).copied()
+    }
+
+    /// Adds `message`, whose content came from `origin` and which the log
+    /// recorded as `seq`: a user message goes into the last message when
+    /// that is the user's too, such as the tool results the model waits
+    /// for, so user and model keep taking turns.
+    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>, seq: Option<u64>) {
         self.halted = None;
         let (at, first) = match (self.messages.last(), &message) {
             (Some(Message::User { content }), Message::User { .. }) => {
@@ -180,11 +190,10 @@ impl Conversation {
         match (self.messages.last_mut(), message) {
             (Some(Message::User { content }), Message::User { content: added }) => {
                 content.extend(added);
-                true
             }
             (_, message) => {
                 self.messages.push(message);
-                false
+                self.seqs.extend(seq);
             }
         }
     }
@@ -195,6 +204,7 @@ impl Conversation {
         self.halted = None;
         let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
+        self.seqs.truncate(len);
         Some(message)
     }
 }

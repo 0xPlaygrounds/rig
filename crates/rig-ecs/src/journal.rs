@@ -226,8 +226,6 @@ pub(crate) struct AgentLog {
     /// Whether the log holds a message, so it is written.
     pub(crate) started: bool,
     pub(crate) pending: Vec<u8>,
-    /// The `seq` of the record that began each message of the conversation.
-    pub(crate) message_seqs: Vec<u64>,
     pub(crate) components: BTreeMap<String, SavedValue>,
 }
 
@@ -238,7 +236,6 @@ impl AgentLog {
             next_seq: 0,
             started: false,
             pending: Vec::new(),
-            message_seqs: Vec::new(),
             components: BTreeMap::new(),
         }
     }
@@ -380,19 +377,11 @@ impl SessionLog {
         message: Message,
         origin: Option<Origin>,
     ) {
-        let logged = self.log_message(agent, &message, origin.clone());
-        let merged = conversation.append(message, origin);
-        if let Some(seq) = logged {
-            let mut book = self.book();
-            if let Some(log) = book.agents.get_mut(&agent.0) {
-                log.started = true;
-                if !merged {
-                    log.message_seqs.push(seq);
-                }
-            }
-        }
+        let seq = self.log_message(agent, &message, origin.clone());
+        conversation.append(message, origin, seq);
     }
 
+    /// Logs `message` of `agent`, which starts its log; its `seq`.
     fn log_message(
         &self,
         agent: &AgentId,
@@ -405,7 +394,11 @@ impl SessionLog {
         }
         let store = book.store.clone()?;
         match stored(message, &*store) {
-            Ok(message) => book.record(&agent.0, Record::Message { message, origin }),
+            Ok(message) => {
+                let seq = book.record(&agent.0, Record::Message { message, origin })?;
+                book.agents.get_mut(&agent.0)?.started = true;
+                Some(seq)
+            }
             Err(failure) => {
                 book.failure = Some(format!("storing an image failed: {failure}"));
                 None
@@ -421,12 +414,7 @@ impl SessionLog {
         conversation: &mut Conversation,
     ) -> Option<Message> {
         let message = conversation.retract()?;
-        let mut book = self.book();
-        if book.record(&agent.0, Record::Retract).is_some()
-            && let Some(log) = book.agents.get_mut(&agent.0)
-        {
-            log.message_seqs.pop();
-        }
+        self.book().record(&agent.0, Record::Retract);
         Some(message)
     }
 
@@ -443,16 +431,17 @@ impl SessionLog {
 
     /// Logs the compaction `compacted` of `agent`, with the state it
     /// carries.
-    pub(crate) fn compaction(&self, agent: &AgentId, compacted: &Compacted) {
+    pub(crate) fn compaction(
+        &self,
+        agent: &AgentId,
+        conversation: &Conversation,
+        compacted: &Compacted,
+    ) {
         let mut book = self.book();
         let Some(log) = book.agent(&agent.0) else {
             return;
         };
-        let first_kept = log
-            .message_seqs
-            .get(compacted.upto)
-            .copied()
-            .unwrap_or(log.next_seq);
+        let first_kept = conversation.seq(compacted.upto).unwrap_or(log.next_seq);
         let record = Record::Compaction(CompactionRecord {
             summary: compacted.summary.clone(),
             first_kept,

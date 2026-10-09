@@ -1342,7 +1342,7 @@ pub(crate) fn on_summary_done(
                 summary,
                 tracked: summarizing.tracked.clone(),
             });
-            log.compaction(id, &compacted);
+            log.compaction(id, conversation, &compacted);
             let left = compacted.estimate(conversation.messages());
             spent.context = Some(left);
             notices.write(Notice::info(

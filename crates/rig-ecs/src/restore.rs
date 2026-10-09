@@ -58,7 +58,6 @@ struct Envelope {
 struct Folded {
     header: Header,
     conversation: Conversation,
-    message_seqs: Vec<u64>,
     components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
     next_seq: u64,
@@ -131,7 +130,6 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            message_seqs,
             components,
             compacted,
             next_seq,
@@ -186,7 +184,6 @@ pub(crate) fn restore_session(world: &mut World) {
                 next_seq,
                 started: true,
                 pending: Vec::new(),
-                message_seqs,
                 components,
             },
         ));
@@ -274,7 +271,6 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
     let mut folded = Folded {
         header,
         conversation: Conversation::default(),
-        message_seqs: Vec::new(),
         components: BTreeMap::new(),
         compacted: Compacted::default(),
         next_seq: envelopes
@@ -342,14 +338,10 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 origin,
             } => {
                 load_blobs(&mut message, store);
-                if !folded.conversation.append(message, origin) {
-                    folded.message_seqs.push(line.seq);
-                }
+                folded.conversation.append(message, origin, Some(line.seq));
             }
             Record::Retract => {
-                if folded.conversation.retract().is_some() {
-                    folded.message_seqs.pop();
-                }
+                folded.conversation.retract();
             }
             // Only a conversation waiting for its model is halted, so a
             // halt after a halt means it was asked again, as by a retry.
