@@ -52,8 +52,8 @@ use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::recovery::{self, Backoff, RETRY, Recovery, RetryDue};
 use super::tools::{
-    Footprint, OpenCall, Refused, ToolCalled, ToolDef, ToolHandler, ToolOutput, failed, outcome_of,
-    recorded_args, run_tool_call,
+    Footprint, OpenCall, Refused, Serves, ToolDef, ToolOutput, failed, outcome_of, recorded_args,
+    run_tool_call,
 };
 use super::usage::{self, Spending, TurnSpending};
 
@@ -1069,7 +1069,7 @@ pub struct ToolStarter<'w, 's> {
         (
             Entity,
             &'static ToolDef,
-            Option<&'static ToolHandler>,
+            &'static Serves,
             &'static Footprint,
         ),
     >,
@@ -1102,20 +1102,24 @@ impl ToolStarter<'_, '_> {
     /// starts again: an ordinary read-only tool. Any other such call is
     /// answered as interrupted.
     pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tools.iter().any(|(_, def, handler, footprint)| {
-            def.0.name.as_str() == name && handler.is_some() && *footprint == Footprint::ReadOnly
+        self.tools.iter().any(|(_, def, serves, footprint)| {
+            def.0.name.as_str() == name
+                && matches!(serves, Serves::Handler(_))
+                && *footprint == Footprint::ReadOnly
         })
     }
 
     /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
     /// call runs on the one dispatch path, and its [`ToolOutput`] is
     /// inserted when it finishes. An open tool's call is recorded as
-    /// started and its tool's observer gets [`ToolCalled`]. A call to a
-    /// tool that is not registered, that the agent may not use, or with
-    /// arguments that do not fit, is dispatched and recorded like any other
-    /// and answered with an error. Before a call that may change something, the
-    /// session log is written, so the reply that asked for it is on disk
-    /// first.
+    /// started and its tool's observer gets [`ToolCalled`] with the parsed
+    /// arguments. A call to a tool that is not registered, that the agent
+    /// may not use, or with arguments that do not fit, is dispatched and
+    /// recorded like any other and answered with an error. Before a call
+    /// that may change something, the session log is written, so the reply
+    /// that asked for it is on disk first.
+    ///
+    /// [`ToolCalled`]: super::tools::ToolCalled
     pub fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
         let Ok((id, access)) = self.agents.get(agent) else {
             return;
@@ -1142,18 +1146,26 @@ impl ToolStarter<'_, '_> {
                 format!("no tool named `{name}` is available"),
             ),
             (Some(_), Some(why)) => refused(ToolErrorKind::InvalidArgs, why),
-            (Some((tool, _, None, ..)), None) => {
-                let args = recorded_args(&run.call);
-                let effect = self.effects.open(&id.0, run.parent, name, args);
-                commands.entity(call).insert(OpenCall(effect));
-                commands.trigger(ToolCalled {
-                    entity: tool,
-                    call,
-                    agent,
-                });
-                return;
-            }
-            (Some((_, _, Some(handler), ..)), None) => handler.0.erased(),
+            (Some((_, _, Serves::Handler(handler), _)), None) => handler.erased(),
+            (Some((tool, _, Serves::Open(open), _)), None) => match open(&run.call) {
+                Err(why) => refused(ToolErrorKind::InvalidArgs, why),
+                Ok(trigger) => {
+                    let args = recorded_args(&run.call);
+                    let effect = self.effects.open(&id.0, run.parent, name, args);
+                    let (caller, id, run) = (id.clone(), effect.id(), run.clone());
+                    commands
+                        .entity(call)
+                        .queue_silenced(move |mut entity: EntityWorldMut| {
+                            if entity.world().get_entity(agent).is_ok() {
+                                entity.insert(OpenCall(effect));
+                                entity.world_scope(|world| {
+                                    trigger(world, [tool, call, agent], caller, id, run);
+                                });
+                            }
+                        });
+                    return;
+                }
+            },
         };
         let (_, work) = run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
         let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);

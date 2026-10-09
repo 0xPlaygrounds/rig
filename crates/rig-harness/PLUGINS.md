@@ -102,12 +102,14 @@ is `rig_harness::rig_core`.
 Any `PortableTool` (or `rig_core::tool::Tool`). Its rules go into the
 system prompt of every agent it is offered to; `Footprint::ReadOnly` lets
 its calls run beside others. Blocking work goes in `blocking`, on a thread
-of its own.
+of its own. `args_schema` derives its parameters from its arguments type,
+whose field doc comments describe them; `deny_unknown_fields` on every
+struct refuses a misspelled argument at any depth.
 
 ```rust,no_run
 use rig_harness::prelude::*;
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 #[derive(Default)]
 pub struct WordCountPlugin;
@@ -126,8 +128,10 @@ impl Plugin for WordCountPlugin {
 
 struct WordCount;
 
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct Args {
+    /// The file.
     path: String,
 }
 
@@ -142,11 +146,7 @@ impl PortableTool for WordCount {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {"path": {"type": "string", "description": "The file."}},
-            "required": ["path"]
-        })
+        args_schema::<Args>()
     }
 
     async fn call(&self, args: Args) -> Result<String, ToolExecutionError> {
@@ -161,9 +161,13 @@ impl PortableTool for WordCount {
 ```
 
 A tool answered later, by the plugin rather than a future, is an open
-tool: `app.add_open_tool(name, description, parameters, options, observer)`
-triggers `ToolCalled` on the tool's entity, and the call ends when a
-`ToolOutput` is inserted on it. How a tool's calls look in the terminal is
+tool: `app.add_open_tool(name, description, options, observer)` derives
+its parameters from the arguments type the observer takes, parses each
+call's arguments into it, refusing those that do not fit, and triggers
+`ToolCalled<Args>` on the tool's entity with the call (`call`, and the
+model's `run.call`), the calling agent (`agent`, `caller`), the call's
+`effect` and the parsed `args`. The call ends when a `ToolOutput` is
+inserted on it. How a tool's calls look in the terminal is
 `add_tool_renderer`:
 
 ```rust,no_run

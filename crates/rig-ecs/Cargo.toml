@@ -40,6 +40,8 @@ rig-cassette = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # Compaction and the token estimate it decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
+# Open tools' parameters, derived from their arguments types.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The names of the images the session journal stores.

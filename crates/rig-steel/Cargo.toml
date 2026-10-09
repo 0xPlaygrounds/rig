@@ -22,6 +22,9 @@ futures = { workspace = true }
 futures-timer = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../rig-ecs", version = "0.44.0", default-features = false }
+# `run_steel`'s parameters, derived from its arguments type.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The Scheme interpreter, in process.
 steel-core = { workspace = true }

@@ -7,15 +7,16 @@
 //! open until any system or observer inserts one.
 //!
 //! ```ignore
-//! app.add_open_tool("wait", "Waits for a signal.", schema, ToolOptions::default(),
-//!     |called: On<ToolCalled>, runs: Query<&ToolCallRun>, mut commands: Commands| {
-//!         // Keep `called.call`; insert its `ToolOutput` once the signal comes.
+//! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
+//! app.add_open_tool("wait", "Waits for a signal.", ToolOptions::default(),
+//!     |called: On<ToolCalled<Wait>>, mut commands: Commands| {
+//!         // Keep `called.call`; insert its `ToolOutput` once `called.args.signal` comes.
 //!     });
 //! ```
 
 use bevy_app::App;
-use bevy_ecs::observer::IntoEntityObserver;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::warn;
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
@@ -24,8 +25,11 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName, ToolResult, ToolResultContent};
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve};
-use rig_core::tool::{Tool, ToolErrorKind, ToolExecutionError};
+use rig_core::tool::{Tool, ToolErrorKind, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
+use serde::de::DeserializeOwned;
 
+use super::agent::{AgentId, ToolCallRun};
 use super::effects::{Effects, Handler};
 use super::prompt::ToolRules;
 
@@ -47,11 +51,38 @@ impl ToolDef {
     }
 }
 
-/// The effect handler that runs an ordinary tool. A tool without one is
-/// open: each call triggers [`ToolCalled`] on the tool's entity and ends
-/// when something inserts its [`ToolOutput`].
+/// How a tool's calls run, on the tool's entity.
 #[derive(Component, Clone)]
-pub struct ToolHandler(pub Handler);
+pub(crate) enum Serves {
+    /// An ordinary tool: its effect handler runs each call.
+    Handler(Handler),
+    /// An open tool: parses a call's arguments into its arguments type.
+    Open(fn(&ToolCall) -> Result<Opened, String>),
+}
+
+/// Triggers [`ToolCalled`] with an open call's parsed arguments.
+pub(crate) type Opened =
+    Box<dyn FnOnce(&mut World, [Entity; 3], AgentId, EffectId, ToolCallRun) + Send>;
+
+/// Parses `call`'s arguments into `A`, or says why they do not fit.
+fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<Opened, String> {
+    let args = A::deserialize(&call.function.arguments).map_err(|error| {
+        format!("The arguments do not fit: {error}. Nothing ran; fix the call and send it again.")
+    })?;
+    Ok(Box::new(
+        move |world, [entity, call, agent], caller, effect, run| {
+            world.trigger(ToolCalled {
+                entity,
+                call,
+                agent,
+                caller,
+                effect,
+                run,
+                args,
+            });
+        },
+    ))
+}
 
 /// A tool call's result, inserted on the call entity: the one way a call
 /// ends. Insert it once, with [`EntityCommands::insert_if_new`] when
@@ -67,26 +98,35 @@ impl From<ToolResult> for ToolOutput {
     }
 }
 
-/// A call of an open tool started: triggered on the tool's entity, so the
+/// A call of an open tool started, its arguments parsed into `A`: triggered
+/// on the tool's entity, while the call and the calling agent exist, so the
 /// observer [`AppToolsExt::add_open_tool`] registered handles it. The call
-/// entity holds the [`ToolCallRun`](super::agent::ToolCallRun) and is a
-/// [`CallOf`](super::agent::CallOf) the turn of `agent`; it stays open
-/// until a [`ToolOutput`] is inserted on it, and despawning it, as an
-/// [`Interrupt`](super::agent::Interrupt) does, cancels it.
-#[derive(EntityEvent, Clone, Copy, Debug)]
-pub struct ToolCalled {
+/// entity is usually a [`CallOf`](super::agent::CallOf) the turn of
+/// `agent`; it stays open until a [`ToolOutput`] is inserted on it, and
+/// despawning it, as an [`Interrupt`](super::agent::Interrupt) does,
+/// cancels it.
+#[derive(EntityEvent, Clone)]
+pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
     pub entity: Entity,
     /// The call.
     pub call: Entity,
     /// The calling agent.
     pub agent: Entity,
+    /// The calling agent's id.
+    pub caller: AgentId,
+    /// The call's effect, which work done for it is recorded under.
+    pub effect: EffectId,
+    /// The call as the model sent it, and the model call that asked for it.
+    pub run: ToolCallRun,
+    /// The call's arguments.
+    pub args: A,
 }
 
 /// The effect record of an open tool call, settled with the call's
 /// [`ToolOutput`].
 #[derive(Component)]
-pub struct OpenCall(pub OpenRecord);
+pub(crate) struct OpenCall(pub(crate) OpenRecord);
 
 /// Whether a tool's calls may run beside the other calls of one reply, on
 /// the tool's entity.
@@ -162,51 +202,55 @@ pub trait AppToolsExt {
     /// ```
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
 
-    /// Make the open tool `name` available: each call whose arguments fit
-    /// the JSON schema `parameters` triggers [`ToolCalled`] on the tool's
-    /// entity, where `observer` watches, and ends when a [`ToolOutput`] is
-    /// inserted on the call, at once or much later. Its calls are recorded
-    /// in the effect log like any other, with that output as the outcome.
-    fn add_open_tool<M>(
+    /// Make the open tool `name` available, its parameters derived from
+    /// `A` ([`args_schema`]): each call whose arguments parse into `A`
+    /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
+    /// watches, and ends when a [`ToolOutput`] is inserted on the call, at
+    /// once or much later; any other is refused. Its calls are recorded in
+    /// the effect log like any other, with that output as the outcome.
+    fn add_open_tool<A, M>(
         &mut self,
         name: &str,
         description: &str,
-        parameters: serde_json::Value,
         options: ToolOptions<'_>,
-        observer: impl IntoEntityObserver<M>,
-    ) -> &mut Self;
+        observer: impl IntoObserverSystem<ToolCalled<A>, M>,
+    ) -> &mut Self
+    where
+        A: DeserializeOwned + JsonSchema + Send + Sync + 'static;
 }
 
 impl AppToolsExt for App {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
         let (description, parameters) = (tool.description(), tool.parameters());
-        let handler = ErasedHandler::new(ToolAdapter::new(tool));
+        let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
         register_tool(
             self.world_mut(),
             T::NAME,
             description,
             parameters,
-            Some(handler),
+            Serves::Handler(handler),
             options,
         );
         self
     }
 
-    fn add_open_tool<M>(
+    fn add_open_tool<A, M>(
         &mut self,
         name: &str,
         description: &str,
-        parameters: serde_json::Value,
         options: ToolOptions<'_>,
-        observer: impl IntoEntityObserver<M>,
-    ) -> &mut Self {
+        observer: impl IntoObserverSystem<ToolCalled<A>, M>,
+    ) -> &mut Self
+    where
+        A: DeserializeOwned + JsonSchema + Send + Sync + 'static,
+    {
         let world = self.world_mut();
         if let Some(tool) = register_tool(
             world,
             name,
             description.to_owned(),
-            parameters,
-            None,
+            args_schema::<A>(),
+            Serves::Open(open::<A>),
             options,
         ) {
             world.entity_mut(tool).observe(observer);
@@ -215,15 +259,15 @@ impl AppToolsExt for App {
     }
 }
 
-/// Spawns the entity of the tool `name`, served by `handler` or open
-/// without one, and returns it; `None`, with a warning, when the name is
-/// invalid or taken. The parameters are made strict.
-pub(crate) fn register_tool(
+/// Spawns the entity of the tool `name`, whose calls run as `serves` says,
+/// and returns it; `None`, with a warning, when the name is invalid or
+/// taken. The parameters are made strict.
+fn register_tool(
     world: &mut World,
     name: &str,
     description: String,
     mut parameters: serde_json::Value,
-    handler: Option<ErasedHandler>,
+    serves: Serves,
     options: ToolOptions<'_>,
 ) -> Option<Entity> {
     let tool_name = match ToolName::new(name) {
@@ -248,7 +292,7 @@ pub(crate) fn register_tool(
         );
     }
     let definition = ToolDefinition::new(tool_name, description, parameters);
-    let mut entity = world.spawn((
+    let entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition),
         ToolRules(
@@ -259,10 +303,8 @@ pub(crate) fn register_tool(
                 .collect(),
         ),
         options.footprint,
+        serves,
     ));
-    if let Some(handler) = handler {
-        entity.insert(ToolHandler(Handler(handler)));
-    }
     Some(entity.id())
 }
 

@@ -28,10 +28,12 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, first_errors};
 use rig_tools::process::{detach, kill_group};
+use schemars::JsonSchema;
+use serde::Deserialize;
 
 use super::launcher;
 use rig_core::message::ToolResultContent;
-use rig_ecs::agent::{AgentId, Notice, ToolCallRun, TurnOf};
+use rig_ecs::agent::{Notice, TurnOf};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
@@ -65,16 +67,6 @@ impl Plugin for ReloadPlugin {
             app.add_open_tool(
                 RELOAD_TOOL,
                 RELOAD_DESCRIPTION,
-                serde_json::json!({
-                    "type": "object",
-                    "properties": {
-                        "reason": {
-                            "type": "string",
-                            "description": "What the reload applies, in a few words, shown \
-                                to the user."
-                        }
-                    }
-                }),
                 ToolOptions {
                     rules: &[],
                     // Never run again after the restart it causes.
@@ -354,36 +346,33 @@ fn reload(
     notices.write(Notice::info(None, notice));
 }
 
+/// The arguments of a `reload` call.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ReloadArgs {
+    /// What the reload applies, in a few words, shown to the user.
+    reason: Option<String>,
+}
+
 /// The `reload` tool: asks for a reload once no turn runs, with a notice
 /// naming the agent and its reason, and answers whether it is queued.
 fn on_reload_tool(
-    called: On<ToolCalled>,
-    calls: Query<&ToolCallRun>,
-    agents: Query<&AgentId>,
+    called: On<ToolCalled<ReloadArgs>>,
     build: Option<Res<ReloadBuild>>,
     queued: Option<Res<ReloadQueued>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let (call, agent) = (called.call, called.agent);
-    let Ok(run) = calls.get(call) else {
-        return;
-    };
-    let reason = run
-        .call
-        .function
-        .arguments
-        .get("reason")
-        .and_then(serde_json::Value::as_str)
+    let (call, agent, run) = (called.call, called.agent, &called.run);
+    let reason = called
+        .args
+        .reason
+        .as_deref()
         .map(str::trim)
         .filter(|reason| !reason.is_empty())
         .map(|reason| format!(" ({reason})"))
         .unwrap_or_default();
-    let who = agents.get(agent).map_or_else(
-        |_| "an agent".to_owned(),
-        |id| format!("agent {}", id.short()),
-    );
     // The caller's own turn runs: the reload always waits for it.
     let output = match ask_reload(
         agent,
@@ -397,8 +386,9 @@ fn on_reload_tool(
             notices.write(Notice::info(
                 None,
                 format!(
-                    "The model of {who} asked to reload{reason}: the agent rebuilds and \
-                     restarts once no turn runs. /reload cancel cancels it."
+                    "The model of agent {} asked to reload{reason}: the agent rebuilds and \
+                     restarts once no turn runs. /reload cancel cancels it.",
+                    called.caller.short()
                 ),
             ));
             run.call.result(vec![ToolResultContent::text(

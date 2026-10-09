@@ -10,7 +10,7 @@ use crate::agent::{
     ActiveTurn, Agent, AgentId, Ending, ModelChoice, Spawned, ToolCallRun, TurnOutcome,
 };
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
-use crate::tools::{Footprint, ToolCalled, ToolDef, ToolOutput};
+use crate::tools::{Footprint, Serves, ToolDef, ToolOutput};
 
 /// The request of each message delivered, marked when it is a note, with
 /// the agent it went to.
@@ -42,27 +42,29 @@ impl Session {
     /// `agent` calls `tool` with `args` in call `id`, and gets its output.
     fn call(&mut self, agent: Entity, tool: &str, id: &str, args: serde_json::Value) -> String {
         let world = self.0.world_mut();
-        let mut tools = world.query::<(Entity, &ToolDef)>();
+        let mut tools = world.query::<(Entity, &ToolDef, &Serves)>();
         let found = tools
             .iter(world)
-            .find(|(_, def)| def.0.name.as_str() == tool);
-        let (Some((entity, _)), Ok(name)) = (found, ToolName::new(tool)) else {
+            .find(|(_, def, _)| def.0.name.as_str() == tool)
+            .map(|(entity, _, serves)| (entity, serves.clone()));
+        let (Some((entity, Serves::Open(open))), Ok(name)) = (found, ToolName::new(tool)) else {
             return String::new();
         };
         let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
+        let opened = match open(&call) {
+            Ok(opened) => opened,
+            Err(why) => return why,
+        };
         let (parent, footprint) = (Some(EffectId::from_raw(1)), Footprint::Independent);
-        let call = world
-            .spawn(ToolCallRun {
-                call,
-                parent,
-                footprint,
-            })
-            .id();
-        world.trigger(ToolCalled {
-            entity,
+        let run = ToolCallRun {
             call,
-            agent,
-        });
+            parent,
+            footprint,
+        };
+        let call = world.spawn(run.clone()).id();
+        let caller = world.get::<AgentId>(agent).cloned().unwrap_or_default();
+        let effect = EffectId::from_raw(2);
+        opened(world, [entity, call, agent], caller, effect, run);
         world.flush();
         let output = world
             .get::<ToolOutput>(call)
