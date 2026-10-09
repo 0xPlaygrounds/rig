@@ -57,6 +57,7 @@ pub fn build_origin() -> Origin {
         kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
         from: None,
         request: None,
+        title: None,
     }
 }
 

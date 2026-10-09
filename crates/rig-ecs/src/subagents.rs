@@ -16,7 +16,15 @@
 //! reports that reach the caller together go to its model in one step. A
 //! report that only says its request was answered with another one needs
 //! no answer: it is a [`DeliveryMode::Note`], read with that other report
-//! and starting no turn of its own.
+//! and starting no turn of its own. A report is headed by the child's short
+//! id and task title ([`Origin::titled`]); the request it answers stays in
+//! its [`Origin`].
+//!
+//! The `task` calls of one model reply form a [`Batch`] unless a call asks
+//! to report alone: a child of a batch that is done holds its reports
+//! ([`HeldReports`]) until every task of the batch has reported, and then
+//! they all reach the caller in the same frame, so as one step. The caller
+//! is not blocked meanwhile: the user can still talk to it and stop it.
 //!
 //! Subagents can also work together. A `task` with `peers` set gives the
 //! child [`Peers`]: it may send a `message` to its siblings that have
@@ -38,6 +46,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
+use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use serde::{Deserialize, Serialize};
 
@@ -75,15 +84,18 @@ const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a
     a conversation of its own, which works with its tools until it can answer. It sees nothing \
     of this conversation, only `prompt`. The call returns at once with the subagent's id and \
     the request's id, as {\"agent\": …, \"request\": …}; the subagent works in the background, \
-    and exactly one report for the request arrives later as a message headed as that \
-    subagent's output, naming the request. Several `task` calls run side by side. To continue \
-    a subagent you already started, use `message` with its id, not another `task`.";
+    and exactly one report for the request arrives later as a message headed with that \
+    subagent's id and task title. Several `task` calls run side by side. By default the \
+    reports of the `task` calls of one reply arrive together, in one message, once every one \
+    of them is done; set `report` to \"alone\" for a task whose report should arrive as soon \
+    as it is ready. To continue a subagent you already started, use `message` with its id, \
+    not another `task`.";
 
 const MESSAGE_DESCRIPTION: &str = "Send a follow-up to one of your own subagents, by the id \
     `task` returned. The subagent continues with its conversation, model and tools, and reads \
     `text` as a new request: at once when idle, after its current work when busy. The call \
     returns at once with the request's id; exactly one report for it arrives later as a \
-    message headed as the subagent's output, naming the request. Only subagents you started \
+    message headed with the subagent's id and task title. Only subagents you started \
     can be reached, and, when you were started with `peers`, your sibling subagents started \
     with `peers`; any other agent is refused, and the refusal lists the ones you can reach.";
 
@@ -95,8 +107,9 @@ const RULES: &[&str] = &[
      to return. Do not give two subagents changes to the same files.",
     "`task` starts a new subagent; `message` continues one you started, by its id, with its \
      conversation kept. Each call is a request, answered by exactly one report that arrives \
-     as its own message. Meanwhile keep working on what does not need it, or end your turn; \
-     do not poll or wait for it.",
+     as a message; the reports of the tasks you start in one reply arrive together. \
+     Meanwhile keep working on what does not need them, or end your turn; do not poll or \
+     wait for them.",
     HONESTY,
 ];
 
@@ -150,8 +163,11 @@ impl Plugin for SubagentsPlugin {
         .save_component::<Requests>()
         .save_component::<Peers>()
         .save_component::<PeerRequests>()
+        .save_component::<HeldReports>()
         .add_observer(name_subagent)
         .add_observer(report_on_turn_end)
+        .add_observer(release_held)
+        .add_observer(release_on_leave)
         .add_observer(report_restored);
     }
 }
@@ -182,6 +198,55 @@ pub struct Peers;
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(Component, Default, Clone, Debug)]
 pub struct PeerRequests(pub Vec<PeerRequest>);
+
+/// On a subagent a `task` started together with the other `task` calls of
+/// one model reply: the batch whose reports reach the parent together,
+/// once every task in it has reported. Not saved: a restart answers the
+/// open tasks as interrupted and hands over what was held.
+#[derive(Component, Clone, Debug, PartialEq, Eq)]
+pub struct Batch {
+    /// The parent's model call whose reply started the batch.
+    pub reply: EffectId,
+    /// The `task` request of this subagent; the batch waits for its
+    /// report.
+    pub request: RequestId,
+}
+
+/// On a subagent of a [`Batch`]: its reports to its parent, held until
+/// every task of the batch has reported, then delivered in the order
+/// they were made.
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(Component, Default, Clone, Debug)]
+pub struct HeldReports(pub Vec<HeldReport>);
+
+/// A report held back for its batch.
+#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct HeldReport {
+    /// The report's text.
+    pub text: String,
+    /// Where it comes from, with the request it answers.
+    pub origin: Origin,
+    /// Whether it needs no answer ([`DeliveryMode::Note`]) rather than
+    /// asking for a step ([`DeliveryMode::Queue`]).
+    pub note: bool,
+}
+
+impl HeldReport {
+    /// The report, delivered to `asker`.
+    fn deliver(self, asker: Entity) -> Deliver {
+        Deliver {
+            entity: asker,
+            text: self.text,
+            origin: self.origin,
+            mode: if self.note {
+                DeliveryMode::Note
+            } else {
+                DeliveryMode::Queue
+            },
+            attachments: Vec::new(),
+        }
+    }
+}
 
 /// A request one peer sent another.
 #[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -220,6 +285,13 @@ fn task_parameters() -> serde_json::Value {
                 "items": { "type": "string" },
                 "description": "The tools the subagent may use, from yours. All of yours when \
                     absent; an empty list gives it none."
+            },
+            "report": {
+                "type": "string",
+                "enum": ["together", "alone"],
+                "description": "When the report arrives. `together` (the default): with the \
+                    reports of the other `task` calls of this reply, in one message once all \
+                    of them are done. `alone`: as soon as this task is done."
             },
             "peers": {
                 "type": "boolean",
@@ -261,7 +333,21 @@ struct TaskArgs {
     #[serde(default)]
     tools: Option<Vec<String>>,
     #[serde(default)]
+    report: Report,
+    #[serde(default)]
     peers: bool,
+}
+
+/// When a task's report reaches its parent.
+#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+enum Report {
+    /// With the reports of the other `task` calls of its reply, once all
+    /// of them are done.
+    #[default]
+    Together,
+    /// As soon as it is done.
+    Alone,
 }
 
 /// The arguments of a `message` call.
@@ -287,6 +373,7 @@ struct Settled {
     effort: Effort,
     tools: Vec<String>,
     peers: bool,
+    report: Report,
 }
 
 /// The arguments of `call`, or why they do not fit.
@@ -371,6 +458,7 @@ fn settle(
         effort,
         tools,
         peers: args.peers,
+        report: args.report,
     })
 }
 
@@ -438,14 +526,32 @@ fn on_task(
                     if settled.peers {
                         child.insert(Peers);
                     }
+                    // A call a restart runs again has no reply to batch with.
+                    let batch = match (settled.report, run.parent) {
+                        (Report::Together, Some(reply)) => Some(reply),
+                        _ => None,
+                    };
+                    if let Some(reply) = batch {
+                        child.insert(Batch {
+                            reply,
+                            request: request.clone(),
+                        });
+                    }
                     if let Some(open) = open {
                         child.insert(EffectParent(open.0.id()));
                     }
                     let child = child.id();
+                    let together = if batch.is_some() {
+                        " together with the reports of the other tasks of this reply, once all \
+                         are done"
+                    } else {
+                        ""
+                    };
                     commands.trigger(Deliver {
                         entity: child,
                         text: settled.instructions,
-                        origin: Origin::agent(id.clone(), Some(request.clone())),
+                        origin: Origin::agent(id.clone(), Some(request.clone()))
+                            .titled(settled.task.clone()),
                         mode: DeliveryMode::Queue,
                         attachments: Vec::new(),
                     });
@@ -458,11 +564,10 @@ fn on_task(
                         }),
                         format!(
                             "Started subagent `{}` on \"{}\". It works in the background; its \
-                             report for request {} will arrive as a message. Continue it with \
+                             report will arrive as a message{together}. Continue it with \
                              `message`; /agents shows it.",
                             child_id.short(),
                             settled.task,
-                            request.0
                         ),
                     )
                 }
@@ -732,16 +837,6 @@ fn name_subagent(inserted: On<Insert<Subtask>>, subtasks: Query<&Subtask>, mut c
     }
 }
 
-/// How a request ended, for its report.
-enum Status {
-    /// Answered, with the answer.
-    Done(String),
-    /// Failed, for the reason given.
-    Failed(String),
-    /// Stopped before an answer.
-    Interrupted,
-}
-
 /// The open requests of a subagent by the agent each one's report goes
 /// to, oldest first within each: its parent's, then each peer's in the
 /// order of its first request. A peer that is gone gets none.
@@ -771,10 +866,13 @@ fn by_asker(
 
 /// Reports on every open request of a subagent whose turn ended, to the
 /// agent that sent it: its parent, or a peer. Each request gets exactly
-/// one report. Per asker, the last request's report holds the answer and
-/// the earlier ones are notes that point to it. A subagent that ends its
-/// turn while an agent it asked still owes it a report reports after
-/// that report carried it on, unless that agent waits on it in turn.
+/// one report, headed by the subagent's id and task title: its answer, or
+/// why there is none. Per asker, the last request's report holds the
+/// answer and the earlier ones are notes that point to it. A subagent that
+/// ends its turn while an agent it asked still owes it a report reports
+/// after that report carried it on, unless that agent waits on it in turn.
+/// The reports to its parent of a subagent in a [`Batch`] are held
+/// ([`HeldReports`]) until the batch is done ([`release_held`]).
 fn report_on_turn_end(
     end: On<TurnEnded>,
     agents: Query<
@@ -784,6 +882,8 @@ fn report_on_turn_end(
             Option<&Requests>,
             Option<&PeerRequests>,
             Option<&Subtask>,
+            Option<&Batch>,
+            Option<&HeldReports>,
         ),
         Without<ActiveTurn>,
     >,
@@ -795,7 +895,7 @@ fn report_on_turn_end(
     if agent != end.original_event_target() {
         return;
     }
-    let Ok((id, parent, requests, peer_requests, subtask)) = agents.get(agent) else {
+    let Ok((id, parent, requests, peer_requests, subtask, batch, held)) = agents.get(agent) else {
         return;
     };
     let askers = by_asker(parent.0, requests, peer_requests, &debts);
@@ -809,63 +909,177 @@ fn report_on_turn_end(
     if owed {
         return;
     }
-    let title = subtask.map_or("the task", |subtask| subtask.title.as_str());
-    let status = match &end.outcome {
+    let report = match &end.outcome {
         TurnOutcome::Answered(message) => match clipped_answer(message) {
-            Some(text) => Status::Done(text),
-            None => Status::Failed("The subagent ended without a final message.".to_owned()),
+            Some(text) => text,
+            None => "Failed: the subagent ended without a final message. No answer will come \
+                     for this request; /agents shows the subagent's transcript."
+                .to_owned(),
         },
-        TurnOutcome::Failed(why) => Status::Failed(why.clone()),
-        TurnOutcome::Stopped => Status::Interrupted,
-    };
-    let report = match status {
-        Status::Done(text) => format!("Done: \"{title}\".\n{text}"),
-        Status::Failed(why) => format!(
-            "Failed: \"{title}\". {why} No answer will come for this request; /agents shows \
-             the subagent's transcript."
+        TurnOutcome::Failed(why) => format!(
+            "Failed: {why} No answer will come for this request; /agents shows the subagent's \
+             transcript."
         ),
-        Status::Interrupted => format!(
-            "Interrupted: \"{title}\". The subagent was stopped before it answered. No answer \
-             will come for this request; send a `message` to carry it on."
-        ),
+        TurnOutcome::Stopped => "Interrupted: the subagent was stopped before it answered. No \
+             answer will come for this request; send a `message` to carry it on."
+            .to_owned(),
     };
+    let origin =
+        |request: &RequestId| titled(Origin::agent(id.clone(), Some(request.clone())), subtask);
     commands.entity(agent).insert(Requests::default());
     if peer_requests.is_some() {
         commands.entity(agent).insert(PeerRequests::default());
     }
+    let mut holding = held.map(|held| held.0.clone()).unwrap_or_default();
+    let was_holding = !holding.is_empty();
     for (asker, ids) in askers {
         let Some((last, earlier)) = ids.split_last() else {
             continue;
         };
         // The requests answered together with the last one: notes, read
         // with its report, which comes last and asks for the turn.
-        for request in earlier {
-            commands.trigger(Deliver {
-                entity: asker,
+        let mut reports: Vec<HeldReport> = earlier
+            .iter()
+            .map(|request| HeldReport {
                 text: format!(
-                    "Done: \"{title}\". This request was answered together with request {}; \
-                     that report holds the answer.",
+                    "Answered together with request {}; that report holds the answer.",
                     last.0
                 ),
-                origin: Origin::agent(id.clone(), Some(request.clone())),
-                mode: DeliveryMode::Note,
-                attachments: Vec::new(),
-            });
-        }
-        commands.trigger(Deliver {
-            entity: asker,
+                origin: origin(request),
+                note: true,
+            })
+            .collect();
+        reports.push(HeldReport {
             text: report.clone(),
-            origin: Origin::agent(id.clone(), Some(last.clone())),
-            mode: DeliveryMode::Queue,
-            attachments: Vec::new(),
+            origin: origin(last),
+            note: false,
         });
+        let batched = asker == parent.0
+            && (was_holding || batch.is_some_and(|batch| ids.contains(&batch.request)));
+        if batched {
+            holding.extend(reports);
+        } else {
+            for report in reports {
+                commands.trigger(report.deliver(asker));
+            }
+        }
+    }
+    // After the requests were cleared, so the batch sees this task done.
+    if holding.len() > held.map_or(0, |held| held.0.len()) {
+        commands.entity(agent).insert(HeldReports(holding));
     }
 }
 
+/// `origin` titled with the task, when there is one.
+fn titled(origin: Origin, subtask: Option<&Subtask>) -> Origin {
+    match subtask {
+        Some(subtask) => origin.titled(subtask.title.clone()),
+        None => origin,
+    }
+}
+
+/// The subagents of one parent, for releasing their held reports.
+type Members<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static SpawnedBy,
+        Option<&'static Batch>,
+        Option<&'static Requests>,
+        Option<&'static HeldReports>,
+    ),
+>;
+
+/// Releases a batch's held reports once a subagent of it holds new ones:
+/// when no task of the batch still owes its report.
+fn release_held(
+    inserted: On<Insert<HeldReports>>,
+    members: Members,
+    families: Query<&Spawned>,
+    mut commands: Commands,
+) {
+    release(inserted.entity, None, &members, &families, &mut commands);
+}
+
+/// Releases a batch's held reports when one of its subagents goes away
+/// before it reported, so the batch does not wait for it forever.
+fn release_on_leave(
+    removed: On<Remove<Batch>>,
+    members: Members,
+    families: Query<&Spawned>,
+    mut commands: Commands,
+) {
+    release(
+        removed.entity,
+        Some(removed.entity),
+        &members,
+        &families,
+        &mut commands,
+    );
+}
+
+/// Delivers the held reports of `member`'s batch to its parent, in the
+/// order the parent started the tasks, unless a task of the batch other
+/// than `gone` still owes its report. A member without a batch hands over
+/// its own.
+fn release(
+    member: Entity,
+    gone: Option<Entity>,
+    members: &Members<'_, '_>,
+    families: &Query<&Spawned>,
+    commands: &mut Commands,
+) {
+    let Ok((parent, batch, ..)) = members.get(member) else {
+        return;
+    };
+    let parent = parent.0;
+    let Some(batch) = batch else {
+        if let Ok((_, _, _, Some(held))) = members.get(member) {
+            hand_over(member, held, parent, commands);
+        }
+        return;
+    };
+    let Ok(family) = families.get(parent) else {
+        return;
+    };
+    let in_batch = |entity: Entity| {
+        members
+            .get(entity)
+            .ok()
+            .filter(|(_, other, ..)| other.is_some_and(|other| other.reply == batch.reply))
+    };
+    let owing = family
+        .iter()
+        .filter(|&child| Some(child) != gone)
+        .any(|child| {
+            in_batch(child).is_some_and(|(_, other, requests, _)| {
+                let request = other.map(|other| &other.request);
+                requests.is_some_and(|open| request.is_some_and(|request| open.0.contains(request)))
+            })
+        });
+    if owing {
+        return;
+    }
+    for child in family.iter() {
+        if let Some((_, _, _, Some(held))) = in_batch(child) {
+            hand_over(child, held, parent, commands);
+        }
+    }
+}
+
+/// Delivers `child`'s held reports to `parent`, in this frame, and clears
+/// them.
+fn hand_over(child: Entity, held: &HeldReports, parent: Entity, commands: &mut Commands) {
+    for report in held.0.iter().cloned() {
+        commands.trigger(report.deliver(parent));
+    }
+    commands.entity(child).try_remove::<HeldReports>();
+}
+
 /// After a restart, answers every request a restored subagent had not
-/// answered with an interrupted report to the agent that sent it, and
-/// keeps the subagent idle: nothing it was doing runs again by itself. A
-/// `message` carries it on.
+/// answered with an interrupted report to the agent that sent it, hands
+/// over the reports it held for its batch, and keeps the subagent idle:
+/// nothing it was doing runs again by itself. A `message` carries it on.
 fn report_restored(
     mut restored: On<Restored>,
     agents: Query<(
@@ -874,14 +1088,18 @@ fn report_restored(
         Option<&Requests>,
         Option<&PeerRequests>,
         Option<&Subtask>,
+        Option<&HeldReports>,
     )>,
     debts: Debts,
     mut commands: Commands,
 ) {
     let agent = restored.entity;
-    let Ok((id, parent, requests, peer_requests, subtask)) = agents.get(agent) else {
+    let Ok((id, parent, requests, peer_requests, subtask, held)) = agents.get(agent) else {
         return;
     };
+    if let Some(held) = held {
+        hand_over(agent, held, parent.0, &mut commands);
+    }
     let askers = by_asker(parent.0, requests, peer_requests, &debts);
     let open = requests.is_some_and(|requests| !requests.0.is_empty())
         || peer_requests.is_some_and(|open| !open.0.is_empty());
@@ -889,17 +1107,15 @@ fn report_restored(
         return;
     }
     restored.event_mut().resume = false;
-    let title = subtask.map_or("the task", |subtask| subtask.title.as_str());
     for (asker, ids) in askers {
         for request in ids {
             commands.trigger(Deliver {
                 entity: asker,
-                text: format!(
-                    "Interrupted: \"{title}\". The session restarted before the subagent \
-                     answered, and it was not carried on. No answer will come for this \
-                     request; send a `message` to carry it on."
-                ),
-                origin: Origin::agent(id.clone(), Some(request)),
+                text: "Interrupted: the session restarted before the subagent answered, and it \
+                       was not carried on. No answer will come for this request; send a \
+                       `message` to carry it on."
+                    .to_owned(),
+                origin: titled(Origin::agent(id.clone(), Some(request)), subtask),
                 mode: DeliveryMode::Queue,
                 attachments: Vec::new(),
             });

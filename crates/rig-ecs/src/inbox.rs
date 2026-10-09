@@ -66,9 +66,14 @@ pub struct Origin {
     /// The agent it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub from: Option<AgentId>,
-    /// The request it answers or makes.
+    /// The request it answers or makes. Kept for correlation, such as a
+    /// report to the call that asked; not shown in its header.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub request: Option<RequestId>,
+    /// What it is about, such as a subagent's task title, shown in its
+    /// header.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 impl Origin {
@@ -83,10 +88,20 @@ impl Origin {
             kind: OriginKind::Agent,
             from: Some(from),
             request,
+            title: None,
         }
     }
 
-    /// Who sent it, for views: such as `agent 1a2b3c4d (request …)`.
+    /// This origin about `title`, such as a task's.
+    pub fn titled(self, title: impl Into<String>) -> Self {
+        Self {
+            title: Some(title.into()),
+            ..self
+        }
+    }
+
+    /// Who sent it, for views: such as `agent 1a2b3c4d "Fix the parser"`.
+    /// The request id is left out; it stays in [`Origin::request`].
     pub fn label(&self) -> String {
         let who = match &self.kind {
             OriginKind::User => "you".to_owned(),
@@ -95,8 +110,8 @@ impl Origin {
             }
             OriginKind::Plugin(name) => format!("plugin {name}"),
         };
-        match &self.request {
-            Some(request) => format!("{who} (request {})", request.0),
+        match &self.title {
+            Some(title) => format!("{who} \"{title}\""),
             None => who,
         }
     }

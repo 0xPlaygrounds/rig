@@ -296,12 +296,17 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
 }
 
 /// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads. `/agents` shows an agent's whole
-/// transcript.
+/// without the header the model reads, also one an older version wrote.
+/// `/agents` shows an agent's whole transcript.
 fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
     let body = origin
         .header()
         .and_then(|header| text.strip_prefix(&header))
+        .or_else(|| {
+            text.split_once('\n').and_then(|(first, rest)| {
+                (first.starts_with('[') && first.ends_with("not the user's words]")).then_some(rest)
+            })
+        })
         .map_or(text, |body| body.trim_start_matches('\n'));
     // A failed build's note, which the model reads: told apart by its
     // origin.
