@@ -182,6 +182,11 @@ export OPENAI_API_KEY=...   # or any other provider key in the model catalog
 rig                         # builds the agent (later starts rebuild what changed), then opens it
 ```
 
+On Linux, building the agent needs the ALSA development headers
+(`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora,
+`alsa-lib` on Arch): its `inspect` plugin is built on Bevy Remote, which
+pulls in Bevy's audio crate. The agent plays no sound.
+
 In the agent, `/model` picks a model (providers that need no key, such as a
 local Ollama, are listed last), `/effort` its reasoning setting, `/help`
 lists the commands, and Esc stops a running turn. The status line shows the

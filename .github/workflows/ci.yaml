@@ -98,6 +98,7 @@ jobs:
           nextest: "true"
           # The repository-repair tests format proposed patches.
           components: rustfmt
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
@@ -175,6 +176,7 @@ jobs:
           components: llvm-tools
           nextest: "true"
           protoc: "true"
+          alsa: "true"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
@@ -210,6 +212,7 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           shared-key: all-features
@@ -225,6 +228,7 @@ jobs:
         with:
           components: rust-docs
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
@@ -239,6 +243,7 @@ jobs:
         with:
           components: clippy
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
