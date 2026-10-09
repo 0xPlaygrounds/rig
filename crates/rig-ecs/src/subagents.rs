@@ -43,8 +43,6 @@
 //! are saved with the child; after a restart each one is answered as
 //! interrupted, and the child is not carried on.
 
-use std::collections::HashMap;
-
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -613,23 +611,30 @@ struct Ledgers<'w, 's> {
 }
 
 impl Ledgers<'_, '_> {
-    /// Every agent by its id.
-    fn by_id(&self) -> HashMap<&AgentId, Entity> {
-        self.agents
-            .iter()
-            .map(|(entity, id, _)| (id, entity))
-            .collect()
+    /// The agent with the id `id`.
+    fn find(&self, id: &AgentId) -> Option<Entity> {
+        let mut agents = self.agents.iter();
+        agents
+            .find(|(_, other, _)| *other == id)
+            .map(|(entity, ..)| entity)
     }
 
     /// Who waits on whom, as (waiting, owing) pairs: an agent waits on
-    /// each agent that owes it a report.
+    /// each agent that owes it a report. Each asker is looked up once per
+    /// agent that owes it, however many requests it sent.
     fn waits(&self) -> Vec<(Entity, Entity)> {
-        let agents = &self.by_id();
-        let owing = self.agents.iter().flat_map(|(owing, _, owes)| {
-            let open = owes.into_iter().flat_map(Owes::open);
-            open.filter_map(move |owed| Some((*agents.get(&owed.asker)?, owing)))
-        });
-        owing.collect()
+        let mut edges = Vec::new();
+        for (owing, _, owes) in &self.agents {
+            let mut askers: Vec<&AgentId> = Vec::new();
+            for owed in owes.into_iter().flat_map(Owes::open) {
+                if !askers.contains(&&owed.asker) {
+                    askers.push(&owed.asker);
+                }
+            }
+            let found = askers.into_iter().filter_map(|asker| self.find(asker));
+            edges.extend(found.map(|waiting| (waiting, owing)));
+        }
+        edges
     }
 
     /// Reports `text` from `agent` on its requests `owed`, all from one
@@ -645,10 +650,9 @@ impl Ledgers<'_, '_> {
         owed: Vec<Owed>,
         text: &str,
     ) {
-        let agents = self.by_id();
         let last = owed
             .last()
-            .and_then(|last| Some((*agents.get(&last.asker)?, last.request.0.clone())));
+            .and_then(|last| Some((self.find(&last.asker)?, last.request.0.clone())));
         let Some((asker, last)) = last else {
             return;
         };
@@ -809,11 +813,10 @@ fn on_message(
             let wanted = args.agent.trim();
             let text = args.text.trim();
             // The agents the caller owes first: a message to one answers it.
-            let agents = ledgers.by_id();
             let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
             let askers = owes.into_iter().flat_map(Owes::open).filter_map(|owed| {
-                let asker = agents.get(&owed.asker)?;
-                Some((*asker, Target::Asker(owed.request.clone())))
+                let asker = ledgers.find(&owed.asker)?;
+                Some((asker, Target::Asker(owed.request.clone())))
             });
             let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
             let siblings = parent
