@@ -26,6 +26,9 @@ pub enum Staging {
     /// launcher, or rejected for crashing at startup. At startup that keeps
     /// a rolled-back build from being retried until something changes.
     OnlyNew,
+    /// Stage nothing: `rig plugin check --build` only checks that the
+    /// agent builds.
+    Never,
 }
 
 /// Lines of a failed build's output a [`BuildFailure`] keeps, from its
@@ -122,6 +125,13 @@ pub fn build(home: &Home) -> Result<()> {
         None => home.staged(),
     };
     Ok(compile(home, &staged, Staging::Always)?)
+}
+
+/// `rig plugin check --build`, holding the root's build lock: builds the
+/// agent like [`build`] but stages nothing.
+pub fn check(home: &Home) -> Result<()> {
+    let _lock = home::lock(home)?;
+    Ok(compile(home, &home.staged(), Staging::Never)?)
 }
 
 /// cargo in the agent project, with stdout discarded and stderr piped, for
@@ -309,6 +319,9 @@ fn without_ansi(text: &str) -> String {
 /// the copy carries its [`stamp`]. A build `rig build` staged for any
 /// launcher that differs from this one is older, so it goes.
 fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
+    if staging == Staging::Never {
+        return Ok(());
+    }
     let artifact = home
         .target()
         .join("debug")

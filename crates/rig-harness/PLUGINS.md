@@ -11,8 +11,9 @@ rig-harness, rig-ecs or rig-tools: it builds on what they export.
 ```sh
 rig plugin new hello    # RIG_HOME/plugins/hello, listed in plugins.toml
 rig plugin add viz::VizPlugin --path ~/viz   # an entry for an existing crate
-rig plugin remove viz::VizPlugin             # take an entry out
+rig plugin remove viz::VizPlugin             # take an entry out (--delete: and its crate in RIG_HOME/plugins)
 rig plugin check        # plugins.toml and the crates it names, without a build
+rig plugin check --build  # and build the agent with them, as /reload would
 rig plugin list         # the plugins, in the order they are added
 ```
 

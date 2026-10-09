@@ -27,7 +27,10 @@ pub mod env {
     /// The [`SessionId`](super::SessionId) the agent runs. `rig build`,
     /// run by the agent's `/reload`, stages for that session's launcher.
     pub const SESSION: &str = "RIG_SESSION";
-    /// The launcher executable, which `/reload` runs as `rig build`.
+    /// The launcher executable, which `/reload` runs as `rig build`. Unlike
+    /// [`AGENT_ONLY`], the agent's commands keep it, so the model runs
+    /// `"$RIG_LAUNCHER" plugin check --build`; an agent counts as started by
+    /// a launcher only with [`SESSION`] set too.
     pub const LAUNCHER: &str = "RIG_LAUNCHER";
     /// A line the agent shows at startup, such as a rollback.
     pub const NOTICE: &str = "RIG_NOTICE";
@@ -38,8 +41,9 @@ pub mod env {
     pub const BUILD_FAILURE: &str = "RIG_BUILD_FAILURE";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
-    /// rig-harness itself, must not act as this agent.
-    pub const AGENT_ONLY: [&str; 4] = [SESSION, LAUNCHER, NOTICE, BUILD_FAILURE];
+    /// rig-harness itself, must not act as this agent. Without [`SESSION`]
+    /// a nested agent ignores the [`LAUNCHER`] it inherits.
+    pub const AGENT_ONLY: [&str; 3] = [SESSION, NOTICE, BUILD_FAILURE];
 }
 
 /// At most `count` lines of a build's output from the first one that

@@ -103,8 +103,11 @@ pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: S
     });
 }
 
-/// The launcher that started this agent, if one did.
+/// The launcher that started this agent, if one did: it sets both
+/// [`env::LAUNCHER`] and [`env::SESSION`]. A nested agent, run by this
+/// agent's shell, inherits only the launcher's path, which the model uses.
 pub(crate) fn executable() -> Option<OsString> {
+    std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }
 
