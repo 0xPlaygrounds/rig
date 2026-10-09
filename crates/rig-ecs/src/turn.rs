@@ -339,17 +339,19 @@ pub(crate) fn on_set_model(
 
 /// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`] or by
 /// restoring a session, so requests never re-resolve the provider. A
-/// reasoning setting the new model does not take is reset.
+/// reasoning setting the new model does not take is reset. Only a change of
+/// a connected agent's model is announced: spawning and restoring an agent
+/// are silent, since views show its model anyway.
 pub(crate) fn on_model_chosen(
     chosen: On<Insert<ModelChoice>>,
-    agents: Query<(&ModelChoice, &Effort)>,
+    agents: Query<(&ModelChoice, &Effort, Has<Connection>)>,
     mut effects: ResMut<Effects>,
     connector: Res<ModelConnector>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = chosen.entity;
-    let Ok((choice, effort)) = agents.get(agent) else {
+    let Ok((choice, effort, switched)) = agents.get(agent) else {
         return;
     };
     let connection = connector
@@ -376,10 +378,12 @@ pub(crate) fn on_model_chosen(
         }
     };
     let spec = &*connection.spec;
-    notices.write(Notice::info(
-        agent,
-        format!("Model: {} ({}).", spec.display_name, choice.0),
-    ));
+    if switched {
+        notices.write(Notice::info(
+            agent,
+            format!("Model: {} ({}).", spec.display_name, choice.0),
+        ));
+    }
     if let Err(refusal) = models::check_effort(spec, effort.0) {
         commands.entity(agent).insert(Effort(None));
         notices.write(Notice::info(

@@ -346,8 +346,8 @@ fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
             model.map_or("no model", |model| model.0.as_str()),
             if busy { "working" } else { "idle" }
         );
-        if let Some(cost) = spent.cost_label() {
-            label.push_str(&format!(" · {cost}"));
+        if spent.calls > 0 {
+            label.push_str(&format!(" · {}", spent.cost_or_tokens()));
         }
         entries.push(RosterEntry { agent, label });
         for child in spawned.into_iter().flat_map(|spawned| spawned.iter().rev()) {

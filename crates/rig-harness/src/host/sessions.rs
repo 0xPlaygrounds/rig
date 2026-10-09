@@ -96,9 +96,13 @@ pub struct Meta {
     /// The name set with `/name`.
     #[serde(default)]
     pub name: Option<String>,
-    /// What the session's model calls cost, in USD.
+    /// What the session's model calls cost, in USD, or `None` when no call
+    /// was priced, such as a local or subscription model's.
     #[serde(default)]
-    pub cost: f64,
+    pub cost: Option<f64>,
+    /// The tokens the session's model calls read and wrote.
+    #[serde(default)]
+    pub tokens: u64,
     /// When it was written, in milliseconds since the Unix epoch.
     #[serde(default)]
     pub updated: u64,
@@ -129,8 +133,14 @@ impl SessionEntry {
         let mut label = format!("{age:>8}  {title}");
         // The cost before the directory, which may be long enough to be
         // cut off.
-        if self.meta.cost > 0.0 {
-            label.push_str(&format!("  · {}", usage::dollars(self.meta.cost)));
+        match self.meta.cost {
+            Some(cost) if cost > 0.0 => {
+                label.push_str(&format!("  · {}", usage::dollars(cost)));
+            }
+            _ if self.meta.tokens > 0 => {
+                label.push_str(&format!("  · {} tokens", usage::tokens(self.meta.tokens)));
+            }
+            _ => {}
         }
         if let Some(directory) = &self.directory {
             label.push_str(&format!("  · {}", tilde(directory)));
@@ -234,11 +244,18 @@ fn write_meta(
     let meta = Meta {
         title: agents
             .iter()
-            .find_map(|(_, conversation, ..)| first_typed(conversation.messages()))
+            .find_map(|(_, conversation, ..)| first_typed(conversation))
             .map(|text| title(&text))
             .unwrap_or_default(),
         name: name.0.clone(),
-        cost: agents.iter().map(|(_, _, spent, ..)| spent.cost).sum(),
+        cost: agents
+            .iter()
+            .any(|(_, _, spent, ..)| spent.unpriced < spent.calls)
+            .then(|| agents.iter().map(|(_, _, spent, ..)| spent.cost).sum()),
+        tokens: agents
+            .iter()
+            .map(|(_, _, spent, ..)| spent.total_tokens())
+            .sum(),
         updated: now_ms(),
     };
     let written = serde_json::to_vec_pretty(&meta)
@@ -249,13 +266,25 @@ fn write_meta(
     }
 }
 
-/// The first text the user typed in `conversation`.
-fn first_typed(conversation: &[Message]) -> Option<String> {
-    conversation.iter().find_map(|message| match message {
-        Message::User { content } => content.iter().find_map(|item| match item {
-            UserContent::Text(text) if !text.text.trim().is_empty() => Some(text.text.clone()),
-            _ => None,
-        }),
+/// The first text the user typed in `conversation`: never text an agent
+/// or a plugin delivered, such as a notice or a build failure.
+fn first_typed(conversation: &Conversation) -> Option<String> {
+    let mut messages = conversation.messages().iter().enumerate();
+    messages.find_map(|(at, message)| match message {
+        Message::User { content } => {
+            content
+                .iter()
+                .enumerate()
+                .find_map(|(index, item)| match item {
+                    UserContent::Text(text)
+                        if !text.text.trim().is_empty()
+                            && conversation.origin(at, index).is_none() =>
+                    {
+                        Some(text.text.clone())
+                    }
+                    _ => None,
+                })
+        }
         _ => None,
     })
 }

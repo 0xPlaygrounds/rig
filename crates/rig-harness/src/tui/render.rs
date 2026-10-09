@@ -357,9 +357,10 @@ pub(crate) fn render(
             line.spans.insert(0, Span::from(format!("{name}  ")).cyan());
         }
         if let Some((_, spent)) = turn
-            && let Some(cost) = spent.0.cost_label()
+            && spent.0.calls > 0
         {
-            line.push_span(Span::from(format!("  this turn {cost}")).dim());
+            let used = spent.0.cost_or_tokens();
+            line.push_span(Span::from(format!("  this turn {used}")).dim());
         }
         if let Some(build) = &build {
             line.push_span(reload_span(build));

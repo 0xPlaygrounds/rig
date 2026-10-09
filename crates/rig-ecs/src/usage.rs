@@ -51,6 +51,21 @@ impl Spending {
         Some(format!("{}{more}", dollars(self.cost)))
     }
 
+    /// The tokens read and written, cached input included.
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens
+            .input_tokens
+            .unwrap_or(0)
+            .saturating_add(self.tokens.output_tokens.unwrap_or(0))
+    }
+
+    /// The [cost](Self::cost_label), or as `1.2M tokens` when no call was
+    /// priced, such as a local or subscription model's.
+    pub fn cost_or_tokens(&self) -> String {
+        self.cost_label()
+            .unwrap_or_else(|| format!("{} tokens", tokens(self.total_tokens())))
+    }
+
     /// The context in use measured against `spec`'s window, when the last
     /// call reported its tokens.
     pub fn context_use(&self, spec: Option<&ModelSpec>) -> Option<ContextUse> {

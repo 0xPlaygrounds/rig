@@ -67,6 +67,7 @@ types do.
 
 - Do not use `String` as an error type for new fallible APIs;
 - Workspace clippy lints forbid `unwrap`, `expect`, `todo`, and `unimplemented`.
+- Tests are linted too: `indexing_slicing` and `panic_in_result_fn` apply in test code, so index with `.get(..)`, and do not assert in a test that returns `Result`.
 - Prefer `?` and meaningful error conversions.
 
 ## Documentation

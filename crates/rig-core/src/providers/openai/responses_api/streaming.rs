@@ -32,9 +32,11 @@ const ITEM_EVENTS: &str = "output_item.added output_item.done content_part.added
     reasoning_summary_text.done reasoning_text.delta reasoning_text.done";
 
 /// Whether `kind` is a Responses event type this decoder reads. A frame of
-/// any other type passes through as unknown.
+/// any other type passes through as unknown. `keepalive` is ChatGPT's idle
+/// heartbeat, read and skipped.
 fn is_known_responses_event_type(kind: &str) -> bool {
     kind == "error"
+        || kind == "keepalive"
         || is_lifecycle_event(kind)
         || kind
             .strip_prefix("response.")
@@ -971,6 +973,7 @@ impl<'id> Decoder<'id, Completion> for ResponsesDecoder {
                     self.finish(response, out)
                 }
                 "response.failed" => Err(ProviderError::from_provider_body(raw)),
+                "keepalive" => Ok(Flow::More),
                 kind if is_lifecycle_event(kind) => Ok(Flow::More),
                 kind => {
                     self.item_event(kind, frame, &mut out)?;

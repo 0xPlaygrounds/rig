@@ -28,6 +28,15 @@ fn classify_unknown_event_type_is_unknown() {
     ));
 }
 
+#[test]
+fn classify_keepalive_is_known() {
+    let frame = json!({"type": "keepalive", "sequence_number": 7}).to_string();
+    assert!(matches!(
+        classify_responses_payload(&frame),
+        WireEvent::Known(super::ResponsesEvent::Frame { kind, .. }) if kind == "keepalive"
+    ));
+}
+
 fn sample_response(status: &str) -> serde_json::Value {
     json!({
         "id": "resp_123",
