@@ -50,6 +50,7 @@ pub mod builtin;
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod host;
+pub mod plugins;
 #[cfg(feature = "tui")]
 pub mod tui;
 pub mod view;
