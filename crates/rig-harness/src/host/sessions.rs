@@ -25,6 +25,7 @@ use serde::{Deserialize, Serialize};
 
 use super::launcher;
 use super::session::SessionPaths;
+use crate::attach;
 use crate::view::{PickItem, PickRequest};
 use rig_ecs::StopTurns;
 use rig_ecs::agent::{
@@ -267,7 +268,8 @@ fn write_meta(
 }
 
 /// The first text the user typed in `conversation`: never text an agent
-/// or a plugin delivered, such as a notice or a build failure.
+/// or a plugin delivered, such as a notice or a build failure, nor a
+/// file it attached.
 fn first_typed(conversation: &Conversation) -> Option<String> {
     let mut messages = conversation.messages().iter().enumerate();
     messages.find_map(|(at, message)| match message {
@@ -278,7 +280,8 @@ fn first_typed(conversation: &Conversation) -> Option<String> {
                 .find_map(|(index, item)| match item {
                     UserContent::Text(text)
                         if !text.text.trim().is_empty()
-                            && conversation.origin(at, index).is_none() =>
+                            && conversation.origin(at, index).is_none()
+                            && attach::attached_file(&text.text).is_none() =>
                     {
                         Some(text.text.clone())
                     }

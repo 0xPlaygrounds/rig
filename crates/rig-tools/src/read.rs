@@ -63,16 +63,25 @@ impl PortableTool for Read {
 
 fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
     let text = read_text(&args.path)?;
-    let first = args.offset.unwrap_or(1).max(1);
+    let first = args.offset.unwrap_or(1);
     let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
+    Ok(numbered(&text, first, limit, MAX_BYTES))
+}
+
+/// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
+/// them: numbered, at most `limit` lines and about `max_bytes` bytes, each
+/// line cut at 2000 characters, and a last line saying how many lines
+/// were left out and the offset to read on from.
+pub fn numbered(text: &str, first: usize, limit: usize, max_bytes: usize) -> String {
+    let first = first.max(1);
     let total = text.lines().count();
     let mut out = String::new();
-    let mut last = first.saturating_sub(1);
+    let mut last = first - 1;
     for (number, line) in text.lines().enumerate().skip(first - 1).take(limit) {
         // A clipped line always fits, so a file of very long lines (minified
         // code, lockfiles) still makes progress.
         let shown = clip(line, MAX_LINE_CHARS);
-        if out.len() + shown.len() > MAX_BYTES {
+        if out.len() + shown.len() > max_bytes {
             break;
         }
         out.push_str(&format!("{:>6}\t{shown}", number + 1));
@@ -92,5 +101,5 @@ fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
     if total == 0 {
         out.push_str("[empty file]\n");
     }
-    Ok(out)
+    out
 }

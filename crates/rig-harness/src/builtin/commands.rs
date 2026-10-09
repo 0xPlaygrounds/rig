@@ -254,7 +254,7 @@ fn help(
         "Esc stops a running turn. Ctrl+C clears the input. In the terminal view, \
          Shift+Enter or Ctrl+J adds a line, Up and Down browse earlier prompts, Tab completes \
          /commands and @paths. While a turn runs, \
-         Enter steers it and Tab queues a follow-up. @path attaches an image file, and \
+         Enter steers it and Tab queues a follow-up. @path attaches a file (an image, or a text file's numbered lines), and \
          Ctrl+V pastes the clipboard's image. Esc stops only the shown agent."
             .to_owned(),
     );

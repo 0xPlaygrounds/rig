@@ -56,7 +56,7 @@ pub struct PickRequest {
 }
 
 /// Sends what the user typed to `agent`: a slash command when it starts
-/// with `/`, which runs now, otherwise the user's message with the images
+/// with `/`, which runs now, otherwise the user's message with the files
 /// it names as `@path`, delivered as `mode` says.
 pub fn send_input(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
     if let Some(line) = text.trim_start().strip_prefix('/') {

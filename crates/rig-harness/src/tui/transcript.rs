@@ -19,6 +19,7 @@ use rig_core::message::{ToolResult, UserContent};
 use super::markdown;
 use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
 use super::wrap::wrap_all;
+use crate::attach;
 use crate::host::launcher::BUILD_ORIGIN;
 use rig_ecs::agent::Conversation;
 use rig_ecs::inbox::{Origin, OriginKind};
@@ -224,6 +225,10 @@ fn message_lines(
             for (item_at, item) in content.iter().enumerate() {
                 match item {
                     UserContent::Text(text) => {
+                        if let Some((label, count)) = attach::attached_file(&text.text) {
+                            lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
+                            continue;
+                        }
                         lines.push(Line::default());
                         match conversation.origin(at, item_at) {
                             Some(origin) => delivered_lines(origin, &text.text, &mut lines),
