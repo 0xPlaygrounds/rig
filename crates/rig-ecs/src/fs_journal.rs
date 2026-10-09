@@ -61,6 +61,10 @@ impl JsonlDirStore {
     fn open(&self) -> MutexGuard<'_, HashMap<String, File>> {
         self.open.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    fn writer(&self) -> MutexGuard<'_, jsonl::Writer> {
+        self.effects.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 impl JournalStore for JsonlDirStore {
@@ -126,16 +130,10 @@ impl JournalStore for JsonlDirStore {
     }
 
     fn append_effects(&self, log: &EffectLog) -> io::Result<()> {
-        self.effects
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .append(log)
+        self.writer().append(log)
     }
 
     fn last_effect(&self) -> io::Result<Option<EffectId>> {
-        match jsonl::last_id(self.effects()) {
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(None),
-            other => other,
-        }
+        self.writer().last_id()
     }
 }

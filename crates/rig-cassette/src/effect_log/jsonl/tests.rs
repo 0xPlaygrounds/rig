@@ -73,10 +73,12 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
             .contains_key(&HandlerKey::from("model"))
     );
     assert!(log.header.signature.contains_key(&HandlerKey::from("tool")));
-    assert_eq!(last_id(&path).expect("tail"), Some(EffectId::from_raw(3)));
 
-    // A new writer, such as after a restart, continues the file's header.
-    Writer::new(&path)
+    // A new writer, such as after a restart, continues the file's header
+    // and ids.
+    let mut writer = Writer::new(&path);
+    assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(3)));
+    writer
         .append(&EffectLog {
             header: second.header.clone(),
             records: vec![record(4, "tool")],
@@ -104,14 +106,6 @@ fn a_log_without_records_writes_no_file() {
     let text = std::fs::read_to_string(&path).expect("log text");
     assert_eq!(text.lines().count(), 2, "header and record: {text}");
     assert!(text.starts_with("{\"header\""));
-}
-
-#[test]
-fn a_log_without_records_has_no_last_id() {
-    let dir = assert_fs::TempDir::new().expect("scratch directory");
-    let path = dir.path().join("effects.jsonl");
-    std::fs::write(&path, "{\"header\":{}}\n").expect("header only");
-    assert_eq!(last_id(&path).expect("tail"), None);
 }
 
 /// A completion record on `scope` whose request is `history`, as user
@@ -240,10 +234,11 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
             assert_eq!(restored.tools, original.tools);
         }
     }
-    assert_eq!(last_id(&path).expect("tail"), Some(EffectId::from_raw(7)));
 
     // A new writer, such as after a restart, continues each chain.
-    Writer::new(&path)
+    let mut writer = Writer::new(&path);
+    assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(7)));
+    writer
         .append(&EffectLog::from_records(vec![completion(
             8,
             "parent",
@@ -346,6 +341,46 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
 }
 
 #[test]
+fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
+    use rig_core::completion::Message;
+    use rig_core::message::{CallId, ProviderCallId, ToolName};
+    use rig_core::tool::{ToolOutput, ToolResult};
+    let dir = assert_fs::TempDir::new().expect("scratch directory");
+    let path = dir.path().join("effects.jsonl");
+    let listing = "Cargo.toml src target, the listing the shell tool returned";
+    let mut shell = record(10, "tool:shell");
+    shell.kind = EffectKind::ToolCall {
+        name: "shell".into(),
+        args: "{}".into(),
+    };
+    shell.outcome = Ok(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text(listing)),
+    });
+    let mut writer = Writer::new(&path);
+    // A directory in the file's place: the tool call never reaches the file.
+    std::fs::create_dir(&path).expect("directory in the way");
+    writer
+        .append(&EffectLog::from_records(vec![shell]))
+        .expect_err("the write fails");
+    std::fs::remove_dir(&path).expect("directory removed");
+
+    let task = Message::user("first task, with enough words to be worth referring to");
+    let result = Message::tool_result(
+        CallId::from(ProviderCallId::new("call_1").expect("call id")),
+        ToolName::new("shell").expect("tool name"),
+        listing,
+    );
+    writer
+        .append(&EffectLog::from_records(vec![
+            completion_of(1, "parent", vec![task.clone()]),
+            completion_of(2, "parent", vec![task, reply(), result]),
+        ]))
+        .expect("append");
+    let log = read(&path).expect("the log reads back");
+    assert_eq!(log.records.len(), 2);
+}
+
+#[test]
 fn a_continuation_of_an_unknown_request_is_an_error() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
@@ -368,23 +403,36 @@ fn a_continuation_of_an_unknown_request_is_an_error() {
 }
 
 #[test]
-fn last_id_reads_ids_off_long_lines_and_finds_the_highest_of_the_tail() {
+fn a_log_that_cannot_be_read_back_is_continued_after_every_id_it_states() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
-    let long = "m".repeat(300 * 1024);
-    let mut writer = Writer::new(&path);
     // Resolved out of order: the highest id is not on the last line.
-    writer
+    Writer::new(&path)
         .append(&EffectLog::from_records(vec![
-            completion(9, "parent", &[long.as_str()]),
+            completion(9, "parent", &["a"]),
             record(4, "tool"),
-            completion(3, "child", &[long.as_str()]),
         ]))
         .expect("append");
-    assert_eq!(last_id(&path).expect("tail"), Some(EffectId::from_raw(9)));
-    assert_eq!(line_id(b"{\"header\":{}}"), None);
-    assert_eq!(
-        line_id(b"{\"tool_output\":{\"a\":1},\"id\":12,\"key\":\"k\"}"),
-        Some(EffectId::from_raw(12))
+    let mut text = std::fs::read_to_string(&path).expect("log text");
+    // An odd line, a whole record after it, and a line torn by a crash.
+    text.push_str("not a record\n");
+    text.push_str(&serde_json::to_string(&record(12, "tool")).expect("record"));
+    text.push_str("\n{\"id\":15,\"key\":\"to");
+    std::fs::write(&path, text).expect("rewrite");
+
+    let mut writer = Writer::new(&path);
+    assert_eq!(writer.last_id().expect("ids"), Some(EffectId::from_raw(12)));
+    writer
+        .append(&EffectLog::from_records(vec![completion(
+            16,
+            "parent",
+            &["a", "b"],
+        )]))
+        .expect("append after the torn line");
+    let text = std::fs::read_to_string(&path).expect("log text");
+    let last = text.lines().last().unwrap_or_default();
+    assert!(
+        last.contains("\"id\":16") && !last.contains("\"after\""),
+        "a whole record: {text}"
     );
 }
