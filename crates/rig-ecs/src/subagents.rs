@@ -225,14 +225,10 @@ impl Owes {
     /// Removes every open request, grouped by asker in the order of each
     /// asker's first request, oldest first within each.
     pub fn drain_by_asker(&mut self) -> Vec<Vec<Owed>> {
-        let mut askers: Vec<Vec<Owed>> = Vec::new();
-        for owed in self.0.extract_if(.., |owed| owed.held.is_none()) {
-            let asked =
-                |open: &&mut Vec<Owed>| open.first().is_some_and(|first| first.asker == owed.asker);
-            match askers.iter_mut().find(asked) {
-                Some(open) => open.push(owed),
-                None => askers.push(vec![owed]),
-            }
+        let mut open: Vec<Owed> = self.0.extract_if(.., |owed| owed.held.is_none()).collect();
+        let mut askers = Vec::new();
+        while let Some(asker) = open.first().map(|first| first.asker.clone()) {
+            askers.push(open.extract_if(.., |owed| owed.asker == asker).collect());
         }
         askers
     }
@@ -611,6 +607,11 @@ struct Ledgers<'w, 's> {
 }
 
 impl Ledgers<'_, '_> {
+    /// The [`Owes`] of `agent`.
+    fn owes(&mut self, agent: Entity) -> Option<Mut<'_, Owes>> {
+        self.agents.get_mut(agent).ok().and_then(|(.., owes)| owes)
+    }
+
     /// The agent with the id `id`.
     fn find(&self, id: &AgentId) -> Option<Entity> {
         let mut agents = self.agents.iter();
@@ -668,25 +669,16 @@ impl Ledgers<'_, '_> {
             } else {
                 (text.to_owned(), DeliveryMode::Queue)
             };
-            let request = Some(owed.request.clone());
-            let origin = Origin {
-                request,
-                ..from.clone()
-            };
+            let mut origin = from.clone();
+            origin.request = Some(owed.request.clone());
             Owed {
                 held: Some(HeldReport { text, origin, mode }),
                 ..owed
             }
         });
-        let owes = self.agents.get_mut(agent).ok().and_then(|(.., owes)| owes);
-        let held = owes.and_then(|owes| {
-            let batch = batch
-                .or(owes.held_batch())
-                .filter(|_| parent == Some(asker))?;
-            Some((owes, batch))
-        });
-        match held {
-            Some((mut owes, batch)) => {
+        let owes = self.owes(agent).filter(|_| parent == Some(asker));
+        match owes.and_then(|owes| Some((batch.or(owes.held_batch())?, owes))) {
+            Some((batch, mut owes)) => {
                 owes.0.extend(reports);
                 self.release(asker, batch, None);
             }
@@ -728,21 +720,16 @@ impl Ledgers<'_, '_> {
 /// Whether `to` can be reached from `from` along `edges`, in one step or
 /// more.
 fn reaches<T: Copy + PartialEq>(edges: &[(T, T)], from: T, to: T) -> bool {
-    let mut seen = vec![from];
-    let mut stack = vec![from];
+    let (mut seen, mut stack) = (vec![from], vec![from]);
     while let Some(node) = stack.pop() {
-        for &(start, end) in edges {
-            if start != node {
-                continue;
-            }
+        for &(_, end) in edges.iter().filter(|(start, _)| *start == node) {
             if end == to {
                 return true;
             }
-            if seen.contains(&end) {
-                continue;
+            if !seen.contains(&end) {
+                seen.push(end);
+                stack.push(end);
             }
-            seen.push(end);
-            stack.push(end);
         }
     }
     false
@@ -860,12 +847,9 @@ fn on_message(
                         ..
                     },
                 ) => {
-                    let owes = ledgers
-                        .agents
-                        .get_mut(caller)
-                        .ok()
-                        .and_then(|(.., owes)| owes);
-                    let owed = owes.and_then(|mut owes| owes.close(request));
+                    let owed = ledgers
+                        .owes(caller)
+                        .and_then(|mut owes| owes.close(request));
                     let from = titled(Origin::agent(id.clone(), None), subtask);
                     let agents = (caller, parent.map(|parent| parent.0));
                     ledgers.report(agents, &from, owed.into_iter().collect(), text);
@@ -1020,8 +1004,9 @@ fn release_on_leave(removed: On<Remove<Owes>>, parents: Query<&SpawnedBy>, mut l
     let (Ok(parent), Ok((.., Some(owes)))) = (parents.get(gone), ledgers.agents.get(gone)) else {
         return;
     };
-    let batches: Vec<EffectId> = owes.open().filter_map(|owed| owed.batch).collect();
-    for batch in batches {
+    // A subagent is in one batch at most: its task's.
+    let batch = owes.open().find_map(|owed| owed.batch);
+    if let Some(batch) = batch {
         ledgers.release(parent.0, batch, Some(gone));
     }
 }
@@ -1046,18 +1031,16 @@ fn report_restored(
         return;
     }
     let held = owes.take_held();
-    if owes.open().next().is_some() {
-        restored.event_mut().resume = false;
-    }
+    let open: Vec<Owed> = owes.drain_by_asker().into_iter().flatten().collect();
+    restored.event_mut().resume &= open.is_empty();
     let from = titled(Origin::agent(id.clone(), None), subtask);
-    let askers = owes.drain_by_asker();
     for report in held {
         ledgers.commands.trigger(report.deliver(parent.0));
     }
     let text = "Interrupted: the session restarted before the subagent answered, and it was \
                 not carried on. No answer will come for this request; send a `message` to \
                 carry it on.";
-    for owed in askers.into_iter().flatten() {
+    for owed in open {
         ledgers.report((agent, Some(parent.0)), &from, vec![owed], text);
     }
 }
