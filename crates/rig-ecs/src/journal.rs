@@ -230,7 +230,7 @@ pub(crate) struct AgentLog {
 }
 
 impl AgentLog {
-    fn new(depth: usize) -> Self {
+    pub(crate) fn new(depth: usize) -> Self {
         Self {
             depth,
             next_seq: 0,

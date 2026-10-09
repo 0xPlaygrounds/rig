@@ -18,7 +18,7 @@
 //! }
 //! ```
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
@@ -54,13 +54,12 @@ struct Envelope {
     component: Option<String>,
 }
 
-/// An agent log folded into the agent's state.
+/// An agent log folded into the agent's state, and the log to carry on.
 struct Folded {
     header: Header,
     conversation: Conversation,
-    components: BTreeMap<String, SavedValue>,
     compacted: Compacted,
-    next_seq: u64,
+    log: AgentLog,
 }
 
 /// A restored agent, for the reconcile pass.
@@ -130,9 +129,8 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            components,
             compacted,
-            next_seq,
+            mut log,
         } = agent;
         let id = AgentId(header.agent.clone());
         let entity = world
@@ -147,7 +145,7 @@ pub(crate) fn restore_session(world: &mut World) {
         // In the order registered, which inserts the reasoning setting
         // before the model that checks it.
         for (path, insert) in &saved_components {
-            let Some(saved) = components.get(*path) else {
+            let Some(saved) = log.components.get(*path) else {
                 continue;
             };
             let inserted = if saved.v > COMPONENT_VERSION {
@@ -163,7 +161,8 @@ pub(crate) fn restore_session(world: &mut World) {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
-        for path in components
+        for path in log
+            .components
             .keys()
             .filter(|path| saved_components.iter().all(|(name, _)| name != path))
         {
@@ -171,22 +170,13 @@ pub(crate) fn restore_session(world: &mut World) {
                 "Skipped saved component `{path}`: no plugin saves it any more."
             ));
         }
-        let depth = depth(&header.agent, &parents);
+        log.depth = depth(&header.agent, &parents);
         restored.push(RestoredAgent {
             entity,
             parent: header.parent.clone(),
-            depth,
+            depth: log.depth,
         });
-        logs.push((
-            id.0,
-            AgentLog {
-                depth,
-                next_seq,
-                started: true,
-                pending: Vec::new(),
-                components,
-            },
-        ));
+        logs.push((id.0, log));
     }
     let entities: HashMap<String, Entity> = logs
         .iter()
@@ -268,17 +258,16 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         .iter()
         .map(|line| serde_json::from_slice(line).ok())
         .collect();
+    let next_seq = envelopes.iter().flatten().map(|envelope| envelope.seq + 1);
     let mut folded = Folded {
         header,
         conversation: Conversation::default(),
-        components: BTreeMap::new(),
         compacted: Compacted::default(),
-        next_seq: envelopes
-            .iter()
-            .flatten()
-            .map(|envelope| envelope.seq + 1)
-            .max()
-            .unwrap_or(1),
+        log: AgentLog {
+            next_seq: next_seq.max().unwrap_or(1),
+            started: true,
+            ..AgentLog::new(0)
+        },
     };
     // Messages are read from the first one the newest compaction kept, the
     // rest from the compaction on.
@@ -302,7 +291,7 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                     matches!(envelope, Some(envelope) if envelope.seq >= record.first_kept)
                 })
                 .map_or(at, |(index, _)| index.min(at));
-            folded.components = record.snapshot.components;
+            folded.log.components = record.snapshot.components;
             folded.compacted = Compacted(SummaryState {
                 upto: 0,
                 summary: record.summary,
@@ -356,10 +345,13 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 value,
             } => match value {
                 Some(value) => {
-                    folded.components.insert(component, SavedValue { v, value });
+                    folded
+                        .log
+                        .components
+                        .insert(component, SavedValue { v, value });
                 }
                 None => {
-                    folded.components.remove(&component);
+                    folded.log.components.remove(&component);
                 }
             },
             Record::Header(_) | Record::Compaction(_) => {}
