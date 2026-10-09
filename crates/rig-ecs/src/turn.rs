@@ -458,6 +458,7 @@ pub(crate) fn on_call_model(
     )>,
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
+    policy: Res<CompactionPolicy>,
     effects: Res<Effects>,
     log: Res<SessionLog>,
     wake: Res<Wake>,
@@ -485,7 +486,7 @@ pub(crate) fn on_call_model(
         && must_summarize(
             agent,
             &mut conversation,
-            compacted,
+            (compacted, &policy),
             &mut spent,
             &connection.spec,
             &mut notices,
@@ -579,7 +580,7 @@ pub(crate) fn on_call_model(
 fn must_summarize(
     agent: Entity,
     conversation: &mut Mut<Conversation>,
-    compacted: &Compacted,
+    (compacted, policy): (&Compacted, &CompactionPolicy),
     spent: &mut Mut<Spending>,
     spec: &ModelSpec,
     notices: &mut MessageWriter<Notice>,
@@ -607,7 +608,12 @@ fn must_summarize(
     }
     compaction::over_threshold(left, spec)
         && compacted
-            .cut(conversation.messages(), spec, false)
+            .cut(
+                conversation.messages(),
+                policy,
+                spec,
+                &CompactReason::Threshold,
+            )
             .is_some()
 }
 
@@ -721,6 +727,7 @@ pub(crate) fn on_model_done(
         &mut Spending,
     )>,
     starter: ToolStarter,
+    policy: Res<CompactionPolicy>,
     log: Res<SessionLog>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -757,6 +764,7 @@ pub(crate) fn on_model_done(
                 turn,
                 report,
                 spec,
+                policy: &policy,
                 log: &log,
             };
             failed.recover(
@@ -850,6 +858,8 @@ struct Failed<'a> {
     report: &'a ErrorReport,
     /// The model that failed.
     spec: Option<&'a ModelSpec>,
+    /// How a compaction after an overflow keeps the newest messages.
+    policy: &'a CompactionPolicy,
     log: &'a SessionLog,
 }
 
@@ -904,7 +914,14 @@ impl Failed<'_> {
                 }
                 if recovery.compactions < MAX_COMPACTIONS
                     && self.spec.is_some_and(|spec| {
-                        compacted.cut(conversation.messages(), spec, true).is_some()
+                        compacted
+                            .cut(
+                                conversation.messages(),
+                                self.policy,
+                                spec,
+                                &CompactReason::Overflow,
+                            )
+                            .is_some()
                     })
                 {
                     recovery.compactions += 1;
@@ -1182,6 +1199,7 @@ pub(crate) fn on_compact(
         ),
         With<Agent>,
     >,
+    policy: Res<CompactionPolicy>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1196,8 +1214,11 @@ pub(crate) fn on_compact(
         notices.write(Notice::info(agent, NO_MODEL));
         return;
     };
+    let reason = CompactReason::Asked {
+        focus: compact.focus.clone(),
+    };
     if compacted
-        .cut(conversation.messages(), &connection.spec, true)
+        .cut(conversation.messages(), &policy, &connection.spec, &reason)
         .is_none()
     {
         notices.write(Notice::info(agent, "Nothing to compact yet."));
@@ -1208,9 +1229,7 @@ pub(crate) fn on_compact(
         .id();
     commands.trigger(Summarize {
         entity: turn,
-        reason: CompactReason::Asked {
-            focus: compact.focus.clone(),
-        },
+        reason,
     });
 }
 
@@ -1245,7 +1264,7 @@ pub(crate) fn on_summarize(
         .ok_or_else(|| "no model is connected".to_owned())
         .and_then(|connection| {
             let upto = compacted
-                .cut(conversation.messages(), &connection.spec, true)
+                .cut(conversation.messages(), &policy, &connection.spec, reason)
                 .ok_or_else(|| "nothing to summarize yet".to_owned())?;
             compaction::plan(
                 &policy,
@@ -1340,10 +1359,16 @@ pub(crate) fn on_summary_done(
             notices.write(Notice::info(
                 agent,
                 format!(
-                    "Compacted {} messages (about {} tokens) into a summary; the model now \
-                     gets about {} tokens of conversation.",
+                    "Compacted {} messages (about {} tokens) into a summary and kept {} \
+                     (about {} tokens) as it was; the model now gets about {} tokens of \
+                     conversation.",
                     summarizing.messages,
                     usage::tokens(summarizing.tokens),
+                    match summarizing.kept {
+                        1 => "the newest message".to_owned(),
+                        kept => format!("the newest {kept} messages"),
+                    },
+                    usage::tokens(summarizing.kept_tokens),
                     usage::tokens(left)
                 ),
             ));

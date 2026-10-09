@@ -328,9 +328,11 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Compact the agent's conversation now: its older messages are replaced
-/// in requests by a summary the model writes, focused on `focus` when it is
-/// not empty. Refused while a turn runs.
+/// Compact the agent's conversation now: its messages up to the small tail
+/// the [`CompactionPolicy`](crate::compaction::CompactionPolicy) keeps (by
+/// default the newest reply alone) are replaced in requests by a summary
+/// the model writes, focused on `focus` when it is not empty. Refused while
+/// a turn runs.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Compact {

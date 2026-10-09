@@ -43,7 +43,7 @@ impl Plugin for BuiltinCommandsPlugin {
         )
         .add_command(
             "compact",
-            "Summarize the older conversation to free context; /compact <focus> says what to keep",
+            "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
             compact,
         )
         .add_command(

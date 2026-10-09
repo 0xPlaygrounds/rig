@@ -1,13 +1,14 @@
 //! How a coding agent compacts: a summary in the shape of a coding
 //! checkpoint, and the files the built-in file tools read and changed,
-//! tracked across compactions. The core's [`CompactionPolicy`].
+//! tracked across compactions, and the core's default of what a compaction
+//! keeps. The core's [`CompactionPolicy`].
 
 use std::borrow::Cow;
 
 use bevy_app::prelude::*;
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts, TrackArgument};
 
-use rig_ecs::compaction::CompactionPolicy;
+use rig_ecs::compaction::{CompactionPolicy, KEEP_ASKED, KEEP_RECENT};
 
 /// Inserts the coding [`CompactionPolicy`].
 pub struct CodingCompactionPlugin;
@@ -17,6 +18,8 @@ impl Plugin for CodingCompactionPlugin {
         app.insert_resource(CompactionPolicy {
             summarizer: SUMMARIZER,
             tracked: TRACKED.to_vec(),
+            keep_recent: KEEP_RECENT,
+            keep_asked: KEEP_ASKED,
         });
     }
 }

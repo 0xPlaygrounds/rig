@@ -12,7 +12,10 @@
 //! entity of the turn with a [`Summarizing`], so interrupting the turn
 //! cancels it. The state, the request and the clearing are rig-memory's
 //! compaction blocks; what the summarizer is asked and which tool
-//! arguments the summary tracks are the app's [`CompactionPolicy`].
+//! arguments the summary tracks are the app's [`CompactionPolicy`], as is
+//! how much of the newest conversation a compaction keeps as it is: an
+//! automatic one keeps the recent work, one the user asked for keeps only
+//! a small tail.
 
 use std::borrow::Cow;
 use std::ops::{Deref, DerefMut};
@@ -31,9 +34,14 @@ use serde::{Deserialize, Serialize};
 /// Tokens left free below the model's window: past `window - RESERVE` the
 /// conversation is compacted before the next call (pi's `reserveTokens`).
 pub const RESERVE: u64 = SummaryLimits::DEFAULT.reserve;
-/// Tokens of the newest messages a compaction keeps as they are, at most a
-/// quarter of the window (pi's `keepRecentTokens`).
-const KEEP_RECENT: usize = 20_000;
+/// Tokens of the newest messages an automatic compaction keeps as they
+/// are, at most a quarter of the window (pi's `keepRecentTokens`): the
+/// turn carries on, so its recent work stays.
+pub const KEEP_RECENT: usize = 20_000;
+/// Tokens of the newest messages a compaction the user asked for keeps as
+/// they are: none beyond the newest reply or message, so all the rest is
+/// summarized.
+pub const KEEP_ASKED: usize = 0;
 /// Compactions a turn may make, asked for or not.
 pub const MAX_COMPACTIONS: u32 = 2;
 
@@ -66,15 +74,25 @@ impl Compacted {
         self.0.estimate(messages, &HeuristicTokenCounter::default()) as u64
     }
 
-    /// Where a new compaction for `spec` should end
-    /// ([`SummaryState::cut`]), keeping at least 20k tokens, a quarter of
-    /// the window at most.
-    pub fn cut(&self, messages: &[Message], spec: &ModelSpec, force: bool) -> Option<usize> {
-        let keep = spec.context_window.map_or(KEEP_RECENT, |window| {
-            KEEP_RECENT.min(usize::try_from(window / 4).unwrap_or(usize::MAX))
-        });
-        self.0
-            .cut(messages, keep, force, &HeuristicTokenCounter::default())
+    /// Where a new compaction for `reason` with `spec` should end
+    /// ([`SummaryState::cut`]), keeping the newest tokens `policy` says.
+    /// A compaction that must happen (the user asked, or the model refused
+    /// the request as too long) still summarizes a short conversation's
+    /// older messages.
+    pub fn cut(
+        &self,
+        messages: &[Message],
+        policy: &CompactionPolicy,
+        spec: &ModelSpec,
+        reason: &CompactReason,
+    ) -> Option<usize> {
+        let force = !matches!(reason, CompactReason::Threshold);
+        self.0.cut(
+            messages,
+            policy.keep(reason, spec),
+            force,
+            &HeuristicTokenCounter::default(),
+        )
     }
 }
 
@@ -124,6 +142,10 @@ pub struct Summarizing {
     pub messages: usize,
     /// Their estimated tokens.
     pub tokens: u64,
+    /// How many of the newest messages stay as they are.
+    pub kept: usize,
+    /// Their estimated tokens.
+    pub kept_tokens: u64,
     /// The tracked tool arguments, with those of earlier compactions.
     pub tracked: Vec<TrackedSet>,
 }
@@ -156,26 +178,53 @@ pub fn plan(
         .summarizer
         .request(older, &compacted.summary, focus, spec)
         .map_err(|refusal| refusal.to_string())?;
+    let counter = HeuristicTokenCounter::default();
+    let kept = messages.get(upto..).unwrap_or_default();
     let summarizing = Summarizing {
         reason,
         upto,
         messages: older.len(),
-        tokens: HeuristicTokenCounter::default().count_all(older) as u64,
+        tokens: counter.count_all(older) as u64,
+        kept: kept.len(),
+        kept_tokens: counter.count_all(kept) as u64,
         tracked: next.tracked,
     };
     Ok((summarizing, request))
 }
 
-/// How the app compacts: what the summarizer is asked, and the tool
-/// arguments a summary keeps track of, such as the files a coding agent's
-/// file tools read and changed. The default asks for a general summary and
-/// tracks nothing.
+/// How the app compacts: what the summarizer is asked, the tool arguments
+/// a summary keeps track of, such as the files a coding agent's file tools
+/// read and changed, and how much of the newest conversation stays as it
+/// is. The default asks for a general summary, tracks nothing and keeps
+/// [`KEEP_RECENT`] and [`KEEP_ASKED`].
 #[derive(Resource, Clone, Debug)]
 pub struct CompactionPolicy {
     /// The summarizer.
     pub summarizer: Summarizer,
     /// The tool arguments tracked across compactions.
     pub tracked: Vec<TrackArgument<'static>>,
+    /// Tokens of the newest messages an automatic compaction keeps as they
+    /// are, a quarter of the model's window at most.
+    pub keep_recent: usize,
+    /// Tokens of the newest messages a compaction the user asked for keeps
+    /// as they are; the newest reply or message always stays.
+    pub keep_asked: usize,
+}
+
+impl CompactionPolicy {
+    /// Tokens of the newest messages a compaction for `reason` with `spec`
+    /// keeps as they are.
+    pub fn keep(&self, reason: &CompactReason, spec: &ModelSpec) -> usize {
+        match reason {
+            CompactReason::Asked { .. } => self.keep_asked,
+            CompactReason::Threshold | CompactReason::Overflow => {
+                spec.context_window.map_or(self.keep_recent, |window| {
+                    self.keep_recent
+                        .min(usize::try_from(window / 4).unwrap_or(usize::MAX))
+                })
+            }
+        }
+    }
 }
 
 impl Default for CompactionPolicy {
@@ -191,6 +240,8 @@ impl Default for CompactionPolicy {
                 limits: SummaryLimits::DEFAULT,
             },
             tracked: Vec::new(),
+            keep_recent: KEEP_RECENT,
+            keep_asked: KEEP_ASKED,
         }
     }
 }
@@ -224,3 +275,6 @@ const FORMAT: &str = "\n\nUse exactly this format:\n\n\
     ## Critical context\n\
     - [Facts needed to continue, or \"(none)\"]\n\n\
     Keep each section short. Keep exact names, values and error messages.";
+
+#[cfg(test)]
+mod tests;
