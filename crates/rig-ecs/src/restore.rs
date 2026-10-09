@@ -449,3 +449,6 @@ fn settle(
         commands.trigger(CallModel { entity: turn });
     }
 }
+
+#[cfg(test)]
+mod tests;
