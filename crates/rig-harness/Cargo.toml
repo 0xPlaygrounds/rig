@@ -49,6 +49,8 @@ rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["fs-journal", "
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 # The built-in tools and the instruction files and process helpers.
 rig-tools = { path = "../rig-tools", version = "0.44.0" }
+# Tool parameters derived from their arguments types, as plugins write them.
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 ratatui = { workspace = true, optional = true }

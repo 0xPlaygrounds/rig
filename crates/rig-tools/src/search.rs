@@ -5,9 +5,9 @@ use std::path::Path;
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use regex::Regex;
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use schemars::JsonSchema;
 use serde::Deserialize;
-use serde_json::json;
 
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
@@ -19,10 +19,14 @@ const MAX_LINE: usize = 300;
 pub struct Search;
 
 /// Arguments of [`Search`].
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SearchArgs {
+    /// The regular expression.
     pattern: String,
+    /// The directory or file to search; default the current directory.
     path: Option<String>,
+    /// Only files matching this glob, such as `*.rs`.
     glob: Option<String>,
 }
 
@@ -47,15 +51,7 @@ impl PortableTool for Search {
     }
 
     fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "pattern": {"type": "string", "description": "The regular expression."},
-                "path": {"type": "string", "description": "The directory or file to search; default the current directory."},
-                "glob": {"type": "string", "description": "Only files matching this glob, such as `*.rs`."}
-            },
-            "required": ["pattern"]
-        })
+        args_schema::<SearchArgs>()
     }
 
     async fn call(&self, args: SearchArgs) -> Result<String, ToolExecutionError> {

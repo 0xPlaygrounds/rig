@@ -1,4 +1,14 @@
-use super::batch_failure;
+use super::{EditArgs, batch_failure};
+
+/// A misspelled key inside an edit, such as `replaceAll`, is refused
+/// rather than ignored, which would replace one match instead of all.
+#[test]
+fn a_misspelled_key_inside_an_edit_is_refused() {
+    let edit = serde_json::json!({"old_text": "a", "new_text": "b", "replaceAll": true});
+    let args = serde_json::json!({"path": "a.rs", "edits": [edit]});
+    let parsed = serde_json::from_value::<EditArgs>(args).map(|_| ());
+    assert!(parsed.is_err_and(|error| error.to_string().contains("replaceAll")));
+}
 
 #[test]
 fn a_single_edit_is_sent_again() {

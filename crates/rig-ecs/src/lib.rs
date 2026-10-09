@@ -76,7 +76,7 @@ pub mod prelude {
     pub use crate::timer::every;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
     pub use crate::usage::{Spending, TurnSpending};
-    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
+    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, args_schema};
 }
 
 use bevy_app::prelude::*;

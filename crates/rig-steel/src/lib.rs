@@ -53,12 +53,11 @@ use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
-use rig_ecs::agent::{AgentId, ToolCallRun};
+use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{
-    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolOptions, ToolOutput, failed,
-};
-use serde_json::Value;
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, failed};
+use schemars::JsonSchema;
+use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
 pub use harness::{AgentSpec, Harness, HarnessError};
@@ -145,16 +144,6 @@ impl Plugin for SteelPlugin {
         app.add_plugins(harness::HarnessPlugin).add_open_tool(
             RUN_STEEL,
             DESCRIPTION,
-            serde_json::json!({
-                "type": "object",
-                "properties": {
-                    "code": {
-                        "type": "string",
-                        "description": "The Steel (Scheme) program. Its last expression is the result."
-                    }
-                },
-                "required": ["code"]
-            }),
             ToolOptions {
                 rules: RULES,
                 footprint: Footprint::Exclusive,
@@ -164,57 +153,34 @@ impl Plugin for SteelPlugin {
     }
 }
 
+/// The arguments of a `run_steel` call.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct SteelArgs {
+    /// The Steel (Scheme) program. Its last expression is the result.
+    code: String,
+}
+
 /// Starts a `run_steel` call's program as the call's [`Running`] task; its
-/// result becomes the call's [`ToolOutput`], and Esc, which despawns the
-/// call, cancels it.
+/// result becomes the call's `ToolOutput`, and Esc, which despawns the
+/// call, cancels it. [`SteelPlugin`] inserts the [`Harness`] before any turn
+/// runs.
 fn on_run_steel(
-    called: On<ToolCalled>,
-    calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
-    agents: Query<&AgentId>,
-    harness: Option<Res<Harness>>,
+    called: On<ToolCalled<SteelArgs>>,
+    harness: Res<Harness>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let Ok((run, open)) = calls.get(called.call) else {
-        return;
-    };
-    let call = run.call.clone();
-    let refuse = |why: &str| ToolOutput(failed(&call, why));
-    let code = call
-        .function
-        .arguments
-        .get("code")
-        .and_then(Value::as_str)
-        .map(str::to_owned);
-    let (me, harness, code) = match (agents.get(called.agent), harness, code) {
-        (Err(_), ..) => {
-            commands
-                .entity(called.call)
-                .insert_if_new(refuse("The calling agent is gone."));
-            return;
-        }
-        (_, None, _) => {
-            commands
-                .entity(called.call)
-                .insert_if_new(refuse("The app has no Harness handle."));
-            return;
-        }
-        (_, _, None) => {
-            commands.entity(called.call).insert_if_new(refuse(
-                "The arguments do not fit: `code` must be a string. Nothing ran.",
-            ));
-            return;
-        }
-        (Ok(me), Some(harness), Some(code)) => (me.clone(), harness, code),
-    };
-    let harness = match open {
-        Some(open) => harness.within(open.0.id()),
-        None => (*harness).clone(),
-    };
+    let program = run_program(
+        called.run.call.clone(),
+        harness.within(called.effect),
+        called.caller.clone(),
+        called.args.code.clone(),
+    );
     commands.entity(called.call).insert(Running::spawn(
         AsyncComputeTaskPool::get_or_init(TaskPool::default),
         &wake,
-        run_program(call, harness, me, code),
+        program,
     ));
 }
 

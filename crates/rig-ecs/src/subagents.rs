@@ -50,19 +50,18 @@ use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
-    SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome, answer_text,
+    SystemPrompt, ToolAccess, TurnEnded, TurnOutcome, answer_text,
 };
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::journal::AppSaveExt;
 use crate::models::{self, ModelConnector};
 use crate::restore::Restored;
-use crate::tools::{
-    AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed,
-};
+use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed};
 
 /// The tool that starts a subagent.
 pub const TASK: &str = "task";
@@ -148,7 +147,6 @@ impl Plugin for SubagentsPlugin {
         app.add_open_tool(
             TASK,
             TASK_DESCRIPTION,
-            task_parameters(),
             ToolOptions {
                 rules: RULES,
                 footprint: Footprint::Independent,
@@ -158,7 +156,6 @@ impl Plugin for SubagentsPlugin {
         .add_open_tool(
             MESSAGE,
             MESSAGE_DESCRIPTION,
-            message_parameters(),
             ToolOptions {
                 rules: &[],
                 footprint: Footprint::Independent,
@@ -279,103 +276,53 @@ impl HeldReport {
     }
 }
 
-fn task_parameters() -> serde_json::Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "description": {
-                "type": "string",
-                "description": "A short title for the task, 3 to 6 words, shown to the user."
-            },
-            "prompt": {
-                "type": "string",
-                "description": "The task in full: the goal, what is known, where to look and \
-                    what to return. The subagent sees nothing else."
-            },
-            "model": {
-                "type": "string",
-                "description": "A catalog model as vendor/model for the subagent. Yours when \
-                    absent."
-            },
-            "effort": {
-                "type": "string",
-                "description": "The subagent's reasoning setting, such as low or high. Yours \
-                    when absent and the model is yours, else the model's default."
-            },
-            "tools": {
-                "type": "array",
-                "items": { "type": "string" },
-                "description": "The tools the subagent may use, from yours. All of yours when \
-                    absent; an empty list gives it none."
-            },
-            "report": {
-                "type": "string",
-                "enum": ["together", "alone"],
-                "description": "When the report arrives. `together` (the default): with the \
-                    reports of the other `task` calls of this reply, in one message once all \
-                    of them are done. `alone`: as soon as this task is done."
-            },
-            "peers": {
-                "type": "boolean",
-                "description": "When true, the subagent can send a `message` to the other \
-                    subagents you start with `peers`, and they to it; each request is still \
-                    answered by exactly one report, to the one that asked. Off when absent."
-            }
-        },
-        "required": ["description", "prompt"]
-    })
-}
-
-fn message_parameters() -> serde_json::Value {
-    serde_json::json!({
-        "type": "object",
-        "properties": {
-            "agent": {
-                "type": "string",
-                "description": "The id of one of your subagents, as `task` returned it."
-            },
-            "text": {
-                "type": "string",
-                "description": "The follow-up, in full: the subagent reads it as a new request."
-            }
-        },
-        "required": ["agent", "text"]
-    })
-}
-
 /// The arguments of a `task` call.
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct TaskArgs {
+    /// A short title for the task, 3 to 6 words, shown to the user.
     description: String,
+    /// The task in full: the goal, what is known, where to look and what to
+    /// return. The subagent sees nothing else.
     prompt: String,
-    #[serde(default)]
+    /// A catalog model as vendor/model for the subagent. Yours when absent.
     model: Option<String>,
-    #[serde(default)]
+    /// The subagent's reasoning setting, such as low or high. Yours when
+    /// absent and the model is yours, else the model's default.
     effort: Option<String>,
-    #[serde(default)]
+    /// The tools the subagent may use, from yours. All of yours when absent;
+    /// an empty list gives it none.
     tools: Option<Vec<String>>,
+    /// When the report arrives. `together` (the default): with the reports of
+    /// the other `task` calls of this reply, in one message once all of them
+    /// are done. `alone`: as soon as this task is done.
     #[serde(default)]
     report: Report,
+    /// When true, the subagent can send a `message` to the other subagents
+    /// you start with `peers`, and they to it; each request is still
+    /// answered by exactly one report, to the one that asked. Off when
+    /// absent.
     #[serde(default)]
     peers: bool,
 }
 
-/// When a task's report reaches its parent.
-#[derive(Deserialize, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// When a task's report reaches its parent: with its reply's other tasks,
+/// once all are done, or alone, as soon as it is done.
+#[derive(Deserialize, JsonSchema, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 enum Report {
-    /// With the reports of the other `task` calls of its reply, once all
-    /// of them are done.
     #[default]
     Together,
-    /// As soon as it is done.
     Alone,
 }
 
 /// The arguments of a `message` call.
-#[derive(Deserialize)]
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 struct MessageArgs {
+    /// The id of one of your subagents, as `task` returned it.
     agent: String,
+    /// The follow-up, in full: the subagent reads it as a new request.
     text: String,
 }
 
@@ -394,14 +341,6 @@ struct Settled {
     model: ModelChoice,
     effort: Effort,
     tools: Vec<String>,
-    peers: bool,
-    report: Report,
-}
-
-/// The arguments of `call`, or why they do not fit.
-fn arguments<T: for<'de> Deserialize<'de>>(call: &ToolCall) -> Result<T, String> {
-    serde_json::from_value(serde_json::Value::Object(call.function.arguments.clone()))
-        .map_err(|error| format!("The arguments do not fit: {error}"))
 }
 
 /// A result for `call`: `data` for programs, then `text` for people.
@@ -412,15 +351,14 @@ fn answer(call: &ToolCall, data: serde_json::Value, text: String) -> ToolResult 
     ])
 }
 
-/// Checks a `task` call against its parent. `tools` are the parent's
-/// tools by name.
+/// Checks a `task` call's arguments against its parent. `tools` are the
+/// parent's tools by name.
 fn settle(
-    call: &ToolCall,
+    args: &TaskArgs,
     parent: &Parent<'_>,
     tools: &[&str],
     connector: &ModelConnector,
 ) -> Result<Settled, String> {
-    let args: TaskArgs = arguments(call)?;
     let task = args.description.trim().to_owned();
     let instructions = args.prompt.trim().to_owned();
     if task.is_empty() || instructions.is_empty() {
@@ -445,14 +383,14 @@ fn settle(
     let may_delegate = parent.depth + 1 < MAX_DEPTH;
     // A peer keeps `message` for its siblings even where it cannot delegate.
     let delegates = |name: &str| name == TASK || (name == MESSAGE && !args.peers);
-    let mut tools: Vec<String> = match args.tools {
+    let mut tools: Vec<String> = match &args.tools {
         None => tools
             .iter()
             .filter(|name| may_delegate || !delegates(name))
             .map(|name| (*name).to_owned())
             .collect(),
         Some(asked) => {
-            for name in &asked {
+            for name in asked {
                 if !tools.contains(&name.as_str()) {
                     return Err(format!(
                         "`{name}` is not one of your tools ({})",
@@ -467,7 +405,7 @@ fn settle(
                     ));
                 }
             }
-            asked
+            asked.clone()
         }
     };
     if args.peers && !tools.iter().any(|name| name == MESSAGE) {
@@ -479,122 +417,107 @@ fn settle(
         model,
         effort,
         tools,
-        peers: args.peers,
-        report: args.report,
     })
 }
 
 /// Starts the subagent of a `task` call and answers the call with its id,
 /// or with why none started.
 fn on_task(
-    called: On<ToolCalled>,
-    calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
-    agents: Query<(
-        &AgentId,
-        &ToolAccess,
-        Option<&ModelChoice>,
-        &Effort,
-        &SystemPrompt,
-    )>,
+    called: On<ToolCalled<TaskArgs>>,
+    agents: Query<(&ToolAccess, Option<&ModelChoice>, &Effort, &SystemPrompt)>,
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
     connector: Res<ModelConnector>,
     mut commands: Commands,
 ) {
-    let (call, caller) = (called.call, called.agent);
-    let Ok((run, open)) = calls.get(call) else {
+    let (call, caller, run) = (called.call, called.agent, &called.run);
+    let Ok((access, model, &effort, prompt)) = agents.get(caller) else {
         return;
     };
-    let call_id = &run.call;
-    let output = match agents.get(caller) {
-        Err(_) => failed(call_id, "The calling agent is gone.".to_owned()),
-        Ok((id, access, model, &effort, prompt)) => {
-            let parent = Parent {
-                model,
-                effort,
-                depth: lineage.iter_ancestors::<SpawnedBy>(caller).count(),
-            };
-            let mine: Vec<&str> = tools
-                .iter()
-                .map(|def| def.0.name.as_str())
-                .filter(|name| access.allows(name))
-                .collect();
-            match settle(call_id, &parent, &mine, &connector) {
-                Err(why) => failed(
-                    call_id,
-                    format!("{why}. No subagent was started; fix the call and send it again."),
-                ),
-                Ok(settled) => {
-                    let child_id = AgentId::default();
-                    let request = RequestId(call_id.id.to_string());
-                    // A call a restart runs again has no reply to batch with.
-                    let batch = match (settled.report, run.parent) {
-                        (Report::Together, Some(reply)) => Some(reply),
-                        _ => None,
-                    };
-                    let role = if settled.peers {
-                        format!("{SUBAGENT_ROLE}{PEER_ROLE}")
-                    } else {
-                        SUBAGENT_ROLE.to_owned()
-                    };
-                    let mut child = commands.spawn((
-                        Agent,
-                        child_id.clone(),
-                        SpawnedBy(caller),
-                        Subtask {
-                            title: settled.task.clone(),
-                        },
-                        Owes(vec![Owed {
-                            request: request.clone(),
-                            asker: id.clone(),
-                            batch,
-                            held: None,
-                        }]),
-                        settled.model,
-                        settled.effort,
-                        ToolAccess::Only(settled.tools),
-                        SystemPrompt(format!("{}{role}", prompt.0)),
-                    ));
-                    if settled.peers {
-                        child.insert(Peers);
-                    }
-                    if let Some(open) = open {
-                        child.insert(EffectParent(open.0.id()));
-                    }
-                    let child = child.id();
-                    let together = if batch.is_some() {
-                        " together with the reports of the other tasks of this reply, once all \
-                         are done"
-                    } else {
-                        ""
-                    };
-                    commands.trigger(Deliver {
-                        entity: child,
-                        text: settled.instructions,
-                        origin: Origin::agent(id.clone(), Some(request.clone()))
-                            .titled(settled.task.clone()),
-                        mode: DeliveryMode::Queue,
-                        attachments: Vec::new(),
-                    });
-                    answer(
-                        call_id,
-                        serde_json::json!({
-                            "agent": child_id.short(),
-                            "request": request.0,
-                            "status": "started",
-                        }),
-                        format!(
-                            "Started subagent `{}` on \"{}\". It works in the background; its \
-                             report will arrive as a message{together}. Continue it with \
-                             `message`; /agents shows it.",
-                            child_id.short(),
-                            settled.task,
-                        ),
-                    )
-                }
-            }
+    let parent = Parent {
+        model,
+        effort,
+        depth: lineage.iter_ancestors::<SpawnedBy>(caller).count(),
+    };
+    let mine: Vec<&str> = tools
+        .iter()
+        .map(|def| def.0.name.as_str())
+        .filter(|name| access.allows(name))
+        .collect();
+    let settled = match settle(&called.args, &parent, &mine, &connector) {
+        Ok(settled) => settled,
+        Err(why) => {
+            let why = format!("{why}. No subagent was started; fix the call and send it again.");
+            commands
+                .entity(call)
+                .insert_if_new(ToolOutput(failed(&run.call, why)));
+            return;
         }
     };
+    let child_id = AgentId::default();
+    let request = RequestId(run.call.id.to_string());
+    // A call a restart runs again has no reply to batch with.
+    let batch = match (called.args.report, run.parent) {
+        (Report::Together, Some(reply)) => Some(reply),
+        _ => None,
+    };
+    let role = if called.args.peers {
+        format!("{SUBAGENT_ROLE}{PEER_ROLE}")
+    } else {
+        SUBAGENT_ROLE.to_owned()
+    };
+    let mut child = commands.spawn((
+        Agent,
+        child_id.clone(),
+        SpawnedBy(caller),
+        Subtask {
+            title: settled.task.clone(),
+        },
+        Owes(vec![Owed {
+            request: request.clone(),
+            asker: called.caller.clone(),
+            batch,
+            held: None,
+        }]),
+        settled.model,
+        settled.effort,
+        ToolAccess::Only(settled.tools),
+        SystemPrompt(format!("{}{role}", prompt.0)),
+        EffectParent(called.effect),
+    ));
+    if called.args.peers {
+        child.insert(Peers);
+    }
+    let child = child.id();
+    let together = if batch.is_some() {
+        " together with the reports of the other tasks of this reply, once all \
+         are done"
+    } else {
+        ""
+    };
+    commands.trigger(Deliver {
+        entity: child,
+        text: settled.instructions,
+        origin: Origin::agent(called.caller.clone(), Some(request.clone()))
+            .titled(settled.task.clone()),
+        mode: DeliveryMode::Queue,
+        attachments: Vec::new(),
+    });
+    let output = answer(
+        &run.call,
+        serde_json::json!({
+            "agent": child_id.short(),
+            "request": request.0,
+            "status": "started",
+        }),
+        format!(
+            "Started subagent `{}` on \"{}\". It works in the background; its \
+             report will arrive as a message{together}. Continue it with \
+             `message`; /agents shows it.",
+            child_id.short(),
+            settled.task,
+        ),
+    );
     commands.entity(call).insert_if_new(ToolOutput(output));
 }
 
@@ -778,150 +701,137 @@ impl Reachable<'_> {
 /// own subagents, or to a sibling when both have [`Peers`], it is a new
 /// request, refused when that agent waits on the caller's own report.
 fn on_message(
-    called: On<ToolCalled>,
-    calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
+    called: On<ToolCalled<MessageArgs>>,
     callers: Query<(Option<&Spawned>, Option<&SpawnedBy>, Has<Peers>, &Inbox)>,
     targets: Query<(&AgentId, Option<&Subtask>, Has<ActiveTurn>, Has<Peers>)>,
     mut ledgers: Ledgers,
 ) {
-    let (call, caller) = (called.call, called.agent);
-    let Ok((run, open)) = calls.get(call) else {
+    let (call, caller, call_id) = (called.call, called.agent, &called.run.call);
+    let (Ok((spawned, parent, is_peer, inbox)), Ok((id, subtask, ..))) =
+        (callers.get(caller), targets.get(caller))
+    else {
         return;
     };
-    let call_id = &run.call;
-    let output = match (
-        callers.get(caller),
-        targets.get(caller),
-        arguments::<MessageArgs>(call_id),
-    ) {
-        (Err(_), _, _) | (_, Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
-        (_, _, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
-        (Ok((spawned, parent, is_peer, inbox)), Ok((id, subtask, ..)), Ok(args)) => {
-            let wanted = args.agent.trim();
-            let text = args.text.trim();
-            // The agents the caller owes first: a message to one answers its
-            // oldest request the caller has read, one no longer in its inbox.
-            let unread = inbox.steering.iter().chain(&inbox.queued);
-            let unread: Vec<_> = unread.flat_map(|sent| &sent.origin.request).collect();
-            let read = |owed: &&Owed| !unread.contains(&&owed.request);
-            let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
-            let requests = owes.into_iter().flat_map(Owes::open);
-            let askers = requests.filter(read).filter_map(|owed| {
-                let asker = ledgers.find(&owed.asker)?;
-                Some((asker, Target::Asker(owed.request.clone())))
+    let args = &called.args;
+    let wanted = args.agent.trim();
+    let text = args.text.trim();
+    // The agents the caller owes first: a message to one answers its
+    // oldest request the caller has read, one no longer in its inbox.
+    let unread = inbox.steering.iter().chain(&inbox.queued);
+    let unread: Vec<_> = unread.flat_map(|sent| &sent.origin.request).collect();
+    let read = |owed: &&Owed| !unread.contains(&&owed.request);
+    let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
+    let requests = owes.into_iter().flat_map(Owes::open);
+    let askers = requests.filter(read).filter_map(|owed| {
+        let asker = ledgers.find(&owed.asker)?;
+        Some((asker, Target::Asker(owed.request.clone())))
+    });
+    let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
+    let siblings = parent
+        .filter(|_| is_peer)
+        .and_then(|parent| ledgers.families.get(parent.0).ok())
+        .into_iter()
+        .flat_map(|siblings| siblings.iter())
+        .filter(|&sibling| sibling != caller);
+    let mut reach: Vec<Reachable<'_>> = Vec::new();
+    for (entity, target) in askers
+        .chain(children.map(|child| (child, Target::Child)))
+        .chain(siblings.map(|sibling| (sibling, Target::Peer)))
+    {
+        if let Ok((id, subtask, busy, has_peers)) = targets.get(entity)
+            && (target != Target::Peer || has_peers)
+            && !reach.iter().any(|reachable| reachable.entity == entity)
+        {
+            reach.push(Reachable {
+                entity,
+                id,
+                subtask,
+                busy,
+                target,
             });
-            let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
-            let siblings = parent
-                .filter(|_| is_peer)
-                .and_then(|parent| ledgers.families.get(parent.0).ok())
-                .into_iter()
-                .flat_map(|siblings| siblings.iter())
-                .filter(|&sibling| sibling != caller);
-            let mut reach: Vec<Reachable<'_>> = Vec::new();
-            for (entity, target) in askers
-                .chain(children.map(|child| (child, Target::Child)))
-                .chain(siblings.map(|sibling| (sibling, Target::Peer)))
-            {
-                if let Ok((id, subtask, busy, has_peers)) = targets.get(entity)
-                    && (target != Target::Peer || has_peers)
-                    && !reach.iter().any(|reachable| reachable.entity == entity)
-                {
-                    reach.push(Reachable {
-                        entity,
-                        id,
-                        subtask,
-                        busy,
-                        target,
-                    });
-                }
-            }
-            let target = reach
-                .iter()
-                .find(|target| target.id.0 == wanted || target.id.short() == wanted);
-            let sent = match target {
-                None => Err(format!(
-                    "`{wanted}` is not an agent you can reach, so nothing was sent. {}",
-                    listing(&reach)
-                )),
-                Some(_) if text.is_empty() => {
-                    Err("`text` must not be empty. Nothing was sent.".to_owned())
-                }
-                Some(
-                    asker @ Reachable {
-                        target: Target::Asker(request),
-                        ..
-                    },
-                ) => {
-                    let owed = ledgers
-                        .owes(caller)
-                        .and_then(|mut owes| owes.close(request));
-                    let from = titled(Origin::agent(id.clone(), None), subtask);
-                    let agents = (caller, parent.map(|parent| parent.0));
-                    ledgers.report(agents, &from, owed.into_iter().collect(), text);
-                    let said = format!(
-                        "Sent to {} as your report on its request. Your final answer goes only \
-                         to the requests still open.",
-                        asker.named()
-                    );
-                    Ok((asker, request.clone(), "answered", said))
-                }
-                Some(target) if reaches(&ledgers.waits(), target.entity, caller) => Err(format!(
-                    "`{}` is waiting for your report, so it cannot be asked, and nothing was \
-                     sent. Put what you would ask or tell it in your answer.",
-                    target.id.short()
-                )),
-                Some(target) => {
-                    let request = RequestId(call_id.id.to_string());
-                    let owed = Owed {
-                        request: request.clone(),
-                        asker: id.clone(),
-                        batch: None,
-                        held: None,
-                    };
-                    let mut entity = ledgers.commands.entity(target.entity);
-                    let mut owes = entity.entry::<Owes>();
-                    owes.or_default().and_modify(|mut owes| owes.0.push(owed));
-                    if !target.busy
-                        && let Some(open) = open
-                    {
-                        entity.insert(EffectParent(open.0.id()));
-                    }
-                    ledgers.commands.trigger(Deliver {
-                        entity: target.entity,
-                        text: text.to_owned(),
-                        origin: Origin::agent(id.clone(), Some(request.clone())),
-                        mode: DeliveryMode::Queue,
-                        attachments: Vec::new(),
-                    });
-                    let (status, when) = if target.busy {
-                        (
-                            "queued",
-                            "It is busy, so it reads this after its current work.",
-                        )
-                    } else {
-                        ("started", "It works on it in the background.")
-                    };
-                    let said = format!(
-                        "Sent to {}. {when} Its report will arrive as a message headed with its \
-                         id.",
-                        target.named()
-                    );
-                    Ok((target, request, status, said))
-                }
-            };
-            match sent {
-                Err(why) => failed(call_id, why),
-                Ok((target, request, status, said)) => answer(
-                    call_id,
-                    serde_json::json!({
-                        "agent": target.id.short(),
-                        "request": request.0,
-                        "status": status,
-                    }),
-                    said,
-                ),
-            }
         }
+    }
+    let target = reach
+        .iter()
+        .find(|target| target.id.0 == wanted || target.id.short() == wanted);
+    let sent = match target {
+        None => Err(format!(
+            "`{wanted}` is not an agent you can reach, so nothing was sent. {}",
+            listing(&reach)
+        )),
+        Some(_) if text.is_empty() => Err("`text` must not be empty. Nothing was sent.".to_owned()),
+        Some(
+            asker @ Reachable {
+                target: Target::Asker(request),
+                ..
+            },
+        ) => {
+            let owed = ledgers
+                .owes(caller)
+                .and_then(|mut owes| owes.close(request));
+            let from = titled(Origin::agent(id.clone(), None), subtask);
+            let agents = (caller, parent.map(|parent| parent.0));
+            ledgers.report(agents, &from, owed.into_iter().collect(), text);
+            let said = format!(
+                "Sent to {} as your report on its request. Your final answer goes only \
+                 to the requests still open.",
+                asker.named()
+            );
+            Ok((asker, request.clone(), "answered", said))
+        }
+        Some(target) if reaches(&ledgers.waits(), target.entity, caller) => Err(format!(
+            "`{}` is waiting for your report, so it cannot be asked, and nothing was \
+             sent. Put what you would ask or tell it in your answer.",
+            target.id.short()
+        )),
+        Some(target) => {
+            let request = RequestId(call_id.id.to_string());
+            let owed = Owed {
+                request: request.clone(),
+                asker: id.clone(),
+                batch: None,
+                held: None,
+            };
+            let mut entity = ledgers.commands.entity(target.entity);
+            let mut owes = entity.entry::<Owes>();
+            owes.or_default().and_modify(|mut owes| owes.0.push(owed));
+            if !target.busy {
+                entity.insert(EffectParent(called.effect));
+            }
+            ledgers.commands.trigger(Deliver {
+                entity: target.entity,
+                text: text.to_owned(),
+                origin: Origin::agent(id.clone(), Some(request.clone())),
+                mode: DeliveryMode::Queue,
+                attachments: Vec::new(),
+            });
+            let (status, when) = if target.busy {
+                (
+                    "queued",
+                    "It is busy, so it reads this after its current work.",
+                )
+            } else {
+                ("started", "It works on it in the background.")
+            };
+            let said = format!(
+                "Sent to {}. {when} Its report will arrive as a message headed with its \
+                 id.",
+                target.named()
+            );
+            Ok((target, request, status, said))
+        }
+    };
+    let output = match sent {
+        Err(why) => failed(call_id, why),
+        Ok((target, request, status, said)) => answer(
+            call_id,
+            serde_json::json!({
+                "agent": target.id.short(),
+                "request": request.0,
+                "status": status,
+            }),
+            said,
+        ),
     };
     ledgers
         .commands
