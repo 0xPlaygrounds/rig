@@ -20,19 +20,20 @@
 //! id and task title ([`Origin::titled`]); the request it answers stays in
 //! its [`Origin`].
 //!
-//! The `task` calls of one model reply form a [`Batch`] unless a call asks
-//! to report alone: a child of a batch that is done holds its reports
-//! ([`HeldReports`]) until every task of the batch has reported, and then
+//! The `task` calls of one model reply form a batch unless a call asks to
+//! report alone ([`Owed::batch`]): a child of a batch that is done holds its
+//! reports ([`Owed::held`]) until every task of the batch has reported, and then
 //! they all reach the caller in the same frame, so as one step. The caller
 //! is not blocked meanwhile: the user can still talk to it and stop it.
 //!
 //! Subagents can also work together. A `task` with `peers` set gives the
 //! child [`Peers`]: it may send a `message` to its siblings that have
-//! [`Peers`] too, and its own report goes to the sibling that asked, as
-//! [`PeerRequests`] record. A request to an agent that waits on the
-//! sender's own report is refused, and an agent holds its reports only
-//! for agents that do not wait on it, so two peers never wait on each
-//! other.
+//! [`Peers`] too, and its own report goes to the sibling that asked. Every
+//! agent's open requests, whoever sent them, are its [`Owes`]. A `message`
+//! to an agent it owes, its parent or a peer that asked, is the report on
+//! that agent's oldest request it has read, and the turn's end reports only
+//! on the requests still open. A new request to an agent that waits on the
+//! sender's own report is refused, so no two agents wait on each other.
 //!
 //! A child's model calls are recorded under the call that gave it its work
 //! ([`EffectParent`]), so the effect log nests a subagent's work under the
@@ -44,6 +45,7 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::effect::EffectId;
@@ -54,7 +56,7 @@ use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
     SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome, answer_text,
 };
-use crate::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::journal::AppSaveExt;
 use crate::models::{self, ModelConnector};
 use crate::restore::Restored;
@@ -97,7 +99,10 @@ const MESSAGE_DESCRIPTION: &str = "Send a follow-up to one of your own subagents
     returns at once with the request's id; exactly one report for it arrives later as a \
     message headed with the subagent's id and task title. Only subagents you started \
     can be reached, and, when you were started with `peers`, your sibling subagents started \
-    with `peers`; any other agent is refused, and the refusal lists the ones you can reach.";
+    with `peers`; any other agent is refused, and the refusal lists the ones you can reach. \
+    A message to an agent that asked you something, such as the agent that started you, asks \
+    nothing: it answers that agent's oldest request you have read, and your final answer goes only to \
+    the requests still open.";
 
 const RULES: &[&str] = &[
     "Use `task` for work that would fill your context or can run on its own: a broad search \
@@ -128,9 +133,10 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
 const PEER_ROLE: &str = "\n\nOther subagents of that agent may work beside you. With \
     `message` you can send one of them that was started with `peers` a request by its id; \
     its report comes back to you as a message. A request one of them sends you is answered \
-    by your last message, like your task. A `message` to an id you cannot reach lists the \
-    ones you can. Ask only for what you need, and never ask an agent that is waiting for \
-    your own report: answer it instead.";
+    by your last message, like your task, or sooner by a `message` back to it: messaging an \
+    agent that asked you answers its request, and your final answer goes to the requests \
+    still open. A `message` to an id you cannot reach lists the ones you can. Ask only for \
+    what you need.";
 
 /// Adds the `task` and `message` tools and the reports that answer their
 /// requests.
@@ -160,13 +166,10 @@ impl Plugin for SubagentsPlugin {
             on_message,
         )
         .save_component::<Subtask>()
-        .save_component::<Requests>()
+        .save_component::<Owes>()
         .save_component::<Peers>()
-        .save_component::<PeerRequests>()
-        .save_component::<HeldReports>()
         .add_observer(name_subagent)
         .add_observer(report_on_turn_end)
-        .add_observer(release_held)
         .add_observer(release_on_leave)
         .add_observer(report_restored);
     }
@@ -180,11 +183,69 @@ pub struct Subtask {
     pub title: String,
 }
 
-/// On a subagent: the requests it was sent that no report answered yet,
-/// oldest first.
+/// On an agent: the requests other agents sent it, oldest first, until
+/// their reports are delivered. Each one gets exactly one report, to its
+/// asker. A report to the parent that waits for its batch is
+/// [`Owed::held`] here until every task of the batch has reported, then
+/// delivered in the order the reports were made.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(Component, Default, Clone, Debug)]
-pub struct Requests(pub Vec<RequestId>);
+pub struct Owes(Vec<Owed>);
+
+/// A request an agent owes a report on.
+#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Owed {
+    /// The request.
+    pub request: RequestId,
+    /// The agent that sent it, which its report goes to.
+    pub asker: AgentId,
+    /// For a `task` started with the other `task` calls of one reply: the
+    /// parent's model call of that reply. Not saved: a restart answers the
+    /// open requests as interrupted and hands over what was held.
+    #[serde(skip)]
+    #[reflect(ignore)]
+    pub batch: Option<EffectId>,
+    /// Its report, made and waiting for the batch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub held: Option<HeldReport>,
+}
+
+impl Owes {
+    /// The requests no report answered yet, oldest first.
+    pub fn open(&self) -> impl Iterator<Item = &Owed> {
+        self.0.iter().filter(|owed| owed.held.is_none())
+    }
+
+    /// Removes the open request `request`.
+    pub fn close(&mut self, request: &RequestId) -> Option<Owed> {
+        let open = |owed: &Owed| owed.held.is_none() && owed.request == *request;
+        Some(self.0.remove(self.0.iter().position(open)?))
+    }
+
+    /// Removes every open request, grouped by asker in the order of each
+    /// asker's first request, oldest first within each.
+    pub fn drain_by_asker(&mut self) -> Vec<Vec<Owed>> {
+        let mut open: Vec<Owed> = self.0.extract_if(.., |owed| owed.held.is_none()).collect();
+        let mut askers = Vec::new();
+        while let Some(asker) = open.first().map(|first| first.asker.clone()) {
+            askers.push(open.extract_if(.., |owed| owed.asker == asker).collect());
+        }
+        askers
+    }
+
+    /// The batch its held reports wait for, if any holds one.
+    fn held_batch(&self) -> Option<EffectId> {
+        self.0
+            .iter()
+            .find_map(|owed| owed.held.as_ref().and(owed.batch))
+    }
+
+    /// Removes the held reports, in the order they were made.
+    fn take_held(&mut self) -> Vec<HeldReport> {
+        let held = self.0.extract_if(.., |owed| owed.held.is_some());
+        held.filter_map(|owed| owed.held).collect()
+    }
+}
 
 /// On a subagent: it may send a `message` to its siblings that have
 /// [`Peers`] too, and they to it. A `task` with `peers` set inserts it;
@@ -193,32 +254,6 @@ pub struct Requests(pub Vec<RequestId>);
 #[reflect(Component, Default, Clone, Debug)]
 pub struct Peers;
 
-/// On a subagent: the requests its peers sent it that no report answered
-/// yet, oldest first. [`Requests`] holds its parent's.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(Component, Default, Clone, Debug)]
-pub struct PeerRequests(pub Vec<PeerRequest>);
-
-/// On a subagent a `task` started together with the other `task` calls of
-/// one model reply: the batch whose reports reach the parent together,
-/// once every task in it has reported. Not saved: a restart answers the
-/// open tasks as interrupted and hands over what was held.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
-pub struct Batch {
-    /// The parent's model call whose reply started the batch.
-    pub reply: EffectId,
-    /// The `task` request of this subagent; the batch waits for its
-    /// report.
-    pub request: RequestId,
-}
-
-/// On a subagent of a [`Batch`]: its reports to its parent, held until
-/// every task of the batch has reported, then delivered in the order
-/// they were made.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(Component, Default, Clone, Debug)]
-pub struct HeldReports(pub Vec<HeldReport>);
-
 /// A report held back for its batch.
 #[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HeldReport {
@@ -226,9 +261,9 @@ pub struct HeldReport {
     pub text: String,
     /// Where it comes from, with the request it answers.
     pub origin: Origin,
-    /// Whether it needs no answer ([`DeliveryMode::Note`]) rather than
-    /// asking for a step ([`DeliveryMode::Queue`]).
-    pub note: bool,
+    /// [`DeliveryMode::Note`] when it needs no answer, else
+    /// [`DeliveryMode::Queue`].
+    pub mode: DeliveryMode,
 }
 
 impl HeldReport {
@@ -238,23 +273,10 @@ impl HeldReport {
             entity: asker,
             text: self.text,
             origin: self.origin,
-            mode: if self.note {
-                DeliveryMode::Note
-            } else {
-                DeliveryMode::Queue
-            },
+            mode: self.mode,
             attachments: Vec::new(),
         }
     }
-}
-
-/// A request one peer sent another.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PeerRequest {
-    /// The request.
-    pub request: RequestId,
-    /// The peer that sent it, which its report goes to.
-    pub from: AgentId,
 }
 
 fn task_parameters() -> serde_json::Value {
@@ -505,6 +527,11 @@ fn on_task(
                 Ok(settled) => {
                     let child_id = AgentId::default();
                     let request = RequestId(call_id.id.to_string());
+                    // A call a restart runs again has no reply to batch with.
+                    let batch = match (settled.report, run.parent) {
+                        (Report::Together, Some(reply)) => Some(reply),
+                        _ => None,
+                    };
                     let role = if settled.peers {
                         format!("{SUBAGENT_ROLE}{PEER_ROLE}")
                     } else {
@@ -517,7 +544,12 @@ fn on_task(
                         Subtask {
                             title: settled.task.clone(),
                         },
-                        Requests(vec![request.clone()]),
+                        Owes(vec![Owed {
+                            request: request.clone(),
+                            asker: id.clone(),
+                            batch,
+                            held: None,
+                        }]),
                         settled.model,
                         settled.effort,
                         ToolAccess::Only(settled.tools),
@@ -525,17 +557,6 @@ fn on_task(
                     ));
                     if settled.peers {
                         child.insert(Peers);
-                    }
-                    // A call a restart runs again has no reply to batch with.
-                    let batch = match (settled.report, run.parent) {
-                        (Report::Together, Some(reply)) => Some(reply),
-                        _ => None,
-                    };
-                    if let Some(reply) = batch {
-                        child.insert(Batch {
-                            reply,
-                            request: request.clone(),
-                        });
                     }
                     if let Some(open) = open {
                         child.insert(EffectParent(open.0.id()));
@@ -577,68 +598,153 @@ fn on_task(
     commands.entity(call).insert_if_new(ToolOutput(output));
 }
 
-/// The open requests of every agent, to tell who waits on whom.
-type Debts<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static AgentId,
-        Option<&'static SpawnedBy>,
-        Option<&'static Requests>,
-        Option<&'static PeerRequests>,
-    ),
->;
+/// Every agent's [`Owes`], with what reporting on them needs.
+#[derive(SystemParam)]
+struct Ledgers<'w, 's> {
+    agents: Query<'w, 's, (Entity, &'static AgentId, Option<&'static mut Owes>)>,
+    families: Query<'w, 's, &'static Spawned>,
+    commands: Commands<'w, 's>,
+}
 
-/// Who waits on whom, as (waiting, owing) pairs: an agent waits on each
-/// subagent that holds an open request of its, and on each peer that
-/// holds an open request it sent.
-fn waits(debts: &Debts<'_, '_>) -> Vec<(Entity, Entity)> {
-    let mut edges = Vec::new();
-    for (owing, _, parent, requests, peer_requests) in debts {
-        if let (Some(parent), Some(requests)) = (parent, requests)
-            && !requests.0.is_empty()
-        {
-            edges.push((parent.0, owing));
+impl Ledgers<'_, '_> {
+    /// The [`Owes`] of `agent`.
+    fn owes(&mut self, agent: Entity) -> Option<Mut<'_, Owes>> {
+        self.agents.get_mut(agent).ok().and_then(|(.., owes)| owes)
+    }
+
+    /// The agent with the id `id`.
+    fn find(&self, id: &AgentId) -> Option<Entity> {
+        let mut agents = self.agents.iter();
+        agents
+            .find(|(_, other, _)| *other == id)
+            .map(|(entity, ..)| entity)
+    }
+
+    /// Who waits on whom, as (waiting, owing) pairs: an agent waits on
+    /// each agent that owes it a report. Each asker is looked up once per
+    /// agent that owes it, however many requests it sent.
+    fn waits(&self) -> Vec<(Entity, Entity)> {
+        let mut edges = Vec::new();
+        for (owing, _, owes) in &self.agents {
+            let mut askers: Vec<&AgentId> = Vec::new();
+            for owed in owes.into_iter().flat_map(Owes::open) {
+                if !askers.contains(&&owed.asker) {
+                    askers.push(&owed.asker);
+                }
+            }
+            let found = askers.into_iter().filter_map(|asker| self.find(asker));
+            edges.extend(found.map(|waiting| (waiting, owing)));
         }
-        for peer in peer_requests.into_iter().flat_map(|open| open.0.iter()) {
-            if let Some(waiting) = find(debts, &peer.from) {
-                edges.push((waiting, owing));
+        edges
+    }
+
+    /// Reports `text` from `agent` on its requests `owed`, all from one
+    /// asker, headed by `from`: the last request's report holds the text,
+    /// and the earlier ones are notes that point to it. A report to the
+    /// agent's `parent` that answers a task of a batch, or follows reports
+    /// held already, is held in its [`Owes`] until the batch is done. An
+    /// asker that is gone gets nothing.
+    fn report(
+        &mut self,
+        (agent, parent): (Entity, Option<Entity>),
+        from: &Origin,
+        owed: Vec<Owed>,
+        text: &str,
+    ) {
+        let last = owed
+            .last()
+            .and_then(|last| Some((self.find(&last.asker)?, last.request.0.clone())));
+        let Some((asker, last)) = last else {
+            return;
+        };
+        let count = owed.len();
+        let batch = owed.iter().find_map(|owed| owed.batch);
+        // The requests answered together with the last one: notes, read
+        // with its report, which comes last and asks for the turn.
+        let reports = owed.into_iter().enumerate().map(|(at, owed)| {
+            let (text, mode) = if at + 1 < count {
+                let text =
+                    format!("Answered together with request {last}; that report holds the answer.");
+                (text, DeliveryMode::Note)
+            } else {
+                (text.to_owned(), DeliveryMode::Queue)
+            };
+            let mut origin = from.clone();
+            origin.request = Some(owed.request.clone());
+            Owed {
+                held: Some(HeldReport { text, origin, mode }),
+                ..owed
+            }
+        });
+        let owes = self.owes(agent).filter(|_| parent == Some(asker));
+        match owes.and_then(|owes| Some((batch.or(owes.held_batch())?, owes))) {
+            Some((batch, mut owes)) => {
+                owes.0.extend(reports);
+                self.release(asker, batch, None);
+            }
+            None => {
+                for report in reports.filter_map(|owed| owed.held) {
+                    self.commands.trigger(report.deliver(asker));
+                }
             }
         }
     }
-    edges
-}
 
-/// The agent with this id.
-fn find(debts: &Debts<'_, '_>, id: &AgentId) -> Option<Entity> {
-    debts
-        .iter()
-        .find(|(_, other, ..)| *other == id)
-        .map(|(entity, ..)| entity)
+    /// Delivers the held reports of `batch` to `parent`, in the order the
+    /// parent started the tasks, unless a subagent other than `gone` still
+    /// owes the report on its task of the batch.
+    fn release(&mut self, parent: Entity, batch: EffectId, gone: Option<Entity>) {
+        let Ok(family) = self.families.get(parent) else {
+            return;
+        };
+        let owing = family
+            .iter()
+            .filter(|&child| Some(child) != gone)
+            .filter_map(|child| self.agents.get(child).ok()?.2)
+            .any(|owes| owes.open().any(|owed| owed.batch == Some(batch)));
+        if owing {
+            return;
+        }
+        for child in family.iter() {
+            if let Ok((_, _, Some(mut owes))) = self.agents.get_mut(child)
+                && owes.held_batch() == Some(batch)
+            {
+                for report in owes.take_held() {
+                    self.commands.trigger(report.deliver(parent));
+                }
+            }
+        }
+    }
 }
 
 /// Whether `to` can be reached from `from` along `edges`, in one step or
 /// more.
 fn reaches<T: Copy + PartialEq>(edges: &[(T, T)], from: T, to: T) -> bool {
-    let mut seen = vec![from];
-    let mut stack = vec![from];
+    let (mut seen, mut stack) = (vec![from], vec![from]);
     while let Some(node) = stack.pop() {
-        for &(start, end) in edges {
-            if start != node {
-                continue;
-            }
+        for &(_, end) in edges.iter().filter(|(start, _)| *start == node) {
             if end == to {
                 return true;
             }
-            if seen.contains(&end) {
-                continue;
+            if !seen.contains(&end) {
+                seen.push(end);
+                stack.push(end);
             }
-            seen.push(end);
-            stack.push(end);
         }
     }
     false
+}
+
+/// How a `message` call reaches an agent.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum Target {
+    /// One of the caller's own subagents, sent a new request.
+    Child,
+    /// A sibling, both having [`Peers`], sent a new request.
+    Peer,
+    /// An agent the caller owes a report: the text is the report on its
+    /// oldest request the caller has read.
+    Asker(RequestId),
 }
 
 /// An agent a `message` call can reach.
@@ -646,124 +752,141 @@ struct Reachable<'a> {
     entity: Entity,
     id: &'a AgentId,
     subtask: Option<&'a Subtask>,
-    requests: Option<&'a Requests>,
-    peer_requests: Option<&'a PeerRequests>,
     busy: bool,
-    /// A sibling rather than the caller's own subagent.
-    peer: bool,
+    target: Target,
 }
 
-/// Sends a `message` call's text as a request to one of the caller's own
-/// subagents, or to a sibling when both have [`Peers`], and answers the
-/// call with the request's id. Refuses any other target, and a peer that
-/// waits on the caller's own report.
+impl Reachable<'_> {
+    /// How it is reached, its short id and its task title, such as
+    /// peer `1a2b3c4d` ("Fix the parser").
+    fn named(&self) -> String {
+        let kind = match self.target {
+            Target::Child => "subagent",
+            Target::Peer => "peer",
+            Target::Asker(_) => "the agent waiting for your report",
+        };
+        match self.subtask {
+            Some(subtask) => format!("{kind} `{}` (\"{}\")", self.id.short(), subtask.title),
+            None => format!("{kind} `{}`", self.id.short()),
+        }
+    }
+}
+
+/// Sends a `message` call's text to an agent the caller can reach, and
+/// answers the call. To an agent the caller owes a report, the text is
+/// that report, on the agent's oldest request it has read. To one of the caller's
+/// own subagents, or to a sibling when both have [`Peers`], it is a new
+/// request, refused when that agent waits on the caller's own report.
 fn on_message(
     called: On<ToolCalled>,
     calls: Query<(&ToolCallRun, Option<&OpenCall>)>,
-    callers: Query<(&AgentId, Option<&Spawned>, Option<&SpawnedBy>, Has<Peers>)>,
-    families: Query<&Spawned>,
-    targets: Query<(
-        &AgentId,
-        Option<&Subtask>,
-        Option<&Requests>,
-        Option<&PeerRequests>,
-        Has<ActiveTurn>,
-        Has<Peers>,
-    )>,
-    debts: Debts,
-    mut commands: Commands,
+    callers: Query<(Option<&Spawned>, Option<&SpawnedBy>, Has<Peers>, &Inbox)>,
+    targets: Query<(&AgentId, Option<&Subtask>, Has<ActiveTurn>, Has<Peers>)>,
+    mut ledgers: Ledgers,
 ) {
     let (call, caller) = (called.call, called.agent);
     let Ok((run, open)) = calls.get(call) else {
         return;
     };
     let call_id = &run.call;
-    let output = match (callers.get(caller), arguments::<MessageArgs>(call_id)) {
-        (Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
-        (_, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
-        (Ok((id, spawned, parent, is_peer)), Ok(args)) => {
+    let output = match (
+        callers.get(caller),
+        targets.get(caller),
+        arguments::<MessageArgs>(call_id),
+    ) {
+        (Err(_), _, _) | (_, Err(_), _) => failed(call_id, "The calling agent is gone.".to_owned()),
+        (_, _, Err(why)) => failed(call_id, format!("{why}. Nothing was sent.")),
+        (Ok((spawned, parent, is_peer, inbox)), Ok((id, subtask, ..)), Ok(args)) => {
             let wanted = args.agent.trim();
             let text = args.text.trim();
-            let reachable = |entity: Entity, peer: bool| {
-                let (id, subtask, requests, peer_requests, busy, has_peers) =
-                    targets.get(entity).ok()?;
-                (!peer || has_peers).then_some(Reachable {
-                    entity,
-                    id,
-                    subtask,
-                    requests,
-                    peer_requests,
-                    busy,
-                    peer,
-                })
-            };
+            // The agents the caller owes first: a message to one answers its
+            // oldest request the caller has read, one no longer in its inbox.
+            let unread = inbox.steering.iter().chain(&inbox.queued);
+            let unread: Vec<_> = unread.flat_map(|sent| &sent.origin.request).collect();
+            let read = |owed: &&Owed| !unread.contains(&&owed.request);
+            let owes = ledgers.agents.get(caller).ok().and_then(|(.., owes)| owes);
+            let requests = owes.into_iter().flat_map(Owes::open);
+            let askers = requests.filter(read).filter_map(|owed| {
+                let asker = ledgers.find(&owed.asker)?;
+                Some((asker, Target::Asker(owed.request.clone())))
+            });
+            let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
             let siblings = parent
                 .filter(|_| is_peer)
-                .and_then(|parent| families.get(parent.0).ok());
-            let reach: Vec<Reachable<'_>> = spawned
+                .and_then(|parent| ledgers.families.get(parent.0).ok())
                 .into_iter()
-                .flat_map(|spawned| spawned.iter())
-                .filter_map(|child| reachable(child, false))
-                .chain(
-                    siblings
-                        .into_iter()
-                        .flat_map(|siblings| siblings.iter())
-                        .filter(|&sibling| sibling != caller)
-                        .filter_map(|sibling| reachable(sibling, true)),
-                )
-                .collect();
+                .flat_map(|siblings| siblings.iter())
+                .filter(|&sibling| sibling != caller);
+            let mut reach: Vec<Reachable<'_>> = Vec::new();
+            for (entity, target) in askers
+                .chain(children.map(|child| (child, Target::Child)))
+                .chain(siblings.map(|sibling| (sibling, Target::Peer)))
+            {
+                if let Ok((id, subtask, busy, has_peers)) = targets.get(entity)
+                    && (target != Target::Peer || has_peers)
+                    && !reach.iter().any(|reachable| reachable.entity == entity)
+                {
+                    reach.push(Reachable {
+                        entity,
+                        id,
+                        subtask,
+                        busy,
+                        target,
+                    });
+                }
+            }
             let target = reach
                 .iter()
                 .find(|target| target.id.0 == wanted || target.id.short() == wanted);
-            match target {
-                None => failed(
-                    call_id,
-                    format!(
-                        "`{wanted}` is not an agent you can reach, so nothing was sent. {}",
-                        listing(&reach)
-                    ),
-                ),
-                Some(_) if text.is_empty() => failed(
-                    call_id,
-                    "`text` must not be empty. Nothing was sent.".to_owned(),
-                ),
-                Some(target) if target.peer && reaches(&waits(&debts), target.entity, caller) => {
-                    failed(
-                        call_id,
-                        format!(
-                            "`{}` is waiting for your report, so it cannot be asked, and \
-                             nothing was sent. Put what you would ask or tell it in your answer.",
-                            target.id.short()
-                        ),
-                    )
+            let sent = match target {
+                None => Err(format!(
+                    "`{wanted}` is not an agent you can reach, so nothing was sent. {}",
+                    listing(&reach)
+                )),
+                Some(_) if text.is_empty() => {
+                    Err("`text` must not be empty. Nothing was sent.".to_owned())
                 }
+                Some(
+                    asker @ Reachable {
+                        target: Target::Asker(request),
+                        ..
+                    },
+                ) => {
+                    let owed = ledgers
+                        .owes(caller)
+                        .and_then(|mut owes| owes.close(request));
+                    let from = titled(Origin::agent(id.clone(), None), subtask);
+                    let agents = (caller, parent.map(|parent| parent.0));
+                    ledgers.report(agents, &from, owed.into_iter().collect(), text);
+                    let said = format!(
+                        "Sent to {} as your report on its request. Your final answer goes only \
+                         to the requests still open.",
+                        asker.named()
+                    );
+                    Ok((asker, request.clone(), "answered", said))
+                }
+                Some(target) if reaches(&ledgers.waits(), target.entity, caller) => Err(format!(
+                    "`{}` is waiting for your report, so it cannot be asked, and nothing was \
+                     sent. Put what you would ask or tell it in your answer.",
+                    target.id.short()
+                )),
                 Some(target) => {
                     let request = RequestId(call_id.id.to_string());
-                    let mut entity = commands.entity(target.entity);
-                    if target.peer {
-                        let mut open_requests = target
-                            .peer_requests
-                            .map(|open| open.0.clone())
-                            .unwrap_or_default();
-                        open_requests.push(PeerRequest {
-                            request: request.clone(),
-                            from: id.clone(),
-                        });
-                        entity.insert(PeerRequests(open_requests));
-                    } else {
-                        let mut open_requests = target
-                            .requests
-                            .map(|open| open.0.clone())
-                            .unwrap_or_default();
-                        open_requests.push(request.clone());
-                        entity.insert(Requests(open_requests));
-                    }
+                    let owed = Owed {
+                        request: request.clone(),
+                        asker: id.clone(),
+                        batch: None,
+                        held: None,
+                    };
+                    let mut entity = ledgers.commands.entity(target.entity);
+                    let mut owes = entity.entry::<Owes>();
+                    owes.or_default().and_modify(|mut owes| owes.0.push(owed));
                     if !target.busy
                         && let Some(open) = open
                     {
                         entity.insert(EffectParent(open.0.id()));
                     }
-                    commands.trigger(Deliver {
+                    ledgers.commands.trigger(Deliver {
                         entity: target.entity,
                         text: text.to_owned(),
                         origin: Origin::agent(id.clone(), Some(request.clone())),
@@ -778,54 +901,41 @@ fn on_message(
                     } else {
                         ("started", "It works on it in the background.")
                     };
-                    let kind = if target.peer { "peer" } else { "subagent" };
-                    answer(
-                        call_id,
-                        serde_json::json!({
-                            "agent": target.id.short(),
-                            "request": request.0,
-                            "status": status,
-                        }),
-                        format!(
-                            "Sent to {kind} `{}`. {when} Its report for request {} will \
-                             arrive as a message.",
-                            target.id.short(),
-                            request.0
-                        ),
-                    )
+                    let said = format!(
+                        "Sent to {}. {when} Its report will arrive as a message headed with its \
+                         id.",
+                        target.named()
+                    );
+                    Ok((target, request, status, said))
                 }
+            };
+            match sent {
+                Err(why) => failed(call_id, why),
+                Ok((target, request, status, said)) => answer(
+                    call_id,
+                    serde_json::json!({
+                        "agent": target.id.short(),
+                        "request": request.0,
+                        "status": status,
+                    }),
+                    said,
+                ),
             }
         }
     };
-    commands.entity(call).insert_if_new(ToolOutput(output));
+    ledgers
+        .commands
+        .entity(call)
+        .insert_if_new(ToolOutput(output));
 }
 
 /// The agents a `message` call can reach, for a refusal.
 fn listing(reach: &[Reachable<'_>]) -> String {
-    let named = |target: &Reachable<'_>| match target.subtask {
-        Some(subtask) => format!("`{}` (\"{}\")", target.id.short(), subtask.title),
-        None => format!("`{}`", target.id.short()),
-    };
-    let mine: Vec<String> = reach
-        .iter()
-        .filter(|target| !target.peer)
-        .map(named)
-        .collect();
-    let peers: Vec<String> = reach
-        .iter()
-        .filter(|target| target.peer)
-        .map(named)
-        .collect();
-    let mine = if mine.is_empty() {
-        "You have no subagents; start one with `task`.".to_owned()
-    } else {
-        format!("Your subagents are: {}.", mine.join(", "))
-    };
-    if peers.is_empty() {
-        mine
-    } else {
-        format!("{mine} Your peers are: {}.", peers.join(", "))
+    if reach.is_empty() {
+        return "You have no subagents; start one with `task`.".to_owned();
     }
+    let named = reach.iter().map(|reachable| reachable.named());
+    format!("You can reach: {}.", named.collect::<Vec<_>>().join(", "))
 }
 
 /// Names a subagent by its task's title, when it is spawned or restored.
@@ -837,79 +947,34 @@ fn name_subagent(inserted: On<Insert<Subtask>>, subtasks: Query<&Subtask>, mut c
     }
 }
 
-/// The open requests of a subagent by the agent each one's report goes
-/// to, oldest first within each: its parent's, then each peer's in the
-/// order of its first request. A peer that is gone gets none.
-fn by_asker(
-    parent: Entity,
-    requests: Option<&Requests>,
-    peer_requests: Option<&PeerRequests>,
-    debts: &Debts<'_, '_>,
-) -> Vec<(Entity, Vec<RequestId>)> {
-    let mut askers: Vec<(Entity, Vec<RequestId>)> = Vec::new();
-    if let Some(requests) = requests
-        && !requests.0.is_empty()
-    {
-        askers.push((parent, requests.0.clone()));
-    }
-    for peer in peer_requests.into_iter().flat_map(|open| open.0.iter()) {
-        let Some(asker) = find(debts, &peer.from) else {
-            continue;
-        };
-        match askers.iter_mut().find(|(entity, _)| *entity == asker) {
-            Some((_, ids)) => ids.push(peer.request.clone()),
-            None => askers.push((asker, vec![peer.request.clone()])),
-        }
-    }
-    askers
-}
-
 /// Reports on every open request of a subagent whose turn ended, to the
-/// agent that sent it: its parent, or a peer. Each request gets exactly
-/// one report, headed by the subagent's id and task title: its answer, or
-/// why there is none. Per asker, the last request's report holds the
-/// answer and the earlier ones are notes that point to it. A subagent that
-/// ends its turn while an agent it asked still owes it a report reports
-/// after that report carried it on, unless that agent waits on it in turn.
-/// The reports to its parent of a subagent in a [`Batch`] are held
-/// ([`HeldReports`]) until the batch is done ([`release_held`]).
+/// agent that sent it ([`Ledgers::report`]): its answer, or why there is
+/// none. A subagent that ends its turn while an agent it asked still owes
+/// it a report reports after that report carried it on. No agent waits on
+/// one that waits on it, so that report comes.
 fn report_on_turn_end(
     end: On<TurnEnded>,
-    agents: Query<
-        (
-            &AgentId,
-            &SpawnedBy,
-            Option<&Requests>,
-            Option<&PeerRequests>,
-            Option<&Subtask>,
-            Option<&Batch>,
-            Option<&HeldReports>,
-        ),
-        Without<ActiveTurn>,
-    >,
-    debts: Debts,
-    mut commands: Commands,
+    agents: Query<(&SpawnedBy, Option<&Subtask>), Without<ActiveTurn>>,
+    mut ledgers: Ledgers,
 ) {
     let agent = end.entity;
     // Only the agent whose turn ended, not the agents it propagates to.
     if agent != end.original_event_target() {
         return;
     }
-    let Ok((id, parent, requests, peer_requests, subtask, batch, held)) = agents.get(agent) else {
+    let Ok((parent, subtask)) = agents.get(agent) else {
         return;
     };
-    let askers = by_asker(parent.0, requests, peer_requests, &debts);
-    if askers.is_empty() {
+    let owed = ledgers.waits().iter().any(|&(waiting, _)| waiting == agent);
+    let Ok((_, id, Some(mut owes))) = ledgers.agents.get_mut(agent) else {
+        return;
+    };
+    if owed || owes.open().next().is_none() {
         return;
     }
-    let edges = waits(&debts);
-    let owed = edges
-        .iter()
-        .any(|&(waiting, owing)| waiting == agent && !reaches(&edges, owing, agent));
-    if owed {
-        return;
-    }
-    let report = match &end.outcome {
+    let from = titled(Origin::agent(id.clone(), None), subtask);
+    let askers = owes.drain_by_asker();
+    let text = match &end.outcome {
         TurnOutcome::Answered(message) => match clipped_answer(message) {
             Some(text) => text,
             None => "Failed: the subagent ended without a final message. No answer will come \
@@ -924,49 +989,8 @@ fn report_on_turn_end(
              answer will come for this request; send a `message` to carry it on."
             .to_owned(),
     };
-    let origin =
-        |request: &RequestId| titled(Origin::agent(id.clone(), Some(request.clone())), subtask);
-    commands.entity(agent).insert(Requests::default());
-    if peer_requests.is_some() {
-        commands.entity(agent).insert(PeerRequests::default());
-    }
-    let mut holding = held.map(|held| held.0.clone()).unwrap_or_default();
-    let was_holding = !holding.is_empty();
-    for (asker, ids) in askers {
-        let Some((last, earlier)) = ids.split_last() else {
-            continue;
-        };
-        // The requests answered together with the last one: notes, read
-        // with its report, which comes last and asks for the turn.
-        let mut reports: Vec<HeldReport> = earlier
-            .iter()
-            .map(|request| HeldReport {
-                text: format!(
-                    "Answered together with request {}; that report holds the answer.",
-                    last.0
-                ),
-                origin: origin(request),
-                note: true,
-            })
-            .collect();
-        reports.push(HeldReport {
-            text: report.clone(),
-            origin: origin(last),
-            note: false,
-        });
-        let batched = asker == parent.0
-            && (was_holding || batch.is_some_and(|batch| ids.contains(&batch.request)));
-        if batched {
-            holding.extend(reports);
-        } else {
-            for report in reports {
-                commands.trigger(report.deliver(asker));
-            }
-        }
-    }
-    // After the requests were cleared, so the batch sees this task done.
-    if holding.len() > held.map_or(0, |held| held.0.len()) {
-        commands.entity(agent).insert(HeldReports(holding));
+    for owed in askers {
+        ledgers.report((agent, Some(parent.0)), &from, owed, &text);
     }
 }
 
@@ -978,102 +1002,18 @@ fn titled(origin: Origin, subtask: Option<&Subtask>) -> Origin {
     }
 }
 
-/// The subagents of one parent, for releasing their held reports.
-type Members<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static SpawnedBy,
-        Option<&'static Batch>,
-        Option<&'static Requests>,
-        Option<&'static HeldReports>,
-    ),
->;
-
-/// Releases a batch's held reports once a subagent of it holds new ones:
-/// when no task of the batch still owes its report.
-fn release_held(
-    inserted: On<Insert<HeldReports>>,
-    members: Members,
-    families: Query<&Spawned>,
-    mut commands: Commands,
-) {
-    release(inserted.entity, None, &members, &families, &mut commands);
-}
-
 /// Releases a batch's held reports when one of its subagents goes away
 /// before it reported, so the batch does not wait for it forever.
-fn release_on_leave(
-    removed: On<Remove<Batch>>,
-    members: Members,
-    families: Query<&Spawned>,
-    mut commands: Commands,
-) {
-    release(
-        removed.entity,
-        Some(removed.entity),
-        &members,
-        &families,
-        &mut commands,
-    );
-}
-
-/// Delivers the held reports of `member`'s batch to its parent, in the
-/// order the parent started the tasks, unless a task of the batch other
-/// than `gone` still owes its report. A member without a batch hands over
-/// its own.
-fn release(
-    member: Entity,
-    gone: Option<Entity>,
-    members: &Members<'_, '_>,
-    families: &Query<&Spawned>,
-    commands: &mut Commands,
-) {
-    let Ok((parent, batch, ..)) = members.get(member) else {
+fn release_on_leave(removed: On<Remove<Owes>>, parents: Query<&SpawnedBy>, mut ledgers: Ledgers) {
+    let gone = removed.entity;
+    let (Ok(parent), Ok((.., Some(owes)))) = (parents.get(gone), ledgers.agents.get(gone)) else {
         return;
     };
-    let parent = parent.0;
-    let Some(batch) = batch else {
-        if let Ok((_, _, _, Some(held))) = members.get(member) {
-            hand_over(member, held, parent, commands);
-        }
-        return;
-    };
-    let Ok(family) = families.get(parent) else {
-        return;
-    };
-    let in_batch = |entity: Entity| {
-        members
-            .get(entity)
-            .ok()
-            .filter(|(_, other, ..)| other.is_some_and(|other| other.reply == batch.reply))
-    };
-    let owing = family
-        .iter()
-        .filter(|&child| Some(child) != gone)
-        .any(|child| {
-            in_batch(child).is_some_and(|(_, other, requests, _)| {
-                let request = other.map(|other| &other.request);
-                requests.is_some_and(|open| request.is_some_and(|request| open.0.contains(request)))
-            })
-        });
-    if owing {
-        return;
+    // A subagent is in one batch at most: its task's.
+    let batch = owes.open().find_map(|owed| owed.batch);
+    if let Some(batch) = batch {
+        ledgers.release(parent.0, batch, Some(gone));
     }
-    for child in family.iter() {
-        if let Some((_, _, _, Some(held))) = in_batch(child) {
-            hand_over(child, held, parent, commands);
-        }
-    }
-}
-
-/// Delivers `child`'s held reports to `parent`, in this frame, and clears
-/// them.
-fn hand_over(child: Entity, held: &HeldReports, parent: Entity, commands: &mut Commands) {
-    for report in held.0.iter().cloned() {
-        commands.trigger(report.deliver(parent));
-    }
-    commands.entity(child).try_remove::<HeldReports>();
 }
 
 /// After a restart, answers every request a restored subagent had not
@@ -1082,48 +1022,31 @@ fn hand_over(child: Entity, held: &HeldReports, parent: Entity, commands: &mut C
 /// nothing it was doing runs again by itself. A `message` carries it on.
 fn report_restored(
     mut restored: On<Restored>,
-    agents: Query<(
-        &AgentId,
-        &SpawnedBy,
-        Option<&Requests>,
-        Option<&PeerRequests>,
-        Option<&Subtask>,
-        Option<&HeldReports>,
-    )>,
-    debts: Debts,
-    mut commands: Commands,
+    agents: Query<(&SpawnedBy, Option<&Subtask>)>,
+    mut ledgers: Ledgers,
 ) {
     let agent = restored.entity;
-    let Ok((id, parent, requests, peer_requests, subtask, held)) = agents.get(agent) else {
+    let Ok((parent, subtask)) = agents.get(agent) else {
         return;
     };
-    if let Some(held) = held {
-        hand_over(agent, held, parent.0, &mut commands);
-    }
-    let askers = by_asker(parent.0, requests, peer_requests, &debts);
-    let open = requests.is_some_and(|requests| !requests.0.is_empty())
-        || peer_requests.is_some_and(|open| !open.0.is_empty());
-    if !open {
+    let Ok((_, id, Some(mut owes))) = ledgers.agents.get_mut(agent) else {
+        return;
+    };
+    if owes.0.is_empty() {
         return;
     }
-    restored.event_mut().resume = false;
-    for (asker, ids) in askers {
-        for request in ids {
-            commands.trigger(Deliver {
-                entity: asker,
-                text: "Interrupted: the session restarted before the subagent answered, and it \
-                       was not carried on. No answer will come for this request; send a \
-                       `message` to carry it on."
-                    .to_owned(),
-                origin: titled(Origin::agent(id.clone(), Some(request)), subtask),
-                mode: DeliveryMode::Queue,
-                attachments: Vec::new(),
-            });
-        }
+    let held = owes.take_held();
+    let open: Vec<Owed> = owes.drain_by_asker().into_iter().flatten().collect();
+    restored.event_mut().resume &= open.is_empty();
+    let from = titled(Origin::agent(id.clone(), None), subtask);
+    for report in held {
+        ledgers.commands.trigger(report.deliver(parent.0));
     }
-    commands.entity(agent).insert(Requests::default());
-    if peer_requests.is_some() {
-        commands.entity(agent).insert(PeerRequests::default());
+    let text = "Interrupted: the session restarted before the subagent answered, and it was \
+                not carried on. No answer will come for this request; send a `message` to \
+                carry it on.";
+    for owed in open {
+        ledgers.report((agent, Some(parent.0)), &from, vec![owed], text);
     }
 }
 

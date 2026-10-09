@@ -39,7 +39,6 @@ use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
     Effort, Ending, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort, SetModel,
     SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
-    TurnRequest,
 };
 use super::calls::{Done, Running, Wake};
 use super::compaction::{
@@ -135,12 +134,12 @@ pub(crate) fn on_retry(
 /// restart to carry on, as after a crash.
 pub(crate) fn on_turn_despawn(
     end: On<Remove<TurnOf>>,
-    turns: Query<(&TurnOf, &TurnRequest, Option<&Ending>)>,
+    turns: Query<(&TurnOf, Option<&Ending>)>,
     agents: Query<&AgentId>,
     exiting: Option<Res<Exiting>>,
     mut commands: Commands,
 ) {
-    let Ok((&TurnOf(agent), request, ending)) = turns.get(end.entity) else {
+    let Ok((&TurnOf(agent), ending)) = turns.get(end.entity) else {
         return;
     };
     if exiting.is_some() {
@@ -158,7 +157,6 @@ pub(crate) fn on_turn_despawn(
     commands.trigger(TurnEnded {
         entity: agent,
         outcome,
-        request: request.0.clone(),
     });
 }
 
@@ -441,7 +439,7 @@ fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notic
 /// cannot be done the turn ends.
 pub(crate) fn on_call_model(
     call: On<CallModel>,
-    mut turns: Query<(&TurnOf, &mut Recovery, &mut TurnRequest)>,
+    mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
         (
             &AgentId,
@@ -466,7 +464,7 @@ pub(crate) fn on_call_model(
     mut notices: MessageWriter<Notice>,
 ) {
     let turn = call.entity;
-    let Ok((&TurnOf(agent), mut recovery, mut request)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
         return;
     };
     let Ok((
@@ -506,13 +504,7 @@ pub(crate) fn on_call_model(
         log: &log,
     };
     deliver_notes(&to, &mut inbox, &mut conversation, &mut notices);
-    deliver_steering(
-        &to,
-        &mut inbox,
-        &mut conversation,
-        &mut request.0,
-        &mut notices,
-    );
+    deliver_steering(&to, &mut inbox, &mut conversation, &mut notices);
     let request = connection
         .ok_or_else(|| NO_MODEL.to_owned())
         .and_then(|connection| {
@@ -719,7 +711,7 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery, &mut TurnRequest)>,
+    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox),
         &Compacted,
@@ -738,8 +730,7 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut turn_spent, mut recovery, mut request)) = turns.get_mut(turn)
-    else {
+    let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
         return;
     };
     let Ok(((id, mut conversation, mut inbox), compacted, connection, mut spent)) =
@@ -815,9 +806,8 @@ pub(crate) fn on_model_done(
             spec,
             log: &log,
         };
-        let request = &mut request.0;
-        let carried = deliver_steering(&to, &mut inbox, &mut conversation, request, &mut notices)
-            || deliver_queued(&to, &mut inbox, &mut conversation, request, &mut notices);
+        let carried = deliver_steering(&to, &mut inbox, &mut conversation, &mut notices)
+            || deliver_queued(&to, &mut inbox, &mut conversation, &mut notices);
         if carried {
             commands.trigger(CallModel { entity: turn });
             return;

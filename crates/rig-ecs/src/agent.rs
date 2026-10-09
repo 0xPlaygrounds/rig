@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::activity::Activity;
 use super::compaction::Compacted;
 use super::effects::Handler;
-use super::inbox::{Inbox, Origin, RequestId};
+use super::inbox::{Inbox, Origin};
 use super::recovery::Recovery;
 use super::tools::Footprint;
 use super::usage::{Spending, TurnSpending};
@@ -249,13 +249,8 @@ impl ToolAccess {
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(TurnSpending, Recovery, TurnRequest)]
+#[require(TurnSpending, Recovery)]
 pub struct TurnOf(pub Entity);
-
-/// On a turn: the request of the latest message delivered to it that
-/// carried one, which its [`TurnEnded`] names.
-#[derive(Component, Clone, Debug, Default)]
-pub struct TurnRequest(pub Option<RequestId>);
 
 /// On a turn about to be despawned: how it ended. A turn despawned without
 /// one, such as by [`Interrupt`] or on exit, ended [`TurnOutcome::Stopped`].
@@ -487,6 +482,4 @@ pub struct TurnEnded {
     pub entity: Entity,
     /// How the turn ended.
     pub outcome: TurnOutcome,
-    /// The request the turn answered, if a delivered message carried one.
-    pub request: Option<RequestId>,
 }
