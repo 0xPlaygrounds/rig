@@ -37,6 +37,10 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
     let checkout = Path::new("/rig");
     let local = manifest("viz", "0.44.0", &RigSource::Local(checkout.to_path_buf()));
     assert!(local.contains("rig-harness = \"0.44.0\"\n"));
+    assert!(local.contains(&format!(
+        "bevy_ecs = {{ version = \"={}\", default-features = false }}\n",
+        super::super::BEVY_VERSION
+    )));
     assert!(local.contains("[patch.crates-io]\n"));
     assert!(local.contains("rig-harness = { path = "));
     let registry = manifest("viz", "0.44.0", &RigSource::Registry);

@@ -35,7 +35,10 @@ points the rig crates (`rig`, `rig-core`, `rig-ecs`, `rig-tools`,
 `rig-harness`) at the checkout, so every plugin uses the agent's own
 crates; the crate made by `rig plugin new` has the same table so it also
 checks on its own, and the build refuses a second copy of a rig crate or
-another Bevy than the agent's.
+another Bevy than the agent's. Bevy's derives (`Component`, `Resource`,
+`Message`, `SystemSet`) expand to the Bevy crate the plugin's own
+`Cargo.toml` names, so the crate depends on `bevy_ecs` (or `bevy`) at the
+agent's version; `rig plugin new` adds it.
 
 `/reload` in the agent (or `rig build`) rebuilds and restarts in the same
 session; typed during a turn, it waits until no turn runs (`/reload
