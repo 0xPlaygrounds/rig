@@ -38,11 +38,13 @@
 //! }
 //! ```
 
+pub mod attach;
 pub mod builtin;
 pub mod core;
 pub mod host;
 #[cfg(feature = "tui")]
 pub mod tui;
+pub mod view;
 
 use bevy_app::{
     PluginGroup, PluginGroupBuilder, TaskPoolOptions, TaskPoolPlugin,
@@ -64,15 +66,15 @@ pub mod prelude {
 
     pub use crate::core::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
-        Effort, Focus, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
+        Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
         SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
         TurnOf, TurnOutcome, TurnRequest,
     };
     pub use crate::core::calls::Wake;
-    pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand, send_input};
+    pub use crate::core::commands::{AppCommandsExt, CommandArgs, RunCommand};
     pub use crate::core::compaction::Compacted;
     pub use crate::core::inbox::{
-        Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
+        Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
     pub use crate::core::journal::AppSaveExt;
     pub use crate::core::prompt::{PromptSection, ToolRules};
@@ -84,6 +86,7 @@ pub mod prelude {
     pub use crate::core::usage::{Spending, TurnSpending};
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
+    pub use crate::view::{Focus, PickItem, PickRequest, send_input};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError};
     pub use rig_tools::blocking;
@@ -102,8 +105,10 @@ impl PluginGroup for RigHarnessPlugins {
         PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
             .add(host::headless::ModePlugin)
+            .add(view::ViewPlugin)
             .add(core::AgentPlugin)
             .add(core::journal::JournalPlugin)
+            .add(host::compaction::CodingCompactionPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::defaults::DefaultsPlugin)
             .add(host::launcher::LauncherPlugin)

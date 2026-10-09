@@ -17,10 +17,11 @@ use super::complete::{self, FileIndex};
 use super::view::{Overlay, Picker, TuiView};
 use crate::core::agent::{ActiveTurn, Interrupt};
 use crate::core::calls::Wake;
-use crate::core::commands::{RunCommand, SlashCommand, send_input};
+use crate::core::commands::{RunCommand, SlashCommand};
 use crate::core::inbox::DeliveryMode;
-use crate::core::journal::SessionPaths;
 use crate::host::reload::{CancelReload, ReloadBuild};
+use crate::host::session::SessionPaths;
+use crate::view::send_input;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;

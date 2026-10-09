@@ -102,7 +102,7 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     between requests. Agents work at the same time: send to several, then reply each.\n\
     (reply request) -> string\n    \
     Waits for the agent's answer to the request and returns its text; raises an error when \
-    its turn failed or was stopped.\n\
+    its turn failed or was stopped. Each request is replied once.\n\
     (call-tool name [args]) -> string\n    \
     Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
     returns its text output; raises an error when the tool fails.\n\n\

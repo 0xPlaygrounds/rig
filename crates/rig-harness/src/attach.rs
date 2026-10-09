@@ -1,16 +1,16 @@
-//! Images in user messages. A message names an image file as `@path`; when
-//! the agent's model reads images, the file goes with the message as an
-//! image, before its text, and the `@path` stays in the text so the model
-//! knows which file it is. A model that does not read images gets the text
-//! alone, and the user is told.
+//! Images in the user's messages. A message names an image file as
+//! `@path`; the file is read when the message is sent and goes with it as
+//! an [`Attachment`], before its text, and the `@path` stays in the text so
+//! the model knows which file it is. The core sends an image only to a
+//! model that reads images, and tells the user otherwise.
 
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
-use rig_core::catalog::ModelSpec;
-use rig_core::completion::Message;
 use rig_core::message::{ImageMediaType, UserContent};
+
+use crate::core::inbox::Attachment;
 
 /// The largest image attached: providers refuse bigger ones (Anthropic
 /// takes 5 MB per image).
@@ -30,30 +30,19 @@ pub fn is_image_path(path: &Path) -> bool {
         })
 }
 
-/// The user message for `text`, with the images it names as `@path`
-/// attached when `spec`'s model reads images, and a line for the user
-/// about each image that was not attached.
-pub fn user_message(text: &str, spec: Option<&ModelSpec>) -> (Message, Vec<String>) {
-    let mut content = Vec::new();
+/// The images `text` names as `@path`, read, and a line for the user about
+/// each one that could not be.
+pub fn attachments(text: &str) -> (Vec<Attachment>, Vec<String>) {
+    let mut attachments = Vec::new();
     let mut notes = Vec::new();
     for path in image_references(text) {
-        let shown = path.display();
-        match spec {
-            Some(spec) if !spec.input.image => notes.push(format!(
-                "{} does not read images, so {shown} is sent as its path only.",
-                spec.display_name
-            )),
-            None => notes.push(format!(
-                "No model is connected, so {shown} is sent as its path only."
-            )),
-            Some(_) => match read_image(&path) {
-                Ok(image) => content.push(image),
-                Err(why) => notes.push(format!("{shown} is not attached: {why}.")),
-            },
+        let label = path.display().to_string();
+        match read_image(&path) {
+            Ok(content) => attachments.push(Attachment { label, content }),
+            Err(why) => notes.push(format!("{label} is not attached: {why}.")),
         }
     }
-    content.push(UserContent::text(text));
-    (Message::User { content }, notes)
+    (attachments, notes)
 }
 
 /// The image files `text` names as `@path`, in order, each once. A token's

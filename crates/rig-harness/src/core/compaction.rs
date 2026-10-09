@@ -1,5 +1,5 @@
 //! Compaction: when the conversation nears the model's context window, or
-//! the user asks with `/compact`, its older messages are replaced in
+//! [`Compact`](super::agent::Compact) asks, its older messages are replaced in
 //! requests by a structured summary the model writes. The messages stay in
 //! the [`Conversation`](super::agent::Conversation), so views still show
 //! them: an agent's [`Compacted`] says how many of them requests leave
@@ -11,7 +11,8 @@
 //! model call of its own, dispatched and recorded like any other, on a call
 //! entity of the turn with a [`Summarizing`], so interrupting the turn
 //! cancels it. The state, the request and the clearing are rig-memory's
-//! compaction blocks; the coding prompts and the tracked files are here.
+//! compaction blocks; what the summarizer is asked and which tool
+//! arguments the summary tracks are the app's [`CompactionPolicy`].
 
 use std::borrow::Cow;
 use std::ops::{Deref, DerefMut};
@@ -37,8 +38,9 @@ const KEEP_RECENT: usize = 20_000;
 pub const MAX_COMPACTIONS: u32 = 2;
 
 /// The agent's rig-memory [`SummaryState`]: which of its messages requests
-/// leave out, and the summary sent in their place, with the files the
-/// summarized messages read and changed. The default leaves out none.
+/// leave out, and the summary sent in their place, with the tool
+/// arguments the summarized messages used that the [`CompactionPolicy`]
+/// tracks. The default leaves out none.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -122,7 +124,7 @@ pub struct Summarizing {
     pub messages: usize,
     /// Their estimated tokens.
     pub tokens: u64,
-    /// The files read and changed, with those of earlier compactions.
+    /// The tracked tool arguments, with those of earlier compactions.
     pub tracked: Vec<TrackedSet>,
 }
 
@@ -130,10 +132,11 @@ pub struct Summarizing {
 pub struct Summary(pub Result<CompletionResponse, ErrorReport>);
 
 /// What a compaction ending at `upto` summarizes anew: the messages from
-/// the last compaction to `upto`, the files they read and changed, and the
-/// request for the summary to `spec`. `focus` is what the user asked to
-/// keep above all.
+/// the last compaction to `upto`, the tool arguments they used that
+/// `policy` tracks, and the request for the summary to `spec`. `focus` is
+/// what the user asked to keep above all.
 pub fn plan(
+    policy: &CompactionPolicy,
     compacted: &Compacted,
     messages: &[Message],
     upto: usize,
@@ -144,12 +147,13 @@ pub fn plan(
         .get(compacted.upto.min(upto)..upto)
         .ok_or("the conversation is shorter than the compaction")?;
     let mut next = compacted.0.clone();
-    next.track(older, TRACKED);
+    next.track(older, &policy.tracked);
     let focus = match &reason {
         CompactReason::Asked { focus } => focus.trim(),
         _ => "",
     };
-    let request = SUMMARIZER
+    let request = policy
+        .summarizer
         .request(older, &compacted.summary, focus, spec)
         .map_err(|refusal| refusal.to_string())?;
     let summarizing = Summarizing {
@@ -162,41 +166,39 @@ pub fn plan(
     Ok((summarizing, request))
 }
 
-/// The files the built-in file tools were called with: `read`'s are read,
-/// `edit`'s and `write`'s changed (a later set wins in the summary).
-const TRACKED: &[TrackArgument<'static>] = &[
-    TrackArgument {
-        tool: "read",
-        argument: "path",
-        set: "read-files",
-    },
-    TrackArgument {
-        tool: "edit",
-        argument: "path",
-        set: "modified-files",
-    },
-    TrackArgument {
-        tool: "write",
-        argument: "path",
-        set: "modified-files",
-    },
-];
+/// How the app compacts: what the summarizer is asked, and the tool
+/// arguments a summary keeps track of, such as the files a coding agent's
+/// file tools read and changed. The default asks for a general summary and
+/// tracks nothing.
+#[derive(Resource, Clone, Debug)]
+pub struct CompactionPolicy {
+    /// The summarizer.
+    pub summarizer: Summarizer,
+    /// The tool arguments tracked across compactions.
+    pub tracked: Vec<TrackArgument<'static>>,
+}
 
-/// The summarizer: the coding prompts below, rig-memory's default limits.
-const SUMMARIZER: Summarizer = Summarizer {
-    prompts: SummaryPrompts {
-        system: Cow::Borrowed(SYSTEM_PROMPT),
-        initial: Cow::Borrowed(INITIAL_PROMPT),
-        update: Cow::Borrowed(UPDATE_PROMPT),
-        format: Cow::Borrowed(FORMAT),
-    },
-    limits: SummaryLimits::DEFAULT,
-};
+impl Default for CompactionPolicy {
+    fn default() -> Self {
+        Self {
+            summarizer: Summarizer {
+                prompts: SummaryPrompts {
+                    system: Cow::Borrowed(SYSTEM_PROMPT),
+                    initial: Cow::Borrowed(INITIAL_PROMPT),
+                    update: Cow::Borrowed(UPDATE_PROMPT),
+                    format: Cow::Borrowed(FORMAT),
+                },
+                limits: SummaryLimits::DEFAULT,
+            },
+            tracked: Vec::new(),
+        }
+    }
+}
 
 /// The summarizer's system prompt.
-const SYSTEM_PROMPT: &str = "You summarize a conversation between a user and a coding agent \
-    so that another model can continue the work from the summary alone. Read the \
-    conversation and write the summary in the exact format asked for.\n\n\
+const SYSTEM_PROMPT: &str = "You summarize a conversation between a user and an agent so that \
+    another model can continue the work from the summary alone. Read the conversation and \
+    write the summary in the exact format asked for.\n\n\
     Do not continue the conversation. Do not answer questions in it. Output only the summary.";
 
 /// The request for a first summary.
@@ -205,31 +207,20 @@ const INITIAL_PROMPT: &str = "The conversation above is to be summarized. Write 
 
 /// The request to fold new messages into an earlier summary.
 const UPDATE_PROMPT: &str = "The conversation above is the NEW part of a conversation whose \
-    earlier part is summarized in <previous-summary>. Update that summary with it:\n\
-    - keep everything in the previous summary that still holds;\n\
-    - add the new progress, decisions and context;\n\
-    - move items from \"In progress\" to \"Done\" when they were completed;\n\
-    - update \"Next steps\" to what is left;\n\
-    - drop what is no longer relevant.";
+    earlier part is summarized in <previous-summary>. Update that summary with it: keep what \
+    still holds, add the new progress, decisions and context, and drop what is no longer \
+    relevant.";
 
 /// The summary's format, after either request.
 const FORMAT: &str = "\n\nUse exactly this format:\n\n\
     ## Goal\n\
-    [What the user is trying to get done; several items if the session covers several tasks.]\n\n\
-    ## Constraints and preferences\n\
-    - [What the user asked for or ruled out, or \"(none)\"]\n\n\
+    [What the user is trying to get done.]\n\n\
     ## Progress\n\
-    ### Done\n\
-    - [x] [Completed tasks and changes]\n\
-    ### In progress\n\
-    - [ ] [Current work]\n\
-    ### Blocked\n\
-    - [What prevents progress, if anything]\n\n\
+    - [What was done, and what is in progress]\n\n\
     ## Key decisions\n\
-    - **[Decision]**: [Why]\n\n\
+    - [Decision and why]\n\n\
     ## Next steps\n\
     1. [What should happen next, in order]\n\n\
     ## Critical context\n\
-    - [Data, examples, commands or references needed to continue, or \"(none)\"]\n\n\
-    Keep each section short. Keep exact file paths, function names, commands and error \
-    messages.";
+    - [Facts needed to continue, or \"(none)\"]\n\n\
+    Keep each section short. Keep exact names, values and error messages.";

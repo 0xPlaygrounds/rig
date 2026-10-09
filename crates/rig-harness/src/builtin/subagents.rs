@@ -18,7 +18,7 @@
 //! ([`EffectParent`]), so the effect log nests a subagent's work under the
 //! request. Each child has its own log, whose header names its parent.
 //! Despawning an agent despawns its children; a finished child stays, so
-//! `/agents` can show it and the user can talk to it. The open requests
+//! a view can show it and the user can talk to it. The open requests
 //! are saved with the child; after a restart each one is answered as
 //! interrupted, and the child is not carried on.
 
@@ -30,19 +30,16 @@ use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use serde::{Deserialize, Serialize};
 
 use crate::core::agent::{
-    ActiveTurn, Agent, AgentId, EffectParent, Effort, Focus, ModelChoice, Notice, PickItem,
-    PickRequest, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome,
-    answer_text,
+    ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
+    SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOutcome, answer_text,
 };
-use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
 use crate::core::journal::AppSaveExt;
-use crate::core::models;
+use crate::core::models::{self, ModelConnector};
 use crate::core::restore::Restored;
 use crate::core::tools::{
     AppToolsExt, Footprint, OpenCall, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed,
 };
-use crate::core::usage::Spending;
 
 /// The tool that starts a subagent.
 pub const TASK: &str = "task";
@@ -101,8 +98,8 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
     their reports come back to you, and you answer once they have. Never invent, simulate \
     or paraphrase as fact another agent's reply.";
 
-/// Adds the `task` and `message` tools, the reports that answer their
-/// requests, and `/agents`.
+/// Adds the `task` and `message` tools and the reports that answer their
+/// requests.
 #[derive(Default)]
 pub struct SubagentsPlugin;
 
@@ -128,22 +125,11 @@ impl Plugin for SubagentsPlugin {
             },
             on_message,
         )
-        .add_command(
-            "agents",
-            "List the agents and subagents and show one; /agents <number or title> shows it",
-            agents,
-        )
         .save_component::<Subtask>()
         .save_component::<Requests>()
         .add_observer(name_subagent)
         .add_observer(report_on_turn_end)
         .add_observer(report_restored);
-        #[cfg(feature = "tui")]
-        {
-            use crate::tui::AppToolRenderersExt;
-            app.add_tool_renderer(TASK, render::task)
-                .add_tool_renderer(MESSAGE, render::message);
-        }
     }
 }
 
@@ -265,20 +251,31 @@ fn answer(call: &ToolCall, data: serde_json::Value, text: String) -> ToolResult 
 
 /// Checks a `task` call against its parent. `tools` are the parent's
 /// tools by name.
-fn settle(call: &ToolCall, parent: &Parent<'_>, tools: &[&str]) -> Result<Settled, String> {
+fn settle(
+    call: &ToolCall,
+    parent: &Parent<'_>,
+    tools: &[&str],
+    connector: &ModelConnector,
+) -> Result<Settled, String> {
     let args: TaskArgs = arguments(call)?;
     let task = args.description.trim().to_owned();
     let instructions = args.prompt.trim().to_owned();
     if task.is_empty() || instructions.is_empty() {
         return Err("`description` and `prompt` must not be empty".to_owned());
     }
-    let (model, effort) = models::child_model(parent.model, parent.effort, args.model.as_deref())?;
+    let (model, effort) = models::child_model(
+        connector,
+        parent.model,
+        parent.effort,
+        args.model.as_deref(),
+    )?;
     let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
     let effort = match args.effort.as_deref().map(str::trim) {
         Some(name) if !name.is_empty() => {
-            let spec = models::resolve(&model.0)
+            let spec = connector
+                .resolve(&model.0)
                 .ok_or_else(|| format!("The catalog has no model `{}`", model.0))?;
-            Effort(models::effort_named(spec, name)?)
+            Effort(models::effort_named(&spec, name)?)
         }
         _ => effort,
     };
@@ -332,6 +329,7 @@ fn on_task(
     )>,
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
+    connector: Res<ModelConnector>,
     mut commands: Commands,
 ) {
     let (call, caller) = (called.call, called.agent);
@@ -352,7 +350,7 @@ fn on_task(
                 .map(|def| def.0.name.as_str())
                 .filter(|name| access.allows(name))
                 .collect();
-            match settle(call_id, &parent, &mine) {
+            match settle(call_id, &parent, &mine, &connector) {
                 Err(why) => failed(
                     call_id,
                     format!("{why}. No subagent was started; fix the call and send it again."),
@@ -382,6 +380,7 @@ fn on_task(
                         text: settled.instructions,
                         origin: Origin::agent(id.clone(), Some(request.clone())),
                         mode: DeliveryMode::Queue,
+                        attachments: Vec::new(),
                     });
                     answer(
                         call_id,
@@ -487,6 +486,7 @@ fn on_message(
                         text: text.to_owned(),
                         origin: Origin::agent(id.clone(), Some(request.clone())),
                         mode: DeliveryMode::Queue,
+                        attachments: Vec::new(),
                     });
                     let (status, when) = if busy {
                         (
@@ -617,6 +617,7 @@ fn report_on_turn_end(
             text,
             origin: Origin::agent(id.clone(), Some(request)),
             mode: DeliveryMode::Queue,
+            attachments: Vec::new(),
         });
     }
 }
@@ -648,6 +649,7 @@ fn report_restored(
             ),
             origin: Origin::agent(id.clone(), Some(request.clone())),
             mode: DeliveryMode::Queue,
+            attachments: Vec::new(),
         });
     }
     commands.entity(agent).insert(Requests::default());
@@ -665,180 +667,4 @@ fn clipped_answer(message: &Message) -> Option<String> {
         "{}\n\n[The answer was cut at {MAX_ANSWER_BYTES} bytes.]",
         text.get(..cut).unwrap_or_default()
     ))
-}
-
-/// `/agents`: opens the agent picker, or shows the agent whose number or
-/// title is given.
-fn agents(
-    In(args): In<CommandArgs>,
-    agent_tree: RosterQuery,
-    mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let entries = roster(&agent_tree);
-    if args.args.is_empty() {
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: "Show an agent".to_owned(),
-            selected: entries
-                .iter()
-                .position(|entry| entry.agent == args.agent)
-                .unwrap_or(0),
-            items: entries
-                .iter()
-                .enumerate()
-                .map(|(index, entry)| PickItem {
-                    label: format!("{}. {}", index + 1, entry.label),
-                    command: format!("agents {}", index + 1),
-                })
-                .collect(),
-        });
-        return;
-    }
-    let wanted = args.args.to_lowercase();
-    let chosen = args
-        .args
-        .parse::<usize>()
-        .ok()
-        .and_then(|number| number.checked_sub(1))
-        .and_then(|index| entries.get(index))
-        .or_else(|| {
-            entries
-                .iter()
-                .find(|entry| entry.label.to_lowercase().contains(&wanted))
-        });
-    match chosen {
-        Some(entry) => commands.trigger(Focus {
-            entity: entry.agent,
-        }),
-        None => {
-            let listed: Vec<String> = entries
-                .iter()
-                .enumerate()
-                .map(|(index, entry)| format!("{}. {}", index + 1, entry.label))
-                .collect();
-            notices.write(Notice::error(
-                args.agent,
-                format!(
-                    "No agent matches `{}`. The agents:\n{}",
-                    args.args,
-                    listed.join("\n")
-                ),
-            ));
-        }
-    }
-}
-
-/// One agent in [`roster`]: a line describing it.
-#[derive(Clone, Debug)]
-struct RosterEntry {
-    agent: Entity,
-    /// Its title, model, state and cost, indented by depth.
-    label: String,
-}
-
-/// What [`roster`] reads of each agent.
-type RosterQuery<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static AgentId,
-        Option<&'static Name>,
-        Option<&'static SpawnedBy>,
-        Option<&'static Spawned>,
-        Option<&'static ModelChoice>,
-        Has<ActiveTurn>,
-        &'static Spending,
-    ),
-    With<Agent>,
->;
-
-/// Every agent as a tree: the agents nothing spawned, by id, each followed
-/// by the agents it spawned in the order it spawned them. A spawned agent
-/// is titled by its [`Name`].
-fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
-    let mut roots: Vec<(Entity, &AgentId)> = agents
-        .iter()
-        .filter(|(_, _, _, of, ..)| of.is_none_or(|of| !agents.contains(of.0)))
-        .map(|(entity, id, ..)| (entity, id))
-        .collect();
-    roots.sort_by(|a, b| a.1.0.cmp(&b.1.0));
-    let several = roots.len() > 1;
-    let total = agents.iter().count();
-    let mut stack: Vec<(Entity, usize)> = roots.iter().rev().map(|(root, _)| (*root, 0)).collect();
-    let mut entries = Vec::new();
-    while let Some((agent, depth)) = stack.pop() {
-        // A relationship loop cannot happen, but a bound costs nothing.
-        if entries.len() >= total {
-            break;
-        }
-        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
-            continue;
-        };
-        let title = match (name, of) {
-            (Some(name), Some(_)) => name.as_str().to_owned(),
-            _ if several => format!("agent {}", id.short()),
-            _ => "main agent".to_owned(),
-        };
-        let mut label = format!(
-            "{}{title} · {} · {}",
-            "  ".repeat(depth),
-            model.map_or("no model", |model| model.0.as_str()),
-            if busy { "working" } else { "idle" }
-        );
-        if let Some(cost) = spent.cost_label() {
-            label.push_str(&format!(" · {cost}"));
-        }
-        entries.push(RosterEntry { agent, label });
-        for child in spawned.into_iter().flat_map(|spawned| spawned.iter().rev()) {
-            stack.push((child, depth + 1));
-        }
-    }
-    entries
-}
-
-/// How `task` and `message` calls look in the terminal view.
-#[cfg(feature = "tui")]
-mod render {
-    use ratatui::style::{Style, Stylize};
-    use ratatui::text::Line;
-
-    use crate::tui::{RESULT_LINES, ToolCallView, excerpt};
-
-    /// The result's text, or what happens while there is none.
-    fn result(view: &ToolCallView<'_>, lines: &mut Vec<Line<'static>>) {
-        match view.result_text() {
-            Some(text) => {
-                let style = if view.failed() {
-                    Style::new().red()
-                } else {
-                    Style::new().dim()
-                };
-                lines.extend(excerpt(&text, RESULT_LINES, style));
-            }
-            None => lines.push(Line::from("  ⎿ sending…").dim()),
-        }
-    }
-
-    /// The subagent's title and model, then whether it started.
-    pub(super) fn task(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-        let title = view.argument("description").unwrap_or("task").to_owned();
-        let detail = view
-            .argument("model")
-            .map(|model| format!("on {model}"))
-            .unwrap_or_default();
-        let mut lines = vec![view.header(format!("task {title}"), detail)];
-        result(view, &mut lines);
-        lines
-    }
-
-    /// The subagent written to, then whether the request went out.
-    pub(super) fn message(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-        let agent = view.argument("agent").unwrap_or("?").to_owned();
-        let mut lines = vec![view.header(format!("message {agent}"), String::new())];
-        result(view, &mut lines);
-        lines
-    }
 }

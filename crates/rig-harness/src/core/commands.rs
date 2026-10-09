@@ -1,8 +1,7 @@
 //! The slash command registry. A command is a registered one-shot system
 //! whose own entity carries its [`SlashCommand`], so despawning that entity
 //! unregisters the command and its system together. Plugins add commands
-//! with [`AppCommandsExt::add_command`]. [`RunCommand`] runs one, and
-//! [`send_input`] sends what a view's user typed: a command or a message.
+//! with [`AppCommandsExt::add_command`]. [`RunCommand`] runs one.
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
@@ -11,7 +10,6 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 
 use super::agent::Notice;
-use super::inbox::{Deliver, DeliveryMode};
 
 /// What a command system receives: the agent the command was typed for and
 /// the text after the command name.
@@ -83,19 +81,6 @@ pub struct RunCommand {
     pub entity: Entity,
     /// The command line after the `/`.
     pub line: String,
-}
-
-/// Sends what the user typed to `agent`: a slash command when it starts
-/// with `/`, which runs now, otherwise the user's message, delivered as
-/// `mode` says.
-pub fn send_input(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
-    match text.trim_start().strip_prefix('/') {
-        Some(line) => commands.trigger(RunCommand {
-            entity: agent,
-            line: line.to_owned(),
-        }),
-        None => commands.trigger(Deliver::user(agent, text, mode)),
-    }
 }
 
 /// Runs the command a [`RunCommand`] names, or says it does not exist.

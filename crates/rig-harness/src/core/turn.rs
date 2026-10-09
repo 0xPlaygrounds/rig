@@ -42,7 +42,8 @@ use super::agent::{
 };
 use super::calls::{Done, Running, Wake};
 use super::compaction::{
-    self, CompactReason, Compacted, MAX_COMPACTIONS, Summarize, Summarizing, Summary,
+    self, CompactReason, Compacted, CompactionPolicy, MAX_COMPACTIONS, Summarize, Summarizing,
+    Summary,
 };
 use super::effects::Effects;
 use super::inbox::{Delivery, Inbox, deliver_queued, deliver_steering};
@@ -55,6 +56,9 @@ use super::tools::{
     recorded_args, run_tool_call,
 };
 use super::usage::{self, Spending, TurnSpending};
+
+/// The notice when the agent has no model to call.
+const NO_MODEL: &str = "No model is connected; pick one first.";
 
 /// The systems polling running calls, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -132,13 +136,13 @@ pub(crate) fn on_turn_despawn(
     end: On<Remove<TurnOf>>,
     turns: Query<(&TurnOf, &TurnRequest, Option<&Ending>)>,
     agents: Query<&AgentId>,
-    log: Res<SessionLog>,
+    exiting: Option<Res<Exiting>>,
     mut commands: Commands,
 ) {
     let Ok((&TurnOf(agent), request, ending)) = turns.get(end.entity) else {
         return;
     };
-    if log.is_exiting() {
+    if exiting.is_some() {
         return;
     }
     let outcome = ending.map_or(TurnOutcome::Stopped, |ending| ending.0.clone());
@@ -230,15 +234,19 @@ const EXIT_GRACE: Duration = Duration::from_secs(1);
 
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
+/// Inserted when the app exits: the turns it stops are left for the
+/// restart to carry on, so they end without a [`TurnEnded`] and are not
+/// logged as halted.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct Exiting;
+
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
 /// idle agents) leaves the running turns for the restart to carry on, as
 /// after a crash: every running call is cancelled, the tool results that
 /// came in are logged, and the restart answers the rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
+    world.insert_resource(Exiting);
     let log = world.get_resource::<SessionLog>().cloned();
-    if let Some(log) = &log {
-        log.set_exiting();
-    }
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
     take_running::<Summary>(world, &mut cancelling);
@@ -297,16 +305,17 @@ fn take_running<T: Send + Sync + 'static>(world: &mut World, cancelling: &mut Ca
 pub(crate) fn on_set_model(
     set: On<SetModel>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
+    connector: Res<ModelConnector>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(busy) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, "model", &mut notices) {
+    if refused_mid_turn(set.entity, busy, &mut notices) {
         return;
     }
-    match models::resolve(&set.model) {
+    match connector.resolve(&set.model) {
         Some(spec) => {
             commands
                 .entity(set.entity)
@@ -322,7 +331,7 @@ pub(crate) fn on_set_model(
     }
 }
 
-/// Connects an agent whose [`ModelChoice`] was inserted, by `/model` or by
+/// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`] or by
 /// restoring a session, so requests never re-resolve the provider. A
 /// reasoning setting the new model does not take is reset.
 pub(crate) fn on_model_chosen(
@@ -337,11 +346,12 @@ pub(crate) fn on_model_chosen(
     let Ok((choice, effort)) = agents.get(agent) else {
         return;
     };
-    let connection = models::resolve(&choice.0)
+    let connection = connector
+        .resolve(&choice.0)
         .ok_or_else(|| format!("the catalog has no model `{}`", choice.0))
         .and_then(|spec| {
             effects
-                .model_handler(spec, &connector)
+                .model_handler(&spec, &connector)
                 .map(|handler| Connection { spec, handler })
                 .map_err(|error| error.to_string())
         });
@@ -356,7 +366,7 @@ pub(crate) fn on_model_chosen(
             return;
         }
     };
-    let spec = connection.spec;
+    let spec = &*connection.spec;
     notices.write(Notice::info(
         agent,
         format!("Model: {} ({}).", spec.display_name, choice.0),
@@ -381,14 +391,14 @@ pub(crate) fn on_set_effort(
     let Ok((connection, busy)) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, "effort", &mut notices) {
+    if refused_mid_turn(set.entity, busy, &mut notices) {
         return;
     }
     let Some(connection) = connection else {
-        notices.write(Notice::info(set.entity, "Pick a model with /model first."));
+        notices.write(Notice::info(set.entity, NO_MODEL));
         return;
     };
-    match models::check_effort(connection.spec, set.effort.0) {
+    match models::check_effort(&connection.spec, set.effort.0) {
         Ok(()) => {
             commands.entity(set.entity).insert(set.effort);
             commands.trigger(SettingsChosen { entity: set.entity });
@@ -403,21 +413,13 @@ pub(crate) fn on_set_effort(
     }
 }
 
-/// Refuses a model or reasoning change while the agent's turn runs, with a
-/// notice naming `/command`: the rest of the turn would go to a model, or
-/// use a setting, it did not start with. Every sender of [`SetModel`] and
-/// [`SetEffort`] gets the same refusal.
-fn refused_mid_turn(
-    agent: Entity,
-    busy: bool,
-    command: &str,
-    notices: &mut MessageWriter<Notice>,
-) -> bool {
+/// Refuses a model or reasoning change, or a compaction, while the
+/// agent's turn runs: the rest of the turn would go to a model, or use a
+/// setting, it did not start with. Every sender of [`SetModel`],
+/// [`SetEffort`] and [`Compact`] gets the same refusal.
+fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
     if busy {
-        notices.write(Notice::info(
-            agent,
-            format!("A turn is running. Press Esc to stop it, then /{command}."),
-        ));
+        notices.write(Notice::info(agent, "A turn is running; stop it first."));
     }
     busy
 }
@@ -472,7 +474,7 @@ pub(crate) fn on_call_model(
             &mut conversation,
             compacted,
             &mut spent,
-            connection.spec,
+            &connection.spec,
             &mut notices,
         )
     {
@@ -486,7 +488,7 @@ pub(crate) fn on_call_model(
     let to = Delivery {
         agent,
         id,
-        spec: connection.map(|connection| connection.spec),
+        spec: connection.map(|connection| &*connection.spec),
         log: &log,
     };
     deliver_steering(
@@ -497,7 +499,7 @@ pub(crate) fn on_call_model(
         &mut notices,
     );
     let request = connection
-        .ok_or_else(|| "No model is connected. Pick one with /model.".to_owned())
+        .ok_or_else(|| NO_MODEL.to_owned())
         .and_then(|connection| {
             // Sorted by name, so the tools, and the prompt with their
             // rules, are the same on every call and stay cached.
@@ -511,7 +513,7 @@ pub(crate) fn on_call_model(
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
             let messages = compacted.request(conversation.messages());
             prepare(messages, connection, effort, &id.0, preamble, definitions)
-                .map(|request| (connection.handler.clone(), connection.spec, request))
+                .map(|request| (connection.handler.clone(), connection.spec.clone(), request))
         });
     let (handler, spec, request) = match request {
         Ok(request) => request,
@@ -719,7 +721,7 @@ pub(crate) fn on_model_done(
     else {
         return;
     };
-    let spec = connection.map(|connection| connection.spec);
+    let spec = connection.map(|connection| &*connection.spec);
     let response = match reply {
         Ok(response) => {
             // A reply the turn-failure rule rejects was still billed.
@@ -827,7 +829,7 @@ struct Failed<'a> {
     turn: Entity,
     report: &'a ErrorReport,
     /// The model that failed.
-    spec: Option<&'static ModelSpec>,
+    spec: Option<&'a ModelSpec>,
     log: &'a SessionLog,
 }
 
@@ -909,7 +911,7 @@ impl Failed<'_> {
                     agent,
                     format!(
                         "The model call failed: {report}. Not retrying: {why}. Your message is \
-                         kept; /retry sends it again."
+                         kept for a retry."
                     ),
                 ));
                 end_turn(commands, self.turn, TurnOutcome::Failed(report.to_string()));
@@ -1167,15 +1169,15 @@ pub(crate) fn on_compact(
     let Ok((conversation, compacted, connection, busy)) = agents.get(agent) else {
         return;
     };
-    if refused_mid_turn(agent, busy, "compact", &mut notices) {
+    if refused_mid_turn(agent, busy, &mut notices) {
         return;
     }
     let Some(connection) = connection else {
-        notices.write(Notice::info(agent, "Pick a model with /model first."));
+        notices.write(Notice::info(agent, NO_MODEL));
         return;
     };
     if compacted
-        .cut(conversation.messages(), connection.spec, true)
+        .cut(conversation.messages(), &connection.spec, true)
         .is_none()
     {
         notices.write(Notice::info(agent, "Nothing to compact yet."));
@@ -1205,6 +1207,7 @@ pub(crate) fn on_summarize(
         Option<&Connection>,
         Option<&EffectParent>,
     )>,
+    policy: Res<CompactionPolicy>,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -1222,13 +1225,14 @@ pub(crate) fn on_summarize(
         .ok_or_else(|| "no model is connected".to_owned())
         .and_then(|connection| {
             let upto = compacted
-                .cut(conversation.messages(), connection.spec, true)
+                .cut(conversation.messages(), &connection.spec, true)
                 .ok_or_else(|| "nothing to summarize yet".to_owned())?;
             compaction::plan(
+                &policy,
                 compacted,
                 conversation.messages(),
                 upto,
-                connection.spec,
+                &connection.spec,
                 reason.clone(),
             )
             .map(|(summarizing, request)| (connection.handler.clone(), summarizing, request))
@@ -1299,7 +1303,7 @@ pub(crate) fn on_summary_done(
         .and_then(|response| {
             spent.record_aside(&response.usage);
             turn_spent.0.record_aside(&response.usage);
-            let model = model_name(connection.map(|connection| connection.spec));
+            let model = model_name(connection.map(|connection| &*connection.spec));
             log.usage(id, &model, &response.usage, spent.context);
             Summarizer::summary_text(response).map_err(|why| why.to_string())
         });

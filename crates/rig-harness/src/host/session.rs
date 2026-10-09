@@ -2,14 +2,30 @@
 //! the text log, and panics routed to that log instead of the terminal.
 
 use std::fs::{self, OpenOptions};
+use std::ops::Deref;
 use std::sync::Mutex;
 
 use bevy_app::prelude::*;
+use bevy_ecs::prelude::*;
 use bevy_log::tracing_subscriber::fmt;
 use bevy_log::{BoxedFmtLayer, error};
-use rig::harness_protocol::{Home, SessionId};
+use rig::harness_protocol::{Home, SessionDir, SessionId};
 
-use crate::core::journal::SessionPaths;
+use crate::core::fs_journal::JsonlDirStore;
+use crate::core::store::SessionStore;
+
+/// The session's directory: the agent logs and the effect log the core
+/// keeps there through its [`SessionStore`], and the launcher's files.
+#[derive(Resource, Clone, Debug)]
+pub struct SessionPaths(pub SessionDir);
+
+impl Deref for SessionPaths {
+    type Target = SessionDir;
+
+    fn deref(&self) -> &SessionDir {
+        &self.0
+    }
+}
 
 /// The session the launcher names, or a new one when the agent runs
 /// without it, under the launcher's `RIG_HOME`, with its directory
@@ -25,8 +41,9 @@ pub(crate) fn paths_from_env() -> SessionPaths {
     SessionPaths(dir)
 }
 
-/// Inserts the [`SessionPaths`] from the environment and routes panics to
-/// the log.
+/// Inserts the [`SessionPaths`] from the environment, and the
+/// [`SessionStore`] keeping the session there, and routes panics to the
+/// log.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -34,7 +51,9 @@ impl Plugin for SessionPlugin {
         std::panic::set_hook(Box::new(|info| {
             error!("{info}\n{}", std::backtrace::Backtrace::capture());
         }));
-        app.insert_resource(paths_from_env());
+        let paths = paths_from_env();
+        app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())))
+            .insert_resource(paths);
     }
 }
 

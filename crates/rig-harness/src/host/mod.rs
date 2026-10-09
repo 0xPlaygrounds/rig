@@ -3,6 +3,7 @@
 //! the `rig` launcher protocol.
 //! The host depends on the core; the core never depends on the host.
 
+pub mod compaction;
 pub mod context;
 pub mod defaults;
 pub mod headless;

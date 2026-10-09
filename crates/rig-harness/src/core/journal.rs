@@ -1,6 +1,6 @@
 //! The session's append-only logs. Each agent, a subagent too, has one
-//! JSON-lines file in the session directory, [`SessionDir::agent_log`],
-//! created at its first message: a header, then one record per committed
+//! JSON-lines log in the session's [`SessionStore`], created at its first
+//! message: a header, then one record per committed
 //! message, settings change, usage update, compaction and saved plugin
 //! component. Records are queued as they happen and written at the end of
 //! the frame, a subagent's before its parent's, and at once before a tool
@@ -13,10 +13,7 @@
 //! any more is skipped on restore.
 
 use std::collections::{BTreeMap, HashMap};
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
+use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -25,8 +22,6 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
-use rig::harness_protocol::SessionDir;
-use rig_cassette::effect_log::jsonl;
 use rig_core::completion::{Message, Usage};
 use rig_core::message::{
     DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
@@ -43,7 +38,9 @@ use super::agent::{
 use super::compaction::Compacted;
 use super::effects::Effects;
 use super::inbox::Origin;
+use super::store::{JournalStore, SessionStore};
 use super::usage::Spending;
+use super::{StopTurns, WriteJournal};
 
 /// Registers plugin components that are part of the session.
 pub trait AppSaveExt {
@@ -64,8 +61,8 @@ impl AppSaveExt for App {
             Last,
             log_saved::<T>
                 .in_set(OnAppExitSystems)
-                .after(super::turn::stop_turns_on_exit)
-                .before(write_logs),
+                .after(StopTurns)
+                .before(WriteJournal),
         )
     }
 }
@@ -112,20 +109,6 @@ fn log_saved<T: Component + Serialize>(
     }
 }
 
-/// The session's directory, the only place the core writes: the agent logs
-/// and the effect log [`SessionDir::effects`]. Inserted before the agent
-/// plugins are built.
-#[derive(Resource, Clone, Debug)]
-pub struct SessionPaths(pub SessionDir);
-
-impl Deref for SessionPaths {
-    type Target = SessionDir;
-
-    fn deref(&self) -> &SessionDir {
-        &self.0
-    }
-}
-
 /// The version of the agent logs' layout, in each header.
 pub(crate) const LOG_VERSION: u32 = 1;
 
@@ -133,7 +116,7 @@ pub(crate) const LOG_VERSION: u32 = 1;
 /// newer version is skipped on restore.
 pub(crate) const COMPONENT_VERSION: u32 = 1;
 
-/// How an image stored in [`SessionDir::blobs`] is named in a logged
+/// How an image stored as a blob is named in a logged
 /// message, in place of its data: `blob:<sha256>.<ext>`.
 pub(crate) const BLOB: &str = "blob:";
 
@@ -285,7 +268,7 @@ pub(crate) struct Line {
 }
 
 /// Milliseconds since the Unix epoch.
-pub(crate) fn now_ms() -> u64 {
+pub fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
@@ -295,13 +278,11 @@ pub(crate) fn now_ms() -> u64 {
 /// One agent's log: where it goes, what is queued for it and the
 /// latest-wins state its next records and compactions build on.
 pub(crate) struct AgentLog {
-    pub(crate) path: PathBuf,
     /// 0 for an agent the user started, 1 for its subagents, and so on.
     pub(crate) depth: usize,
     pub(crate) next_seq: u64,
     /// Whether the log holds a message, so it is written.
     pub(crate) started: bool,
-    pub(crate) file: Option<File>,
     pub(crate) pending: Vec<u8>,
     /// The `seq` of the record that began each message of the conversation.
     pub(crate) message_seqs: Vec<u64>,
@@ -313,13 +294,11 @@ pub(crate) struct AgentLog {
 }
 
 impl AgentLog {
-    fn new(path: PathBuf, depth: usize) -> Self {
+    fn new(depth: usize) -> Self {
         Self {
-            path,
             depth,
             next_seq: 0,
             started: false,
-            file: None,
             pending: Vec::new(),
             message_seqs: Vec::new(),
             halted: false,
@@ -331,11 +310,9 @@ impl AgentLog {
 }
 
 struct Book {
-    dir: Option<SessionDir>,
+    store: Option<Arc<dyn JournalStore>>,
     /// Records are queued only once the session was restored.
     live: bool,
-    /// The app is exiting: a turn that ends now is left for the restart.
-    exiting: bool,
     /// Why the log stopped: every record after a failed write is dropped.
     failure: Option<String>,
     /// Whether the failure was reported.
@@ -349,9 +326,9 @@ impl Book {
         if !self.live || self.failure.is_some() {
             return None;
         }
-        let dir = self.dir.as_ref()?;
+        self.store.as_ref()?;
         if !self.agents.contains_key(agent) {
-            let mut log = AgentLog::new(dir.agent_log(agent), 0);
+            let mut log = AgentLog::new(0);
             let header = header(agent, None);
             if let Err(failure) = enqueue(&mut log, Record::Header(header)) {
                 self.failure = Some(failure.to_string());
@@ -401,17 +378,16 @@ fn enqueue(log: &mut AgentLog, record: Record) -> serde_json::Result<u64> {
 /// The session's agent logs: the open files, the records queued for them,
 /// and each agent's latest-wins state. Every method takes `&self`, so any
 /// system can log; nothing is logged before the session was restored, or
-/// without a [`SessionPaths`].
+/// without a [`SessionStore`].
 #[derive(Resource, Clone)]
 pub struct SessionLog(Arc<Mutex<Book>>);
 
 impl SessionLog {
-    /// The logs of the session in `dir`, idle until [`Self::resume`].
-    pub(crate) fn new(dir: Option<SessionDir>) -> Self {
+    /// The logs of the session kept in `store`, idle until [`Self::resume`].
+    pub(crate) fn new(store: Option<Arc<dyn JournalStore>>) -> Self {
         Self(Arc::new(Mutex::new(Book {
-            dir,
+            store,
             live: false,
-            exiting: false,
             failure: None,
             reported: false,
             agents: HashMap::new(),
@@ -429,20 +405,11 @@ impl SessionLog {
         book.live = true;
     }
 
-    /// Whether records are logged.
-    pub(crate) fn is_live(&self) -> bool {
+    /// Whether records are logged: the session was restored, and no write
+    /// failed.
+    pub fn is_live(&self) -> bool {
         let book = self.book();
         book.live && book.failure.is_none()
-    }
-
-    /// The app is exiting: the turns it stops are left for the restart.
-    pub(crate) fn set_exiting(&self) {
-        self.book().exiting = true;
-    }
-
-    /// Whether the app is exiting.
-    pub(crate) fn is_exiting(&self) -> bool {
-        self.book().exiting
     }
 
     /// Starts the log of `child`, which `parent` spawned, unless it has
@@ -452,11 +419,11 @@ impl SessionLog {
         if !book.live || book.failure.is_some() || book.agents.contains_key(&child.0) {
             return;
         }
-        let Some(dir) = book.dir.as_ref() else {
+        if book.store.is_none() {
             return;
-        };
+        }
         let depth = book.agents.get(&parent.0).map_or(0, |log| log.depth) + 1;
-        let mut log = AgentLog::new(dir.agent_log(&child.0), depth);
+        let mut log = AgentLog::new(depth);
         let header = header(&child.0, Some(parent.0.clone()));
         match enqueue(&mut log, Record::Header(header)) {
             Ok(_) => {
@@ -467,10 +434,11 @@ impl SessionLog {
     }
 
     /// Adds `message` to the conversation of `agent` and logs it, with its
-    /// images stored in [`SessionDir::blobs`]. `origin` says where it came
-    /// from, when not from the user, the model or a tool. The one way
-    /// messages are added.
-    pub(crate) fn commit(
+    /// images stored as blobs. `origin` says where it came from, when not
+    /// from the user, the model or a tool. The one way messages are added,
+    /// such as a note a plugin puts in an idle agent's conversation without
+    /// starting a turn.
+    pub fn commit(
         &self,
         agent: &AgentId,
         conversation: &mut Conversation,
@@ -501,8 +469,8 @@ impl SessionLog {
         if !book.live || book.failure.is_some() {
             return None;
         }
-        let blobs = book.dir.as_ref()?.blobs();
-        match stored(message, &blobs) {
+        let store = book.store.clone()?;
+        match stored(message, &*store) {
             Ok(message) => book.record(&agent.0, Record::Message { message, origin }),
             Err(failure) => {
                 book.failure = Some(format!("storing an image failed: {failure}"));
@@ -531,18 +499,17 @@ impl SessionLog {
 
     /// Logs that the turn of `agent` ended without answering the last
     /// message of `conversation`, when it is the user's, so a restore does
-    /// not send it to the model. Nothing while the app exits: then the
-    /// restart carries the turn on.
-    pub(crate) fn halt(&self, agent: &AgentId, conversation: &Conversation) {
+    /// not send it to the model. Not for a turn the app's exit stops (see
+    /// [`Exiting`](super::turn::Exiting)): the restart carries that one on.
+    pub fn halt(&self, agent: &AgentId, conversation: &Conversation) {
         if !matches!(conversation.messages().last(), Some(Message::User { .. })) {
             return;
         }
         let mut book = self.book();
-        if book.exiting
-            || book
-                .agents
-                .get(&agent.0)
-                .is_none_or(|log| log.halted || !log.started)
+        if book
+            .agents
+            .get(&agent.0)
+            .is_none_or(|log| log.halted || !log.started)
         {
             return;
         }
@@ -654,6 +621,9 @@ impl SessionLog {
         if book.failure.is_some() {
             return;
         }
+        let Some(store) = book.store.clone() else {
+            return;
+        };
         let mut due: Vec<(usize, String)> = book
             .agents
             .iter()
@@ -665,10 +635,11 @@ impl SessionLog {
             let Some(log) = book.agents.get_mut(&agent) else {
                 continue;
             };
-            if let Err(failure) = write_pending(log) {
-                book.failure = Some(format!("writing {} failed: {failure}", log.path.display()));
+            if let Err(failure) = store.append(&agent, &log.pending) {
+                book.failure = Some(format!("writing the log of {agent} failed: {failure}"));
                 return;
             }
+            log.pending.clear();
         }
     }
 
@@ -684,22 +655,9 @@ impl SessionLog {
     }
 }
 
-fn write_pending(log: &mut AgentLog) -> io::Result<()> {
-    let file = match log.file.take() {
-        Some(file) => file,
-        None => OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&log.path)?,
-    };
-    log.file.insert(file).write_all(&log.pending)?;
-    log.pending.clear();
-    Ok(())
-}
-
-/// `message` as it is logged: each image's data stored in `blobs` and
-/// named by its hash.
-fn stored(message: &Message, blobs: &Path) -> io::Result<Message> {
+/// `message` as it is logged: each image's data stored as a blob in
+/// `blobs` and named by its hash.
+fn stored(message: &Message, blobs: &dyn JournalStore) -> io::Result<Message> {
     let mut message = message.clone();
     if let Message::User { content } = &mut message {
         for item in content {
@@ -721,7 +679,7 @@ fn stored(message: &Message, blobs: &Path) -> io::Result<Message> {
 
 /// Stores the data of `image` in `blobs`, once per content, and names it
 /// there instead.
-fn store(image: &mut Image, blobs: &Path) -> io::Result<()> {
+fn store(image: &mut Image, blobs: &dyn JournalStore) -> io::Result<()> {
     let bytes = match &image.data {
         DocumentSourceKind::Base64(data) => {
             match base64::engine::general_purpose::STANDARD.decode(data) {
@@ -741,20 +699,14 @@ fn store(image: &mut Image, blobs: &Path) -> io::Result<()> {
             .as_ref()
             .map_or("bin", ImageMediaType::extension)
     );
-    let path = blobs.join(&name);
-    if !path.exists() {
-        fs::create_dir_all(blobs)?;
-        let temporary = path.with_extension("tmp");
-        fs::write(&temporary, &bytes)?;
-        fs::rename(&temporary, &path)?;
-    }
+    blobs.put_blob(&name, &bytes)?;
     image.data = DocumentSourceKind::Url(format!("{BLOB}{name}"));
     Ok(())
 }
 
 /// Puts the data of each image `message` names in `blobs` back in place;
 /// an image whose file is gone becomes a line saying so.
-pub(crate) fn load_blobs(message: &mut Message, blobs: &Path) {
+pub(crate) fn load_blobs(message: &mut Message, blobs: &dyn JournalStore) {
     let Message::User { content } = message else {
         return;
     };
@@ -779,14 +731,15 @@ pub(crate) fn load_blobs(message: &mut Message, blobs: &Path) {
     }
 }
 
-fn load(image: &mut Image, blobs: &Path) -> Result<(), String> {
+fn load(image: &mut Image, blobs: &dyn JournalStore) -> Result<(), String> {
     let DocumentSourceKind::Url(url) = &image.data else {
         return Ok(());
     };
     let Some(name) = url.strip_prefix(BLOB) else {
         return Ok(());
     };
-    let bytes = fs::read(blobs.join(name))
+    let bytes = blobs
+        .blob(name)
         .map_err(|failure| format!("[an image of this message is gone: {failure}]"))?;
     image.data =
         DocumentSourceKind::Base64(base64::engine::general_purpose::STANDARD.encode(bytes));
@@ -805,7 +758,8 @@ impl Plugin for JournalPlugin {
                 Last,
                 write_logs
                     .in_set(OnAppExitSystems)
-                    .after(super::turn::stop_turns_on_exit),
+                    .in_set(WriteJournal)
+                    .after(StopTurns),
             )
             .add_observer(log_settings)
             .add_observer(open_child_log);
@@ -850,8 +804,7 @@ fn log_settings(
 fn write_logs(
     log: Res<SessionLog>,
     effects: Res<Effects>,
-    paths: Option<Res<SessionPaths>>,
-    mut writer: Local<Option<jsonl::Writer>>,
+    store: Option<Res<SessionStore>>,
     mut effects_failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -863,10 +816,8 @@ fn write_logs(
             format!("The session is no longer saved: {failure}"),
         ));
     }
-    if let Some(paths) = paths
-        && let Err(failure) = writer
-            .get_or_insert_with(|| jsonl::Writer::new(paths.effects()))
-            .append(&effects.take())
+    if let Some(store) = store
+        && let Err(failure) = store.0.append_effects(&effects.take())
         && !*effects_failed
     {
         *effects_failed = true;

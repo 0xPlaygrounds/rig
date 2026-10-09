@@ -461,7 +461,7 @@ fn usage_line(spent: &Spending, connection: Option<&Connection>) -> Line<'static
     }
     parts.extend(spent.cost_label());
     let mut spans = vec![Span::from(parts.join(" ")).dim()];
-    if let Some(context) = spent.context_use(connection.map(|connection| connection.spec)) {
+    if let Some(context) = spent.context_use(connection.map(|connection| &*connection.spec)) {
         let style = match context.percent() {
             Some(90..) => Style::new().red(),
             Some(70..) => Style::new().yellow(),

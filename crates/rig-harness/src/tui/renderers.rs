@@ -13,6 +13,7 @@ use rig_core::message::{ToolCall, ToolResult};
 use rig_tools::shorten;
 
 use super::diff;
+use crate::builtin::subagents::{MESSAGE, TASK};
 
 /// Characters of a call's arguments shown on its header line.
 const ARGUMENT_CHARS: usize = 160;
@@ -177,13 +178,16 @@ impl AppToolRenderersExt for App {
 
 /// The looks of the built-in tools: `read` and `search` summarize what
 /// they found, `edit` shows its change as a diff, `write` the start of the
-/// new file, and `shell` the command and the end of its output.
+/// new file, `shell` the command and the end of its output, and the
+/// subagents' `task` and `message` whom they went to.
 pub(crate) fn add_builtin_renderers(app: &mut App) {
     app.add_tool_renderer("read", read)
         .add_tool_renderer("edit", edit)
         .add_tool_renderer("write", write)
         .add_tool_renderer("shell", shell)
-        .add_tool_renderer("search", search);
+        .add_tool_renderer("search", search)
+        .add_tool_renderer(TASK, task)
+        .add_tool_renderer(MESSAGE, message);
 }
 
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
@@ -324,5 +328,40 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     }
     let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
     lines.extend(view.result_lines(RESULT_LINES));
+    lines
+}
+
+/// A subagent request's result, or that it is still being sent.
+fn sent(view: &ToolCallView<'_>, lines: &mut Vec<Line<'static>>) {
+    match view.result_text() {
+        Some(text) => {
+            let style = if view.failed() {
+                Style::new().red()
+            } else {
+                Style::new().dim()
+            };
+            lines.extend(excerpt(&text, RESULT_LINES, style));
+        }
+        None => lines.push(Line::from("  ⎿ sending…").dim()),
+    }
+}
+
+/// The subagent's title and model, then whether it started.
+fn task(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let title = view.argument("description").unwrap_or("task").to_owned();
+    let detail = view
+        .argument("model")
+        .map(|model| format!("on {model}"))
+        .unwrap_or_default();
+    let mut lines = vec![view.header(format!("task {title}"), detail)];
+    sent(view, &mut lines);
+    lines
+}
+
+/// The subagent written to, then whether the request went out.
+fn message(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let agent = view.argument("agent").unwrap_or("?").to_owned();
+    let mut lines = vec![view.header(format!("message {agent}"), String::new())];
+    sent(view, &mut lines);
     lines
 }

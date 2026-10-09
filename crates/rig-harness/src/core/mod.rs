@@ -1,21 +1,24 @@
 //! The agent core: agents as entities and the agents they spawn, the turn loop, the one
 //! effect dispatch path, the tool and command registries, models, and the
 //! session logs. It
-//! depends on neither the host nor any view: the host fills in what the core
-//! needs, such as [`journal::SessionPaths`].
+//! depends on neither the host nor any view, nor on the file system: the
+//! app fills in what the core needs, such as the [`store::SessionStore`]
+//! the session is kept in and the [`models::ModelConnector`].
 
 pub mod agent;
-pub mod attach;
 pub mod calls;
 pub mod commands;
 pub mod compaction;
 pub mod effects;
+#[cfg(feature = "fs-journal")]
+pub mod fs_journal;
 pub mod inbox;
 pub mod journal;
 pub mod models;
 pub mod prompt;
 pub mod recovery;
 pub mod restore;
+pub mod store;
 pub mod tools;
 pub mod turn;
 pub mod usage;
@@ -24,32 +27,45 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{info, warn};
 
-use agent::{Agent, AgentId, Notice, NoticeLevel, PickRequest};
+use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls};
-use compaction::Summary;
+use compaction::{CompactionPolicy, Summary};
 use effects::Effects;
-use journal::{SessionLog, SessionPaths};
+use journal::SessionLog;
 use recovery::RetryDue;
 use rig_core::message::ToolResult;
+use store::SessionStore;
 use turn::{ModelReply, PollCalls};
+
+/// The system in `Last`, on exit, that stops the running turns and leaves
+/// them for the restart (see [`turn::Exiting`]). A system that logs what
+/// the turns left runs after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct StopTurns;
+
+/// The system in `Last` that writes the frame's journal records and
+/// effects to the [`SessionStore`]. A system that logs for the frame runs
+/// before it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WriteJournal;
 
 /// Agents, their turn loop, effects, and the tool and command registries.
 /// Spawns one agent at startup when the restored session has none. Its
-/// [`SessionLog`] logs nothing until [`journal::JournalPlugin`] restored
+/// [`SessionLog`] logs to the [`SessionStore`] inserted before it is
+/// built, if any, and nothing until [`journal::JournalPlugin`] restored
 /// the session. It sets no error handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
-        let paths = app.world().get_resource::<SessionPaths>().cloned();
-        let effects_log = paths.as_ref().map(|paths| paths.effects());
-        let effects = Effects::continuing(effects_log.as_deref());
+        let store = app.world().get_resource::<SessionStore>().cloned();
+        let effects = Effects::continuing(store.as_ref().map(|store| &*store.0));
         app.insert_resource(effects)
-            .insert_resource(SessionLog::new(paths.map(|paths| paths.0)))
+            .insert_resource(SessionLog::new(store.map(|store| store.0)))
             .init_resource::<Wake>()
             .init_resource::<models::ModelConnector>()
+            .init_resource::<CompactionPolicy>()
             .add_message::<Notice>()
-            .add_message::<PickRequest>()
             .add_message::<inbox::Recalled>()
             .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
@@ -69,6 +85,7 @@ impl Plugin for AgentPlugin {
                     log_agents,
                     turn::stop_turns_on_exit
                         .in_set(bevy_app::OnAppExitSystems)
+                        .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
                 ),
             )

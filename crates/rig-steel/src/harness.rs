@@ -22,7 +22,7 @@ use rig_harness::core::agent::{
 };
 use rig_harness::core::calls::Wake;
 use rig_harness::core::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use rig_harness::core::models;
+use rig_harness::core::models::{self, ModelConnector};
 use rig_harness::core::tools::ToolOutput;
 use rig_harness::core::turn::{PollCalls, ToolStarter, tool_name};
 
@@ -36,6 +36,7 @@ impl Plugin for HarnessPlugin {
             .add_systems(PreStartup, insert_harness)
             .add_systems(Update, run_jobs.before(PollCalls))
             .add_observer(end_replies)
+            .add_observer(drop_replies)
             .add_observer(answer_call);
     }
 }
@@ -151,7 +152,9 @@ impl Harness {
 
     /// How the turn that answered `request` ended: the first turn of its
     /// agent to end once the request was sent, which reads it before it
-    /// ends. Resolves at once when that turn already ended.
+    /// ends. Resolves at once when that turn already ended. The outcome is
+    /// kept for one `reply`; another for the same request is
+    /// [`HarnessError::UnknownRequest`].
     pub async fn reply(&self, request: RequestId) -> Result<TurnOutcome, HarnessError> {
         self.ask(move |world, answer: Answer<TurnOutcome>| {
             await_reply(world, request, answer);
@@ -258,9 +261,14 @@ fn spawn_agent(
         )
     });
     let (parent_model, parent_effort, parent_prompt, parent_access) = inherited.unwrap_or_default();
-    let (model, effort) =
-        models::child_model(parent_model.as_ref(), parent_effort, spec.model.as_deref())
-            .map_err(HarnessError::Invalid)?;
+    let connector = world.get_resource_or_init::<ModelConnector>().clone();
+    let (model, effort) = models::child_model(
+        &connector,
+        parent_model.as_ref(),
+        parent_effort,
+        spec.model.as_deref(),
+    )
+    .map_err(HarnessError::Invalid)?;
     let prompt = spec
         .system_prompt
         .map(SystemPrompt)
@@ -288,7 +296,8 @@ fn spawn_agent(
     Ok(id)
 }
 
-/// The [`Harness::reply`] of each request, by id.
+/// The [`Harness::reply`] of each request, by id, until the reply is read
+/// or its agent is gone.
 #[derive(Resource, Default)]
 struct Replies(HashMap<RequestId, Reply>);
 
@@ -338,6 +347,7 @@ fn send(
             ..origin
         },
         mode: DeliveryMode::Queue,
+        attachments: Vec::new(),
     });
     Ok(request)
 }
@@ -351,10 +361,17 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
                 .ok();
         }
         Some(Reply {
-            state: ReplyState::Ended(outcome),
+            state: ReplyState::Ended(_),
             ..
         }) => {
-            answer.send(Ok(outcome.clone())).ok();
+            // Read once: the outcome is not kept after its reply.
+            if let Some(Reply {
+                state: ReplyState::Ended(outcome),
+                ..
+            }) = replies.0.remove(&request)
+            {
+                answer.send(Ok(outcome)).ok();
+            }
         }
         Some(Reply {
             state: ReplyState::Waiting(waiting),
@@ -381,6 +398,12 @@ fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
             reply.state = ReplyState::Ended(end.outcome.clone());
         }
     }
+}
+
+/// Drops the replies of a despawned agent: whoever waits for one gets
+/// [`HarnessError::Closed`].
+fn drop_replies(gone: On<Remove<Agent>>, mut replies: ResMut<Replies>) {
+    replies.0.retain(|_, reply| reply.agent != gone.entity);
 }
 
 /// On a tool call made through a [`Harness`]: where its result goes.

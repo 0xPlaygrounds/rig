@@ -5,7 +5,7 @@
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
-//! ([`note_build_failure`]): the model reads why, and where the whole
+//! (`note_build_failure`): the model reads why, and where the whole
 //! output and the files the build is made from are.
 
 use std::ffi::OsString;
@@ -18,9 +18,10 @@ use rig::harness_protocol::{Home, env};
 
 use rig_core::completion::Message;
 
+use super::session::SessionPaths;
 use crate::core::agent::{ActiveTurn, AgentId, Conversation, Notice, PrimaryQuery, primary};
 use crate::core::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
-use crate::core::journal::{SessionLog, SessionPaths};
+use crate::core::journal::SessionLog;
 
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
@@ -91,6 +92,7 @@ pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: S
                 text: note,
                 origin: build_origin(),
                 mode: DeliveryMode::Steer,
+                attachments: Vec::new(),
             });
             return;
         }

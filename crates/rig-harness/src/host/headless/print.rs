@@ -18,9 +18,9 @@ use crate::core::agent::{
     ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
     SetModel, answer_text, primary,
 };
-use crate::core::commands::send_input;
 use crate::core::inbox::DeliveryMode;
 use crate::core::models::ModelConnector;
+use crate::view::send_input;
 
 /// Frames to wait for a model to connect before giving up.
 const CONNECT_FRAMES: u32 = 3;

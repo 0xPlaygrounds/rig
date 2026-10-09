@@ -82,8 +82,13 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         }
         "@core-imports" => {
             // rig-harness's agent core must build without its host and its
-            // views: no path under `core/` names them, or the TUI's crates.
-            const FORBIDDEN: [&str; 4] = ["host", "tui", "ratatui", "crossterm"];
+            // views: no path under `core/` names them, or the TUI's crates,
+            // the launcher protocol, the `rig` facade or the file system.
+            // Only the `fs-journal` store touches files.
+            const FORBIDDEN: [&str; 5] =
+                ["host", "tui", "ratatui", "crossterm", "harness_protocol"];
+            const FORBIDDEN_PATHS: [&str; 2] = ["rig::", "std::fs"];
+            const FS_STORE: &str = "crates/rig-harness/src/core/fs_journal.rs";
             for path in tracked_inputs(root)?
                 .into_iter()
                 .chain(untracked_inputs(root)?)
@@ -97,10 +102,15 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                     let named = code
                         .split(|c: char| !(c.is_alphanumeric() || c == '_'))
                         .find(|word| FORBIDDEN.contains(word));
-                    if let Some(word) = named {
+                    let pathed = FORBIDDEN_PATHS
+                        .into_iter()
+                        .filter(|forbidden| *forbidden != "std::fs" || path != FS_STORE)
+                        .find(|forbidden| names_path(code, forbidden));
+                    if let Some(word) = named.or(pathed) {
                         return Err(invalid(format!(
                             "{path}:{}: the agent core names `{word}`; core/ must not \
-                             depend on host/ or tui/",
+                             depend on host/, tui/, the launcher protocol, the `rig` facade \
+                             or the file system",
                             number + 1
                         )));
                     }
@@ -207,4 +217,15 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
         start.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// Whether `code` names the path `prefix` (such as `rig::`) as a whole
+/// path, not the end of a longer name such as `my_rig::`.
+fn names_path(code: &str, prefix: &str) -> bool {
+    code.match_indices(prefix).any(|(at, _)| {
+        !code
+            .get(..at)
+            .and_then(|before| before.chars().next_back())
+            .is_some_and(|c| c.is_alphanumeric() || c == '_')
+    })
 }

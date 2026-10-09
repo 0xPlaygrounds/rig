@@ -24,13 +24,15 @@ use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 use super::launcher;
+use super::session::SessionPaths;
+use crate::core::StopTurns;
 use crate::core::agent::{
-    Agent, AgentId, Conversation, Notice, PickItem, PickRequest, SpawnedBy, TurnEnded, TurnOf,
-    primary_order,
+    Agent, AgentId, Conversation, Notice, SpawnedBy, TurnEnded, TurnOf, primary_order,
 };
 use crate::core::commands::{AppCommandsExt, CommandArgs};
-use crate::core::journal::{SessionPaths, now_ms};
+use crate::core::journal::now_ms;
 use crate::core::usage::{self, Spending};
+use crate::view::{PickItem, PickRequest};
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
@@ -61,14 +63,11 @@ impl Plugin for SessionsPlugin {
             .add_systems(PreStartup, restore_name)
             .add_systems(
                 Last,
-                write_meta
-                    .in_set(OnAppExitSystems)
-                    .after(crate::core::turn::stop_turns_on_exit)
-                    .run_if(
-                        resource_changed::<TurnEndedMark>
-                            .or_eager(on_message::<AppExit>)
-                            .or_eager(resource_changed::<SessionName>),
-                    ),
+                write_meta.in_set(OnAppExitSystems).after(StopTurns).run_if(
+                    resource_changed::<TurnEndedMark>
+                        .or_eager(on_message::<AppExit>)
+                        .or_eager(resource_changed::<SessionName>),
+                ),
             );
     }
 }

@@ -20,8 +20,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::error::Error;
-use std::fs::{self, OpenOptions};
-use std::path::{Path, PathBuf};
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
@@ -39,8 +37,9 @@ use super::agent::{
 use super::compaction::Compacted;
 use super::journal::{
     AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
-    SessionPaths, Settings, UsageRecord, load_blobs,
+    Settings, UsageRecord, load_blobs,
 };
+use super::store::{JournalStore, SessionStore};
 use super::tools::failed;
 use super::turn::{CallModel, ToolStarter, tool_name};
 
@@ -59,7 +58,6 @@ struct Envelope {
 
 /// An agent log folded into the agent's state.
 struct Folded {
-    path: PathBuf,
     header: Header,
     conversation: Conversation,
     message_seqs: Vec<u64>,
@@ -105,21 +103,23 @@ pub struct Restored {
 /// agent to the agent that spawned it, and starts logging. Anything
 /// that does not load is skipped with a notice.
 pub(crate) fn restore_session(world: &mut World) {
-    let (Some(log), Some(paths)) = (
+    let (Some(log), Some(SessionStore(store))) = (
         world.get_resource::<SessionLog>().cloned(),
-        world.get_resource::<SessionPaths>().cloned(),
+        world.get_resource::<SessionStore>().cloned(),
     ) else {
         return;
     };
-    let blobs = paths.blobs();
     let mut notices: Vec<String> = Vec::new();
     let mut folded: Vec<Folded> = Vec::new();
-    for path in paths.agent_logs() {
-        match read_log(&path, &blobs) {
+    let agents = store.agents().unwrap_or_else(|failure| {
+        notices.push(format!("Could not list the agent logs: {failure}."));
+        Vec::new()
+    });
+    for agent in agents {
+        match read_log(&*store, &agent) {
             Ok(agent) => folded.push(agent),
             Err(failure) => notices.push(format!(
-                "Could not restore the agent log {}: {failure}.",
-                path.display()
+                "Could not restore the log of agent {agent}: {failure}."
             )),
         }
     }
@@ -135,7 +135,6 @@ pub(crate) fn restore_session(world: &mut World) {
     let mut logs = Vec::new();
     for agent in folded {
         let Folded {
-            path,
             header,
             conversation,
             message_seqs,
@@ -189,11 +188,9 @@ pub(crate) fn restore_session(world: &mut World) {
         logs.push((
             id.0,
             AgentLog {
-                path,
                 depth,
                 next_seq,
                 started: true,
-                file: None,
                 pending: Vec::new(),
                 message_seqs,
                 halted,
@@ -242,10 +239,10 @@ fn depth(agent: &str, parents: &HashMap<String, Option<String>>) -> usize {
     depth
 }
 
-/// Reads and folds the agent log at `path`, cutting off a torn last line
-/// on disk first. Images come back from `blobs`.
-fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
-    let bytes = fs::read(path)?;
+/// Reads and folds the log of `agent` in `store`, cutting off a torn last
+/// line there first. Images come back from the store's blobs.
+fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
+    let bytes = store.read(agent)?;
     let complete = bytes
         .iter()
         .rposition(|byte| *byte == b'\n')
@@ -266,10 +263,7 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
         lines.pop();
     }
     if keep < bytes.len() {
-        OpenOptions::new()
-            .write(true)
-            .open(path)?
-            .set_len(u64::try_from(keep)?)?;
+        store.truncate(agent, u64::try_from(keep)?)?;
     }
     lines.retain(|line| !line.is_empty());
     let header = match lines
@@ -287,7 +281,6 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
         .map(|line| serde_json::from_slice(line).ok())
         .collect();
     let mut folded = Folded {
-        path: path.to_owned(),
         header,
         conversation: Conversation::default(),
         message_seqs: Vec::new(),
@@ -348,7 +341,7 @@ fn read_log(path: &Path, blobs: &Path) -> Result<Folded, Box<dyn Error>> {
                 mut message,
                 origin,
             } => {
-                load_blobs(&mut message, blobs);
+                load_blobs(&mut message, store);
                 if !folded.conversation.append(message, origin) {
                     folded.message_seqs.push(line.seq);
                 }

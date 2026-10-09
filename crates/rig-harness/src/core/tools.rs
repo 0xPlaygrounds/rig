@@ -70,8 +70,8 @@ impl From<ToolResult> for ToolOutput {
 /// observer [`AppToolsExt::add_open_tool`] registered handles it. The call
 /// entity holds the [`ToolCallRun`](super::agent::ToolCallRun) and is a
 /// [`CallOf`](super::agent::CallOf) the turn of `agent`; it stays open
-/// until a [`ToolOutput`] is inserted on it, and despawning it, as Esc
-/// does, cancels it.
+/// until a [`ToolOutput`] is inserted on it, and despawning it, as an
+/// [`Interrupt`](super::agent::Interrupt) does, cancels it.
 #[derive(EntityEvent, Clone, Copy, Debug)]
 pub struct ToolCalled {
     /// The tool.

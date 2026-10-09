@@ -22,7 +22,7 @@ use super::view::TuiView;
 use crate::core::calls::Wake;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
 
-use crate::core::journal::SessionPaths;
+use crate::host::session::SessionPaths;
 
 /// The terminal, drawn to through a private copy of stdout. Dropping it
 /// restores the terminal, keeping the alternate screen for a reload so the

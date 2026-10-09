@@ -11,7 +11,9 @@
 //!
 //! Each message carries its [`Origin`], kept with the conversation and its
 //! log. Text that is not the user's own goes to the model as a user
-//! message headed by a line naming where it came from.
+//! message headed by a line naming where it came from. A message may carry
+//! [`Attachment`]s its sender read, such as images, which go before its
+//! text when the agent's model reads them.
 
 use std::collections::VecDeque;
 
@@ -19,14 +21,14 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
+use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, Connection, Conversation, Notice, TurnOf, TurnRequest,
 };
-use super::attach;
 use super::journal::SessionLog;
-use super::turn::CallModel;
+use super::turn::{CallModel, Exiting};
 
 /// The id of a request to an agent, which the reply to it names, such as
 /// the tool call that asked. Unique per sender, so it doubles as an
@@ -119,9 +121,19 @@ pub enum DeliveryMode {
     Queue,
 }
 
-/// Put `text` in the agent's conversation, from `origin`, as `mode` says.
-/// An image the user names as `@path` goes with the user's own text when
-/// the model reads images. Empty text is ignored.
+/// Content read by a message's sender that goes before its text, such as
+/// an image file the user named. An image goes only to a model that reads
+/// images; another model gets the text alone, and the user is told.
+#[derive(Clone, Debug)]
+pub struct Attachment {
+    /// How the user knows it, such as its path.
+    pub label: String,
+    /// The content.
+    pub content: UserContent,
+}
+
+/// Put `text` in the agent's conversation, from `origin`, as `mode` says,
+/// after its `attachments`. Empty text is ignored.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Deliver {
@@ -133,16 +145,25 @@ pub struct Deliver {
     pub origin: Origin,
     /// When it goes to a busy agent's model.
     pub mode: DeliveryMode,
+    /// What goes before the text.
+    #[reflect(ignore)]
+    pub attachments: Vec<Attachment>,
 }
 
 impl Deliver {
-    /// The user's `text` for `agent`.
-    pub fn user(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
+    /// The user's `text` for `agent`, with what it attaches.
+    pub fn user(
+        agent: Entity,
+        text: impl Into<String>,
+        mode: DeliveryMode,
+        attachments: Vec<Attachment>,
+    ) -> Self {
         Self {
             entity: agent,
             text: text.into(),
             origin: Origin::user(),
             mode,
+            attachments,
         }
     }
 }
@@ -154,6 +175,8 @@ pub struct Pending {
     pub text: String,
     /// Where it came from.
     pub origin: Origin,
+    /// What goes before the text.
+    pub attachments: Vec<Attachment>,
 }
 
 /// What was sent to the agent while it worked, not yet delivered.
@@ -189,7 +212,7 @@ pub(crate) struct Delivery<'a> {
     /// Its id, which names its log.
     pub(crate) id: &'a AgentId,
     /// Its model, which decides whether images go with the message.
-    pub(crate) spec: Option<&'static ModelSpec>,
+    pub(crate) spec: Option<&'a ModelSpec>,
     /// The log every message goes through.
     pub(crate) log: &'a SessionLog,
 }
@@ -223,6 +246,7 @@ pub(crate) fn on_deliver(
     let pending = Pending {
         text: text.to_owned(),
         origin: deliver.origin.clone(),
+        attachments: deliver.attachments.clone(),
     };
     if busy {
         match deliver.mode {
@@ -234,7 +258,7 @@ pub(crate) fn on_deliver(
     let to = Delivery {
         agent,
         id,
-        spec: connection.map(|connection| connection.spec),
+        spec: connection.map(|connection| &*connection.spec),
         log: &log,
     };
     let mut request = None;
@@ -249,11 +273,13 @@ pub(crate) fn on_deliver(
 /// Hands back what the user typed that a turn that just ended did not
 /// send, and puts what agents and plugins sent in the conversation, where
 /// the next turn reads it. A conversation left ending in the user's
-/// message is logged as halted, so a restore does not answer it.
+/// message is logged as halted, so a restore does not answer it, unless
+/// the app is [`Exiting`].
 pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
     mut agents: Query<(&AgentId, &mut Inbox, &mut Conversation, Option<&Connection>)>,
     log: Res<SessionLog>,
+    exiting: Option<Res<Exiting>>,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -264,7 +290,7 @@ pub(crate) fn recall_on_turn_end(
     let to = Delivery {
         agent,
         id,
-        spec: connection.map(|connection| connection.spec),
+        spec: connection.map(|connection| &*connection.spec),
         log: &log,
     };
     let mut typed = Vec::new();
@@ -281,7 +307,9 @@ pub(crate) fn recall_on_turn_end(
             commit(&to, pending, &mut conversation, &mut None, &mut notices);
         }
     }
-    log.halt(id, &conversation);
+    if exiting.is_none() {
+        log.halt(id, &conversation);
+    }
     if !typed.is_empty() {
         recalled.write(Recalled {
             agent,
@@ -326,10 +354,10 @@ pub(crate) fn deliver_queued(
     true
 }
 
-/// Commits `pending` as a user message with its origin: the user's own
-/// text with the images it names, any other headed by its origin's line.
-/// It goes into the last message when that is the user's. Its request, if
-/// any, replaces `request`.
+/// Commits `pending` as a user message with its origin: its attachments
+/// the model takes, then its text, headed by its origin's line when it is
+/// not the user's own. It goes into the last message when that is the
+/// user's. Its request, if any, replaces `request`.
 fn commit(
     to: &Delivery<'_>,
     pending: Pending,
@@ -337,19 +365,42 @@ fn commit(
     request: &mut Option<RequestId>,
     notices: &mut MessageWriter<Notice>,
 ) {
-    let Pending { text, origin } = pending;
+    let Pending {
+        text,
+        origin,
+        attachments,
+    } = pending;
     if let Some(carried) = &origin.request {
         *request = Some(carried.clone());
     }
-    let (message, origin) = match origin.header() {
-        None => {
-            let (message, notes) = attach::user_message(&text, to.spec);
-            for note in notes {
+    let mut content = Vec::with_capacity(attachments.len() + 1);
+    for Attachment {
+        label,
+        content: item,
+    } in attachments
+    {
+        let refused = match (&item, to.spec) {
+            (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
+                "{} does not read images, so {label} is sent as its name only.",
+                spec.display_name
+            )),
+            (UserContent::Image(_), None) => Some(format!(
+                "No model is connected, so {label} is sent as its name only."
+            )),
+            _ => None,
+        };
+        match refused {
+            Some(note) => {
                 notices.write(Notice::info(to.agent, note));
             }
-            (message, None)
+            None => content.push(item),
         }
-        Some(header) => (Message::user(format!("{header}\n{text}")), Some(origin)),
+    }
+    let (text, origin) = match origin.header() {
+        None => (text, None),
+        Some(header) => (format!("{header}\n{text}"), Some(origin)),
     };
-    to.log.commit(to.id, conversation, message, origin);
+    content.push(UserContent::text(text));
+    to.log
+        .commit(to.id, conversation, Message::User { content }, origin);
 }

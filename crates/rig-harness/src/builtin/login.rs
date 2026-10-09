@@ -32,7 +32,7 @@ use crate::core::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, 
 use crate::core::calls::{Done, Running, Wake, poll_calls};
 use crate::core::commands::{AppCommandsExt, CommandArgs};
 use crate::core::effects::Effects;
-use crate::core::models::{self, ModelConnector, SignIns};
+use crate::core::models::{ModelConnector, SignIns};
 use crate::core::turn::PollCalls;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
@@ -53,24 +53,26 @@ pub struct LoginPlugin;
 
 impl Plugin for LoginPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(ModelConnector::new(ChatGptSignIn))
-            .add_command(
-                "login",
-                "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows \
+        app.world_mut()
+            .get_resource_or_init::<ModelConnector>()
+            .set_sign_ins(ChatGptSignIn);
+        app.add_command(
+            "login",
+            "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows \
                  a code to enter instead); /login again or Esc cancels",
-                on_login,
+            on_login,
+        )
+        .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
+        .add_systems(
+            Update,
+            (
+                poll_calls::<SignedInResult, Done<SignedInResult>>,
+                show_login_prompts,
             )
-            .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
-            .add_systems(
-                Update,
-                (
-                    poll_calls::<SignedInResult, Done<SignedInResult>>,
-                    show_login_prompts,
-                )
-                    .in_set(PollCalls),
-            )
-            .add_observer(on_signed_in)
-            .add_observer(cancel_on_interrupt);
+                .in_set(PollCalls),
+        )
+        .add_observer(on_signed_in)
+        .add_observer(cancel_on_interrupt);
     }
 }
 
@@ -106,7 +108,7 @@ impl SignIns for ChatGptSignIn {
         of_plan(spec) && auth_file().is_file()
     }
 
-    fn handler(&self, spec: &'static ModelSpec) -> Result<ErasedHandler, ConnectError> {
+    fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
         SignedInModel::new(spec.clone(), session().clone(), rig_reqwest::shared())
             .map(ErasedHandler::new)
     }
@@ -250,6 +252,7 @@ fn on_signed_in(
     done: On<Add<Done<SignedInResult>>>,
     logins: Query<(&PendingLogin, &Done<SignedInResult>)>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
+    connector: Res<ModelConnector>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -267,7 +270,11 @@ fn on_signed_in(
                 ),
             ));
             for (agent, choice) in &unconnected {
-                if agent != login.agent && models::resolve(&choice.0).is_some_and(of_plan) {
+                if agent != login.agent
+                    && connector
+                        .resolve(&choice.0)
+                        .is_some_and(|spec| of_plan(&spec))
+                {
                     commands.entity(agent).insert(choice.clone());
                 }
             }

@@ -108,7 +108,8 @@ pub(super) fn all() -> Vec<Check> {
                 ]),
                 // rig-harness, its rig-tools and its rig-steel plugin crate
                 // are not default members, and the agent core must also
-                // build without the terminal view.
+                // build without the terminal view (the app's session store,
+                // `fs-journal`, stays).
                 cargo(&[
                     "clippy",
                     "--locked",
@@ -129,6 +130,8 @@ pub(super) fn all() -> Vec<Check> {
                     "-p",
                     "rig-harness",
                     "--no-default-features",
+                    "--features",
+                    "fs-journal",
                     "--all-targets",
                     "--",
                     "-D",

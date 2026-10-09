@@ -1,6 +1,8 @@
 //! The agent entity: its components, the calls it owns, and the requests a
 //! view sends it.
 
+use std::sync::Arc;
+
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
@@ -168,7 +170,7 @@ pub struct ModelChoice(pub String);
 #[derive(Component, Clone)]
 pub struct Connection {
     /// The model's catalog entry.
-    pub spec: &'static ModelSpec,
+    pub spec: Arc<ModelSpec>,
     /// The model as an effect handler.
     pub handler: ErasedHandler,
 }
@@ -294,7 +296,7 @@ pub struct Partial {
 
 /// A tool call of the model's last reply. It is [`Queued`] while an
 /// earlier call of the reply holds it back (see
-/// [`Footprint`](super::tools::Footprint)), then runs as a
+/// [`Footprint`]), then runs as a
 /// [`Running<ToolResult>`](super::calls::Running), or stays open for an
 /// open tool, and ends with a [`ToolOutput`](super::tools::ToolOutput).
 /// Read-only calls run side by side; every other call runs alone, in order.
@@ -334,15 +336,6 @@ pub struct Compact {
     pub entity: Entity,
     /// What the summary should keep above all; may be empty.
     pub focus: String,
-}
-
-/// Ask the views to show the agent and send what is typed to it, such as
-/// a subagent picked with `/agents`. The core does nothing with it.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Focus {
-    /// The agent.
-    pub entity: Entity,
 }
 
 /// Stop the agent's running turn.
@@ -490,29 +483,4 @@ pub struct TurnEnded {
     pub outcome: TurnOutcome,
     /// The request the turn answered, if a delivered message carried one.
     pub request: Option<RequestId>,
-}
-
-/// One choice of a [`PickRequest`]: what it shows, and the command line,
-/// without its `/`, that choosing it runs for the agent, such as
-/// `model openai/gpt-5`.
-#[derive(Clone, Debug)]
-pub struct PickItem {
-    /// What it shows.
-    pub label: String,
-    /// The command line it runs.
-    pub command: String,
-}
-
-/// Asks a view to let the user pick one of `items` for the agent; the
-/// view runs the chosen item's command with [`RunCommand`](super::commands::RunCommand).
-#[derive(Message, Clone, Debug)]
-pub struct PickRequest {
-    /// The agent.
-    pub agent: Entity,
-    /// What is picked.
-    pub title: String,
-    /// The choices.
-    pub items: Vec<PickItem>,
-    /// The position of the choice selected at first.
-    pub selected: usize,
 }

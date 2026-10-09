@@ -1,19 +1,17 @@
 //! The one dispatch path. Every model call and tool call goes through
 //! [`Effects::dispatch`], which records it with rig-core's effect types
 //! under the agent's stable id; an open tool call, which no handler
-//! answers, is recorded the same way when it is opened. The session's `effects.jsonl` holds one
-//! resolved record per line, written by rig-cassette's
-//! [`jsonl::Writer`], with a `{"header": …}` line before them whenever the
-//! header (the tools and models described, the keys used) changed; it
-//! reads back with [`jsonl::read`] for rig-cassette's replayer.
+//! answers, is recorded the same way when it is opened. Resolved records
+//! go to the session's [`JournalStore`] at the end of each frame, with
+//! their header (the tools and models described, the keys used) whenever
+//! it changed, so the effect log replays with rig-cassette's replayer.
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
-use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, jsonl};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::catalog::ModelSpec;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
 use rig_core::error::ErrorReport;
@@ -21,6 +19,7 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
 
 use super::models::ModelConnector;
+use super::store::JournalStore;
 
 /// The session's effect recorder, effect id counter and model handlers.
 #[derive(Resource)]
@@ -35,11 +34,12 @@ pub struct Effects {
 }
 
 impl Effects {
-    /// A recorder whose ids continue after the highest id already in the
-    /// effect log at `log`, if any, so ids keep increasing across restarts.
-    pub(crate) fn continuing(log: Option<&Path>) -> Self {
-        let last = log
-            .and_then(|log| jsonl::last_id(log).ok().flatten())
+    /// A recorder whose ids continue after the highest id already in
+    /// `store`'s effect log, if any, so ids keep increasing across
+    /// restarts.
+    pub(crate) fn continuing(store: Option<&dyn JournalStore>) -> Self {
+        let last = store
+            .and_then(|store| store.last_effect().ok().flatten())
             .map_or(0, EffectId::as_u64);
         let recorder = EffectLogRecorder::new();
         Self {
@@ -56,7 +56,7 @@ impl Effects {
     /// credential on each request, so a refreshed token needs no rebuild.
     pub(crate) fn model_handler(
         &mut self,
-        spec: &'static ModelSpec,
+        spec: &ModelSpec,
         connector: &ModelConnector,
     ) -> Result<ErasedHandler, ConnectError> {
         let reference = spec.reference();
