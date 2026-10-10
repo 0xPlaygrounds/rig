@@ -44,6 +44,7 @@ pub(super) struct Agents<'w, 's> {
     pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
     pub(super) inboxes: Query<'w, 's, &'static mut Inbox>,
     waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
+    awaited_by: Query<'w, 's, &'static AwaitedBy>,
     turns: Query<'w, 's, &'static TurnOf>,
     pub(super) commands: Commands<'w, 's>,
 }
@@ -73,11 +74,13 @@ impl Agents<'_, '_> {
     /// The open `wait` calls of `waiter` for a message from `awaited`.
     pub(super) fn wait_calls(&self, waiter: Entity, awaited: Entity) -> Vec<Entity> {
         let calls = self
-            .waits
-            .iter()
-            .filter(|(_, awaits, _)| awaits.0 == awaited);
-        let calls = calls.filter(|&(call, ..)| self.waiter(call) == Some(waiter));
-        calls.map(|(call, ..)| call).collect()
+            .awaited_by
+            .get(awaited)
+            .into_iter()
+            .flat_map(|by| by.iter());
+        calls
+            .filter(|&call| self.waiter(call) == Some(waiter))
+            .collect()
     }
 
     /// The agents `agent` waits on: those that owe it a report, then those
