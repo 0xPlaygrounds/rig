@@ -38,9 +38,9 @@ plugin = "hello::HelloPlugin"
 ```
 
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`. It
-depends on `rig-harness` by version, and on `bevy_ecs` (or `bevy`) at the
-agent's exact version, because Bevy's derives expand to the Bevy crate the
-plugin's own `Cargo.toml` names. When the agent is built from a rig
+depends on `rig-harness` by version, and on `bevy_ecs` and `bevy_reflect`
+(or `bevy`) at the agent's exact version, because Bevy's derives expand to
+the Bevy crate the plugin's own `Cargo.toml` names. When the agent is built from a rig
 checkout (`RIG_SOURCE`), a `[patch.crates-io]` table points the rig crates
 at it, so every plugin uses the agent's own crates.
 

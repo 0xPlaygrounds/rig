@@ -266,14 +266,16 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          # plugin with its own rig crates. A Bevy crate, such as `bevy` for a window,\n\
          # must be at exactly ={}.\n\
          rig-harness = \"{rig_version}\"\n\
-         # Bevy's derives (`Component`, `Resource`, `Message`, `SystemSet`) name the\n\
-         # crate they expand to from this file, so it is a direct dependency.\n\
+         # Bevy's derives (`Component`, `Resource`, `Message`, `SystemSet`, `Reflect`)\n\
+         # name the crate they expand to from this file, so those are direct dependencies.\n\
          bevy_ecs = {{ version = \"={}\", default-features = false }}\n\
+         bevy_reflect = {{ version = \"={}\", default-features = false }}\n\
          # A tool's arguments, and its parameters derived from them.\n\
          schemars = \"1\"\n\
          serde = {{ version = \"1\", features = [\"derive\"] }}\n\
          serde_json = \"1\"\n",
         quoted(name),
+        super::BEVY_VERSION,
         super::BEVY_VERSION,
         super::BEVY_VERSION,
     );
