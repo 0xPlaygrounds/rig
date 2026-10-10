@@ -230,6 +230,33 @@ fn the_dialect_decides_the_credential_header() {
     assert_eq!(keyed["authorization"], "Bearer local");
 }
 
+/// A session-aware dialect sends the `session-id` header the backend keys
+/// its prompt cache on, hyphenated as the gateway spells it, with a
+/// fresh value per request, unless the caller pins one so related
+/// requests stay inside the same cache session.
+#[test]
+fn a_session_identity_is_sent_hyphenated_and_pinnable() {
+    fn headers(provider: &OpenAIConfig) -> http::HeaderMap {
+        provider
+            .headers(http::Request::get("https://example.invalid/"))
+            .body(())
+            .expect("builds")
+            .headers()
+            .clone()
+    }
+
+    let chatgpt = crate::providers::chatgpt::DIALECT;
+    let generated = headers(&OpenAIConfig::with_key(&chatgpt, "tok"));
+    assert!(generated.contains_key("session-id"));
+    assert!(!generated.contains_key("session_id"));
+
+    let again = headers(&OpenAIConfig::with_key(&chatgpt, "tok"));
+    assert_ne!(generated["session-id"], again["session-id"]);
+
+    let pinned = headers(&OpenAIConfig::with_key(&chatgpt, "tok").with_session_id("sess-1"));
+    assert_eq!(pinned["session-id"], "sess-1");
+}
+
 /// A dialect with no token-free credential check says so, instead of
 /// verifying against an endpoint that bills the caller.
 #[test]

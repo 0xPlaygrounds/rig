@@ -43,8 +43,12 @@ pub struct Identity {
     pub originator_env: &'static str,
     /// The environment variable overriding `user-agent`.
     pub user_agent_env: &'static str,
-    /// Whether every request carries a fresh `session_id` header.
+    /// Whether every request carries a `session-id` header. The header
+    /// value is fresh per request unless the caller pins one.
     pub session_ids: bool,
+    /// The environment variable a caller-supplied `session-id` is read
+    /// from, when the gateway reads one.
+    pub session_id_env: Option<&'static str>,
 }
 
 /// The identity a gateway requires on every request, resolved.
@@ -123,6 +127,14 @@ impl OpenAIConfig {
         self
     }
 
+    /// Pin the session identity a session-aware gateway sends
+    /// (`session-id`), so related requests share it and stay inside one
+    /// prompt-cache session. Without this, each request draws a fresh one.
+    pub fn with_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
     /// Apply the dialect's authentication to a request builder.
     pub(crate) fn authenticate(&self, builder: http::request::Builder) -> http::request::Builder {
         match self.auth {
@@ -151,8 +163,14 @@ impl OpenAIConfig {
             .identity
             .is_some_and(|identity| identity.session_ids)
         {
-            // Session identity must be fresh for each request.
-            builder = builder.header("session_id", crate::providers::chatgpt::session_id());
+            // The backend keys its prompt cache on `session-id`, so a
+            // caller-pinned identity is reused; absent one, each request
+            // draws a fresh value.
+            let session_id = self
+                .session_id
+                .clone()
+                .unwrap_or_else(crate::providers::chatgpt::session_id);
+            builder = builder.header("session-id", session_id);
         }
         if let Some(account_id) = &self.account_id {
             builder = builder.header("ChatGPT-Account-Id", account_id);

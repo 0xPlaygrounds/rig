@@ -63,6 +63,7 @@ pub const DIALECT: Dialect = Dialect {
             originator_env: "CHATGPT_ORIGINATOR",
             user_agent_env: "CHATGPT_USER_AGENT",
             session_ids: true,
+            session_id_env: Some("CHATGPT_SESSION_ID"),
         }),
         responses: ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::AllInstructions,

@@ -560,6 +560,12 @@ pub struct OpenAIConfig {
     /// (`ChatGPT-Account-Id`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account_id: Option<String>,
+    /// The session identity a session-aware gateway sends (`session-id`),
+    /// pinned by [`with_session_id`](Self::with_session_id) so related
+    /// requests share one prompt-cache session. `None` draws a fresh one
+    /// per request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
     /// Instructions merged ahead of every Responses turn's preamble, when
     /// the gateway expects some.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -602,6 +608,7 @@ impl OpenAIConfig {
             auth: quirks.auth,
             sub_route: None,
             account_id: None,
+            session_id: None,
             instructions: quirks.default_instructions.map(str::to_owned),
             identity: quirks.identity.map(|identity| CallerIdentity {
                 originator: identity.originator.to_owned(),
@@ -655,6 +662,12 @@ impl OpenAIConfig {
         }
         if let Some(name) = quirks.account_id_env {
             provider.account_id = env::optional(name)?;
+        }
+        if let Some(identity) = quirks.identity
+            && identity.session_ids
+            && let Some(name) = identity.session_id_env
+        {
+            provider.session_id = env::optional(name)?.filter(|session_id| !session_id.is_empty());
         }
         if let Some(name) = quirks.instructions_env
             && let Some(instructions) = env::optional(name)?
