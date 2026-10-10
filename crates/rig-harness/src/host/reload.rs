@@ -15,7 +15,6 @@
 //! asked, as a note for its model ([`super::launcher::build_failure_note`]);
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 
-use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
@@ -35,8 +34,6 @@ use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 
 /// Lines of a failed build in the note to the model, from its first error.
 const NOTE_LINES: usize = 40;
-/// Lines of build output kept while it runs.
-const KEPT_LINES: usize = 2000;
 
 /// `/reload`, the rebuild in flight and the restart.
 pub struct ReloadPlugin;
@@ -95,7 +92,10 @@ struct ReloadBuild {
     /// The agent that asked, whose model is told when the build fails.
     agent: Entity,
     lines: Receiver<String>,
-    output: VecDeque<String>,
+    /// This build's output so far. Not read back from the build log, which
+    /// a build queued behind this one, or an older one when this one fails
+    /// before it starts its log, may have written.
+    output: Vec<String>,
     exited: bool,
 }
 
@@ -119,16 +119,9 @@ impl ReloadBuild {
             child,
             agent,
             lines,
-            output: VecDeque::new(),
+            output: Vec::new(),
             exited: false,
         })
-    }
-
-    fn keep(&mut self, line: String) {
-        if self.output.len() == KEPT_LINES {
-            self.output.pop_front();
-        }
-        self.output.push_back(line);
     }
 
     /// At most `count` lines of the output from the first error on, or its
@@ -267,7 +260,7 @@ fn drain_reload(
                 // status line: `Compiling serde v1.0.228`.
                 let shown = line.split(" (").next().unwrap_or_default();
                 latest = Some(shown.trim().to_owned());
-                build.keep(line);
+                build.output.push(line);
             }
             Err(TryRecvError::Empty) => break false,
             Err(TryRecvError::Disconnected) => break true,
@@ -294,7 +287,7 @@ fn drain_reload(
     commands.remove_resource::<ReloadBuild>();
     if exit.success() {
         *status = ReloadStatus::Ready;
-        notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
+        notices.write(Notice::info(None, "Build ready; restarting."));
         return;
     }
     *status = ReloadStatus::Failed;
@@ -351,10 +344,10 @@ fn on_cancel_reload(
             "Rebuild cancelled."
         }
         ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
-            notices.write(Notice::info(None, "No reload to cancel.".to_owned()));
+            notices.write(Notice::info(None, "No reload to cancel."));
             return;
         }
     };
     *status = ReloadStatus::Idle;
-    notices.write(Notice::info(None, notice.to_owned()));
+    notices.write(Notice::info(None, notice));
 }
