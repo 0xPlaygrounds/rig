@@ -132,15 +132,15 @@ pub fn append(
 /// Takes the `[[plugin]]` table whose `plugin` is `type_path` out of the
 /// plugin list at `path`, with the comment lines right above it, and checks
 /// the result; nothing is written when it is not valid.
-pub fn remove(path: &Path, type_path: &str) -> Result<Config> {
+pub fn remove(path: &Path, type_path: &str) -> Result<()> {
     let text =
         fs::read_to_string(path).map_err(|failure| format!("{}: {failure}", path.display()))?;
     let base = path.parent().unwrap_or(Path::new("."));
     let kept = without_table(&text, type_path, base)
         .map_err(|failure| format!("{}: {failure}", path.display()))?;
-    let config = parse_file(path, &kept)?;
+    parse_file(path, &kept)?;
     fs::write(path, kept)?;
-    Ok(config)
+    Ok(())
 }
 
 /// `text` without the table of `type_path` and the comment lines right

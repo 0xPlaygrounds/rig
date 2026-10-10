@@ -1,9 +1,8 @@
 //! `rig plugin`: make a plugin crate under `RIG_HOME/plugins` and list it
 //! in `plugins.toml` (`new`), add or remove an entry (`add`, `remove`),
-//! show the list (`list`), and check it (`check`, with `--build` also
-//! building the agent without staging it). Every
-//! change is checked before it is written, so nobody edits the file by
-//! hand. Plugin crates live outside every workspace, so making one never
+//! and check the list (`check`, with `--build` also building the agent
+//! without staging it). Every change is checked before it is written, so
+//! nobody edits the file by hand. Plugin crates live outside every workspace, so making one never
 //! touches the rig repository or a project.
 
 use std::fs;
@@ -31,12 +30,9 @@ pub const USAGE: &str = "\
                          Add the plugin type <type> to plugins.toml, from the
                          crate at that source (its name read from <dir> for
                          --path), or one of rig-harness's own without a source.
-  rig plugin remove <type> [--delete]
+  rig plugin remove <type>
                          Remove the plugin type <type> from plugins.toml; its
-                         crate stays where it is, unless --delete is given and
-                         it is a crate of RIG_HOME/plugins no other entry uses.
-  rig plugin list        List the plugins in plugins.toml, in the order they
-                         are added.
+                         crate stays where it is.
   rig plugin check [--build]
                          Check plugins.toml and the plugin crates it names by
                          path; with --build, also build the agent with them
@@ -49,11 +45,7 @@ pub fn run(home: &Home, args: &[&str]) -> Result<()> {
     match args {
         ["new", name] => new(home, name),
         ["add", type_path, options @ ..] => add(home, type_path, options),
-        ["remove", type_path] => remove(home, type_path, false),
-        ["remove", type_path, "--delete"] | ["remove", "--delete", type_path] => {
-            remove(home, type_path, true)
-        }
-        ["list"] => list(home),
+        ["remove", type_path] => remove(home, type_path),
         ["check"] => check(home),
         ["check", "--build"] => check(home).and_then(|()| check_build(home)),
         _ => Err(format!("usage:\n{USAGE}").into()),
@@ -190,11 +182,9 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// `rig plugin remove <type> [--delete]`: the entry of `type_path`, with the
-/// comment lines right above it, taken out of `plugins.toml`. With
-/// `delete`, its crate goes too when it is a crate of `RIG_HOME/plugins`
-/// ([`deletable`]) that no remaining entry uses.
-fn remove(home: &Home, type_path: &str, delete: bool) -> Result<()> {
+/// `rig plugin remove <type>`: the entry of `type_path`, with the comment
+/// lines right above it, taken out of `plugins.toml`. Its crate stays.
+fn remove(home: &Home, type_path: &str) -> Result<()> {
     let config_path = home.config();
     let directory = Config::load(&config_path)?
         .plugins
@@ -205,51 +195,16 @@ fn remove(home: &Home, type_path: &str, delete: bool) -> Result<()> {
             Source::Path(directory) => Some(directory),
             Source::Git { .. } | Source::Version(_) => None,
         });
-    let remaining = config::remove(&config_path, type_path)?;
-    let crate_note = match directory {
-        None => String::new(),
-        Some(directory) => {
-            let used = remaining.plugins.iter().any(|plugin| {
-                plugin
-                    .package
-                    .as_ref()
-                    .is_some_and(|package| package.source == Source::Path(directory.clone()))
-            });
-            if !delete {
-                format!("; its crate {} is left in place", directory.display())
-            } else if used {
-                format!(
-                    "; its crate {} is left in place: another entry uses it",
-                    directory.display()
-                )
-            } else if let Some(directory) = deletable(&home.plugins(), &directory) {
-                fs::remove_dir_all(&directory)?;
-                format!(" and deleted its crate {}", directory.display())
-            } else {
-                format!(
-                    "; its crate {} is left in place: --delete only deletes a crate of {}",
-                    directory.display(),
-                    home.plugins().display()
-                )
-            }
-        }
-    };
+    config::remove(&config_path, type_path)?;
+    let crate_note = directory
+        .map(|directory| format!("; its crate {} is left in place", directory.display()))
+        .unwrap_or_default();
     println!(
         "Removed `{type_path}` from {}{crate_note}.\n\
          /reload in the agent, or `rig build`, applies it.",
         config_path.display()
     );
     Ok(())
-}
-
-/// `directory`, resolved, when it is a crate directly in `plugins`
-/// (`RIG_HOME/plugins/<name>`, where `rig plugin new` makes them), the
-/// only crates `rig plugin remove --delete` deletes.
-fn deletable(plugins: &Path, directory: &Path) -> Option<PathBuf> {
-    let plugins = fs::canonicalize(plugins).ok()?;
-    let directory = fs::canonicalize(directory).ok()?;
-    (directory.parent() == Some(plugins.as_path()) && directory.join("Cargo.toml").is_file())
-        .then_some(directory)
 }
 
 /// The package name in `directory`'s `Cargo.toml`, if it can be read.
@@ -353,24 +308,6 @@ fn lib_rs(name: &str, type_name: &str) -> String {
     SCAFFOLD
         .replace("ScaffoldPlugin", type_name)
         .replace("__name__", name)
-}
-
-/// `rig plugin list`: each plugin, with the crate it comes from.
-fn list(home: &Home) -> Result<()> {
-    let config = Config::load(&home.config())?;
-    println!("{}:", home.config().display());
-    for (number, plugin) in (1..).zip(&config.plugins) {
-        let from = match &plugin.package {
-            None => "rig-harness".to_owned(),
-            Some(package) => format!("{}, {}", package.name, package.source),
-        };
-        print!("{number:>3}. {} ({from})", plugin.type_path);
-        if !plugin.bevy_features.is_empty() {
-            print!(", Bevy features: {}", plugin.bevy_features.join(", "));
-        }
-        println!();
-    }
-    Ok(())
 }
 
 /// `rig plugin check`: parses `plugins.toml` and checks each plugin crate

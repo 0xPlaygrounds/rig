@@ -55,27 +55,3 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
         Some("viz")
     );
 }
-
-#[test]
-fn remove_deletes_only_a_crate_directly_in_rig_home_plugins() {
-    let root = std::env::temp_dir().join(format!("rig-plugin-delete-{}", std::process::id()));
-    let plugins = root.join("plugins");
-    let stats = plugins.join("stats");
-    let nested = stats.join("inner");
-    let outside = root.join("elsewhere");
-    for crate_dir in [&stats, &nested, &outside] {
-        assert!(fs::create_dir_all(crate_dir).is_ok());
-        assert!(fs::write(crate_dir.join("Cargo.toml"), "[package]\n").is_ok());
-    }
-    assert!(fs::create_dir_all(plugins.join("empty")).is_ok());
-    assert_eq!(
-        deletable(&plugins, &nested.join("../..").join("stats")),
-        fs::canonicalize(&stats).ok()
-    );
-    assert_eq!(deletable(&plugins, &nested), None);
-    assert_eq!(deletable(&plugins, &outside), None);
-    assert_eq!(deletable(&plugins, &plugins), None);
-    assert_eq!(deletable(&plugins, &plugins.join("empty")), None);
-    assert_eq!(deletable(&plugins, &plugins.join("missing")), None);
-    assert!(fs::remove_dir_all(&root).is_ok());
-}

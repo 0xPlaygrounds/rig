@@ -358,9 +358,8 @@ bevy_features = []                # optional extra Bevy features
 `rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
 any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
 `--git`, `--version`) adds an entry for an existing crate and `rig plugin
-remove <type>` takes one out (`--delete` also deletes its crate in
-`$RIG_HOME/plugins`), each checked before plugins.toml is written; `rig
-plugin list` shows the list and `rig plugin check` checks it, with `--build`
+remove <type>` takes one out (its crate stays), each checked before
+plugins.toml is written; `rig plugin check` checks the list, with `--build`
 also building the agent with its plugins in `$RIG_HOME/target` without
 staging it. A plugin crate depends on
 `rig-harness` alone and registers tools, slash commands, tool renderers,
