@@ -13,11 +13,20 @@ use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_cassette::journal::JsonlDirStore;
 use rig_ecs::journal::SessionStore;
+use rig_tools::Spill;
 
 /// The session's directory: the agent logs the core keeps there through
 /// its [`SessionStore`], the effect log, and the launcher's files.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths(pub SessionDir);
+
+impl SessionPaths {
+    /// Where tools keep output they cut, and plugins large answers, whole,
+    /// under handles the model can `read` or `search`.
+    pub fn spill(&self) -> Spill {
+        Spill(self.path().join("spill"))
+    }
+}
 
 impl Deref for SessionPaths {
     type Target = SessionDir;

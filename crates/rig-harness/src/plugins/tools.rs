@@ -5,6 +5,7 @@
 use bevy_app::prelude::*;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 
+use crate::host::session::SessionPaths;
 use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
 
 /// Options for a tool that runs alone.
@@ -63,7 +64,8 @@ impl Plugin for WriteTool {
     }
 }
 
-/// The `shell` tool.
+/// The `shell` tool. Output it cuts is kept whole in the session's
+/// [`spill`](SessionPaths::spill) directory.
 #[derive(Default)]
 pub struct ShellTool;
 
@@ -73,6 +75,10 @@ impl Plugin for ShellTool {
             // A command, such as a nested agent run while working on
             // rig-harness itself, must not act as this agent.
             unset_env: &rig::harness_protocol::env::AGENT_ONLY,
+            spill: app
+                .world()
+                .get_resource::<SessionPaths>()
+                .map(SessionPaths::spill),
         };
         app.add_tool_with(shell, alone(Shell::RULES));
     }

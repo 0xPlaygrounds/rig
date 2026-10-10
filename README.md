@@ -320,8 +320,9 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl` and
-the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
+the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl`,
+`spill/` (the whole output of a `shell` call that was cut, which the model reads
+by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
 cache directory. Several `rig` processes can share one `RIG_HOME`.
 

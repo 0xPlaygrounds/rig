@@ -8,6 +8,7 @@
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
+//! - [`Spill`]: where output a tool cut is kept whole;
 //! - [`process`]: child processes in a process group of their own;
 //! - [`blocking`]: blocking work on a thread of its own, so no async
 //!   executor thread blocks.
@@ -22,6 +23,7 @@ pub mod process;
 mod read;
 mod search;
 mod shell;
+mod spill;
 mod write;
 
 pub use blocking::blocking;
@@ -29,6 +31,7 @@ pub use edit::{Edit, EditArgs};
 pub use read::{Read, ReadArgs, numbered};
 pub use search::{Search, SearchArgs};
 pub use shell::{Shell, ShellArgs};
+pub use spill::Spill;
 pub use write::{Write, WriteArgs};
 
 /// Most lines a tool returns.
