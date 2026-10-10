@@ -17,7 +17,7 @@ use super::complete::{Completion, Kind as CompletionKind};
 use super::editor::Layout as InputLayout;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
-use super::renderers::ToolRenderer;
+use super::renderers::{ToolRenderer, excerpt};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Picker, ShownNotice, TuiView};
@@ -753,16 +753,7 @@ fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
         ),
         style.bold(),
     ));
-    let total = condensed.summary.lines().count();
-    for line in condensed.summary.lines().take(SUMMARY_LINES) {
-        lines.push(Line::styled(line.replace('\t', "    "), style.dim()));
-    }
-    if total > SUMMARY_LINES {
-        lines.push(Line::styled(
-            format!("  … {} more lines", total - SUMMARY_LINES),
-            style.dim(),
-        ));
-    }
+    lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
 /// What waits in the agent's inbox, under the transcript.
