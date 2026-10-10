@@ -23,12 +23,13 @@ use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::Restored;
 
 /// An app on `store`, after its first frame restored the session. Like
-/// the harness, it only warns about a command on a despawned entity.
+/// the harness, it only warns about a command on a despawned entity. The
+/// store comes after the plugins: any plugin may insert it.
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(SessionStore::new(store.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin));
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();
     app

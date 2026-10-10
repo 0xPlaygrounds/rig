@@ -156,7 +156,10 @@ pub(crate) fn restore_session(world: &mut World) {
         .collect();
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
-    log.resume(logs.into_iter().map(|(_, id, log)| (id, log)).collect());
+    log.resume(
+        store,
+        logs.into_iter().map(|(_, id, log)| (id, log)).collect(),
+    );
     world.insert_resource(RestoredAgents(restored));
     for notice in notices {
         world.write_message(Notice::error(None, notice));

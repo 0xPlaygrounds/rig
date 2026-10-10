@@ -225,8 +225,8 @@ fn enqueue(log: &mut AgentLog, record: Record<'_>) -> serde_json::Result<u64> {
 }
 
 /// Where the session is kept, such as a rig-cassette `MemoryStore` or
-/// `JsonlDirStore`: inserted before the agent plugins are built. Without
-/// one nothing is kept.
+/// `JsonlDirStore`: inserted while the app is built, before it runs, by
+/// any plugin. Without one nothing is kept.
 #[derive(Resource, Clone)]
 pub struct SessionStore(pub Arc<dyn JournalStore>);
 
@@ -241,25 +241,19 @@ impl SessionStore {
 /// and each agent's latest-wins state. Every method takes `&self`, so any
 /// system can log; nothing is logged before the session was restored, or
 /// without a [`SessionStore`].
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, Default)]
 pub struct SessionLog(Arc<Mutex<Book>>);
 
 impl SessionLog {
-    /// The logs of the session kept in `store`, idle until [`Self::resume`].
-    pub(crate) fn new(store: Option<Arc<dyn JournalStore>>) -> Self {
-        Self(Arc::new(Mutex::new(Book {
-            store,
-            ..Book::default()
-        })))
-    }
-
     fn book(&self) -> MutexGuard<'_, Book> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Starts logging, after the logs restored as `agents`, by agent id.
-    pub(crate) fn resume(&self, agents: Vec<(String, AgentLog)>) {
+    /// Starts logging to `store`, after the logs restored from it as
+    /// `agents`, by agent id.
+    pub(crate) fn resume(&self, store: Arc<dyn JournalStore>, agents: Vec<(String, AgentLog)>) {
         let mut book = self.book();
+        book.store = Some(store);
         book.agents.extend(agents);
         book.live = true;
     }

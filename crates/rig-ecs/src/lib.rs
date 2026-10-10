@@ -75,7 +75,7 @@ use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
-use journal::{SessionLog, SessionStore};
+use journal::SessionLog;
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart (see [`turn::Exiting`]). A system that logs what
@@ -84,16 +84,15 @@ use journal::{SessionLog, SessionStore};
 pub struct StopTurns;
 
 /// The systems in `Last` that write the frame's journal records to the
-/// [`SessionStore`], and those a plugin adds to write its own logs, such as
+/// [`journal::SessionStore`], and those a plugin adds to write its own logs, such as
 /// the effect log. A system that logs for the frame runs before them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteJournal;
 
 /// Agents, their turn loop, effects, and the tool and command registries.
 /// Spawns one agent at startup when the restored session has none. Its
-/// [`SessionLog`] logs to the [`SessionStore`] inserted before it is
-/// built, if any, and nothing until [`journal::JournalPlugin`] restored
-/// the session. It adds Bevy's `TimePlugin` unless the app has it, for the
+/// [`SessionLog`] logs to the app's [`journal::SessionStore`], if any, once
+/// [`journal::JournalPlugin`] restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
 /// clock a retried model call waits on, and then runs `First` and
 /// `PreUpdate` on Bevy's single-threaded executor. It lets that clock count
 /// frames up to [`calls::MAX_FRAME_GAP`] apart in full under any loop. It
@@ -114,9 +113,8 @@ impl Plugin for AgentPlugin {
                 .edit_schedule(First, single)
                 .edit_schedule(PreUpdate, single);
         }
-        let store = app.world().get_resource::<SessionStore>().cloned();
         app.init_resource::<effects::Effects>()
-            .insert_resource(SessionLog::new(store.map(|store| store.0)))
+            .init_resource::<SessionLog>()
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
             .add_message::<Notice>()
