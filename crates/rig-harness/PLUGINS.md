@@ -209,12 +209,15 @@ An agent component that derives `Reflect` and says
 logged, and a restart, `/reload` or `/resume` brings the newest value
 back, before `Restored` is triggered on the agent. `On<Add<CallOf>>` sees
 every model and tool call of every turn as it starts; a tool call also
-has a `ToolCallRun`.
+has a `ToolCallRun`. The calls made before the plugin was added are in
+the conversation, which `Restored` lets it count once: an assistant
+message is the tuple variant `Message::Assistant(AssistantMessage)`.
 
 ```rust,no_run
 use std::collections::HashMap;
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::message::Message;
 
 /// How often each agent called each tool, kept across `/compact`,
 /// `/reload` and `/resume`.
@@ -228,7 +231,26 @@ pub struct ToolCountsPlugin;
 impl Plugin for ToolCountsPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, ToolCounts>()
-            .add_observer(count);
+            .add_observer(count)
+            .add_observer(count_the_past);
+    }
+}
+
+/// On the first restart with the plugin, counts the calls already in the
+/// conversation; a saved count is never redone.
+fn count_the_past(restored: On<Restored>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
+    let Ok((conversation, mut counts)) = agents.get_mut(restored.entity) else {
+        return;
+    };
+    if !counts.0.is_empty() {
+        return;
+    }
+    for message in conversation.messages() {
+        if let Message::Assistant(assistant) = message {
+            for call in assistant.tool_calls() {
+                *counts.0.entry(call.function.name.as_str().to_owned()).or_default() += 1;
+            }
+        }
     }
 }
 

@@ -73,7 +73,8 @@ const DESCRIPTION: &str = "Read your own running app, a Bevy world, through the 
     `world.query` {data: {components: [..], option: [..] or \"all\", has: [..]}, filter: {with: \
     [..], without: [..]}}; `world.get_components` {entity, components: [..]}; \
     `world.get_resources` {resource}; `registry.schema` {with_crates: [..], type_limit: {with: \
-    [..]}}, where type_limit `Saved` lists what is saved with the session; `schedule.list`; \
+    [..]}}, where `type_limit.with` takes reflect trait names, not type names: `Saved` lists \
+    what is saved with the session, `Component` the components; `schedule.list`; \
     `schedule.graph` {schedule_label}. Plugins are the entities with `PluginSource`; what one \
     added has `ProvidedBy` naming it. A long answer is cut and kept whole in a file to read or \
     search.";
