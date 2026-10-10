@@ -153,6 +153,22 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     let header = format!("Output of agent {} \\\"Critique\\\"", session.short(b));
     assert!(read.contains(&header), "{read}");
     assert!(!read.contains("Waiting for the critic."), "{read}");
+
+    // A peer started later has the others in its brief, and they learn of
+    // it by a note.
+    let c = session.task("Judge");
+    session.app.update();
+    let judge = session.short(c);
+    for peer in [a, b] {
+        let note = session.to(peer).last().copied();
+        let told =
+            |(_, mode, text): (_, _, &str)| mode == DeliveryMode::Note && text.contains(&judge);
+        assert!(note.is_some_and(told), "{note:?}");
+    }
+    let brief = session.to(c).first().map(|(.., text)| text.to_string());
+    let brief = brief.unwrap_or_default();
+    let names = brief.contains(&session.short(a)) && brief.contains(&session.short(b));
+    assert!(names, "{brief}");
 }
 
 #[test]
@@ -168,7 +184,10 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     // the parent is idle, so nothing would come from it.
     let ask = |agent| json!({ "agent": session.short(agent), "text": "Hi." });
     let wait = |agent| json!({ "agent": session.short(agent) });
+    // A refused message to a guessed name sends nothing and closes nothing.
+    let guess = json!({ "agent": "critic", "text": "Hi." });
     let calls = [
+        (a, MESSAGE, guess, "not an agent you can reach"),
         (a, MESSAGE, ask(b), "in the background"),
         (b, MESSAGE, ask(c), "in the background"),
         (c, MESSAGE, ask(a), "waiting for your report"),

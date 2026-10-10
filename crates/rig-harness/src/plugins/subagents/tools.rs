@@ -71,10 +71,10 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 const PEER_ROLE: &str = "\n\nOther subagents of that agent work beside you; your task names the \
-    ones started with you. `message` sends one of them a request by its id, or answers one it \
-    sent you; your last message answers the requests still open. To wait for a peer's message, \
-    call `wait`: never end your turn to wait, since your last message is your answer. Ask only \
-    for what you need.";
+    ones started before or with you, and a note names each one started later. `message` sends \
+    one of them a request by its id, or answers one it sent you; your last message answers the \
+    requests still open. To wait for a peer's message, call `wait`: never end your turn to wait, \
+    since your last message is your answer. Ask only for what you need.";
 
 pub(super) fn add(app: &mut App) {
     let independent = |rules| ToolOptions {
@@ -275,27 +275,45 @@ fn on_task(
 }
 
 /// Sends each subagent started this frame its task, naming its peers when
-/// it has [`Peers`].
+/// it has [`Peers`]. Peers briefed in an earlier frame, such as those of an
+/// earlier reply, learn of it by a note.
 fn send_briefs(
-    briefs: Query<(Entity, &Brief, &SpawnedBy, Has<Peers>)>,
+    briefs: Query<(Entity, &Brief, &SpawnedBy)>,
     families: Query<&Spawned>,
-    peers: Query<(&AgentId, &Subtask), With<Peers>>,
+    peers: Query<(&AgentId, &Subtask, Has<Brief>), With<Peers>>,
     mut commands: Commands,
 ) {
-    for (child, Brief(brief), parent, is_peer) in &briefs {
-        let siblings = families
-            .get(parent.0)
-            .into_iter()
-            .flat_map(|family| family.iter());
-        let siblings = siblings.filter(|&sibling| is_peer && sibling != child);
-        let named: Vec<String> = siblings
-            .filter_map(|sibling| peers.get(sibling).ok())
-            .map(|(id, subtask)| format!("`{}` (\"{}\")", id.short(), subtask.0))
-            .collect();
+    let named = |(id, subtask, _): (&AgentId, &Subtask, bool)| {
+        format!("`{}` (\"{}\")", id.short(), subtask.0)
+    };
+    for (child, Brief(brief), parent) in &briefs {
         let mut brief = brief.clone();
-        if !named.is_empty() {
-            let peers = format!("\n\nYour peers, by id: {}.", named.join(", "));
-            brief.text.push_str(&peers);
+        if let Ok(me) = peers.get(child) {
+            let family = families
+                .get(parent.0)
+                .into_iter()
+                .flat_map(|family| family.iter());
+            let siblings = family.filter(|&sibling| sibling != child);
+            let siblings: Vec<_> = siblings
+                .filter_map(|sibling| Some((sibling, peers.get(sibling).ok()?)))
+                .collect();
+            let names: Vec<String> = siblings.iter().map(|(_, peer)| named(*peer)).collect();
+            if !names.is_empty() {
+                let peers = format!("\n\nYour peers, by id: {}.", names.join(", "));
+                brief.text.push_str(&peers);
+            }
+            for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
+                commands.trigger(Deliver {
+                    entity: *sibling,
+                    text: format!("A new peer works beside you: {}.", named(me)),
+                    origin: Origin {
+                        kind: OriginKind::Plugin("subagents".to_owned()),
+                        ..Origin::default()
+                    },
+                    mode: DeliveryMode::Note,
+                    attachments: Vec::new(),
+                });
+            }
         }
         commands.entity(child).remove::<Brief>();
         commands.trigger(brief);
