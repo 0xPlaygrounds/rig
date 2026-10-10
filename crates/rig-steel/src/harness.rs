@@ -15,7 +15,8 @@ use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, ToolFunction, ToolName, ToolResult};
+use rig_core::message::{ToolCall, ToolFunction, ToolName};
+use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
     Agent, AgentId, EffectParent, Effort, ModelChoice, SpawnedBy, SystemPrompt, ToolAccess,
     TurnEnded, TurnOutcome,

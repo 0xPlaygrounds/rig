@@ -52,10 +52,11 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
-use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
+use rig_core::message::ToolCall;
+use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, failed};
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
@@ -210,16 +211,13 @@ async fn run_program(call: ToolCall, harness: Harness, me: AgentId, code: String
             done.send(program::run(code, host)).ok();
         });
     if let Err(error) = started {
-        return failed(&call, format!("The interpreter did not start: {error}"));
+        return failure(format!("The interpreter did not start: {error}"));
     }
     loop {
         match future::select(&mut finished, pin!(Delay::new(WATCH_EVERY))).await {
-            Either::Left((Ok(ended), _)) => return result(&call, ended, control.stopped()),
+            Either::Left((Ok(ended), _)) => return result(ended, control.stopped()),
             Either::Left((Err(_), _)) => {
-                return failed(
-                    &call,
-                    "The interpreter stopped without a result.".to_owned(),
-                );
+                return failure("The interpreter stopped without a result.".to_owned());
             }
             Either::Right(_) => {
                 if control.spent() > MAX_RUNTIME {
@@ -322,7 +320,7 @@ impl Drop for Stopper {
 }
 
 /// The call's result for a program that ended.
-fn result(call: &ToolCall, ended: Ended, stopped: Option<Stop>) -> ToolResult {
+fn result(ended: Ended, stopped: Option<Stop>) -> ToolResult {
     let mut text = String::new();
     if !ended.printed.is_empty() {
         text.push_str("Printed:\n");
@@ -337,15 +335,20 @@ fn result(call: &ToolCall, ended: Ended, stopped: Option<Stop>) -> ToolResult {
                 "The program was stopped: it ran for more than {} s, not counting its waits on agents and tools.",
                 MAX_RUNTIME.as_secs()
             ));
-            return call.error_result(vec![ToolResultContent::text(capped(text))]);
+            return failure(capped(text));
         }
         (Err(why), _) => {
             text.push_str("The program failed:\n");
             text.push_str(&why);
-            return call.error_result(vec![ToolResultContent::text(capped(text))]);
+            return failure(capped(text));
         }
     }
-    call.result(vec![ToolResultContent::text(capped(text))])
+    ToolResult::success(capped(text).into())
+}
+
+/// The result of a call that failed, saying `why`.
+fn failure(why: String) -> ToolResult {
+    ToolResult::failed(ToolExecutionError::other(why))
 }
 
 /// `text` cut to [`MAX_OUTPUT_BYTES`] on a character boundary, with a note

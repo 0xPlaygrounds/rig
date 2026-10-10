@@ -68,7 +68,7 @@ impl Session {
         world.flush();
         let output = world
             .get::<ToolOutput>(call)
-            .map(|output| format!("{:?}", output.0));
+            .map(|output| output.0.output().render());
         output.unwrap_or_default()
     }
 

@@ -76,7 +76,7 @@ is `rig_harness::rig_core`.
   user, written with `MessageWriter<Notice>`. `write` returns an id, so
   end it with `;` in a `match` arm.
 - `Conversation` (on each agent): `messages()`, oldest first, of rig-core's
-  `Message`. `answer_text(&message)` is the text of a final answer, `None`
+  `Message`. `final_answer(&message)` is the text of a final answer, `None`
   for any other message.
 - `Activity` (on each agent): `status: Status` (`Idle`, `Thinking`,
   `RunningTools`, `Busy(name)` for a plugin's call such as `compacting`,
@@ -168,7 +168,7 @@ call's arguments into it, refusing those that do not fit, and triggers
 `ToolCalled<Args>` on the tool's entity with the call (`call`, and the
 model's `run.call`), the calling agent (`agent`, `caller`), the call's
 `effect` and the parsed `args`. The call ends when a `ToolOutput` is
-inserted on it. How a tool's calls look in the terminal is
+inserted on it, such as `ToolOutput(ToolResult::success("Done.".into()))`. How a tool's calls look in the terminal is
 `add_tool_renderer`:
 
 ```rust,no_run
@@ -248,7 +248,7 @@ fn recent(
 ) {
     let mut lines = Vec::new();
     for (id, activity, conversation) in &agents {
-        let answer = conversation.messages().iter().rev().find_map(answer_text);
+        let answer = conversation.messages().iter().rev().find_map(final_answer);
         let words = answer.map_or(0, |answer| answer.split_whitespace().count());
         lines.push(format!("{}: {}, last answer {words} words", id.0, activity.status));
     }

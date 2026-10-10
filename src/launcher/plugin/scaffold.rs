@@ -38,11 +38,11 @@ fn command(
     agents: Query<&Conversation>,
     mut notices: MessageWriter<Notice>,
 ) {
-    // `answer_text` is the text of a final answer, `None` for other messages.
+    // `final_answer` is the text of a final answer, `None` for other messages.
     let answer = agents
         .get(args.agent)
         .ok()
-        .and_then(|conversation| conversation.messages().iter().rev().find_map(answer_text));
+        .and_then(|conversation| conversation.messages().iter().rev().find_map(final_answer));
     let text = match answer {
         Some(answer) => format!(
             "The last answer has {} words.",

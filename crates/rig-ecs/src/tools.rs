@@ -17,15 +17,15 @@
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::IntoObserverSystem;
-use bevy_log::warn;
+use bevy_log::tracing::Instrument;
+use bevy_log::{info_span, warn};
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family};
-use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{ToolCall, ToolName, ToolResult, ToolResultContent};
+use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome};
+use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve};
-use rig_core::tool::{Tool, ToolErrorKind, ToolExecutionError, args_schema};
+use rig_core::serve::{ErasedHandler, OpenRecord};
+use rig_core::tool::{Tool, ToolExecutionError, ToolResult, args_schema};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 
@@ -33,9 +33,8 @@ use super::agent::{AgentId, ToolCallRun};
 use super::effects::{Effects, Handler};
 use super::prompt::ToolRules;
 
-/// What the model is told about a tool. Its parameters are strict: the
-/// schema's top level gets `additionalProperties: false`, and a call naming
-/// an argument it does not declare is refused before the tool runs.
+/// What the model is told about a tool. A call naming an argument its
+/// parameters do not declare is refused before the tool runs.
 #[derive(Component, Clone)]
 #[require(ToolRules, Footprint)]
 pub struct ToolDef(pub ToolDefinition);
@@ -84,11 +83,12 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<
     ))
 }
 
-/// A tool call's result, inserted on the call entity: the one way a call
-/// ends. Insert it once, with [`EntityCommands::insert_if_new`] when
-/// another system may answer the same call; the first one counts. The turn
-/// then starts the calls that waited for this one and, once every call of
-/// the reply has one, sends the results to the model.
+/// What a tool call did, inserted on the call entity: the one way a call
+/// ends, such as `ToolOutput(ToolResult::success("Done.".into()))`. Insert
+/// it once, with [`EntityCommands::insert_if_new`] when another system may
+/// answer the same call; the first one counts. The turn then starts the
+/// calls that waited for this one and, once every call of the reply has
+/// one, sends their results to the model.
 #[derive(Component, Clone, Debug)]
 pub struct ToolOutput(pub ToolResult);
 
@@ -261,12 +261,12 @@ impl AppToolsExt for App {
 
 /// Spawns the entity of the tool `name`, whose calls run as `serves` says,
 /// and returns it; `None`, with a warning, when the name is invalid or
-/// taken. The parameters are made strict.
+/// taken.
 fn register_tool(
     world: &mut World,
     name: &str,
     description: String,
-    mut parameters: serde_json::Value,
+    parameters: serde_json::Value,
     serves: Serves,
     options: ToolOptions<'_>,
 ) -> Option<Entity> {
@@ -285,12 +285,6 @@ fn register_tool(
         warn!("tool not registered: a tool named `{name}` already exists");
         return None;
     }
-    if let Some(schema) = parameters.as_object_mut() {
-        schema.insert(
-            "additionalProperties".to_owned(),
-            serde_json::Value::Bool(false),
-        );
-    }
     let definition = ToolDefinition::new(tool_name, description, parameters);
     let entity = world.spawn((
         Name::new(format!("tool:{name}")),
@@ -308,100 +302,30 @@ fn register_tool(
     Some(entity.id())
 }
 
-/// The arguments of `call` as the effect log records them.
-pub(crate) fn recorded_args(call: &ToolCall) -> String {
-    call.function
-        .invalid_arguments
-        .clone()
-        .unwrap_or_else(|| serde_json::Value::Object(call.function.arguments.clone()).to_string())
-}
-
-/// `result` as an effect outcome, for the record of an open call.
-pub(crate) fn outcome_of(result: &ToolResult) -> Outcome {
-    let output = rig_core::tool::ToolOutput::content(result.content.clone())
-        .unwrap_or_else(|_| rig_core::tool::ToolOutput::text(""));
-    let result = if result.is_error {
-        rig_core::tool::ToolResult::failed(
-            ToolExecutionError::other(output.render()).with_model_output(output),
-        )
-    } else {
-        rig_core::tool::ToolResult::success(output)
-    };
-    Outcome::ToolResult { result }
-}
-
-/// Answers a call that cannot run, to a tool that is not available or
-/// with arguments that do not fit, with an error saying why, so that call
-/// is recorded like any other.
-pub(crate) struct Refused {
-    /// The tool called.
-    pub(crate) name: String,
-    /// What kind of error it is.
-    pub(crate) kind: ToolErrorKind,
-    /// Why the call cannot run.
-    pub(crate) why: String,
-}
-
-impl Serve for Refused {
-    type Family = family::Tool;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor::tool(
-            &self.name,
-            "A tool call that could not run.",
-            serde_json::json!({"type": "object"}),
-        )
-    }
-
-    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        Reply::Outcome(Err(ErrorReport::new(
-            ErrorKind::Tool(self.kind),
-            self.why.clone(),
-        )))
-    }
-}
-
-/// Run `call` through `handler` on the one dispatch path, recorded with
-/// `parent` (the model call that asked for it, unknown for a call a restart
-/// runs again) as its parent. Bad arguments, a failure or a panic all
-/// become an error result for the model. Returns the call's effect id and
-/// its work.
+/// Runs `run` through `handler` on the one dispatch path, recorded for the
+/// agent `scope` with the model call that asked for it (unknown for a call
+/// a restart runs again) as its parent. A failure or a panic becomes an
+/// error result for the model.
 pub(crate) fn run_tool_call(
     effects: &Effects,
     scope: &str,
-    parent: Option<EffectId>,
+    run: &ToolCallRun,
     handler: ErasedHandler,
-    call: ToolCall,
-) -> (
-    EffectId,
-    impl ConditionalSendFuture<Output = ToolResult> + 'static,
-) {
-    let name = call.function.name.as_str().to_owned();
-    let args = recorded_args(&call);
+) -> impl ConditionalSendFuture<Output = ToolResult> + 'static {
+    let (name, parent) = (run.call.function.name.as_str(), run.parent);
+    let span = info_span!("tool_call", agent = scope, tool = name, parent = ?parent);
+    let (name, args) = (name.to_owned(), run.call.function.raw_arguments());
     let (id, reply) = effects.dispatch(scope, parent, handler, EffectKind::ToolCall { name, args });
     let outcome = effects.caught(id, async { reply.await.into_outcome().await });
-    let work = async move {
+    async move {
         match outcome.await {
-            Ok(Outcome::ToolResult { result }) => {
-                let is_error = !result.is_success();
-                let content = result.output().clone().into_content();
-                if is_error {
-                    call.error_result(content)
-                } else {
-                    call.result(content)
-                }
-            }
-            Ok(other) => failed(
-                &call,
-                format!("the tool answered with a {} outcome", other.family()),
-            ),
-            Err(report) => failed(&call, report.to_string()),
+            Ok(Outcome::ToolResult { result }) => result,
+            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
+                "the tool answered with a {} outcome",
+                other.family()
+            ))),
+            Err(report) => ToolResult::failed(report.into()),
         }
-    };
-    (id, work)
-}
-
-/// An error result for `call` saying `why`.
-pub fn failed(call: &ToolCall, why: impl Into<String>) -> ToolResult {
-    call.error_result(vec![ToolResultContent::text(why.into())])
+    }
+    .instrument(span)
 }

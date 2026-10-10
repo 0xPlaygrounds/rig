@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{AssistantContent, Message, Reasoning, Usage};
+use rig_core::completion::{Message, Reasoning, Usage};
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
@@ -563,26 +563,6 @@ pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
         .iter()
         .min_by(|a, b| primary_order(a.2, a.1).cmp(&primary_order(b.2, b.1)))
         .map(|(entity, ..)| entity)
-}
-
-/// The text of a final answer: the text parts of the model's message,
-/// joined by blank lines and trimmed. `None` when `message` is not the
-/// model's, still asks for tool calls, or has no text.
-pub fn answer_text(message: &Message) -> Option<String> {
-    let Message::Assistant(reply) = message else {
-        return None;
-    };
-    let mut parts = Vec::new();
-    for item in reply.content.iter() {
-        match item {
-            AssistantContent::Text(text) => parts.push(text.text.as_str()),
-            AssistantContent::ToolCall(_) => return None,
-            _ => {}
-        }
-    }
-    let text = parts.join("\n\n");
-    let text = text.trim();
-    (!text.is_empty()).then(|| text.to_owned())
 }
 
 /// An agent's turn ended, however its turn entity went away. Triggered on

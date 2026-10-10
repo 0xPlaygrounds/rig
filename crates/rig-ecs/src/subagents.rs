@@ -49,19 +49,21 @@ use bevy_ecs::system::SystemParam;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
+use rig_core::message::ToolResultContent;
+use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::transcript::final_answer;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
-    SystemPrompt, ToolAccess, TurnEnded, TurnOutcome, answer_text,
+    SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
 };
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::journal::ReflectSaved;
 use crate::models::{self, ModelConnector};
 use crate::restore::Restored;
-use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed};
+use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput};
 
 /// The tool that starts a subagent.
 pub const TASK: &str = "task";
@@ -338,12 +340,11 @@ struct Settled {
     tools: Vec<String>,
 }
 
-/// A result for `call`: `data` for programs, then `text` for people.
-fn answer(call: &ToolCall, data: serde_json::Value, text: String) -> ToolResult {
-    call.result(vec![
-        ToolResultContent::json(data),
-        ToolResultContent::text(text),
-    ])
+/// A call's result: `data` for programs, then `text` for people.
+fn answer(data: serde_json::Value, text: String) -> ToolResult {
+    let content = vec![ToolResultContent::json(data), ToolResultContent::text(text)];
+    rig_core::tool::ToolOutput::content(content)
+        .map_or_else(ToolResult::failed, ToolResult::success)
 }
 
 /// Checks a `task` call's arguments against its parent. `tools` are the
@@ -445,7 +446,9 @@ fn on_task(
             let why = format!("{why}. No subagent was started; fix the call and send it again.");
             commands
                 .entity(call)
-                .insert_if_new(ToolOutput(failed(&run.call, why)));
+                .insert_if_new(ToolOutput(ToolResult::failed(ToolExecutionError::other(
+                    why,
+                ))));
             return;
         }
     };
@@ -499,7 +502,6 @@ fn on_task(
         attachments: Vec::new(),
     });
     let output = answer(
-        &run.call,
         serde_json::json!({
             "agent": child_id.short(),
             "request": request.0,
@@ -817,9 +819,8 @@ fn on_message(
         }
     };
     let output = match sent {
-        Err(why) => failed(call_id, why),
+        Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
         Ok((target, request, status, said)) => answer(
-            call_id,
             serde_json::json!({
                 "agent": target.id.short(),
                 "request": request.0,
@@ -955,10 +956,10 @@ fn report_restored(
     }
 }
 
-/// The text of the model's final message ([`answer_text`]), cut to
+/// The text of the model's final message ([`final_answer`]), cut to
 /// [`MAX_ANSWER_BYTES`].
 fn clipped_answer(message: &Message) -> Option<String> {
-    let text = answer_text(message)?;
+    let text = final_answer(message)?;
     if text.len() <= MAX_ANSWER_BYTES {
         return Some(text);
     }

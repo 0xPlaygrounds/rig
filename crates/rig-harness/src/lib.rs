@@ -97,8 +97,9 @@ pub mod prelude {
     };
     pub use crate::view::{Focus, PickItem, PickRequest, send_input};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
+    pub use rig_core::transcript::final_answer;
     pub use rig_ecs::activity::{FedMessage, Preview, PreviewKind, Status, ToolActivity};
-    pub use rig_ecs::agent::{PrimaryQuery, answer_text, primary};
+    pub use rig_ecs::agent::{PrimaryQuery, primary};
     pub use rig_tools::blocking;
 }
 

@@ -14,11 +14,12 @@ use std::time::{Duration, Instant};
 use bevy_time::TimeUpdateStrategy;
 use rig_core::ProviderResponseError;
 use rig_core::completion::{Message, Reasoning};
+use rig_core::message::UserContent;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_ecs::agent::answer_text;
+use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::models::ModelConnector;
 use rig_ecs::prelude::*;
@@ -143,8 +144,9 @@ fn agents(app: &mut App) -> Vec<(Entity, AgentId)> {
 }
 
 /// A kernel app on `store` whose agent, on a scripted model, was asked a
-/// question; it ran the frames until the turn ended. Returns the app, the
-/// agent, the model and how often the tool ran.
+/// question; it ran the frames until the turn ended. The model's first
+/// reply also calls a tool that does not exist. Returns the app, the agent,
+/// the model and how often the tool ran.
 fn one_turn(store: &MemoryStore) -> Option<(App, Entity, MockCompletionModel, u32)> {
     let (mut app, wakes) = kernel(store);
     let calls = Arc::new(AtomicU32::new(0));
@@ -152,6 +154,7 @@ fn one_turn(store: &MemoryStore) -> Option<(App, Entity, MockCompletionModel, u3
     let model = MockCompletionModel::from_stream_turns([
         vec![
             MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 })),
+            MockStreamEvent::tool_call("call-2", "sub", serde_json::json!({})),
             MockStreamEvent::final_response_with_default_usage(),
         ],
         vec![
@@ -176,15 +179,30 @@ fn a_turn_ends_answered_after_one_tool_round() {
     let ended = &app.world().resource::<Ended>().0;
     assert_eq!(ended.len(), 1, "{ended:?}");
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => answer_text(message),
+        Some(TurnOutcome::Answered(message)) => final_answer(message),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");
     assert_eq!(ran, 1, "the tool ran once");
     assert_eq!(model.request_count(), 2, "one tool round, then the answer");
-    // The question, the tool call, its result and the answer.
+    // The question, the tool calls, their results in call order and the answer.
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
+    let results: Vec<(bool, String)> = match said.get(2) {
+        Some(Message::User { content }) => content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some((result.is_error, format!("{result:?}"))),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    let refused = |text: &String| text.contains("no tool named `sub` is available");
+    assert!(
+        matches!(results.as_slice(), [(false, _), (true, sub)] if refused(sub)),
+        "{results:?}"
+    );
 }
 
 #[test]
@@ -268,7 +286,7 @@ fn a_failed_call_is_sent_again_once_its_backoff_passed_on_the_clock() {
     run_until(&mut app, &wakes, a_turn_ended);
     let ended = &app.world().resource::<Ended>().0;
     let answer = match ended.as_slice() {
-        [TurnOutcome::Answered(message)] => answer_text(message),
+        [TurnOutcome::Answered(message)] => final_answer(message),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");

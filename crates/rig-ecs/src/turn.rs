@@ -28,15 +28,16 @@ use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
+use rig_core::effect::Outcome;
 use rig_core::effect::family::Completion;
 use rig_core::effect::{EffectId, EffectKind, Family};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{ToolCall, ToolResult, UserContent};
-use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
+use rig_core::message::{ToolCall, UserContent};
+use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
-use rig_core::tool::ToolErrorKind;
-use rig_core::transcript::arguments_refusal;
+use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
+use rig_core::transcript::{arguments_refusal, close_pending_with};
 use web_time::Instant;
 
 use super::agent::{
@@ -49,10 +50,7 @@ use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
 use super::journal::{Commit, SessionLog, commit_message};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
-use super::tools::{
-    Footprint, OpenCall, Refused, Serves, ToolDef, ToolOutput, failed, outcome_of, recorded_args,
-    run_tool_call,
-};
+use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
 
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
@@ -293,10 +291,11 @@ fn stopped_results<'a>(
     runs: impl Iterator<Item = (&'a ToolCallRun, Option<&'a ToolOutput>)>,
     why: &str,
 ) -> Option<Message> {
-    let results: Vec<ToolResult> = runs
-        .map(|(run, done)| match done {
-            Some(ToolOutput(result)) => result.clone(),
-            None => failed(&run.call, why.to_owned()),
+    let why = ToolResult::failed(ToolExecutionError::other(why));
+    let results: Vec<_> = runs
+        .map(|(run, done)| {
+            run.call
+                .answer(done.map_or(&why, |ToolOutput(result)| result))
         })
         .collect();
     (!results.is_empty()).then(|| Message::tool_results(results))
@@ -340,16 +339,16 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         .iter(world)
         .map(|(turn, of)| (turn, of.0))
         .collect();
-    let mut outputs = world.query::<&ToolOutput>();
+    let mut outputs = world.query::<(&ToolCallRun, &ToolOutput)>();
     for (turn, agent) in turns {
         let calls: Vec<Entity> = world
             .get::<Calls>(turn)
             .map(|calls| calls.iter().collect())
             .unwrap_or_default();
-        let results: Vec<ToolResult> = outputs
+        let results: Vec<_> = outputs
             .iter_many(world, calls)
             .flatten()
-            .map(|ToolOutput(result)| result.clone())
+            .map(|(run, ToolOutput(result))| run.call.answer(result))
             .collect();
         if !results.is_empty() {
             commit_message(world, agent, Message::tool_results(results));
@@ -713,11 +712,8 @@ pub(crate) fn on_model_done(
     if let Some(failure) = failure {
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {
-            let results = tool_calls
-                .iter()
-                .map(|tool_call| failed(tool_call, format!("not run: {failure}")))
-                .collect();
-            commit.message(agent, &mut conversation, Message::tool_results(results));
+            let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
+            commit.message(agent, &mut conversation, results);
         }
         notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
         drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
@@ -882,7 +878,8 @@ pub(crate) fn on_tool_done(
     mut commands: Commands,
 ) {
     if let Ok((ToolOutput(result), Some(mut open))) = ended.get_mut(done.entity) {
-        open.0.settle(Ok(outcome_of(result)));
+        let result = result.clone();
+        open.0.settle(Ok(Outcome::ToolResult { result }));
     }
     commands
         .entity(done.entity)
@@ -905,7 +902,7 @@ pub(crate) fn on_tool_done(
             continue;
         };
         if let Some(ToolOutput(result)) = output {
-            results.push(result.clone());
+            results.push(run.call.answer(result));
             continue;
         }
         if queued
@@ -984,8 +981,8 @@ impl ToolStarter<'_, '_> {
     /// inserted when it finishes. An open tool's call is recorded as
     /// started and its tool's observer gets [`ToolCalled`] with the parsed
     /// arguments. A call to a tool that is not registered, that the agent
-    /// may not use, or with arguments that do not fit, is dispatched and
-    /// recorded like any other and answered with an error. Before a call
+    /// may not use, or with arguments that do not fit, is recorded like any
+    /// other and answered with an error. Before a call
     /// that may change something, the session log is written, so the reply
     /// that asked for it is on disk first.
     ///
@@ -1002,48 +999,51 @@ impl ToolStarter<'_, '_> {
         if !tool.is_some_and(|(.., footprint)| *footprint == Footprint::ReadOnly) {
             self.log.flush();
         }
-        let refused = |kind: ToolErrorKind, why: String| {
-            ErasedHandler::new(Refused {
-                name: name.to_owned(),
-                kind,
-                why,
-            })
-        };
-        let why = tool.and_then(|(_, def, ..)| arguments_refusal(&def.0.parameters, &run.call));
-        let handler = match (tool, why) {
-            (None, _) => refused(
+        let refused = |kind, why| Err(ErrorReport::new(ErrorKind::Tool(kind), why));
+        let opened = match tool {
+            None => refused(
                 ToolErrorKind::NotFound,
                 format!("no tool named `{name}` is available"),
             ),
-            (Some(_), Some(why)) => refused(ToolErrorKind::InvalidArgs, why),
-            (Some((_, _, Serves::Handler(handler), _)), None) => handler.erased(),
-            (Some((tool, _, Serves::Open(open), _)), None) => match open(&run.call) {
-                Err(why) => refused(ToolErrorKind::InvalidArgs, why),
-                Ok(trigger) => {
-                    let args = recorded_args(&run.call);
-                    let effect = self.effects.open(&id.0, run.parent, name, args);
-                    let (caller, id, run) = (id.clone(), effect.id(), run.clone());
-                    commands
-                        .entity(call)
-                        .queue_silenced(move |mut entity: EntityWorldMut| {
-                            if entity.world().get_entity(agent).is_ok() {
-                                entity.insert(OpenCall(effect));
-                                entity.world_scope(|world| {
-                                    trigger(world, [tool, call, agent], caller, id, run);
-                                });
-                            }
-                        });
-                    return;
+            Some((tool, def, serves, _)) => {
+                match (arguments_refusal(&def.0.parameters, &run.call), serves) {
+                    (Some(why), _) => refused(ToolErrorKind::InvalidArgs, why),
+                    (None, Serves::Open(open)) => open(&run.call)
+                        .map(|trigger| (tool, trigger))
+                        .or_else(|why| refused(ToolErrorKind::InvalidArgs, why)),
+                    (None, Serves::Handler(handler)) => {
+                        let work = run_tool_call(&self.effects, &id.0, run, handler.erased());
+                        let running = Running::spawn(tool_pool(), &self.wake, work);
+                        commands.entity(call).insert(running);
+                        return;
+                    }
                 }
-            },
+            }
         };
-        let (_, work) = run_tool_call(&self.effects, &id.0, run.parent, handler, run.call.clone());
-        let span = info_span!("tool_call", agent = %id.0, tool = name, parent = ?run.parent);
-        commands.entity(call).insert(Running::spawn(
-            tool_pool(),
-            &self.wake,
-            work.instrument(span),
-        ));
+        // A call no handler runs is recorded as opened, and settled at
+        // once when it is refused.
+        let args = run.call.function.raw_arguments();
+        let mut effect = self.effects.open(&id.0, run.parent, name, args);
+        let (tool, trigger) = match opened {
+            Ok(opened) => opened,
+            Err(report) => {
+                let output = ToolOutput(ToolResult::failed(report.clone().into()));
+                effect.settle(Err(report));
+                commands.entity(call).insert(output);
+                return;
+            }
+        };
+        let (caller, id, run) = (id.clone(), effect.id(), run.clone());
+        commands
+            .entity(call)
+            .queue_silenced(move |mut entity: EntityWorldMut| {
+                if entity.world().get_entity(agent).is_ok() {
+                    entity.insert(OpenCall(effect));
+                    entity.world_scope(|world| {
+                        trigger(world, [tool, call, agent], caller, id, run);
+                    });
+                }
+            });
     }
 }
 

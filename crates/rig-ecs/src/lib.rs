@@ -69,12 +69,12 @@ pub mod prelude {
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
-    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
+    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
     pub use crate::turn::{
         Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
     };
     pub use crate::usage::{Spending, TurnSpending};
-    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, args_schema};
+    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
 }
 
 use bevy_app::prelude::*;
@@ -86,7 +86,7 @@ use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls, settle};
 use effects::Effects;
 use journal::SessionLog;
-use rig_core::message::ToolResult;
+use rig_core::tool::ToolResult;
 use store::SessionStore;
 use turn::{ModelReply, PollCalls};
 

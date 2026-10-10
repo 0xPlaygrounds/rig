@@ -32,7 +32,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::launcher;
-use rig_core::message::ToolResultContent;
+use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::{Notice, TurnOf};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
@@ -364,7 +364,7 @@ fn on_reload_tool(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let (call, agent, run) = (called.call, called.agent, &called.run);
+    let (call, agent) = (called.call, called.agent);
     let reason = called
         .args
         .reason
@@ -391,17 +391,17 @@ fn on_reload_tool(
                     called.caller.short()
                 ),
             ));
-            run.call.result(vec![ToolResultContent::text(
+            ToolResult::success(
                 "Reload queued: the build starts once your turn and every other running \
                  turn have ended. End your turn now with a short summary for the user; the \
                  conversation carries on after the restart. A failed build keeps this build \
                  running and its errors arrive as a note."
-                    .to_owned(),
-            )])
+                    .into(),
+            )
         }
-        Asked::Refused(why) => run.call.error_result(vec![ToolResultContent::text(format!(
+        Asked::Refused(why) => ToolResult::failed(ToolExecutionError::other(format!(
             "{why} Nothing was queued."
-        ))]),
+        ))),
     };
     commands.entity(call).insert_if_new(ToolOutput(output));
 }

@@ -15,9 +15,10 @@ use bevy_ecs::prelude::*;
 use super::RunMode;
 use crate::builtin::login::PendingLogin;
 use crate::view::send_input;
+use rig_core::transcript::final_answer;
 use rig_ecs::agent::{
     ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
-    SetModel, answer_text, primary,
+    SetModel, primary,
 };
 use rig_ecs::inbox::DeliveryMode;
 use rig_ecs::models::ModelConnector;
@@ -173,7 +174,7 @@ fn drive(
                 .ok()
                 .filter(|conversation| conversation.messages().len() > before)
                 .and_then(|conversation| conversation.messages().last())
-                .and_then(answer_text);
+                .and_then(final_answer);
             let ok = !run.failed || answer.is_some();
             if let Some(answer) = &answer {
                 println!("{}", answer.trim_end());

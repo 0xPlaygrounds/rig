@@ -9,7 +9,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::oneshot;
 use futures::future::Shared;
-use rig_core::completion::{AssistantContent, Message};
+use rig_core::transcript::final_answer;
 use rig_ecs::agent::{AgentId, TurnOutcome};
 use rig_ecs::inbox::{Origin, RequestId};
 use serde_json::{Map, Value};
@@ -365,7 +365,9 @@ impl Host {
     fn reply(&self, request: &SteelVal) -> Result<SteelVal, String> {
         let request = RequestId(string(request, "the request id")?);
         match self.wait(self.harness.reply(request))? {
-            Ok(TurnOutcome::Answered(message)) => Ok(SteelVal::StringV(text_of(&message).into())),
+            Ok(TurnOutcome::Answered(message)) => Ok(SteelVal::StringV(
+                final_answer(&message).unwrap_or_default().into(),
+            )),
             Ok(TurnOutcome::Failed(why)) => Err(format!("the agent's turn failed: {why}")),
             Ok(TurnOutcome::Stopped) => Err("the agent was stopped before it answered".to_owned()),
             Err(error) => Err(error.to_string()),
@@ -385,7 +387,8 @@ impl Host {
             )?
             .map_err(|error| error.to_string())?;
         let text = result
-            .content
+            .output()
+            .as_content()
             .iter()
             .map(|item| match item.as_json() {
                 Some(value) => value.to_string(),
@@ -393,30 +396,12 @@ impl Host {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        if result.is_error {
+        if !result.is_success() {
             Err(text)
         } else {
             Ok(SteelVal::StringV(text.into()))
         }
     }
-}
-
-/// The text of an agent's answer.
-fn text_of(message: &Message) -> String {
-    let Message::Assistant(reply) = message else {
-        return String::new();
-    };
-    reply
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join("\n\n")
-        .trim()
-        .to_owned()
 }
 
 /// The program's output port: keeps the first [`MAX_OUTPUT_BYTES`] bytes

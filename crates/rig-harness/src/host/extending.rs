@@ -55,7 +55,7 @@ tool answered later by an observer;
 `RequestRedraw` message when only the plugin's own state changed; `TuiScreen` is the size and \
 `Focused` marks the agent shown;
   - what agents do and say: the `Activity` component of every `Agent` (status, running tools, \
-streamed preview), its `Conversation` (`messages()`, with `answer_text` for a final answer's \
+streamed preview), its `Conversation` (`messages()`, with `final_answer` for a final answer's \
 text), the `MessageFeed` resource of delivered messages, and the agent tree through \
 `SpawnedBy`/`Spawned`;
   - conversations: trigger `Deliver { entity, text, origin, mode, attachments }` to put a message \

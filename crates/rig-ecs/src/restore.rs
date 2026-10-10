@@ -27,9 +27,7 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{ReflectFromReflect, TypeRegistry};
-use rig_core::completion::Message;
-use rig_core::message::{ToolCall, ToolResult};
-use rig_core::transcript::pending_calls;
+use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
@@ -41,7 +39,6 @@ use super::journal::{
     AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, load_blobs,
 };
 use super::store::{JournalStore, SessionStore};
-use super::tools::failed;
 use super::turn::{CallModel, ToolStarter, tool_name};
 
 /// The result of a call that may change something and was running when
@@ -379,17 +376,12 @@ fn settle(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let mut results: Vec<ToolResult> = Vec::new();
-    let mut reruns: Vec<ToolCall> = Vec::new();
-    for call in pending_calls(conversation.messages()) {
-        if resume && starter.reruns(call.function.name.as_str()) {
-            reruns.push(call);
-        } else {
-            results.push(failed(&call, INTERRUPTED.to_owned()));
-        }
-    }
-    if !results.is_empty() {
-        commit.message(agent, &mut conversation, Message::tool_results(results));
+    let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
+        .into_iter()
+        .partition(|call| resume && starter.reruns(call.function.name.as_str()));
+    if !interrupted.is_empty() {
+        let results = close_pending_with(&interrupted, INTERRUPTED);
+        commit.message(agent, &mut conversation, results);
     }
     if !resume {
         return;

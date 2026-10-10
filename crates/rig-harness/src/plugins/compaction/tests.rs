@@ -8,7 +8,7 @@ use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_ecs::agent::answer_text;
+use rig_core::transcript::final_answer;
 use rig_ecs::commands::RunCommand;
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::commit_message;
@@ -124,7 +124,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity) {
 /// The answer the one turn of `app` ended with.
 fn answer(app: &App) -> Option<String> {
     match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => answer_text(message),
+        [TurnOutcome::Answered(message)] => final_answer(message),
         _ => None,
     }
 }
