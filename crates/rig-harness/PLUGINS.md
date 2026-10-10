@@ -8,6 +8,7 @@ the terminal view's panels from `rig_tui`.
 - [A slash command](#a-slash-command)
 - [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
 - [Turn hooks](#turn-hooks), [timers](#timers)
+- [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
 - [What agents do and say, in a terminal panel](#what-agents-do-and-say-in-a-terminal-panel)
 - [A window](#a-window)
 
@@ -366,6 +367,39 @@ fn keep_awake(turn: On<Add<TurnOf>>, mut commands: Commands) {
 fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
     for TurnOf(agent) in &turns {
         notices.write(Notice::info(*agent, "Still working."));
+    }
+}
+```
+
+# Turning off or replacing what another plugin added
+
+Tools, slash commands and prompt sections are entities. Bevy's `Disabled`
+on one turns it off: no query finds it, so agents are not offered the
+tool, the command is unknown and the section is left out, and its name is
+free for a replacement (a second tool or command of a taken name is
+refused). Do it in `Plugin::finish`, which runs once every plugin's
+`build` did, so what they added exists whatever their order. What a
+plugin spawns in `finish` is not marked `ProvidedBy` it.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct NoShellPlugin;
+
+impl Plugin for NoShellPlugin {
+    fn build(&self, _app: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        let mut tools = world.query::<(Entity, &ToolDef)>();
+        let shell = tools.iter(world).find(|(_, def)| def.0.name.as_str() == "shell");
+        if let Some((shell, _)) = shell {
+            world.entity_mut(shell).insert(Disabled);
+        }
+        // `shell` is free again: `app.add_tool(MyShell)` would replace it.
+        // A command is found by its `Name`, such as "/help", with
+        // `SlashCommand`; a section by its `PromptSection`'s `tag`.
     }
 }
 ```

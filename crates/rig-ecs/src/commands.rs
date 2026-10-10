@@ -48,7 +48,8 @@ pub struct SlashCommand {
 }
 
 /// Registers slash commands on an [`App`]. A name already registered is
-/// refused with a warning.
+/// refused with a warning: to replace another plugin's command, insert
+/// Bevy's `Disabled` on its entity first, which frees its name.
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
     /// [`CommandArgs`] of each use.
@@ -131,7 +132,7 @@ fn register<'a, M>(
 ) -> &'a mut App {
     let name = format!("/{name}");
     if find(app.world_mut(), &name).is_some() {
-        warn!("command not registered: {name} already exists");
+        warn!("command not registered: {name} exists; insert `Disabled` on it to replace it");
         return app;
     }
     let system = app.register_system(system);

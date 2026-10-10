@@ -94,7 +94,10 @@ pub mod prelude {
 
     pub use std::time::Duration;
 
-    pub use crate::front::{Busy, Focus, Front, PickItem, PickRequest, RunMode, send_input};
+    pub use crate::front::{
+        Busy, Focus, Front, PickItem, PickRequest, RunMode, send_input, send_message,
+    };
+    pub use crate::harness_protocol::Home;
     pub use crate::host::launcher;
     pub use crate::host::reload::{CancelReload, ReloadStatus};
     pub use crate::host::session::{LogEvents, Logged, SessionPaths};

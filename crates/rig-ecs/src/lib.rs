@@ -37,10 +37,13 @@ pub mod tools;
 pub mod turn;
 
 /// What a plugin needs: Bevy's app, ECS, reflection and time preludes
-/// with the time run conditions, the agent components and requests, and
-/// the tool and command registries.
+/// with the time run conditions and `Disabled`, the agent components and
+/// requests, the tool and command registries, and rig-core's message types
+/// (`message::Message` is the conversation's message; the prelude's own
+/// `Message` is Bevy's message trait).
 pub mod prelude {
     pub use bevy_app::prelude::*;
+    pub use bevy_ecs::entity_disabling::Disabled;
     pub use bevy_ecs::prelude::*;
     pub use bevy_reflect::prelude::*;
     pub use bevy_time::common_conditions::{on_real_timer, on_timer};
@@ -48,12 +51,12 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Condensed, Conversation, EffectParent, Interrupt,
-        LastUsage, Notice, NoticeLevel, Retry, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
-        ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent,
+        Interrupt, LastUsage, Notice, NoticeLevel, Partial, Queued, Retry, Spawned, SpawnedBy,
+        SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
-    pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
+    pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
@@ -61,10 +64,11 @@ pub mod prelude {
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
-    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
+    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput};
     pub use crate::turn::{
         Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
     };
+    pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
 }
 

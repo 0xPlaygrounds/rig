@@ -162,7 +162,10 @@ pub struct ToolOptions<'a> {
 pub trait AppToolsExt {
     /// Make `tool` available to every agent whose
     /// [`ToolAccess`](crate::agent::ToolAccess) allows its name. A
-    /// name already registered is refused with a warning.
+    /// name already registered is refused with a warning: to replace
+    /// another plugin's tool, insert Bevy's `Disabled` on its entity first,
+    /// which frees its name (in `Plugin::finish`, once every plugin's
+    /// `build` ran).
     ///
     /// Tool futures run on Bevy's async compute pool, a few threads that
     /// every agent's tool calls share. A tool that blocks, such as one
@@ -273,7 +276,7 @@ fn register_tool(
         .iter(world)
         .any(|def| def.0.name == tool_name)
     {
-        warn!("tool not registered: a tool named `{name}` already exists");
+        warn!("tool not registered: `{name}` exists; insert `Disabled` on it to replace it");
         return None;
     }
     let definition = ToolDefinition::new(tool_name, description, parameters);

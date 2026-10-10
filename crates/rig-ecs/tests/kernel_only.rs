@@ -380,3 +380,74 @@ fn a_plugin_task_ends_as_done_and_the_exit_cancels_it() {
     app.update();
     assert!(app.world().get::<Running>(stuck).is_none());
 }
+
+/// The entity of the registered tool, command or prompt section that
+/// `is` picks.
+fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> {
+    let mut found = app.world_mut().query::<(Entity, &D)>();
+    let found = found.iter(app.world()).find(|(_, data)| is(data));
+    found.map(|(entity, _)| entity)
+}
+
+/// What another plugin added is turned off by inserting Bevy's
+/// `Disabled` on its entity, which frees its name: a tool, a command and
+/// a prompt section given way to their replacements.
+#[test]
+fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let (old, new) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+    let say = |text: &'static str| {
+        move |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::info(args.agent, text));
+        }
+    };
+    app.add_tool(Add(old.clone()))
+        .add_command("hi", "Says hi", say("old"));
+    app.world_mut()
+        .spawn(PromptSection::new(200, "rules", "the old rules"));
+    let picked = [
+        find::<ToolDef>(&mut app, |def| def.0.name.as_str() == "add"),
+        find::<Name>(&mut app, |name| name.as_str() == "/hi"),
+        find::<PromptSection>(&mut app, |section| section.tag == "rules"),
+    ];
+    for entity in picked.into_iter().flatten() {
+        app.world_mut().entity_mut(entity).insert(Disabled);
+    }
+    app.add_tool(Add(new.clone()))
+        .add_command("hi", "Says hi", say("new"));
+    app.world_mut()
+        .spawn(PromptSection::new(200, "rules", "the new rules"));
+    let add = MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 }));
+    let end = MockStreamEvent::final_response_with_default_usage;
+    let model = MockCompletionModel::from_stream_turns([
+        vec![add, end()],
+        vec![MockStreamEvent::text("5"), end()],
+    ]);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    let calls = (old.load(Ordering::Relaxed), new.load(Ordering::Relaxed));
+    assert_eq!(calls, (0, 1));
+    let prompt = model
+        .requests()
+        .first()
+        .and_then(|request| request.system_instructions().map(str::to_owned));
+    let prompt = prompt.unwrap_or_default();
+    assert!(
+        prompt.contains("the new rules") && !prompt.contains("the old rules"),
+        "{prompt}"
+    );
+    app.world_mut().trigger(RunCommand {
+        entity: agent,
+        line: "hi".to_owned(),
+    });
+    app.world_mut().flush();
+    let notices = app.world().resource::<Messages<Notice>>();
+    let said: Vec<&str> = notices
+        .iter_current_update_messages()
+        .map(|n| n.text.as_str())
+        .collect();
+    assert_eq!(said, ["new"]);
+}

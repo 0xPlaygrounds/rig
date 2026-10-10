@@ -12,7 +12,7 @@ use bevy_reflect::prelude::*;
 /// A part of every agent's system prompt, on an entity of its own. A plugin
 /// spawns one and changes its `text` when what it describes changes (with
 /// `set_if_neq`, so an unchanged section is not marked changed); an empty
-/// `text` leaves the section out. Sections are sent in `order`, then
+/// `text`, or Bevy's `Disabled` on the entity, leaves the section out. Sections are sent in `order`, then
 /// `tag`, each between `<tag>` and `</tag>`.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Clone, Debug, Default, PartialEq)]
