@@ -100,7 +100,7 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
     let mut splices = Vec::new();
     let mut notes = Vec::new();
     // Every edit is checked, so one reply names all that need fixing.
-    let mut failed: Vec<(usize, String)> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
     for (index, replacement) in args.edits.iter().enumerate() {
         let label = if many {
             format!("edits[{index}]: ")
@@ -110,25 +110,19 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
         let old = lf(&replacement.old_text);
         let new = lf(&replacement.new_text);
         if old.is_empty() {
-            failed.push((
-                index,
-                format!(
-                    "{label}`old_text` is empty; to add text, replace a nearby line with itself plus the new text"
-                ),
+            failed.push(format!(
+                "{label}`old_text` is empty; to add text, replace a nearby line with itself plus the new text"
             ));
             continue;
         }
         if old == new {
-            failed.push((
-                index,
-                format!(
-                    "{label}`old_text` and `new_text` are the same, so it changes nothing; drop it or fix `new_text`"
-                ),
+            failed.push(format!(
+                "{label}`old_text` and `new_text` are the same, so it changes nothing; drop it or fix `new_text`"
             ));
             continue;
         }
         match locate(text, &old, replacement.replace_all) {
-            Err(miss) => failed.push((index, format!("{label}{}", miss.explain(&old)))),
+            Err(miss) => failed.push(format!("{label}{}", miss.explain())),
             Ok(found) => {
                 if let Some(note) = found.note {
                     notes.push(format!("{label}{note}"));
@@ -240,15 +234,13 @@ fn refused(path: &str, why: String) -> ToolExecutionError {
 /// The refusal for edits that failed: each one's reason, and, in a batch,
 /// that the edits that matched were not applied either and must be sent
 /// again with the fixed ones.
-fn batch_failure(path: &str, count: usize, failed: &[(usize, String)]) -> String {
-    let [(_, why)] = failed else {
-        let reasons: Vec<&str> = failed.iter().map(|(_, why)| why.as_str()).collect();
+fn batch_failure(path: &str, count: usize, failed: &[String]) -> String {
+    let [why] = failed else {
         return format!(
             "{} of the {count} edits failed:\n{}.\nNo edit was applied, so {path} was not \
-             changed. Send all {count} edits again, with these fixed{}.",
+             changed. Send all {count} edits again, with these fixed.",
             failed.len(),
-            reasons.join(".\n"),
-            matched(count, failed)
+            failed.join(".\n"),
         );
     };
     if count == 1 {
@@ -256,23 +248,8 @@ fn batch_failure(path: &str, count: usize, failed: &[(usize, String)]) -> String
     }
     format!(
         "{why}. No edit was applied, so {path} was not changed. Send all {count} edits again, \
-         with this one fixed{}.",
-        matched(count, failed)
+         with this one fixed."
     )
-}
-
-/// `; edits[0], edits[2] matched and stay as they are`, for the edits of a
-/// batch of `count` that did not fail.
-fn matched(count: usize, failed: &[(usize, String)]) -> String {
-    let matched: Vec<String> = (0..count)
-        .filter(|index| !failed.iter().any(|(failed, _)| failed == index))
-        .map(|index| format!("edits[{index}]"))
-        .collect();
-    match matched.as_slice() {
-        [] => String::new(),
-        [one] => format!("; {one} matched and can be sent as it was"),
-        many => format!("; {} matched and can be sent as they were", many.join(", ")),
-    }
 }
 
 /// One replacement of a byte range of the original text.
@@ -342,7 +319,7 @@ enum Miss {
 
 impl Miss {
     /// What went wrong and what to send instead.
-    fn explain(&self, old: &str) -> String {
+    fn explain(&self) -> String {
         match self {
             Miss::Ambiguous { lines, loose } => {
                 let listed: Vec<String> = lines
@@ -369,7 +346,10 @@ impl Miss {
                     listed.join(", ")
                 )
             }
-            Miss::NotFound => not_found(old),
+            Miss::NotFound => "`old_text` was not found, not even ignoring trailing whitespace; \
+                the file may have changed since it was read, so read it again and copy \
+                `old_text` from what it holds now"
+                .to_owned(),
         }
     }
 }
@@ -499,28 +479,6 @@ impl<'a> Lines<'a> {
         };
         first..end
     }
-}
-
-/// Why `old` matched nowhere: line numbers copied from `read`, or the
-/// file changed since it was read.
-fn not_found(old: &str) -> String {
-    let wanted: Vec<&str> = old.strip_suffix('\n').unwrap_or(old).split('\n').collect();
-    if wanted.iter().all(|line| numbered(line)) {
-        return "`old_text` was not found: it starts with line numbers as `read` shows them; \
-                copy the text after the tab only"
-            .to_owned();
-    }
-    "`old_text` was not found, not even ignoring trailing whitespace; the file may have \
-     changed since it was read, so read it again and copy `old_text` from what it holds now"
-        .to_owned()
-}
-
-/// Whether `line` looks like a line `read` returned: spaces, a number and
-/// a tab.
-fn numbered(line: &str) -> bool {
-    line.trim_start()
-        .split_once('\t')
-        .is_some_and(|(number, _)| !number.is_empty() && number.chars().all(|c| c.is_ascii_digit()))
 }
 
 /// The unified diff from `old` to `new`, cut to what a tool may return.
