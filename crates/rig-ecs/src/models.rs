@@ -1,4 +1,5 @@
-//! Catalog models the agent can use, and the reasoning settings each takes.
+//! Catalog models the agent can use, the reasoning settings each takes,
+//! and how an agent's choice of them is connected.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -12,7 +13,11 @@ use rig_core::serve::adapters::ModelAdapter;
 
 use bevy_ecs::prelude::*;
 
-use super::agent::{Effort, ModelChoice};
+use super::agent::{
+    ActiveTurn, Agent, Connection, Effort, ModelChoice, Notice, SetEffort, SetModel,
+};
+use super::effects::{Effects, Handler};
+use super::turn::NO_MODEL;
 
 /// The model and reasoning setting of an agent spawned by an agent with
 /// `parent`'s: `model`, a reference in `connector`'s catalog of a model
@@ -186,9 +191,130 @@ pub fn effort_label(effort: Option<Reasoning>) -> String {
 }
 
 /// Whether `spec` takes `effort`, or why not.
-pub(crate) fn check_effort(
-    spec: &ModelSpec,
-    effort: Option<Reasoning>,
-) -> Result<(), UnsupportedOption> {
+fn check_effort(spec: &ModelSpec, effort: Option<Reasoning>) -> Result<(), UnsupportedOption> {
     spec.validate(&spec.default_options(effort))
+}
+
+/// Chooses the agent's model: a known catalog model replaces the agent's
+/// [`ModelChoice`], which [`connect`] connects.
+pub(crate) fn on_set_model(
+    set: On<SetModel>,
+    agents: Query<Has<ActiveTurn>, With<Agent>>,
+    connector: Res<ModelConnector>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok(busy) = agents.get(set.entity) else {
+        return;
+    };
+    if refused_mid_turn(set.entity, busy, &mut notices) {
+        return;
+    }
+    match connector.resolve(&set.model) {
+        Some(spec) => {
+            commands
+                .entity(set.entity)
+                .insert(ModelChoice(spec.reference()));
+        }
+        None => {
+            notices.write(Notice::error(
+                set.entity,
+                format!("No catalog model `{}`. Use vendor/model.", set.model),
+            ));
+        }
+    }
+}
+
+/// Connects an agent whose [`ModelChoice`] or [`Effort`] was inserted, in
+/// either order, by [`SetModel`], by restoring a session or by a plugin:
+/// each choice is connected once, so requests never re-resolve the
+/// provider, and a reasoning setting the model does not take is reset.
+/// Only a change of a connected agent's model is announced: spawning and
+/// restoring an agent are silent, since views show its model anyway.
+pub(crate) fn connect(
+    inserted: On<Insert<(ModelChoice, Effort)>>,
+    agents: Query<(&ModelChoice, &Effort, Option<&Connection>)>,
+    mut effects: ResMut<Effects>,
+    connector: Res<ModelConnector>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = inserted.entity;
+    let Ok((choice, effort, connected)) = agents.get(agent) else {
+        return;
+    };
+    let spec = match connected.filter(|connection| connection.spec.reference() == choice.0) {
+        Some(connection) => connection.spec.clone(),
+        None => {
+            let spec = connector.resolve(&choice.0);
+            let spec = spec.ok_or_else(|| format!("the catalog has no model `{}`", choice.0));
+            let handler = spec.and_then(|spec| match effects.model_handler(&spec, &connector) {
+                Ok(handler) => Ok((spec, Handler(handler))),
+                Err(error) => Err(error.to_string()),
+            });
+            let Ok((spec, handler)) = handler.inspect_err(|why| {
+                commands.entity(agent).remove::<Connection>();
+                let why = format!("Cannot use {}: {why}.", choice.0);
+                notices.write(Notice::error(agent, why));
+            }) else {
+                return;
+            };
+            if connected.is_some() {
+                let model = format!("Model: {} ({}).", spec.display_name, choice.0);
+                notices.write(Notice::info(agent, model));
+            }
+            let connection = Connection { spec, handler };
+            commands.entity(agent).insert(connection.clone());
+            connection.spec
+        }
+    };
+    if let Err(refusal) = check_effort(&spec, effort.0) {
+        commands.entity(agent).insert(Effort(None));
+        notices.write(Notice::info(
+            agent,
+            format!("Reasoning reset to default: {refusal}."),
+        ));
+    }
+}
+
+/// Sets the agent's reasoning setting after checking it against the model.
+pub(crate) fn on_set_effort(
+    set: On<SetEffort>,
+    agents: Query<(Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((connection, busy)) = agents.get(set.entity) else {
+        return;
+    };
+    if refused_mid_turn(set.entity, busy, &mut notices) {
+        return;
+    }
+    let Some(connection) = connection else {
+        notices.write(Notice::info(set.entity, NO_MODEL));
+        return;
+    };
+    match check_effort(&connection.spec, set.effort.0) {
+        Ok(()) => {
+            commands.entity(set.entity).insert(set.effort);
+            notices.write(Notice::info(
+                set.entity,
+                format!("Reasoning: {}.", effort_label(set.effort.0)),
+            ));
+        }
+        Err(refusal) => {
+            notices.write(Notice::error(set.entity, format!("{refusal}.")));
+        }
+    }
+}
+
+/// Refuses a model or reasoning change while the agent's turn runs: the
+/// rest of the turn would go to a model, or use a setting, it did not start
+/// with. Every sender of [`SetModel`] and [`SetEffort`] gets the same
+/// refusal.
+fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
+    if busy {
+        notices.write(Notice::info(agent, "A turn is running; stop it first."));
+    }
+    busy
 }

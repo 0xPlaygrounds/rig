@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use super::activity::Activity;
 use super::effects::Handler;
 use super::inbox::{Inbox, Origin};
+use super::journal::ReflectSaved;
 use super::tools::Footprint;
 use super::turn::Recovery;
 use super::usage::{Spending, TurnSpending};
@@ -83,8 +84,8 @@ pub struct EffectParent(pub EffectId);
 /// The conversation: every message sent to and received from the model,
 /// and where each delivered text came from when it is not the user's own.
 /// Requests leave out the messages its agent's [`Condensed`] replaced with
-/// a summary. Messages are added only through the
-/// [`SessionLog`](super::journal::SessionLog), which logs each one.
+/// a summary. It changes only through a
+/// [`Commit`](super::journal::Commit), which logs each change.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub struct Conversation {
@@ -269,7 +270,7 @@ impl Condensed {
 /// replaces it with its estimate of the tokens the next request sends, in
 /// `total_tokens`. Saved with the session.
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct LastUsage(pub Option<Usage>);
 
@@ -284,9 +285,9 @@ impl LastUsage {
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, and each insert rebuilds the
 /// agent's [`Connection`]. Saved with the session.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[component(immutable)]
-#[reflect(Component, Clone)]
+#[reflect(Component, Saved, Clone)]
 pub struct ModelChoice(pub String);
 
 /// The connected model of an agent with a [`ModelChoice`]: its catalog
@@ -307,7 +308,7 @@ pub struct Connection {
     Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
 )]
 #[component(immutable)]
-#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Effort(pub Option<Reasoning>);
 
 /// The agent's own part of its system prompt: who it is and how it works.
@@ -317,7 +318,7 @@ pub struct Effort(pub Option<Reasoning>);
 /// session, as `null` when it is the default, so a restored agent gets the
 /// default of the build that restores it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(from = "Option<String>", into = "Option<String>")]
 pub struct SystemPrompt(pub String);
 
@@ -360,7 +361,7 @@ impl Default for SystemPrompt {
 
 /// Which registered tools the agent may call. Saved with the session.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]
@@ -489,15 +490,6 @@ pub struct SetEffort {
     pub entity: Entity,
     /// The setting.
     pub effort: Effort,
-}
-
-/// The user chose the agent's model or reasoning setting with [`SetModel`]
-/// or [`SetEffort`], and it took: the agent's [`ModelChoice`] and [`Effort`]
-/// hold the choice. Restoring a session never sends it.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct SettingsChosen {
-    /// The agent.
-    pub entity: Entity,
 }
 
 /// How a [`Notice`] is shown and logged.

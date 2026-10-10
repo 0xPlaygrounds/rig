@@ -2,8 +2,9 @@
 //! runtime and its session journal, and nothing else. A scripted model asks
 //! for one tool call, then answers; a second app on the same store gets the
 //! conversation back; a failed call is sent again once its backoff passed
-//! on Bevy's clock. Only rig-ecs's public API is used, as a third-party
-//! plugin would.
+//! on Bevy's clock; a model connects the same whichever of its settings
+//! comes first. Only rig-ecs's public API is used, as a third-party plugin
+//! would.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -12,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
 use rig_core::ProviderResponseError;
-use rig_core::completion::Message;
+use rig_core::completion::{Message, Reasoning};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
@@ -292,4 +293,32 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
         app.world().resource::<Ended>().0
     );
     assert_eq!(model.request_count(), 1, "the call was not sent again");
+}
+
+#[test]
+fn a_model_connects_the_same_whichever_setting_a_restore_inserts_first() {
+    let (mut app, _wakes) = kernel(&MemoryStore::default());
+    let model = MockCompletionModel::from_turns([]);
+    let agents = [connected(&mut app, &model), connected(&mut app, &model)];
+    assert!(agents.iter().all(Option::is_some));
+    let [Some(effort_first), Some(model_first)] = agents else {
+        return;
+    };
+    let world = app.world_mut();
+    let reference =
+        |world: &World, agent| world.get::<Connection>(agent).map(|c| c.spec.reference());
+    let choice = ModelChoice(reference(world, effort_first).unwrap_or_default());
+    // The model takes effort levels, not a reasoning budget.
+    let budget = Effort(Some(Reasoning::Budget { tokens: 1000 }));
+    let mut agent = world.entity_mut(effort_first);
+    agent.insert(budget).insert(choice.clone());
+    world
+        .entity_mut(model_first)
+        .insert(choice.clone())
+        .insert(budget);
+    world.flush();
+    let settings = |agent| (reference(world, agent), world.get::<Effort>(agent).copied());
+    let expected = (Some(choice.0), Some(Effort(None)));
+    assert_eq!(settings(effort_first), expected);
+    assert_eq!(settings(model_first), expected);
 }

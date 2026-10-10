@@ -265,11 +265,17 @@ fn recent(
 - `TurnEnded` is triggered on an agent when its turn ends, then on each
   agent above it (`SpawnedBy`); `ended.entity == ended.original_event_target()`
   is the agent's own.
-- `app.save_component::<T>()` keeps an agent component (`Serialize +
-  Deserialize`) with the session; `Restored` is triggered on each agent
-  after a restart, where a plugin re-arms what it owes. The core saves
-  `ModelChoice`, `Effort`, `SystemPrompt`, `ToolAccess` and `Spending` the
-  same way, so a plugin that changes them has nothing to log.
+- An agent component that derives `Reflect` and says
+  `#[reflect(Component, Saved)]` is kept with the session: each change is
+  logged by reflection, and a restart, `/reload` or `/resume` brings the
+  newest value back. `Restored` is triggered on each agent after a restart,
+  where a plugin re-arms what it owes. The core saves `ModelChoice`,
+  `Effort`, `SystemPrompt`, `ToolAccess`, `Spending` and `LastUsage` the
+  same way, so a plugin that changes them has nothing to log. A generic
+  type is saved only once registered (`app.register_type::<T>()`).
+- `On<Add<CallOf>>` sees every model and tool call of a turn;
+  `On<Add<ToolCallRun>>` the tool calls. `MessageReader<Committed>` sees
+  every change of every conversation, as the session log records it.
 - A `PromptSection` entity adds to every agent's system prompt.
 - Time is Bevy's `Time`. `.run_if(on_real_timer(Duration))` runs a system
   once per interval; the loop sleeps when idle, so an entity with a
@@ -279,32 +285,40 @@ fn recent(
   None needs a thread.
 
 ```rust,no_run
-use rig_harness::prelude::*;
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
-/// How many turns an agent finished, kept with the session.
-#[derive(Component, Serialize, Deserialize, Default)]
-struct Turns(u32);
+use rig_harness::prelude::*;
+
+/// How often each agent called each tool, kept across `/compact`,
+/// `/reload` and `/resume`.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Saved)]
+struct ToolCounts(HashMap<String, u32>);
 
 #[derive(Default)]
-pub struct TurnsPlugin;
+pub struct ToolCountsPlugin;
 
-impl Plugin for TurnsPlugin {
+impl Plugin for ToolCountsPlugin {
     fn build(&self, app: &mut App) {
-        app.save_component::<Turns>().add_observer(count);
+        app.register_required_components::<Agent, ToolCounts>()
+            .add_observer(count);
     }
 }
 
-fn count(ended: On<TurnEnded>, mut turns: Query<Option<&mut Turns>>, mut commands: Commands) {
-    if ended.entity != ended.original_event_target() {
+fn count(
+    call: On<Add<ToolCallRun>>,
+    calls: Query<(&ToolCallRun, &CallOf)>,
+    turns: Query<&TurnOf>,
+    mut counts: Query<&mut ToolCounts>,
+) {
+    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
         return;
-    }
-    match turns.get_mut(ended.entity) {
-        Ok(Some(mut turns)) => turns.0 = turns.0.saturating_add(1),
-        Ok(None) => {
-            commands.entity(ended.entity).insert(Turns(1));
-        }
-        Err(_) => {}
+    };
+    if let Ok(TurnOf(agent)) = turns.get(*turn)
+        && let Ok(mut counts) = counts.get_mut(*agent)
+    {
+        let name = run.call.function.name.as_str().to_owned();
+        *counts.0.entry(name).or_default() += 1;
     }
 }
 ```

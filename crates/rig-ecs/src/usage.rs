@@ -22,12 +22,13 @@ use serde::{Deserialize, Serialize};
 
 use super::agent::{AgentId, CallOf, LastUsage, TurnOf};
 use super::calls::Done;
+use super::journal::ReflectSaved;
 use super::turn::ModelReply;
 
 /// An agent's model calls' usage summed, as rig-core's [`UsageTotals`]
 /// sums it, saved with the session. A turn's is a [`TurnSpending`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Spending(pub UsageTotals);
 
 impl Deref for Spending {

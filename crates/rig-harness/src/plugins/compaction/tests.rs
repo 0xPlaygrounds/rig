@@ -11,7 +11,7 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_ecs::agent::answer_text;
 use rig_ecs::commands::RunCommand;
 use rig_ecs::effects::Handler;
-use rig_ecs::journal::SessionLog;
+use rig_ecs::journal::commit_message;
 use rig_ecs::models::ModelConnector;
 use rig_ecs::store::{MemoryStore, SessionStore};
 
@@ -43,6 +43,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
             log.0.push(ended.outcome.clone());
         });
+    app.finish();
     app.update();
     (app, wakes)
 }
@@ -67,16 +68,12 @@ fn agent(
         .query_filtered::<Entity, With<Agent>>()
         .iter(world)
         .next()?;
-    let log = world.resource::<SessionLog>().clone();
-    let mut entity = world.entity_mut(agent);
-    entity.insert(Connection {
+    world.entity_mut(agent).insert(Connection {
         spec,
         handler: Handler(handler),
     });
-    let id = entity.get::<AgentId>().cloned()?;
-    let mut conversation = entity.get_mut::<Conversation>()?;
     for message in messages {
-        log.commit(&id, &mut conversation, message, None);
+        commit_message(world, agent, message);
     }
     Some(agent)
 }

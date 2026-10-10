@@ -23,19 +23,22 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
+use bevy_reflect::serde::TypedReflectDeserializer;
+use bevy_reflect::{ReflectFromReflect, TypeRegistry};
 use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult};
 use rig_core::transcript::pending_calls;
 use serde::Deserialize;
-use serde::de::IgnoredAny;
+use serde::de::{DeserializeSeed, IgnoredAny};
+use serde_json::Value;
 
 use super::agent::{
     Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf,
 };
 use super::journal::{
-    AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
-    load_blobs,
+    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, load_blobs,
 };
 use super::store::{JournalStore, SessionStore};
 use super::tools::failed;
@@ -114,10 +117,9 @@ pub(crate) fn restore_session(world: &mut World) {
         .iter()
         .map(|agent| (agent.header.agent.clone(), agent.header.parent.clone()))
         .collect();
-    let saved_components = world
-        .get_resource::<SavedComponents>()
-        .map(|saved| saved.0.clone())
-        .unwrap_or_default();
+    let registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let registry = registry.unwrap_or_default();
+    let registry = registry.read();
     let mut restored = Vec::new();
     let mut entities = HashMap::new();
     let mut links = Vec::new();
@@ -134,35 +136,12 @@ pub(crate) fn restore_session(world: &mut World) {
         if let Some(condensed) = condensed {
             spawned.insert(condensed);
         }
-        let entity = spawned.id();
-        // In the order registered, which inserts the reasoning setting
-        // before the model that checks it.
-        for (path, insert) in &saved_components {
-            let Some(saved) = log.components.get(*path) else {
-                continue;
-            };
-            let inserted = if saved.v > COMPONENT_VERSION {
-                Err(format!(
-                    "it was saved by a newer build (version {})",
-                    saved.v
-                ))
-            } else {
-                insert(&mut world.entity_mut(entity), saved.value.clone())
-                    .map_err(|failure| format!("its saved value no longer fits: {failure}"))
-            };
-            if let Err(failure) = inserted {
+        for (path, value) in &log.components {
+            if let Err(failure) = insert_saved(&mut spawned, path, value, &registry) {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
-        for path in log
-            .components
-            .keys()
-            .filter(|path| saved_components.iter().all(|(name, _)| name != path))
-        {
-            notices.push(format!(
-                "Skipped saved component `{path}`: no plugin saves it any more."
-            ));
-        }
+        let entity = spawned.id();
         log.depth = depth(&header.agent, &parents);
         restored.push((log.depth, entity));
         entities.insert(id.0.clone(), entity);
@@ -198,6 +177,31 @@ fn depth(agent: &str, parents: &HashMap<String, Option<String>>) -> usize {
         at = parent;
     }
     depth
+}
+
+/// Inserts on `agent` the saved component of the type path `path` from its
+/// logged `value`, in place of an immutable one too.
+fn insert_saved(
+    agent: &mut EntityWorldMut,
+    path: &str,
+    value: &Value,
+    registry: &TypeRegistry,
+) -> Result<(), String> {
+    let registration = registry
+        .get_with_type_path(path)
+        .filter(|registration| registration.data::<ReflectSaved>().is_some())
+        .ok_or("no plugin saves it in this build")?;
+    let component = registration.data::<ReflectComponent>();
+    let component = component.ok_or("it is not a reflected component")?;
+    let reflected = TypedReflectDeserializer::new(registration, registry)
+        .deserialize(value)
+        .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
+    let value = registration
+        .data::<ReflectFromReflect>()
+        .and_then(|from| from.from_reflect(&*reflected))
+        .ok_or("its saved value no longer fits")?;
+    component.insert(agent, value.as_partial_reflect(), registry);
+    Ok(())
 }
 
 /// Reads and folds the log of `agent` in `store`, cutting off a torn last
@@ -253,61 +257,50 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         },
     };
     // Messages are read from the first one the newest condensed record
-    // kept, the rest from that record on.
+    // kept.
     let condensed = envelopes
         .iter()
         .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "condensed"))
-        .and_then(|at| {
-            let line = serde_json::from_slice::<Line>(lines.get(at)?).ok()?;
-            match line.record {
-                Record::Condensed(record) => Some((at, record)),
-                _ => None,
-            }
+        .and_then(|at| match serde_json::from_slice(lines.get(at)?).ok()? {
+            Line {
+                record:
+                    Record::Condensed {
+                        summary,
+                        first_kept,
+                    },
+                ..
+            } => Some((at, summary, first_kept)),
+            _ => None,
         });
-    let (from_messages, from_rest) = match condensed {
-        Some((at, record)) => {
-            let first_kept = envelopes
+    let from = match condensed {
+        Some((at, summary, first_kept)) => {
+            folded.condensed = Some(Condensed { upto: 0, summary });
+            envelopes
                 .iter()
                 .enumerate()
                 .skip(1)
                 .find(|(_, envelope)| {
-                    matches!(envelope, Some(envelope) if envelope.seq >= record.first_kept)
+                    matches!(envelope, Some(envelope) if envelope.seq >= first_kept)
                 })
-                .map_or(at, |(index, _)| index.min(at));
-            folded.log.components = record.snapshot.components;
-            folded.condensed = Some(Condensed {
-                upto: 0,
-                summary: record.summary,
-            });
-            (first_kept, at + 1)
+                .map_or(at, |(index, _)| index.min(at))
         }
-        None => (1, 1),
+        None => 1,
     };
-    // Only the newest record of a saved component is read.
-    let newest: HashMap<&str, usize> = envelopes
-        .iter()
-        .enumerate()
-        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
-        .collect();
-    for (index, line) in lines.iter().enumerate().skip(from_messages) {
-        if let Some(Some(Envelope {
-            component: Some(component),
-            ..
-        })) = envelopes.get(index)
-            && newest.get(component.as_str()) != Some(&index)
+    for (line, envelope) in lines.iter().zip(&envelopes).skip(from) {
+        // Saved components are read below; unknown record types are
+        // skipped and left on disk.
+        if envelope
+            .as_ref()
+            .is_some_and(|envelope| envelope.component.is_some())
         {
             continue;
         }
-        // Unknown record types are skipped and left on disk.
         let Ok(line) = serde_json::from_slice::<Line>(line) else {
             continue;
         };
-        let superseded = index < from_rest;
         match line.record {
-            Record::Message {
-                mut message,
-                origin,
-            } => {
+            Record::Message { message, origin } => {
+                let mut message = message.into_owned();
                 load_blobs(&mut message, store);
                 folded.conversation.append(message, origin, Some(line.seq));
             }
@@ -320,23 +313,29 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 folded.conversation.resume();
                 folded.conversation.halt(reason);
             }
-            _ if superseded => {}
-            Record::Component {
-                component,
-                v,
-                value,
-            } => match value {
-                Some(value) => {
-                    folded
-                        .log
-                        .components
-                        .insert(component, SavedValue { v, value });
-                }
-                None => {
-                    folded.log.components.remove(&component);
-                }
-            },
-            Record::Header(_) | Record::Condensed(_) => {}
+            Record::Header(_) | Record::Component { .. } | Record::Condensed { .. } => {}
+        }
+    }
+    // Only the newest record of each saved component is read, wherever it
+    // is in the log.
+    let newest: HashMap<&str, usize> = envelopes
+        .iter()
+        .enumerate()
+        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
+        .collect();
+    for at in newest.into_values() {
+        let line = lines
+            .get(at)
+            .and_then(|line| serde_json::from_slice(line).ok());
+        if let Some(Line {
+            record: Record::Component { component, value },
+            ..
+        }) = line
+        {
+            folded
+                .log
+                .components
+                .extend(value.map(|value| (component, value)));
         }
     }
     Ok(folded)
@@ -372,12 +371,12 @@ pub(crate) fn reconcile(world: &mut World) {
 /// [`Restored`] observers left.
 fn settle(
     In((agent, resume)): In<(Entity, bool)>,
-    mut agents: Query<(&AgentId, &mut Conversation)>,
+    mut agents: Query<&mut Conversation>,
     starter: ToolStarter,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     mut commands: Commands,
 ) {
-    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+    let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
     let mut results: Vec<ToolResult> = Vec::new();
@@ -390,7 +389,7 @@ fn settle(
         }
     }
     if !results.is_empty() {
-        log.commit(id, &mut conversation, Message::tool_results(results), None);
+        commit.message(agent, &mut conversation, Message::tool_results(results));
     }
     if !resume {
         return;

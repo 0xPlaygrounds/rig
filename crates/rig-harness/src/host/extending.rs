@@ -62,8 +62,8 @@ text), the `MessageFeed` resource of delivered messages, and the agent tree thro
 in an agent's conversation (`DeliveryMode::Steer`, `Queue`, or `Note` for one that needs no \
 answer and starts no turn); observe `TurnEnded`, which \
 travels up `SpawnedBy`; spawn a `PromptSection` to add to every system prompt;
-  - state kept with the session: `app.save_component::<T>()` for an agent component; re-arm \
-work on `Restored`;
+  - state kept with the session: `#[reflect(Component, Saved)]` on an agent component that \
+derives `Reflect`; re-arm work on `Restored`;
   - time: Bevy's `Time`; `.run_if(on_real_timer(Duration))` with a `KeepAwake(Duration)` entity \
 while it should tick, or a one-off `commands.delayed().duration(Duration)`, never a thread that sleeps;
   - a window: `rig_harness::windowed(DefaultPlugins)` and a `Wake` on winit's event loop, with \

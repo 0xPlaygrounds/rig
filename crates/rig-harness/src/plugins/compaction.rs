@@ -32,7 +32,6 @@ impl Plugin for CompactionPlugin {
             ..CompactionPolicy::default()
         }))
         .register_required_components::<TurnOf, Compactions>()
-        .save_component::<Summarized>()
         .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
@@ -86,7 +85,7 @@ pub struct Compact {
 /// The agent's summary so far and the files it tracks, which the next
 /// compaction builds on. Saved with the session.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Summarized(pub SummaryState);
 

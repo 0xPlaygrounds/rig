@@ -26,7 +26,7 @@ impl Plugin for ScaffoldPlugin {
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
         //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
         // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)
-        // - saved state:        app.save_component::<MyComponent>()
+        // - saved state:        #[reflect(Component, Saved)] on a component deriving Reflect
         // - a terminal panel:   spawn TuiPanel::new(Placement::Right(Constraint::Length(30)))
     }
 }

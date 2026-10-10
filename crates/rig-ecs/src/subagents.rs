@@ -51,14 +51,14 @@ use rig_core::completion::Message;
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use crate::agent::{
     ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
     SystemPrompt, ToolAccess, TurnEnded, TurnOutcome, answer_text,
 };
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
-use crate::journal::AppSaveExt;
+use crate::journal::ReflectSaved;
 use crate::models::{self, ModelConnector};
 use crate::restore::Restored;
 use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, failed};
@@ -162,9 +162,6 @@ impl Plugin for SubagentsPlugin {
             },
             on_message,
         )
-        .save_component::<Subtask>()
-        .save_component::<Owes>()
-        .save_component::<Peers>()
         .add_observer(name_subagent)
         .add_observer(report_on_turn_end)
         .add_observer(release_on_leave)
@@ -173,8 +170,8 @@ impl Plugin for SubagentsPlugin {
 }
 
 /// On a subagent: its task's short title, which names it.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(Component, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Subtask {
     /// The title.
     pub title: String,
@@ -185,12 +182,12 @@ pub struct Subtask {
 /// asker. A report to the parent that waits for its batch is
 /// [`Owed::held`] here until every task of the batch has reported, then
 /// delivered in the order the reports were made.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(Component, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Owes(Vec<Owed>);
 
 /// A request an agent owes a report on.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub struct Owed {
     /// The request.
     pub request: RequestId,
@@ -199,11 +196,9 @@ pub struct Owed {
     /// For a `task` started with the other `task` calls of one reply: the
     /// parent's model call of that reply. Not saved: a restart answers the
     /// open requests as interrupted and hands over what was held.
-    #[serde(skip)]
     #[reflect(ignore)]
     pub batch: Option<EffectId>,
     /// Its report, made and waiting for the batch.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub held: Option<HeldReport>,
 }
 
@@ -247,12 +242,12 @@ impl Owes {
 /// On a subagent: it may send a `message` to its siblings that have
 /// [`Peers`] too, and they to it. A `task` with `peers` set inserts it;
 /// any plugin may too.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(Component, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Peers;
 
 /// A report held back for its batch.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub struct HeldReport {
     /// The report's text.
     pub text: String,

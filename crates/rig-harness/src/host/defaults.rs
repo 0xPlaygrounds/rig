@@ -13,7 +13,8 @@ use rig::harness_protocol::Home;
 use rig_tools::fs::write_atomic;
 use serde::{Deserialize, Serialize};
 
-use rig_ecs::agent::{Agent, Effort, ModelChoice, SettingsChosen, SpawnedBy};
+use rig_ecs::agent::{Agent, Effort, ModelChoice, SpawnedBy};
+use rig_ecs::journal::SessionLog;
 
 /// Remembers the last chosen model and reasoning setting and gives them to
 /// an agent that starts without a model.
@@ -31,7 +32,7 @@ impl Plugin for DefaultsPlugin {
 #[derive(Resource)]
 struct DefaultsFile(PathBuf);
 
-#[derive(Serialize, Deserialize, Default)]
+#[derive(Serialize, Deserialize, Default, PartialEq)]
 struct Defaults {
     model: Option<String>,
     #[serde(default)]
@@ -76,27 +77,30 @@ fn apply_defaults(
         return;
     };
     for agent in &agents {
-        // Effort first: choosing the model checks the effort against it.
         commands
             .entity(agent)
-            .insert(defaults.effort)
-            .insert(ModelChoice(model.clone()));
+            .insert((defaults.effort, ModelChoice(model.clone())));
     }
 }
 
-/// Remembers the model and reasoning the user chose with `/model` or
-/// `/effort` for an agent they talk to. Only [`SettingsChosen`] counts:
-/// restoring a session or spawning a subagent inserts the same components
-/// but is not a choice.
+/// Remembers the model and reasoning of an agent the user talks to when
+/// either changes, such as by `/model` or `/effort`. Restoring a session
+/// inserts them before the session is logged, which is not a choice, and
+/// subagents are not remembered.
 fn remember(
-    chosen: On<SettingsChosen>,
-    agents: Query<(Option<&ModelChoice>, &Effort), Without<SpawnedBy>>,
+    chosen: On<Insert<(ModelChoice, Effort)>>,
+    agents: Query<(&ModelChoice, &Effort), Without<SpawnedBy>>,
+    log: Res<SessionLog>,
     file: Res<DefaultsFile>,
 ) {
-    if let Ok((Some(model), effort)) = agents.get(chosen.entity) {
-        file.write(&Defaults {
-            model: Some(model.0.clone()),
-            effort: *effort,
-        });
+    let Ok((model, effort)) = agents.get(chosen.entity) else {
+        return;
+    };
+    let defaults = Defaults {
+        model: Some(model.0.clone()),
+        effort: *effort,
+    };
+    if log.is_live() && file.read() != defaults {
+        file.write(&defaults);
     }
 }

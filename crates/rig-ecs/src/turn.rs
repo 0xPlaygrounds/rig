@@ -41,15 +41,13 @@ use web_time::Instant;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Connection, Conversation, EffectParent,
-    Effort, Ending, Halt, Interrupt, LastUsage, ModelChoice, Notice, Partial, Queued, Retry,
-    SetEffort, SetModel, SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf,
-    TurnOutcome,
+    Effort, Ending, Halt, Interrupt, LastUsage, Notice, Partial, Queued, Retry, SystemPrompt,
+    ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
 };
 use super::calls::{Done, Running, Wake};
-use super::effects::{Effects, Handler};
-use super::inbox::{Delivery, Inbox, deliver_notes, deliver_queued, deliver_steering};
-use super::journal::SessionLog;
-use super::models::{self, ModelConnector};
+use super::effects::Effects;
+use super::inbox::{Inbox, Pending};
+use super::journal::{Commit, SessionLog, commit_message};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::tools::{
     Footprint, OpenCall, Refused, Serves, ToolDef, ToolOutput, failed, outcome_of, recorded_args,
@@ -57,7 +55,7 @@ use super::tools::{
 };
 
 /// The notice when the agent has no model to call.
-const NO_MODEL: &str = "No model is connected; pick one first.";
+pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 
 /// How failed model calls are retried: rig-core's default, four retries in
 /// a row per turn (a reply resets the count).
@@ -250,16 +248,17 @@ fn end_turn(commands: &mut Commands, turn: Entity, outcome: TurnOutcome) {
 /// always means a crash or a restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
-    mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
+    mut agents: Query<(&mut Conversation, &ActiveTurn)>,
     turns: Query<&Calls>,
     runs: Query<(&ToolCallRun, Option<&ToolOutput>)>,
     partials: Query<&Partial, With<ModelCall>>,
+    mut commit: Commit,
     log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = interrupt.entity;
-    let Ok((id, mut conversation, active)) = agents.get_mut(agent) else {
+    let Ok((mut conversation, active)) = agents.get_mut(agent) else {
         return;
     };
     let turn = active.turn();
@@ -273,15 +272,15 @@ pub(crate) fn on_interrupt(
         .map(|partial| partial.text.as_str())
         .collect();
     if !aborted.trim().is_empty() {
-        log.commit(id, &mut conversation, Message::assistant(aborted), None);
+        commit.message(agent, &mut conversation, Message::assistant(aborted));
     }
     if let Some(results) = stopped_results(
         runs.iter_many(calls.iter().copied()).flatten(),
         "interrupted by the user",
     ) {
-        log.commit(id, &mut conversation, results, None);
+        commit.message(agent, &mut conversation, results);
     }
-    log.halt(id, &mut conversation, Halt::Stopped);
+    commit.halt(agent, &mut conversation, Halt::Stopped);
     log.flush();
     commands.entity(turn).despawn();
     notices.write(Notice::info(agent, "Interrupted."));
@@ -323,7 +322,6 @@ pub struct Exiting;
 /// came in are logged, and the restart answers the rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
     world.insert_resource(Exiting);
-    let log = world.get_resource::<SessionLog>().cloned();
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
     take_running::<ToolResult>(world, &mut cancelling);
@@ -353,11 +351,8 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
             .flatten()
             .map(|ToolOutput(result)| result.clone())
             .collect();
-        if !results.is_empty()
-            && let (Some(log), Some(id)) = (&log, world.get::<AgentId>(agent).cloned())
-            && let Some(mut conversation) = world.get_mut::<Conversation>(agent)
-        {
-            log.commit(&id, &mut conversation, Message::tool_results(results), None);
+        if !results.is_empty() {
+            commit_message(world, agent, Message::tool_results(results));
         }
         world.despawn(turn);
     }
@@ -381,137 +376,6 @@ fn take_running<T: Send + Sync + 'static>(world: &mut World, cancelling: &mut Ca
     }
 }
 
-/// Chooses the agent's model: a known catalog model replaces the agent's
-/// [`ModelChoice`], and [`on_model_chosen`] connects it.
-pub(crate) fn on_set_model(
-    set: On<SetModel>,
-    agents: Query<Has<ActiveTurn>, With<Agent>>,
-    connector: Res<ModelConnector>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(busy) = agents.get(set.entity) else {
-        return;
-    };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
-        return;
-    }
-    match connector.resolve(&set.model) {
-        Some(spec) => {
-            commands
-                .entity(set.entity)
-                .insert(ModelChoice(spec.reference()));
-            commands.trigger(SettingsChosen { entity: set.entity });
-        }
-        None => {
-            notices.write(Notice::error(
-                set.entity,
-                format!("No catalog model `{}`. Use vendor/model.", set.model),
-            ));
-        }
-    }
-}
-
-/// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`] or by
-/// restoring a session, so requests never re-resolve the provider. A
-/// reasoning setting the new model does not take is reset. Only a change of
-/// a connected agent's model is announced: spawning and restoring an agent
-/// are silent, since views show its model anyway.
-pub(crate) fn on_model_chosen(
-    chosen: On<Insert<ModelChoice>>,
-    agents: Query<(&ModelChoice, &Effort, Has<Connection>)>,
-    mut effects: ResMut<Effects>,
-    connector: Res<ModelConnector>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = chosen.entity;
-    let Ok((choice, effort, switched)) = agents.get(agent) else {
-        return;
-    };
-    let connection = connector
-        .resolve(&choice.0)
-        .ok_or_else(|| format!("the catalog has no model `{}`", choice.0))
-        .and_then(|spec| {
-            effects
-                .model_handler(&spec, &connector)
-                .map(|handler| Connection {
-                    spec,
-                    handler: Handler(handler),
-                })
-                .map_err(|error| error.to_string())
-        });
-    let connection = match connection {
-        Ok(connection) => connection,
-        Err(why) => {
-            commands.entity(agent).remove::<Connection>();
-            notices.write(Notice::error(
-                agent,
-                format!("Cannot use {}: {why}.", choice.0),
-            ));
-            return;
-        }
-    };
-    let spec = &*connection.spec;
-    if switched {
-        notices.write(Notice::info(
-            agent,
-            format!("Model: {} ({}).", spec.display_name, choice.0),
-        ));
-    }
-    if let Err(refusal) = models::check_effort(spec, effort.0) {
-        commands.entity(agent).insert(Effort(None));
-        notices.write(Notice::info(
-            agent,
-            format!("Reasoning reset to default: {refusal}."),
-        ));
-    }
-    commands.entity(agent).insert(connection);
-}
-
-/// Sets the agent's reasoning setting after checking it against the model.
-pub(crate) fn on_set_effort(
-    set: On<SetEffort>,
-    agents: Query<(Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok((connection, busy)) = agents.get(set.entity) else {
-        return;
-    };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
-        return;
-    }
-    let Some(connection) = connection else {
-        notices.write(Notice::info(set.entity, NO_MODEL));
-        return;
-    };
-    match models::check_effort(&connection.spec, set.effort.0) {
-        Ok(()) => {
-            commands.entity(set.entity).insert(set.effort);
-            commands.trigger(SettingsChosen { entity: set.entity });
-            notices.write(Notice::info(
-                set.entity,
-                format!("Reasoning: {}.", models::effort_label(set.effort.0)),
-            ));
-        }
-        Err(refusal) => {
-            notices.write(Notice::error(set.entity, format!("{refusal}.")));
-        }
-    }
-}
-
-/// Refuses a model or reasoning change while the agent's turn runs: the
-/// rest of the turn would go to a model, or use a setting, it did not start
-/// with. Every sender of [`SetModel`] and [`SetEffort`] gets the same
-/// refusal.
-fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
-    if busy {
-        notices.write(Notice::info(agent, "A turn is running; stop it first."));
-    }
-    busy
-}
-
 /// Delivers what waits for the turn's agent, then lets [`PrepareRequest`]
 /// observers see what the request sends. Unless they gave the turn calls
 /// to wait for, the request is sent.
@@ -519,13 +383,12 @@ pub(crate) fn on_call_model(
     call: On<CallModel>,
     turns: Query<&TurnOf>,
     mut agents: Query<(
-        &AgentId,
         &mut Conversation,
         &mut Inbox,
         Option<&Condensed>,
         Option<&Connection>,
     )>,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -533,17 +396,13 @@ pub(crate) fn on_call_model(
     let Ok(&TurnOf(agent)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, mut conversation, mut inbox, condensed, connection)) = agents.get_mut(agent) else {
+    let Ok((mut conversation, mut inbox, condensed, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let to = Delivery {
-        agent,
-        id,
-        spec: connection.map(|connection| &*connection.spec),
-        log: &log,
-    };
-    deliver_notes(&to, &mut inbox, &mut conversation, &mut notices);
-    deliver_steering(&to, &mut inbox, &mut conversation, &mut notices);
+    let spec = connection.map(|connection| &*connection.spec);
+    let (conversation, inbox) = (&mut *conversation, &mut *inbox);
+    let waiting = inbox.notes.drain(..).chain(inbox.steering.drain(..));
+    commit.pending(agent, spec, waiting, conversation, &mut notices);
     let messages = match condensed {
         Some(condensed) => condensed.request(conversation.messages()),
         None => conversation.messages().to_vec(),
@@ -581,7 +440,7 @@ fn send_request(
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
     effects: Res<Effects>,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -619,7 +478,7 @@ fn send_request(
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, why.clone()));
-            drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
+            drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
             end_turn(&mut commands, turn, TurnOutcome::Failed(why));
             return;
         }
@@ -709,9 +568,8 @@ pub(crate) fn on_model_request(
 /// asked for them.
 fn drop_unanswered(
     agent: Entity,
-    id: &AgentId,
     conversation: &mut Conversation,
-    log: &SessionLog,
+    commit: &mut Commit,
     notices: &mut MessageWriter<Notice>,
 ) {
     let unanswered = conversation.messages().last().is_some_and(|message| {
@@ -719,7 +577,7 @@ fn drop_unanswered(
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
-        log.retract(id, conversation);
+        commit.retract(agent, conversation);
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",
@@ -803,12 +661,12 @@ pub(crate) fn on_model_done(
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
-        (&AgentId, &mut Conversation, &mut Inbox),
+        (&mut Conversation, &mut Inbox),
         Option<&Connection>,
         &mut LastUsage,
     )>,
     starter: ToolStarter,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -820,8 +678,7 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((id, mut conversation, mut inbox), connection, mut last)) = agents.get_mut(agent)
-    else {
+    let Ok(((mut conversation, mut inbox), connection, mut last)) = agents.get_mut(agent) else {
         return;
     };
     let spec = connection.map(|connection| &*connection.spec);
@@ -845,7 +702,7 @@ pub(crate) fn on_model_done(
         }
     };
     if let Some(message) = response.message() {
-        log.commit(id, &mut conversation, message, None);
+        commit.message(agent, &mut conversation, message);
     }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
     let failure = turn_failure(
@@ -860,10 +717,10 @@ pub(crate) fn on_model_done(
                 .iter()
                 .map(|tool_call| failed(tool_call, format!("not run: {failure}")))
                 .collect();
-            log.commit(id, &mut conversation, Message::tool_results(results), None);
+            commit.message(agent, &mut conversation, Message::tool_results(results));
         }
         notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
-        drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
+        drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
         end_turn(
             &mut commands,
             turn,
@@ -875,15 +732,14 @@ pub(crate) fn on_model_done(
         // What was sent meanwhile carries the turn on: steering first,
         // else everything queued, as one step. Notes go along but carry
         // nothing on.
-        let to = Delivery {
-            agent,
-            id,
-            spec,
-            log: &log,
+        let inbox = &mut *inbox;
+        let next: Vec<Pending> = match inbox.steering.is_empty() {
+            true => inbox.queued.drain(..).collect(),
+            false => inbox.steering.drain(..).collect(),
         };
-        let carried = deliver_steering(&to, &mut inbox, &mut conversation, &mut notices)
-            || deliver_queued(&to, &mut inbox, &mut conversation, &mut notices);
-        if carried {
+        if !next.is_empty() {
+            let waiting = inbox.notes.drain(..).chain(next);
+            commit.pending(agent, spec, waiting, &mut conversation, &mut notices);
             commands.trigger(CallModel { entity: turn });
             return;
         }
@@ -993,19 +849,19 @@ fn recover(
 fn fail_turn(
     In((turn, why)): In<(Entity, String)>,
     turns: Query<&TurnOf>,
-    mut agents: Query<(&AgentId, &mut Conversation)>,
-    log: Res<SessionLog>,
+    mut agents: Query<&mut Conversation>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(&TurnOf(agent)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+    let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
     notices.write(Notice::error(agent, why.clone()));
-    drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
+    drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
     end_turn(&mut commands, turn, TurnOutcome::Failed(why));
 }
 
@@ -1019,10 +875,10 @@ pub(crate) fn on_tool_done(
     mut ended: Query<(&ToolOutput, Option<&mut OpenCall>)>,
     of: Query<&CallOf>,
     turns: Query<(&TurnOf, &Calls)>,
-    mut agents: Query<(&AgentId, &mut Conversation)>,
+    mut agents: Query<&mut Conversation>,
     runs: Query<(&ToolCallRun, Option<&ToolOutput>, Has<Queued>)>,
     starter: ToolStarter,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     mut commands: Commands,
 ) {
     if let Ok((ToolOutput(result), Some(mut open))) = ended.get_mut(done.entity) {
@@ -1037,7 +893,7 @@ pub(crate) fn on_tool_done(
     let Ok((&TurnOf(agent), calls)) = turns.get(turn) else {
         return;
     };
-    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+    let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
     // The calls not finished yet, in call order, each holding back the
@@ -1065,7 +921,7 @@ pub(crate) fn on_tool_done(
     if !unfinished.is_empty() {
         return;
     }
-    log.commit(id, &mut conversation, Message::tool_results(results), None);
+    commit.message(agent, &mut conversation, Message::tool_results(results));
     commands.entity(turn).despawn_related::<Calls>();
     commands.trigger(CallModel { entity: turn });
 }

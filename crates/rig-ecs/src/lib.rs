@@ -59,15 +59,14 @@ pub mod prelude {
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Condensed, Connection, Conversation, EffectParent,
         Effort, Interrupt, LastUsage, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
-        SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
-        TurnOf, TurnOutcome,
+        Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, KeepAwake, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
-    pub use crate::journal::{AppSaveExt, JournalPlugin};
+    pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
@@ -127,6 +126,7 @@ impl Plugin for AgentPlugin {
             .init_resource::<Wake>()
             .init_resource::<models::ModelConnector>()
             .add_message::<Notice>()
+            .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
             .add_systems(Startup, (spawn_first_agent, describe_tools))
             .add_systems(
@@ -160,9 +160,9 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
-            .add_observer(turn::on_set_model)
-            .add_observer(turn::on_model_chosen)
-            .add_observer(turn::on_set_effort)
+            .add_observer(models::on_set_model)
+            .add_observer(models::connect)
+            .add_observer(models::on_set_effort)
             .add_observer(usage::record_spending)
             .add_observer(usage::log_turn_spending);
     }
