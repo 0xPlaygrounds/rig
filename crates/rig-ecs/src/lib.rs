@@ -95,16 +95,15 @@ pub struct WriteJournal;
 /// [`SessionLog`] logs to the [`SessionStore`] inserted before it is
 /// built, if any, and nothing until [`journal::JournalPlugin`] restored
 /// the session. It adds Bevy's `TimePlugin` unless the app has it, for the
-/// clock a retried model call waits on, and then lets that clock count
-/// frames up to [`calls::MAX_FRAME_GAP`] apart in full. It sets no error
-/// handler: that is the application's choice.
+/// clock a retried model call waits on, and lets that clock count frames up
+/// to [`calls::MAX_FRAME_GAP`] apart in full under any loop. It sets no
+/// error handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<TimePlugin>() {
-            app.add_plugins(TimePlugin)
-                .insert_resource(Time::<Virtual>::from_max_delta(calls::MAX_FRAME_GAP));
+            app.add_plugins(TimePlugin);
         }
         let store = app.world().get_resource::<SessionStore>().cloned();
         app.init_resource::<effects::Effects>()
@@ -148,6 +147,12 @@ impl Plugin for AgentPlugin {
             .add_observer(model::on_set_model)
             .add_observer(model::connect)
             .add_observer(model::on_set_effort);
+    }
+
+    fn finish(&self, app: &mut App) {
+        if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
+            time.set_max_delta(calls::MAX_FRAME_GAP);
+        }
     }
 }
 

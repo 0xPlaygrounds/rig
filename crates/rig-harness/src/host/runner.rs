@@ -8,11 +8,11 @@
 
 use std::time::{Duration, Instant};
 
-use bevy::time::{DelayedCommandQueue, Time, Virtual};
+use bevy::time::{DelayedCommandQueue, Time};
 use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_ecs::calls::{KeepAwake, MAX_FRAME_GAP, Wake};
+use rig_ecs::calls::{KeepAwake, Wake};
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);
@@ -21,8 +21,7 @@ const FRAME: Duration = Duration::from_millis(16);
 /// within it.
 const IDLE: Duration = Duration::from_secs(1);
 
-/// Sets the loop and its [`Wake`], and lets the virtual clock count its
-/// sleeps in full, up to [`MAX_FRAME_GAP`].
+/// Sets the loop and its [`Wake`].
 pub struct RunnerPlugin;
 
 impl Plugin for RunnerPlugin {
@@ -56,12 +55,6 @@ impl Plugin for RunnerPlugin {
                 }
             }
         });
-    }
-
-    fn finish(&self, app: &mut App) {
-        if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
-            time.set_max_delta(MAX_FRAME_GAP);
-        }
     }
 }
 

@@ -83,6 +83,7 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
         .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
             log.0.push(ended.outcome.clone());
         });
+    app.finish();
     (app, wakes)
 }
 
