@@ -79,7 +79,8 @@ is `rig_harness::rig_core`.
   `Message`. `answer_text(&message)` is the text of a final answer, `None`
   for any other message.
 - `Activity` (on each agent): `status: Status` (`Idle`, `Thinking`,
-  `RunningTools`, `Compacting`, `Retrying { attempt, seconds }`; it
+  `RunningTools`, `Busy(name)` for a plugin's call such as `compacting`,
+  `Retrying { attempt, seconds }`; it
   implements `Display`), `tools: Vec<ToolActivity>` (`name`, `queued`) and
   `preview: Option<Preview>` (`kind: PreviewKind` of `Text`, `Reasoning` or
   `LastReply`, and `text`, the last 2000 characters); `is_busy()`.

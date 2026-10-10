@@ -14,8 +14,11 @@ rig-core, for building your own agent harness:
   restart on `Restored`.
 - **Session journals** go to the `SessionStore` the app inserts: `MemoryStore`,
   or `JsonlDirStore` (feature `fs-journal`) for JSON-lines files.
-- **Compaction and retries** from rig-memory and rig-core, set by
-  `CompactionPolicy` and the retry policy. A retry waits on Bevy's clock
+- **Turn hooks** for plugins such as compaction: `PrepareRequest` before each
+  model request, `ModelFailed` after a call a retry does not fix, and
+  `ModelRequest` calls of their own on the agent's model; `Condensed` sends a
+  summary in place of older messages. Retries follow rig-core's retry
+  policy, and a retry waits on Bevy's clock
   (`bevy_time`'s delayed commands); `AgentPlugin` adds `TimePlugin` when the
   app has none.
 
