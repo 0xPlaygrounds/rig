@@ -2,9 +2,8 @@
 //! [`CompactionPolicy`] that says when and where to cut it and plans the
 //! summary of its older messages, a [`SummaryState`] with the summary and
 //! the values tracked across compactions, a [`Summarizer`] that asks a
-//! model for the summary, a [`ModelCompactor`] that runs it as a
-//! [`Compactor`], and [`ClearToolOutputs`], a [`MemoryPolicy`] that frees
-//! context without a model call.
+//! model for the summary, and [`ClearToolOutputs`], a [`MemoryPolicy`] that
+//! frees context without a model call.
 //!
 //! The summarizer's default prompts ask for pi's structured checkpoint;
 //! the tool arguments a summary keeps track of are the caller's.
@@ -26,17 +25,10 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
-use rig_core::effect::family::Completion;
-use rig_core::effect::{EffectId, EffectKind, Family};
-use rig_core::id::ConversationId;
 use rig_core::message::{ToolResultContent, UserContent};
-use rig_core::serve::{Dispatch, ErasedHandler};
-use rig_core::wasm_compat::WasmBoxedFuture;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    Compactor, HeuristicTokenCounter, MemoryError, MemoryPolicy, TextSummary, TokenCounter,
-};
+use crate::{HeuristicTokenCounter, MemoryError, MemoryPolicy, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -612,61 +604,6 @@ fn snippet(text: &str, chars: usize) -> String {
             text.len() - end
         ),
         None => text.to_owned(),
-    }
-}
-
-/// A [`Compactor`] that asks a model for the summary through its handler,
-/// unrecorded. A host that records its effects builds the request with
-/// [`Summarizer::request`] and dispatches it itself.
-#[derive(Clone, Debug)]
-pub struct ModelCompactor {
-    summarizer: Summarizer,
-    handler: ErasedHandler,
-    spec: ModelSpec,
-}
-
-impl ModelCompactor {
-    /// Summarize with the model `spec`, served by `handler`.
-    pub fn new(summarizer: Summarizer, handler: ErasedHandler, spec: ModelSpec) -> Self {
-        Self {
-            summarizer,
-            handler,
-            spec,
-        }
-    }
-}
-
-impl Compactor for ModelCompactor {
-    type Artifact = TextSummary;
-
-    fn compact<'a>(
-        &'a self,
-        _conversation_id: &'a ConversationId,
-        evicted: &'a [Message],
-        carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-        Box::pin(async move {
-            let previous = carry_over.map_or("", TextSummary::as_str);
-            let request = self
-                .summarizer
-                .request(evicted, previous, "", &self.spec)
-                .map_err(|refusal| MemoryError::Policy(refusal.to_string()))?;
-            let kind = EffectKind::Completion {
-                request,
-                stream: false,
-            };
-            let response = self
-                .handler
-                .handle(kind, Dispatch::new(EffectId::from_raw(0), false))
-                .await
-                .into_outcome()
-                .await
-                .and_then(Completion::unwrap)
-                .map_err(|report| MemoryError::Policy(report.to_string()))?;
-            Summarizer::summary_text(&response)
-                .map(TextSummary)
-                .map_err(|why| MemoryError::Policy(why.to_string()))
-        })
     }
 }
 
