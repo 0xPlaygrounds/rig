@@ -36,25 +36,20 @@ const POLL: Duration = Duration::from_millis(100);
 #[derive(Resource)]
 pub(crate) struct TerminalInput {
     events: Receiver<Event>,
-    flags: Arc<Flags>,
-}
-
-/// What the input thread is told and tells back.
-#[derive(Default)]
-struct Flags {
-    stop: AtomicBool,
+    /// Tells the input thread to stop.
+    stop: Arc<AtomicBool>,
 }
 
 impl TerminalInput {
     /// Starts the input thread.
     pub(crate) fn start(wake: Wake) -> std::io::Result<Self> {
         let (sender, events) = crossbeam_channel::unbounded();
-        let flags = Arc::new(Flags::default());
-        let shared = Arc::clone(&flags);
+        let stop = Arc::new(AtomicBool::new(false));
+        let shared = Arc::clone(&stop);
         std::thread::Builder::new()
             .name("rig-harness-input".to_owned())
             .spawn(move || {
-                while !shared.stop.load(Ordering::Relaxed) {
+                while !shared.load(Ordering::Relaxed) {
                     let event = match event::poll(POLL) {
                         Ok(false) => continue,
                         Ok(true) => event::read(),
@@ -74,13 +69,13 @@ impl TerminalInput {
                     }
                 }
             })?;
-        Ok(Self { events, flags })
+        Ok(Self { events, stop })
     }
 }
 
 impl Drop for TerminalInput {
     fn drop(&mut self) {
-        self.flags.stop.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 
@@ -127,11 +122,7 @@ pub(crate) fn read_input(
                 }
                 None => {
                     edited = true;
-                    let keys = Keys {
-                        busy,
-                        esc_cancels_reload,
-                    };
-                    input_key(key, &mut view, &mut commands, keys);
+                    input_key(key, &mut view, &mut commands, busy, esc_cancels_reload);
                 }
             },
             // A paste arrives whole, newlines included, so it is not sent
@@ -147,15 +138,7 @@ pub(crate) fn read_input(
                     edited = true;
                     // A dropped image file becomes `@path`, which attaches it.
                     match clipboard::dropped_image(&text) {
-                        Some(path) => {
-                            let before = view
-                                .editor
-                                .text()
-                                .get(..view.editor.cursor())
-                                .unwrap_or_default();
-                            let space = clipboard::separator(before);
-                            view.editor.insert(&format!("{space}@{} ", path.display()));
-                        }
+                        Some(path) => clipboard::type_path(&mut view.editor, &path),
                         None => view.editor.insert(&text),
                     }
                 }
@@ -172,24 +155,15 @@ pub(crate) fn read_input(
     }
 }
 
-/// What a key does depends on.
-#[derive(Clone, Copy)]
-struct Keys {
-    /// The focused agent runs a turn: Enter steers it and Tab queues a
-    /// follow-up.
-    busy: bool,
-    /// Esc cancels the running rebuild.
-    esc_cancels_reload: bool,
-}
-
+/// Handles a key in the input. With `busy`, the focused agent runs a turn:
+/// Enter steers it and Tab queues a follow-up; with `esc_cancels_reload`,
+/// Esc cancels the running rebuild.
 fn input_key(
     key: KeyEvent,
     view: &mut TuiView,
     commands: &mut Commands,
-    Keys {
-        busy,
-        esc_cancels_reload,
-    }: Keys,
+    busy: bool,
+    esc_cancels_reload: bool,
 ) {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
