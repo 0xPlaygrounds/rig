@@ -28,7 +28,7 @@ impl Plugin for BasicCommandsPlugin {
     }
 }
 
-/// `/help`: every command with its help, and the keys.
+/// `/help`: every command with its help.
 fn help(
     In(args): In<CommandArgs>,
     commands: Query<(&Name, &SlashCommand)>,
@@ -39,14 +39,6 @@ fn help(
         .map(|(name, command)| format!("{:<11} {}", name.as_str(), command.help))
         .collect();
     lines.sort();
-    lines.push(
-        "Esc stops a running turn. Ctrl+C clears the input. In the terminal view, \
-         Shift+Enter or Ctrl+J adds a line, Up and Down browse earlier prompts, Tab completes \
-         /commands and @paths. While a turn runs, \
-         Enter steers it and Tab queues a follow-up. @path attaches a file (an image, or a text file's numbered lines), and \
-         Ctrl+V pastes the clipboard's image. Esc stops only the shown agent."
-            .to_owned(),
-    );
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 

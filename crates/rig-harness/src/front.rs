@@ -53,10 +53,8 @@ impl Plugin for FrontPlugin {
 
 /// Gives the agent the user talks to the model `--model` names, once the
 /// session is restored and a remembered model given, so `--model` wins.
-/// `--print` chooses its model itself.
 fn choose_invoked_model(mode: Res<RunMode>, agents: PrimaryQuery, mut commands: Commands) {
-    if let (Some(model), false, Some(agent)) = (&mode.0.model, mode.is_headless(), primary(&agents))
-    {
+    if let (Some(model), Some(agent)) = (&mode.0.model, primary(&agents)) {
         commands.trigger(SetModel {
             entity: agent,
             model: model.clone(),

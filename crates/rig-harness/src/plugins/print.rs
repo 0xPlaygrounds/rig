@@ -117,7 +117,8 @@ fn drive(
                 return;
             };
             let model = match (&mode.0.model, chosen) {
-                (Some(model), _) => Some(model.clone()),
+                // The front chose it.
+                (Some(_), _) => None,
                 (None, Some(_)) if connected => None,
                 (None, Some(chosen)) => Some(chosen.0.clone()),
                 (None, None) => match models.0.reachable().first() {
