@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::Home;
-use rig_tools::context::{FILE_NAMES, Instructions};
+use rig_tools::context::Instructions;
 
 use rig_ecs::agent::{Notice, TurnOf};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
@@ -131,36 +131,28 @@ fn refresh_on_turn(
     }
 }
 
-/// `/context`: re-reads the sections now and lists what they hold.
+/// `/context`: re-reads the sections now and lists the instruction files
+/// and every section of the system prompt.
 fn show_context(
     In(args): In<CommandArgs>,
     mut sections: Query<(&Section, &mut PromptSection)>,
+    others: Query<&PromptSection, Without<Section>>,
     mut notices: MessageWriter<Notice>,
 ) {
     let context = Context::read();
     context.apply(&mut sections);
-    let mut lines = vec!["Instruction files, most general first:".to_owned()];
-    if context.instructions.files.is_empty() {
-        lines.push(format!(
-            "  none; put an {} in the project or in {}",
-            FILE_NAMES.join(" or "),
-            Home::from_env().root().display()
-        ));
-    }
-    for file in &context.instructions.files {
-        let cut = if file.contents.cut() {
-            format!(", cut to {} bytes", file.contents.text.len())
-        } else {
-            String::new()
-        };
-        lines.push(format!(
-            "  {} ({} bytes{cut})",
-            file.path.display(),
-            file.contents.size
-        ));
-    }
-    for problem in &context.instructions.unreadable {
-        lines.push(format!("  cannot read {problem}"));
+    let mut listed: Vec<&PromptSection> = sections.iter().map(|(_, section)| section).collect();
+    listed.extend(&others);
+    listed.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.tag.cmp(&b.tag)));
+    let mut lines = vec![format!(
+        "Instruction files, most general first: {}.",
+        context.instructions.paths()
+    )];
+    let unreadable = context.instructions.unreadable.iter();
+    lines.extend(unreadable.map(|problem| format!("Cannot read {problem}.")));
+    lines.push("The system prompt's sections:".to_owned());
+    for section in listed {
+        lines.push(format!("  {} ({} bytes)", section.tag, section.text.len()));
     }
     lines.push(context.section(Section::Environment).text);
     notices.write(Notice::info(args.agent, lines.join("\n")));

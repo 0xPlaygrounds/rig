@@ -71,7 +71,7 @@ fn usage(
         Option<&ActiveTurn>,
     )>,
     turns: Query<&TurnSpending>,
-    everyone: Query<(&AgentId, Option<&Name>, &Spending), With<Agent>>,
+    everyone: Query<(&Name, &Spending), With<Agent>>,
     families: Query<&Spawned>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -119,14 +119,12 @@ fn usage(
         .iter_descendants_depth_first::<Spawned>(args.agent)
         .filter_map(|child| everyone.get(child).ok())
         .filter(|(.., Spending(spent))| spent.calls > 0)
-        .map(|(id, name, Spending(spent))| {
-            let title =
-                name.map_or_else(|| format!("agent {}", id.short()), |name| name.to_string());
+        .map(|(name, Spending(spent))| {
             let calls = match spent.calls {
                 1 => "1 call".to_owned(),
                 calls => format!("{calls} calls"),
             };
-            format!("  {title}: {}, {calls}", spent.cost_or_tokens())
+            format!("  {name}: {}, {calls}", spent.cost_or_tokens())
         })
         .collect();
     if !subagents.is_empty() {
