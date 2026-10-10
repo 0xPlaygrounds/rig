@@ -78,14 +78,16 @@ use calls::{PollCalls, Wake, poll_calls, settle};
 use journal::SessionLog;
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
-/// them for the restart (see [`turn::Exiting`]). A system that logs what
-/// the turns left runs after it.
+/// them for the restart (see [`turn::Exiting`]). It runs before
+/// [`WriteJournal`], both in Bevy's `OnAppExitSystems`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurns;
 
 /// The systems in `Last` that write the frame's journal records to the
 /// [`journal::SessionStore`], and those a plugin adds to write its own logs, such as
-/// the effect log. A system that logs for the frame runs before them.
+/// the effect log: such a system says `.in_set(WriteJournal)` and nothing
+/// else, and runs after the turns stopped on exit, so it writes what they
+/// left too.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteJournal;
 
@@ -120,6 +122,12 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
+            .configure_sets(
+                Last,
+                (StopTurns, WriteJournal)
+                    .chain()
+                    .in_set(bevy_app::OnAppExitSystems),
+            )
             .add_systems(Startup, spawn_first_agent)
             .add_systems(
                 Update,
@@ -131,7 +139,6 @@ impl Plugin for AgentPlugin {
                     inbox::start_turns.before(settle).before(WriteJournal),
                     settle,
                     turn::stop_turns_on_exit
-                        .in_set(bevy_app::OnAppExitSystems)
                         .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
                 ),

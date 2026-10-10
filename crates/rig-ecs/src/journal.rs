@@ -12,7 +12,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
@@ -47,8 +46,8 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
-            let log = log_changed::<T>.in_set(OnAppExitSystems).after(StopTurns);
-            app.add_systems(Last, log.before(WriteJournal));
+            let log = log_changed::<T>.after(StopTurns).before(WriteJournal);
+            app.add_systems(Last, log);
         };
         Self { watch }
     }
@@ -467,13 +466,7 @@ impl Plugin for JournalPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
-            .add_systems(
-                Last,
-                write_logs
-                    .in_set(OnAppExitSystems)
-                    .in_set(WriteJournal)
-                    .after(StopTurns),
-            )
+            .add_systems(Last, write_logs.in_set(WriteJournal))
             .add_observer(open_child_log)
             .add_observer(log_condensed);
     }
