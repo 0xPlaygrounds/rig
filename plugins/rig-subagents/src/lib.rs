@@ -10,7 +10,9 @@
 //! keeps the caller's turn open until an agent sends it a message. Each
 //! request stays one of the owing agent's [`OpenRequests`], saved with it,
 //! until it reports to the asker; a restart answers each as interrupted.
-//! Subagents see the app's [`PromptSection`]s like every agent.
+//! Subagents see the app's [`PromptSection`]s like every agent, and are
+//! told their role in sections of their own ([`SectionOf`]), not in their
+//! saved system prompt, which is their parent's.
 //!
 //! A subagent's [`Lifecycle`] is [`Working`] while a turn runs,
 //! [`WaitingOn`] an agent that owes it a report when its turn ended, and

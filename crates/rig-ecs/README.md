@@ -25,7 +25,9 @@ What it holds, by module:
   timer.
 - `tools`, `commands`, `prompt`: tools, slash commands and system prompt
   sections are entities that plugins register (`AppToolsExt`,
-  `AppCommandsExt`, `PromptSection`); a command can be a reflected event.
+  `AppCommandsExt`, `PromptSection`, for every agent or, `SectionOf` one,
+  that agent alone); tools can also come and go while the app runs
+  (`WorldToolsExt`).
 - `inbox`: `Deliver`, the one way a message reaches an agent.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.

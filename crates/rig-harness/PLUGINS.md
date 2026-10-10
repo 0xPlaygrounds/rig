@@ -301,7 +301,11 @@ of one event run in no set order. The compaction plugin (the
 `ModelFailed` overflow. Before any of it, `Input` is triggered on an
 agent with what the user typed, in any front: an observer may rewrite its
 `text`, such as expanding a template, or set `handled` and deal with it
-itself; a text that starts with `/` then runs as a command.
+itself; a text that starts with `/` then runs as a command. A part of
+the system prompt that does not change from request to request is a
+`PromptSection` entity, `PromptSection::new(order, tag, text)`, in every
+agent's prompt, or with a `SectionOf(agent)` in that agent's alone,
+despawned with it.
 
 ```rust,no_run
 use rig_harness::prelude::*;

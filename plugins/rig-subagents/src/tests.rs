@@ -149,6 +149,16 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     let asked = format!("{:?}", proposer.requests().first());
     assert!(asked.contains(&session.short(b)), "{asked}");
     assert!(asked.contains("One-word names."), "{asked}");
+    // Its role is a section of its own, not its saved system prompt.
+    assert!(asked.contains("<peer_role>"), "{asked}");
+    let prompts = |agent| {
+        session
+            .app
+            .world()
+            .get::<SystemPrompt>(agent)
+            .map(|p| p.0.clone())
+    };
+    assert_eq!(prompts(a), prompts(session.parent));
     let read = format!("{:?}", parent.requests());
     let header = format!("Output of agent {} \\\"Critique\\\"", session.short(b));
     assert!(read.contains(&header), "{read}");
@@ -209,4 +219,17 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     let mut requests: Vec<&str> = interrupted.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb", "tc"], "{reports:?}");
+    // The restored subagents have their roles again.
+    let world = session.app.world();
+    let spawned = world.get::<Spawned>(session.parent);
+    let children: Vec<Entity> = spawned
+        .map(|spawned| spawned.iter().collect())
+        .unwrap_or_default();
+    let sections = |child| {
+        world
+            .get::<AgentSections>(child)
+            .map_or(0, |of| of.iter().count())
+    };
+    let roles: Vec<usize> = children.into_iter().map(sections).collect();
+    assert_eq!(roles, [2, 2, 2]);
 }

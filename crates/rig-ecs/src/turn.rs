@@ -53,7 +53,7 @@ use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
 use super::journal::{Commit, SessionLog, commit_message};
 use super::model::{Connection, Effort};
-use super::prompt::{PromptSection, ToolRules, system_prompt};
+use super::prompt::{PromptSection, SectionOf, ToolRules, system_prompt};
 use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
 
 /// The notice when the agent has no model to call.
@@ -470,7 +470,7 @@ fn prepare_request(
         &ToolAccess,
     )>,
     tools: Query<(&ToolDef, &ToolRules)>,
-    sections: Query<&PromptSection>,
+    sections: Query<(&PromptSection, Option<&SectionOf>)>,
 ) -> Result<Option<PrepareRequest>, String> {
     let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
         return Ok(None);
@@ -487,6 +487,10 @@ fn prepare_request(
         .collect();
     offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
     let rules = offered.iter().map(|(_, rules)| *rules);
+    let sections = sections
+        .iter()
+        .filter(|(_, of)| of.is_none_or(|of| of.0 == agent));
+    let sections = sections.map(|(section, _)| section);
     // A model the turn is routed to may not take the agent's setting.
     let options = Some(spec.default_options(effort.0))
         .filter(|options| spec.validate(options).is_ok())

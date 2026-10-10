@@ -62,7 +62,7 @@ pub mod prelude {
     };
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
-    pub use crate::prompt::{PromptSection, ToolRules};
+    pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::tools::{
         AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, WorldToolsExt,

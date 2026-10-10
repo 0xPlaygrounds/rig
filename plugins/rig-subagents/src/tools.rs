@@ -58,9 +58,9 @@ const RULES: &[&str] = &[
      interaction is not supported, say so before offering an alternative.",
 ];
 
-/// What every subagent is told about its role, after its parent's own
-/// system prompt.
-const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the task in the \
+/// What every subagent is told about its role, in a prompt section of its
+/// own after its parent's own system prompt and the tools' rules.
+pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave you the task in the \
     first message and expects your answer; nobody answers questions while you work, so \
     decide for yourself and say what you assumed. Your last message is sent to that agent \
     as the task's result: make it complete on its own, with file paths, findings and \
@@ -70,7 +70,7 @@ const SUBAGENT_ROLE: &str = "\n\nYou are a subagent. Another agent gave you the 
     or paraphrase as fact another agent's reply.";
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
-const PEER_ROLE: &str = "\n\nOther subagents of that agent work beside you; your task names the \
+pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
     ones started before or with you, and a note names each one started later. `message` sends \
     one of them a request by its id, or answers one it sent you; your last message answers the \
     requests still open. To wait for a peer's message, call `wait`: never end your turn to wait, \
@@ -228,7 +228,6 @@ fn on_task(
     let request = RequestId(called.run.call.id.to_string());
     // A call a restart runs again has no reply to batch with.
     let batch = called.run.parent;
-    let role = if args.peers { PEER_ROLE } else { "" };
     let mut child = commands.spawn_empty();
     // Before the model choice, so connecting it keeps this connection.
     if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
@@ -251,7 +250,7 @@ fn on_task(
         choice,
         effort,
         ToolAccess::Only(allowed),
-        SystemPrompt(format!("{}{SUBAGENT_ROLE}{role}", prompt.0)),
+        prompt.clone(),
         EffectParent(called.effect),
         Brief(brief),
     ));

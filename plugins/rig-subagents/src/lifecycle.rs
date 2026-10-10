@@ -3,6 +3,7 @@
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 
+use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered};
 use rig_harness::prelude::*;
 
@@ -14,6 +15,8 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
+        .add_observer(brief_subagent)
+        .add_observer(brief_peer)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
@@ -157,6 +160,23 @@ fn name_subagent(inserted: On<Insert<Subtask>>, subtasks: Query<&Subtask>, mut c
         let name = Name::new(subtask.0.clone());
         commands.entity(inserted.entity).insert(name);
     }
+}
+
+/// Gives a subagent its role as a prompt section of its own when it is
+/// spawned or restored, so the text follows the build: it is not saved.
+fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
+}
+
+/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
+fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+}
+
+/// The prompt section of `agent`'s role `tag`, `after` other roles.
+fn role(agent: Entity, after: i32, tag: &'static str, text: &str) -> impl Bundle {
+    let section = PromptSection::new(PromptSection::ORDER_ROLE + after, tag, text);
+    (Name::new(tag), section, SectionOf(agent))
 }
 
 /// A spawned agent whose turn starts is [`Lifecycle::Working`].
