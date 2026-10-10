@@ -12,11 +12,12 @@
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. The status
-//! line shows the app's [`AppStatus`](rig_harness::front::AppStatus) and
-//! the [`StatusItems`](rig_harness::front::StatusItems) of the agent shown
-//! and its turn, and [`ratatui`] is re-exported so a plugin draws with the
-//! same version.
+//! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. These are
+//! there in every run, also one with another front such as `--print`,
+//! which never draws a frame. The status line shows the app's
+//! [`StatusItem`](rig_harness::front::StatusItem)s and those of the agent
+//! shown, and [`ratatui`] is re-exported so a plugin draws with the same
+//! version.
 
 mod clipboard;
 mod complete;
@@ -48,6 +49,23 @@ pub struct TuiPlugin;
 
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
+        // What other plugins use is there in any run; without the
+        // terminal, no frame is ever due.
+        renderers::add_builtin_renderers(app);
+        app.init_resource::<render::FrameLayout>()
+            .init_resource::<TuiScreen>()
+            .add_message::<RequestRedraw>()
+            .configure_sets(
+                PostUpdate,
+                (
+                    TuiSystems::Prepare,
+                    TuiSystems::Layout,
+                    TuiSystems::Draw.run_if(render::frame_due),
+                    TuiSystems::Render.run_if(render::frame_due),
+                )
+                    .chain()
+                    .after(StatusSystems),
+            );
         // A print run has stdout for its own output.
         let world = app.world();
         if world.contains_resource::<Front>()
@@ -57,12 +75,8 @@ impl Plugin for TuiPlugin {
         {
             return;
         }
-        app.insert_resource(Front("tui".to_owned()));
-        renderers::add_builtin_renderers(app);
-        app.init_resource::<view::TuiView>()
-            .init_resource::<render::FrameLayout>()
-            .init_resource::<TuiScreen>()
-            .add_message::<RequestRedraw>()
+        app.insert_resource(Front("tui".to_owned()))
+            .init_resource::<view::TuiView>()
             .init_resource::<complete::FileIndex>()
             .init_resource::<clipboard::Clipboard>()
             .add_systems(Startup, terminal::open_terminal)
@@ -84,17 +98,6 @@ impl Plugin for TuiPlugin {
                     view::recall_messages,
                 ),
             )
-            .configure_sets(
-                PostUpdate,
-                (
-                    TuiSystems::Prepare,
-                    TuiSystems::Layout,
-                    TuiSystems::Draw.run_if(render::frame_due),
-                    TuiSystems::Render.run_if(render::frame_due),
-                )
-                    .chain()
-                    .after(StatusSystems),
-            )
             .add_systems(
                 PostUpdate,
                 (
@@ -110,3 +113,6 @@ impl Plugin for TuiPlugin {
             .add_observer(view::on_focus);
     }
 }
+
+#[cfg(test)]
+mod tests;

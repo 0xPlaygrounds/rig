@@ -494,7 +494,8 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 drawn when agents or panels change; a plugin whose own state changed
 writes a `RequestRedraw`. `TuiScreen` is the terminal's size and `Focused`
 marks the agent shown. These are `rig_tui`'s, so the crate depends on
-`rig-tui` and `rig-activity` beside `rig-harness`.
+`rig-tui` and `rig-activity` beside `rig-harness`. They are there in any
+run, `--print` too, which draws no frame.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -517,10 +518,6 @@ struct Written(HashMap<Entity, usize>);
 
 impl Plugin for AgentsPanelPlugin {
     fn build(&self, app: &mut App) {
-        // A print run has no terminal view.
-        if app.world().get_resource::<RunMode>().is_some_and(RunMode::is_headless) {
-            return;
-        }
         app.init_resource::<Written>()
             .add_systems(Startup, spawn)
             .add_systems(Update, tally)

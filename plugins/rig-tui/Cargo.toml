@@ -17,6 +17,7 @@ workspace = true
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
 crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 # Path completion in the input, as git ignores it.
