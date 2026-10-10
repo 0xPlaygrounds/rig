@@ -1,5 +1,5 @@
 //! View state, kept apart from the agent core: the focused agent, the input
-//! editor and its completion, scrolling, the open overlay and recent
+//! editor and its completion, scrolling, the open picker and recent
 //! notices.
 
 use bevy_ecs::prelude::*;
@@ -9,7 +9,6 @@ use super::editor::Editor;
 use super::panel::Focused;
 use super::transcript::Scroll;
 use crate::front::{Focus, PickItem, PickRequest};
-use crate::host::reload::ReloadStatus;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
 use rig_ecs::inbox::Recalled;
 
@@ -29,21 +28,13 @@ pub(crate) struct TuiView {
     pub(crate) dismissed: Option<usize>,
     /// Where the transcript is scrolled.
     pub(crate) scroll: Scroll,
-    /// What is shown over the transcript and takes the keys.
-    pub(crate) overlay: Option<Overlay>,
+    /// The picker shown over the transcript, which takes the keys.
+    pub(crate) picker: Option<Picker>,
     /// Recent notices, oldest first.
     pub(crate) notices: Vec<ShownNotice>,
     /// A refused command put back in the input: sent again unchanged, it
     /// goes to the model as a message.
     pub(crate) refused: Option<String>,
-}
-
-/// What is shown over the transcript, one at a time.
-pub(crate) enum Overlay {
-    /// A list to pick from.
-    Picker(Picker),
-    /// A failed rebuild's output, until Esc or Enter.
-    ReloadFailure(String),
 }
 
 /// A notice placed in a transcript.
@@ -148,22 +139,13 @@ pub(crate) fn on_focus(
 /// Opens the picker a command asked for.
 pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: ResMut<TuiView>) {
     for request in requests.read() {
-        view.overlay = Some(Overlay::Picker(Picker {
+        view.picker = Some(Picker {
             agent: request.agent,
             title: request.title.clone(),
             items: request.items.clone(),
             filter: String::new(),
             selected: request.selected,
-        }));
-    }
-}
-
-/// Shows the output of a failed `/reload` until it is dismissed.
-pub(crate) fn show_reload_failures(reload: Option<Res<ReloadStatus>>, mut view: ResMut<TuiView>) {
-    if let Some(reload) = reload.filter(|reload| reload.is_changed())
-        && let ReloadStatus::Failed { output } = &*reload
-    {
-        view.overlay = Some(Overlay::ReloadFailure(output.clone()));
+        });
     }
 }
 

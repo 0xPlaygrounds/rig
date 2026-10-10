@@ -1,5 +1,5 @@
 //! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the overlays.
+//! completion list, and the picker.
 
 use std::time::{Duration, Instant};
 
@@ -11,7 +11,7 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::complete::{Completion, Kind as CompletionKind};
 use super::editor::Layout as InputLayout;
@@ -20,7 +20,7 @@ use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::renderers::ToolRenderer;
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{Overlay, Picker, ShownNotice, TuiView};
+use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::host::reload::ReloadStatus;
 use crate::plugins::activity::{Activity, Status};
@@ -450,9 +450,8 @@ pub(crate) fn render(
                     }
                 }
             }
-            match &view.overlay {
-                Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
-                Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
+            match &view.picker {
+                Some(picker) => draw_picker(frame, picker),
                 None => {
                     if let Some(completion) = &view.completion {
                         draw_completion(frame, completion, input);
@@ -708,7 +707,7 @@ fn usage_pieces(
 
 fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
     let text = match reload {
-        ReloadStatus::Idle | ReloadStatus::Failed { .. } => return None,
+        ReloadStatus::Idle | ReloadStatus::Failed => return None,
         ReloadStatus::Queued { .. } => {
             "Reload queued: once no turn runs (/reload cancel)".to_owned()
         }
@@ -734,32 +733,12 @@ fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
     Some(Span::from(text).cyan())
 }
 
-/// A centred box over the transcript, `width` and `height` in fifths and
-/// quarters of the screen, cleared for drawing on.
-fn popup(frame: &mut Frame, fifths: u32, quarters: u32) -> Rect {
+/// The picker in a centred box over the transcript.
+fn draw_picker(frame: &mut Frame, picker: &Picker) {
     let popup = frame
         .area()
-        .centered(Constraint::Ratio(fifths, 5), Constraint::Ratio(quarters, 4));
+        .centered(Constraint::Ratio(4, 5), Constraint::Ratio(3, 4));
     frame.render_widget(Clear, popup);
-    popup
-}
-
-/// A failed rebuild's output, from its first error on, over the transcript.
-fn draw_reload_failure(frame: &mut Frame, output: &str) {
-    let popup = popup(frame, 5, 4);
-    let block = Block::bordered()
-        .border_style(Style::new().red())
-        .title(" The rebuild failed; this build keeps running · Esc closes ");
-    frame.render_widget(
-        Paragraph::new(plain_lines(output, Style::new()))
-            .wrap(Wrap { trim: false })
-            .block(block),
-        popup,
-    );
-}
-
-fn draw_picker(frame: &mut Frame, picker: &Picker) {
-    let popup = popup(frame, 4, 3);
     let block = Block::bordered().title(format!(
         " {} · type to filter, Enter picks, Esc closes ",
         picker.title

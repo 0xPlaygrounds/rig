@@ -16,7 +16,7 @@ use ratatui::layout::Rect;
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::panel::TuiScreen;
-use super::view::{Overlay, Picker, TuiView};
+use super::view::{Picker, TuiView};
 use crate::front::{send_input, send_message};
 use crate::host::reload::{CancelReload, ReloadStatus};
 use crate::host::session::SessionPaths;
@@ -110,16 +110,10 @@ pub(crate) fn read_input(
     let mut edited = false;
     for event in input.events.try_iter() {
         match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => match &mut view.overlay {
-                // The report is modal: Esc or Enter closes it.
-                Some(Overlay::ReloadFailure(_)) => {
-                    if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
-                        view.overlay = None;
-                    }
-                }
-                Some(Overlay::Picker(picker)) => {
+            Event::Key(key) if key.kind != KeyEventKind::Release => match &mut view.picker {
+                Some(picker) => {
                     if picker_key(key, picker, &mut commands) {
-                        view.overlay = None;
+                        view.picker = None;
                     }
                 }
                 None if key.code == KeyCode::Char('v')
@@ -142,14 +136,13 @@ pub(crate) fn read_input(
             },
             // A paste arrives whole, newlines included, so it is not sent
             // line by line.
-            Event::Paste(text) => match &mut view.overlay {
-                Some(Overlay::Picker(picker)) => {
+            Event::Paste(text) => match &mut view.picker {
+                Some(picker) => {
                     picker
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
                     picker.selected = 0;
                 }
-                Some(Overlay::ReloadFailure(_)) => {}
                 None => {
                     edited = true;
                     // A dropped image file becomes `@path`, which attaches it.

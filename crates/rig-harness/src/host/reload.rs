@@ -36,8 +36,6 @@ use rig_ecs::calls::Wake;
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::turn::PollCalls;
 
-/// Lines of a failed build shown, from its first error.
-const ERROR_LINES: usize = 60;
 /// Lines of a failed build in the note to the model, from its first error.
 const NOTE_LINES: usize = 40;
 /// Lines of build output kept while it runs.
@@ -98,10 +96,7 @@ pub enum ReloadStatus {
     /// The build succeeded; the restart waits for every agent to be idle.
     Ready,
     /// The last build failed; this build keeps running.
-    Failed {
-        /// The build's output from its first error on.
-        output: String,
-    },
+    Failed,
 }
 
 /// The rebuild's process. Dropping it while the build runs kills the
@@ -228,13 +223,11 @@ impl ReloadStatus {
     /// Refused without the launcher, or with a reload queued or running.
     pub fn ask(&mut self, agent: Entity) -> Result<(), String> {
         match self {
-            ReloadStatus::Idle | ReloadStatus::Failed { .. }
-                if launcher::executable().is_some() =>
-            {
+            ReloadStatus::Idle | ReloadStatus::Failed if launcher::executable().is_some() => {
                 *self = ReloadStatus::Queued { agent };
                 Ok(())
             }
-            ReloadStatus::Idle | ReloadStatus::Failed { .. } => {
+            ReloadStatus::Idle | ReloadStatus::Failed => {
                 Err("/reload needs the rig launcher: start the agent with `rig`.".to_owned())
             }
             ReloadStatus::Queued { .. } => Err(
@@ -358,9 +351,7 @@ fn drain_reload(
         notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
         return;
     }
-    *status = ReloadStatus::Failed {
-        output: build.errors(ERROR_LINES),
-    };
+    *status = ReloadStatus::Failed;
     // The notice is the one log line: the whole output is in the build log
     // it names.
     let first = first_errors(build.output.iter().map(String::as_str), 1)
@@ -419,7 +410,7 @@ fn on_cancel_reload(
             commands.remove_resource::<ReloadBuild>();
             "Rebuild cancelled."
         }
-        ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed { .. } => {
+        ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed => {
             notices.write(Notice::info(None, "No reload to cancel.".to_owned()));
             return;
         }
