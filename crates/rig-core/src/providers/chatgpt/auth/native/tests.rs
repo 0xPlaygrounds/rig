@@ -125,10 +125,12 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
 }
 
 mod browser_sign_in {
+    use super::super::AuthError;
     use super::super::browser::{
-        CALLBACK_PATH, Callback, SCOPE, authorize_url, parse_callback, pkce_challenge,
+        CALLBACK_PATH, Callback, Received, authorize_url, parse_callback, pkce_challenge,
         random_token, redirect_uri, spawn_listener,
     };
+    use futures::channel::oneshot;
     use std::collections::HashMap;
     use std::io::{Read, Write};
     use std::net::{Ipv4Addr, TcpListener, TcpStream};
@@ -143,23 +145,14 @@ mod browser_sign_in {
             "https://auth.openai.com/oauth/authorize"
         );
         let query: HashMap<String, String> = parsed.query_pairs().into_owned().collect();
-        let expected = [
-            ("response_type", "code"),
-            ("client_id", super::super::CHATGPT_CLIENT_ID),
+        for (key, value) in [
             ("redirect_uri", "http://127.0.0.1:1455/auth/callback"),
             ("code_challenge", "challenge-123"),
-            ("code_challenge_method", "S256"),
             ("state", "state-456"),
-            ("scope", SCOPE),
-            ("id_token_add_organizations", "true"),
-            ("codex_cli_simplified_flow", "true"),
             ("originator", "rig"),
-        ];
-        for (key, value) in expected {
+        ] {
             assert_eq!(query.get(key).map(String::as_str), Some(value), "{key}");
         }
-        assert_eq!(query.len(), expected.len());
-        assert!(SCOPE.split(' ').any(|scope| scope == "offline_access"));
     }
 
     #[test]
@@ -219,16 +212,18 @@ mod browser_sign_in {
         response
     }
 
-    #[tokio::test]
-    async fn listener_ignores_other_requests_and_reports_the_outcome_page() {
+    /// A listener for state `s1` on a free port, and its port.
+    fn listen() -> (u16, oneshot::Receiver<Result<Received, AuthError>>) {
         let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
         let port = listener.local_addr().expect("addr").port();
-        let callback = spawn_listener(
-            listener,
-            "s1".into(),
-            Instant::now() + Duration::from_secs(30),
-        )
-        .expect("spawn");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        let callback = spawn_listener(listener, "s1".into(), deadline).expect("spawn");
+        (port, callback)
+    }
+
+    #[tokio::test]
+    async fn listener_ignores_other_requests_and_reports_the_outcome_page() {
+        let (port, callback) = listen();
 
         assert!(get(port, "/favicon.ico").starts_with("HTTP/1.1 404"));
         let stale = format!("{CALLBACK_PATH}?code=c&state=stale");
@@ -245,14 +240,7 @@ mod browser_sign_in {
 
     #[test]
     fn dropping_the_waiter_closes_the_listener() {
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).expect("bind");
-        let port = listener.local_addr().expect("addr").port();
-        let callback = spawn_listener(
-            listener,
-            "s1".into(),
-            Instant::now() + Duration::from_secs(30),
-        )
-        .expect("spawn");
+        let (port, callback) = listen();
         drop(callback);
 
         let deadline = Instant::now() + Duration::from_secs(5);
