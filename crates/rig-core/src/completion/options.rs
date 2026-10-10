@@ -62,6 +62,12 @@ pub struct GenerationOptions {
     /// Sequences that end generation. Empty means none.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stop: Vec<String>,
+    /// A key the provider routes prompt-cache lookups by, such as a
+    /// conversation's id: requests with the same key reach the server that
+    /// holds their prefix. A hint: providers that route without one send
+    /// nothing for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_key: Option<String>,
     /// What happens to an option the wire or model cannot honour. `None`
     /// leaves the policy unset, which acts as [`OnUnsupported::Error`]
     /// ([`Self::unsupported_policy`]); a set policy counts as setting an
@@ -137,6 +143,12 @@ impl GenerationOptions {
         self
     }
 
+    /// Set the prompt-cache routing key.
+    pub fn cache_key(mut self, key: impl Into<String>) -> Self {
+        self.cache_key = Some(key.into());
+        self
+    }
+
     /// Set what happens to an option the wire or model cannot honour.
     pub fn on_unsupported(mut self, policy: OnUnsupported) -> Self {
         self.on_unsupported = Some(policy);
@@ -156,6 +168,7 @@ impl GenerationOptions {
             top_p,
             seed,
             stop,
+            cache_key,
             on_unsupported: _,
         } = self;
         OptionFields {
@@ -167,6 +180,7 @@ impl GenerationOptions {
             top_p: *top_p,
             seed: *seed,
             stop,
+            cache_key: cache_key.as_deref(),
         }
     }
 
@@ -185,6 +199,7 @@ impl GenerationOptions {
             top_p,
             seed,
             stop,
+            cache_key,
             on_unsupported,
         } = over;
         GenerationOptions {
@@ -200,6 +215,7 @@ impl GenerationOptions {
             } else {
                 stop.clone()
             },
+            cache_key: cache_key.clone().or(self.cache_key),
             on_unsupported: on_unsupported.or(self.on_unsupported),
         }
     }

@@ -1064,10 +1064,11 @@ impl<'a> From<&'a String> for ModelSelector<'a> {
     }
 }
 
-/// How [`Catalog::connect_with`] connects: an explicit key, an HTTP client,
-/// a protocol family and a base URL. Each one left unset takes its default:
-/// the key from the environment, the shared reqwest client, the family the
-/// catalog row is reached by, and the dialect's base URL.
+/// How [`Catalog::connect_with`] connects: an explicit key and the account
+/// it belongs to, an HTTP client, a protocol family and a base URL. Each one
+/// left unset takes its default: the key from the environment, the shared
+/// reqwest client, the family the catalog row is reached by, and the
+/// dialect's base URL.
 ///
 /// ```no_run
 /// use rig_core::catalog::Catalog;
@@ -1081,6 +1082,7 @@ impl<'a> From<&'a String> for ModelSelector<'a> {
 #[derive(Clone, Default)]
 pub struct ConnectOptions {
     api_key: Option<Secret>,
+    account_id: Option<String>,
     http: Option<DynHttpClient>,
     format: Option<Format>,
     base_url: Option<String>,
@@ -1096,6 +1098,23 @@ impl ConnectOptions {
     /// the key is given: no other variable is read either.
     pub fn api_key(mut self, api_key: impl Into<Secret>) -> Self {
         self.api_key = Some(api_key.into());
+        self
+    }
+
+    /// Name `account_id` as the account the key belongs to, as a ChatGPT
+    /// subscription credential needs (the `ChatGPT-Account-Id` header).
+    /// Only the OpenAI family sends it; the others ignore it.
+    ///
+    /// ```no_run
+    /// use rig_core::catalog::Catalog;
+    /// use rig_core::providers::registry::ConnectOptions;
+    ///
+    /// let options = ConnectOptions::new().api_key("access-token").account_id("account");
+    /// let model = Catalog::builtin().connect_with("chatgpt/gpt-5.5", options)?;
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn account_id(mut self, account_id: impl Into<String>) -> Self {
+        self.account_id = Some(account_id.into());
         self
     }
 
@@ -1124,6 +1143,7 @@ impl fmt::Debug for ConnectOptions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ConnectOptions")
             .field("api_key", &self.api_key.as_ref().map(|_| "<set>"))
+            .field("account_id", &self.account_id.as_ref().map(|_| "<set>"))
             .field("http", &self.http.as_ref().map(|_| "<set>"))
             .field("format", &self.format)
             .field("base_url", &self.base_url)
@@ -1217,7 +1237,8 @@ impl Catalog {
     /// Unless `options` give a key, it is read from the first of the
     /// vendor's [`api_key_envs`](ProviderId::api_key_envs) set to a
     /// non-empty value, along with the base URL and other settings its
-    /// dialect reads from the environment.
+    /// dialect reads from the environment. An account `options` name
+    /// replaces the one the dialect reads.
     ///
     /// The model encodes and prices with this catalog's facts: the spec it
     /// was connected from, and this catalog for any other model a request
@@ -1276,6 +1297,12 @@ impl Catalog {
         let config = match options.api_key {
             Some(api_key) => registered.config(api_key),
             None => registered.config_from_env()?,
+        };
+        let config = match (config, options.account_id) {
+            (ProviderConfig::OpenAi(provider), Some(account_id)) => {
+                ProviderConfig::OpenAi(provider.with_account_id(account_id))
+            }
+            (config, _) => config,
         };
         let config = match options.base_url {
             Some(base_url) => config.with_base_url(base_url),

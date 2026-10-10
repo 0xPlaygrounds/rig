@@ -51,6 +51,7 @@ tracing-subscriber = { workspace = true, optional = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["v4", "serde"] }
 http = { workspace = true }
+httpdate = { workspace = true }
 fastrand = { workspace = true }
 mime = { workspace = true }
 # The transport contracts, re-exported at `http_client`, `ws_client` and

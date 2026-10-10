@@ -370,12 +370,21 @@ fn cache_warming_compiles_the_test_graphs_without_claiming_test_execution() {
         )
         .unwrap();
         let executed = all.iter().find(|c| c.id == source).unwrap();
-        let mut expected = executed.steps[0].clone();
-        let index = expected.args.iter().position(|a| a == "--retries").unwrap();
-        expected.args.drain(index..index + 2);
-        expected.args.push("--no-run".into());
+        let expected: Vec<_> = executed
+            .steps
+            .iter()
+            .map(|step| {
+                let mut step = step.clone();
+                if let Some(index) = step.args.iter().position(|a| a == "--retries") {
+                    step.args.drain(index..index + 2);
+                }
+                step.args.push("--no-run".into());
+                step
+            })
+            .collect();
+        assert!(executed.steps[0].args.contains(&"--retries".into()));
         assert_eq!(plan.len(), 1);
-        assert_eq!(plan[0].steps, vec![expected], "{alias}");
+        assert_eq!(plan[0].steps, expected, "{alias}");
         assert_eq!(plan[0].id, alias);
         assert!(!all.iter().any(|c| c.id == alias));
         assert!(!executed.steps[0].args.contains(&"--no-run".into()));
@@ -890,6 +899,13 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
+    // The root targets that require `agent`, which is not a default feature.
+    assert!(
+        check.steps[1]
+            .args
+            .windows(2)
+            .any(|pair| pair == ["--features", "agent"])
+    );
 }
 
 #[test]
@@ -1376,5 +1392,19 @@ fn an_extension_item_is_re_exported_nowhere() {
         "pub use rig_core::providers;",
     ] {
         assert!(reexports(source).is_empty(), "{source}");
+    }
+}
+
+#[test]
+fn every_plugin_crate_is_a_harness_package() {
+    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+    let names: Vec<String> = std::fs::read_dir(plugins)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+        .collect();
+    assert!(names.len() > 10, "found {names:?}");
+    for name in &names {
+        assert!(checks::HARNESS_PACKAGES.contains(&name.as_str()), "{name}");
     }
 }

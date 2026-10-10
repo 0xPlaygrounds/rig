@@ -406,6 +406,7 @@ impl ReplayTarget for Chat {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         const NO_FIELD: &str = "Ollama's `/api/chat` has no such field";
         OptionMap {
@@ -442,6 +443,7 @@ impl ReplayTarget for Chat {
             stop: Mapping::of_stop(stop, |stop| {
                 Mapping::Send(json!({"options": {"stop": stop}}))
             }),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 

@@ -463,6 +463,7 @@ impl crate::completion::ReplayTarget for NativeChat {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         let model = request.model.as_deref().unwrap_or(&self.model);
         // A model that thinks does so by default. An id the catalog does
@@ -515,6 +516,7 @@ impl crate::completion::ReplayTarget for NativeChat {
                 0..=5 => Mapping::Send(json!({ "stop_sequences": stop })),
                 _ => Mapping::unsupported("Cohere takes at most 5 stop sequences"),
             }),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 

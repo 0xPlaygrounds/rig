@@ -24,7 +24,7 @@ pub use handler::{
     cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
-pub use recorder::{Origin, Recorder};
+pub use recorder::{OpenRecord, Origin, Recorder, catch_panics};
 pub use writer::StreamWriter;
 
 /// Driver queue capacities and per-handler ordering policy, retained as data

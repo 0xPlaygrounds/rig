@@ -230,6 +230,28 @@ fn the_dialect_decides_the_credential_header() {
     assert_eq!(keyed["authorization"], "Bearer local");
 }
 
+/// The ChatGPT backend routes its prompt cache by the `session_id` header,
+/// so a completion's cache key goes there; without one each request gets a
+/// fresh id.
+#[test]
+fn the_chatgpt_session_id_is_the_cache_key() {
+    let config = OpenAIConfig::with_key(&crate::providers::chatgpt::DIALECT, "tok");
+    let session = |key: Option<&str>| {
+        config
+            .headers_in_session(http::Request::get("https://example.invalid/"), key)
+            .body(())
+            .expect("builds")
+            .headers()
+            .get("session_id")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned)
+    };
+    assert_eq!(session(Some("agent-1")).as_deref(), Some("agent-1"));
+    assert_eq!(session(Some("agent-1")), session(Some("agent-1")));
+    let fresh = session(None).expect("a fresh id");
+    assert_ne!(Some(fresh), session(None));
+}
+
 /// A dialect with no token-free credential check says so, instead of
 /// verifying against an endpoint that bills the caller.
 #[test]

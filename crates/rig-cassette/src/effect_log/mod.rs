@@ -15,6 +15,8 @@
 //! # Ok::<(), rig_core::error::ErrorReport>(())
 //! ```
 
+#[cfg(feature = "jsonl")]
+pub mod jsonl;
 mod log;
 mod recorder;
 mod replay;

@@ -113,10 +113,11 @@ pub(crate) struct Row {
 /// Whether `path` (relative to the workspace root) is production source.
 pub(crate) fn is_production(path: &str) -> bool {
     let in_src = path.starts_with("src/")
-        || path
-            .strip_prefix("crates/")
-            .and_then(|rest| rest.split_once('/'))
-            .is_some_and(|(_, rest)| rest.starts_with("src/"));
+        || ["crates/", "plugins/"].iter().any(|folder| {
+            path.strip_prefix(folder)
+                .and_then(|rest| rest.split_once('/'))
+                .is_some_and(|(_, rest)| rest.starts_with("src/"))
+        });
     in_src
         && path.ends_with(".rs")
         && !path.split('/').any(|component| {
@@ -421,6 +422,7 @@ pub(crate) fn per_crate(files: &BTreeMap<String, FileCoverage>) -> BTreeMap<Stri
     for (file, coverage) in files {
         let name = file
             .strip_prefix("crates/")
+            .or_else(|| file.strip_prefix("plugins/"))
             .and_then(|rest| rest.split('/').next())
             .unwrap_or("rig");
         let counts = coverage.counts();

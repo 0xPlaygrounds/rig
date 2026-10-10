@@ -22,11 +22,34 @@ pub(crate) fn emit_device_code_prompt<P>(
     }
 }
 
-pub(crate) fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
-    }
-    Ok(())
+/// Creates the directories above `path`; on Unix the ones it creates are
+/// readable by the owner alone (0700), since they hold credentials.
+fn ensure_parent_dir(path: &Path) -> Result<(), std::io::Error> {
+    let Some(parent) = path.parent() else {
+        return Ok(());
+    };
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(parent)
+}
+
+/// Writes a credential file (creating parent directories as
+/// [`ensure_parent_dir`] does). On Unix the file is created 0600, and an
+/// existing file is narrowed to 0600 before anything is written to it.
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> Result<(), std::io::Error> {
+    use std::io::Write;
+
+    ensure_parent_dir(path)?;
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let mut file = options.open(path)?;
+    #[cfg(unix)]
+    file.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o600))?;
+    file.write_all(bytes)
 }
 
 /// Returns true when the token is expired (or has no expiry), treating the
@@ -56,8 +79,8 @@ pub(crate) fn read_json_record<T: Default + DeserializeOwned>(
     }
 }
 
-/// Writes a JSON record to `path` (creating parent directories), a no-op when
-/// no path is configured.
+/// Writes a JSON record to `path` with [`write_private`], a no-op when no
+/// path is configured.
 pub(crate) fn write_json_record<T: Serialize>(
     path: Option<&Path>,
     record: &T,
@@ -66,7 +89,6 @@ pub(crate) fn write_json_record<T: Serialize>(
         return Ok(());
     };
 
-    ensure_parent_dir(path)?;
-    std::fs::write(path, serde_json::to_vec_pretty(record)?)?;
+    write_private(path, &serde_json::to_vec_pretty(record)?)?;
     Ok(())
 }

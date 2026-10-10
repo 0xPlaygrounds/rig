@@ -101,8 +101,9 @@ tasks:
                               past the size ceiling, if a manifest names a
                               dependency its sources never use, or if a facade
                               feature is outside the additivity guard
-  check-test-layout           fail if any crates/*/src file has an inline
-                              test-gated `mod x { }` instead of `mod x;`
+  check-test-layout           fail if any crates/*/src or plugins/*/src file
+                              has an inline test-gated `mod x { }` instead
+                              of `mod x;`
   check-wires                 fail if anything under rig-core's providers/ is
                               not a wire: `.await`, `async`, a transport type
                               parameter, or a consumer-trait impl

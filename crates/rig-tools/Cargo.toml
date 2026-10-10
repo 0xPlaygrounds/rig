@@ -1,0 +1,31 @@
+[package]
+name = "rig-tools"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "Coding tools for Rig agents: read, write, edit, search and shell, project instruction files, and the file and process helpers they share."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the rig agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+# The answer of a tool's blocking work.
+futures = { workspace = true }
+# `search` walks the tree as git ignores it.
+ignore = { workspace = true }
+regex = { workspace = true }
+rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+# Each tool's parameters, derived from its arguments type.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The unified diff `edit` returns.
+similar = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }

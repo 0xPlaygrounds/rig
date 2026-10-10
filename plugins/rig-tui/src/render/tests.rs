@@ -1,0 +1,86 @@
+use ratatui::text::Span;
+
+use super::{Piece, fit, join, keep};
+
+fn text(pieces: Vec<Piece>, gap: &'static str) -> String {
+    join(pieces, gap).to_string()
+}
+
+fn left() -> Vec<Piece> {
+    vec![
+        Piece::new(keep::SESSION, Span::from("my session")),
+        Piece::new(keep::ALWAYS, Span::from("deepseek/deepseek-flash")),
+        Piece::new(keep::REASONING, Span::from("reasoning default")),
+        Piece::new(keep::ALWAYS, Span::from("thinking… (Esc stops)")),
+        Piece::new(keep::SUBAGENTS, Span::from("2 subagents working")),
+    ]
+}
+
+fn meter() -> Vec<Piece> {
+    vec![
+        Piece::new(keep::TOKENS, Span::from("↑5.4k ↓1.2k")),
+        Piece::new(keep::CACHE, Span::from("cache 27k")),
+        Piece::new(keep::COST, Span::from("$0.012")),
+        Piece::new(keep::CONTEXT, Span::from("ctx 30k/1M (3%)")),
+    ]
+}
+
+#[test]
+fn the_meter_shrinks_before_the_status() {
+    let (mut left, mut right) = (left(), meter());
+    fit(&mut left, &mut right, 86);
+    let (status, usage) = (text(left, "  "), text(right, " "));
+    // The meter goes, and the session's name with it.
+    assert_eq!(
+        status,
+        "deepseek/deepseek-flash  reasoning default  thinking… (Esc stops)  2 subagents working"
+    );
+    assert!(usage.is_empty(), "{usage}");
+}
+
+#[test]
+fn a_named_session_keeps_its_spending_at_86_columns() {
+    // The resumed dogfood session: named, idle, with every meter figure.
+    let mut left = vec![
+        Piece::new(keep::SESSION, Span::from("stats refactor")),
+        Piece::new(keep::ALWAYS, Span::from("deepseek/deepseek-flash")),
+        Piece::new(keep::REASONING, Span::from("reasoning high")),
+        Piece::new(keep::ALWAYS, Span::from("idle")),
+    ];
+    let mut right = vec![
+        Piece::new(keep::TOKENS, Span::from("↑31.6k ↓20.2k")),
+        Piece::new(keep::CACHE, Span::from("cache 1.25M")),
+        Piece::new(keep::COST, Span::from("$0.021")),
+        Piece::new(keep::CONTEXT, Span::from("ctx 48k/1M (5%)")),
+    ];
+    fit(&mut left, &mut right, 86);
+    assert_eq!(
+        text(left, "  "),
+        "deepseek/deepseek-flash  reasoning high  idle"
+    );
+    assert_eq!(text(right, " "), "↑31.6k ↓20.2k $0.021 ctx 48k/1M (5%)");
+}
+
+#[test]
+fn cache_and_cost_go_first() {
+    let mut left = vec![
+        Piece::new(keep::ALWAYS, Span::from("model")),
+        Piece::new(keep::ALWAYS, Span::from("idle")),
+    ];
+    let mut right = meter();
+    // "model  idle" is 11 wide; the gap 2; tokens and context 27.
+    fit(&mut left, &mut right, 40);
+    assert_eq!(text(right, " "), "↑5.4k ↓1.2k ctx 30k/1M (3%)");
+    assert_eq!(text(left, "  "), "model  idle");
+}
+
+#[test]
+fn the_model_and_status_always_stay() {
+    let (mut left, mut right) = (left(), meter());
+    fit(&mut left, &mut right, 10);
+    assert!(right.is_empty());
+    assert_eq!(
+        text(left, "  "),
+        "deepseek/deepseek-flash  thinking… (Esc stops)"
+    );
+}

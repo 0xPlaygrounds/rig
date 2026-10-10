@@ -363,6 +363,28 @@ impl ModelSpec {
         self.provider.format()
     }
 
+    /// The `vendor/model` reference [`Catalog::resolve`](super::Catalog::resolve)
+    /// reads back to this model.
+    pub fn reference(&self) -> String {
+        format!("{}/{}", self.provider.vendor(), self.id)
+    }
+
+    /// The options of a request to this model with `reasoning` (`None`
+    /// for the provider's default): that reasoning, and the short prompt
+    /// cache when [`Self::caching`] lists it. A model whose caching the
+    /// catalog does not know gets no cache option, which it could refuse.
+    pub fn default_options(&self, reasoning: Option<Reasoning>) -> GenerationOptions {
+        let options = GenerationOptions {
+            reasoning,
+            ..GenerationOptions::default()
+        };
+        if self.caching.retention.contains(&CacheRetention::Short) {
+            options.cache(CacheRetention::Short)
+        } else {
+            options
+        }
+    }
+
     /// This spec named `name`.
     pub fn with_display_name(mut self, name: impl Into<String>) -> Self {
         self.display_name = name.into();
@@ -579,7 +601,102 @@ impl ModelSpec {
     }
 }
 
+/// A reasoning setting a model takes, by the name a picker shows: the
+/// provider default (`default`, no setting), `off`, an effort level, or a
+/// named budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ReasoningChoice {
+    /// `default`, `off`, the level's word, or the budget's name.
+    pub name: &'static str,
+    /// The setting a request carries; `None` for the provider default.
+    pub reasoning: Option<Reasoning>,
+}
+
+impl ReasoningChoice {
+    /// The name, with a budget's tokens.
+    pub fn label(&self) -> String {
+        match self.reasoning {
+            Some(Reasoning::Budget { tokens }) => format!("{} ({tokens} tokens)", self.name),
+            _ => self.name.to_owned(),
+        }
+    }
+}
+
+/// A reasoning setting a model does not take, and the ones it does.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("the reasoning settings are {}, not `{name}`", choices.join(", "))]
+pub struct UnknownReasoning {
+    /// The name asked for.
+    pub name: String,
+    /// The names of the model's [`ReasoningSupport::choices`].
+    pub choices: Vec<&'static str>,
+}
+
+/// Token budgets for the named levels on a model that takes a budget
+/// instead of levels, clamped into its range.
+const NAMED_BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
+
 impl ReasoningSupport {
+    /// The reasoning settings the model takes: the provider default first,
+    /// then `off` when reasoning can be turned off, then each effort level,
+    /// or `low`, `medium` and `high` budgets on a model that takes a budget
+    /// and no levels. A model whose controls the catalog does not list
+    /// offers only the default.
+    pub fn choices(&self) -> Vec<ReasoningChoice> {
+        let mut choices = vec![ReasoningChoice {
+            name: "default",
+            reasoning: None,
+        }];
+        let Self::Listed {
+            levels,
+            budget,
+            can_disable,
+            ..
+        } = self
+        else {
+            return choices;
+        };
+        if *can_disable {
+            choices.push(ReasoningChoice {
+                name: "off",
+                reasoning: Some(Reasoning::Off),
+            });
+        }
+        choices.extend(levels.iter().map(|level| ReasoningChoice {
+            name: level.as_str(),
+            reasoning: Some(Reasoning::Effort(*level)),
+        }));
+        if levels.is_empty()
+            && let Some(range) = budget
+        {
+            choices.extend(NAMED_BUDGETS.iter().map(|&(name, tokens)| ReasoningChoice {
+                name,
+                // Not `clamp`, which panics on an inverted range.
+                reasoning: Some(Reasoning::Budget {
+                    tokens: tokens.max(*range.start()).min(*range.end()),
+                }),
+            }));
+        }
+        choices
+    }
+
+    /// The choice of [`Self::choices`] named `name`.
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownReasoning`] with the names there are, when none is `name`.
+    pub fn named(&self, name: &str) -> Result<ReasoningChoice, UnknownReasoning> {
+        let choices = self.choices();
+        choices
+            .iter()
+            .find(|choice| choice.name == name)
+            .copied()
+            .ok_or_else(|| UnknownReasoning {
+                name: name.to_owned(),
+                choices: choices.iter().map(|choice| choice.name).collect(),
+            })
+    }
+
     /// Whether the model reasons at all.
     pub fn supported(&self) -> bool {
         !matches!(self, Self::None)

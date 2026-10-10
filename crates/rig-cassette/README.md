@@ -6,6 +6,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | part | path | published |
 |---|---|---|
 | effect logs and checkpoints | `src/effect_log/` | yes, always |
+| agent session journal stores and image blobs | `src/journal/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
@@ -24,7 +25,8 @@ rig-cassette = { version = "0.42.0", default-features = false }
 
 | features | public modules | additional normal dependencies |
 |---|---|---|
-| none | `effect_log` | core contracts, futures and serialization only |
+| none | `effect_log`, `journal` | core contracts, futures, serialization, base64 and SHA-256 only |
+| `jsonl` | `effect_log`, `effect_log::jsonl` and `journal::JsonlDirStore` (JSON-lines files, native) | none |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
 | `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |

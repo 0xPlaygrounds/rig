@@ -202,7 +202,11 @@ fn answers_matches_a_batch_as_a_multiset() {
 #[test]
 fn close_pending_answers_each_occurrence_in_call_order() {
     let calls = [tool_call("c1"), tool_call("c2"), tool_call("c1")];
-    let Message::User { content } = close_pending(&calls) else {
+    assert_eq!(
+        close_pending(&calls),
+        close_pending_with(&calls, NO_RESULT_PROVIDED)
+    );
+    let Message::User { content } = close_pending_with(&calls, "skipped") else {
         panic!("a closure is a user message");
     };
     let ids: Vec<CallId> = content
@@ -210,16 +214,29 @@ fn close_pending_answers_each_occurrence_in_call_order() {
         .filter_map(|part| match part {
             UserContent::ToolResult(result) => {
                 assert!(result.is_error);
-                assert_eq!(
-                    result.content,
-                    vec![ToolResultContent::text(NO_RESULT_PROVIDED)]
-                );
+                assert_eq!(result.content, vec![ToolResultContent::text("skipped")]);
                 Some(result.call.clone())
             }
             _ => None,
         })
         .collect();
     assert_eq!(ids, vec![id("c1"), id("c2"), id("c1")]);
+}
+
+#[test]
+fn a_final_answer_is_a_text_reply_without_calls() {
+    let text = AssistantContent::text;
+    for (content, answer) in [
+        (
+            vec![AssistantContent::reasoning("hm"), text(" A"), text("B ")],
+            Some("A\n\nB"),
+        ),
+        (vec![text("A"), call("c1")], None),
+        (vec![text("  ")], None),
+    ] {
+        assert_eq!(final_answer(&assistant(content)).as_deref(), answer);
+    }
+    assert_eq!(final_answer(&Message::user("A")), None);
 }
 
 #[test]
@@ -283,4 +300,37 @@ fn stored_results_are_kept_once_per_id_and_an_empty_user_message_stands() {
             assistant(vec![AssistantContent::text("a")]),
         ]
     );
+}
+
+#[test]
+fn pending_calls_are_the_last_turns_unanswered_calls() {
+    let history = vec![
+        assistant(vec![call("old")]),
+        results(&["old"]),
+        assistant(vec![call("c1"), call("c2"), call("c3")]),
+        results(&["c2"]),
+    ];
+    let pending: Vec<CallId> = pending_calls(&history)
+        .into_iter()
+        .map(|call| call.id)
+        .collect();
+    assert_eq!(pending, vec![id("c1"), id("c3")]);
+    assert!(pending_calls(&[Message::user("hi")]).is_empty());
+}
+
+#[test]
+fn arguments_the_schema_does_not_declare_are_refused() {
+    let schema = serde_json::json!({"properties": {"a": {}, "b": {}}});
+    let mut extra = tool_call("c1");
+    extra.function = ToolFunction::new(
+        crate::message::ToolName::new("add").expect("tool name"),
+        serde_json::json!({"a": 1, "c": 2}),
+    );
+    assert_eq!(
+        arguments_refusal(&schema, &extra).as_deref(),
+        Some(
+            "`add` has no argument `c`. Its arguments are: `a`, `b`. Call it again with only those."
+        )
+    );
+    assert_eq!(arguments_refusal(&schema, &tool_call("c2")), None);
 }

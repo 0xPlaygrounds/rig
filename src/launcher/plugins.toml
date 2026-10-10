@@ -1,0 +1,118 @@
+# The rig agent's plugins, added in this order. `rig build`, or /reload in
+# the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
+
+# Each [[plugin]] names a type implementing Bevy's Plugin + Default and the
+# crate it is in. An entry without a source is one of rig's own plugin
+# crates, built from the rig checkout the agent is (RIG_SOURCE). The core
+# (the session, the launcher protocol and /reload) is always there; every
+# entry below can go.
+
+# AGENTS.md and the environment in the system prompt, and /context.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::ProjectContextPlugin"
+
+# /model, /effort and the model picker.
+[[plugin]]
+crate = "rig-models"
+plugin = "rig_models::ModelsPlugin"
+
+# /login and /logout for the ChatGPT plan's models.
+[[plugin]]
+crate = "rig-login-chatgpt"
+plugin = "rig_login_chatgpt::ChatgptLoginPlugin"
+
+# The model and reasoning a new session starts with: the last ones chosen.
+[[plugin]]
+crate = "rig-models"
+plugin = "rig_models::DefaultsPlugin"
+
+# /new, /resume and /name.
+[[plugin]]
+crate = "rig-sessions"
+plugin = "rig_sessions::SessionsPlugin"
+
+# Summarizing a conversation near the context window, and /compact.
+[[plugin]]
+crate = "rig-compaction"
+plugin = "rig_compaction::CompactionPlugin"
+
+# What model calls cost, and /usage.
+[[plugin]]
+crate = "rig-telemetry"
+plugin = "rig_telemetry::UsagePlugin"
+
+# What each agent is doing, for views.
+[[plugin]]
+crate = "rig-activity"
+plugin = "rig_activity::ActivityPlugin"
+
+# Every model and tool call recorded in the session's effects.jsonl.
+[[plugin]]
+crate = "rig-telemetry"
+plugin = "rig_telemetry::EffectLogPlugin"
+
+# The tools: read, edit, write, search, shell, and reload, which the agent
+# uses to rebuild itself.
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::ReadTool"
+
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::EditTool"
+
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::WriteTool"
+
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::SearchTool"
+
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::ShellTool"
+
+[[plugin]]
+crate = "rig-coding-tools"
+plugin = "rig_coding_tools::ReloadTool"
+
+# /help, /retry, /agents and /quit.
+[[plugin]]
+crate = "rig-basics"
+plugin = "rig_basics::BasicCommandsPlugin"
+
+# Subagents: the task, message and wait tools.
+[[plugin]]
+crate = "rig-subagents"
+plugin = "rig_subagents::SubagentsPlugin"
+
+# Warnings and errors the process logs, Bevy's own included, as data.
+[[plugin]]
+crate = "rig-telemetry"
+plugin = "rig_telemetry::DiagnosticsPlugin"
+
+# The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers. Uncomment to enable it.
+# [[plugin]]
+# crate = "rig-inspect"
+# plugin = "rig_inspect::InspectPlugin"
+
+# --print: answers one prompt; also the front of a run no other front took.
+[[plugin]]
+crate = "rig-print"
+plugin = "rig_print::PrintPlugin"
+
+# The terminal view. Without it the agent answers what is piped in.
+[[plugin]]
+crate = "rig-tui"
+plugin = "rig_tui::TuiPlugin"
+
+# A plugin from another crate. `rig plugin new <name>` makes one in
+# plugins/<name> and adds its entry; `rig plugin check` checks this file.
+# [[plugin]]
+# crate = "rig-hello"               # the package name
+# path = "plugins/rig-hello"        # at most one of: path (relative to this file),
+#                                   # git (with optional branch or rev), version;
+#                                   # none for one of rig's own plugin crates
+# plugin = "rig_hello::HelloPlugin"

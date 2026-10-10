@@ -371,8 +371,10 @@ fn the_recorder_finds_the_newest_slot_first() {
             payload: serde_json::json!("newest"),
         }),
     );
+    assert_eq!(recorder.resolved(), 1);
     let log = recorder.take();
     assert_eq!(log.records.len(), 1, "one slot resolved");
+    assert_eq!(recorder.resolved(), 0);
     assert_eq!(
         recorder.in_flight(),
         1,

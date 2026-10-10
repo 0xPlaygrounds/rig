@@ -30,11 +30,13 @@ pub struct OptionFields<'a> {
     pub seed: Option<u64>,
     /// Stop sequences; empty means unset.
     pub stop: &'a [String],
+    /// The key the provider routes prompt-cache lookups by.
+    pub cache_key: Option<&'a str>,
 }
 
 impl OptionFields<'_> {
     /// Which options are set, in [`OptionMap`] field order.
-    pub(super) fn set(&self) -> [bool; 8] {
+    pub(super) fn set(&self) -> [bool; 9] {
         let OptionFields {
             reasoning,
             cache,
@@ -44,6 +46,7 @@ impl OptionFields<'_> {
             top_p,
             seed,
             stop,
+            cache_key,
         } = self;
         [
             reasoning.is_some(),
@@ -54,6 +57,7 @@ impl OptionFields<'_> {
             top_p.is_some(),
             seed.is_some(),
             !stop.is_empty(),
+            cache_key.is_some(),
         ]
     }
 }
@@ -100,6 +104,16 @@ impl Mapping {
     pub fn unsupported(reason: impl Into<String>) -> Mapping {
         Mapping::Unsupported(reason.into())
     }
+
+    /// The answer for [`cache_key`](super::GenerationOptions::cache_key) of
+    /// a wire whose provider routes its prompt cache without a key:
+    /// `Nothing` when unset, else honoured by sending nothing, as the key
+    /// is only a routing hint.
+    pub fn unrouted(cache_key: Option<&str>) -> Mapping {
+        Mapping::of(cache_key, |_| {
+            Mapping::Omit("the provider routes its prompt cache without a key")
+        })
+    }
 }
 
 /// One [`Mapping`] per option, by field name. Not `#[non_exhaustive]` and no
@@ -122,11 +136,13 @@ pub struct OptionMap {
     pub seed: Mapping,
     /// [`GenerationOptions::stop`](super::GenerationOptions::stop).
     pub stop: Mapping,
+    /// [`GenerationOptions::cache_key`](super::GenerationOptions::cache_key).
+    pub cache_key: Mapping,
 }
 
 impl OptionMap {
     /// Every option's name and answer, in field order.
-    pub(super) fn into_slots(self) -> [(&'static str, Mapping); 8] {
+    pub(super) fn into_slots(self) -> [(&'static str, Mapping); 9] {
         let OptionMap {
             reasoning,
             cache,
@@ -136,6 +152,7 @@ impl OptionMap {
             top_p,
             seed,
             stop,
+            cache_key,
         } = self;
         [
             ("reasoning", reasoning),
@@ -146,6 +163,7 @@ impl OptionMap {
             ("top_p", top_p),
             ("seed", seed),
             ("stop", stop),
+            ("cache_key", cache_key),
         ]
     }
 }

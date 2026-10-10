@@ -80,6 +80,68 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             }
             Ok(())
         }
+        "@ecs-boundary" => {
+            // rig-ecs is a library runtime: with every feature on, nothing
+            // in its normal dependency tree is a view, the `rig` facade
+            // (and its launcher protocol), the app or an HTTP stack, and
+            // it touches no files: stores are the app's.
+            const FORBIDDEN: [&str; 8] = [
+                "rig",
+                "rig-harness",
+                "rig-tools",
+                "rig-reqwest",
+                "reqwest",
+                "ratatui",
+                "crossterm",
+                "ignore",
+            ];
+            let tree = output(
+                root,
+                "cargo",
+                &[
+                    "tree",
+                    "--locked",
+                    "-p",
+                    "rig-ecs",
+                    "--all-features",
+                    "-e",
+                    "normal",
+                    "--prefix",
+                    "none",
+                    "--format",
+                    "{p}",
+                ],
+            )?;
+            if let Some(name) = tree
+                .lines()
+                .filter_map(|line| line.split_whitespace().next())
+                .find(|name| FORBIDDEN.contains(name))
+            {
+                return Err(invalid(format!(
+                    "rig-ecs depends on `{name}`; the runtime must not depend on a view, the \
+                     `rig` facade, the app or an HTTP stack"
+                )));
+            }
+            for path in tracked_inputs(root)?
+                .into_iter()
+                .chain(untracked_inputs(root)?)
+                .filter(|p| p.starts_with("crates/rig-ecs/src/") && p.ends_with(".rs"))
+            {
+                let Ok(text) = fs::read_to_string(root.join(&path)) else {
+                    continue;
+                };
+                for (number, line) in text.lines().enumerate() {
+                    let code = line.split("//").next().unwrap_or_default();
+                    if paths(code, "std::fs").next().is_some() {
+                        return Err(invalid(format!(
+                            "{path}:{}: rig-ecs names `std::fs`; the app's store touches files",
+                            number + 1
+                        )));
+                    }
+                }
+            }
+            Ok(())
+        }
         "@native-only" => {
             // A native-only crate on wasm must fail with exactly its one
             // `compile_error!` sentence; an item outside the `not(wasm)` gate
@@ -179,4 +241,14 @@ pub(super) fn run(root: &Path, metadata: &Value, plan: &[Check]) -> Result<()> {
         start.elapsed().as_secs_f64()
     );
     Ok(())
+}
+
+/// What follows each `prefix` (such as `rig::`) in `code` that starts a
+/// path, not the end of a longer name such as `my_rig::`.
+fn paths<'a>(code: &'a str, prefix: &'a str) -> impl Iterator<Item = &'a str> {
+    code.match_indices(prefix).filter_map(move |(at, _)| {
+        let before = code.get(..at)?.chars().next_back();
+        let starts = !before.is_some_and(|c| c.is_alphanumeric() || c == '_');
+        code.get(at + prefix.len()..).filter(|_| starts)
+    })
 }

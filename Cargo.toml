@@ -105,16 +105,73 @@ features = [
 ]
 rustdoc-args = ["--cfg", "docsrs"]
 
+# The launcher of the rig-harness agent (`cargo install rig`). It uses only std,
+# so it adds no dependency. `doc = false`: it shares the library's name.
+[[bin]]
+name = "rig"
+path = "src/main.rs"
+doc = false
+
+# The root test targets that drive the classic agent runtime, which is not a
+# default feature. CI's test sweeps get `agent` through rig-cassette's
+# dev-dependency on the facade; the `default-check` lane names it.
+[[test]]
+name = "azure"
+required-features = ["agent"]
+
+[[test]]
+name = "core"
+required-features = ["agent"]
+
+[[test]]
+name = "huggingface"
+required-features = ["agent"]
+
+[[test]]
+name = "hyperbolic"
+required-features = ["agent"]
+
+[[test]]
+name = "minimax"
+required-features = ["agent"]
+
+[[test]]
+name = "mira"
+required-features = ["agent"]
+
+[[test]]
+name = "moonshot"
+required-features = ["agent"]
+
+[[test]]
+name = "together"
+required-features = ["agent"]
+
+[[test]]
+name = "tool_facade_traits"
+required-features = ["agent"]
+
+[[test]]
+name = "xiaomimimo"
+required-features = ["agent"]
+
+[[test]]
+name = "zai"
+required-features = ["agent"]
+
 [workspace]
 resolver = "3"
 members = [
     "crates/*",
+    # The rig agent's plugin crates, built on rig-harness's public API.
+    "plugins/*",
     "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",
     "test-support/service-tests",
     "test-support/rig-test-support",
     "test-support/rig-history-conformance",
+    "test-support/rig-harness-test-support",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the
@@ -162,9 +219,6 @@ exclude = [
     # pins a `rustls` major with four unpatched `rustls-webpki` advisories.
     # Excluding it keeps that subtree out of the workspace lockfile.
     "examples/discord_bot",
-    # Only the frozen release changelog of the removed rig-ecs crate remains;
-    # the release PR deletes it.
-    "crates/rig-ecs",
 ]
 
 [workspace.lints.rust]
@@ -215,7 +269,7 @@ opt-level = "s"
 version = "0.44.0"
 edition = "2024"
 # The toolchain in rust-toolchain.toml, the only one CI builds with.
-rust-version = "1.95.0"
+rust-version = "1.97.1"
 
 [workspace.dependencies]
 # Every requirement below is a FLOOR, not a pin: `tokio = "1"` means `^1`,
@@ -245,6 +299,9 @@ rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-featu
 anyhow = "1"
 arrow-array = "58"
 assert_fs = "1"
+# 2.3: `force_send`, which Bevy Remote answers an in-process request with
+# (`BrpMessage::sender`).
+async-channel = "2.3"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }
@@ -255,12 +312,32 @@ aws-smithy-http-client = { version = "1", default-features = false }
 aws-smithy-runtime-api = "1"
 aws-smithy-types = "1"
 base64 = "0.22"
+# Bevy is pinned exactly: a Bevy plugin only links against the one Bevy
+# version of its app, and rig-harness is the app. `bevy_tasks` is also the
+# runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
+# git; the tooling check verifies Bevy sources and requirements.
+# `bevy` itself only for `MinimalPlugins` (in `bevy_internal`, no feature
+# needed); default features off keeps render, window and audio out.
+# `bevy_remote` without `http`, `bevy_asset` or `bevy_render`: in-process
+# BRP only, never a server. `reflect_documentation` puts doc comments in
+# the type registry.
+bevy = { version = "=0.20.0", default-features = false }
+bevy_app = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
+bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
+bevy_log = "=0.20.0"
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory", "reflect_documentation"] }
+bevy_remote = { version = "=0.20.0", default-features = false }
+bevy_tasks = { version = "=0.20.0", default-features = false, features = ["multi_threaded"] }
+bevy_time = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"
 candle-transformers = "0.11"
 chrono = "0.4"
 convert_case = "0.11"
+crossbeam-channel = "0.5.15"
+crossterm = "0.29"
+ctrlc = "3.4.4"
 dotenvy = "0.15"
 epub = "2"
 ethers = "2"
@@ -268,10 +345,6 @@ ethers = "2"
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"
 futures = "0.3"
-# Runtime-agnostic executor used by the `agent_no_tokio` example. Bevy
-# 0.19.1: crates.io, never git; the tooling check verifies Bevy sources and
-# declared release floors. Default features off.
-bevy_tasks = { version = "0.19.1", default-features = false, features = ["multi_threaded"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"
@@ -288,11 +361,13 @@ httpdate = "1"
 httpmock = "0.8.2"
 # 0.1.2: the `service` feature.
 hyper-util = "0.1.2"
+ignore = "0.4.25"
 # Decodes the JPEG frames of rig-candle's pose test and example.
 image = { version = "0.25.10", default-features = false }
 indexmap = "2"
 indoc = "2"
 lancedb = { version = "0.30", default-features = false }
+libc = "0.2.186"
 log = "0.4"
 lopdf = { version = "0.44", default-features = false, features = ["rayon"] }
 mime = "0.3"
@@ -308,13 +383,16 @@ ordered-float = "5"
 pgvector = "0.4.2"
 pin-project-lite = "0.2"
 proc-macro2 = "1"
+pulldown-cmark = { version = "0.13", default-features = false }
 # 1.10: the `Qdrant` client, `Payload`, and the query/upsert builders.
 qdrant-client = { version = "1.10", default-features = false, features = [
     "serde",
 ] }
 quick-xml = "0.41"
 quote = "1"
+ratatui = "0.30.2"
 redis = "1"
+regex = "1.12.3"
 reqwest = { version = "0.13", default-features = false }
 reqwest-middleware = { version = "0.5", default-features = false }
 reqwest-retry = "0.9"
@@ -329,9 +407,12 @@ serde_yaml = "0.9"
 serde_json = "1.0.54"
 safetensors = "0.8"
 sha2 = "0.10"
+similar = "2.7"
 serde_path_to_error = "0.1"
 sqlite-vec = "0.1"
 sqlx = "0.9"
+# 0.8.3: `Engine::new_sandboxed` and the thread state controller rig-steel uses.
+steel-core = "0.8.3"
 # 3.2: 3.0/3.1 no longer build against `surrealdb-core ^3` as published.
 surrealdb = "3.2"
 syn = "2"
@@ -357,6 +438,7 @@ tracing = "0.1"
 tracing-futures = "0.2.5"
 tracing-opentelemetry = "0.33"
 tracing-subscriber = "0.3"
+unicode-width = "0.2"
 uuid = "1"
 wasm-bindgen-futures = "0.4"
 wasm-bindgen = "0.2"
@@ -459,7 +541,7 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
-default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
+default = ["rig-core/default", "reqwest", "derive", "rustls"]
 agent = ["dep:rig-agent", "rig-cassette?/agent"]
 # `rig::cassette`: effect-log recording and replay. With `agent`, also the
 # classic-agent adapter (`rig::cassette::agent`).

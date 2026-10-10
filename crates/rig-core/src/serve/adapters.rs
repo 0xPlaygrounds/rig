@@ -364,16 +364,7 @@ where
     type Family = family::Tool;
 
     fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: crate::effect::tool_key(&self.name),
-            family: FamilyDescriptor::Tool {
-                name: self.name.clone(),
-                description: self.description.clone(),
-                parameters: self.parameters.clone(),
-                embedding: None,
-            },
-            layers: Vec::new(),
-        }
+        HandlerDescriptor::tool(&self.name, &self.description, self.parameters.clone())
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {

@@ -54,6 +54,7 @@
 - [Who's using Rig?](#who-is-using-rig)
 - [Get Started](#get-started)
   - [Simple example](#simple-example)
+- [The rig coding agent](#the-rig-coding-agent)
 - [Integrations](#supported-integrations)
 
 ## What is Rig?
@@ -63,7 +64,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
-- A classic agent runtime enabled by default
+- A classic agent runtime (the `rig` facade's `agent` feature)
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
@@ -82,11 +83,10 @@ Rig separates portable provider/backend contracts from agent orchestration:
   contextual tool contracts, memory and vector-store contracts, and built-in
   provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  the live tool registry, extraction, and the serializable `AgentRun` state machine. It
-  remains enabled by default.
+  the live tool registry, extraction, and the serializable `AgentRun` state machine.
 
-The root `rig` facade re-exports both at their familiar paths, so most code
-depends only on `rig`.
+The root `rig` facade re-exports both at their familiar paths, `rig-agent` with
+its `agent` feature, so most code depends only on `rig`.
 
 Hosts construct HTTP or SDK models with their chosen authentication, transport
 policy and runtime lifetime; the agent runtime executes the resulting
@@ -120,8 +120,8 @@ Use the root `rig` facade when you want feature-gated access to companion crates
 or use `rig-core` directly when you only need the core provider abstractions.
 
 ```bash
-cargo add rig
-# or: cargo add rig-core
+cargo add rig --features agent
+# or, without the agent runtime: cargo add rig-core
 ```
 
 ### Simple example
@@ -163,6 +163,282 @@ features disabled. Its optional `agent` adapter is independent of the native
 `http` engine. The agent runtime does not depend on the concrete logging
 crate. See the [cassette README](crates/rig-cassette/README.md) for
 dependency guarantees and migration paths.
+
+## The rig coding agent
+
+`cargo install rig` also installs `rig`, a terminal coding agent. The agent is
+a Bevy app: the [`rig-harness`](crates/rig-harness) crate is its core, and
+every other part of it is a plugin crate in [`plugins/`](plugins). `rig` is its
+launcher: it generates a small Cargo project for the agent, builds it, and
+runs it. Its coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
+[`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its agent
+runtime (agents, turns and tool calls as Bevy entities, one recorded effect
+path, session journals) is the [`rig-ecs`](crates/rig-ecs) crate, for building
+your own harness. These crates are not published yet, so the agent builds only
+from a rig checkout: install the launcher from one, or point `RIG_SOURCE` at
+one (see the end of this section).
+
+```bash
+cargo install rig
+export OPENAI_API_KEY=...   # or any other provider key in the model catalog
+rig                         # builds the agent (later starts rebuild what changed), then opens it
+```
+
+In the agent, `/model` picks a model (providers that need no key, such as a
+local Ollama, are listed last), `/effort` its reasoning setting, `/help`
+lists the commands, and Esc stops a running turn. The status line shows the
+session's tokens (uncached input, output, cache reads and writes), its cost
+(the provider's figure, else the catalog's list price; `+` when some calls had
+no price) and the context in use against the model's window; `/usage` breaks
+them down. A model call that fails on a rate limit, an overloaded provider
+or a dropped connection is retried up to four times, waiting as long as the
+provider's `Retry-After` asks (or 2, 4, 8, 16 seconds); if it still fails,
+your message stays in the conversation and `/retry` sends it again. When the
+conversation outgrows the model's context window, older tool outputs are
+cleared and the call is sent again. Models whose catalog entry lists a prompt
+cache get it, with the agent's id as the cache key where the provider takes
+one. When the conversation comes within 16k tokens of the model's window,
+older tool outputs are cleared and, if that is not enough, the older messages
+are summarized by the model into a structured checkpoint (goal, progress,
+decisions, next steps, files read and changed) that requests send in their
+place; the newest 20k tokens stay as they are. `/compact` does it now, and
+`/compact <focus>` says what the summary should keep. The summarized messages
+stay in the transcript, under a line that shows the summary; a resumed
+session starts from the messages the summary kept. `/reload` rebuilds the agent
+and restarts it on the same session; typed while a turn runs, it waits until no
+turn runs (`/reload cancel` drops it), and a turn started during the build
+delays the restart until it ends. The agent can ask for a reload itself with
+its `reload` tool, which waits the same way and shows a notice. It shows
+cargo's latest line, keeps the current build running if the new one does not
+compile (its error notice names the build log), and rolls back to it if the new
+one crashes during startup.
+
+Every build, the one before each start and `/reload`'s, writes its whole
+output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
+message names its reason and first compiler error. The agent sees build
+failures too: the reason, the first errors and the paths of `build.log`,
+`plugins.toml` and the generated project go into its conversation as a
+message from the `build` plugin, which starts no turn when the agent is idle
+and is saved with the session.
+Ask it why the build failed and it can read the log, fix the cause, and
+reload.
+
+The session is written as it happens. Each agent, subagents included, has an
+append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
+usage and compactions; images are stored once in `blobs/`, and `meta.json`
+caches what `/resume` lists. A tool call that may change something starts
+only once the reply that asked for it is on disk. After a crash, a closed
+terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
+was left half done: read-only tool calls run again, other unfinished tool
+calls are answered as interrupted by the restart, and a turn that waited on
+the model carries on.
+Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
+names this one, and `/resume` lists the earlier ones (name or first message,
+cost, directory, age) and resumes the one picked, in its own directory;
+and `rig --resume <id>` resumes a given one, such as after a crash.
+
+A ChatGPT subscription can pay for the model
+calls instead of an API key: `/login chatgpt` opens your browser on the
+ChatGPT sign-in page and shows its URL in case the browser does not open; the
+page returns to a one-shot listener on `127.0.0.1` port 1455 (1457 when 1455
+is taken). Without a graphical session (no `DISPLAY` or `WAYLAND_DISPLAY` on
+Linux and the BSDs), over SSH, or when both ports are taken, it shows a code
+to enter at `https://auth.openai.com/codex/device` instead, as
+`/login chatgpt --device` does. The same applies in print mode, which prints
+the URL or code. Once signed in, `/model` lists the
+plan's models as `chatgpt/...`, marked "(ChatGPT plan)": `gpt-6.1-sol`,
+`gpt-6-astra`, `gpt-6-sol`, `gpt-6-luna`, `gpt-5.6-sol`, `gpt-5.6-terra`,
+`gpt-5.6-luna` and `gpt-5.5`, besides the older `gpt-5.4` and `gpt-5.3` rows.
+A successful sign-in switches the agent to the plan's latest frontier model,
+`chatgpt/gpt-6.1-sol`. Esc or a second `/login` cancels a sign-in that waits. The credential is kept
+in `RIG_HOME/auth/chatgpt.json`, readable by you alone, and refreshed before
+a request when it has expired, so a long session keeps working;
+`/logout chatgpt` deletes it. It is rig's own sign-in, separate from the Codex
+CLI's. A `CHATGPT_ACCESS_TOKEN` in the environment (with `CHATGPT_ACCOUNT_ID`)
+is used instead when set. `rig -p /login` signs in without the terminal view.
+
+Typing while the agent works is fine: Enter steers the running turn (the
+message goes to the model with its next call, after the tool results it waits
+for) and Tab queues a follow-up that is sent when the turn would end. Both
+wait under the transcript; Esc stops the turn and puts them back in the input.
+`@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
+reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
+`xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
+
+With the built-in `SubagentsPlugin`, the model can hand work to subagents
+with the `task` tool: each is a new agent in the same process, with its own
+conversation and, if the call asks, another model, reasoning setting or a
+subset of the tools. `task` returns the subagent's id at once, and `message`
+sends one of the model's own subagents a follow-up, which it reads with its
+conversation kept. Each `task` or `message` call is a request, and exactly one
+report for it (done, failed or interrupted) arrives later as a message to the
+agent that asked, which starts a turn of an idle agent or follows the running
+one; the reports of one reply's `task` calls reach it together. Nothing waits
+for them, so you can keep talking to the main agent, or steer it, meanwhile.
+An agent that needs a message before it goes on calls `wait`, which keeps its
+turn open until that agent sends it one, and a subagent whose turn ends while
+a request it made is open is waiting, not done: it reports the answer it
+gives once that request is answered. Esc stops only the shown agent's turn,
+not its subagents. `/agents` lists every agent with its model and state, and
+shows the one picked: its transcript, and what you type then goes to it. A
+subagent can start subagents of its own, one level deep. Subagents started
+with `peers` can also send each other requests with `message` and `wait` for
+each other; a request or `wait` that would make agents wait on each other is
+refused.
+In the effect log, a subagent's model calls name the call that gave it its
+work as their parent.
+
+Without the terminal view, `rig -p "fix the failing test"` answers one prompt
+and exits: the answer goes to stdout, failures to stderr, and the exit code is
+0 when the turn ended with an answer, 2 for a refused slash command. Text piped
+in follows the prompt (`git diff | rig -p "review this"`), `-m vendor/model`
+picks the model (else the session's, else the first one with a key; in the
+terminal view too), and `-r <id>` resumes a given
+session instead of starting a new one.
+
+The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
+of `RIG_HOME`, of the working directory and of each directory above it, from
+the most general to the most specific, at most 32 KB each and 64 KB together,
+along with the working directory, platform and date. They are
+re-read when a turn starts, so an edited `AGENTS.md` counts from the next
+message; `/context` re-reads them now and lists what the prompt holds.
+
+The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
+Enter starts a new line, Up and Down move between lines and through the
+prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
+keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
+and `@` completes paths of the project (skipping what `.gitignore` leaves out);
+Tab or Enter takes the selected one. A command that is unknown or refused, such
+as one with arguments it does not take, comes back in the input with the
+reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
+tool's call in its own way; a plugin can draw its own tools' calls with
+`app.add_tool_renderer` (`rig_tui::AppToolRenderersExt`). PageUp, PageDown and
+Shift+Up/Down scroll the transcript.
+
+Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
+`plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
+the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl`,
+`spill/` (the whole output of a `shell` call that was cut, which the model reads
+by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
+gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
+cache directory. Several `rig` processes can share one `RIG_HOME`.
+
+To run the agent from a rig checkout instead of crates.io, install the
+launcher from it or point `RIG_SOURCE` at it:
+
+```bash
+cd rig && cargo install --path . --root /some/dir
+RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
+```
+
+Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
+rebuilds the agent with them and restarts in the same session. Everything but
+the core (the session, the launcher protocol and `/reload`) is an entry in the
+same list: the project context, models, sign-in, sessions, compaction, usage,
+activity, the effect log, each tool, the commands, the subagents, diagnostics,
+`--print` and the terminal view, each from a plugin crate in
+[`plugins/`](plugins), so any of them can be removed or replaced
+([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
+
+```toml
+[[plugin]]
+crate = "rig-coding-tools"        # one of rig's own plugin crates: no source
+plugin = "rig_coding_tools::ReadTool"
+
+[[plugin]]
+crate = "rig-tui"
+plugin = "rig_tui::TuiPlugin"
+
+[[plugin]]
+crate = "hello"                   # the package name
+path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
+plugin = "hello::HelloPlugin"     # implements Plugin + Default
+```
+
+`rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
+any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
+`--git`, `--version`) adds an entry for an existing crate and `rig plugin
+remove <type>` takes one out (its crate stays), each checked before
+plugins.toml is written; `rig plugin check` checks the list, with `--build`
+also building the agent with its plugins in `$RIG_HOME/target` without
+staging it. A plugin crate depends on
+`rig-harness`, and on another plugin crate whose types it uses (such as
+`rig-tui` for a terminal panel), and registers tools, slash commands, tool
+renderers, terminal panels or a window the way the built-in ones do, never by
+editing rig's crates. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
+is a cookbook with a copy-ready example of each kind, its names from
+`rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig plugin new` writes is a
+working, commented slash command. An agent started by the launcher knows
+its plugins, commands and tools and how to write and add its own plugins
+from its system prompt.
+
+The optional [`rig-inspect`](plugins/rig-inspect) plugin adds the `inspect`
+tool, with which the agent reads its own Bevy world (in process, read-only):
+the plugins loaded and what each added, the agents, the state saved with the
+session, the warnings logged and every reflected type. It is commented out in
+the default `plugins.toml`, since Bevy Remote makes the build heavier and on
+Linux needs the ALSA development headers (`libasound2-dev` on Debian and
+Ubuntu, `alsa-lib-devel` on Fedora, `alsa-lib` on Arch); uncomment its entry,
+or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect`.
+
+Code mode is an optional plugin crate, [`rig-steel`](plugins/rig-steel), not in the default list.
+Its `SteelPlugin` adds the `run_steel` tool: the model writes one
+[Steel](https://github.com/mattwparas/steel) (Scheme) program that spawns
+agents, sends them requests, waits for their replies and calls the model's own
+tools, and the value of its last expression is the tool's output. The program
+reaches the host only through four functions, each one call of rig-steel's
+`Harness` handle: `(spawn-agent name [options])`, `(send agent text)`,
+`(reply request)` and `(call-tool name [args])`. It runs on a thread of its
+own, which each host function blocks until the harness answers; agents it has
+sent to work at the same time, so sending to several before waiting fans out.
+It runs in Steel's sandboxed engine with the host modules (process, git,
+network, foreign functions, threads) emptied, and programs that name module
+loading, `eval`, procedural macros or the engine's private functions are
+refused. Its execution time (not counting waits), host calls and output are
+limited, and Esc cancels it. Enable it with:
+
+```toml
+[[plugin]]
+crate = "rig-steel"
+plugin = "rig_steel::SteelPlugin"
+```
+
+Two agents writing a poem together, relayed four times, then summarised:
+
+```scheme
+(define a (spawn-agent "poet-a"))
+(define b (spawn-agent "poet-b"))
+(define (ask agent text) (reply (send agent text)))
+(define poem
+  (let loop ([turn 0] [stanzas (list (ask a "Write the first stanza of a poem about the sea."))])
+    (if (= turn 4)
+        stanzas
+        (loop (+ turn 1)
+              (append stanzas
+                      (list (ask (if (even? turn) b a)
+                                 (string-append "Continue this poem with one stanza:\n\n"
+                                                (string-join stanzas "\n\n")))))))))
+(hash 'poem poem
+      'summary (ask a (string-append "Summarise this poem in one sentence:\n\n"
+                                     (string-join poem "\n\n"))))
+```
+
+A fan-out that asks three agents at once and keeps the shortest answer:
+
+```scheme
+(define agents (map (lambda (i) (spawn-agent (string-append "solver-" (number->string i)))) (range 0 3)))
+(define requests (map (lambda (agent) (send agent "How does src/lib.rs load plugins? Three sentences.")) agents))
+(define answers (map reply requests))
+(foldl (lambda (answer best) (if (< (string-length answer) (string-length best)) answer best))
+       (car answers) (cdr answers))
+```
+
+The agent, like the rest of the workspace, needs Rust 1.97.1 or newer.
+
+`rig build` regenerates and builds the agent without starting it.
+`CARGO_BUILD_JOBS` sets cargo's `-j` for these builds, as for any cargo build.
+
+The agent runs on Linux and macOS; Windows is not supported yet.
 
 ## Supported Integrations
 

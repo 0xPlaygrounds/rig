@@ -772,7 +772,7 @@ impl OpenAIConfig {
         request: &crate::completion::CompletionRequest,
         builder: http::request::Builder,
     ) -> http::request::Builder {
-        let builder = self.headers(builder);
+        let builder = self.headers_in_session(builder, request.options.cache_key.as_deref());
         match self
             .dialect
             .quirks

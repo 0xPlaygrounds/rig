@@ -72,10 +72,11 @@ jobs:
           git fetch --no-tags origin "${{ github.base_ref }}"
           bash .github/scripts/check-frozen-release-docs.sh
 
-  # `cargo check` of the root test targets with default features only: the
-  # sweep below adds `bedrock`, so this is the only default-feature compile
-  # of those targets. Its own job because it shares no artifacts with the
-  # sweep (different feature hash, check mode).
+  # `cargo check` of the root test targets with default features, then with
+  # `agent` for the targets that require it: the sweep below adds `bedrock`,
+  # so this is the only default-feature compile of those targets. Its own job
+  # because it shares no artifacts with the sweep (different feature hash,
+  # check mode).
   check-default:
     name: stable / check default features
     runs-on: ubuntu-latest
@@ -98,6 +99,7 @@ jobs:
           nextest: "true"
           # The repository-repair tests format proposed patches.
           components: rustfmt
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
@@ -175,6 +177,7 @@ jobs:
           components: llvm-tools
           nextest: "true"
           protoc: "true"
+          alsa: "true"
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-llvm-cov
@@ -210,6 +213,7 @@ jobs:
       - uses: ./.github/actions/rust-setup
         with:
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           shared-key: all-features
@@ -225,6 +229,7 @@ jobs:
         with:
           components: rust-docs
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
@@ -239,10 +244,26 @@ jobs:
         with:
           components: clippy
           protoc: "true"
+          alsa: "true"
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check clippy
+
+  # The kernel on its own: rig-ecs native and for the browser, and its
+  # kernel-only turn test. Builds no rig-harness.
+  kernel-only:
+    name: stable / kernel-only rig-ecs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          target: wasm32-unknown-unknown
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check kernel-only
 
   # Each package checked on its own for the browser target (cargo unifies
   # features across packages built together, which hides a manifest that

@@ -278,20 +278,22 @@ pub fn answers(pending: &[CallId], results: &[UserContent]) -> Result<(), Answer
 /// The user message closing `calls` nothing answered: a [`NO_RESULT_PROVIDED`]
 /// error result per occurrence, in call order, exactly as [`pair`] closes them.
 pub fn close_pending<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Message {
+    close_pending_with(calls, NO_RESULT_PROVIDED)
+}
+
+/// [`close_pending`], each error result saying `why`, such as why the
+/// calls never ran.
+pub fn close_pending_with<'a>(calls: impl IntoIterator<Item = &'a ToolCall>, why: &str) -> Message {
     Message::User {
-        content: unanswered(calls),
+        content: unanswered(calls, why),
     }
 }
 
-fn unanswered<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Vec<UserContent> {
+fn unanswered<'a>(calls: impl IntoIterator<Item = &'a ToolCall>, why: &str) -> Vec<UserContent> {
     calls
         .into_iter()
         .map(|call| {
-            tool_result_message(
-                call.id.clone(),
-                call.function.name.clone(),
-                NO_RESULT_PROVIDED.to_owned(),
-            )
+            tool_result_message(call.id.clone(), call.function.name.clone(), why.to_owned())
         })
         .collect()
 }
@@ -380,7 +382,7 @@ impl Walk {
                         call_id: call.id.clone(),
                     }
                 }));
-                unanswered(&waiting)
+                unanswered(&waiting, NO_RESULT_PROVIDED)
             } else {
                 Vec::new()
             };
@@ -492,12 +494,111 @@ pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
     content.iter().all(AssistantContent::is_blank)
 }
 
+/// The text of a final answer: the text parts of the model's message,
+/// joined by blank lines and trimmed. `None` when `message` is not the
+/// model's, still asks for tool calls, or has no text.
+///
+/// ```
+/// use rig_core::{message::Message, transcript::final_answer};
+///
+/// assert_eq!(final_answer(&Message::assistant(" Done. ")).as_deref(), Some("Done."));
+/// assert_eq!(final_answer(&Message::user("Done.")), None);
+/// ```
+pub fn final_answer(message: &Message) -> Option<String> {
+    let Message::Assistant(reply) = message else {
+        return None;
+    };
+    let mut parts = Vec::new();
+    for item in reply.content.iter() {
+        match item {
+            AssistantContent::Text(text) => parts.push(text.text.as_str()),
+            AssistantContent::ToolCall(_) => return None,
+            _ => {}
+        }
+    }
+    let text = parts.join("\n\n");
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
+}
+
 /// The text parts of an assistant turn, concatenated.
 pub fn assistant_text_from_choice(content: &[AssistantContent]) -> String {
     content
         .iter()
         .filter_map(|part| match part {
             AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Why `call`'s arguments do not fit a tool whose JSON schema is
+/// `parameters`, for the model to read as the call's error: they are not a
+/// JSON object ([`invalid_arguments_feedback`]), or name an argument the
+/// schema does not declare. `None` when they fit as far as that goes; the
+/// tool checks their values.
+pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
+    let name = call.function.name.as_str();
+    if let Some(raw) = &call.function.invalid_arguments {
+        return Some(invalid_arguments_feedback(name, raw));
+    }
+    let declared = parameters
+        .get("properties")
+        .and_then(serde_json::Value::as_object);
+    fn quoted<'a>(names: impl Iterator<Item = &'a String>) -> String {
+        names
+            .map(|arg| format!("`{arg}`"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+    let unknown = quoted(
+        call.function
+            .arguments
+            .keys()
+            .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str()))),
+    );
+    if unknown.is_empty() {
+        return None;
+    }
+    let known = declared
+        .map(|declared| quoted(declared.keys()))
+        .filter(|known| !known.is_empty())
+        .unwrap_or_else(|| "none".to_owned());
+    Some(format!(
+        "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with only \
+         those."
+    ))
+}
+
+/// The tool calls of the last assistant message in `messages` that no
+/// later tool result answers, in call order: what a conversation cut short
+/// still owes the model.
+pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
+    let Some(at) = messages
+        .iter()
+        .rposition(|message| matches!(message, Message::Assistant(_)))
+    else {
+        return Vec::new();
+    };
+    let mut later = messages.iter().skip(at);
+    let Some(Message::Assistant(reply)) = later.next() else {
+        return Vec::new();
+    };
+    let answered: Vec<&CallId> = later
+        .flat_map(|message| match message {
+            Message::User { content } => content.as_slice(),
+            _ => &[],
+        })
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(&result.call),
+            _ => None,
+        })
+        .collect();
+    reply
+        .content
+        .iter()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) if !answered.contains(&&call.id) => Some(call.clone()),
             _ => None,
         })
         .collect()

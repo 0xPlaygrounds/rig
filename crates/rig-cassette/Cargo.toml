@@ -44,10 +44,11 @@ workspace = true
 [features]
 default = []
 agent = ["dep:rig-agent"]
+# Effect logs and session journals as JSON-lines files (native file I/O).
+jsonl = []
 http = [
     "dep:rig-reqwest",
     "dep:axum",
-    "dep:base64",
     "dep:httpdate",
     "dep:httpmock",
     "dep:serde_yaml",
@@ -66,13 +67,15 @@ rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", default-features = 
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
-base64 = { workspace = true, optional = true }
+base64 = { workspace = true }
 futures = { workspace = true }
 httpdate = { workspace = true, optional = true }
 httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true, optional = true }
+# The names of the blobs a session journal stores images in.
+sha2 = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
@@ -121,7 +124,6 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-sha2 = { workspace = true }
 thiserror = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
 tokio = { workspace = true, features = ["full"] }

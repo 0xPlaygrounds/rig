@@ -427,6 +427,7 @@ impl rig_core::completion::ReplayTarget for Generation {
             top_p,
             seed,
             stop,
+            cache_key,
         } = fields;
         const LOCAL: &str = "a local generation has no such setting";
         OptionMap {
@@ -456,6 +457,7 @@ impl rig_core::completion::ReplayTarget for Generation {
             stop: Mapping::of_stop(stop, |_| {
                 Mapping::unsupported("local generation stops only on end tokens")
             }),
+            cache_key: Mapping::unrouted(cache_key),
         }
     }
 

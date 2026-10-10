@@ -228,6 +228,11 @@ fn references_name_a_vendor_and_a_model() {
         .resolve("openrouter/anthropic/claude-sonnet-4.5")
         .expect("OpenRouter lists it");
     assert_eq!(openrouter.spec.id, "anthropic/claude-sonnet-4.5");
+    let found = catalog.resolve("anthropic/claude-x").expect("listed");
+    let again = catalog
+        .resolve("anthropic/anthropic:claude-x")
+        .expect("listed");
+    assert!(Arc::ptr_eq(&found.shared(), &again.shared()), "not copied");
 }
 
 /// `get` and `resolve` follow one rule: the id as listed, else the longest
@@ -1246,5 +1251,49 @@ fn a_models_dev_refresh_updates_what_rig_does_not_pin() {
         after.pricing.map(|p| p.input),
         Some(99.0),
         "not pinned, so updated"
+    );
+}
+
+#[test]
+fn reasoning_choices_and_default_options_follow_the_spec() {
+    let budgeted = ReasoningSupport::Listed {
+        levels: Vec::new(),
+        budget: Some(1024..=4096),
+        can_disable: true,
+        default: None,
+    };
+    let names: Vec<String> = budgeted
+        .choices()
+        .iter()
+        .map(ReasoningChoice::label)
+        .collect();
+    assert_eq!(
+        names,
+        [
+            "default",
+            "off",
+            "low (2048 tokens)",
+            "medium (4096 tokens)",
+            "high (4096 tokens)"
+        ]
+    );
+    assert_eq!(ReasoningSupport::None.choices().len(), 1);
+    let off = budgeted.named("off").map(|choice| choice.reasoning);
+    assert_eq!(off, Ok(Some(Reasoning::Off)));
+    assert_eq!(
+        budgeted.named("xhigh").map_err(|why| why.to_string()),
+        Err("the reasoning settings are default, off, low, medium, high, not `xhigh`".to_owned())
+    );
+
+    let provider = ProviderId::catalog("anthropic").expect("a known vendor");
+    let cached = ModelSpec::new(provider, "claude-x")
+        .with_caching(CacheSupport::new([CacheRetention::Short]));
+    assert_eq!(cached.reference(), "anthropic/claude-x");
+    let options = cached.default_options(Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(options.cache, Some(CacheRetention::Short));
+    assert_eq!(options.reasoning, Some(Reasoning::Effort(Effort::High)));
+    assert_eq!(
+        ModelSpec::new(provider, "unknown").default_options(None),
+        GenerationOptions::default()
     );
 }

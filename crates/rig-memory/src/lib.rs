@@ -34,6 +34,13 @@ pub use rig_core::memory::{
 
 use rig_core::completion::Message;
 use rig_core::id::ConversationId;
+
+mod compaction;
+
+pub use compaction::{
+    ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryError,
+    SummaryLimits, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
+};
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
@@ -301,6 +308,8 @@ impl HeuristicTokenCounter {
         tokens.ceil() as usize
     }
 
+    /// Approximate the tokens of one item of a user message, without the
+    /// per-message overhead.
     fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
         use rig_core::message::UserContent;
         match content {
@@ -325,6 +334,8 @@ impl HeuristicTokenCounter {
         }
     }
 
+    /// Approximate the tokens of one item of an assistant message, without
+    /// the per-message overhead.
     fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
         use rig_core::message::AssistantContent;
         match content {

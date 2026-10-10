@@ -3,7 +3,7 @@ use super::{
 };
 use crate::http_client::HttpClientExt;
 use crate::providers::internal::auth::device::{
-    emit_device_code_prompt, ensure_parent_dir, read_json_record, token_expired, write_json_record,
+    emit_device_code_prompt, read_json_record, token_expired, write_json_record, write_private,
 };
 use crate::providers::internal::auth::{request, send_json};
 use bytes::Bytes;
@@ -214,8 +214,7 @@ impl Authenticator {
             return Ok(());
         };
 
-        ensure_parent_dir(path)?;
-        std::fs::write(path, token.as_bytes())?;
+        write_private(path, token.as_bytes())?;
         Ok(())
     }
 

@@ -1,0 +1,80 @@
+//! The `rig` launcher. It generates a Cargo project for the rig-harness agent
+//! with the plugins listed in `$RIG_HOME/plugins.toml`, builds it, and runs it.
+//! When the agent exits with the reload code it starts the new build, and a
+//! build that crashes during startup is rolled back to the last one that
+//! worked. It uses only std.
+
+mod launcher;
+
+use std::process::ExitCode;
+
+use launcher::plugin::USAGE as PLUGIN_USAGE;
+use launcher::run::Start;
+use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation};
+
+const USAGE: &str = "\
+Usage: rig [session] [mode] | rig build | rig plugin <command> | rig help
+
+  rig                    Build the agent if needed and run it in a new session.
+  rig build              Regenerate the agent project from plugins.toml, build
+                         it, and stage the new binary for the next start.
+";
+
+const SESSION: &str = "
+Session:
+  -r, --resume <id>      Resume the session <id>, in the directory it ran in.
+                         In the agent, /resume lists the sessions.
+
+Mode:
+";
+
+const ENVIRONMENT: &str = "
+Environment:
+  RIG_HOME    Root of every rig directory (default: ~/.rig).
+  RIG_SOURCE  A rig checkout to build the agent from instead of crates.io.
+";
+
+fn main() -> ExitCode {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let home = Home::from_env();
+    let result = match args
+        .iter()
+        .map(String::as_str)
+        .collect::<Vec<_>>()
+        .as_slice()
+    {
+        ["build"] => launcher::build::build(&home).map(|()| ExitCode::SUCCESS),
+        ["plugin", command @ ..] => {
+            launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
+        }
+        ["help" | "--help" | "-h"] => {
+            print!("{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{ENVIRONMENT}");
+            Ok(ExitCode::SUCCESS)
+        }
+        _ => match parse(&args) {
+            Ok((start, invocation)) => launcher::run::run(&home, start, &invocation),
+            Err(failure) => {
+                eprint!(
+                    "error: {failure}\n\n{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{ENVIRONMENT}"
+                );
+                return ExitCode::from(2);
+            }
+        },
+    };
+    result.unwrap_or_else(|failure| {
+        eprintln!("error: {failure}");
+        ExitCode::FAILURE
+    })
+}
+
+/// The session to run and the agent's arguments: the session option comes
+/// first, and the rest is the agent's.
+fn parse(args: &[String]) -> Result<(Start, Invocation), String> {
+    let (start, rest) = match args {
+        [flag, id, rest @ ..] if flag == "-r" || flag == "--resume" => {
+            (Start::Resume(id.parse()?), rest)
+        }
+        rest => (Start::New, rest),
+    };
+    Ok((start, Invocation::parse(rest)?))
+}
