@@ -76,10 +76,15 @@ pub const RIG_CRATES: [&str; 6] = [
 
 /// The `[patch.crates-io]` table that builds [`RIG_CRATES`] from
 /// `checkout`, so a plugin that names their crates.io release (as
-/// `rig plugin new` writes it) uses the agent's own.
-pub fn rig_patch(checkout: &Path) -> String {
+/// `rig plugin new` writes it) uses the agent's own. rig-inspect only when
+/// `listed` names it: the agent does not depend on it, and cargo warns
+/// about a patch nothing uses.
+pub fn rig_patch(checkout: &Path, listed: &BTreeSet<&str>) -> String {
     let mut text = String::from("[patch.crates-io]\n");
     for name in RIG_CRATES {
+        if name == "rig-inspect" && !listed.contains(name) {
+            continue;
+        }
         let path = match name {
             "rig" => checkout.to_path_buf(),
             name => checkout.join("crates").join(name),
@@ -201,7 +206,7 @@ fn manifest(home: &Home, config: &Config, source: &RigSource) -> String {
     if let RigSource::Local(checkout) = source {
         // A plugin naming the crates.io releases builds against the checkout.
         text.push('\n');
-        text.push_str(&rig_patch(checkout));
+        text.push_str(&rig_patch(checkout, &listed));
     }
     text.push_str(
         "\n[profile.dev]\ndebug = \"line-tables-only\"\n\

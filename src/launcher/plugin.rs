@@ -284,7 +284,7 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
             "\n# The agent is built from this rig checkout (RIG_SOURCE); this crate on its\n\
              # own is too. The agent project has the same table.\n",
         );
-        text.push_str(&rig_patch(checkout));
+        text.push_str(&rig_patch(checkout, &Default::default()));
     }
     text
 }
