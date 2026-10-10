@@ -105,7 +105,6 @@ impl ReloadBuild {
         let mut command = Command::new(launcher);
         command
             .arg("build")
-            .env("CARGO_TERM_COLOR", "never")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());

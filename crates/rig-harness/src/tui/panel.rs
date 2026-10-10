@@ -100,7 +100,7 @@ pub enum Placement {
     /// Columns right of the transcript.
     Right(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
-    /// view's own overlays (pickers, completion, a failed rebuild).
+    /// view's own overlays (the picker and the completion list).
     Over {
         /// Its width.
         width: Constraint,

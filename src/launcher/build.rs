@@ -99,8 +99,7 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     let config = Config::load(&home.config())?;
     let source = RigSource::detect()?;
     project::generate(home, &config, &source)?;
-    // `/reload` shows these lines, and cargo's, until cargo's counter
-    // appears.
+    // `/reload` shows the latest of these lines and of cargo's.
     log.say("Resolving dependencies…");
     check_bevy(home, &config, &project::rig_version(&source), log)?;
     log.say("Compiling the agent…");
@@ -150,8 +149,7 @@ fn cargo(home: &Home) -> Command {
 }
 
 /// Keeps cargo's progress bar on a terminal, which cargo no longer sees
-/// through the pipe. A caller's own settings win: `/reload` sets them for
-/// its view.
+/// through the pipe. A caller's own settings win.
 fn show_progress(command: &mut Command) {
     if std::io::stderr().is_terminal()
         && std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()

@@ -211,10 +211,10 @@ session starts from the messages the summary kept. `/reload` rebuilds the agent
 and restarts it on the same session; typed while a turn runs, it waits until no
 turn runs (`/reload cancel` drops it), and a turn started during the build
 delays the restart until it ends. The agent can ask for a reload itself with
-its `reload` tool, which waits the same way and shows a notice. It shows cargo's progress, keeps the
-current build running if the new one does not compile (Esc closes the
-compiler output it shows), and rolls back to it if
-the new one crashes during startup.
+its `reload` tool, which waits the same way and shows a notice. It shows
+cargo's latest line, keeps the current build running if the new one does not
+compile (its error notice names the build log), and rolls back to it if the new
+one crashes during startup.
 
 Every build, the one before each start and `/reload`'s, writes its whole
 output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
