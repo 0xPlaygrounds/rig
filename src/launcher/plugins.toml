@@ -69,6 +69,10 @@ plugin = "rig_harness::plugins::basics::BasicCommandsPlugin"
 [[plugin]]
 plugin = "rig_harness::plugins::subagents::SubagentsPlugin"
 
+# Warnings and errors the process logs, Bevy's own included, as data.
+[[plugin]]
+plugin = "rig_harness::plugins::diagnostics::DiagnosticsPlugin"
+
 # --print: answers one prompt; also the front of a run no other front took.
 [[plugin]]
 plugin = "rig_harness::plugins::print::PrintPlugin"

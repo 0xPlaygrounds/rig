@@ -1,14 +1,21 @@
 //! Where this process keeps its session: the directory the launcher names,
-//! the text log, and panics routed to that log instead of the terminal.
+//! the text log, panics routed to that log instead of the terminal, and
+//! the log's warnings and errors as [`Logged`] data.
 
+use std::fmt::{Debug, Write};
 use std::fs::{self, OpenOptions};
 use std::ops::Deref;
 use std::sync::Mutex;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::tracing_subscriber::fmt;
-use bevy_log::{BoxedFmtLayer, error};
+use bevy_log::tracing::field::{Field, Visit};
+use bevy_log::tracing::{Event, Level};
+use bevy_log::tracing_subscriber::layer::{Context, Layer};
+use bevy_log::tracing_subscriber::{Registry, fmt};
+use bevy_log::{BoxedFmtLayer, BoxedLayer, error};
+use bevy_reflect::Reflect;
+use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_cassette::journal::JsonlDirStore;
@@ -86,4 +93,71 @@ pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
         Some(file) => Box::new(layer.with_writer(Mutex::new(file))),
         None => Box::new(layer.with_writer(std::io::sink)),
     })
+}
+
+/// A warning or error this process logged, Bevy's own included.
+#[derive(Reflect, Clone, Debug, Default)]
+pub struct Logged {
+    /// An error, else a warning.
+    pub error: bool,
+    /// The module that logged it, such as `bevy_app::hierarchy`.
+    pub target: String,
+    /// Its message, then its other fields.
+    pub message: String,
+    /// The `AgentId` its `agent` field names.
+    pub agent: Option<String>,
+    /// The plugin (its `Name`) whose module logged it, where that can be told.
+    pub plugin: Option<String>,
+}
+
+/// The warnings and errors logged that nothing took yet. At most 256
+/// wait; the rest are only in the text log.
+#[derive(Resource)]
+pub struct LogEvents(pub Receiver<Logged>);
+
+/// The `LogPlugin` layer passing warnings and errors on to [`LogEvents`],
+/// which exists before any plugin `plugins.toml` lists is added.
+pub(crate) fn log_events(app: &mut App) -> Option<BoxedLayer> {
+    let (sender, receiver) = crossbeam_channel::bounded(256);
+    app.insert_resource(LogEvents(receiver));
+    Some(Box::new(PassOn(sender)))
+}
+
+struct PassOn(Sender<Logged>);
+
+impl Layer<Registry> for PassOn {
+    fn on_event(&self, event: &Event<'_>, _: Context<'_, Registry>) {
+        let level = *event.metadata().level();
+        if level <= Level::WARN {
+            let target = event.metadata().target().to_owned();
+            let error = level == Level::ERROR;
+            let mut logged = Logged {
+                error,
+                target,
+                ..Logged::default()
+            };
+            event.record(&mut logged);
+            self.0.try_send(logged).ok();
+        }
+    }
+}
+
+/// A `log` record, such as Bevy's own warnings, names its module in
+/// `log.target`.
+impl Visit for Logged {
+    fn record_str(&mut self, field: &Field, value: &str) {
+        match field.name() {
+            "log.target" => self.target = value.to_owned(),
+            _ => self.record_debug(field, &format_args!("{value}")),
+        }
+    }
+
+    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
+        match field.name() {
+            "agent" => self.agent = Some(format!("{value:?}")),
+            "message" => self.message.insert_str(0, &format!("{value:?}")),
+            name if name.starts_with("log.") => {}
+            name => write!(self.message, " {name}={value:?}").unwrap_or_default(),
+        }
+    }
 }

@@ -128,9 +128,10 @@ impl PluginGroup for RigHarnessPlugins {
 
 /// What a terminal app takes from Bevy where a windowed one has
 /// `DefaultPlugins`: Bevy's `MinimalPlugins` with task pools sized for an
-/// agent and the frame count and clock, the log written to the session, a
-/// clean exit on SIGINT, SIGTERM and SIGHUP, and in place of Bevy's
-/// `ScheduleRunnerPlugin` a loop that sleeps until
+/// agent and the frame count and clock, the log written to the session
+/// with its warnings and errors passed on as data, a clean exit on SIGINT,
+/// SIGTERM and SIGHUP, and in place of Bevy's `ScheduleRunnerPlugin` a
+/// loop that sleeps until
 /// [`Wake`](rig_ecs::calls::Wake)d or until the clock's next deadline.
 /// Added before [`RigHarnessPlugins`], so the agent core runs on its clock;
 /// a windowing plugin added later through [`windowed`] sets its own runner
@@ -146,6 +147,7 @@ impl PluginGroup for HeadlessPlugins {
             })
             .disable::<ScheduleRunnerPlugin>()
             .add(LogPlugin {
+                custom_layer: host::session::log_events,
                 fmt_layer: host::session::log_layer,
                 ..LogPlugin::default()
             })

@@ -30,6 +30,6 @@ fn removing_an_unlisted_type_fails() {
 fn the_template_lists_rig_harness_plugins_only() {
     let plugins = parse(TEMPLATE, Path::new("/home")).map(|config| config.plugins);
     assert!(plugins.is_ok_and(
-        |plugins| plugins.len() == 19 && plugins.iter().all(|plugin| plugin.package.is_none())
+        |plugins| plugins.len() == 20 && plugins.iter().all(|plugin| plugin.package.is_none())
     ));
 }
