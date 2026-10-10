@@ -16,9 +16,7 @@ use super::RunMode;
 use crate::builtin::login::PendingLogin;
 use crate::view::send_input;
 use rig_core::transcript::final_answer;
-use rig_ecs::agent::{
-    ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary,
-};
+use rig_ecs::agent::{ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
 use rig_ecs::inbox::DeliveryMode;
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
 
