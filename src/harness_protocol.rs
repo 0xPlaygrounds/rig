@@ -80,7 +80,7 @@ impl SessionId {
     }
 
     /// The id in [`env::SESSION`], or `None` when it is unset or empty.
-    pub fn from_env() -> Result<Option<Self>, InvalidSessionId> {
+    pub fn from_env() -> Result<Option<Self>, String> {
         let id = std::env::var_os(env::SESSION).filter(|id| !id.is_empty());
         id.map(|id| id.to_string_lossy().parse()).transpose()
     }
@@ -92,7 +92,7 @@ impl SessionId {
 }
 
 impl FromStr for SessionId {
-    type Err = InvalidSessionId;
+    type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         let valid = id.starts_with(|c: char| c.is_ascii_digit())
@@ -100,7 +100,9 @@ impl FromStr for SessionId {
         if valid {
             Ok(Self(id.to_owned()))
         } else {
-            Err(InvalidSessionId(id.to_owned()))
+            Err(format!(
+                "`{id}` is not a session id: it must be digits and dashes"
+            ))
         }
     }
 }
@@ -110,22 +112,6 @@ impl fmt::Display for SessionId {
         f.write_str(&self.0)
     }
 }
-
-/// Text that is not a [`SessionId`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InvalidSessionId(String);
-
-impl fmt::Display for InvalidSessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "`{}` is not a session id: it must be digits and dashes",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for InvalidSessionId {}
 
 /// The `RIG_HOME` layout. Every file the launcher and the agent write lives
 /// under this one root.

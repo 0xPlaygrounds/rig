@@ -78,10 +78,7 @@ fn parse(args: &[String]) -> Result<(Start, Invocation), String> {
     loop {
         let (chosen, taken) = match rest {
             [flag, ..] if flag == "-n" || flag == "--new" => (Start::New, 1),
-            [flag, id, ..] if flag == "-r" || flag == "--resume" => (
-                Start::Resume(id.parse().map_err(|failure| format!("{failure}"))?),
-                2,
-            ),
+            [flag, id, ..] if flag == "-r" || flag == "--resume" => (Start::Resume(id.parse()?), 2),
             _ => break,
         };
         if start.replace(chosen).is_some() {
