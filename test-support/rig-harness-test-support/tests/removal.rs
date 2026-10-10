@@ -12,7 +12,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::journal::SessionLog;
+use rig_ecs::journal::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
 use rig_harness::prelude::*;
@@ -65,8 +65,13 @@ fn give_up(mut exits: MessageWriter<AppExit>) {
 
 /// As a front does: connects the user's agent to a scripted model that
 /// reads this crate's manifest and then answers, and sends the prompt.
-fn ask(log: Res<SessionLog>, agents: PrimaryQuery, mut asked: Local<bool>, mut commands: Commands) {
-    let Some(agent) = primary(&agents).filter(|_| log.is_live() && !*asked) else {
+fn ask(
+    restored: Option<Res<SessionRestored>>,
+    agents: PrimaryQuery,
+    mut asked: Local<bool>,
+    mut commands: Commands,
+) {
+    let Some(agent) = primary(&agents).filter(|_| restored.is_some() && !*asked) else {
         return;
     };
     *asked = true;

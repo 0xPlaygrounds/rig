@@ -57,7 +57,7 @@ pub mod prelude {
     pub use crate::inbox::{
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
-    pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved};
+    pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;

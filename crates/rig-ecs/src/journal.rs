@@ -260,7 +260,7 @@ impl SessionLog {
 
     /// Whether records are logged: the session was restored, and no write
     /// failed.
-    pub fn is_live(&self) -> bool {
+    pub(crate) fn is_live(&self) -> bool {
         let book = self.book();
         book.live && book.failure.is_none()
     }
@@ -353,6 +353,14 @@ impl SessionLog {
         self.book().failure.clone()
     }
 }
+
+/// Inserted once the session was restored from its [`SessionStore`] and is
+/// logged: a choice made afterwards is the user's, such as a model to
+/// remember (`run_if(resource_exists::<SessionRestored>)`). It stays when
+/// a log write fails later, which stops only the logging. An app without
+/// a store never gets one.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct SessionRestored;
 
 /// Changes agents' conversations, the one way they change: each change is
 /// logged, with a message's images stored as blobs, and announced as a

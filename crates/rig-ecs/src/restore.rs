@@ -35,7 +35,7 @@ use serde_json::Value;
 
 use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
 use super::journal::{
-    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionStore,
+    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionRestored, SessionStore,
 };
 use super::turn::{CallModel, ToolStarter};
 
@@ -161,6 +161,7 @@ pub(crate) fn restore_session(world: &mut World) {
         logs.into_iter().map(|(_, id, log)| (id, log)).collect(),
     );
     world.insert_resource(RestoredAgents(restored));
+    world.insert_resource(SessionRestored);
     for notice in notices {
         world.write_message(Notice::error(None, notice));
     }

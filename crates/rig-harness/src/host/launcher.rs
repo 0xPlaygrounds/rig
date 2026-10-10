@@ -19,7 +19,7 @@ use rig::harness_protocol::{Home, env};
 use super::session::SessionPaths;
 use rig_ecs::agent::{Notice, PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
-use rig_ecs::journal::SessionLog;
+use rig_ecs::journal::SessionRestored;
 
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
@@ -31,7 +31,12 @@ pub struct LauncherPlugin;
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, launcher_notice)
-            .add_systems(Update, deliver_build_failure)
+            .add_systems(
+                Update,
+                deliver_build_failure
+                    .run_if(resource_exists::<SessionRestored>)
+                    .run_if(resource_exists::<StartBuildFailure>),
+            )
             .add_systems(Last, signal_ready);
     }
 }
@@ -109,17 +114,13 @@ fn launcher_notice(mut notices: MessageWriter<Notice>, mut commands: Commands) {
 }
 
 /// Puts the launcher's failed build in the primary agent's conversation,
-/// once the session is restored and logged.
+/// once the session is restored.
 fn deliver_build_failure(
-    failure: Option<Res<StartBuildFailure>>,
+    failure: Res<StartBuildFailure>,
     agents: PrimaryQuery,
-    log: Option<Res<SessionLog>>,
     mut commands: Commands,
 ) {
-    let Some(failure) = failure else {
-        return;
-    };
-    let Some(agent) = primary(&agents).filter(|_| log.is_some_and(|log| log.is_live())) else {
+    let Some(agent) = primary(&agents) else {
         return;
     };
     note_build_failure(

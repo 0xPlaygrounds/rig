@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -17,7 +18,8 @@ use crate::agent::{
 };
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{
-    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionStore, commit_message,
+    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
+    commit_message,
 };
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::Restored;
@@ -244,4 +246,51 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
         }]
     );
     assert_eq!(session(&store, |_, _| {}), live);
+}
+
+/// A store on a full disk: it reads, but every log write fails.
+struct Full;
+
+impl JournalStore for Full {
+    fn agents(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn read(&self, _: &str) -> io::Result<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn truncate(&self, _: &str, _: u64) -> io::Result<()> {
+        Ok(())
+    }
+    fn append(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Ok(())
+    }
+    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A failed log write stops the logging, with a notice, but the session
+/// stays restored: what waits for that, such as remembering a model the
+/// user picks, still runs.
+#[test]
+fn a_failed_log_write_leaves_the_session_restored() {
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(Full));
+    app.finish();
+    app.update();
+    let agent = first_agent(&mut app);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut app, agent, Message::user("hello"));
+    app.update();
+    let notices = app.world().resource::<Messages<Notice>>();
+    let stopped = notices
+        .iter_current_update_messages()
+        .any(|notice| notice.text.starts_with("The session is no longer saved"));
+    assert!(stopped);
+    assert!(app.world().contains_resource::<SessionRestored>());
 }
