@@ -352,7 +352,6 @@ plugin = "rig_harness::tui::TuiPlugin"
 crate = "hello"                   # the package name
 path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
-bevy_features = []                # optional extra Bevy features
 ```
 
 `rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside

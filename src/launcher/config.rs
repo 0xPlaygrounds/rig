@@ -1,6 +1,5 @@
 //! `plugins.toml`: the plugin list. The file is a small TOML subset:
-//! comments and `[[plugin]]` tables whose keys hold a string or a list of
-//! strings.
+//! comments and `[[plugin]]` tables whose keys hold a string.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -26,8 +25,6 @@ pub struct Plugin {
     pub type_path: String,
     /// The package that provides it, or `None` for rig-harness's own.
     pub package: Option<Package>,
-    /// Bevy features the plugin needs.
-    pub bevy_features: Vec<String>,
 }
 
 /// A plugin package.
@@ -74,11 +71,6 @@ impl fmt::Display for Source {
             Self::Version(version) => write!(f, "version {version}"),
         }
     }
-}
-
-enum Value {
-    String(String),
-    List(Vec<String>),
 }
 
 impl Config {
@@ -200,7 +192,7 @@ fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
 
 /// Parses `text`; relative plugin paths are relative to `base`.
 fn parse(text: &str, base: &Path) -> Result<Config> {
-    let mut tables: Vec<(usize, BTreeMap<String, Value>)> = Vec::new();
+    let mut tables: Vec<(usize, BTreeMap<String, String>)> = Vec::new();
     for (number, line) in (1..).zip(text.lines()) {
         let line = without_comment(line).trim();
         if line.is_empty() {
@@ -214,12 +206,8 @@ fn parse(text: &str, base: &Path) -> Result<Config> {
             return Err(format!("line {number}: expected `key = value` or `[[plugin]]`").into());
         };
         let key = key.trim();
-        let value = parse_value(value.trim()).ok_or_else(|| {
-            format!(
-                "line {number}: `{}` is not a string or a list of strings",
-                value.trim()
-            )
-        })?;
+        let value = parse_value(value.trim())
+            .ok_or_else(|| format!("line {number}: `{}` is not a string", value.trim()))?;
         let Some((_, table)) = tables.last_mut() else {
             return Err(format!("line {number}: `{key}` comes before the first [[plugin]]").into());
         };
@@ -255,8 +243,10 @@ fn parse(text: &str, base: &Path) -> Result<Config> {
     Ok(Config { plugins })
 }
 
-fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
-    let type_path = string(&mut table, "plugin")?.ok_or("`plugin` (the type path) is missing")?;
+fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<Plugin> {
+    let type_path = table
+        .remove("plugin")
+        .ok_or("`plugin` (the type path) is missing")?;
     if !type_path.split("::").all(|segment| {
         segment.chars().next().is_some_and(|c| !c.is_ascii_digit())
             && segment
@@ -265,12 +255,12 @@ fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
     }) {
         return Err(format!("`{type_path}` is not a Rust type path").into());
     }
-    let path = string(&mut table, "path")?;
-    let git = string(&mut table, "git")?;
-    let version = string(&mut table, "version")?;
-    let branch = string(&mut table, "branch")?;
-    let rev = string(&mut table, "rev")?;
-    let package = match string(&mut table, "crate")? {
+    let path = table.remove("path");
+    let git = table.remove("git");
+    let version = table.remove("version");
+    let branch = table.remove("branch");
+    let rev = table.remove("rev");
+    let package = match table.remove("crate") {
         None if [&path, &git, &version, &branch, &rev]
             .iter()
             .any(|key| key.is_some()) =>
@@ -278,11 +268,10 @@ fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
             return Err("a plugin from another crate needs `crate`, its package name".into());
         }
         None => {
-            // The generated project depends on rig-harness, and on bevy
-            // when a plugin asks for Bevy features; any other crate needs
-            // its own entry.
+            // The generated project depends on rig-harness; any other
+            // crate needs its own entry.
             let root = type_path.split("::").next().unwrap_or_default();
-            if !["rig_harness", "bevy"].contains(&root) {
+            if root != "rig_harness" {
                 return Err(format!(
                     "`{type_path}` names the crate `{root}`, which is no dependency of the agent: \
                      an entry without `crate` is one of rig-harness's own plugins, under \
@@ -321,27 +310,10 @@ fn plugin(mut table: BTreeMap<String, Value>, base: &Path) -> Result<Plugin> {
             Some(Package { name, source })
         }
     };
-    let bevy_features = match table.remove("bevy_features") {
-        None => Vec::new(),
-        Some(Value::List(features)) => features,
-        Some(_) => return Err("`bevy_features` must be a list of strings".into()),
-    };
     if let Some(key) = table.keys().next() {
         return Err(format!("unknown key `{key}`").into());
     }
-    Ok(Plugin {
-        type_path,
-        package,
-        bevy_features,
-    })
-}
-
-fn string(table: &mut BTreeMap<String, Value>, key: &str) -> Result<Option<String>> {
-    match table.remove(key) {
-        None => Ok(None),
-        Some(Value::String(value)) => Ok(Some(value)),
-        Some(_) => Err(format!("`{key}` must be a string").into()),
-    }
+    Ok(Plugin { type_path, package })
 }
 
 /// The line up to a `#` that is not inside a string.
@@ -360,29 +332,10 @@ fn without_comment(line: &str) -> &str {
     line
 }
 
-fn parse_value(text: &str) -> Option<Value> {
-    if text.starts_with('"') {
-        let (value, rest) = parse_string(text)?;
-        return rest.trim().is_empty().then_some(Value::String(value));
-    }
-    if let Some(mut rest) = text.strip_prefix('[') {
-        let mut items = Vec::new();
-        loop {
-            rest = rest.trim_start();
-            if let Some(after) = rest.strip_prefix(']') {
-                return after.trim().is_empty().then_some(Value::List(items));
-            }
-            let (item, after) = parse_string(rest)?;
-            items.push(item);
-            rest = after.trim_start();
-            rest = match rest.strip_prefix(',') {
-                Some(after) => after,
-                None if rest.starts_with(']') => rest,
-                None => return None,
-            };
-        }
-    }
-    None
+/// A value that is one basic TOML string.
+fn parse_value(text: &str) -> Option<String> {
+    let (value, rest) = parse_string(text)?;
+    rest.trim().is_empty().then_some(value)
 }
 
 /// A basic TOML string at the start of `text`, and the text after it.

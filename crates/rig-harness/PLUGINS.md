@@ -36,7 +36,6 @@ words of the agent's last answer. It adds this entry:
 crate = "hello"           # the package name
 path = "plugins/hello"    # or git = "…" (branch, rev), or version = "…"
 plugin = "hello::HelloPlugin"
-# bevy_features = []      # Bevy features it needs, such as a window's
 ```
 
 Plugin crates live in `RIG_HOME/plugins/<name>`, each its own workspace,

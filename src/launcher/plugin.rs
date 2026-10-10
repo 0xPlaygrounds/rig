@@ -26,7 +26,7 @@ pub const USAGE: &str = "\
   rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to plugins.toml; /reload or `rig build` builds it.
   rig plugin add <type> [--path <dir> | --git <url> [--branch <b> | --rev <r>]
-                 | --version <req>] [--crate <name>] [--bevy-features <a,b>]
+                 | --version <req>] [--crate <name>]
                          Add the plugin type <type> to plugins.toml, from the
                          crate at that source (its name read from <dir> for
                          --path), or one of rig-harness's own without a source.
@@ -126,7 +126,6 @@ fn new(home: &Home, name: &str) -> Result<()> {
 fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
     let mut keys: Vec<(&str, String)> = Vec::new();
     let mut name: Option<String> = None;
-    let mut features: Option<Vec<String>> = None;
     let mut rest = options.iter();
     while let Some(&option) = rest.next() {
         let value = rest
@@ -143,16 +142,6 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
             "--rev" => keys.push(("rev", (*value).to_owned())),
             "--version" => keys.push(("version", (*value).to_owned())),
             "--crate" => name = Some((*value).to_owned()),
-            "--bevy-features" => {
-                features = Some(
-                    value
-                        .split(',')
-                        .map(str::trim)
-                        .filter(|feature| !feature.is_empty())
-                        .map(str::to_owned)
-                        .collect(),
-                );
-            }
             _ => return Err(format!("unknown option `{option}`\nusage:\n{USAGE}").into()),
         }
     }
@@ -164,10 +153,6 @@ fn add(home: &Home, type_path: &str, options: &[&str]) -> Result<()> {
         entry.push_str(&format!("{key} = {}\n", quoted(value)));
     }
     entry.push_str(&format!("plugin = {}\n", quoted(type_path)));
-    if let Some(features) = &features {
-        let list: Vec<String> = features.iter().map(|feature| quoted(feature)).collect();
-        entry.push_str(&format!("bevy_features = [{}]\n", list.join(", ")));
-    }
     let config_path = home.config();
     config::append(&config_path, &entry, |config| {
         match config.plugins.last().and_then(check_plugin) {

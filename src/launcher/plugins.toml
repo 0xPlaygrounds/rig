@@ -93,4 +93,3 @@ plugin = "rig_harness::tui::TuiPlugin"
 # path = "plugins/rig-hello"        # exactly one of: path (relative to this file),
 #                                   # git (with optional branch or rev), version
 # plugin = "rig_hello::HelloPlugin"
-# bevy_features = []                # extra Bevy features the plugin needs
