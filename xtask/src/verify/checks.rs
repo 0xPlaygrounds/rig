@@ -479,8 +479,7 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
-    // rig-ecs on the web with its default features (subagents); the
-    // kernel alone is `kernel-only`'s.
+    // rig-ecs on the web; `kernel-only` also runs its kernel-only test.
     checks.push(check(
         "wasm-rig-ecs",
         vec![cargo(&[

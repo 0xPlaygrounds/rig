@@ -47,7 +47,7 @@ plugin = "rig_harness::plugins::basics::BasicCommandsPlugin"
 
 # Subagents: the task and message tools.
 [[plugin]]
-plugin = "rig_harness::rig_ecs::subagents::SubagentsPlugin"
+plugin = "rig_harness::plugins::subagents::SubagentsPlugin"
 
 # --print: answers one prompt; also the front of a run no other front took.
 [[plugin]]

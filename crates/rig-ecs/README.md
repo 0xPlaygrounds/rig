@@ -25,8 +25,7 @@ rig-core, for building your own agent harness:
   (`bevy_time`'s delayed commands); `AgentPlugin` adds `TimePlugin` when the
   app has none.
 
-Features: `subagents` (default) adds the `task` and `message` tools. The crate
-builds for `wasm32-unknown-unknown`.
+The crate has no features and builds for `wasm32-unknown-unknown`.
 
 The [`rig-harness`](../rig-harness) terminal coding agent is built on it.
 

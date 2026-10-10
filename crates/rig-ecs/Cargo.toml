@@ -13,11 +13,6 @@ repository = "https://github.com/0xPlaygrounds/rig"
 [lints]
 workspace = true
 
-[features]
-default = ["subagents"]
-# The `task` and `message` tools: agents that start and message agents.
-subagents = []
-
 [dependencies]
 bevy_app = { workspace = true }
 # `serialize`: entities read from and written as JSON.

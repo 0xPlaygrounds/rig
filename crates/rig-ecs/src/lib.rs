@@ -13,8 +13,6 @@
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store (one of rig-cassette's
 //! [`journal`](rig_cassette::journal) stores) and the [`model::Models`].
-//! Feature `subagents` (default) adds the [`subagents::SubagentsPlugin`]
-//! tools.
 //!
 //! ```no_run
 //! use rig_cassette::journal::MemoryStore;
@@ -35,8 +33,6 @@ pub mod journal;
 pub mod model;
 pub mod prompt;
 pub mod restore;
-#[cfg(feature = "subagents")]
-pub mod subagents;
 pub mod tools;
 pub mod turn;
 

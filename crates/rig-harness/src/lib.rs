@@ -3,7 +3,8 @@
 //!
 //! An agent is an entity whose components hold its conversation, model,
 //! reasoning setting, system prompt and tool access; an agent a plugin
-//! spawns for another, such as a subagent, is one more,
+//! spawns for another, such as a subagent of the
+//! [`SubagentsPlugin`](plugins::subagents::SubagentsPlugin), is one more,
 //! [`SpawnedBy`](rig_ecs::agent::SpawnedBy) that agent. Tools and
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
 //! as a third-party plugin registers its own, and a plugin re-arms its saved

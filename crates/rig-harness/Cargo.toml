@@ -47,7 +47,7 @@ rig-core = { workspace = true, features = ["reqwest"] }
 # credential through.
 rig-reqwest = { workspace = true }
 # The agent runtime.
-rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["subagents"] }
+rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 # The built-in tools and the instruction files and process helpers.
