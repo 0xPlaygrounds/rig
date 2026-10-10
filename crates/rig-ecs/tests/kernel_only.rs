@@ -463,12 +463,17 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
 }
 
 /// A `PrepareRequest` observer changes the system prompt, the tools and
-/// the options, and a `Connection` on the turn sends the request to
-/// another model than the agent's.
+/// the options, the rules of a tool it drops leave the prompt, and a
+/// `Connection` on the turn sends the request to another model than the
+/// agent's.
 #[test]
 fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
-    app.add_tool(Add(Arc::default()));
+    let rules = ToolOptions {
+        rules: &["Use `add` for sums."],
+        ..ToolOptions::default()
+    };
+    app.add_tool_with(Add(Arc::default()), rules);
     let answer = || {
         vec![
             MockStreamEvent::text("5"),
@@ -502,7 +507,7 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let sent = sent.first();
     let prompt = sent.and_then(|request| request.system_instructions());
     assert!(
-        prompt.is_some_and(|prompt| prompt.ends_with("Plan only.")),
+        prompt.is_some_and(|prompt| prompt.ends_with("Plan only.") && !prompt.contains("`add`")),
         "{prompt:?}"
     );
     assert!(

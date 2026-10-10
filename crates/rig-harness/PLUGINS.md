@@ -283,7 +283,9 @@ with everything it sends, which an observer may change: the system prompt
 `options`. The request is checked against the model afterwards. Changing
 the preamble or the tools misses the provider's prompt cache, and a tool
 left out is not offered but still runs if called: `ToolAccess` on the
-agent is the hard limit. A `Connection` on a turn sends its requests to
+agent is the hard limit. Once the observers ran, the tool rules in the
+preamble follow the tools the request carries (a dropped tool's rules
+leave it), and the rest of the preamble is sent as they left it. A `Connection` on a turn sends its requests to
 that model instead of the agent's, and one on a plugin's `ModelRequest`
 call that call; `Models::connect` makes one. `ModelFailed` is triggered on
 a turn whose model call failed for good; an observer that takes the turn

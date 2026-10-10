@@ -54,7 +54,9 @@ use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
 use super::journal::{Commit, SessionLog, commit_message};
 use super::model::{Connection, Effort};
-use super::prompt::{PromptSection, SectionOf, ToolRules, system_prompt};
+use super::prompt::{
+    PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
+};
 use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
 
 /// The notice when the agent has no model to call.
@@ -144,7 +146,9 @@ pub struct PrepareRequest {
     /// The turn's agent.
     pub agent: Entity,
     /// The system prompt: the agent's [`SystemPrompt`], the rules of the
-    /// tools offered and the prompt sections.
+    /// tools offered and the prompt sections. Once the observers ran, its
+    /// tool rules follow `tools`, so a tool left out takes its rules
+    /// along; the rest is sent as the observers left it.
     pub preamble: String,
     /// The messages the request sends, oldest first.
     pub messages: Vec<Message>,
@@ -442,7 +446,7 @@ pub(crate) fn on_call_model(
 /// wait for; or why the turn fails.
 fn request(world: &mut World, turn: Entity, messages: Vec<Message>) -> Result<(), String> {
     let prepared = world.run_system_cached_with(prepare_request, (turn, messages));
-    let Some(mut prepare) = prepared.map_err(|error| error.to_string())?? else {
+    let Some((mut prepare, rules)) = prepared.map_err(|error| error.to_string())?? else {
         return Ok(());
     };
     world.trigger_ref(&mut prepare);
@@ -451,13 +455,13 @@ fn request(world: &mut World, turn: Entity, messages: Vec<Message>) -> Result<()
     if world.get::<Calls>(turn).is_some() {
         return Ok(());
     }
-    let sent = world.run_system_cached_with(send_request, prepare);
+    let sent = world.run_system_cached_with(send_request, (prepare, rules));
     sent.map_err(|error| error.to_string())?
 }
 
 /// What the turn's request sends with `messages`, on the turn's model: its
-/// system prompt, the tools offered and the options; `None` for a turn
-/// that is gone. It asks for the provider's prompt cache where the model
+/// system prompt, the tools offered and the options, with the tool rules
+/// written in that prompt; `None` for a turn that is gone. It asks for the provider's prompt cache where the model
 /// has one; the preamble and tools come first and do not change between
 /// calls, so each call reads the prefix the last one wrote.
 fn prepare_request(
@@ -472,7 +476,7 @@ fn prepare_request(
     )>,
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<(&PromptSection, Option<&SectionOf>)>,
-) -> Result<Option<PrepareRequest>, String> {
+) -> Result<Option<(PrepareRequest, String)>, String> {
     let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
         return Ok(None);
     };
@@ -487,7 +491,7 @@ fn prepare_request(
         .filter(|(def, _)| spec.tools && access.allows(def.0.name.as_str()))
         .collect();
     offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
-    let rules = offered.iter().map(|(_, rules)| *rules);
+    let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
     let sections = sections
         .iter()
         .filter(|(_, of)| of.is_none_or(|of| of.0 == agent));
@@ -496,14 +500,15 @@ fn prepare_request(
     let options = Some(spec.default_options(effort.0))
         .filter(|options| spec.validate(options).is_ok())
         .unwrap_or_else(|| spec.default_options(None));
-    Ok(Some(PrepareRequest {
+    let prepare = PrepareRequest {
         entity: turn,
         agent,
-        preamble: system_prompt(&prompt.0, rules, sections),
+        preamble: system_prompt(&prompt.0, &rules, sections),
         messages,
         tools: offered.iter().map(|(def, _)| def.0.clone()).collect(),
         options: options.cache_key(&id.0),
-    }))
+    };
+    Ok(Some((prepare, rules)))
 }
 
 /// An agent as its model calls are dispatched for it.
@@ -534,9 +539,11 @@ impl CallerItem<'_, '_> {
 }
 
 /// Sends what `prepare` says to the turn's model, once the options are
-/// checked against it; or why it cannot be sent.
+/// checked against it, with the tool rules `written` in its system prompt
+/// swapped for those of the tools it carries; or why it cannot be sent.
 fn send_request(
-    In(prepare): In<PrepareRequest>,
+    In((prepare, written)): In<(PrepareRequest, String)>,
+    rules: Query<(&ToolDef, &ToolRules)>,
     turns: Query<Option<&Connection>, With<TurnOf>>,
     agents: Query<Caller>,
     effects: Res<Effects>,
@@ -557,6 +564,11 @@ fn send_request(
     let connection = routed.or(caller.connection).ok_or(NO_MODEL)?;
     let validated = connection.spec.validate(&options);
     validated.map_err(|refusal| refusal.to_string())?;
+    let carried = tools.iter().filter_map(|tool| {
+        let rules = rules.iter().find(|(def, _)| def.0.name == tool.name);
+        rules.map(|(_, rules)| rules)
+    });
+    let preamble = swap_tool_rules(preamble, &written, &tool_rules(carried));
     let prompt = messages.pop().ok_or("The conversation is empty.")?;
     let request = CompletionRequest::new(prompt)
         .messages(messages)

@@ -68,14 +68,9 @@ pub struct AgentSections(Vec<Entity>);
 #[reflect(Component, Clone, Debug, Default)]
 pub struct ToolRules(pub Vec<String>);
 
-/// The system prompt of an agent whose own prompt is `role`, offered tools
-/// with `rules` (in the order the tools are sent), with the app's
-/// `sections`. A rule two tools share is said once.
-pub(crate) fn system_prompt<'a>(
-    role: &str,
-    rules: impl IntoIterator<Item = &'a ToolRules>,
-    sections: impl IntoIterator<Item = &'a PromptSection>,
-) -> String {
+/// The `<tool_rules>` block of tools with `rules` (in the order the tools
+/// are sent), saying a rule two tools share once; empty without rules.
+pub(crate) fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
     let mut lines: Vec<&str> = Vec::new();
     for rule in rules.into_iter().flat_map(|rules| rules.0.iter()) {
         let rule = rule.trim();
@@ -83,6 +78,21 @@ pub(crate) fn system_prompt<'a>(
             lines.push(rule);
         }
     }
+    let mut block = String::new();
+    if !lines.is_empty() {
+        let rules: Vec<String> = lines.iter().map(|line| format!("- {line}")).collect();
+        push_tagged(&mut block, "tool_rules", &rules.join("\n"));
+    }
+    block
+}
+
+/// The system prompt of an agent whose own prompt is `role`, with the
+/// [`tool_rules`] of the tools it is offered and the app's `sections`.
+pub(crate) fn system_prompt<'a>(
+    role: &str,
+    tool_rules: &str,
+    sections: impl IntoIterator<Item = &'a PromptSection>,
+) -> String {
     let mut sections: Vec<&PromptSection> = sections
         .into_iter()
         .filter(|section| !section.text.trim().is_empty())
@@ -90,20 +100,41 @@ pub(crate) fn system_prompt<'a>(
     sections.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.tag.cmp(&b.tag)));
 
     let mut prompt = role.trim().to_owned();
-    if !lines.is_empty() {
-        let rules: Vec<String> = lines.iter().map(|line| format!("- {line}")).collect();
-        push_tagged(&mut prompt, "tool_rules", &rules.join("\n"));
-    }
+    push_block(&mut prompt, tool_rules);
     for section in sections {
         push_tagged(&mut prompt, &section.tag, section.text.trim());
     }
     prompt
 }
 
+/// `preamble` with its tool rules `written` swapped for `rules`, those of
+/// the tools the request carries once `PrepareRequest` observers changed
+/// it: taken out with the blank line before them, or appended to a
+/// preamble that had none. The rest of the preamble is left as it is.
+pub(crate) fn swap_tool_rules(mut preamble: String, written: &str, rules: &str) -> String {
+    if written.is_empty() {
+        push_block(&mut preamble, rules);
+        return preamble;
+    }
+    let separated = format!("\n\n{written}");
+    if rules.is_empty() && preamble.contains(&separated) {
+        return preamble.replacen(&separated, "", 1);
+    }
+    preamble.replacen(written, rules, 1)
+}
+
 /// Appends `text` between `<tag>` and `</tag>`, after a blank line.
 fn push_tagged(prompt: &mut String, tag: &str, text: &str) {
+    push_block(prompt, &format!("<{tag}>\n{text}\n</{tag}>"));
+}
+
+/// Appends `block`, if any, after a blank line.
+fn push_block(prompt: &mut String, block: &str) {
+    if block.is_empty() {
+        return;
+    }
     if !prompt.is_empty() {
         prompt.push_str("\n\n");
     }
-    prompt.push_str(&format!("<{tag}>\n{text}\n</{tag}>"));
+    prompt.push_str(block);
 }
