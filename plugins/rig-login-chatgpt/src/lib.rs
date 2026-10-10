@@ -161,10 +161,7 @@ fn on_login(
         return;
     }
     if busy {
-        notices.write(Notice::info(
-            agent,
-            "A turn is running. Press Esc to stop it, then /login.",
-        ));
+        notices.write(Notice::turn_running(agent));
         return;
     }
     let (sender, prompts) = crossbeam_channel::unbounded();
@@ -309,10 +306,7 @@ fn on_logout(
         return;
     }
     if busy {
-        notices.write(Notice::info(
-            agent,
-            "A turn is running. Press Esc to stop it, then /logout.",
-        ));
+        notices.write(Notice::turn_running(agent));
         return;
     }
     let notice = match fs::remove_file(auth_file()) {

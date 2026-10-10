@@ -12,6 +12,7 @@ use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
 use super::model::Effort;
 use super::tools::Footprint;
+use super::turn::NO_MODEL;
 use super::turn::Recovery;
 
 /// Marks an agent. Spawning it adds every per-agent component with its
@@ -479,6 +480,18 @@ impl Notice {
     /// `None`.
     pub fn error(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
         Self::new(agent.into(), text.into(), NoticeLevel::Error)
+    }
+
+    /// The refusal of what would change `agent`, or the whole app with
+    /// `None`, while a turn runs: the rest of the turn would go on with
+    /// something it did not start with.
+    pub fn turn_running(agent: impl Into<Option<Entity>>) -> Self {
+        Self::info(agent, "A turn is running; stop it first.")
+    }
+
+    /// The refusal of what needs a model when `agent` has none.
+    pub fn no_model(agent: Entity) -> Self {
+        Self::info(agent, NO_MODEL)
     }
 }
 

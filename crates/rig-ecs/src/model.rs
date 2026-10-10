@@ -14,7 +14,6 @@ use serde::{Deserialize, Serialize};
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
 use super::journal::ReflectSaved;
-use super::turn::NO_MODEL;
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
@@ -155,7 +154,8 @@ pub(crate) fn on_set_model(
     let Ok(busy) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
+    if busy {
+        notices.write(Notice::turn_running(set.entity));
         return;
     }
     match models.0.catalog().resolve(&set.model) {
@@ -236,11 +236,12 @@ pub(crate) fn on_set_effort(
     let Ok((connection, busy)) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
+    if busy {
+        notices.write(Notice::turn_running(set.entity));
         return;
     }
     let Some(connection) = connection else {
-        notices.write(Notice::info(set.entity, NO_MODEL));
+        notices.write(Notice::no_model(set.entity));
         return;
     };
     let spec = &connection.spec;
@@ -256,15 +257,4 @@ pub(crate) fn on_set_effort(
             notices.write(Notice::error(set.entity, format!("{refusal}.")));
         }
     }
-}
-
-/// Refuses a model or reasoning change while the agent's turn runs: the
-/// rest of the turn would go to a model, or use a setting, it did not start
-/// with. Every sender of [`SetModel`] and [`SetEffort`] gets the same
-/// refusal.
-fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
-    if busy {
-        notices.write(Notice::info(agent, "A turn is running; stop it first."));
-    }
-    busy
 }

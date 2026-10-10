@@ -207,7 +207,7 @@ pub(crate) fn on_retry(
         return;
     };
     if busy {
-        notices.write(Notice::info(agent, "A turn is running."));
+        notices.write(Notice::turn_running(agent));
         return;
     }
     if !conversation.resume() {
