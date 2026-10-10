@@ -131,13 +131,12 @@ fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     let cleared = policy.clear(&mut messages);
     assert_eq!(cleared.results, 1);
     assert_eq!(cleared.tokens, 1_000);
-    assert!(policy.is_cleared(match &messages[1] {
+    assert!(is_cleared(match &messages[1] {
         Message::User { content } => match &content[0] {
             UserContent::ToolResult(result) => &result.content,
             other => panic!("{other:?}"),
         },
         other => panic!("{other:?}"),
     }));
-    let again = policy.apply(messages).expect("clearing never fails");
-    assert_eq!(policy.clear(&mut again.clone()), Cleared::default());
+    assert_eq!(policy.clear(&mut messages), Cleared::default());
 }

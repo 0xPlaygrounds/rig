@@ -2,8 +2,8 @@
 //! [`CompactionPolicy`] that says when and where to cut it and plans the
 //! summary of its older messages, a [`SummaryState`] with the summary and
 //! the values tracked across compactions, a [`Summarizer`] that asks a
-//! model for the summary, and [`ClearToolOutputs`], a [`MemoryPolicy`] that
-//! frees context without a model call.
+//! model for the summary, and [`ClearToolOutputs`], which frees context
+//! without a model call.
 //!
 //! The summarizer's default prompts ask for pi's structured checkpoint;
 //! the tool arguments a summary keeps track of are the caller's.
@@ -28,7 +28,7 @@ use rig_core::completion::{
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
-use crate::{HeuristicTokenCounter, MemoryError, MemoryPolicy, TokenCounter};
+use crate::{HeuristicTokenCounter, TokenCounter};
 
 /// A summary of a conversation's older messages and the values tracked
 /// across compactions (such as the files a coding agent read). The default
@@ -232,7 +232,11 @@ impl Default for CompactionPolicy {
 impl CompactionPolicy {
     /// The estimated tokens of `messages`.
     pub fn estimate(&self, messages: &[Message]) -> u64 {
-        HeuristicTokenCounter::default().count_all(messages) as u64
+        let counter = HeuristicTokenCounter::default();
+        messages
+            .iter()
+            .map(|message| counter.count(message))
+            .sum::<usize>() as u64
     }
 
     /// Whether a request of `tokens` leaves less than the summarizer's
@@ -395,12 +399,6 @@ impl SummaryLimits {
     };
 }
 
-impl Default for SummaryLimits {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// Builds the request for a summary of a conversation's older messages and
 /// reads the summary from the model's answer. The conversation goes as
 /// text in one user message, so the model reads it rather than continues
@@ -420,12 +418,6 @@ impl Summarizer {
         prompts: SummaryPrompts::DEFAULT,
         limits: SummaryLimits::DEFAULT,
     };
-}
-
-impl Default for Summarizer {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
 }
 
 /// Why a summary cannot be used.
@@ -616,8 +608,7 @@ pub struct Cleared {
     pub tokens: usize,
 }
 
-/// A [`MemoryPolicy`] that frees context by clearing the outputs of older
-/// tool calls, newest kept first: walking back from the end, the outputs
+/// Frees context by clearing the outputs of older tool calls, newest kept first: walking back from the end, the outputs
 /// within the first `keep_tokens` stay, and every older one is replaced by
 /// a placeholder. The last message is never touched: it is what the model
 /// must answer. Error results stay, being short and telling the model what
@@ -627,12 +618,10 @@ pub struct Cleared {
 #[derive(Clone, Debug)]
 pub struct ClearToolOutputs {
     keep_tokens: usize,
-    placeholder: Cow<'static, str>,
-    counter: HeuristicTokenCounter,
 }
 
 impl ClearToolOutputs {
-    /// What a cleared output says by default.
+    /// What a cleared output says.
     pub const PLACEHOLDER: &'static str =
         "[output cleared to fit the context window; run the tool again if needed]";
 
@@ -640,29 +629,12 @@ impl ClearToolOutputs {
     /// [`HeuristicTokenCounter`], and say [`Self::PLACEHOLDER`] instead of
     /// the rest.
     pub fn new(keep_tokens: usize) -> Self {
-        Self {
-            keep_tokens,
-            placeholder: Cow::Borrowed(Self::PLACEHOLDER),
-            counter: HeuristicTokenCounter::default(),
-        }
-    }
-
-    /// Say `placeholder` instead of a cleared output.
-    #[must_use = "the setting applies to the returned value"]
-    pub fn with_placeholder(mut self, placeholder: impl Into<Cow<'static, str>>) -> Self {
-        self.placeholder = placeholder.into();
-        self
-    }
-
-    /// Count tool outputs with `counter`.
-    #[must_use = "the setting applies to the returned value"]
-    pub fn with_counter(mut self, counter: HeuristicTokenCounter) -> Self {
-        self.counter = counter;
-        self
+        Self { keep_tokens }
     }
 
     /// Clears older tool outputs of `messages` in place.
     pub fn clear(&self, messages: &mut [Message]) -> Cleared {
+        let counter = HeuristicTokenCounter::default();
         let mut cleared = Cleared::default();
         let mut kept = 0;
         let Some((_, earlier)) = messages.split_last_mut() else {
@@ -673,35 +645,29 @@ impl ClearToolOutputs {
                 continue;
             };
             for item in content.iter_mut().rev() {
-                let tokens = self.counter.count_user(item);
+                let tokens = counter.count_user(item);
                 let UserContent::ToolResult(result) = item else {
                     continue;
                 };
-                if result.is_error || self.is_cleared(&result.content) {
+                if result.is_error || is_cleared(&result.content) {
                     continue;
                 }
                 kept += tokens;
                 if kept <= self.keep_tokens {
                     continue;
                 }
-                result.content = vec![ToolResultContent::text(self.placeholder.clone())];
+                result.content = vec![ToolResultContent::text(Self::PLACEHOLDER)];
                 cleared.results += 1;
                 cleared.tokens += tokens;
             }
         }
         cleared
     }
-
-    fn is_cleared(&self, content: &[ToolResultContent]) -> bool {
-        matches!(content, [only] if only.as_text() == Some(&*self.placeholder))
-    }
 }
 
-impl MemoryPolicy for ClearToolOutputs {
-    fn apply(&self, mut messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        self.clear(&mut messages);
-        Ok(messages)
-    }
+/// Whether `content` is a cleared output.
+fn is_cleared(content: &[ToolResultContent]) -> bool {
+    matches!(content, [only] if only.as_text() == Some(ClearToolOutputs::PLACEHOLDER))
 }
 
 #[cfg(test)]

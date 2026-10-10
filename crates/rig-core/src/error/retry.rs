@@ -78,12 +78,6 @@ impl RetryPolicy {
     }
 }
 
-impl Default for RetryPolicy {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// What to do about a failed call.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verdict {
