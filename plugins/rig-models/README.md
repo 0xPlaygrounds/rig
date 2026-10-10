@@ -1,6 +1,7 @@
 # rig-models
 
-Choosing a model: `/model`, `/effort` and the model picker (`ModelsPlugin`),
+Choosing a model: `/model`, `/effort`, the model picker and both in the status
+line (`ModelsPlugin`),
 and the model and reasoning setting a new session starts with, the last ones
 chosen (`DefaultsPlugin`).
 

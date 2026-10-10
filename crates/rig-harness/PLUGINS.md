@@ -9,6 +9,7 @@ the terminal view's panels from `rig_tui`.
 - [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
 - [Turn hooks](#turn-hooks), [timers](#timers)
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
+- [The status line](#the-status-line)
 - [What agents do and say, in a terminal panel](#what-agents-do-and-say-in-a-terminal-panel)
 - [A window](#a-window)
 
@@ -422,6 +423,56 @@ impl Plugin for NoShellPlugin {
         // `shell` is free again: `app.add_tool(MyShell)` would replace it.
         // A command is found by its `Name`, such as "/help", with
         // `SlashCommand`; a section by its `PromptSection`'s `tag`.
+    }
+}
+```
+
+# The status line
+
+The row under the transcript shows the `StatusItems` of the agent shown
+and of its running turn, which every agent and turn has, and the app's
+`AppStatus`. A plugin shows an item there in a system in `StatusSystems`
+that runs when what it shows changed: `items.show(item)` puts the item at
+its place (its side and order) in place of the one there, and an empty
+item clears the place. The default plugins' places, and how long each
+item stays when the line is too narrow (`keep`: the lowest goes first,
+`u8::MAX` never):
+
+| side | order | item | keep | plugin |
+|---|---|---|---|---|
+| left | 10 | the session's name (`AppStatus`) | 2 | rig-sessions |
+| left | 20 | `⤷` a spawned agent's name | 14 | rig-basics |
+| left | 30 | the model | always | rig-models |
+| left | 40 | the reasoning setting | 12 | rig-models |
+| left | 50 | the status: idle, thinking, … | always | rig-activity |
+| left | 60 | the agent's subagents at work | 15 | rig-basics |
+| left | 70 | the other agents at work | 13 | rig-basics |
+| left | 80 | what the turn spent (on the turn) | 11 | rig-telemetry |
+| left | 90 | the rebuild of `/reload` (`AppStatus`) | 16 | rig-harness |
+| right | 10 | tokens in and out | 4 | rig-telemetry |
+| right | 20 | cached input | 1 | rig-telemetry |
+| right | 30 | cost | 3 | rig-telemetry |
+| right | 40 | the context in use | 5 | rig-telemetry |
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// After the status; gone before the reasoning setting.
+const MESSAGES: StatusItem = StatusItem::at(Side::Left, 55, 10);
+
+#[derive(Default)]
+pub struct MessagesItemPlugin;
+
+impl Plugin for MessagesItemPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostUpdate, show.in_set(StatusSystems));
+    }
+}
+
+fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversation>>) {
+    for (conversation, mut items) in &mut agents {
+        let text = format!("{} messages", conversation.messages().len());
+        items.show(MESSAGES.says(text, Tone::Dim));
     }
 }
 ```

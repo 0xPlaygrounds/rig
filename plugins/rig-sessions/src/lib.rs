@@ -1,7 +1,8 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
 //! [`SessionTitle`], cost and when it was updated), which `/resume` lists
-//! and a resumed session reads its title back from. Running another
+//! and a resumed session reads its title back from. The status line shows
+//! the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
 //! process: it names the next session in [`SessionDir::switch`] and exits
 //! with the reload code, as `/reload` does, and the launcher starts it in
@@ -31,7 +32,9 @@ use rig_ecs::agent::{
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_harness::front::{PickItem, PickRequest, attached_file};
+use rig_harness::front::{
+    AppStatus, PickItem, PickRequest, Side, StatusItem, StatusSystems, Tone, attached_file,
+};
 use rig_harness::prelude::{SessionPaths, launcher};
 use rig_telemetry::Spending;
 
@@ -39,6 +42,9 @@ use rig_telemetry::Spending;
 const TITLE_CHARS: usize = 60;
 /// Most sessions `/resume` lists.
 const LISTED: usize = 200;
+/// Where the session's name is in the status line: first, and gone before
+/// what the session spends when the line is too narrow.
+const NAME: StatusItem = StatusItem::at(Side::Left, 10, 2);
 
 /// `/new`, `/resume`, `/name`, and the listing cache written at the end of
 /// each turn.
@@ -62,6 +68,12 @@ impl Plugin for SessionsPlugin {
             .add_observer(on_switch_session)
             .add_systems(PreStartup, restore_title)
             .add_systems(
+                PostUpdate,
+                show_name
+                    .in_set(StatusSystems)
+                    .run_if(resource_changed::<SessionTitle>),
+            )
+            .add_systems(
                 Last,
                 write_meta.in_set(OnAppExitSystems).after(StopTurns).run_if(
                     any_component_removed::<ActiveTurn>
@@ -70,6 +82,11 @@ impl Plugin for SessionsPlugin {
                 ),
             );
     }
+}
+
+fn show_name(title: Res<SessionTitle>, mut status: ResMut<AppStatus>) {
+    let name = title.name.clone().unwrap_or_default();
+    status.show(NAME.says(name, Tone::Cyan));
 }
 
 /// What the session is listed as: the name `/name` gave it, else the start

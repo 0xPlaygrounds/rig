@@ -1,6 +1,6 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
-//! (its status and its open tool calls) and the [`MessageFeed`] of recent
-//! deliveries. A view reads them instead of
+//! (its status and its open tool calls), its status in the status line
+//! ([`StatusItem`]), and the [`MessageFeed`] of recent deliveries. A view reads them instead of
 //! deriving them from turns and calls; the agent tree is the agents'
 //! [`SpawnedBy`] and [`Spawned`] relationship.
 //!
@@ -11,8 +11,8 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_ecs::prelude::*;
-use rig_ecs::turn::ModelCall;
+use rig_ecs::turn::{ModelCall, RETRY};
+use rig_harness::prelude::*;
 
 /// The most deliveries the [`MessageFeed`] keeps.
 pub const FEED_LEN: usize = 64;
@@ -27,13 +27,21 @@ impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
             .init_resource::<MessageFeed>()
-            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
+            .configure_sets(PostUpdate, ActivitySystems.before(StatusSystems))
+            .add_systems(
+                PostUpdate,
+                (
+                    update_activity.in_set(ActivitySystems),
+                    show_status.in_set(StatusSystems),
+                ),
+            )
             .add_observer(feed_deliveries);
     }
 }
 
-/// The system in `PostUpdate` that updates each agent's [`Activity`]. A
-/// view that reads it in `PostUpdate` runs after it.
+/// The system in `PostUpdate` that updates each agent's [`Activity`],
+/// before [`StatusSystems`]. A view that reads it in `PostUpdate` runs
+/// after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActivitySystems;
 
@@ -190,5 +198,27 @@ fn update_activity(
             status,
             tools: open_tools,
         });
+    }
+}
+
+/// Where an agent's status is in the status line.
+const STATUS: StatusItem = StatusItem::at(Side::Left, 50, u8::MAX);
+
+/// Each agent's status, in its status line: green when idle, yellow at
+/// work, red waiting to retry.
+fn show_status(mut agents: Query<(&Activity, &mut StatusItems), Changed<Activity>>) {
+    for (activity, mut items) in &mut agents {
+        let shown = match &activity.status {
+            Status::Idle => STATUS.says("idle", Tone::Green),
+            Status::Retrying { attempt, seconds } => STATUS.says(
+                format!(
+                    "retry {attempt}/{} in {seconds}s… (Esc stops)",
+                    RETRY.max_retries
+                ),
+                Tone::Red,
+            ),
+            status => STATUS.says(format!("{status}… (Esc stops)"), Tone::Yellow),
+        };
+        items.show(shown);
     }
 }

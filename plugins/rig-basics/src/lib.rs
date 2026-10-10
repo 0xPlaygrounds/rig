@@ -1,4 +1,5 @@
-//! The basic slash commands: `/help`, `/retry`, `/agents` and `/quit`
+//! The basic slash commands: `/help`, `/retry`, `/agents` and `/quit`,
+//! with the agent tree in each agent's status line
 //! ([`BasicCommandsPlugin`]), and the project context in the system prompt
 //! ([`ProjectContextPlugin`]): `AGENTS.md`, the environment and `/context`.
 
@@ -12,10 +13,12 @@ use rig_ecs::model::ModelChoice;
 use rig_harness::front::{Focus, PickItem, PickRequest};
 
 pub mod project_context;
+mod status;
 
 pub use project_context::ProjectContextPlugin;
 
-/// Registers the basic commands.
+/// Registers the basic commands, and shows the agent tree that `/agents`
+/// picks from in each agent's status line.
 #[derive(Default)]
 pub struct BasicCommandsPlugin;
 
@@ -33,6 +36,7 @@ impl Plugin for BasicCommandsPlugin {
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Quit; the session stays for /resume", quit);
+        status::add(app);
     }
 }
 

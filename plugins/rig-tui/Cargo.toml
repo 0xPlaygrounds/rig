@@ -30,11 +30,6 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
-# What the agents do, which the view adds unless it is there.
-rig-activity = { path = "../rig-activity" }
-# The session's title and cost in the status line.
-rig-sessions = { path = "../rig-sessions" }
-rig-telemetry = { path = "../rig-telemetry" }
 serde_json = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]

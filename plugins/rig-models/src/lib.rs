@@ -1,6 +1,7 @@
-//! Choosing a model and its reasoning setting: `/model`, `/effort` and the
-//! picker ([`ModelsPlugin`]), and the ones a new session starts with, the
-//! last ones chosen ([`DefaultsPlugin`]).
+//! Choosing a model and its reasoning setting: `/model`, `/effort`, the
+//! picker and both in each agent's status line ([`ModelsPlugin`]), and the
+//! ones a new session starts with, the last ones chosen
+//! ([`DefaultsPlugin`]).
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -11,10 +12,12 @@ use rig_ecs::model::{Connection, Effort, Models, SetEffort, SetModel};
 use rig_harness::front::{PickItem, PickRequest};
 
 pub mod defaults;
+mod status;
 
 pub use defaults::DefaultsPlugin;
 
-/// Adds `/model` and `/effort`, each a picker without arguments.
+/// Adds `/model` and `/effort`, each a picker without arguments, and the
+/// model and reasoning setting to each agent's status line.
 #[derive(Default)]
 pub struct ModelsPlugin;
 
@@ -30,6 +33,7 @@ impl Plugin for ModelsPlugin {
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
         );
+        status::add(app);
     }
 }
 

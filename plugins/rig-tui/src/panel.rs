@@ -9,7 +9,6 @@
 //! changed asks with a [`RequestRedraw`] message.
 //!
 //! ```no_run
-//! use rig_activity::Activity;
 //! use rig_harness::prelude::*;
 //! use rig_tui::ratatui::layout::Constraint;
 //! use rig_tui::ratatui::widgets::{Block, Paragraph};
@@ -22,8 +21,8 @@
 //!     commands.spawn((Working, TuiPanel::new(Placement::Right(Constraint::Length(30)))));
 //! }
 //!
-//! fn draw(mut panels: Query<&mut PanelCanvas, With<Working>>, agents: Query<&Activity>) {
-//!     let busy = agents.iter().filter(|activity| activity.is_busy()).count();
+//! fn draw(mut panels: Query<&mut PanelCanvas, With<Working>>, turns: Query<&TurnOf>) {
+//!     let busy = turns.iter().count();
 //!     for mut canvas in &mut panels {
 //!         canvas.render(Paragraph::new(format!("{busy} working")).block(Block::bordered()));
 //!     }
@@ -37,8 +36,8 @@ use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Widget;
 
-/// The terminal view's steps in `PostUpdate`, in order, after the agents'
-/// [`ActivitySystems`](rig_activity::ActivitySystems).
+/// The terminal view's steps in `PostUpdate`, in order, after the
+/// [`StatusSystems`](rig_harness::front::StatusSystems).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and

@@ -12361,6 +12361,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_reflect",
  "rig-ecs",
+ "rig-harness",
 ]
 
 [[package]]
@@ -13162,14 +13163,11 @@ dependencies = [
  "libc",
  "pulldown-cmark",
  "ratatui",
- "rig-activity",
  "rig-basics",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-models",
- "rig-sessions",
- "rig-telemetry",
  "rig-tools",
  "serde_json",
  "unicode-width 0.2.2",

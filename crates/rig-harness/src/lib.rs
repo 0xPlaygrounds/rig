@@ -95,7 +95,8 @@ pub mod prelude {
     pub use std::time::Duration;
 
     pub use crate::front::{
-        Busy, Focus, Front, Input, PickItem, PickRequest, RunMode, send_input, send_message,
+        AppStatus, Busy, Focus, Front, Input, PickItem, PickRequest, RunMode, Side, StatusItem,
+        StatusItems, StatusSystems, Tone, send_input, send_message,
     };
     pub use crate::harness_protocol::Home;
     pub use crate::host::launcher;

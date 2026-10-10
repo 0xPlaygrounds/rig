@@ -1,7 +1,7 @@
 # rig-telemetry
 
-What the agent records about itself: what model calls cost and `/usage`
-(`UsagePlugin`), every model and tool call in the session's `effects.jsonl`
+What the agent records about itself: what model calls cost, in `/usage` and
+the status line (`UsagePlugin`), every model and tool call in the session's `effects.jsonl`
 (`EffectLogPlugin`), and the process's warnings and errors, Bevy's included,
 as the `Diagnostics` resource (`DiagnosticsPlugin`).
 

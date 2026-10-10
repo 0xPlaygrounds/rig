@@ -22,19 +22,9 @@ use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use rig_activity::{Activity, Status};
-use rig_core::completion::{ContextUse, tokens_label};
-use rig_ecs::agent::{
-    ActiveTurn, Agent, Calls, Condensed, Conversation, LastUsage, NoticeLevel, Partial, Spawned,
-    SpawnedBy,
-};
-use rig_ecs::commands::SlashCommand;
+use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
 use rig_ecs::inbox::Inbox;
-use rig_ecs::model::{Connection, Effort, ModelChoice};
-use rig_ecs::turn::RETRY;
-use rig_harness::prelude::ReloadStatus;
-use rig_sessions::SessionTitle;
-use rig_telemetry::{Spending, TurnSpending};
+use rig_harness::front::{AppStatus, Side, StatusItem, StatusItems, Tone};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -57,48 +47,41 @@ pub(crate) struct Paced {
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize), an agent's drawn components (its
-/// [`Activity`] too, which counts a retry's wait down), a turn's calls, a
-/// streaming reply, a panel, or a plugin's [`RequestRedraw`]. A turn's end
-/// changes its conversation or comes with a notice. The rebuild's progress
-/// is checked separately. A streaming reply alone draws at most every
-/// [`STREAM_FRAME`]; the text that waits is drawn by one of the frames
-/// that [`settle`](rig_ecs::calls::settle) runs after the wake that brought
-/// it, 16 ms apart, under any loop.
+/// key, a notice, a resize), an agent's drawn components, a turn's calls, a
+/// streaming reply, a status line item (a retry's wait counts down there),
+/// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
+/// conversation or comes with a notice. A streaming reply alone draws at
+/// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
+/// frames that [`settle`](rig_ecs::calls::settle) runs after the wake that
+/// brought it, 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
-    agents: Query<
+    changed: Query<
         (),
         Or<(
             Changed<Conversation>,
-            Changed<ModelChoice>,
-            Changed<Effort>,
             Changed<ActiveTurn>,
-            Changed<Spending>,
-            Changed<LastUsage>,
             Changed<Condensed>,
             Changed<Inbox>,
-            Changed<Activity>,
+            Changed<Calls>,
+            Changed<StatusItems>,
+            Changed<TuiPanel>,
         )>,
     >,
-    turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
-    title: Option<Res<SessionTitle>>,
+    app_status: Option<Res<AppStatus>>,
     mut requests: MessageReader<RequestRedraw>,
-    panels: Query<(), Changed<TuiPanel>>,
-    mut removed_panels: RemovedComponents<TuiPanel>,
+    mut removed: (RemovedComponents<TuiPanel>, RemovedComponents<StatusItems>),
     mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
-    let removed = removed_panels.read().count() > 0;
+    let removed = removed.0.read().count() + removed.1.read().count() > 0;
     let changed = requested
         || removed
         || view.is_changed()
-        || title.is_some_and(|title| title.is_changed())
-        || !agents.is_empty()
-        || !turns.is_empty()
-        || !panels.is_empty();
+        || app_status.is_some_and(|status| status.is_changed())
+        || !changed.is_empty();
     paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
@@ -167,21 +150,6 @@ pub(crate) fn layout(
     };
 }
 
-/// The agents the status line counts: each with its [`Activity`], its
-/// name, whether another spawned it and the agents it spawned.
-type Everyone<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static Activity,
-        Option<&'static Name>,
-        Has<SpawnedBy>,
-        Option<&'static Spawned>,
-    ),
-    With<Agent>,
->;
-
 /// The transcript's parts after the shown agent's messages are laid out:
 /// each message, after the notices that came before it and the summary
 /// sent in place of the messages above; then the notices after the last message, the
@@ -236,52 +204,6 @@ fn transcript_parts(
     parts
 }
 
-/// The focused agent's title, before its model, when another agent
-/// spawned it.
-fn spawned_title(focused: Option<Entity>, everyone: &Everyone) -> Option<Piece> {
-    let (_, _, title, spawned_by, _) = everyone.get(focused?).ok()?;
-    let title = title.filter(|_| spawned_by)?;
-    Some(Piece::new(
-        keep::TITLE,
-        Span::from(format!("⤷ {title}")).magenta(),
-    ))
-}
-
-/// The agent counts after the status: how many of the agents the focused
-/// one spawned are at work, idle or not, and how many others.
-fn agent_pieces(pieces: &mut Vec<Piece>, focused: Option<Entity>, everyone: &Everyone, hint: &str) {
-    let busy = |agent: Entity| {
-        everyone
-            .get(agent)
-            .is_ok_and(|(_, activity, ..)| activity.is_busy())
-    };
-    let mine: Vec<Entity> = focused
-        .and_then(|agent| everyone.get(agent).ok())
-        .and_then(|(.., spawned)| spawned)
-        .map(|spawned| spawned.iter().filter(|child| busy(*child)).collect())
-        .unwrap_or_default();
-    let text = match mine.len() {
-        0 => None,
-        1 => Some(format!("1 subagent working{hint}")),
-        count => Some(format!("{count} subagents working{hint}")),
-    };
-    if let Some(text) = text {
-        pieces.push(Piece::new(keep::SUBAGENTS, Span::from(text).magenta()));
-    }
-    let others = everyone
-        .iter()
-        .filter(|(agent, activity, ..)| {
-            activity.is_busy() && Some(*agent) != focused && !mine.contains(agent)
-        })
-        .count();
-    if others > 0 {
-        pieces.push(Piece::new(
-            keep::OTHERS,
-            Span::from(format!("+{others} other agents working{hint}")).magenta(),
-        ));
-    }
-}
-
 /// The hint under the input box.
 fn input_hint(turn_running: bool, empty: bool) -> &'static str {
     match (turn_running, empty) {
@@ -301,25 +223,13 @@ pub(crate) fn render(
     mut view: ResMut<TuiView>,
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<(
-        &Conversation,
-        Option<&Condensed>,
-        Option<&ModelChoice>,
-        &Effort,
-        &Activity,
-        (Option<&Spending>, &LastUsage),
-        Option<&Connection>,
-        &Inbox,
-    )>,
+    agents: Query<(&Conversation, Option<&Condensed>, &Inbox)>,
     changed: Query<(), Changed<Conversation>>,
-    turns: Query<(Option<&Calls>, Option<&TurnSpending>)>,
-    (partials, active): (Query<&Partial>, Query<&ActiveTurn>),
+    (turns, partials, active): (Query<&Calls>, Query<&Partial>, Query<&ActiveTurn>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
-    everyone: Everyone,
-    slash: Query<&Name, With<SlashCommand>>,
+    status: (Query<&StatusItems>, Option<Res<AppStatus>>),
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
-    (reload, title): (Option<Res<ReloadStatus>>, Option<Res<SessionTitle>>),
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
     let Some(input_rows) = frame_layout.input_rows else {
@@ -331,11 +241,8 @@ pub(crate) fn render(
     let shown = view
         .agent
         .and_then(|agent| Some((agent, agents.get(agent).ok()?)));
-    let turn = view
-        .agent
-        .and_then(|agent| active.get(agent).ok())
-        .and_then(|turn| turns.get(turn.turn()).ok());
-    let calls = turn.and_then(|(calls, _)| calls);
+    let turn = view.agent.and_then(|agent| active.get(agent).ok());
+    let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
@@ -354,10 +261,6 @@ pub(crate) fn render(
             (renderer.tool.as_str(), &renderer.render)
         })
         .collect();
-    // /model and /agents come from plugins, so point at them only when
-    // loaded.
-    let loaded = |name: &str| slash.iter().any(|command| command.as_str() == name);
-    let agents_hint = if loaded("/agents") { " (/agents)" } else { "" };
     // The frame is written in one synchronized update with the cursor
     // hidden, so the cursor never shows travelling across the screen; it
     // is shown at the input once the frame is out, when the input has the
@@ -386,9 +289,7 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
-                shown.map(|(_, (conversation, condensed, .., inbox))| {
-                    (conversation, condensed, inbox)
-                }),
+                shown.map(|(_, shown)| shown),
                 partial,
                 usize::from(transcript_area.width.max(1)),
             );
@@ -399,32 +300,10 @@ pub(crate) fn render(
             );
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, below, transcript_area);
-            let shown = shown.map(|(_, shown)| shown);
-            let mut left = Vec::new();
-            if let Some(name) = title.as_ref().and_then(|title| title.name.as_ref()) {
-                left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
-            }
-            left.extend(spawned_title(view.agent, &everyone));
-            left.extend(status_pieces(
-                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, &activity.status)),
-                loaded("/model"),
-            ));
-            agent_pieces(&mut left, view.agent, &everyone, agents_hint);
-            if let Some((_, Some(spent))) = turn
-                && spent.0.calls > 0
-            {
-                let used = spent.0.cost_or_tokens();
-                left.push(Piece::new(
-                    keep::TURN,
-                    Span::from(format!("this turn {used}")).dim(),
-                ));
-            }
-            if let Some(reload) = reload.as_deref().and_then(reload_span) {
-                left.push(Piece::new(keep::RELOAD, reload));
-            }
-            let mut right = shown
-                .map(|(.., (spent, last), connection, _)| usage_pieces(spent, last, connection))
-                .unwrap_or_default();
+            let agent = view.agent.and_then(|agent| status.0.get(agent).ok());
+            let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
+            let app = status.1.as_deref().map(|app| &app.0);
+            let (mut left, mut right) = status_pieces(view.agent.is_some(), [app, agent, turn]);
             fit(&mut left, &mut right, usize::from(status_area.width));
             let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
             let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
@@ -527,8 +406,8 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
     );
 }
 
-/// A piece of the status line. When the line does not fit, [`fit`] drops
-/// the pieces with the lowest `keep` first.
+/// A piece of the status line, from a [`StatusItem`]. When the line does
+/// not fit, [`fit`] drops the pieces with the lowest `keep` first.
 struct Piece {
     keep: u8,
     span: Span<'static>,
@@ -542,26 +421,6 @@ impl Piece {
     fn width(&self) -> usize {
         self.span.width()
     }
-}
-
-/// How long each [`Piece`] of the status line stays as it narrows: the
-/// cache reads go first, then the session's name (which the user chose and
-/// `/resume` lists, so a long one must not hide what the session spends),
-/// then cost, tokens and context; then the left's extras. The model and
-/// the status always stay.
-mod keep {
-    pub(super) const CACHE: u8 = 1;
-    pub(super) const SESSION: u8 = 2;
-    pub(super) const COST: u8 = 3;
-    pub(super) const TOKENS: u8 = 4;
-    pub(super) const CONTEXT: u8 = 5;
-    pub(super) const TURN: u8 = 11;
-    pub(super) const REASONING: u8 = 12;
-    pub(super) const OTHERS: u8 = 13;
-    pub(super) const TITLE: u8 = 14;
-    pub(super) const SUBAGENTS: u8 = 15;
-    pub(super) const RELOAD: u8 = 16;
-    pub(super) const ALWAYS: u8 = u8::MAX;
 }
 
 /// The gap between the pieces on the left, and between the left and the
@@ -578,7 +437,7 @@ fn joined_width(pieces: &[Piece], gap: &str) -> usize {
 
 /// Drops the pieces of `left` and of the meter on the `right` with the
 /// lowest `keep` until both fit `width` with a gap between them. What
-/// [`keep::ALWAYS`] stays; past that the line is cut at the edge.
+/// keeps `u8::MAX` stays; past that the line is cut at the edge.
 fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
     loop {
         let separator = if right.is_empty() { 0 } else { LEFT_GAP.len() };
@@ -590,7 +449,7 @@ fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
             pieces
                 .iter()
                 .enumerate()
-                .filter(|(_, piece)| piece.keep < keep::ALWAYS)
+                .filter(|(_, piece)| piece.keep < u8::MAX)
                 .min_by_key(|(_, piece)| piece.keep)
                 .map(|(index, piece)| (piece.keep, index))
         };
@@ -620,98 +479,39 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
     Line::from(spans)
 }
 
-/// The focused agent's model, reasoning setting and status.
-fn status_pieces(
-    shown: Option<(Option<&ModelChoice>, &Effort, &Status)>,
-    model_hint: bool,
-) -> Vec<Piece> {
-    let Some((model, effort, status)) = shown else {
-        return vec![Piece::new(keep::ALWAYS, Span::from("no agent").dim())];
-    };
-    let model = match model {
-        Some(model) => model.0.clone(),
-        None if model_hint => "no model: /model picks one".to_owned(),
-        None => "no model".to_owned(),
-    };
-    let status = match status {
-        Status::Idle => Span::from("idle").green(),
-        Status::Thinking | Status::RunningTools | Status::Busy(_) => {
-            Span::from(format!("{status}… (Esc stops)")).yellow()
-        }
-        Status::Retrying { attempt, seconds } => Span::from(format!(
-            "retry {attempt}/{} in {seconds}s… (Esc stops)",
-            RETRY.max_retries
-        ))
-        .red(),
-    };
-    vec![
-        Piece::new(keep::ALWAYS, Span::from(model).bold()),
-        Piece::new(
-            keep::REASONING,
-            Span::from(format!("reasoning {effort}")).dim(),
-        ),
-        Piece::new(keep::ALWAYS, status),
-    ]
-}
-
-/// The meter: the agent's uncached input and output tokens, cache reads,
-/// cost, then the context against the model's window, yellow past 70% and
-/// red past 90%. `/usage` details the cache writes and reasoning.
-fn usage_pieces(
-    spent: Option<&Spending>,
-    last: &LastUsage,
-    connection: Option<&Connection>,
-) -> Vec<Piece> {
-    let Some(Spending(spent)) = spent.filter(|spent| spent.0.calls > 0) else {
-        return Vec::new();
-    };
-    let mut pieces = vec![Piece::new(
-        keep::TOKENS,
-        Span::from(format!(
-            "↑{} ↓{}",
-            tokens_label(spent.uncached_input()),
-            tokens_label(spent.tokens.output_tokens.unwrap_or(0))
-        ))
-        .dim(),
-    )];
-    if let Some(read) = spent.tokens.cached_input_tokens.filter(|read| *read > 0) {
-        pieces.push(Piece::new(
-            keep::CACHE,
-            Span::from(format!("cache {}", tokens_label(read))).dim(),
-        ));
+/// The status line's pieces, left and right: the app's items, the shown
+/// agent's and its turn's, by `order`, with `no agent` where an agent's
+/// model would be when none is shown.
+fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, Vec<Piece>) {
+    let no_agent = StatusItem::at(Side::Left, 30, u8::MAX).says("no agent", Tone::Dim);
+    let mut items: Vec<&StatusItem> = items
+        .into_iter()
+        .flatten()
+        .flat_map(StatusItems::iter)
+        .collect();
+    if !shown {
+        items.push(&no_agent);
     }
-    if let Some(cost) = spent.cost_label() {
-        pieces.push(Piece::new(keep::COST, Span::from(cost).dim()));
-    }
-    let window = connection.and_then(|connection| connection.spec.context_window);
-    if let Some(context) = last.context().map(|tokens| ContextUse { tokens, window }) {
-        let style = match context.percent() {
-            Some(90..) => Style::new().red(),
-            Some(70..) => Style::new().yellow(),
-            _ => Style::new().dim(),
+    items.sort_by_key(|item| item.order);
+    let piece = |item: &StatusItem| {
+        let style = match item.tone {
+            Tone::Plain => Style::new(),
+            Tone::Bold => Style::new().bold(),
+            Tone::Dim => Style::new().dim(),
+            Tone::Green => Style::new().green(),
+            Tone::Yellow => Style::new().yellow(),
+            Tone::Red => Style::new().red(),
+            Tone::Cyan => Style::new().cyan(),
+            Tone::Magenta => Style::new().magenta(),
         };
-        pieces.push(Piece::new(
-            keep::CONTEXT,
-            Span::styled(format!("ctx {context}"), style),
-        ));
-    }
-    pieces
-}
-
-fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
-    let text = match reload {
-        ReloadStatus::Idle | ReloadStatus::Failed => return None,
-        ReloadStatus::Queued { .. } => {
-            "Reload queued: once no turn runs (/reload cancel)".to_owned()
-        }
-        ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
-        // The launcher's phase, then cargo's latest line.
-        ReloadStatus::Building { latest } => format!(
-            "Reloading: {} (Esc cancels)",
-            latest.as_deref().unwrap_or("Resolving dependencies…")
-        ),
+        Piece::new(item.keep, Span::styled(item.text.clone(), style))
     };
-    Some(Span::from(text).cyan())
+    let (left, right): (Vec<_>, Vec<_>) =
+        items.into_iter().partition(|item| item.side == Side::Left);
+    (
+        left.into_iter().map(piece).collect(),
+        right.into_iter().map(piece).collect(),
+    )
 }
 
 /// The picker in a centred box over the transcript.

@@ -1,7 +1,7 @@
 # rig-basics
 
-The basic slash commands, `/help`, `/retry`, `/agents` and `/quit`
-(`BasicCommandsPlugin`), and the project context (`ProjectContextPlugin`): the
+The basic slash commands, `/help`, `/retry`, `/agents` and `/quit`, with the
+agents at work in the status line (`BasicCommandsPlugin`), and the project context (`ProjectContextPlugin`): the
 instruction files (`AGENTS.md` or `CLAUDE.md`) and the environment in every
 agent's system prompt, re-read when a turn starts, and `/context`.
 

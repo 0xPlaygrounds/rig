@@ -18,3 +18,5 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
+# Its status line item.
+rig-harness = { path = "../../crates/rig-harness" }
