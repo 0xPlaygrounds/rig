@@ -11,7 +11,8 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_core::completion::{AssistantContent, Message};
+use rig_core::completion::Message;
+use rig_core::transcript::assistant_text_from_choice;
 use rig_ecs::agent::{Calls, Partial, Queued};
 use rig_ecs::prelude::*;
 use rig_ecs::turn::ModelCall;
@@ -270,15 +271,7 @@ fn last_reply(messages: &[Message]) -> Option<Preview> {
         let Message::Assistant(assistant) = message else {
             return None;
         };
-        let text = assistant
-            .content
-            .iter()
-            .filter_map(|content| match content {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
+        let text = assistant_text_from_choice(&assistant.content);
         (!text.is_empty()).then(|| Preview::new(PreviewKind::LastReply, &text))
     })
 }
