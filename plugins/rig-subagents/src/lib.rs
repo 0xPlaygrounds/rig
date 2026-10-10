@@ -33,12 +33,15 @@ use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 
 mod lifecycle;
+#[cfg(feature = "tui")]
+mod looks;
 mod tools;
 
 pub use tools::{MAX_DEPTH, MESSAGE, TASK, WAIT};
 
 /// Adds the `task`, `message` and `wait` tools, the subagents' lifecycle
-/// and the reports that answer their requests.
+/// and the reports that answer their requests; with the `tui` feature (on
+/// by default), also how the terminal view draws the tools' calls.
 #[derive(Default)]
 pub struct SubagentsPlugin;
 
@@ -46,6 +49,8 @@ impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
         tools::add(app);
         lifecycle::add(app);
+        #[cfg(feature = "tui")]
+        looks::add(app);
     }
 }
 

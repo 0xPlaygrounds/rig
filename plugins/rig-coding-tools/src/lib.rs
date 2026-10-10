@@ -2,14 +2,21 @@
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
 //! `write` and `shell` alone. [`ReloadTool`] adds the `reload` tool, with
 //! which the agent rebuilds itself, and the system prompt's section on what
-//! the agent is.
+//! the agent is. With the `tui` feature (on by default), each plugin also
+//! adds how the terminal view draws its tool's calls.
 
 use bevy_app::prelude::*;
+#[cfg(feature = "tui")]
+use rig_harness::prelude::PortableTool;
 use rig_tools::{Edit, Read, Search, Shell, Write};
+#[cfg(feature = "tui")]
+use rig_tui::AppToolRenderersExt;
 
 use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
 use rig_harness::prelude::SessionPaths;
 
+#[cfg(feature = "tui")]
+mod looks;
 pub mod reload;
 
 pub use reload::ReloadTool;
@@ -37,6 +44,8 @@ pub struct ReadTool;
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Read, read_only(Read::RULES));
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Read::NAME, looks::read);
     }
 }
 
@@ -47,6 +56,8 @@ pub struct SearchTool;
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Search, read_only(Search::RULES));
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Search::NAME, looks::search);
     }
 }
 
@@ -57,6 +68,8 @@ pub struct EditTool;
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Edit, alone(Edit::RULES));
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Edit::NAME, looks::edit);
     }
 }
 
@@ -67,6 +80,8 @@ pub struct WriteTool;
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Write, alone(Write::RULES));
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Write::NAME, looks::write);
     }
 }
 
@@ -87,5 +102,7 @@ impl Plugin for ShellTool {
                 .map(SessionPaths::spill),
         };
         app.add_tool_with(shell, alone(Shell::RULES));
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Shell::NAME, looks::shell);
     }
 }

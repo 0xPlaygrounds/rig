@@ -146,7 +146,10 @@ registered from a system with
 `commands.queue(move |world: &mut World| { world.spawn_tool(definition, handler, options); })`:
 its `ToolDefinition`, and a rig-core `ErasedHandler` that answers its
 calls; despawning the entity it returns removes it. How the
-terminal view (`rig-tui`) draws a tool's calls:
+terminal view (`rig-tui`) draws a tool's calls is a renderer the tool's
+plugin adds; the first one of a tool stays. A crate that should also
+build without the terminal view puts it behind a default cargo feature,
+as `rig-coding-tools` does with `tui = ["dep:rig-tui"]`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -396,10 +399,11 @@ fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
 
 # Turning off or replacing what another plugin added
 
-Tools, slash commands and prompt sections are entities. Bevy's `Disabled`
-on one turns it off: no query finds it, so agents are not offered the
-tool, the command is unknown and the section is left out, and its name is
-free for a replacement (a second tool or command of a taken name is
+Tools, slash commands, tool renderers and prompt sections are entities.
+Bevy's `Disabled` on one turns it off: no query finds it, so agents are
+not offered the tool, the command is unknown, the section is left out and
+the tool's calls are drawn plainly, and its name is free for a
+replacement (a second tool, command or renderer of a taken name is
 refused). Do it in `Plugin::finish`, which runs once every plugin's
 `build` did, so what they added exists whatever their order. What a
 plugin spawns in `finish` is not marked `ProvidedBy` it.
@@ -422,7 +426,8 @@ impl Plugin for NoShellPlugin {
         }
         // `shell` is free again: `app.add_tool(MyShell)` would replace it.
         // A command is found by its `Name`, such as "/help", with
-        // `SlashCommand`; a section by its `PromptSection`'s `tag`.
+        // `SlashCommand`; a renderer by its `Name`, such as
+        // "renderer:shell"; a section by its `PromptSection`'s `tag`.
     }
 }
 ```

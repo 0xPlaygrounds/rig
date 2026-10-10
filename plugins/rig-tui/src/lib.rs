@@ -51,7 +51,6 @@ impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
-        renderers::add_builtin_renderers(app);
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .add_message::<RequestRedraw>()

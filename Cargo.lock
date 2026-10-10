@@ -12517,6 +12517,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-tools",
+ "rig-tui",
  "schemars 1.2.1",
  "serde",
 ]
@@ -13074,6 +13075,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
  "schemars 1.2.1",
  "serde",
  "serde_json",

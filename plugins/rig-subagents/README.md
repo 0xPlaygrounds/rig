@@ -2,7 +2,8 @@
 
 Subagents (`SubagentsPlugin`): the `task`, `message` and `wait` tools, with
 which an agent starts child agents, sends them and its peers requests, and
-waits for their reports. Built only on the kernel's public API; leave it out
+waits for their reports, and how the terminal view draws their calls (the
+default `tui` feature). Built only on the kernel's public API; leave it out
 and there are no subagents.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
