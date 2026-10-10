@@ -12,6 +12,13 @@ policies for shaping loaded history before it is sent to the model:
 - [`TokenWindowMemory`] — keep the most recent messages that fit within a token
   budget supplied by a [`TokenCounter`].
 
+- `compaction` — summarizing a long conversation: a `CompactionPolicy` that
+  says when (near the model's window) and where to cut and plans the summary
+  request of the older messages, a `SummaryState` carried from one summary
+  to the next, `SummaryPrompts::DEFAULT` for a structured checkpoint, and
+  `ClearToolOutputs`, which frees context without a model call. rig-harness's
+  compaction plugin is built on it.
+
 Both window policies remove the leading prefix through any tool-result
 messages whose assistant calls were truncated. Results are detected anywhere
 in a user message, including after text and across intervening system messages.

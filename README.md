@@ -275,17 +275,19 @@ subset of the tools. `task` returns the subagent's id at once, and `message`
 sends one of the model's own subagents a follow-up, which it reads with its
 conversation kept. Each `task` or `message` call is a request, and exactly one
 report for it (done, failed or interrupted) arrives later as a message to the
-agent that sent it, which starts a turn of an idle agent or follows the
-running one; reports that arrive together go to the model in one step, and a
-report that only points at another (answered together with it) starts no turn
-of its own. Nothing waits for them, so you can keep talking to the main
-agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
-subagents. `/agents` lists every agent with its model and state, and
+agent that asked, which starts a turn of an idle agent or follows the running
+one; the reports of one reply's `task` calls reach it together. Nothing waits
+for them, so you can keep talking to the main agent, or steer it, meanwhile.
+An agent that needs a message before it goes on calls `wait`, which keeps its
+turn open until that agent sends it one, and a subagent whose turn ends while
+a request it made is open is waiting, not done: it reports the answer it
+gives once that request is answered. Esc stops only the shown agent's turn,
+not its subagents. `/agents` lists every agent with its model and state, and
 shows the one picked: its transcript, and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
-with `peers` can also send each other requests with `message`, answered the
-same way, to the one that asked; one never asks a peer that waits on its own
-report.
+with `peers` can also send each other requests with `message` and `wait` for
+each other; a request or `wait` that would make agents wait on each other is
+refused.
 In the effect log, a subagent's model calls name the call that gave it its
 work as their parent.
 
@@ -335,9 +337,10 @@ RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
 rebuilds the agent with them and restarts in the same session. Everything but
 the core (the session, the launcher protocol and `/reload`) is an entry in the
-same list: the project context, sign-in, sessions, compaction, usage, the
-effect log, the tools, the commands, the subagents, `--print` and the terminal
-view, so any of them can be removed or replaced:
+same list: the project context, models, sign-in, sessions, compaction, usage,
+activity, the effect log, each tool, the commands, the subagents, diagnostics,
+`inspect`, `--print` and the terminal view, so any of them can be removed or
+replaced ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml
 [[plugin]]
@@ -364,8 +367,11 @@ terminal panels or a window the way the built-in ones do, never by editing
 rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
 is a cookbook with a copy-ready example of each kind, every name it uses from
 `rig_harness::prelude`, and the `src/lib.rs` that `rig plugin new` writes is a
-working, commented slash command. An agent started by the launcher knows all
-this from its system prompt, so it can write and add its own plugins.
+working, commented slash command. The agent's `inspect` tool reads its own
+Bevy world (in process, read-only): the plugins loaded and what each added,
+the agents, the state saved with the session, the warnings logged and every
+reflected type. An agent started by the launcher knows all this from its
+system prompt, so it can write and add its own plugins.
 
 Code mode is an optional plugin crate, `rig-steel`, not in the default list.
 Its `SteelPlugin` adds the `run_steel` tool: the model writes one

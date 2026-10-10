@@ -1,10 +1,10 @@
 //! The `__name__` plugin of the rig agent, made by `rig plugin new`.
 //!
 //! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
-//! has a short copy-ready example of each extension point: a slash command,
-//! a tool and how its calls look, a terminal panel, a timer, reading what
-//! agents do and say, state kept with the session, and a window. Every name
-//! they use comes from `rig_harness::prelude`.
+//! has a short copy-ready example of each extension point: a tool and how
+//! its calls look, a slash command, state kept with the session, turn hooks,
+//! a timer, what agents do and say in a terminal panel, and a window. Every
+//! name they use comes from `rig_harness::prelude`; `inspect` shows the rest.
 
 use rig_harness::prelude::*;
 

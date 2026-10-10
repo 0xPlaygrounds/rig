@@ -65,7 +65,7 @@ plugin = "rig_harness::plugins::reload_tool::ReloadTool"
 [[plugin]]
 plugin = "rig_harness::plugins::basics::BasicCommandsPlugin"
 
-# Subagents: the task and message tools.
+# Subagents: the task, message and wait tools.
 [[plugin]]
 plugin = "rig_harness::plugins::subagents::SubagentsPlugin"
 
