@@ -157,6 +157,7 @@ impl Plugin for AgentPlugin {
             .add_observer(inbox::recall_on_turn_end)
             .add_observer(model::on_set_model)
             .add_observer(model::connect)
+            .add_observer(model::check_effort)
             .add_observer(model::on_set_effort);
     }
 

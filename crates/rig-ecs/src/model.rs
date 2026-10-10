@@ -23,8 +23,8 @@ use super::turn::NO_MODEL;
 pub struct Models(pub Connector);
 
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
-/// choosing another model inserts a new one, and each insert rebuilds the
-/// agent's [`Connection`]. Saved with the session.
+/// choosing another model inserts a new one, which rebuilds the agent's
+/// [`Connection`]. Saved with the session.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[reflect(Component, Saved, Clone)]
@@ -154,47 +154,54 @@ pub(crate) fn on_set_model(
     }
 }
 
-/// Connects an agent whose [`ModelChoice`] or [`Effort`] was inserted, in
-/// either order, by [`SetModel`], by restoring a session or by a plugin:
-/// each choice is connected once, so requests never re-resolve the
-/// provider, and a reasoning setting the model does not take is reset.
-/// Only a change of a connected agent's model is announced: spawning and
-/// restoring an agent are silent, since views show its model anyway.
+/// Connects an agent whose [`ModelChoice`] was inserted, by [`SetModel`],
+/// by restoring a session or by a plugin, unless it is connected to that
+/// model already: each choice is connected, or refused, once, so requests
+/// never re-resolve the provider. Only a change of a connected agent's
+/// model is announced: spawning and restoring an agent are silent, since
+/// views show its model anyway.
 pub(crate) fn connect(
-    inserted: On<Insert<(ModelChoice, Effort)>>,
-    agents: Query<(&ModelChoice, &Effort, Option<&Connection>)>,
+    inserted: On<Insert<ModelChoice>>,
+    agents: Query<(&ModelChoice, Option<&Connection>)>,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = inserted.entity;
-    let Ok((choice, effort, connected)) = agents.get(agent) else {
+    let Ok((choice, connected)) = agents.get(agent) else {
         return;
     };
-    let spec = match connected.filter(|connection| connection.spec.reference() == choice.0) {
-        Some(connection) => connection.spec.clone(),
-        None => {
-            let (spec, handler) = match models.0.connect(&choice.0) {
-                Ok(reached) => reached,
-                Err(why) => {
-                    commands.entity(agent).remove::<Connection>();
-                    let why = format!("Cannot use {}: {why}.", choice.0);
-                    notices.write(Notice::error(agent, why));
-                    return;
-                }
-            };
+    if connected.is_some_and(|connection| connection.spec.reference() == choice.0) {
+        return;
+    }
+    match models.0.connect(&choice.0) {
+        Ok((spec, handler)) => {
             if connected.is_some() {
                 let model = format!("Model: {} ({}).", spec.display_name, choice.0);
                 notices.write(Notice::info(agent, model));
             }
             let handler = Handler(handler);
-            let connection = Connection {
-                spec: spec.clone(),
-                handler,
-            };
-            commands.entity(agent).insert(connection);
-            spec
+            commands.entity(agent).insert(Connection { spec, handler });
         }
+        Err(why) => {
+            commands.entity(agent).remove::<Connection>();
+            let why = format!("Cannot use {}: {why}.", choice.0);
+            notices.write(Notice::error(agent, why));
+        }
+    }
+}
+
+/// Resets a reasoning setting the agent's model does not take, whichever
+/// of the two was inserted last.
+pub(crate) fn check_effort(
+    inserted: On<Insert<(Connection, Effort)>>,
+    agents: Query<(&Connection, &Effort)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = inserted.entity;
+    let Ok((Connection { spec, .. }, effort)) = agents.get(agent) else {
+        return;
     };
     if let Err(refusal) = spec.validate(&spec.default_options(effort.0)) {
         commands.entity(agent).insert(Effort(None));

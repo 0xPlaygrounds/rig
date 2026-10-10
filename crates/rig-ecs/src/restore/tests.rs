@@ -19,7 +19,7 @@ use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{
     Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionStore, commit_message,
 };
-use crate::model::{Effort, ModelChoice};
+use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::Restored;
 
 /// An app on `store`, after its first frame restored the session. Like
@@ -133,6 +133,34 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
         matches!(first_sent, Some(Message::User { content }) if content.len() == 2),
         "{sent:?}"
     );
+}
+
+#[test]
+fn a_restored_model_that_cannot_be_used_is_reported_once() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some(), "the first frame spawns an agent");
+    let Some(agent) = agent else { return };
+    let saved = (
+        ModelChoice("nobody/none".to_owned()),
+        Effort(Some(Reasoning::Off)),
+    );
+    first.world_mut().entity_mut(agent).insert(saved);
+    say(&mut first, agent, Message::user("question"));
+    first.update();
+    drop(first);
+
+    let mut second = app(&store);
+    let agent = first_agent(&mut second);
+    let world = second.world();
+    let notices = world.resource::<Messages<Notice>>();
+    let mut cursor = notices.get_cursor();
+    let texts: Vec<_> = cursor.read(notices).map(|notice| &notice.text).collect();
+    let refused = texts.iter().filter(|text| text.starts_with("Cannot use"));
+    assert_eq!(refused.count(), 1, "{texts:?}");
+    let connected = agent.and_then(|agent| world.get::<Connection>(agent));
+    assert!(connected.is_none());
 }
 
 #[test]
