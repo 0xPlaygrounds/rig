@@ -51,6 +51,11 @@ fn say(app: &mut App, agent: Entity, message: Message) {
 #[reflect(Component, Saved)]
 struct ToolCounts(HashMap<String, u32>);
 
+/// A plugin's count across the session, saved with it.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Saved)]
+struct Compactions(u32);
+
 /// Every saved component of the first agent, by type path, as reflection
 /// writes it.
 fn saved(app: &mut App) -> HashMap<String, Value> {
@@ -70,9 +75,16 @@ fn saved(app: &mut App) -> HashMap<String, Value> {
 }
 
 #[test]
-fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept() {
+fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_its_summary_kept() {
     let store = MemoryStore::default();
     let mut first = app(&store);
+    first.world_mut().insert_resource(Compactions(1));
+    first.update();
+    assert_eq!(
+        store.agents().ok(),
+        Some(Vec::new()),
+        "nothing said, nothing kept"
+    );
     let agent = first_agent(&mut first);
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
@@ -91,6 +103,7 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
         say(&mut first, agent, Message::assistant(format!("answer {n}")));
         // The newest value wins.
         first.world_mut().entity_mut(agent).insert(counts(n + 1));
+        first.world_mut().insert_resource(Compactions(n + 2));
         first.update();
     }
     let summary = "The user asked three questions.".to_owned();
@@ -111,8 +124,11 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
     assert!(store.append(&id, format!("{gone}\n").as_bytes()).is_ok());
 
     let mut second = app(&store);
-    // What was saved before the summary still comes back.
+    // What was saved before the summary still comes back; the resource,
+    // which this app had not inserted, too.
     assert_eq!(saved(&mut second), before);
+    let compactions = second.world().get_resource::<Compactions>();
+    assert_eq!(compactions.map(|count| count.0), Some(5));
     let agent = first_agent(&mut second);
     let world = second.world();
     let notices = world.resource::<Messages<Notice>>();
@@ -293,28 +309,4 @@ fn a_failed_log_write_leaves_the_session_restored() {
         .any(|notice| notice.text.starts_with("The session is no longer saved"));
     assert!(stopped);
     assert!(app.world().contains_resource::<SessionRestored>());
-}
-
-/// A plugin's count across the session, saved with it.
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource, Saved)]
-struct Compactions(u32);
-
-#[test]
-fn a_saved_resource_comes_back_once_an_agent_log_was_written() {
-    let store = MemoryStore::default();
-    let mut first = app(&store);
-    first.world_mut().insert_resource(Compactions(1));
-    first.update();
-    assert_eq!(store.agents().ok(), Some(Vec::new()), "nothing said yet");
-    let agent = first_agent(&mut first);
-    assert!(agent.is_some());
-    let Some(agent) = agent else { return };
-    say(&mut first, agent, Message::user("hello"));
-    first.world_mut().insert_resource(Compactions(2));
-    first.update();
-    drop(first);
-    let second = app(&store);
-    let restored = second.world().get_resource::<Compactions>();
-    assert_eq!(restored.map(|count| count.0), Some(2));
 }
