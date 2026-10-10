@@ -13,7 +13,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
@@ -26,7 +25,7 @@ use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
-use rig_ecs::StopTurns;
+use rig_ecs::WriteJournal;
 use rig_ecs::agent::{
     ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf, primary_order,
 };
@@ -75,7 +74,7 @@ impl Plugin for SessionsPlugin {
             )
             .add_systems(
                 Last,
-                write_meta.in_set(OnAppExitSystems).after(StopTurns).run_if(
+                write_meta.in_set(WriteJournal).run_if(
                     any_component_removed::<ActiveTurn>
                         .or_eager(on_message::<AppExit>)
                         .or_eager(resource_changed::<SessionTitle>),
