@@ -142,9 +142,7 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
-    let rows = view
-        .editor
-        .layout(size.width.saturating_sub(2), Style::new());
+    let rows = view.editor.layout(size.width.saturating_sub(2));
     let input_height = rows.rows.len().clamp(1, INPUT_LINES);
     let [above, status, input] = Layout::vertical([
         Constraint::Min(1),
@@ -339,8 +337,11 @@ pub(crate) fn render(
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
-    panels.sort_by_key(|(entity, ..)| *entity);
+    panels.sort_by_key(|(entity, panel, _)| {
+        (matches!(panel.placement, Placement::Over { .. }), *entity)
+    });
     if removed_renderers.read().count() > 0
         || renderers.iter().any(|renderer| renderer.is_changed())
     {
@@ -439,14 +440,8 @@ pub(crate) fn render(
                     .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
                 input,
             );
-            // The panels at the sides, then the boxes over the screen.
-            let over = |panel: &TuiPanel| matches!(panel.placement, Placement::Over { .. });
-            for top in [false, true] {
-                for (_, panel, canvas) in &panels {
-                    if over(panel) == top {
-                        canvas.copy_to(frame.buffer_mut());
-                    }
-                }
+            for (.., canvas) in &panels {
+                canvas.copy_to(frame.buffer_mut());
             }
             match &view.picker {
                 Some(picker) => draw_picker(frame, picker),
@@ -640,9 +635,9 @@ fn status_pieces(
     };
     let status = match status {
         Status::Idle => Span::from("idle").green(),
-        Status::Thinking => Span::from("thinking… (Esc stops)").yellow(),
-        Status::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
-        Status::Busy(what) => Span::from(format!("{what}… (Esc stops)")).yellow(),
+        Status::Thinking | Status::RunningTools | Status::Busy(_) => {
+            Span::from(format!("{status}… (Esc stops)")).yellow()
+        }
         Status::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{} in {seconds}s… (Esc stops)",
             RETRY.max_retries

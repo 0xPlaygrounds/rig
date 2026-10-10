@@ -9,7 +9,7 @@ use std::io::Write as _;
 use std::path::PathBuf;
 
 use bevy_log::warn;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
@@ -351,7 +351,7 @@ impl Editor {
 
     /// The text laid out in rows `width` columns wide, broken anywhere, the
     /// first row after the prompt and the others indented under it.
-    pub(crate) fn layout(&self, width: u16, style: Style) -> Layout {
+    pub(crate) fn layout(&self, width: u16) -> Layout {
         // The prompt is two columns wide.
         let width = usize::from(width).max(3);
         let mut rows = Vec::new();
@@ -365,7 +365,7 @@ impl Editor {
             *first = false;
             rows.push(Line::from(vec![
                 Span::from(prefix).cyan(),
-                Span::styled(std::mem::take(row), style),
+                Span::from(std::mem::take(row)),
             ]));
         };
         for (index, character) in self.text.char_indices() {
