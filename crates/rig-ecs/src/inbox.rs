@@ -196,18 +196,20 @@ impl Deliver {
 }
 
 /// A message waiting in an [`Inbox`].
-#[derive(Clone, Debug)]
+#[derive(Reflect, Clone, Debug)]
 pub struct Pending {
     /// The text.
     pub text: String,
     /// Where it came from.
     pub origin: Origin,
     /// What goes before the text.
+    #[reflect(ignore)]
     pub attachments: Vec<Attachment>,
 }
 
 /// What was sent to the agent while it worked, not yet delivered.
-#[derive(Component, Clone, Debug, Default)]
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Default)]
 pub struct Inbox {
     /// Messages for the running turn, sent with its next model call.
     pub steering: Vec<Pending>,

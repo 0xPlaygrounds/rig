@@ -71,7 +71,9 @@ pub struct Spawned(Vec<Entity>);
 /// tool call that asked it for the work it does now, so the effect log
 /// nests that work under the call. An agent without one records its model
 /// calls at the top level. Not saved: effect ids do not outlive a run.
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct EffectParent(pub EffectId);
 
 /// The conversation: every message sent to and received from the model,
@@ -380,7 +382,8 @@ pub struct CallOf(pub Entity);
 pub struct Calls(Vec<Entity>);
 
 /// Text streamed so far by an in-flight model call, for views.
-#[derive(Component, Default)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
 pub struct Partial {
     /// Answer text.
     pub text: String,
@@ -394,7 +397,8 @@ pub struct Partial {
 /// or stays open for an open tool, and ends with a
 /// [`ToolOutput`](super::tools::ToolOutput).
 /// Read-only calls run side by side; every other call runs alone, in order.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 pub struct ToolCallRun {
     /// The call.
     pub call: ToolCall,
@@ -406,8 +410,9 @@ pub struct ToolCallRun {
 }
 
 /// A tool call waiting for earlier calls of its reply to finish.
-#[derive(Component, Default)]
+#[derive(Component, Reflect, Default)]
 #[component(storage = "SparseSet")]
+#[reflect(Component, Default)]
 pub struct Queued;
 
 /// Send the agent's conversation to its model again as it stands: after a

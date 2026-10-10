@@ -38,6 +38,7 @@ use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
 use rig_core::transcript::{arguments_refusal, close_pending_with};
+use serde::{Deserialize, Serialize};
 use web_time::Instant;
 
 use super::agent::{
@@ -61,7 +62,8 @@ pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 pub const RETRY: RetryPolicy = RetryPolicy::DEFAULT;
 
 /// A turn's recovery so far: the failed calls retried since its last reply.
-#[derive(Component, Clone, Copy, Debug, Default)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Default)]
 pub struct Recovery {
     /// Retries since the last reply.
     pub retries: u32,
@@ -71,11 +73,13 @@ pub struct Recovery {
 /// so interrupting the turn cancels it like any other call. The call is
 /// sent again by a delayed command on Bevy's clock, which despawns this
 /// entity first.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, from_reflect = false)]
 pub struct Backoff {
     /// Which retry this wait is for, from 1 to [`RETRY`]'s `max_retries`.
     pub attempt: u32,
     /// When the call is sent again.
+    #[reflect(ignore)]
     pub until: Instant,
 }
 
@@ -152,7 +156,8 @@ pub struct ModelFailed {
 /// like the turn's own calls, with the agent's connection, and ends with a
 /// [`Done<ModelReply>`](Done) on its entity, which is the plugin's to take.
 /// Interrupting the turn cancels it.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
 pub struct ModelRequest {
     /// The request.
     pub request: CompletionRequest,

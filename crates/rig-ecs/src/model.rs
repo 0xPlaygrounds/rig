@@ -77,7 +77,8 @@ impl ModelChoice {
 /// entry and the effect handler every model call is dispatched to. Built
 /// from the environment once per choice, and not saved: restoring the
 /// choice rebuilds it.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone)]
+#[reflect(opaque, Component, Clone)]
 pub struct Connection {
     /// The model's catalog entry.
     pub spec: Arc<ModelSpec>,

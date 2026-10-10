@@ -19,6 +19,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
+use bevy_reflect::prelude::*;
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
@@ -28,6 +29,7 @@ use rig_core::serve::{ErasedHandler, OpenRecord};
 use rig_core::tool::{Tool, ToolExecutionError, ToolResult, args_schema};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use super::agent::{AgentId, ToolCallRun};
 use super::effects::{Effects, Handler};
@@ -35,8 +37,10 @@ use super::prompt::ToolRules;
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(ToolRules, Footprint)]
+#[serde(transparent)]
 pub struct ToolDef(pub ToolDefinition);
 
 /// How a tool's calls run, on the tool's entity.
@@ -80,7 +84,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<
 /// ([`Running`](super::calls::Running)). The turn then starts the
 /// calls that waited for this one and, once every call of the reply has
 /// one, sends their results to the model.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ToolOutput(pub ToolResult);
 
 impl From<ToolResult> for ToolOutput {
@@ -121,7 +127,11 @@ pub(crate) struct OpenCall(pub(crate) OpenRecord);
 
 /// Whether a tool's calls may run beside the other calls of one reply, on
 /// the tool's entity.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(
+    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[reflect(Component, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum Footprint {
     /// May change anything: a call waits for every earlier call of its
     /// reply and holds back every later one. The default, right for
