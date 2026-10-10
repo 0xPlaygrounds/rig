@@ -18,7 +18,7 @@ use super::project::{
 
 /// The `src/lib.rs` of a new plugin crate, with `ScaffoldPlugin` and
 /// `__name__` for the plugin type and the crate name. rig-harness's
-/// `tests/scaffold.rs` builds it, so it stays a working plugin.
+/// `tests/removal.rs` builds it, so it stays a working plugin.
 const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
