@@ -33,3 +33,18 @@ fn the_template_lists_rig_harness_plugins_only() {
         |plugins| plugins.len() == 21 && plugins.iter().all(|plugin| plugin.package.is_none())
     ));
 }
+
+#[test]
+fn quoted_strings_read_back_with_their_escapes() {
+    let text = "a\u{1}b\"c\\d\te\u{7f}";
+    assert_eq!(
+        parse_value(&crate::launcher::project::quoted(text)).as_deref(),
+        Some(text)
+    );
+    assert_eq!(
+        parse_value("\"\\U0001F600 \\u00e9\"").as_deref(),
+        Some("\u{1F600} \u{e9}")
+    );
+    assert_eq!(parse_value("\"\\uD800\""), None);
+    assert_eq!(parse_value("\"\\u12\""), None);
+}

@@ -339,6 +339,8 @@ fn parse_value(text: &str) -> Option<String> {
 }
 
 /// A basic TOML string at the start of `text`, and the text after it.
+/// Its escapes are `\n`, `\t`, `\"`, `\\` and a code point as `\uXXXX` or
+/// `\UXXXXXXXX`, which [`quoted`](super::project::quoted) writes.
 pub fn parse_string(text: &str) -> Option<(String, &str)> {
     let mut chars = text.strip_prefix('"')?.char_indices();
     let mut value = String::new();
@@ -350,6 +352,14 @@ pub fn parse_string(text: &str) -> Option<(String, &str)> {
                 't' => '\t',
                 '"' => '"',
                 '\\' => '\\',
+                escape @ ('u' | 'U') => {
+                    let digits = if escape == 'u' { 4 } else { 8 };
+                    let hex: String = chars.by_ref().take(digits).map(|(_, c)| c).collect();
+                    if hex.len() != digits || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                        return None;
+                    }
+                    char::from_u32(u32::from_str_radix(&hex, 16).ok()?)?
+                }
                 _ => return None,
             }),
             c => value.push(c),
