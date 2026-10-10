@@ -213,7 +213,10 @@ fn remind(remind: On<Remind>, mut commands: Commands, mut notices: MessageWriter
 An agent component that derives `Reflect` and says
 `#[reflect(Component, Saved)]` is kept with the session: each change is
 logged, and a restart, `/reload` or `/resume` brings the newest value
-back, before `Restored` is triggered on the agent. `On<Add<CallOf>>` sees
+back, before `Restored` is triggered on the agent. A resource that says
+`#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
+the whole session; the plugin inserts it in `build`, and the saved value
+replaces it. `On<Add<CallOf>>` sees
 every model and tool call of every turn as it starts; a tool call also
 has a `ToolCallRun`. The calls made before the plugin was added are in
 the conversation, which `Restored` lets it count once: an assistant

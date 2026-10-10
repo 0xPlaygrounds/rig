@@ -32,8 +32,9 @@ What it holds, by module:
   plugin may record.
 - `journal`, `restore`: the append-only session log and its restore. Every
   conversation change goes through `Commit` and is seen as a `Committed`
-  message; a component that says `#[reflect(Component, Saved)]` is logged
-  and restored by reflection. The store is one of rig-cassette's `journal`
+  message; a component that says `#[reflect(Component, Saved)]`, or a
+  resource that says `#[reflect(Resource, Saved)]`, is logged and restored
+  by reflection. The store is one of rig-cassette's `journal`
   stores (`MemoryStore`, or `JsonlDirStore` with its feature `jsonl`).
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has

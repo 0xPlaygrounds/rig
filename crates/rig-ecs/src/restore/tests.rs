@@ -294,3 +294,27 @@ fn a_failed_log_write_leaves_the_session_restored() {
     assert!(stopped);
     assert!(app.world().contains_resource::<SessionRestored>());
 }
+
+/// A plugin's count across the session, saved with it.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Saved)]
+struct Compactions(u32);
+
+#[test]
+fn a_saved_resource_comes_back_once_an_agent_log_was_written() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    first.world_mut().insert_resource(Compactions(1));
+    first.update();
+    assert_eq!(store.agents().ok(), Some(Vec::new()), "nothing said yet");
+    let agent = first_agent(&mut first);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut first, agent, Message::user("hello"));
+    first.world_mut().insert_resource(Compactions(2));
+    first.update();
+    drop(first);
+    let second = app(&store);
+    let restored = second.world().get_resource::<Compactions>();
+    assert_eq!(restored.map(|count| count.0), Some(2));
+}
