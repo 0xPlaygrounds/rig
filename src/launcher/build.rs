@@ -134,30 +134,27 @@ pub fn check(home: &Home) -> Result<()> {
 }
 
 /// cargo in the agent project, with stdout discarded and stderr piped, for
-/// [`BuildLog::run`] to pass on.
+/// [`BuildLog::run`] to pass on. Without colors, so the log and the first
+/// errors read as plain text.
 fn cargo(home: &Home) -> Command {
     let mut command = Command::new("cargo");
     command
         .current_dir(home.project())
         // The project's own `.cargo/config.toml` names the target directory.
         .env_remove("CARGO_TARGET_DIR")
+        .env("CARGO_TERM_COLOR", "never")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::piped());
     command
 }
 
-/// Keeps cargo's colors and progress bar on a terminal, which cargo no
-/// longer sees through the pipe. A caller's own settings win: `/reload`
-/// sets them for its view.
+/// Keeps cargo's progress bar on a terminal, which cargo no longer sees
+/// through the pipe. A caller's own settings win: `/reload` sets them for
+/// its view.
 fn show_progress(command: &mut Command) {
-    if !std::io::stderr().is_terminal() {
-        return;
-    }
-    if std::env::var_os("CARGO_TERM_COLOR").is_none() {
-        command.env("CARGO_TERM_COLOR", "always");
-    }
-    if std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()
+    if std::io::stderr().is_terminal()
+        && std::env::var_os("CARGO_TERM_PROGRESS_WHEN").is_none()
         && let Some(width) = terminal_width()
     {
         command
@@ -189,7 +186,7 @@ fn terminal_width() -> Option<u16> {
 }
 
 /// [`Home::build_log`] while a build runs: every line it shows, without
-/// cargo's progress bar and colors.
+/// cargo's progress bar.
 struct BuildLog {
     path: PathBuf,
     /// `None` when the file could not be written; the build goes on.
@@ -269,7 +266,7 @@ impl BuildLog {
     }
 
     fn record_segment(&mut self, segment: &[u8]) {
-        let line = without_ansi(&String::from_utf8_lossy(segment));
+        let line = String::from_utf8_lossy(segment);
         let line = line.trim_end();
         if line.trim().is_empty() || line.trim_start().starts_with("Building [") {
             return;
@@ -290,28 +287,6 @@ impl BuildLog {
             log: self.path,
         }
     }
-}
-
-/// `text` without its ANSI escape sequences.
-fn without_ansi(text: &str) -> String {
-    let mut plain = String::with_capacity(text.len());
-    let mut chars = text.chars();
-    while let Some(c) = chars.next() {
-        if c != '\x1b' {
-            plain.push(c);
-            continue;
-        }
-        // `ESC [ … final`, where the final byte is in `@`..=`~`; any other
-        // escape is two characters.
-        if chars.next() == Some('[') {
-            for c in chars.by_ref() {
-                if ('@'..='~').contains(&c) {
-                    break;
-                }
-            }
-        }
-    }
-    plain
 }
 
 /// Copies the built binary to `staged`, keeping its modification time so
