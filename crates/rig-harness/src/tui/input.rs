@@ -17,7 +17,7 @@ use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::panel::TuiScreen;
 use super::view::{Overlay, Picker, TuiView};
-use crate::front::send_input;
+use crate::front::{send_input, send_message};
 use crate::host::reload::{CancelReload, ReloadStatus};
 use crate::host::session::SessionPaths;
 use rig_ecs::agent::{ActiveTurn, Interrupt};
@@ -91,7 +91,7 @@ pub(crate) fn read_input(
     mut view: ResMut<TuiView>,
     agents: Query<Has<ActiveTurn>>,
     reload: Option<Res<ReloadStatus>>,
-    slash: Query<&SlashCommand>,
+    slash: Query<(&Name, &SlashCommand)>,
     mut index: ResMut<FileIndex>,
     clipboard: Res<Clipboard>,
     paths: Option<Res<SessionPaths>>,
@@ -274,7 +274,7 @@ fn input_key(
 
 /// Sends the input to the focused agent: a slash command, or a message
 /// that starts a turn, or steers the running one, or is queued for after
-/// it with `queue`.
+/// it with `queue`. A refused command sent again unchanged is a message.
 fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     let Some(entity) = view.agent else {
         return;
@@ -290,7 +290,11 @@ fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     } else {
         DeliveryMode::Steer
     };
-    send_input(commands, entity, text, mode);
+    if view.refused.take().as_ref() == Some(&text) {
+        send_message(commands, entity, text, mode);
+    } else {
+        send_input(commands, entity, text, mode);
+    }
 }
 
 /// Puts the selected completion in place of the token being completed.
@@ -342,3 +346,6 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
     }
     false
 }
+
+#[cfg(test)]
+mod tests;

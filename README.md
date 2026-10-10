@@ -281,7 +281,7 @@ running one; reports that arrive together go to the model in one step, and a
 report that only points at another (answered together with it) starts no turn
 of its own. Nothing waits for them, so you can keep talking to the main
 agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
-subagents. `/agents` lists every agent with its model, state and cost, and
+subagents. `/agents` lists every agent with its model and state, and
 shows the one picked: its transcript, and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
 with `peers` can also send each other requests with `message`, answered the
@@ -292,9 +292,10 @@ work as their parent.
 
 Without the terminal view, `rig -p "fix the failing test"` answers one prompt
 and exits: the answer goes to stdout, failures to stderr, and the exit code is
-0 when the turn ended with an answer. Text piped in follows the prompt
-(`git diff | rig -p "review this"`), `-m vendor/model` picks the model (else
-the session's, else the first one with a key), and `-r <id>` resumes a given
+0 when the turn ended with an answer, 2 for a refused slash command. Text piped
+in follows the prompt (`git diff | rig -p "review this"`), `-m vendor/model`
+picks the model (else the session's, else the first one with a key; in the
+terminal view too), and `-r <id>` resumes a given
 session instead of starting a new one. A headless run never becomes the
 session its directory resumes.
 
@@ -310,7 +311,9 @@ Enter starts a new line, Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
 keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
-Tab or Enter takes the selected one. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
+Tab or Enter takes the selected one. A command that is unknown or refused, such
+as one with arguments it does not take, comes back in the input with the
+reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
 `app.add_tool_renderer` (`rig_harness::tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
@@ -339,7 +342,7 @@ view, so any of them can be removed or replaced:
 
 ```toml
 [[plugin]]
-plugin = "rig_harness::plugins::tools::BuiltinToolsPlugin"
+plugin = "rig_harness::plugins::tools::ReadTool"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"

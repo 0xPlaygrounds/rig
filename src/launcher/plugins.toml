@@ -9,6 +9,10 @@
 [[plugin]]
 plugin = "rig_harness::plugins::project_context::ProjectContextPlugin"
 
+# /model, /effort and the model picker.
+[[plugin]]
+plugin = "rig_harness::plugins::models::ModelsPlugin"
+
 # /login and /logout for the ChatGPT plan's models.
 [[plugin]]
 plugin = "rig_harness::plugins::login_chatgpt::ChatgptLoginPlugin"
@@ -37,11 +41,27 @@ plugin = "rig_harness::plugins::activity::ActivityPlugin"
 [[plugin]]
 plugin = "rig_harness::plugins::effect_log::EffectLogPlugin"
 
-# The read, edit, write, shell and search tools.
+# The tools: read, edit, write, search, shell, and reload, which the agent
+# uses to rebuild itself.
 [[plugin]]
-plugin = "rig_harness::plugins::tools::BuiltinToolsPlugin"
+plugin = "rig_harness::plugins::tools::ReadTool"
 
-# /model, /effort, /retry, /agents, /help and /quit.
+[[plugin]]
+plugin = "rig_harness::plugins::tools::EditTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::WriteTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::SearchTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::ShellTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::reload_tool::ReloadTool"
+
+# /help, /retry, /agents and /quit.
 [[plugin]]
 plugin = "rig_harness::plugins::basics::BasicCommandsPlugin"
 

@@ -1,35 +1,79 @@
-//! The built-in tools of [`rig_tools`]: read, edit, write, shell and search.
+//! The built-in tools of [`rig_tools`], one plugin each, with their rules
+//! on when to pick them: `read` and `search` run beside each other, `edit`,
+//! `write` and `shell` alone.
 
 use bevy_app::prelude::*;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 
 use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
 
-/// Registers the built-in tools, each with its rules on when to pick it,
-/// with [`AppToolsExt::add_tool_with`]: `read` and `search` run beside each
-/// other, `edit`, `write` and `shell` alone.
-#[derive(Default)]
-pub struct BuiltinToolsPlugin;
+/// Options for a tool that runs alone.
+fn alone(rules: &'static [&'static str]) -> ToolOptions<'static> {
+    ToolOptions {
+        rules,
+        ..ToolOptions::default()
+    }
+}
 
-impl Plugin for BuiltinToolsPlugin {
+/// Options for a tool that only reads, so it runs beside the others that do.
+fn read_only(rules: &'static [&'static str]) -> ToolOptions<'static> {
+    ToolOptions {
+        rules,
+        footprint: Footprint::ReadOnly,
+    }
+}
+
+/// The `read` tool.
+#[derive(Default)]
+pub struct ReadTool;
+
+impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        let alone = |rules| ToolOptions {
-            rules,
-            ..ToolOptions::default()
-        };
-        let read_only = |rules| ToolOptions {
-            rules,
-            footprint: Footprint::ReadOnly,
-        };
-        // A command, such as a nested agent run while working on rig-harness
-        // itself, must not act as this agent.
+        app.add_tool_with(Read, read_only(Read::RULES));
+    }
+}
+
+/// The `search` tool.
+#[derive(Default)]
+pub struct SearchTool;
+
+impl Plugin for SearchTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_with(Search, read_only(Search::RULES));
+    }
+}
+
+/// The `edit` tool.
+#[derive(Default)]
+pub struct EditTool;
+
+impl Plugin for EditTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_with(Edit, alone(Edit::RULES));
+    }
+}
+
+/// The `write` tool.
+#[derive(Default)]
+pub struct WriteTool;
+
+impl Plugin for WriteTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_with(Write, alone(Write::RULES));
+    }
+}
+
+/// The `shell` tool.
+#[derive(Default)]
+pub struct ShellTool;
+
+impl Plugin for ShellTool {
+    fn build(&self, app: &mut App) {
         let shell = Shell {
+            // A command, such as a nested agent run while working on
+            // rig-harness itself, must not act as this agent.
             unset_env: &rig::harness_protocol::env::AGENT_ONLY,
         };
-        app.add_tool_with(Read, read_only(Read::RULES))
-            .add_tool_with(Edit, alone(Edit::RULES))
-            .add_tool_with(Write, alone(Write::RULES))
-            .add_tool_with(shell, alone(Shell::RULES))
-            .add_tool_with(Search, read_only(Search::RULES));
+        app.add_tool_with(shell, alone(Shell::RULES));
     }
 }

@@ -231,14 +231,17 @@ impl Inbox {
 #[derive(Component, Debug)]
 pub(crate) struct Starting;
 
-/// Messages the user typed that the agent's turn ended without sending,
-/// joined in the order they were typed. A view puts them back in its input.
+/// Text the user typed that was not sent: the messages the agent's turn
+/// ended without sending, joined in the order they were typed, or a
+/// refused slash command, with `why`. A view puts it back in its input.
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
     /// The agent.
     pub agent: Entity,
-    /// The messages.
+    /// The text.
     pub text: String,
+    /// Why a command was refused.
+    pub why: Option<String>,
 }
 
 /// Starts a turn of an idle agent with the message, or keeps it in a busy
@@ -342,6 +345,7 @@ pub(crate) fn recall_on_turn_end(
         recalled.write(Recalled {
             agent,
             text: typed.join("\n\n"),
+            why: None,
         });
     }
 }

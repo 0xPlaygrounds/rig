@@ -5,10 +5,10 @@
 //! progress. Quitting during the build kills it with cargo and rustc.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
-//! turn runs, and `/reload cancel` drops it. The
-//! model can ask for the same with the `reload` tool, offered when the
-//! launcher started the agent, so it applies its own plugin changes; the
-//! user sees a notice and can cancel. A turn started while the build runs
+//! turn runs, and `/reload cancel` drops it. A plugin queues one with
+//! [`ReloadStatus::ask`], as the `reload` tool
+//! ([`ReloadTool`](crate::plugins::reload_tool::ReloadTool)) does for the
+//! model. A turn started while the build runs
 //! delays the restart until it ends. A build that fails leaves this build
 //! running, and the launcher rolls back a new build that fails to start.
 //! Views show where it is from the [`ReloadStatus`] resource.
@@ -29,26 +29,12 @@ use crossbeam_channel::{Receiver, Sender, TryRecvError};
 
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, first_errors};
 use rig_tools::process::{detach, kill_group};
-use schemars::JsonSchema;
-use serde::Deserialize;
 
 use super::launcher;
-use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::{Notice, TurnOf};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
 use rig_ecs::turn::PollCalls;
-
-/// The tool that asks for a reload once the turn ends.
-pub const RELOAD_TOOL: &str = "reload";
-
-const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.toml and \
-    restart on the new build, to apply your own plugin changes. Nothing happens mid-turn: the \
-    build starts once this turn and every other running turn have ended, so finish your \
-    edits first and end your turn after this call. The user sees a notice and can cancel it. \
-    After the restart the session, with this conversation, carries on. If the build fails, \
-    this build keeps running and its first errors arrive in your conversation as a note.";
 
 /// Lines of a failed build shown, from its first error.
 const ERROR_LINES: usize = 60;
@@ -62,20 +48,6 @@ pub struct ReloadPlugin;
 
 impl Plugin for ReloadPlugin {
     fn build(&self, app: &mut App) {
-        // Only an agent the launcher started can rebuild itself, so only
-        // its model is offered the tool.
-        if launcher::executable().is_some() {
-            app.add_open_tool(
-                RELOAD_TOOL,
-                RELOAD_DESCRIPTION,
-                ToolOptions {
-                    rules: &[],
-                    // Never run again after the restart it causes.
-                    footprint: Footprint::Independent,
-                },
-                on_reload_tool,
-            );
-        }
         app.add_command(
             "reload",
             "Rebuild with the plugins in plugins.toml and restart once no turn runs; \
@@ -251,22 +223,27 @@ fn cargo_progress(line: &str) -> Option<(u32, u32)> {
     Some((done.parse().ok()?, total.parse().ok()?))
 }
 
-/// Queues a reload for `agent`: its build starts once no turn runs.
-fn ask_reload(agent: Entity, status: &mut ReloadStatus) -> Result<(), String> {
-    match status {
-        ReloadStatus::Idle | ReloadStatus::Failed { .. } if launcher::executable().is_some() => {
-            *status = ReloadStatus::Queued { agent };
-            Ok(())
-        }
-        ReloadStatus::Idle | ReloadStatus::Failed { .. } => {
-            Err("/reload needs the rig launcher: start the agent with `rig`.".to_owned())
-        }
-        ReloadStatus::Queued { .. } => Err(
-            "A reload is already queued for when no turn runs; /reload cancel cancels it."
-                .to_owned(),
-        ),
-        ReloadStatus::Building { .. } | ReloadStatus::Ready => {
-            Err("A rebuild is already running; Esc cancels it.".to_owned())
+impl ReloadStatus {
+    /// Queues a reload for `agent`: its build starts once no turn runs.
+    /// Refused without the launcher, or with a reload queued or running.
+    pub fn ask(&mut self, agent: Entity) -> Result<(), String> {
+        match self {
+            ReloadStatus::Idle | ReloadStatus::Failed { .. }
+                if launcher::executable().is_some() =>
+            {
+                *self = ReloadStatus::Queued { agent };
+                Ok(())
+            }
+            ReloadStatus::Idle | ReloadStatus::Failed { .. } => {
+                Err("/reload needs the rig launcher: start the agent with `rig`.".to_owned())
+            }
+            ReloadStatus::Queued { .. } => Err(
+                "A reload is already queued for when no turn runs; /reload cancel cancels it."
+                    .to_owned(),
+            ),
+            ReloadStatus::Building { .. } | ReloadStatus::Ready => {
+                Err("A rebuild is already running; Esc cancels it.".to_owned())
+            }
         }
     }
 }
@@ -282,7 +259,7 @@ fn reload(
         commands.trigger(CancelReload);
         return;
     }
-    let notice = match ask_reload(args.agent, &mut status) {
+    let notice = match status.ask(args.agent) {
         // The build starts this frame, with its own notice.
         Ok(()) if turns.is_empty() => return,
         Ok(()) => "A turn is running: the agent rebuilds and restarts once no turn runs. \
@@ -291,57 +268,6 @@ fn reload(
         Err(why) => why,
     };
     notices.write(Notice::info(None, notice));
-}
-
-/// The arguments of a `reload` call.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ReloadArgs {
-    /// What the reload applies, in a few words, shown to the user.
-    reason: Option<String>,
-}
-
-/// The `reload` tool: asks for a reload once no turn runs, with a notice
-/// naming the agent and its reason, and answers whether it is queued.
-fn on_reload_tool(
-    called: On<ToolCalled<ReloadArgs>>,
-    mut status: ResMut<ReloadStatus>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let reason = called
-        .args
-        .reason
-        .as_deref()
-        .map(str::trim)
-        .filter(|reason| !reason.is_empty())
-        .map(|reason| format!(" ({reason})"))
-        .unwrap_or_default();
-    let output = match ask_reload(called.agent, &mut status) {
-        Ok(()) => {
-            notices.write(Notice::info(
-                None,
-                format!(
-                    "The model of agent {} asked to reload{reason}: the agent rebuilds and \
-                     restarts once no turn runs. /reload cancel cancels it.",
-                    called.caller.short()
-                ),
-            ));
-            ToolResult::success(
-                "Reload queued: the build starts once your turn and every other running \
-                 turn have ended. End your turn now with a short summary for the user; the \
-                 conversation carries on after the restart. A failed build keeps this build \
-                 running and its errors arrive as a note."
-                    .into(),
-            )
-        }
-        Err(why) => ToolResult::failed(ToolExecutionError::other(format!(
-            "{why} Nothing was queued."
-        ))),
-    };
-    commands
-        .entity(called.call)
-        .insert_if_new(ToolOutput(output));
 }
 
 /// Starts the queued reload's build once no turn runs.

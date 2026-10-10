@@ -6,7 +6,6 @@
 mod scaffold;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::commands::SlashCommand;
 
 #[test]
 fn the_scaffold_plugin_is_loaded_once_and_provides_its_command() {
@@ -22,16 +21,16 @@ fn the_scaffold_plugin_is_loaded_once_and_provides_its_command() {
         .map(|(plugin, source)| (plugin, source.krate.clone()))
         .collect();
     let commands: Vec<(Entity, String)> = world
-        .query::<(&ProvidedBy, &SlashCommand)>()
+        .query::<(&ProvidedBy, &Name)>()
         .iter(world)
-        .map(|(by, command)| (by.0, command.name.clone()))
+        .map(|(by, name)| (by.0, name.as_str().to_owned()))
         .collect();
     let plugin = plugins.first().map(|(plugin, _)| *plugin);
     assert_eq!(plugins.len(), 1);
     assert_eq!(
         commands,
         plugin
-            .map(|plugin| (plugin, "__name__".to_owned()))
+            .map(|plugin| (plugin, "/__name__".to_owned()))
             .into_iter()
             .collect::<Vec<_>>()
     );

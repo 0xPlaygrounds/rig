@@ -165,7 +165,7 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str)> {
 pub(crate) fn update(
     view: &mut TuiView,
     index: &mut FileIndex,
-    commands: &Query<&SlashCommand>,
+    commands: &Query<(&Name, &SlashCommand)>,
     wake: &Wake,
 ) {
     let found = token(view.editor.text(), view.editor.cursor());
@@ -193,15 +193,18 @@ pub(crate) fn update(
     }
     let items = match kind {
         Kind::Command => {
-            let mut ranked: Vec<(usize, &SlashCommand)> = commands
+            let mut ranked: Vec<(usize, &str, &SlashCommand)> = commands
                 .iter()
-                .filter_map(|command| Some((match_at(query, &command.name)?, command)))
+                .filter_map(|(name, command)| {
+                    let name = name.as_str().trim_start_matches('/');
+                    Some((match_at(query, name)?, name, command))
+                })
                 .collect();
-            ranked.sort_by(|a, b| (a.0, &a.1.name).cmp(&(b.0, &b.1.name)));
+            ranked.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
             ranked
                 .into_iter()
-                .map(|(_, command)| Item {
-                    text: command.name.clone(),
+                .map(|(_, name, command)| Item {
+                    text: name.to_owned(),
                     detail: command.help.clone(),
                 })
                 .collect()
@@ -250,7 +253,7 @@ fn path_items(paths: &[String], query: &str) -> Vec<Item> {
 pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
-    commands: Query<&SlashCommand>,
+    commands: Query<(&Name, &SlashCommand)>,
     wake: Res<Wake>,
 ) {
     if index.walking.is_none() || !index.receive() {

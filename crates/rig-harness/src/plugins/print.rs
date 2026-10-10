@@ -1,7 +1,8 @@
 //! `--print`: one prompt to the primary agent, then exit once no agent
 //! works, so the subagents it started have answered. The answer's text
 //! goes to stdout and failures to stderr; the exit code
-//! is 0 when the turn ended with an answer, 1 otherwise. Text piped in on
+//! is 0 when the turn ended with an answer, 2 for a refused slash command
+//! (unknown, or arguments it does not take), 1 otherwise. Text piped in on
 //! stdin follows the prompt, so `git diff | rig -p "review this"` works.
 //!
 //! The agent uses `--model`, else the model its restored session chose,
@@ -19,7 +20,7 @@ use bevy_ecs::prelude::*;
 use crate::front::{Busy, Front, RunMode, send_input};
 use rig_core::transcript::final_answer;
 use rig_ecs::agent::{ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
-use rig_ecs::inbox::DeliveryMode;
+use rig_ecs::inbox::{DeliveryMode, Recalled};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
 
 /// Sends the prompt and exits when the turn ends.
@@ -44,6 +45,7 @@ impl Plugin for PrintPlugin {
                 prompt,
                 step: Step::Start,
                 failed: false,
+                refused: false,
             })
             .add_systems(Update, (print_notices, drive).chain());
     }
@@ -56,6 +58,8 @@ struct PrintRun {
     step: Step,
     /// Whether an error notice about the agent came while it ran.
     failed: bool,
+    /// Whether the prompt was a refused slash command.
+    refused: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -177,10 +181,10 @@ fn drive(
                 println!("{}", answer.trim_end());
             }
             run.step = Step::Done;
-            exits.write(if ok {
-                AppExit::Success
-            } else {
-                AppExit::from_code(1)
+            exits.write(match (run.refused, ok) {
+                (true, _) => AppExit::from_code(2),
+                (false, true) => AppExit::Success,
+                (false, false) => AppExit::from_code(1),
             });
         }
         Step::Done => {}
@@ -188,8 +192,16 @@ fn drive(
 }
 
 /// Notes failures and writes them to stderr, with every notice of a
-/// `/command` prompt.
-fn print_notices(mut run: ResMut<PrintRun>, mut notices: MessageReader<Notice>) {
+/// `/command` prompt and why it was refused.
+fn print_notices(
+    mut run: ResMut<PrintRun>,
+    mut notices: MessageReader<Notice>,
+    mut recalled: MessageReader<Recalled>,
+) {
+    for why in recalled.read().filter_map(|recalled| recalled.why.as_ref()) {
+        eprintln!("rig: {why}");
+        run.refused = true;
+    }
     // A command's answers are its notices.
     let command = run.prompt.trim_start().starts_with('/');
     for notice in notices.read() {

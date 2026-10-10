@@ -70,10 +70,9 @@ pub mod prelude {
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use bevy_log::{info, warn};
 use bevy_time::{Time, TimePlugin, Virtual};
 
-use agent::{Agent, AgentId, Notice, NoticeLevel};
+use agent::{Agent, Notice};
 use calls::{Done, Wake, poll_calls, settle};
 use journal::{SessionLog, SessionStore};
 use rig_core::tool::ToolResult;
@@ -128,7 +127,6 @@ impl Plugin for AgentPlugin {
             .add_systems(
                 Last,
                 (
-                    log_agents,
                     inbox::start_turns.before(settle).before(WriteJournal),
                     settle,
                     turn::stop_turns_on_exit
@@ -156,20 +154,5 @@ impl Plugin for AgentPlugin {
 fn spawn_first_agent(agents: Query<(), With<Agent>>, mut commands: Commands) {
     if agents.is_empty() {
         commands.spawn((Name::new("agent"), Agent));
-    }
-}
-
-/// Logs each notice, at its level, with the stable id of the agent it is
-/// about.
-fn log_agents(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
-    for notice in notices.read() {
-        let agent = notice
-            .agent
-            .and_then(|agent| agents.get(agent).ok())
-            .map_or("-", |id| id.0.as_str());
-        match notice.level {
-            NoticeLevel::Info => info!(agent, "notice: {}", notice.text),
-            NoticeLevel::Error => warn!(agent, "notice: {}", notice.text),
-        }
     }
 }

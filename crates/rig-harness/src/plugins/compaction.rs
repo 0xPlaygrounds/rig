@@ -31,10 +31,9 @@ impl Plugin for CompactionPlugin {
             ..CompactionPolicy::default()
         }))
         .register_required_components::<TurnOf, Compactions>()
-        .add_command(
+        .add_command_event::<Compact>(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
-            compact,
         )
         .add_observer(on_compact)
         .add_observer(compact_near_the_window)
@@ -108,13 +107,6 @@ pub struct Summarizing {
     pub upto: usize,
     /// The state the summary goes into.
     pub state: SummaryState,
-}
-
-fn compact(In(args): In<CommandArgs>, mut commands: Commands) {
-    commands.trigger(Compact {
-        entity: args.agent,
-        focus: args.args,
-    });
 }
 
 /// What compacting an agent reads: its messages, what requests already

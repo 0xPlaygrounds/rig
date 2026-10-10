@@ -21,6 +21,8 @@ impl Plugin for ScaffoldPlugin {
             command,
         );
         // The other extension points, each in the plugin guide:
+        // - an event command:   app.add_command_event::<MyEvent>("name", "help"), its fields
+        //                       parsed from the arguments
         // - a tool:             app.add_tool(MyTool), a `PortableTool`
         // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
@@ -51,7 +53,8 @@ fn command(
         ),
         None => "No answer yet.".to_owned(),
     };
-    // `Notice::error` reports a failure. To put a message in the agent's
-    // conversation instead, trigger a `Deliver` (see the plugin guide).
+    // A `Notice::error` refuses the command: the line goes back in the
+    // input with it. To put a message in the agent's conversation instead,
+    // trigger a `Deliver` (see the plugin guide).
     notices.write(Notice::info(args.agent, text));
 }

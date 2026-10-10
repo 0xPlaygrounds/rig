@@ -320,7 +320,7 @@ pub(crate) fn render(
     (partials, active): (Query<&Partial>, Query<&ActiveTurn>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     everyone: Everyone,
-    slash: Query<&SlashCommand>,
+    slash: Query<&Name, With<SlashCommand>>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
     (reload, title): (Option<Res<ReloadStatus>>, Option<Res<SessionTitle>>),
@@ -357,8 +357,8 @@ pub(crate) fn render(
         .collect();
     // /model and /agents come from plugins, so point at them only when
     // loaded.
-    let loaded = |name: &str| slash.iter().any(|command| command.name == name);
-    let agents_hint = if loaded("agents") { " (/agents)" } else { "" };
+    let loaded = |name: &str| slash.iter().any(|command| command.as_str() == name);
+    let agents_hint = if loaded("/agents") { " (/agents)" } else { "" };
     // The frame is written in one synchronized update with the cursor
     // hidden, so the cursor never shows travelling across the screen; it
     // is shown at the input once the frame is out, when the input has the
@@ -408,7 +408,7 @@ pub(crate) fn render(
             left.extend(spawned_title(view.agent, &everyone));
             left.extend(status_pieces(
                 shown.map(|(_, _, model, effort, activity, ..)| (model, effort, &activity.status)),
-                loaded("model"),
+                loaded("/model"),
             ));
             agent_pieces(&mut left, view.agent, &everyone, agents_hint);
             if let Some((_, Some(spent))) = turn

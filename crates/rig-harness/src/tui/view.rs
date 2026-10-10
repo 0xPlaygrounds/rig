@@ -33,6 +33,9 @@ pub(crate) struct TuiView {
     pub(crate) overlay: Option<Overlay>,
     /// Recent notices, oldest first.
     pub(crate) notices: Vec<ShownNotice>,
+    /// A refused command put back in the input: sent again unchanged, it
+    /// goes to the model as a message.
+    pub(crate) refused: Option<String>,
 }
 
 /// What is shown over the transcript, one at a time.
@@ -191,12 +194,27 @@ pub(crate) fn collect_notices(
     view.notices.drain(..excess);
 }
 
-/// Puts the messages a turn did not send back in the input, before what
-/// is typed there now.
-pub(crate) fn recall_messages(mut recalled: MessageReader<Recalled>, mut view: ResMut<TuiView>) {
+/// Puts what was typed and not sent back in the input, before what is
+/// typed there now, and says why a refused command was.
+pub(crate) fn recall_messages(
+    mut recalled: MessageReader<Recalled>,
+    conversations: Query<&Conversation>,
+    mut view: ResMut<TuiView>,
+) {
     for recalled in recalled.read() {
         if view.agent != Some(recalled.agent) {
             continue;
+        }
+        if let Some(why) = &recalled.why {
+            view.notices.push(ShownNotice {
+                agent: Some(recalled.agent),
+                after: conversations
+                    .get(recalled.agent)
+                    .map_or(0, |conversation| conversation.messages().len()),
+                level: NoticeLevel::Error,
+                text: format!("{why} Enter sends it to the model as it is."),
+            });
+            view.refused = Some(recalled.text.clone());
         }
         let typed = view.editor.take();
         let text = if typed.trim().is_empty() {

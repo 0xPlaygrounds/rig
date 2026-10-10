@@ -127,16 +127,20 @@ pub struct PickRequest {
 }
 
 /// Sends what the user typed to `agent`: a slash command when it starts
-/// with `/`, which runs now, otherwise the user's message with the files
-/// it names as `@path`, delivered as `mode` says.
+/// with `/`, which runs now, otherwise a message ([`send_message`]).
 pub fn send_input(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
-    if let Some(line) = text.trim_start().strip_prefix('/') {
-        commands.trigger(RunCommand {
+    match text.trim_start().strip_prefix('/') {
+        Some(line) => commands.trigger(RunCommand {
             entity: agent,
             line: line.to_owned(),
-        });
-        return;
+        }),
+        None => send_message(commands, agent, text, mode),
     }
+}
+
+/// Sends `text` to `agent` as the user's message, with the files it names
+/// as `@path`, delivered as `mode` says.
+pub fn send_message(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
     let (attachments, notes) = attachments(&text);
     for note in notes {
         commands.write_message(Notice::info(agent, note));

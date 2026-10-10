@@ -222,6 +222,14 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
 }
 ```
 
+An error notice about the agent while the command runs refuses it: the
+line goes back in the input with the error, and Enter sends it to the
+model as it is. A command that is one event is added as that event,
+`app.add_command_event::<Compact>("compact", "help")`: the arguments are
+parsed into its reflected fields (its `Entity` is the agent, a unit enum
+takes a word naming a variant, a `String` the rest of the line), and
+arguments it cannot take are refused the same way.
+
 # Reading what agents do and say
 
 An ordinary system reads the agents' components and the `MessageFeed`;

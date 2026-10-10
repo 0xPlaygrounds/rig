@@ -47,7 +47,8 @@ reading:
 `rig_core::tool::PortableTool`, blocking work inside `blocking(|| ..)`; `add_open_tool` for a \
 tool answered later by an observer;
   - slash commands: `app.add_command(name, help, system)`, the system taking `In<CommandArgs>` \
-(`agent`, `args`), replying with a `Notice::info(agent, text)`;
+(`agent`, `args`), replying with a `Notice::info(agent, text)`; a `Notice::error` refuses the \
+line; `app.add_command_event::<E>(name, help)` parses the line into an `EntityEvent`'s fields;
   - how a tool's calls look in the terminal: `app.add_tool_renderer(name, |call| ..)`;
   - terminal panels: spawn `TuiPanel::new(Placement::Right(Constraint::Length(30)))` \
 (`Top`, `Bottom`, `Left`, `Right` or `Over`) and draw into its `PanelCanvas` from a system in \

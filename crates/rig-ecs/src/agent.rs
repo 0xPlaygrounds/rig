@@ -445,7 +445,7 @@ pub enum NoticeLevel {
     Error,
 }
 
-/// A line for the user, shown by views and logged.
+/// A line for the user, shown by views.
 #[derive(Message, Clone, Debug)]
 pub struct Notice {
     /// The agent it is about, or `None` when it is about the whole app.

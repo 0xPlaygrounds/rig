@@ -33,7 +33,7 @@
 //!     let mut app = App::new();
 //!     app.set_error_handler(rig_harness::error::warn)
 //!         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-//!     load::<plugins::tools::BuiltinToolsPlugin>(&mut app, "rig-harness", "");
+//!     load::<plugins::tools::ReadTool>(&mut app, "rig-harness", "");
 //!     load::<plugins::print::PrintPlugin>(&mut app, "rig-harness", "");
 //!     app.run()
 //! }
