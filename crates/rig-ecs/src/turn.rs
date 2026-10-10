@@ -218,7 +218,7 @@ pub(crate) fn on_retry(
         ));
         return;
     }
-    let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+    let turn = commands.spawn(TurnOf(agent)).id();
     commands.trigger(CallModel { entity: turn });
 }
 

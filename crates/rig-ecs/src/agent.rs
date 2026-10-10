@@ -354,11 +354,12 @@ impl ToolAccess {
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
 /// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// counts its retries in a [`Recovery`].
+/// counts its retries in a [`Recovery`]. Its `Name` is `turn` unless it
+/// is spawned with another.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(Recovery)]
+#[require(Recovery, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
 /// On a turn about to be despawned: how it ended. A turn despawned without

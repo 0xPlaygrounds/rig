@@ -310,7 +310,7 @@ pub(crate) fn on_deliver(
         commit.halt(agent, conversation, Halt::Kept);
         return;
     }
-    commands.spawn((Name::new("turn"), TurnOf(agent), Starting));
+    commands.spawn((TurnOf(agent), Starting));
     // The frame that starts it may have run its last systems already.
     wake.wake();
 }

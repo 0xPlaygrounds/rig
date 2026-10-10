@@ -88,10 +88,7 @@ fn effort(
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
-        notices.write(Notice::info(
-            args.agent,
-            "Pick a model with /model first.".to_owned(),
-        ));
+        notices.write(Notice::info(args.agent, "Pick a model with /model first."));
         return;
     };
     if args.args.is_empty() {

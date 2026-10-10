@@ -411,10 +411,10 @@ fn settle(
         return;
     }
     if !reruns.is_empty() {
-        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        let turn = commands.spawn(TurnOf(agent)).id();
         starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
     } else if conversation.awaits_model() {
-        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        let turn = commands.spawn(TurnOf(agent)).id();
         commands.trigger(CallModel { entity: turn });
     }
 }
