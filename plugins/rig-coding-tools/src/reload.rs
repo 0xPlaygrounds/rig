@@ -93,7 +93,7 @@ fn on_reload_tool(
 fn describe(
     plugins: Query<(&Name, &PluginSource)>,
     slash_commands: Query<&Name, With<SlashCommand>>,
-    tools: Query<&Name, With<ToolDef>>,
+    tools: Query<&ToolDef>,
     mut commands: Commands,
 ) {
     let list = |mut names: Vec<String>| {
@@ -110,7 +110,7 @@ fn describe(
             .collect(),
     );
     let slash_commands = list(slash_commands.iter().map(Name::to_string).collect());
-    let tools = list(tools.iter().map(|name| name.replace("tool:", "")).collect());
+    let tools = list(tools.iter().map(|tool| tool.0.name.to_string()).collect());
     let mut text = format!(
         "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
          Slash commands, which the user types: {slash_commands}. Tools: {tools}."
@@ -136,3 +136,6 @@ fn describe(
         PromptSection::new(PromptSection::ORDER_PROJECT - 100, "rig_harness", text),
     ));
 }
+
+#[cfg(test)]
+mod tests;
