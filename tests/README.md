@@ -81,7 +81,7 @@ verification.
 ```bash
 cargo nextest run --locked --profile local -p rig-core --lib <test-name-filter>
 cargo test --locked -p rig-core --lib <test-name-filter>
-cargo test --locked -p rig --test <provider> <test-name-filter>
+cargo test --locked -p rig --features agent --test <provider> <test-name-filter>
 cargo clippy --locked -p rig-core --all-features --tests -- -D warnings
 ```
 
@@ -90,10 +90,13 @@ patterns, not a mandatory check for every edit. Use the owning package and
 relevant features for other changes. Broader facade test commands:
 
 ```bash
-cargo test -p rig --test core          # provider-agnostic core tests
-cargo test -p rig                      # all default non-ignored root-crate tests
-cargo test -p rig --all-features       # same, with all root crate features
+cargo test -p rig --features agent --test core  # provider-agnostic core tests
+cargo test -p rig --features agent              # every non-ignored root-crate test
+cargo test -p rig --all-features                # same, with all root crate features
 ```
+
+The agent-runtime targets (`core`, `tool_facade_traits` and the provider
+suites) require the `agent` feature; without it Cargo skips them.
 
 ### Fallible test assertions
 

@@ -64,7 +64,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
-- A classic agent runtime enabled by default
+- A classic agent runtime (the `rig` facade's `agent` feature)
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
@@ -83,11 +83,10 @@ Rig separates portable provider/backend contracts from agent orchestration:
   contextual tool contracts, memory and vector-store contracts, and built-in
   provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  the live tool registry, extraction, and the serializable `AgentRun` state machine. It
-  remains enabled by default.
+  the live tool registry, extraction, and the serializable `AgentRun` state machine.
 
-The root `rig` facade re-exports both at their familiar paths, so most code
-depends only on `rig`.
+The root `rig` facade re-exports both at their familiar paths, `rig-agent` with
+its `agent` feature, so most code depends only on `rig`.
 
 Hosts construct HTTP or SDK models with their chosen authentication, transport
 policy and runtime lifetime; the agent runtime executes the resulting
@@ -121,8 +120,8 @@ Use the root `rig` facade when you want feature-gated access to companion crates
 or use `rig-core` directly when you only need the core provider abstractions.
 
 ```bash
-cargo add rig
-# or: cargo add rig-core
+cargo add rig --features agent
+# or, without the agent runtime: cargo add rig-core
 ```
 
 ### Simple example
