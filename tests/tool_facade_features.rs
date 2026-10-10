@@ -41,6 +41,7 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
             &["--no-default-features", "--features", "agent"][..],
         ),
         ("default", &[][..]),
+        ("default+agent", &["--features", "agent"][..]),
         ("all-features", &["--all-features"][..]),
     ] {
         let output = cargo_check(&fixture, &target_dir, args)?;

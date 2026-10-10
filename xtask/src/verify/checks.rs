@@ -145,15 +145,27 @@ pub(super) fn all() -> Vec<Check> {
             "default-check",
             // A dependency's #[cfg(test)] bodies are not compiled by the
             // facade's test targets after moving helpers into this crate.
-            vec![cargo(&[
-                "check",
-                "--locked",
-                "-p",
-                "rig",
-                "-p",
-                "rig-test-support",
-                "--tests",
-            ])],
+            // The second step adds the targets that require `agent`.
+            vec![
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "-p",
+                    "rig-test-support",
+                    "--tests",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "--tests",
+                    "--features",
+                    "agent",
+                ]),
+            ],
         ),
         check(
             "default-tests",
@@ -468,6 +480,19 @@ pub(super) fn all() -> Vec<Check> {
                 "--features",
                 "agent",
                 "--lib",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]));
+        }
+        // The facade's agent runtime is opt-in; check it on the web too.
+        if package == "rig" {
+            steps.push(cargo(&[
+                "check",
+                "--locked",
+                "--package",
+                package,
+                "--features",
+                "agent",
                 "--target",
                 "wasm32-unknown-unknown",
             ]));

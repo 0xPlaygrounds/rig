@@ -899,6 +899,13 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
     }
+    // The root targets that require `agent`, which is not a default feature.
+    assert!(
+        check.steps[1]
+            .args
+            .windows(2)
+            .any(|pair| pair == ["--features", "agent"])
+    );
 }
 
 #[test]

@@ -72,10 +72,11 @@ jobs:
           git fetch --no-tags origin "${{ github.base_ref }}"
           bash .github/scripts/check-frozen-release-docs.sh
 
-  # `cargo check` of the root test targets with default features only: the
-  # sweep below adds `bedrock`, so this is the only default-feature compile
-  # of those targets. Its own job because it shares no artifacts with the
-  # sweep (different feature hash, check mode).
+  # `cargo check` of the root test targets with default features, then with
+  # `agent` for the targets that require it: the sweep below adds `bedrock`,
+  # so this is the only default-feature compile of those targets. Its own job
+  # because it shares no artifacts with the sweep (different feature hash,
+  # check mode).
   check-default:
     name: stable / check default features
     runs-on: ubuntu-latest

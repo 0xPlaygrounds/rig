@@ -56,7 +56,8 @@ const GRAPHS: &[Graph] = &[
         "tokio reqwest rmcp rig-cassette",
         "rig-core rig-agent",
     ),
-    ("rig", "", "rig-cassette", "rig-core rig-agent"),
+    // The agent runtime is opt-in too: `cargo install rig` does not build it.
+    ("rig", "", "rig-agent rig-cassette", "rig-core"),
     (
         "rig",
         "--no-default-features --features cassette",
