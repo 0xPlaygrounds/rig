@@ -166,21 +166,20 @@ fn forward(stderr: ChildStderr, lines: Sender<String>, wake: Wake) {
 impl ReloadStatus {
     /// Queues a reload for `agent`: its build starts once no turn runs.
     /// Refused without the launcher, or with a reload queued or running.
-    pub fn ask(&mut self, agent: Entity) -> Result<(), String> {
+    pub fn ask(&mut self, agent: Entity) -> Result<(), &'static str> {
         match self {
             ReloadStatus::Idle | ReloadStatus::Failed if launcher::executable().is_some() => {
                 *self = ReloadStatus::Queued { agent };
                 Ok(())
             }
             ReloadStatus::Idle | ReloadStatus::Failed => {
-                Err("/reload needs the rig launcher: start the agent with `rig`.".to_owned())
+                Err("/reload needs the rig launcher: start the agent with `rig`.")
             }
-            ReloadStatus::Queued { .. } => Err(
-                "A reload is already queued for when no turn runs; /reload cancel cancels it."
-                    .to_owned(),
-            ),
+            ReloadStatus::Queued { .. } => {
+                Err("A reload is already queued for when no turn runs; /reload cancel cancels it.")
+            }
             ReloadStatus::Building { .. } | ReloadStatus::Ready => {
-                Err("A rebuild is already running; Esc cancels it.".to_owned())
+                Err("A rebuild is already running; Esc cancels it.")
             }
         }
     }
@@ -200,9 +199,10 @@ fn reload(
     let notice = match status.ask(args.agent) {
         // The build starts this frame, with its own notice.
         Ok(()) if turns.is_empty() => return,
-        Ok(()) => "A turn is running: the agent rebuilds and restarts once no turn runs. \
-                   /reload cancel cancels it."
-            .to_owned(),
+        Ok(()) => {
+            "A turn is running: the agent rebuilds and restarts once no turn runs. \
+             /reload cancel cancels it."
+        }
         Err(why) => why,
     };
     notices.write(Notice::info(None, notice));
