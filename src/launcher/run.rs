@@ -127,11 +127,8 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             restore_terminal();
         }
         if !rejected {
-            eprintln!(
-                "The agent stopped ({status}). `rig --resume {session}` resumes the session \
-                 where it stopped. Log: {}",
-                log.display()
-            );
+            let saved = directory.is_saved();
+            eprintln!("{}", stopped(status, &session, saved, &log));
             return Ok(exit_code(status));
         }
         if !home.good().exists() {
@@ -150,6 +147,21 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         eprintln!("{message}");
         notice = Some(message);
     }
+}
+
+/// What the launcher says when the agent of `session` stopped with a
+/// failure: where its log is and, when the session has a conversation, how
+/// to resume it.
+fn stopped(status: ExitStatus, session: &SessionId, saved: bool, log: &Path) -> String {
+    let resume = if saved {
+        format!(" `rig --resume {session}` resumes the session where it stopped.")
+    } else {
+        String::new()
+    };
+    format!(
+        "The agent stopped ({status}).{resume} Log: {}",
+        log.display()
+    )
 }
 
 /// The session the agent asked to run next in `directory`'s switch file,
@@ -346,3 +358,6 @@ fn exit_code(status: ExitStatus) -> ExitCode {
             .unwrap_or(1),
     )
 }
+
+#[cfg(test)]
+mod tests;
