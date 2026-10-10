@@ -162,13 +162,11 @@ fn build(app: &mut App) {
 
 # A slash command
 
-A command that is one event is added as that event: the agent fills its
-`Entity` field and the text after the name its `String` field. An error
-notice about the agent while the command runs refuses it: the line goes
-back in the input with the error, and Enter then sends it to the model as
-it is. A command that needs more is a one-shot system,
-`app.add_command(name, help, system)`, taking `In<CommandArgs>` (`agent`,
-`args`).
+A command is a one-shot system, `app.add_command(name, help, system)`,
+taking `In<CommandArgs>`: the `agent` it was typed for and the `args`
+after its name. An error notice about the agent while the command runs,
+from it or from what it triggers, refuses it: the line goes back in the
+input with the error, and Enter then sends it to the model as it is.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -178,30 +176,21 @@ pub struct RemindPlugin;
 
 impl Plugin for RemindPlugin {
     fn build(&self, app: &mut App) {
-        app.add_command_event::<Remind>("remind", "Remind the agent of something after its turn")
-            .add_observer(remind);
+        app.add_command("remind", "Remind the agent of something after its turn", remind);
     }
 }
 
 /// `/remind <text>`.
-#[derive(EntityEvent, Reflect)]
-struct Remind {
-    /// The agent it was typed for.
-    entity: Entity,
-    /// The text after `/remind`.
-    text: String,
-}
-
-fn remind(remind: On<Remind>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
-    if remind.text.is_empty() {
-        notices.write(Notice::error(remind.entity, "/remind needs a text"));
+fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
+    if args.args.is_empty() {
+        notices.write(Notice::error(args.agent, "/remind needs a text"));
         return;
     }
     // A message in the agent's conversation: `Steer` goes with the running
     // turn's next model call, `Queue` once that turn would end, together
     // with everything else queued; an idle agent starts a turn. A `Note`
     // needs no answer: it goes with the next call and starts no turn.
-    let reminder = Deliver::new(remind.entity, format!("Reminder: {}", remind.text), DeliveryMode::Queue);
+    let reminder = Deliver::new(args.agent, format!("Reminder: {}", args.args), DeliveryMode::Queue);
     commands.trigger(reminder.with_origin(Origin::plugin("remind")));
 }
 ```

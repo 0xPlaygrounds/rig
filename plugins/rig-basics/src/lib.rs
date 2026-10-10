@@ -20,9 +20,10 @@ pub struct BasicCommandsPlugin;
 
 impl Plugin for BasicCommandsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_command_event::<Retry>(
+        app.add_command(
             "retry",
             "Send the conversation again after a failed model call",
+            retry,
         )
         .add_command(
             "agents",
@@ -31,6 +32,16 @@ impl Plugin for BasicCommandsPlugin {
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Quit; the session stays for /resume", quit);
+    }
+}
+
+/// `/retry`: sends the conversation again; it takes no arguments.
+fn retry(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
+    if args.args.is_empty() {
+        commands.trigger(Retry { entity: args.agent });
+    } else {
+        let why = format!("/retry takes no arguments, not `{}`.", args.args);
+        notices.write(Notice::error(args.agent, why));
     }
 }
 

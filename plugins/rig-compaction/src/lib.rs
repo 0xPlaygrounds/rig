@@ -31,9 +31,13 @@ impl Plugin for CompactionPlugin {
             ..CompactionPolicy::default()
         }))
         .register_required_components::<TurnOf, Compactions>()
-        .add_command_event::<Compact>(
+        .add_command(
             "compact",
             "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
+            |In(args): In<CommandArgs>, mut commands: Commands| {
+                let (entity, focus) = (args.agent, args.args);
+                commands.trigger(Compact { entity, focus });
+            },
         )
         .add_observer(on_compact)
         .add_observer(compact_near_the_window)

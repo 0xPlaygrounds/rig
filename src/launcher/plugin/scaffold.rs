@@ -32,8 +32,7 @@ impl Plugin for ScaffoldPlugin {
             command,
         );
         // The other extension points, each in the plugin guide:
-        // - an event command:   app.add_command_event::<MyEvent>("name", "help"), its fields
-        //                       parsed from the arguments
+        // - a command's event:  trigger it from the command, commands.trigger(MyEvent { .. })
         // - a tool:             app.add_tool(MyTool), a `PortableTool`
         // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
