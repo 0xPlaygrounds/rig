@@ -85,8 +85,6 @@ pub(super) fn add(app: &mut App) {
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(&[]), on_wait)
         .add_systems(PostUpdate, send_briefs);
-    #[cfg(feature = "tui")]
-    render::add(app);
 }
 
 /// The arguments of a `task` call.
@@ -507,34 +505,4 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
         return;
     };
     agents.commands.entity(call).insert_if_new(output);
-}
-
-/// How the subagent tools look in the terminal view.
-#[cfg(feature = "tui")]
-mod render {
-    use super::{MESSAGE, TASK, WAIT};
-    use crate::prelude::{App, AppToolRenderersExt, RESULT_LINES};
-    use crate::tui::ToolCallView;
-    use crate::tui::ratatui::style::Stylize;
-    use crate::tui::ratatui::text::Line;
-
-    pub(super) fn add(app: &mut App) {
-        for (tool, about) in [(TASK, "description"), (MESSAGE, "agent"), (WAIT, "agent")] {
-            app.add_tool_renderer(tool, move |view| {
-                let about = view.argument(about).unwrap_or_default();
-                let model = view.argument("model").map(|model| format!("on {model}"));
-                lines(view, format!("{tool} {about}"), model.unwrap_or_default())
-            });
-        }
-    }
-
-    /// The header, then the result, or that the call is still open.
-    fn lines(view: &ToolCallView<'_>, title: String, detail: String) -> Vec<Line<'static>> {
-        let mut lines = vec![view.header(title, detail)];
-        match view.result {
-            Some(_) => lines.extend(view.result_lines(RESULT_LINES)),
-            None => lines.push(Line::from("  ⎿ …").dim()),
-        }
-        lines
-    }
 }

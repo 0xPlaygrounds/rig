@@ -216,13 +216,9 @@ impl Writer {
             Tag::Emphasis => self.styles.push(Style::new().italic()),
             Tag::Strong => self.styles.push(Style::new().bold()),
             Tag::Strikethrough => self.styles.push(Style::new().crossed_out()),
-            Tag::Link { dest_url, .. } => {
+            // An image is drawn as a link to it.
+            Tag::Link { dest_url, .. } | Tag::Image { dest_url, .. } => {
                 self.styles.push(Style::new().underlined().blue());
-                self.links.push(dest_url.to_string());
-            }
-            Tag::Image { dest_url, .. } => {
-                self.styles.push(Style::new().italic());
-                self.line.push(Span::from("[image: ").dim());
                 self.links.push(dest_url.to_string());
             }
             Tag::Table(_) => {
@@ -275,7 +271,7 @@ impl Writer {
             TagEnd::Emphasis | TagEnd::Strong | TagEnd::Strikethrough => {
                 self.styles.pop();
             }
-            TagEnd::Link => {
+            TagEnd::Link | TagEnd::Image => {
                 self.styles.pop();
                 if let Some(url) = self.links.pop() {
                     let shown = self
@@ -286,11 +282,6 @@ impl Writer {
                         self.line.push(Span::from(format!(" ({url})")).dark_gray());
                     }
                 }
-            }
-            TagEnd::Image => {
-                self.styles.pop();
-                let url = self.links.pop().unwrap_or_default();
-                self.line.push(Span::from(format!(" {url}]")).dim());
             }
             TagEnd::Table => {
                 if let Some(table) = self.table.take() {
