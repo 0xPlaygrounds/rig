@@ -250,7 +250,7 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         log: AgentLog {
             next_seq: next_seq.max().unwrap_or(1),
             started: true,
-            ..AgentLog::new(0)
+            ..AgentLog::default()
         },
     };
     // Messages are read from the first one the newest condensed record

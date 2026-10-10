@@ -84,14 +84,9 @@ fn log_changed<T: Component + Reflect + TypePath>(
     }
 }
 
-/// The version of the agent logs' layout, in each header.
-pub(crate) const LOG_VERSION: u32 = 1;
-
 /// The first record of an agent log.
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub(crate) struct Header {
-    /// [`LOG_VERSION`].
-    pub(crate) v: u32,
     /// The agent's id.
     pub(crate) agent: String,
     /// The id of the agent it was [`SpawnedBy`](super::agent::SpawnedBy),
@@ -153,6 +148,7 @@ pub fn now_ms() -> u64 {
 /// One agent's log: where it goes, what is queued for it and the newest
 /// value of each saved component, so an unchanged value is not logged
 /// again.
+#[derive(Default)]
 pub(crate) struct AgentLog {
     /// 0 for an agent the user started, 1 for its subagents, and so on.
     pub(crate) depth: usize,
@@ -163,26 +159,13 @@ pub(crate) struct AgentLog {
     pub(crate) components: HashMap<String, Value>,
 }
 
-impl AgentLog {
-    pub(crate) fn new(depth: usize) -> Self {
-        Self {
-            depth,
-            next_seq: 0,
-            started: false,
-            pending: Vec::new(),
-            components: HashMap::new(),
-        }
-    }
-}
-
+#[derive(Default)]
 struct Book {
     store: Option<Arc<dyn JournalStore>>,
     /// Records are queued only once the session was restored.
     live: bool,
     /// Why the log stopped: every record after a failed write is dropped.
     failure: Option<String>,
-    /// Whether the failure was reported.
-    reported: bool,
     agents: HashMap<String, AgentLog>,
 }
 
@@ -196,9 +179,11 @@ impl Book {
         self.store.as_ref()?;
         if !self.agents.contains_key(agent) {
             let parent_depth = |parent| self.agents.get(parent).map_or(0, |log| log.depth);
-            let mut log = AgentLog::new(parent.map_or(0, |parent| parent_depth(parent) + 1));
+            let mut log = AgentLog {
+                depth: parent.map_or(0, |parent| parent_depth(parent) + 1),
+                ..AgentLog::default()
+            };
             let header = Header {
-                v: LOG_VERSION,
                 agent: agent.to_owned(),
                 parent: parent.map(str::to_owned),
             };
@@ -264,10 +249,7 @@ impl SessionLog {
     pub(crate) fn new(store: Option<Arc<dyn JournalStore>>) -> Self {
         Self(Arc::new(Mutex::new(Book {
             store,
-            live: false,
-            failure: None,
-            reported: false,
-            agents: HashMap::new(),
+            ..Book::default()
         })))
     }
 
@@ -372,15 +354,9 @@ impl SessionLog {
         }
     }
 
-    /// Why the log stopped, the first time it is asked after it did.
-    fn take_failure(&self) -> Option<String> {
-        let mut book = self.book();
-        if book.reported {
-            return None;
-        }
-        let failure = book.failure.clone()?;
-        book.reported = true;
-        Some(failure)
+    /// Why the log stopped, if it did.
+    fn failure(&self) -> Option<String> {
+        self.book().failure.clone()
     }
 }
 
@@ -558,9 +534,10 @@ fn open_child_log(
 }
 
 /// Writes the frame's records. A failure is shown once.
-fn write_logs(log: Res<SessionLog>, mut notices: MessageWriter<Notice>) {
+fn write_logs(log: Res<SessionLog>, mut reported: Local<bool>, mut notices: MessageWriter<Notice>) {
     log.flush();
-    if let Some(failure) = log.take_failure() {
+    if !*reported && let Some(failure) = log.failure() {
+        *reported = true;
         error!("the session log stopped: {failure}");
         notices.write(Notice::error(
             None,
