@@ -249,6 +249,9 @@ rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-featu
 anyhow = "1"
 arrow-array = "58"
 assert_fs = "1"
+# 2.3: `force_send`, which Bevy Remote answers an in-process request with
+# (`BrpMessage::sender`).
+async-channel = "2.3"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }

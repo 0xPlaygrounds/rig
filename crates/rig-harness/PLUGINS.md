@@ -65,7 +65,12 @@ ECS preludes, the agent runtime's components, events and registries
 (`rig_harness::rig_ecs`), `blocking`, `Duration`, and the terminal view's
 panels and tool renderers. ratatui's widgets are
 `rig_harness::tui::ratatui`, and rig-core (such as its `message::Message`)
-is `rig_harness::rig_core`.
+is `rig_harness::rig_core`. For anything this guide does not show, ask the
+running agent's `inspect` tool before reading rig's source:
+`world.list_components` and `registry.schema` name the types and their
+fields, and `world.query` with `ProvidedBy` shows what each plugin added. A
+plugin's own Bevy Remote method is sent by `inspect` once its system's
+entity has `ReadOnlyMethod` (`rig_harness::plugins::inspect`).
 
 # Names
 
