@@ -77,19 +77,21 @@ pub use rig_ecs;
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
 /// prelude (Bevy's app and ECS preludes, the agent components and
 /// requests, and the tool and command registries), what agents do and
-/// say, the app's session, views and plugin groups, and with feature
-/// `tui` the terminal view's panels and tool renderers. ratatui itself is
-/// [`tui::ratatui`].
+/// say, the app's session, its log's warnings and launcher, views and
+/// plugin groups, and with feature `tui` the terminal view's panels and
+/// tool renderers. ratatui itself is [`tui::ratatui`].
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
     pub use std::time::Duration;
 
     pub use crate::front::{Busy, Focus, Front, PickItem, PickRequest, RunMode, send_input};
-    pub use crate::host::reload::ReloadStatus;
+    pub use crate::host::launcher;
+    pub use crate::host::reload::{CancelReload, ReloadStatus};
+    pub use crate::host::session::{LogEvents, Logged, SessionPaths};
     pub use crate::plugins::activity::{
-        Activity, ActivitySystems, FedMessage, MessageFeed, Preview, PreviewKind, Status,
-        ToolActivity,
+        Activity, ActivityPlugin, ActivitySystems, FedMessage, MessageFeed, Preview, PreviewKind,
+        Status, ToolActivity,
     };
     pub use crate::plugins::sessions::{SessionTitle, SwitchSession};
     pub use crate::plugins::usage::{Spending, TurnSpending};

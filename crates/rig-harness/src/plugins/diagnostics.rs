@@ -5,7 +5,6 @@
 
 use std::collections::VecDeque;
 
-use crate::host::session::{LogEvents, Logged};
 use crate::prelude::*;
 
 /// How many warnings and errors [`Diagnostics`] keeps.

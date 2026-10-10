@@ -22,10 +22,7 @@ use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use crate::host::reload::ReloadStatus;
-use crate::plugins::activity::{Activity, Status};
-use crate::plugins::sessions::SessionTitle;
-use crate::plugins::usage::{Spending, TurnSpending};
+use crate::prelude::{Activity, ReloadStatus, SessionTitle, Spending, Status, TurnSpending};
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Condensed, Conversation, LastUsage, NoticeLevel, Partial, Spawned,

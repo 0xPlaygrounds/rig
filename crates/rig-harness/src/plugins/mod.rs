@@ -1,7 +1,8 @@
 //! The default plugins, one module each, as Bevy's `DefaultPlugins` are
 //! modules of their crates. Each is listed in the default `plugins.toml`
 //! and can be removed from it, and each uses only public kernel and
-//! harness API, as a plugin in `RIG_HOME/plugins/` would.
+//! harness API, as a plugin in `RIG_HOME/plugins/` would: of this crate,
+//! only the prelude, [`front`](crate::front) and its own modules.
 
 pub mod activity;
 pub mod basics;

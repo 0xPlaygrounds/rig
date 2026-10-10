@@ -18,7 +18,7 @@ use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
 use rig_ecs::{StopTurns, WriteJournal};
 
-use crate::host::session::SessionPaths;
+use crate::prelude::SessionPaths;
 
 /// Records every effect into the session directory's effect log; without
 /// a session directory it records nothing.

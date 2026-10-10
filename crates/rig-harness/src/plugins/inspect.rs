@@ -41,7 +41,6 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
-use crate::host::{launcher, session::SessionPaths};
 use crate::prelude::*;
 
 pub use bevy_remote::RemotePlugin;

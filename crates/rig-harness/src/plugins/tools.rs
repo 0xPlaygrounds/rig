@@ -5,7 +5,7 @@
 use bevy_app::prelude::*;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 
-use crate::host::session::SessionPaths;
+use crate::prelude::SessionPaths;
 use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
 
 /// Options for a tool that runs alone.

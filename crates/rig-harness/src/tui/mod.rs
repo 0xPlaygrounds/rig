@@ -32,8 +32,7 @@ mod view;
 mod wrap;
 
 use crate::front::{Front, RunMode};
-use crate::host::reload::ReloadStatus;
-use crate::plugins::activity::{ActivityPlugin, ActivitySystems};
+use crate::prelude::{ActivityPlugin, ActivitySystems, ReloadStatus};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
