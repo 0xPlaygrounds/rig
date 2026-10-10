@@ -1,5 +1,6 @@
 //! What every front shares, whatever draws it (the terminal view,
-//! `--print`, a window): how the process runs ([`RunMode`]), which front
+//! `--print`, a window): how the process runs ([`RunMode`]) and the model
+//! it names for the agent the user talks to, which front
 //! took it ([`Front`]), work a front that ends by itself waits for
 //! ([`Busy`]), showing an agent ([`Focus`]), letting the user pick one of
 //! several command lines ([`PickRequest`]), and sending what the user typed
@@ -23,13 +24,15 @@ use bevy_reflect::prelude::*;
 use rig::harness_protocol::Invocation;
 use rig_core::message::{ImageMediaType, UserContent};
 
-use rig_ecs::agent::Notice;
+use rig_ecs::agent::{Notice, PrimaryQuery, primary};
 use rig_ecs::commands::RunCommand;
 use rig_ecs::inbox::{Attachment, Deliver, DeliveryMode};
+use rig_ecs::model::SetModel;
 use rig_tools::fs::read_text;
 use rig_tools::{MAX_LINES, numbered};
 
-/// Reads the [`RunMode`] and registers [`PickRequest`].
+/// Reads the [`RunMode`], gives the agent the user talks to the model it
+/// names, and registers [`PickRequest`].
 pub struct FrontPlugin;
 
 impl Plugin for FrontPlugin {
@@ -43,7 +46,21 @@ impl Plugin for FrontPlugin {
             });
             app.insert_resource(RunMode(invocation));
         }
-        app.add_message::<PickRequest>();
+        app.add_message::<PickRequest>()
+            .add_systems(First, choose_invoked_model.run_if(run_once));
+    }
+}
+
+/// Gives the agent the user talks to the model `--model` names, once the
+/// session is restored and a remembered model given, so `--model` wins.
+/// `--print` chooses its model itself.
+fn choose_invoked_model(mode: Res<RunMode>, agents: PrimaryQuery, mut commands: Commands) {
+    if let (Some(model), false, Some(agent)) = (&mode.0.model, mode.is_headless(), primary(&agents))
+    {
+        commands.trigger(SetModel {
+            entity: agent,
+            model: model.clone(),
+        });
     }
 }
 
