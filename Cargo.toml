@@ -163,12 +163,15 @@ required-features = ["agent"]
 resolver = "3"
 members = [
     "crates/*",
+    # The rig agent's plugin crates, built on rig-harness's public API.
+    "plugins/*",
     "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",
     "test-support/service-tests",
     "test-support/rig-test-support",
     "test-support/rig-history-conformance",
+    "test-support/rig-harness-test-support",
 ]
 # The root manifest is itself the `rig` facade package, so without an
 # explicit `default-members` a bare `cargo nextest run` resolved to the

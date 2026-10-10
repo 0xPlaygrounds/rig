@@ -4,23 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
-description = "A terminal coding agent on rig-ecs: agents are Bevy entities, and tools and slash commands come from Bevy plugins."
+readme = "README.md"
+description = "The core of the rig coding agent on rig-ecs: the session, the launcher protocol and /reload; every other part is a Bevy plugin crate."
 repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
 
 [lints]
 workspace = true
-
-[features]
-default = ["tui"]
-# The ratatui view. Without it the app runs `--print` only.
-tui = [
-    "dep:ratatui",
-    "dep:crossterm",
-    "dep:ignore",
-    "dep:libc",
-    "dep:pulldown-cmark",
-    "dep:unicode-width",
-]
 
 [dependencies]
 base64 = { workspace = true }
@@ -31,8 +22,6 @@ bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
-# The local date in the system prompt.
-chrono = { workspace = true, features = ["clock"] }
 crossbeam-channel = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
@@ -42,36 +31,17 @@ rig = { path = "../..", version = "0.44.0", default-features = false }
 rig-cassette = { workspace = true, features = ["jsonl"] }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
-# The shared HTTP client `/login` and signed-in model calls read the
-# credential through.
-rig-reqwest = { workspace = true }
 # The agent runtime.
 rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
-# The token estimate compaction decides by.
-rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
-# The built-in tools and the instruction files and process helpers.
+# The file and process helpers, and spill files.
 rig-tools = { path = "../rig-tools", version = "0.44.0" }
-# Tool parameters derived from their arguments types, as plugins write them.
+
+[dev-dependencies]
+# The terminal panel of the plugin guide's examples.
+rig-activity = { path = "../../plugins/rig-activity" }
+rig-tui = { path = "../../plugins/rig-tui" }
+# Tool parameters derived from their arguments types, as the guide's
+# plugins write them.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-ratatui = { workspace = true, optional = true }
-crossterm = { workspace = true, optional = true }
-# Markdown in replies and the width of wrapped text, for the terminal view.
-pulldown-cmark = { workspace = true, optional = true }
-unicode-width = { workspace = true, optional = true }
-# Path completion in the input, as git ignores it.
-ignore = { workspace = true, optional = true }
-# The diffs the terminal view draws.
-
-[target.'cfg(unix)'.dependencies]
-# The terminal view sends stray stdout and stderr to the session log.
-libc = { workspace = true, optional = true }
-
-[dev-dependencies]
-# The scripted model (`test_utils::MockCompletionModel`) plugin tests run
-# turns on.
-rig-core = { workspace = true, features = ["reqwest", "test-utils"] }
-# The optional inspect plugin, added on top of the defaults in
-# `tests/removal.rs`.
-rig-inspect = { path = "../rig-inspect" }

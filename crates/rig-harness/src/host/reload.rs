@@ -5,9 +5,8 @@
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
 //! turn runs, and `/reload cancel` drops it. A plugin queues one with
-//! [`ReloadStatus::ask`], as the `reload` tool
-//! ([`ReloadTool`](crate::plugins::reload_tool::ReloadTool)) does for the
-//! model. A turn started while the build runs
+//! [`ReloadStatus::ask`], as the `reload` tool of the `rig-coding-tools`
+//! plugin crate does for the model. A turn started while the build runs
 //! delays the restart until it ends. A build that fails leaves this build
 //! running, and the launcher rolls back a new build that fails to start.
 //! Views show where it is from the [`ReloadStatus`] resource.

@@ -1,6 +1,7 @@
 Writing a plugin for the rig agent: one short, copy-ready example per
 extension point. Every name they use comes from
-`use rig_harness::prelude::*;`.
+`use rig_harness::prelude::*;`, except a plugin crate's own types, such as
+the terminal view's panels from `rig_tui`.
 
 - [Making one](#making-one) and [finding names](#finding-names)
 - [A tool](#a-tool) and how its calls look
@@ -13,8 +14,9 @@ extension point. Every name they use comes from
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a
 crate that depends on `rig-harness`. The agent is a Bevy app, and its
 tools, commands, subagents, compaction, sessions and terminal view are
-plugins of the same kind, listed in `RIG_HOME/plugins.toml` beside any
-other and built only on the same public API. A plugin never edits
+plugins of the same kind, crates in the rig repository's `plugins/`
+folder, listed in `RIG_HOME/plugins.toml` beside any other and built only
+on the same public API. A plugin never edits
 rig-harness, rig-ecs or rig-tools. One that needs another adds it unless
 it is there, with Bevy's `app.is_plugin_added::<P>()`.
 
@@ -38,11 +40,13 @@ plugin = "hello::HelloPlugin"
 ```
 
 Each plugin crate is its own workspace in `RIG_HOME/plugins/<name>`. It
-depends on `rig-harness` by version, and on `bevy_ecs` and `bevy_reflect`
-(or `bevy`) at the agent's exact version, because Bevy's derives expand to
-the Bevy crate the plugin's own `Cargo.toml` names. When the agent is built from a rig
-checkout (`RIG_SOURCE`), a `[patch.crates-io]` table points the rig crates
-at it, so every plugin uses the agent's own crates.
+depends on `rig-harness` by version, on another rig plugin crate it uses
+the same way (such as `rig-tui` for a terminal panel), and on `bevy_ecs`
+and `bevy_reflect` (or `bevy`) at the agent's exact version, because
+Bevy's derives expand to the Bevy crate the plugin's own `Cargo.toml`
+names. The agent is built from a rig checkout (`RIG_SOURCE`): a
+`[patch.crates-io]` table points the rig crates at it, so every plugin uses
+the agent's own crates.
 
 `/reload` in the agent, or the agent's `reload` tool, rebuilds and
 restarts in the same session once no turn runs. A build that fails leaves
@@ -50,11 +54,12 @@ the running one, and one that crashes at startup is rolled back.
 
 # Finding names
 
-The prelude holds Bevy's app, ECS, reflection and time preludes, the agent
-runtime's components, events and registries (`rig_harness::rig_ecs`), and
-the terminal view's panels and tool renderers. ratatui is
-`rig_harness::tui::ratatui`, rig-core is `rig_harness::rig_core`, and each
-default plugin's types are in `rig_harness::plugins::<name>`.
+The prelude holds Bevy's app, ECS, reflection and time preludes, and the
+agent runtime's components, events and registries (`rig_harness::rig_ecs`).
+rig-core is `rig_harness::rig_core`, and each default plugin's types are
+in its crate: the terminal view's panels and tool renderers in `rig_tui`
+(ratatui is `rig_tui::ratatui`), what agents do in `rig_activity`, and so
+on for each crate `plugins.toml` names.
 
 Every one of these types is reflected, so the running agent can list
 them with the `inspect` tool of the optional `rig-inspect` plugin (enable it
@@ -134,10 +139,11 @@ call's arguments into the type the observer takes and triggers
 `ToolCalled<Args>` with the call's entity (`call`), the calling `agent`
 and the `args`. The call ends when the plugin inserts a `ToolOutput` on
 it, such as `ToolOutput(ToolResult::success("Done.".into()))`. How the
-terminal draws a tool's calls:
+terminal view (`rig-tui`) draws a tool's calls:
 
 ```rust,no_run
 use rig_harness::prelude::*;
+use rig_tui::{AppToolRenderersExt, RESULT_LINES};
 
 fn build(app: &mut App) {
     app.add_tool_renderer("word_count", |call| {
@@ -282,7 +288,7 @@ with the messages it sends, which an observer may change. `ModelFailed` is
 triggered on a turn whose model call failed for good; an observer that
 takes the turn over sets `handled` and triggers `CallModel` once it is
 ready. Observers of one event run in no set order. The compaction plugin
-(`rig_harness::plugins::compaction`) is the full example: it summarizes on
+(the `rig-compaction` crate) is the full example: it summarizes on
 `PrepareRequest` with a `ModelRequest` call of its own, and on a
 `ModelFailed` overflow.
 
@@ -365,9 +371,9 @@ fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
 
 Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Conversation`; a subagent is `SpawnedBy` its parent, which lists it in
-`Spawned`. The activity plugin's `Activity` says what an agent does now
-(status, running tools, streamed preview), and its `MessageFeed` resource
-holds the latest deliveries. `MessageReader<Committed>` sees every change
+`Spawned`. The activity plugin's `rig_activity::Activity` says what an
+agent does now (status, running tools, streamed preview), and its
+`MessageFeed` resource holds the latest deliveries. `MessageReader<Committed>` sees every change
 of every conversation as the session log records it, and `On<TurnEnded>`
 each turn's end.
 
@@ -377,13 +383,17 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 `TuiSystems::Draw`, which runs only for a frame that is drawn. Frames are
 drawn when agents or panels change; a plugin whose own state changed
 writes a `RequestRedraw`. `TuiScreen` is the terminal's size and `Focused`
-marks the agent shown.
+marks the agent shown. These are `rig_tui`'s, so the crate depends on
+`rig-tui` and `rig-activity` beside `rig-harness`.
 
 ```rust,no_run
 use std::collections::HashMap;
 
+use rig_activity::Activity;
 use rig_harness::prelude::*;
-use rig_harness::tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::ratatui::layout::Constraint;
+use rig_tui::ratatui::widgets::{Block, Paragraph};
+use rig_tui::{PanelCanvas, Placement, TuiPanel, TuiSystems};
 
 #[derive(Default)]
 pub struct AgentsPanelPlugin;
@@ -460,7 +470,8 @@ use std::time::Duration;
 use bevy::prelude::*;
 use bevy::window::ExitCondition;
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-use rig_harness::prelude::{Activity, RunMode, Wake};
+use rig_activity::Activity;
+use rig_harness::prelude::{RunMode, Wake};
 
 #[derive(Default)]
 pub struct DashboardPlugin;

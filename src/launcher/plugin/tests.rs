@@ -14,13 +14,18 @@ fn the_scaffold_names_the_plugin_and_its_command() {
 
 #[test]
 fn names_are_lowercase_crate_names_not_the_agents_own() {
-    assert!(validate_name("agent-viz").is_ok());
-    assert!(validate_name("Viz").is_err());
-    assert!(validate_name("1viz").is_err());
-    assert!(validate_name("viz/../x").is_err());
-    assert!(validate_name("rig-harness").is_err());
-    assert!(validate_name(PACKAGE).is_err());
-    assert!(validate_name("bevy_ui").is_err());
+    let registry = &RigSource::Registry;
+    assert!(validate_name("agent-viz", registry).is_ok());
+    assert!(validate_name("Viz", registry).is_err());
+    assert!(validate_name("1viz", registry).is_err());
+    assert!(validate_name("viz/../x", registry).is_err());
+    assert!(validate_name("rig-harness", registry).is_err());
+    assert!(validate_name(PACKAGE, registry).is_err());
+    assert!(validate_name("bevy_ui", registry).is_err());
+    // A plugin crate of the checkout this launcher is built in.
+    let checkout = RigSource::Local(Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf());
+    assert!(validate_name("rig-tui", &checkout).is_err());
+    assert!(validate_name("rig-tui", registry).is_ok());
 }
 
 #[test]
@@ -39,7 +44,7 @@ fn manifest_strings_are_read_from_their_table() {
 
 #[test]
 fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
-    let checkout = Path::new("/rig");
+    let checkout = Path::new(env!("CARGO_MANIFEST_DIR"));
     let local = manifest("viz", "0.44.0", &RigSource::Local(checkout.to_path_buf()));
     assert!(local.contains("rig-harness = \"0.44.0\"\n"));
     // The scaffold's saved component derives from both Bevy crates, which
@@ -52,8 +57,16 @@ fn the_scaffold_depends_on_the_rig_version_and_patches_a_checkout() {
             super::super::BEVY_VERSION
         )));
     }
-    assert!(local.contains("[patch.crates-io]\n"));
-    assert!(local.contains("rig-harness = { path = "));
+    // The rig crates it uses through rig-harness, and nothing else.
+    let patched: Vec<&str> = local
+        .split("[patch.crates-io]\n")
+        .nth(1)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| line.strip_suffix(" }")?.split_once(" = { path = "))
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(patched, CORE_CRATES);
     let registry = manifest("viz", "0.44.0", &RigSource::Registry);
     assert!(!registry.contains("[patch"));
     assert_eq!(

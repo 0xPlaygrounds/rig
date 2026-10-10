@@ -13,12 +13,14 @@ use rig::harness_protocol::Home;
 use super::Result;
 use super::config::{self, Config, Source};
 use super::project::{
-    PACKAGE, RIG_CRATES, RigSource, manifest_string, quoted, quoted_path, rig_patch, rig_version,
+    CORE_CRATES, PACKAGE, RigSource, crate_dir, manifest_string, quoted, quoted_path, rig_patch,
+    rig_version,
 };
 
 /// The `src/lib.rs` of a new plugin crate, with `ScaffoldPlugin` and
-/// `__name__` for the plugin type and the crate name. rig-harness's
-/// `tests/removal.rs` builds it, so it stays a working plugin.
+/// `__name__` for the plugin type and the crate name.
+/// rig-harness-test-support's `tests/removal.rs` builds it, so it stays a
+/// working plugin.
 const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
@@ -29,7 +31,8 @@ pub const USAGE: &str =
                  | --version <req>] [--crate <name>]
                          Add the plugin type <type> to plugins.toml, from the
                          crate at that source (its name read from <dir> for
-                         --path), or one of rig-harness's own without a source.
+                         --path), or with --crate alone from one of rig's own
+                         plugin crates, such as rig-inspect.
   rig plugin remove <type>
                          Remove the plugin type <type> from plugins.toml; its
                          crate stays where it is.
@@ -56,15 +59,15 @@ pub fn run(home: &Home, args: &[&str]) -> Result<()> {
 /// with one plugin that adds `/<name>`, listed at the end of
 /// `plugins.toml`.
 fn new(home: &Home, name: &str) -> Result<()> {
-    validate_name(name)?;
+    let source = RigSource::detect()?;
+    validate_name(name, &source)?;
     let config_path = home.config();
     let config = Config::load(&config_path)?;
-    if let Some(listed) = config.plugins.iter().find(|plugin| {
-        plugin
-            .package
-            .as_ref()
-            .is_some_and(|package| package.name == name)
-    }) {
+    if let Some(listed) = config
+        .plugins
+        .iter()
+        .find(|plugin| plugin.package.name == name)
+    {
         return Err(format!(
             "plugins.toml already lists the crate `{name}` (as `{}`)",
             listed.type_path
@@ -81,7 +84,6 @@ fn new(home: &Home, name: &str) -> Result<()> {
     }
     let library = name.replace('-', "_");
     let type_name = type_name(name);
-    let source = RigSource::detect()?;
     fs::create_dir_all(directory.join("src"))?;
     fs::write(
         directory.join("Cargo.toml"),
@@ -175,10 +177,9 @@ fn remove(home: &Home, type_path: &str) -> Result<()> {
         .plugins
         .into_iter()
         .find(|plugin| plugin.type_path == type_path)
-        .and_then(|plugin| plugin.package)
-        .and_then(|package| match package.source {
+        .and_then(|plugin| match plugin.package.source {
             Source::Path(directory) => Some(directory),
-            Source::Git { .. } | Source::Version(_) => None,
+            Source::Git { .. } | Source::Version(_) | Source::Rig => None,
         });
     config::remove(&config_path, type_path)?;
     let crate_note = directory
@@ -209,8 +210,9 @@ fn relative_to(directory: &Path, root: &Path) -> String {
 }
 
 /// A name `rig plugin new` takes: a crate name in lowercase that is not
-/// the agent's own or one of its crates.
-fn validate_name(name: &str) -> Result<()> {
+/// the agent's own, one of its core crates or a crate of the rig checkout
+/// `source` names.
+fn validate_name(name: &str, source: &RigSource) -> Result<()> {
     let valid = name.starts_with(|c: char| c.is_ascii_lowercase())
         && name
             .chars()
@@ -222,7 +224,11 @@ fn validate_name(name: &str) -> Result<()> {
         )
         .into());
     }
-    if RIG_CRATES.contains(&name) || name == PACKAGE || name.starts_with("bevy") {
+    let rig_crate = match source {
+        RigSource::Local(checkout) => crate_dir(checkout, name).is_some(),
+        RigSource::Registry => false,
+    };
+    if rig_crate || CORE_CRATES.contains(&name) || name == PACKAGE || name.starts_with("bevy") {
         return Err(format!("`{name}` is a crate of the agent itself; pick another name").into());
     }
     Ok(())
@@ -260,9 +266,10 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
          [workspace]\n\
          \n\
          [dependencies]\n\
-         # Everything a plugin uses: Bevy's app and ECS (`rig_harness::prelude`), the\n\
-         # agent runtime (`rig_harness::rig_ecs`) and the terminal view\n\
-         # (`rig_harness::tui`, with `rig_harness::tui::ratatui`). The agent builds every\n\
+         # Everything a plugin uses: Bevy's app and ECS (`rig_harness::prelude`) and the\n\
+         # agent runtime (`rig_harness::rig_ecs`). Another plugin's types come from its\n\
+         # crate, at the same version: the terminal view's panels from rig-tui (with\n\
+         # `rig_tui::ratatui`), what agents do from rig-activity. The agent builds every\n\
          # plugin with its own rig crates. A Bevy crate, such as `bevy` for a window,\n\
          # must be at exactly ={}.\n\
          rig-harness = \"{rig_version}\"\n\
@@ -282,9 +289,13 @@ fn manifest(name: &str, rig_version: &str, source: &RigSource) -> String {
     if let RigSource::Local(checkout) = source {
         text.push_str(
             "\n# The agent is built from this rig checkout (RIG_SOURCE); this crate on its\n\
-             # own is too. The agent project has the same table.\n",
+             # own is too. The agent project patches these and the plugin crates it uses.\n",
         );
-        text.push_str(&rig_patch(checkout, &Default::default()));
+        text.push_str(&rig_patch(checkout, &CORE_CRATES.map(str::to_owned).into()));
+        text.push_str(
+            "# Another rig crate this crate depends on, such as rig-tui, needs a line\n\
+             # here too when this crate is built on its own.\n",
+        );
     }
     text
 }
@@ -330,7 +341,7 @@ fn check_build(home: &Home) -> Result<()> {
 
 /// What is wrong with a plugin listed by path, if anything.
 fn check_plugin(plugin: &config::Plugin) -> Option<String> {
-    let package = plugin.package.as_ref()?;
+    let package = &plugin.package;
     let Source::Path(directory) = &package.source else {
         return None;
     };

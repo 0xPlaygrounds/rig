@@ -42,6 +42,7 @@ signatures, module paths, and feature flags.
 - Core crate: `crates/rig-core`
 - Companion provider, vector-store, memory, and integration crates: `crates/rig-*`
 - Derive macros: `crates/rig-derive`
+- The rig coding agent: its core `crates/rig-harness` (on `crates/rig-ecs` and `crates/rig-tools`), its plugin crates `plugins/rig-*`, and their shared test support and removal test `test-support/rig-harness-test-support`; none of them is published yet
 - Verification planner and source-tree checks: `xtask/`
 - Workspace example packages: `examples/*`; per-crate examples: `crates/<crate>/examples/`
 - Root integration test targets: `tests/*.rs`

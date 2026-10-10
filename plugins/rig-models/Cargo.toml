@@ -1,0 +1,25 @@
+[package]
+name = "rig-models"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "rig-harness plugins: /model, /effort and the model picker, and the model a new session starts with."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+# The defaults file, written whole.
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true, features = ["derive"] }

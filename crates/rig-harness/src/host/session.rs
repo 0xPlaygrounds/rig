@@ -117,7 +117,7 @@ pub struct LogEvents(pub Receiver<Logged>);
 
 /// The `LogPlugin` layer passing warnings and errors on to [`LogEvents`],
 /// which exists before any plugin `plugins.toml` lists is added.
-pub(crate) fn log_events(app: &mut App) -> Option<BoxedLayer> {
+pub fn log_events(app: &mut App) -> Option<BoxedLayer> {
     let (sender, receiver) = crossbeam_channel::bounded(256);
     app.insert_resource(LogEvents(receiver));
     Some(Box::new(PassOn(sender)))

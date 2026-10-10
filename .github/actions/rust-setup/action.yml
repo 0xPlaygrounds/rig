@@ -22,7 +22,7 @@ inputs:
     description: Install the system protoc (required whenever the lance chain builds)
     default: "false"
   alsa:
-    description: Install the ALSA development headers (required whenever rig-inspect builds, as in a workspace build or rig-harness's tests)
+    description: Install the ALSA development headers (required whenever rig-inspect builds, as in a workspace build or the rig agent's plugin tests)
     default: "false"
 runs:
   using: composite

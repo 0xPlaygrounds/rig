@@ -4,6 +4,7 @@
 //! goes to [`Home::build_log`], and a failure names its reason and first
 //! compiler errors ([`BuildFailure`]).
 
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{IsTerminal, Read, Write};
@@ -14,7 +15,7 @@ use std::time::UNIX_EPOCH;
 use rig::harness_protocol::{Home, SessionId, first_errors};
 
 use super::config::Config;
-use super::project::{self, PACKAGE, RIG_CRATES, RigSource};
+use super::project::{self, PACKAGE, RigSource};
 use super::{BEVY_VERSION, Result, home};
 
 /// Whether a build that is already known gets staged again.
@@ -101,7 +102,24 @@ fn compile_logged(home: &Home, staged: &Path, staging: Staging, log: &mut BuildL
     project::generate(home, &config, &source)?;
     // `/reload` shows the latest of these lines and of cargo's.
     log.say("Resolving dependencies…");
-    check_bevy(home, &config, &project::rig_version(&source), log)?;
+    let rig_crates = project::rig_crates(&config, &source);
+    check_bevy(
+        home,
+        &config,
+        &rig_crates,
+        &project::rig_version(&source),
+        log,
+    )
+    .map_err(|failure| match source {
+        // Nothing the agent is made of is on crates.io yet.
+        RigSource::Registry => format!(
+            "{failure}. rig-harness and the rig plugin crates are not published yet, so the \
+                 agent builds only from a rig checkout: set RIG_SOURCE to one, or install this \
+                 launcher from one with `cargo install --path`"
+        )
+        .into(),
+        RigSource::Local(_) => failure,
+    })?;
     log.say("Compiling the agent…");
     let mut command = cargo(home);
     command.args(["build", "--package", PACKAGE]);
@@ -342,9 +360,15 @@ fn stamp(binary: &Path) -> Result<String> {
 /// Resolves the project (writing `Cargo.lock`) and fails, in plain words,
 /// when a plugin pulls in a Bevy other than [`BEVY_VERSION`] or rig crates
 /// other than the agent's.
-fn check_bevy(home: &Home, config: &Config, rig_version: &str, log: &mut BuildLog) -> Result<()> {
+fn check_bevy(
+    home: &Home,
+    config: &Config,
+    rig_crates: &BTreeSet<String>,
+    rig_version: &str,
+    log: &mut BuildLog,
+) -> Result<()> {
     let packages = tree(home, &[], log)?;
-    check_rig(&packages, rig_version)?;
+    check_rig(&packages, rig_crates, rig_version)?;
     let Some((bevy, version)) = packages.iter().find_map(|line| {
         let (name, version) = package(line)?;
         (["bevy_app", "bevy_ecs"].contains(&name) && version != BEVY_VERSION)
@@ -357,7 +381,7 @@ fn check_bevy(home: &Home, config: &Config, rig_version: &str, log: &mut BuildLo
     let culprit = config
         .plugins
         .iter()
-        .filter_map(|plugin| plugin.package.as_ref())
+        .map(|plugin| &plugin.package)
         .find(|plugin| {
             dependents
                 .iter()
@@ -380,15 +404,15 @@ fn check_bevy(home: &Home, config: &Config, rig_version: &str, log: &mut BuildLo
 }
 
 /// Fails, in plain words, when a plugin pulls in a second copy of one of
-/// the rig crates, such as rig-harness from crates.io beside the
-/// checkout's: its types would not be the agent's, which are at
+/// the `rig_crates` the agent uses, such as rig-harness from crates.io
+/// beside the checkout's: its types would not be the agent's, which are at
 /// `rig_version`.
-fn check_rig(packages: &[String], rig_version: &str) -> Result<()> {
-    for name in RIG_CRATES {
+fn check_rig(packages: &[String], rig_crates: &BTreeSet<String>, rig_version: &str) -> Result<()> {
+    for name in rig_crates {
         let mut copies: Vec<&str> = packages
             .iter()
             .map(|line| line.trim_end_matches(" (*)"))
-            .filter(|line| package(line).is_some_and(|(package, _)| package == name))
+            .filter(|line| package(line).is_some_and(|(package, _)| package == name.as_str()))
             .collect();
         copies.sort_unstable();
         copies.dedup();

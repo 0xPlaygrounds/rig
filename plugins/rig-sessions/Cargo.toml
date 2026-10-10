@@ -1,0 +1,28 @@
+[package]
+name = "rig-sessions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A rig-harness plugin: /new, /resume and /name, and each session's title and cost."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+# What a session cost, in its metadata.
+rig-telemetry = { path = "../rig-telemetry" }
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true, features = ["derive"] }

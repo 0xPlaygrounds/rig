@@ -4,8 +4,9 @@
 //! has a short copy-ready example of each extension point: a tool and how
 //! its calls look, a slash command, state kept with the session, turn hooks,
 //! a timer, what agents do and say in a terminal panel, and a window. Every
-//! name they use comes from `rig_harness::prelude`; the optional `inspect`
-//! tool (crate `rig-inspect`) shows the rest.
+//! name they use comes from `rig_harness::prelude` or the plugin crate the
+//! example names, such as `rig_tui`; the optional `inspect` tool (crate
+//! `rig-inspect`) shows the rest.
 
 use rig_harness::prelude::*;
 
@@ -38,7 +39,8 @@ impl Plugin for ScaffoldPlugin {
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
         //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
         // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)
-        // - a terminal panel:   spawn TuiPanel::new(Placement::Right(Constraint::Length(30)))
+        // - a terminal panel:   with the crate rig-tui, spawn
+        //                       rig_tui::TuiPanel::new(Placement::Right(Constraint::Length(30)))
         // - what is loaded:     Query<(&Name, &PluginSource)>, and ProvidedBy(plugin) on what each added
     }
 }

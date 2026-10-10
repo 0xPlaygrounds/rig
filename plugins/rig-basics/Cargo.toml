@@ -1,0 +1,25 @@
+[package]
+name = "rig-basics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "rig-harness plugins: /help, /retry, /agents and /quit, and the project context (AGENTS.md, the environment, /context) in the system prompt."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+# The local date in the system prompt.
+chrono = { workspace = true, features = ["clock"] }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+# The instruction files.
+rig-tools = { path = "../../crates/rig-tools" }

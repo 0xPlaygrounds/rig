@@ -1,0 +1,38 @@
+[package]
+name = "rig-harness-test-support"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "What the rig agent's plugin tests share, and the test that every default plugin can be left out."
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-ecs = { path = "../../crates/rig-ecs" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# The default plugins of `plugins.toml`, and the optional inspect plugin
+# added on top of them in `tests/removal.rs`.
+rig-activity = { path = "../../plugins/rig-activity" }
+rig-basics = { path = "../../plugins/rig-basics" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
+rig-compaction = { path = "../../plugins/rig-compaction" }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-inspect = { path = "../../plugins/rig-inspect" }
+rig-login-chatgpt = { path = "../../plugins/rig-login-chatgpt" }
+rig-models = { path = "../../plugins/rig-models" }
+rig-print = { path = "../../plugins/rig-print" }
+rig-sessions = { path = "../../plugins/rig-sessions" }
+rig-subagents = { path = "../../plugins/rig-subagents" }
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+rig-tui = { path = "../../plugins/rig-tui" }
+# Named by the derives of the plugin `rig plugin new` writes.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }

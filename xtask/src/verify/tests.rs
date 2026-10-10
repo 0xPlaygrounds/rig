@@ -1394,3 +1394,17 @@ fn an_extension_item_is_re_exported_nowhere() {
         assert!(reexports(source).is_empty(), "{source}");
     }
 }
+
+#[test]
+fn every_plugin_crate_is_a_harness_package() {
+    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
+    let names: Vec<String> = std::fs::read_dir(plugins)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
+        .collect();
+    assert!(names.len() > 10, "found {names:?}");
+    for name in &names {
+        assert!(checks::HARNESS_PACKAGES.contains(&name.as_str()), "{name}");
+    }
+}

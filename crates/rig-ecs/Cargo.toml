@@ -9,6 +9,8 @@ license = "MIT"
 readme = "README.md"
 description = "A Bevy agent runtime on rig-core: agents, turns and tool calls as entities, one recorded effect path, and session journals."
 repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the rig agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
 
 [lints]
 workspace = true

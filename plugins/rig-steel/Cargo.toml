@@ -1,0 +1,34 @@
+[package]
+name = "rig-steel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+description = "Code mode for rig-ecs agents (and the rig-harness app): a `run_steel` tool whose Steel (Scheme) program orchestrates agents and tools."
+repository = "https://github.com/0xPlaygrounds/rig"
+readme = "README.md"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+# The channel `Harness` calls come in on.
+crossbeam-channel = { workspace = true }
+futures = { workspace = true }
+# The watchdog that enforces the execution time limit.
+futures-timer = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs", default-features = false }
+# `run_steel`'s parameters, derived from its arguments type.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The Scheme interpreter, in process.
+steel-core = { workspace = true }
+# The ids of requests a program sends.
+uuid = { workspace = true, features = ["v4"] }

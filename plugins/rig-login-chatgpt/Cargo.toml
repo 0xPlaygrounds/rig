@@ -1,0 +1,26 @@
+[package]
+name = "rig-login-chatgpt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license = "MIT"
+readme = "README.md"
+description = "A rig-harness plugin: /login and /logout for the ChatGPT plan's models."
+repository = "https://github.com/0xPlaygrounds/rig"
+# Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+crossbeam-channel = { workspace = true }
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+# The plugin API of the agent it is loaded into.
+rig-harness = { path = "../../crates/rig-harness" }
+# The shared HTTP client sign-in and signed-in model calls use.
+rig-reqwest = { workspace = true }

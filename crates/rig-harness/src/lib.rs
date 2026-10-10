@@ -1,17 +1,17 @@
-//! rig-harness: a terminal coding agent, a Bevy app on [`rig_ecs`]'s agent
-//! runtime and rig-core.
+//! rig-harness: the core of a terminal coding agent, a Bevy app on
+//! [`rig_ecs`]'s agent runtime and rig-core.
 //!
 //! An agent is an entity whose components hold its conversation, model,
 //! reasoning setting, system prompt and tool access; an agent a plugin
-//! spawns for another, such as a subagent of the
-//! [`SubagentsPlugin`](plugins::subagents::SubagentsPlugin), is one more,
-//! [`SpawnedBy`](rig_ecs::agent::SpawnedBy) that agent. Tools and
-//! slash commands are registered by Bevy plugins, the built-in ones exactly
-//! as a third-party plugin registers its own, and a plugin re-arms its saved
-//! obligations after a restart on [`Restored`](rig_ecs::restore::Restored).
-//! This crate adds the terminal app around the runtime: the session
-//! directory, the launcher protocol, and the default plugins, such as the
-//! terminal view, `--print`, sign-in and the built-in tools and commands.
+//! spawns for another is one more, [`SpawnedBy`](rig_ecs::agent::SpawnedBy)
+//! that agent. Tools and slash commands are registered by Bevy plugins, and
+//! a plugin re-arms its saved obligations after a restart on
+//! [`Restored`](rig_ecs::restore::Restored). This crate adds what the
+//! terminal app needs around the runtime to run and be relaunched: the
+//! session directory, the launcher protocol and `/reload`. Every other part
+//! of the agent, the terminal view, `--print`, sign-in and the built-in
+//! tools and commands included, is a plugin crate in the repository's
+//! `plugins/` folder, built only on this crate's public API.
 //!
 //! [`RigHarnessPlugins`] is what the binary needs to run and be
 //! relaunched: the session, the run mode and what fronts share
@@ -20,21 +20,26 @@
 //! `DefaultPlugins` in a windowed app. [`HeadlessPlugins`] is what a
 //! terminal app needs from Bevy instead: Bevy's `MinimalPlugins` (task
 //! pools, frame count, clock) with the log, a clean exit on signals, and a
-//! loop that sleeps until there is work. Everything else is a plugin of
-//! [`plugins`], listed in `plugins.toml` like any other and added by the
-//! `rig` launcher's generated `main.rs` with [`load`]. The error handler is
-//! the application's to set:
+//! loop that sleeps until there is work. Everything else is a plugin listed
+//! in `plugins.toml` and added by the `rig` launcher's generated `main.rs`
+//! with [`load`]. The error handler is the application's to set:
 //!
 //! ```no_run
+//! use rig_harness::load;
 //! use rig_harness::prelude::*;
-//! use rig_harness::{load, plugins};
+//!
+//! #[derive(Default)]
+//! struct HelloPlugin;
+//!
+//! impl Plugin for HelloPlugin {
+//!     fn build(&self, _app: &mut App) {}
+//! }
 //!
 //! fn main() -> AppExit {
 //!     let mut app = App::new();
 //!     app.set_error_handler(rig_harness::error::warn)
 //!         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
-//!     load::<plugins::tools::ReadTool>(&mut app, "rig-harness", "");
-//!     load::<plugins::print::PrintPlugin>(&mut app, "rig-harness", "");
+//!     load::<HelloPlugin>(&mut app, "rig-hello", "path plugins/hello");
 //!     app.run()
 //! }
 //! ```
@@ -49,11 +54,12 @@ pub mod front;
 pub mod plugin_guide {}
 pub mod host;
 mod load;
-pub mod plugins;
-#[cfg(feature = "tui")]
-pub mod tui;
 
 pub use load::{Build, BuildKind, PluginSource, ProvidedBy, Provides, load};
+
+/// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
+/// that reads it.
+pub const PLUGIN_GUIDE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/PLUGINS.md");
 
 use bevy::MinimalPlugins;
 use bevy::diagnostic::FrameCountPlugin;
@@ -68,6 +74,9 @@ pub use bevy_app::{App, AppExit};
 /// Bevy's error handlers, for [`App::set_error_handler`]: `warn` logs a
 /// failing system, observer or command instead of stopping the app.
 pub use bevy_ecs::error;
+/// The `rig` launcher protocol: the `RIG_HOME` layout, sessions, and the
+/// environment and exit codes the launcher and the agent share.
+pub use rig::harness_protocol;
 /// The rig-core this app is built on, for the conversation's messages
 /// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
 pub use rig_core;
@@ -76,10 +85,10 @@ pub use rig_ecs;
 
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
 /// prelude (Bevy's app and ECS preludes, the agent components and
-/// requests, and the tool and command registries), what agents do and
-/// say, the app's session, its log's warnings and launcher, views and
-/// plugin groups, and with feature `tui` the terminal view's panels and
-/// tool renderers. ratatui itself is [`tui::ratatui`].
+/// requests, and the tool and command registries), what agents say, the
+/// app's session, its log's warnings and launcher, what fronts share and
+/// the plugin groups. A plugin crate's own types come from that crate,
+/// such as the terminal view's panels from `rig-tui`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
@@ -89,19 +98,6 @@ pub mod prelude {
     pub use crate::host::launcher;
     pub use crate::host::reload::{CancelReload, ReloadStatus};
     pub use crate::host::session::{LogEvents, Logged, SessionPaths};
-    pub use crate::plugins::activity::{
-        Activity, ActivityPlugin, ActivitySystems, FedMessage, MessageFeed, Preview, PreviewKind,
-        Status, ToolActivity,
-    };
-    pub use crate::plugins::sessions::{SessionTitle, SwitchSession};
-    pub use crate::plugins::usage::{Spending, TurnSpending};
-    #[cfg(feature = "tui")]
-    pub use crate::tui::ratatui::layout::Constraint;
-    #[cfg(feature = "tui")]
-    pub use crate::tui::{
-        AppToolRenderersExt, Focused, PanelCanvas, Placement, RESULT_LINES, RequestRedraw,
-        TuiPanel, TuiScreen, TuiSystems,
-    };
     pub use crate::{
         Build, HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
     };

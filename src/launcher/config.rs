@@ -7,17 +7,11 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
+use super::Result;
 use super::project::PACKAGE;
-use super::{Result, VERSION};
 
-/// Written when `plugins.toml` does not exist yet, through [`template`].
-const TEMPLATE: &str = include_str!("plugins.toml");
-
-/// [`TEMPLATE`] with `{version}` this launcher's version, so an optional
-/// rig crate it names is the agent's own.
-fn template() -> String {
-    TEMPLATE.replace("{version}", VERSION)
-}
+/// Written when `plugins.toml` does not exist yet.
+pub(super) const TEMPLATE: &str = include_str!("plugins.toml");
 
 /// The parsed plugin list.
 pub struct Config {
@@ -29,8 +23,8 @@ pub struct Config {
 pub struct Plugin {
     /// The plugin type's path, such as `rig_hello::HelloPlugin`.
     pub type_path: String,
-    /// The package that provides it, or `None` for rig-harness's own.
-    pub package: Option<Package>,
+    /// The package that provides it.
+    pub package: Package,
 }
 
 /// A plugin package.
@@ -58,6 +52,10 @@ pub enum Source {
     },
     /// A crates.io version requirement.
     Version(String),
+    /// One of rig's own crates, such as `rig-tui`, from where the agent's
+    /// rig crates come from: the rig checkout, else crates.io at this
+    /// launcher's version.
+    Rig,
 }
 
 impl fmt::Display for Source {
@@ -75,6 +73,7 @@ impl fmt::Display for Source {
                 Ok(())
             }
             Self::Version(version) => write!(f, "version {version}"),
+            Self::Rig => write!(f, "rig"),
         }
     }
 }
@@ -89,9 +88,8 @@ impl Config {
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                let template = template();
-                fs::write(path, &template)?;
-                template
+                fs::write(path, TEMPLATE)?;
+                TEMPLATE.to_owned()
             }
             Err(failure) => return Err(format!("{}: {failure}", path.display()).into()),
         };
@@ -198,7 +196,7 @@ fn without_table(text: &str, type_path: &str, base: &Path) -> Result<String> {
 }
 
 /// Parses `text`; relative plugin paths are relative to `base`.
-fn parse(text: &str, base: &Path) -> Result<Config> {
+pub(super) fn parse(text: &str, base: &Path) -> Result<Config> {
     let mut tables: Vec<(usize, BTreeMap<String, String>)> = Vec::new();
     for (number, line) in (1..).zip(text.lines()) {
         let line = without_comment(line).trim();
@@ -230,14 +228,10 @@ fn parse(text: &str, base: &Path) -> Result<Config> {
                 if !types.insert(plugin.type_path.clone()) {
                     return Err(format!("`{}` is listed twice", plugin.type_path).into());
                 }
-                if let Some(package) = &plugin.package
-                    && plugins
-                        .iter()
-                        .filter_map(|listed| listed.package.as_ref())
-                        .any(|listed| {
-                            listed.name == package.name && listed.source != package.source
-                        })
-                {
+                let package = &plugin.package;
+                if plugins.iter().any(|listed| {
+                    listed.package.name == package.name && listed.package.source != package.source
+                }) {
                     return Err(
                         format!("`{}` is listed before with another source", package.name).into(),
                     );
@@ -267,56 +261,33 @@ fn plugin(mut table: BTreeMap<String, String>, base: &Path) -> Result<Plugin> {
     let version = table.remove("version");
     let branch = table.remove("branch");
     let rev = table.remove("rev");
-    let package = match table.remove("crate") {
-        None if [&path, &git, &version, &branch, &rev]
-            .iter()
-            .any(|key| key.is_some()) =>
-        {
-            return Err("a plugin from another crate needs `crate`, its package name".into());
+    let name = table
+        .remove("crate")
+        .ok_or("`crate` (the package name) is missing")?;
+    if name.is_empty()
+        || !name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    {
+        return Err(format!("`{name}` is not a crate name").into());
+    }
+    if ["rig-harness", PACKAGE, "bevy"].contains(&name.as_str()) {
+        return Err(format!("`{name}` is part of the agent itself").into());
+    }
+    let source = match (path, git, version) {
+        (None, Some(url), None) => Source::Git { url, branch, rev },
+        _ if branch.is_some() || rev.is_some() => {
+            return Err("`branch` and `rev` only go with `git`".into());
         }
-        None => {
-            // The generated project depends on rig-harness; any other
-            // crate needs its own entry.
-            let root = type_path.split("::").next().unwrap_or_default();
-            if root != "rig_harness" {
-                return Err(format!(
-                    "`{type_path}` names the crate `{root}`, which is no dependency of the agent: \
-                     an entry without `crate` is one of rig-harness's own plugins, under \
-                     `rig_harness::`; a plugin from another crate needs `crate` and a source."
-                )
-                .into());
-            }
-            None
+        (Some(path), None, None) => {
+            let path = base.join(path);
+            Source::Path(std::path::absolute(&path).unwrap_or(path))
         }
-        Some(name) => {
-            if name.is_empty()
-                || !name
-                    .chars()
-                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
-            {
-                return Err(format!("`{name}` is not a crate name").into());
-            }
-            if ["rig-harness", PACKAGE, "bevy"].contains(&name.as_str()) {
-                return Err(format!(
-                    "`{name}` is part of the agent itself; rig-harness's own plugins need no `crate`"
-                )
-                .into());
-            }
-            let source = match (path, git, version) {
-                (None, Some(url), None) => Source::Git { url, branch, rev },
-                _ if branch.is_some() || rev.is_some() => {
-                    return Err("`branch` and `rev` only go with `git`".into());
-                }
-                (Some(path), None, None) => {
-                    let path = base.join(path);
-                    Source::Path(std::path::absolute(&path).unwrap_or(path))
-                }
-                (None, None, Some(version)) => Source::Version(version),
-                _ => return Err("set exactly one of `path`, `git` and `version`".into()),
-            };
-            Some(Package { name, source })
-        }
+        (None, None, Some(version)) => Source::Version(version),
+        (None, None, None) => Source::Rig,
+        _ => return Err("set at most one of `path`, `git` and `version`".into()),
     };
+    let package = Package { name, source };
     if let Some(key) = table.keys().next() {
         return Err(format!("unknown key `{key}`").into());
     }

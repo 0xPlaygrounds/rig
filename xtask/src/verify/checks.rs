@@ -32,6 +32,37 @@ pub(crate) struct Check {
 fn cargo(args: &[&str]) -> Step {
     Step::new("cargo", args)
 }
+/// The rig agent's packages, none of them a default member: the kernel,
+/// the core and its libraries, every plugin crate of `plugins/`, and their
+/// test support.
+pub(crate) const HARNESS_PACKAGES: [&str; 17] = [
+    "rig-ecs",
+    "rig-tools",
+    "rig-harness",
+    "rig-activity",
+    "rig-basics",
+    "rig-coding-tools",
+    "rig-compaction",
+    "rig-inspect",
+    "rig-login-chatgpt",
+    "rig-models",
+    "rig-print",
+    "rig-sessions",
+    "rig-steel",
+    "rig-subagents",
+    "rig-telemetry",
+    "rig-tui",
+    "rig-harness-test-support",
+];
+/// cargo with `head`, then `-p` for each of [`HARNESS_PACKAGES`], then `tail`.
+fn harness(head: &[&str], tail: &[&str]) -> Step {
+    let mut args = head.to_vec();
+    for package in HARNESS_PACKAGES {
+        args.extend(["-p", package]);
+    }
+    args.extend(tail);
+    cargo(&args)
+}
 fn check(id: &str, steps: Vec<Step>) -> Check {
     Check {
         id: id.into(),
@@ -51,7 +82,6 @@ pub(super) fn all() -> Vec<Check> {
                 ),
                 Step::new("@fixture-paths", &[]),
                 Step::new("@ecs-boundary", &[]),
-                Step::new("@plugin-boundary", &[]),
                 Step::new("@options-guards", &[]),
                 Step::new(
                     "node",
@@ -107,38 +137,11 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
-                // are not default members; the app must also build without
-                // the terminal view.
-                cargo(&[
-                    "clippy",
-                    "--locked",
-                    "-p",
-                    "rig-harness",
-                    "-p",
-                    "rig-ecs",
-                    "-p",
-                    "rig-tools",
-                    "-p",
-                    "rig-steel",
-                    "-p",
-                    "rig-inspect",
-                    "--all-targets",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]),
-                cargo(&[
-                    "clippy",
-                    "--locked",
-                    "-p",
-                    "rig-harness",
-                    "--no-default-features",
-                    "--all-targets",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]),
+                // The rig agent's packages are not default members.
+                harness(
+                    &["clippy", "--locked"],
+                    &["--all-targets", "--", "-D", "warnings"],
+                ),
             ],
         ),
         check(
@@ -181,24 +184,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
-                // are not default members, so the run above never reaches
-                // their tests.
-                cargo(&[
-                    "nextest",
-                    "run",
-                    "--locked",
-                    "-p",
-                    "rig-harness",
-                    "-p",
-                    "rig-ecs",
-                    "-p",
-                    "rig-tools",
-                    "-p",
-                    "rig-steel",
-                    "-p",
-                    "rig-inspect",
-                ]),
+                // The rig agent's packages are not default members, so the
+                // run above never reaches their tests.
+                harness(&["nextest", "run", "--locked"], &[]),
             ],
         ),
         // The effect-corpus cells have one lane owner; default-tests excludes
@@ -585,12 +573,14 @@ pub(super) fn full_lane(path: &str) -> bool {
         || path.starts_with("tests/integrations/")
         || path.starts_with("test-support/")
         || path.starts_with(".github/actions/")
-        // `crates/*/Cargo.toml`: the workspace members' manifests, not the
-        // nested compile fixtures beneath them (those have their own owners).
-        || path
-            .strip_prefix("crates/")
-            .and_then(|rest| rest.strip_suffix("/Cargo.toml"))
-            .is_some_and(|name| !name.contains('/'))
+        // `crates/*/Cargo.toml` and `plugins/*/Cargo.toml`: the workspace
+        // members' manifests, not the nested compile fixtures beneath them
+        // (those have their own owners).
+        || ["crates/", "plugins/"].iter().any(|folder| {
+            path.strip_prefix(folder)
+                .and_then(|rest| rest.strip_suffix("/Cargo.toml"))
+                .is_some_and(|name| !name.contains('/'))
+        })
         || [
             "rig-lancedb",
             "rig-mongodb",

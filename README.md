@@ -167,13 +167,16 @@ dependency guarantees and migration paths.
 ## The rig coding agent
 
 `cargo install rig` also installs `rig`, a terminal coding agent. The agent is
-the [`rig-harness`](crates/rig-harness) crate, a Bevy app, and `rig` is its launcher:
-it generates a small Cargo project for the agent, builds it, and runs it. Its
-coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
+a Bevy app: the [`rig-harness`](crates/rig-harness) crate is its core, and
+every other part of it is a plugin crate in [`plugins/`](plugins). `rig` is its
+launcher: it generates a small Cargo project for the agent, builds it, and
+runs it. Its coding tools (`read`, `write`, `edit`, `search`, `shell`) are the
 [`rig-tools`](crates/rig-tools) crate, usable by any rig agent, and its agent
 runtime (agents, turns and tool calls as Bevy entities, one recorded effect
 path, session journals) is the [`rig-ecs`](crates/rig-ecs) crate, for building
-your own harness.
+your own harness. These crates are not published yet, so the agent builds only
+from a rig checkout: install the launcher from one, or point `RIG_SOURCE` at
+one (see the end of this section).
 
 ```bash
 cargo install rig
@@ -309,7 +312,7 @@ Tab or Enter takes the selected one. A command that is unknown or refused, such
 as one with arguments it does not take, comes back in the input with the
 reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
-`app.add_tool_renderer` (`rig_harness::tui::AppToolRenderersExt`). PageUp, PageDown and
+`app.add_tool_renderer` (`rig_tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
@@ -333,15 +336,18 @@ rebuilds the agent with them and restarts in the same session. Everything but
 the core (the session, the launcher protocol and `/reload`) is an entry in the
 same list: the project context, models, sign-in, sessions, compaction, usage,
 activity, the effect log, each tool, the commands, the subagents, diagnostics,
-`--print` and the terminal view, so any of them can be removed or
-replaced ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
+`--print` and the terminal view, each from a plugin crate in
+[`plugins/`](plugins), so any of them can be removed or replaced
+([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml
 [[plugin]]
-plugin = "rig_harness::plugins::tools::ReadTool"
+crate = "rig-coding-tools"        # one of rig's own plugin crates: no source
+plugin = "rig_coding_tools::ReadTool"
 
 [[plugin]]
-plugin = "rig_harness::tui::TuiPlugin"
+crate = "rig-tui"
+plugin = "rig_tui::TuiPlugin"
 
 [[plugin]]
 crate = "hello"                   # the package name
@@ -356,26 +362,26 @@ remove <type>` takes one out (its crate stays), each checked before
 plugins.toml is written; `rig plugin check` checks the list, with `--build`
 also building the agent with its plugins in `$RIG_HOME/target` without
 staging it. A plugin crate depends on
-`rig-harness` alone and registers tools, slash commands, tool renderers,
-terminal panels or a window the way the built-in ones do, never by editing
-rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
-is a cookbook with a copy-ready example of each kind, every name it uses from
-`rig_harness::prelude`, and the `src/lib.rs` that `rig plugin new` writes is a
+`rig-harness`, and on another plugin crate whose types it uses (such as
+`rig-tui` for a terminal panel), and registers tools, slash commands, tool
+renderers, terminal panels or a window the way the built-in ones do, never by
+editing rig's crates. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
+is a cookbook with a copy-ready example of each kind, its names from
+`rig_harness::prelude` and the plugin crates, and the `src/lib.rs` that `rig plugin new` writes is a
 working, commented slash command. An agent started by the launcher knows
 its plugins, commands and tools and how to write and add its own plugins
 from its system prompt.
 
-The optional [`rig-inspect`](crates/rig-inspect) plugin adds the `inspect`
+The optional [`rig-inspect`](plugins/rig-inspect) plugin adds the `inspect`
 tool, with which the agent reads its own Bevy world (in process, read-only):
 the plugins loaded and what each added, the agents, the state saved with the
 session, the warnings logged and every reflected type. It is commented out in
 the default `plugins.toml`, since Bevy Remote makes the build heavier and on
 Linux needs the ALSA development headers (`libasound2-dev` on Debian and
 Ubuntu, `alsa-lib-devel` on Fedora, `alsa-lib` on Arch); uncomment its entry,
-or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect
---version 0.44.0` (your `rig`'s version).
+or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect`.
 
-Code mode is an optional plugin crate, `rig-steel`, not in the default list.
+Code mode is an optional plugin crate, [`rig-steel`](plugins/rig-steel), not in the default list.
 Its `SteelPlugin` adds the `run_steel` tool: the model writes one
 [Steel](https://github.com/mattwparas/steel) (Scheme) program that spawns
 agents, sends them requests, waits for their replies and calls the model's own
@@ -394,7 +400,6 @@ limited, and Esc cancels it. Enable it with:
 ```toml
 [[plugin]]
 crate = "rig-steel"
-path = "/path/to/rig/crates/rig-steel"
 plugin = "rig_steel::SteelPlugin"
 ```
 
