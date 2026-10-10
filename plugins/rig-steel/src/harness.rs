@@ -202,11 +202,8 @@ fn run_jobs(world: &mut World) {
 
 /// The agent with the id `id`.
 fn find(world: &mut World, id: &AgentId) -> Result<Entity, String> {
-    world
-        .query_filtered::<(Entity, &AgentId), With<Agent>>()
-        .iter(world)
-        .find(|(_, of)| *of == id)
-        .map(|(agent, _)| agent)
+    let mut agents = world.query_filtered::<(Entity, &AgentId), With<Agent>>();
+    id.find_in(agents.iter(world))
         .ok_or_else(|| format!("no agent has the id `{}`", id.0))
 }
 
@@ -302,16 +299,11 @@ fn send(
             state: ReplyState::Waiting(Vec::new()),
         },
     );
-    world.trigger(Deliver {
-        entity: agent,
-        text,
-        origin: Origin {
-            request: Some(request.clone()),
-            ..origin
-        },
-        mode: DeliveryMode::Queue,
-        attachments: Vec::new(),
-    });
+    let origin = Origin {
+        request: Some(request.clone()),
+        ..origin
+    };
+    world.trigger(Deliver::new(agent, text, DeliveryMode::Queue).with_origin(origin));
     Ok(request)
 }
 
