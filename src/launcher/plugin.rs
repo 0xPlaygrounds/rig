@@ -22,8 +22,8 @@ use super::project::{
 const SCAFFOLD: &str = include_str!("plugin/scaffold.rs");
 
 /// `rig plugin`'s usage.
-pub const USAGE: &str = "\
-  rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
+pub const USAGE: &str =
+    "  rig plugin new <name>  Make a plugin crate in RIG_HOME/plugins/<name> and add
                          it to plugins.toml; /reload or `rig build` builds it.
   rig plugin add <type> [--path <dir> | --git <url> [--branch <b> | --rev <r>]
                  | --version <req>] [--crate <name>]

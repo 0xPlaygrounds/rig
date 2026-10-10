@@ -336,8 +336,8 @@ pub struct Invocation {
 }
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
-pub const INVOCATION_USAGE: &str = "\
-  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
+pub const INVOCATION_USAGE: &str =
+    "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
                          Text piped in on stdin follows the prompt.
   -m, --model <model>    The catalog model (vendor/model) to use.
 ";
