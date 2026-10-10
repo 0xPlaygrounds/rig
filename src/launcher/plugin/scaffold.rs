@@ -23,7 +23,9 @@ impl Plugin for ScaffoldPlugin {
         // The other extension points, each in the plugin guide:
         // - a tool:             app.add_tool(MyTool), a `PortableTool`
         // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
-        // - on a timer:         app.add_systems(Update, tick.run_if(every(Duration::from_secs(1))))
+        // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
+        //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
+        // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)
         // - saved state:        app.save_component::<MyComponent>()
         // - a terminal panel:   spawn TuiPanel::new(Placement::Right(Constraint::Length(30)))
     }

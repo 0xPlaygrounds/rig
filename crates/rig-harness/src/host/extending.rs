@@ -64,7 +64,8 @@ answer and starts no turn); observe `TurnEnded`, which \
 travels up `SpawnedBy`; spawn a `PromptSection` to add to every system prompt;
   - state kept with the session: `app.save_component::<T>()` for an agent component; re-arm \
 work on `Restored`;
-  - time: `.run_if(every(Duration))` or `Wake::after(Duration)`, never a thread that sleeps;
+  - time: Bevy's `Time`; `.run_if(on_real_timer(Duration))` with a `KeepAwake(Duration)` entity \
+while it should tick, or a one-off `commands.delayed().duration(Duration)`, never a thread that sleeps;
   - a window: `rig_harness::windowed(DefaultPlugins)` and a `Wake` on winit's event loop, with \
 `bevy = { version = \"={bevy}\", default-features = false, features = [..] }` in the crate.
 - Checking a change: `$RIG_LAUNCHER plugin check --build` builds the agent with its plugins in \

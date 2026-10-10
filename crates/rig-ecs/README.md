@@ -15,11 +15,12 @@ rig-core, for building your own agent harness:
 - **Session journals** go to the `SessionStore` the app inserts: `MemoryStore`,
   or `JsonlDirStore` (feature `fs-journal`) for JSON-lines files.
 - **Compaction and retries** from rig-memory and rig-core, set by
-  `CompactionPolicy` and the retry policy.
+  `CompactionPolicy` and the retry policy. A retry waits on Bevy's clock
+  (`bevy_time`'s delayed commands); `AgentPlugin` adds `TimePlugin` when the
+  app has none.
 
 Features: `subagents` (default) adds the `task` and `message` tools; `fs-journal`
-and `runner` (a windowless loop that sleeps until there is work) are native-only.
-Without them the crate builds for `wasm32-unknown-unknown`.
+is native-only. Without it the crate builds for `wasm32-unknown-unknown`.
 
 The [`rig-harness`](../rig-harness) terminal coding agent is built on it.
 
