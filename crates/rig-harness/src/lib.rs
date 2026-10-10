@@ -133,7 +133,7 @@ impl PluginGroup for RigHarnessPlugins {
 /// agent and the frame count and clock, the log written to the session
 /// with its warnings and errors passed on as data, a clean exit on SIGINT,
 /// SIGTERM and SIGHUP, and in place of Bevy's `ScheduleRunnerPlugin` a
-/// loop that sleeps until
+/// loop that runs the schedules on the main thread and sleeps until
 /// [`Wake`](rig_ecs::calls::Wake)d or until the clock's next deadline.
 /// Added before [`RigHarnessPlugins`], so the agent core runs on its clock;
 /// a windowing plugin added later through [`windowed`] sets its own runner

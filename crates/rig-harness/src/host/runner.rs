@@ -4,7 +4,8 @@
 //! interval, or a second. Frames never come faster than every 16 ms,
 //! however often a streaming reply wakes the loop; the frames after a wake
 //! come from [`settle`](rig_ecs::calls::settle), which works the same under
-//! any loop.
+//! any loop. It runs every schedule on the main thread, one system after
+//! another.
 
 use std::time::{Duration, Instant};
 
@@ -12,6 +13,7 @@ use bevy::time::{DelayedCommandQueue, Time};
 use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::SingleThreadedExecutor;
 use rig_ecs::calls::{KeepAwake, Wake};
 
 /// The shortest time between two frames.
@@ -40,6 +42,14 @@ impl Plugin for RunnerPlugin {
                 }
                 app.finish();
                 app.cleanup();
+            }
+            // A terminal app's systems are small: Bevy's multi-threaded
+            // executor would wake the task pool for them every frame, which
+            // costs more than they do (an idle frame three times as much).
+            if let Some(mut schedules) = app.world_mut().get_resource_mut::<Schedules>() {
+                for (_, schedule) in schedules.iter_mut() {
+                    schedule.set_executor(SingleThreadedExecutor::new());
+                }
             }
             let mut due = NextFrame::new(app.world_mut());
             loop {

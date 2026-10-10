@@ -70,6 +70,7 @@ pub mod prelude {
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, Notice};
@@ -95,15 +96,25 @@ pub struct WriteJournal;
 /// [`SessionLog`] logs to the [`SessionStore`] inserted before it is
 /// built, if any, and nothing until [`journal::JournalPlugin`] restored
 /// the session. It adds Bevy's `TimePlugin` unless the app has it, for the
-/// clock a retried model call waits on, and lets that clock count frames up
-/// to [`calls::MAX_FRAME_GAP`] apart in full under any loop. It sets no
-/// error handler: that is the application's choice.
+/// clock a retried model call waits on, and then runs `First` and
+/// `PreUpdate` on Bevy's single-threaded executor. It lets that clock count
+/// frames up to [`calls::MAX_FRAME_GAP`] apart in full under any loop. It
+/// sets no error handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
         if !app.is_plugin_added::<TimePlugin>() {
-            app.add_plugins(TimePlugin);
+            // An app without a clock of its own is a small headless one, not
+            // a game: its `First` and `PreUpdate` hold little but the clock's
+            // systems, too little for Bevy's multi-threaded executor, which
+            // would wake the task pool for them every frame.
+            let single = |schedule: &mut Schedule| {
+                schedule.set_executor(SingleThreadedExecutor::new());
+            };
+            app.add_plugins(TimePlugin)
+                .edit_schedule(First, single)
+                .edit_schedule(PreUpdate, single);
         }
         let store = app.world().get_resource::<SessionStore>().cloned();
         app.init_resource::<effects::Effects>()
