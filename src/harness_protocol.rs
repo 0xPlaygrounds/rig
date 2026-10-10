@@ -274,27 +274,18 @@ impl SessionDir {
         &self.0
     }
 
-    /// Every agent log in the directory, in no particular order.
-    pub fn agent_logs(&self) -> Vec<PathBuf> {
-        let Ok(entries) = std::fs::read_dir(&self.0) else {
-            return Vec::new();
-        };
-        entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .and_then(|name| name.strip_suffix(AGENT_LOG))
-                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
-            })
-            .collect()
-    }
-
     /// Whether any agent of the session wrote its log, so it can be
     /// resumed.
     pub fn is_saved(&self) -> bool {
-        !self.agent_logs().is_empty()
+        std::fs::read_dir(&self.0).is_ok_and(|entries| {
+            entries.filter_map(Result::ok).any(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(AGENT_LOG))
+                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
+            })
+        })
     }
 
     /// The agent's text log.

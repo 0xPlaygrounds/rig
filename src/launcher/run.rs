@@ -74,7 +74,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         let ready = directory.ready();
         let log = directory.log();
         let binary = pick(home, &session, &trial)?;
-        remove_if_present(&ready)?;
+        absent(fs::remove_file(&ready))?;
         let mut command = Command::new(binary.path());
         command
             .args(invocation.to_args())
@@ -164,10 +164,8 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
 /// which is removed: a session id, or a new session when the file is empty.
 fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
     let path = directory.switch();
-    let text = match fs::read_to_string(&path) {
-        Ok(text) => text,
-        Err(failure) if failure.kind() == ErrorKind::NotFound => return Ok(None),
-        Err(failure) => return Err(failure.into()),
+    let Some(text) = absent(fs::read_to_string(&path))? else {
+        return Ok(None);
     };
     fs::remove_file(&path)?;
     let text = text.trim();
@@ -193,12 +191,10 @@ fn switch(
         Ok((next, notice)) => {
             current.forget()?;
             current.discard_if_unsaved(home);
-            match fs::rename(home.staged_for(&current.id), home.staged_for(&next.id)) {
-                Err(failure) if failure.kind() != ErrorKind::NotFound => {
-                    return Err(failure.into());
-                }
-                _ => {}
-            }
+            absent(fs::rename(
+                home.staged_for(&current.id),
+                home.staged_for(&next.id),
+            ))?;
             Ok((next, notice))
         }
         Err(failure) => Ok((
@@ -222,14 +218,14 @@ impl Claimed {
     /// After a clean quit, the next `rig` in this directory starts a new
     /// session: the marker goes, when it still names this one.
     fn forget(&self) -> Result<()> {
-        match &self.marker {
-            Some(marker) if names(marker, &self.id) => remove_if_present(marker),
-            _ => Ok(()),
+        if let Some(marker) = &self.marker
+            && names(marker, &self.id)
+        {
+            absent(fs::remove_file(marker))?;
         }
+        Ok(())
     }
-}
 
-impl Claimed {
     /// Removes the session's directory when no agent logged a message in
     /// it, such as a `/new` session left at once: a session with nothing
     /// to resume leaves nothing behind. Call it once the agent exited
@@ -359,10 +355,11 @@ fn restore_terminal() {
     }
 }
 
-fn remove_if_present(path: &Path) -> Result<()> {
-    match fs::remove_file(path) {
-        Err(failure) if failure.kind() != ErrorKind::NotFound => Err(failure.into()),
-        _ => Ok(()),
+/// `result`, with a missing file as `None`.
+fn absent<T>(result: std::io::Result<T>) -> std::io::Result<Option<T>> {
+    match result {
+        Err(failure) if failure.kind() == ErrorKind::NotFound => Ok(None),
+        result => result.map(Some),
     }
 }
 
@@ -412,10 +409,8 @@ impl Binary {
 fn pick(home: &Home, session: &SessionId, trial: &Path) -> Result<Binary> {
     for staged in [home.staged_for(session), home.staged()] {
         // The rename claims the staged build for this launcher alone.
-        match fs::rename(staged, trial) {
-            Ok(()) => return Ok(Binary::Trial(trial.to_path_buf())),
-            Err(failure) if failure.kind() != ErrorKind::NotFound => return Err(failure.into()),
-            Err(_) => {}
+        if absent(fs::rename(staged, trial))?.is_some() {
+            return Ok(Binary::Trial(trial.to_path_buf()));
         }
     }
     let good = home.good();

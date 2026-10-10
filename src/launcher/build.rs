@@ -54,12 +54,11 @@ pub struct BuildFailure {
 impl BuildFailure {
     /// The reason, then the first errors.
     pub fn details(&self) -> String {
-        let mut text = self.reason.clone();
-        for line in &self.errors {
-            text.push('\n');
-            text.push_str(line);
-        }
-        text
+        std::iter::once(&self.reason)
+            .chain(&self.errors)
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 

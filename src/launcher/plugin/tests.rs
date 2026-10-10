@@ -1,15 +1,10 @@
 use super::*;
 
 #[test]
-fn type_names_come_from_the_crate_name() {
-    assert_eq!(type_name("agent-viz"), "AgentVizPlugin");
-    assert_eq!(type_name("hello"), "HelloPlugin");
-    assert_eq!(type_name("my_plugin"), "MyPlugin");
-}
-
-#[test]
 fn the_scaffold_names_the_plugin_and_its_command() {
-    let lib = lib_rs("word-count", "WordCountPlugin");
+    assert_eq!(type_name("agent-viz"), "AgentVizPlugin");
+    assert_eq!(type_name("my_plugin"), "MyPlugin");
+    let lib = lib_rs("word-count", &type_name("word-count"));
     assert!(lib.contains("pub struct WordCountPlugin;"));
     assert!(lib.contains("impl Plugin for WordCountPlugin {"));
     assert!(lib.contains("\"word-count\",\n"));

@@ -96,9 +96,15 @@ impl Config {
             }
             Err(failure) => return Err(format!("{}: {failure}", path.display()).into()),
         };
-        let base = path.parent().unwrap_or(Path::new("."));
-        parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
+        parse_file(path, &text)
     }
+}
+
+/// Parses `text` as the plugin list at `path`: relative plugin paths are
+/// relative to its directory, and errors name it.
+fn parse_file(path: &Path, text: &str) -> Result<Config> {
+    let base = path.parent().unwrap_or(Path::new("."));
+    parse(text, base).map_err(|failure| format!("{}: {failure}", path.display()).into())
 }
 
 /// Adds `entry`, the text of one `[[plugin]]` table, at the end of the
@@ -117,8 +123,7 @@ pub fn append(
     }
     text.push('\n');
     text.push_str(entry);
-    let base = path.parent().unwrap_or(Path::new("."));
-    let config = parse(&text, base).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let config = parse_file(path, &text)?;
     check(&config).map_err(|failure| format!("{}: {failure}", path.display()))?;
     fs::write(path, text)?;
     Ok(config)
@@ -133,7 +138,7 @@ pub fn remove(path: &Path, type_path: &str) -> Result<Config> {
     let base = path.parent().unwrap_or(Path::new("."));
     let kept = without_table(&text, type_path, base)
         .map_err(|failure| format!("{}: {failure}", path.display()))?;
-    let config = parse(&kept, base).map_err(|failure| format!("{}: {failure}", path.display()))?;
+    let config = parse_file(path, &kept)?;
     fs::write(path, kept)?;
     Ok(config)
 }
@@ -381,7 +386,7 @@ fn parse_value(text: &str) -> Option<Value> {
 }
 
 /// A basic TOML string at the start of `text`, and the text after it.
-fn parse_string(text: &str) -> Option<(String, &str)> {
+pub fn parse_string(text: &str) -> Option<(String, &str)> {
     let mut chars = text.strip_prefix('"')?.char_indices();
     let mut value = String::new();
     while let Some((index, c)) = chars.next() {

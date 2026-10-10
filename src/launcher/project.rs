@@ -10,7 +10,7 @@ use std::process::Command;
 
 use rig::harness_protocol::Home;
 
-use super::config::{Config, Source};
+use super::config::{Config, Source, parse_string};
 use super::{BEVY_VERSION, Result, VERSION};
 
 /// The generated package's name, and so its binary's.
@@ -114,11 +114,7 @@ pub fn manifest_string(manifest: &str, table: &str, key: &str) -> Option<String>
             continue;
         };
         if name.trim() == key {
-            let value = value.trim();
-            return value
-                .strip_prefix('"')
-                .and_then(|value| value.split_once('"'))
-                .map(|(value, _)| value.to_owned());
+            return parse_string(value.trim()).map(|(value, _)| value);
         }
     }
     None
