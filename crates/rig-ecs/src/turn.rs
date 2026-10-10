@@ -428,10 +428,10 @@ pub(crate) fn on_call_model(
         None => conversation.messages().to_vec(),
     };
     commands.queue(move |world: &mut World| {
-        if let Err(why) = request(world, turn, messages) {
-            if let Err(error) = world.run_system_cached_with(fail_turn, (turn, why)) {
-                warn!("could not end a failed turn: {error}");
-            }
+        if let Err(why) = request(world, turn, messages)
+            && let Err(error) = world.run_system_cached_with(fail_turn, (turn, why))
+        {
+            warn!("could not end a failed turn: {error}");
         }
     });
 }
