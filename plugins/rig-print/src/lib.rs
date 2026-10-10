@@ -113,14 +113,13 @@ fn drive(
             let Some(agent) = primary(&agents) else {
                 return;
             };
-            let Ok((chosen, connected)) = models_of.get(agent) else {
+            let Ok((chosen, _)) = models_of.get(agent) else {
                 return;
             };
             let model = match (&mode.0.model, chosen) {
-                // The front chose it.
-                (Some(_), _) => None,
-                (None, Some(_)) if connected => None,
-                (None, Some(chosen)) => Some(chosen.0.clone()),
+                // The front chose it, or the restored session did, and it
+                // was connected, or refused with a notice, already.
+                (Some(_), _) | (None, Some(_)) => None,
                 (None, None) => match models.0.reachable().first() {
                     Some(spec) => Some(spec.reference()),
                     None if command => None,
@@ -220,3 +219,6 @@ fn print_notices(
         eprintln!("rig: {}", notice.text);
     }
 }
+
+#[cfg(test)]
+mod tests;
