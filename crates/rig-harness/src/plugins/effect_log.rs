@@ -87,6 +87,10 @@ fn write_effects(
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
+    // Taking copies the header, tools' schemas and all, every frame.
+    if log.recorder.resolved() == 0 {
+        return;
+    }
     let EffectLog { recorder, writer } = &mut *log;
     if let Err(failure) = writer.append(&recorder.take())
         && !*failed
