@@ -47,12 +47,15 @@ impl Plugin for CompactionPlugin {
 }
 
 /// How agents are compacted: rig-memory's default policy, tracking the
-/// files the built-in file tools read and changed.
+/// files the built-in file tools read and changed. A plugin whose tool
+/// reads or changes files tracks its argument the same way, by adding a
+/// [`TrackArgument`] to `tracked` (from `finish` or a startup system).
 #[derive(Resource, Clone, Debug)]
 pub struct Compaction(pub CompactionPolicy);
 
-/// The files the built-in file tools were called with: `read`'s are read,
-/// `edit`'s and `write`'s changed (a later set wins in the summary).
+/// The files the built-in file tools (rig-coding-tools') were called with:
+/// `read`'s are read, `edit`'s and `write`'s changed (a later set wins in
+/// the summary).
 const TRACKED: &[TrackArgument<'static>] = &[
     TrackArgument {
         tool: "read",
@@ -150,21 +153,39 @@ fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str)
     )
 }
 
+/// What [`CompactingItem::start`] did.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Start {
+    /// Nothing: the agent has no model to write the summary.
+    NoModel,
+    /// Nothing: no message would be summarized that is not already.
+    NothingNew,
+    /// Nothing: the summary could not be planned, and the agent was told
+    /// why. It counts as a compaction of the turn.
+    Refused,
+    /// The summary call started.
+    Started,
+}
+
 impl CompactingItem<'_, '_> {
     /// Starts the summary call of a compaction of `agent` for `reason` on
     /// `turn`, or on a turn of its own when `None`, when it has a model and
-    /// anything new would be summarized, and says whether it started. The
-    /// agent is told why a compaction could not start.
+    /// anything new would be summarized.
     fn start(
         &self,
         (agent, turn): (Entity, Option<Entity>),
         (policy, reason): (&CompactionPolicy, CompactReason),
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
-    ) -> Option<bool> {
-        let (messages, spec) = (self.conversation.messages(), &*self.connection?.spec);
+    ) -> Start {
+        let Some(connection) = self.connection else {
+            return Start::NoModel;
+        };
+        let (messages, spec) = (self.conversation.messages(), &*connection.spec);
         let from = first_live(self.condensed);
-        let upto = policy.cut(messages, from, &reason, Some(spec))?;
+        let Some(upto) = policy.cut(messages, from, &reason, Some(spec)) else {
+            return Start::NothingNew;
+        };
         let none = SummaryState::default();
         let planned = policy.plan(
             self.summarized.map_or(&none, |summarized| &summarized.0),
@@ -178,7 +199,7 @@ impl CompactingItem<'_, '_> {
             Ok(planned) => planned,
             Err(why) => {
                 notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
-                return Some(false);
+                return Start::Refused;
             }
         };
         let turn = turn.unwrap_or_else(|| {
@@ -195,7 +216,7 @@ impl CompactingItem<'_, '_> {
             ModelRequest { request },
             CallOf(turn),
         ));
-        Some(true)
+        Start::Started
     }
 }
 
@@ -213,28 +234,23 @@ fn on_compact(
         return;
     };
     if busy {
-        notices.write(Notice::info(agent, "A turn is running; stop it first."));
-        return;
-    }
-    if compacting.connection.is_none() {
-        notices.write(Notice::info(
-            agent,
-            "No model is connected; pick one first.",
-        ));
+        notices.write(Notice::turn_running(agent));
         return;
     }
     let reason = CompactReason::Asked {
         focus: compact.focus.clone(),
     };
-    let started = compacting.start(
+    let refusal = match compacting.start(
         (agent, None),
         (&policy.0, reason),
         &mut commands,
         &mut notices,
-    );
-    if started.is_none() {
-        notices.write(Notice::info(agent, "Nothing to compact yet."));
-    }
+    ) {
+        Start::NoModel => Notice::no_model(agent),
+        Start::NothingNew => Notice::info(agent, "Nothing to compact yet."),
+        Start::Refused | Start::Started => return,
+    };
+    notices.write(refusal);
 }
 
 /// Before a request that leaves less than the reserve of the model's window
@@ -281,10 +297,8 @@ fn compact_near_the_window(
         return;
     }
     let reason = (policy, CompactReason::Threshold);
-    if compacting
-        .start((agent, Some(turn)), reason, &mut commands, &mut notices)
-        .is_some()
-    {
+    let started = compacting.start((agent, Some(turn)), reason, &mut commands, &mut notices);
+    if matches!(started, Start::Refused | Start::Started) {
         compactions.summaries += 1;
     }
 }
@@ -328,17 +342,17 @@ fn recover_from_overflow(
         return;
     }
     let reason = (policy, CompactReason::Overflow);
-    let Some(started) = compacting.start((agent, Some(turn)), reason, &mut commands, &mut notices)
-    else {
-        return;
-    };
-    compactions.summaries += 1;
-    if started {
-        notices.write(Notice::info(
-            agent,
-            format!("{outgrew}: summarizing its older messages and sending it again."),
-        ));
-        failed.event_mut().handled = true;
+    match compacting.start((agent, Some(turn)), reason, &mut commands, &mut notices) {
+        Start::NoModel | Start::NothingNew => {}
+        Start::Refused => compactions.summaries += 1,
+        Start::Started => {
+            compactions.summaries += 1;
+            notices.write(Notice::info(
+                agent,
+                format!("{outgrew}: summarizing its older messages and sending it again."),
+            ));
+            failed.event_mut().handled = true;
+        }
     }
 }
 
