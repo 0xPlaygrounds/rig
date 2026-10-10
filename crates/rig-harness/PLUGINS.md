@@ -262,9 +262,7 @@ fn recent(
 
 # Turns, state and time
 
-- `TurnEnded` is triggered on an agent when its turn ends, then on each
-  agent above it (`SpawnedBy`); `ended.entity == ended.original_event_target()`
-  is the agent's own.
+- `TurnEnded` is triggered on an agent when its turn ends.
 - An agent component that derives `Reflect` and says
   `#[reflect(Component, Saved)]` is kept with the session: each change is
   logged by reflection, and a restart, `/reload` or `/resume` brings the

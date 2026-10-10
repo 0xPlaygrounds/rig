@@ -55,7 +55,7 @@ impl AgentId {
 /// The agent that spawned this one, such as the agent whose tool call
 /// started it. Despawning that agent despawns this one. The core gives it
 /// no other meaning: a restore links the agents again by their logs'
-/// headers, views list agents by it, and [`TurnEnded`] travels up it.
+/// headers, and views list agents by it.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
@@ -509,15 +509,11 @@ pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
 }
 
 /// An agent's turn ended, however its turn entity went away. Triggered on
-/// the agent once it is idle, then on each agent it was
-/// [`SpawnedBy`] up the chain: an observer's `entity` is the agent seeing
-/// it and `original_event_target()` the agent whose turn ended.
-/// Not triggered for a turn the app's exit stops: the restart carries
-/// that one on.
+/// the agent once it is idle. Not triggered for a turn the app's exit
+/// stops: the restart carries that one on.
 #[derive(EntityEvent, Clone, Debug)]
-#[entity_event(propagate = &'static SpawnedBy, auto_propagate)]
 pub struct TurnEnded {
-    /// The agent seeing the event.
+    /// The agent.
     pub entity: Entity,
     /// How the turn ended.
     pub outcome: TurnOutcome,

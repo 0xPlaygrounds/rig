@@ -383,9 +383,6 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
 /// turn's outcome: a turn reads every message queued for it before it
 /// ends, so it answers them all.
 fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
-    if end.entity != end.original_event_target() {
-        return;
-    }
     for reply in replies.0.values_mut() {
         if reply.agent != end.entity {
             continue;

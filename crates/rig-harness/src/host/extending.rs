@@ -60,8 +60,7 @@ text), the `MessageFeed` resource of delivered messages, and the agent tree thro
 `SpawnedBy`/`Spawned`;
   - conversations: trigger `Deliver { entity, text, origin, mode, attachments }` to put a message \
 in an agent's conversation (`DeliveryMode::Steer`, `Queue`, or `Note` for one that needs no \
-answer and starts no turn); observe `TurnEnded`, which \
-travels up `SpawnedBy`; spawn a `PromptSection` to add to every system prompt;
+answer and starts no turn); observe `TurnEnded`; spawn a `PromptSection` to add to every system prompt;
   - state kept with the session: `#[reflect(Component, Saved)]` on an agent component that \
 derives `Reflect`; re-arm work on `Restored`;
   - time: Bevy's `Time`; `.run_if(on_real_timer(Duration))` with a `KeepAwake(Duration)` entity \

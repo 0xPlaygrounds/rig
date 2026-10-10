@@ -187,8 +187,7 @@ fn step_on_turn_end(
     mut agents: Agents,
 ) {
     let agent = end.entity;
-    // Only the agent whose turn ended, not the agents it propagates to.
-    if agent != end.original_event_target() || !idle.contains(agent) {
+    if !idle.contains(agent) {
         return;
     }
     let failed = |why: &str| format!("{why} {NO_ANSWER}");
