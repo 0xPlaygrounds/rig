@@ -7,7 +7,7 @@ fn manifest() -> String {
 }
 
 #[test]
-fn a_text_file_is_attached_as_numbered_lines() {
+fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
     let path = manifest();
     let (attached, notes) = attachments(&format!("look at @{path}, please"));
     assert!(notes.is_empty(), "{notes:?}");
@@ -24,6 +24,7 @@ fn a_text_file_is_attached_as_numbered_lines() {
         attached_file(text).map(|(label, lines)| (label.to_owned(), Some(lines))),
         Some((path, lines))
     );
+    assert_eq!(attached_file("<file path=\"x\"> is how it starts"), None);
 }
 
 #[test]
@@ -32,9 +33,4 @@ fn a_file_named_twice_is_attached_once_and_a_missing_one_not_at_all() {
     let (attached, notes) = attachments(&format!("@{path} @{path} @no/such/file.rs"));
     assert_eq!(attached.len(), 1);
     assert!(notes.is_empty(), "{notes:?}");
-}
-
-#[test]
-fn typed_text_is_not_an_attached_file() {
-    assert_eq!(attached_file("<file path=\"x\"> is how it starts"), None);
 }

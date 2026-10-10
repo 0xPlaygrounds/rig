@@ -3,40 +3,38 @@
 //!
 //! An agent is an entity whose components hold its conversation, model,
 //! reasoning setting, system prompt and tool access; an agent a plugin
-//! spawns for another, such as a subagent of rig-ecs's
-//! [`SubagentsPlugin`](rig_ecs::subagents::SubagentsPlugin), is one more,
+//! spawns for another, such as a subagent, is one more,
 //! [`SpawnedBy`](rig_ecs::agent::SpawnedBy) that agent. Tools and
 //! slash commands are registered by Bevy plugins, the built-in ones exactly
 //! as a third-party plugin registers its own, and a plugin re-arms its saved
 //! obligations after a restart on [`Restored`](rig_ecs::restore::Restored).
 //! This crate adds the terminal app around the runtime: the session
-//! directory, the terminal view, `--print`, the launcher protocol, sign-in,
-//! `@path` attachments and the built-in tools and commands.
+//! directory, the launcher protocol, and the default plugins, such as the
+//! terminal view, `--print`, sign-in and the built-in tools and commands.
 //!
-//! [`RigHarnessPlugins`] is the agent app: the session, its mode (the
-//! terminal view, or `--print` without one), the agent core, the session
-//! logs, the project context, the launcher protocol, `/reload` and the session
-//! commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
-//! plugins, so it sits next to `DefaultPlugins` in a windowed app.
-//! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead:
-//! Bevy's `MinimalPlugins` (task pools, frame count, clock) with the log, a
-//! clean exit on signals, and a loop that sleeps until there is work. The built-in tools and commands and the terminal
-//! view are added on their own, as the `rig` launcher's generated
-//! `main.rs` does from `plugins.toml`. The error handler is the
-//! application's to set:
+//! [`RigHarnessPlugins`] is what the binary needs to run and be
+//! relaunched: the session, the run mode and what fronts share
+//! ([`front`]), the agent core and the session logs, the launcher protocol
+//! and `/reload`. It adds none of Bevy's own plugins, so it sits next to
+//! `DefaultPlugins` in a windowed app. [`HeadlessPlugins`] is what a
+//! terminal app needs from Bevy instead: Bevy's `MinimalPlugins` (task
+//! pools, frame count, clock) with the log, a clean exit on signals, and a
+//! loop that sleeps until there is work. Everything else is a plugin of
+//! [`plugins`], listed in `plugins.toml` like any other and added by the
+//! `rig` launcher's generated `main.rs` with [`load`]. The error handler is
+//! the application's to set:
 //!
 //! ```no_run
-//! use rig_harness::builtin::{BuiltinCommandsPlugin, BuiltinToolsPlugin};
 //! use rig_harness::prelude::*;
-//! use rig_harness::rig_ecs::subagents::SubagentsPlugin;
+//! use rig_harness::{load, plugins};
 //!
 //! fn main() -> AppExit {
-//!     App::new()
-//!         .set_error_handler(rig_harness::error::warn)
-//!         .add_plugins((HeadlessPlugins, RigHarnessPlugins))
-//!         // With feature `tui`, `rig_harness::tui::TuiPlugin` adds the terminal view;
-//!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin, SubagentsPlugin))
-//!         .run()
+//!     let mut app = App::new();
+//!     app.set_error_handler(rig_harness::error::warn)
+//!         .add_plugins((HeadlessPlugins, RigHarnessPlugins));
+//!     load::<plugins::tools::BuiltinToolsPlugin>(&mut app, "rig-harness", "");
+//!     load::<plugins::print::PrintPlugin>(&mut app, "rig-harness", "");
+//!     app.run()
 //! }
 //! ```
 //!
@@ -45,21 +43,22 @@
 //! timers, and a window beside the terminal ([`windowed`]). The `rig`
 //! launcher makes a plugin crate with `rig plugin new <name>`.
 
-pub mod attach;
-pub mod builtin;
+pub mod front;
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod host;
+mod load;
 pub mod plugins;
 #[cfg(feature = "tui")]
 pub mod tui;
-pub mod view;
+
+pub use load::{Build, BuildKind, PluginSource, ProvidedBy, Provides, load};
 
 use bevy::MinimalPlugins;
 use bevy::diagnostic::FrameCountPlugin;
 use bevy::time::TimePlugin;
 use bevy_app::{
-    PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
+    Plugin, PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
     TaskPoolThreadAssignmentPolicy,
 };
 use bevy_log::LogPlugin;
@@ -71,8 +70,7 @@ pub use bevy_ecs::error;
 /// The rig-core this app is built on, for the conversation's messages
 /// (`rig_harness::rig_core::message::Message`) and rig-core's tools.
 pub use rig_core;
-/// The agent runtime this app is built on; `plugins.toml` names its
-/// plugins through it, such as `rig_harness::rig_ecs::subagents::SubagentsPlugin`.
+/// The agent runtime this app is built on.
 pub use rig_ecs;
 
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
@@ -86,12 +84,13 @@ pub mod prelude {
 
     pub use std::time::Duration;
 
-    pub use crate::host::headless::RunMode;
-    pub use crate::host::sessions::{SessionName, SwitchSession};
+    pub use crate::front::{Busy, Focus, Front, PickItem, PickRequest, RunMode, send_input};
+    pub use crate::host::reload::ReloadStatus;
     pub use crate::plugins::activity::{
         Activity, ActivitySystems, FedMessage, MessageFeed, Preview, PreviewKind, Status,
         ToolActivity,
     };
+    pub use crate::plugins::sessions::{SessionTitle, SwitchSession};
     pub use crate::plugins::usage::{Spending, TurnSpending};
     #[cfg(feature = "tui")]
     pub use crate::tui::ratatui::layout::Constraint;
@@ -100,40 +99,29 @@ pub mod prelude {
         AppToolRenderersExt, Focused, PanelCanvas, Placement, RESULT_LINES, RequestRedraw,
         TuiPanel, TuiScreen, TuiSystems,
     };
-    pub use crate::view::{Focus, PickItem, PickRequest, send_input};
-    pub use crate::{HeadlessPlugins, RigHarnessPlugins};
+    pub use crate::{
+        Build, HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
+    };
     pub use rig_core::transcript::final_answer;
     pub use rig_ecs::agent::{PrimaryQuery, primary};
     pub use rig_tools::blocking;
 }
 
-/// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
-/// (with the print mode), the agent core and the session logs, compaction
-/// (with `/compact`), usage (with `/usage`), the agents' activity, the
-/// effect log, the project context in the system prompt (`AGENTS.md`
-/// and the environment, with `/context`), the launcher protocol, `/reload`
-/// and `/new`, `/resume` and `/name`. The tools,
-/// the commands other than `/reload` and the views are plugins of their own, so `plugins.toml`
-/// lists the built-in ones like any other and can leave them out.
+/// What the binary needs to run and be relaunched: the session and its
+/// log, the [`RunMode`](front::RunMode), the agent core and the session
+/// logs, the launcher protocol and `/reload`. Everything else is a plugin `plugins.toml`
+/// lists, which can leave it out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
-            .add(host::headless::ModePlugin)
-            .add(view::ViewPlugin)
+            .add(front::FrontPlugin)
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
-            .add(plugins::compaction::CompactionPlugin)
-            .add(plugins::usage::UsagePlugin)
-            .add(plugins::activity::ActivityPlugin)
-            .add(plugins::effect_log::EffectLogPlugin)
-            .add(host::context::ProjectContextPlugin)
-            .add(host::defaults::DefaultsPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::reload::ReloadPlugin)
-            .add(host::sessions::SessionsPlugin)
     }
 }
 
@@ -170,27 +158,23 @@ impl PluginGroup for HeadlessPlugins {
 /// count, the clock, the signal handler and the loop. Its windowing plugin
 /// then runs the loop; [`plugin_guide`] shows how a window plugin wakes it.
 pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
-    let mut plugins = plugins.build();
-    if plugins.contains::<LogPlugin>() {
-        plugins = plugins.disable::<LogPlugin>();
-    }
-    if plugins.contains::<TaskPoolPlugin>() {
-        plugins = plugins.disable::<TaskPoolPlugin>();
-    }
-    if plugins.contains::<FrameCountPlugin>() {
-        plugins = plugins.disable::<FrameCountPlugin>();
-    }
-    if plugins.contains::<TimePlugin>() {
-        plugins = plugins.disable::<TimePlugin>();
-    }
-    if plugins.contains::<ScheduleRunnerPlugin>() {
-        plugins = plugins.disable::<ScheduleRunnerPlugin>();
-    }
+    let plugins = without::<LogPlugin>(plugins.build());
+    let plugins = without::<TaskPoolPlugin>(plugins);
+    let plugins = without::<FrameCountPlugin>(plugins);
+    let plugins = without::<TimePlugin>(plugins);
+    let plugins = without::<ScheduleRunnerPlugin>(plugins);
     #[cfg(any(unix, windows))]
-    if plugins.contains::<bevy_app::TerminalCtrlCHandlerPlugin>() {
-        plugins = plugins.disable::<bevy_app::TerminalCtrlCHandlerPlugin>();
-    }
+    let plugins = without::<bevy_app::TerminalCtrlCHandlerPlugin>(plugins);
     plugins
+}
+
+/// `plugins` with `P` disabled, if it has `P`.
+fn without<P: Plugin>(plugins: PluginGroupBuilder) -> PluginGroupBuilder {
+    if plugins.contains::<P>() {
+        plugins.disable::<P>()
+    } else {
+        plugins
+    }
 }
 
 /// Bevy's pools sized for an agent rather than a game. Model calls stream

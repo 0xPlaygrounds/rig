@@ -12,37 +12,7 @@ use super::Result;
 use super::project::PACKAGE;
 
 /// Written when `plugins.toml` does not exist yet.
-const TEMPLATE: &str = r#"# The rig agent's plugins, added in this order. `rig build`, or /reload in
-# the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
-
-# Each [[plugin]] names a type implementing Bevy's Plugin + Default. An entry
-# without `crate` comes from rig-harness itself.
-
-# The read, edit, write, shell and search tools.
-[[plugin]]
-plugin = "rig_harness::builtin::BuiltinToolsPlugin"
-
-# /model, /effort, /help and /quit. (/reload is always there.)
-[[plugin]]
-plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
-
-# Subagents: the task and message tools.
-[[plugin]]
-plugin = "rig_harness::builtin::SubagentsPlugin"
-
-# The terminal view. Without it the agent runs headless.
-[[plugin]]
-plugin = "rig_harness::tui::TuiPlugin"
-
-# A plugin from another crate. `rig plugin new <name>` makes one in
-# plugins/<name> and adds its entry; `rig plugin check` checks this file.
-# [[plugin]]
-# crate = "rig-hello"               # the package name
-# path = "plugins/rig-hello"        # exactly one of: path (relative to this file),
-#                                   # git (with optional branch or rev), version
-# plugin = "rig_hello::HelloPlugin"
-# bevy_features = []                # extra Bevy features the plugin needs
-"#;
+const TEMPLATE: &str = include_str!("plugins.toml");
 
 /// The parsed plugin list.
 pub struct Config {

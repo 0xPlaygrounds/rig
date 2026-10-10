@@ -2,7 +2,7 @@
 //! session's [`SessionDir::images`](rig::harness_protocol::SessionDir::images)
 //! and types `@path` for it, and a pasted path to an image file (a file
 //! dropped on the terminal) becomes `@path` too. The message attaches what
-//! `@path` names (see [`attach`](crate::attach)). The clipboard is
+//! `@path` names (see [`front`](crate::front)). The clipboard is
 //! read by `wl-paste`, `xclip` or `pngpaste` on a thread of its own, which
 //! wakes the loop when it is done.
 
@@ -14,7 +14,7 @@ use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 
 use super::view::TuiView;
-use crate::attach;
+use crate::front;
 use rig_core::message::ImageMediaType;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
@@ -104,7 +104,7 @@ pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
         return None;
     }
     let path = Path::new(text);
-    (attach::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
+    (front::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
 }
 
 /// The commands that print the clipboard's image, in the order tried.

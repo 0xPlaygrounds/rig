@@ -4,13 +4,14 @@
 //! appears, the build is resolving dependencies and its latest line is the
 //! progress. Quitting during the build kills it with cargo and rustc.
 //!
-//! `/reload` typed while a turn runs is queued ([`ReloadQueued`]): the
-//! build starts once no turn runs, and `/reload cancel` drops it. The
+//! `/reload` typed while a turn runs is queued: the build starts once no
+//! turn runs, and `/reload cancel` drops it. The
 //! model can ask for the same with the `reload` tool, offered when the
 //! launcher started the agent, so it applies its own plugin changes; the
 //! user sees a notice and can cancel. A turn started while the build runs
 //! delays the restart until it ends. A build that fails leaves this build
 //! running, and the launcher rolls back a new build that fails to start.
+//! Views show where it is from the [`ReloadStatus`] resource.
 //!
 //! A failed build's first errors go into the conversation of the agent that
 //! asked, as a note for its model ([`super::launcher::build_failure_note`]);
@@ -81,7 +82,7 @@ impl Plugin for ReloadPlugin {
              `/reload cancel` cancels",
             reload,
         )
-        .add_message::<ReloadFailed>()
+        .init_resource::<ReloadStatus>()
         .add_observer(on_cancel_reload)
         .add_systems(
             Update,
@@ -98,41 +99,52 @@ impl Plugin for ReloadPlugin {
     }
 }
 
-/// The rebuild started by `/reload`. Dropping it while the build runs
-/// kills the build.
+/// Where `/reload` is, for views.
+#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Resource, Clone, Debug, Default, PartialEq)]
+pub enum ReloadStatus {
+    /// No reload was asked for.
+    #[default]
+    Idle,
+    /// Asked for by `/reload` or the `reload` tool, for `agent`, whose
+    /// model is told when the build fails: the build starts once no turn
+    /// runs. `/reload cancel` or [`CancelReload`] drops it.
+    Queued {
+        /// The agent that asked.
+        agent: Entity,
+    },
+    /// The build runs.
+    Building {
+        /// cargo's compilation units done and in total, once it reported
+        /// them; before that the build is resolving dependencies.
+        progress: Option<(u32, u32)>,
+        /// The build's latest line other than cargo's counter: the
+        /// launcher's `Resolving dependencies…`, or cargo's own, such as
+        /// `Downloaded serde v1.0.228`.
+        latest: Option<String>,
+    },
+    /// The build succeeded; the restart waits for every agent to be idle.
+    Ready,
+    /// The last build failed; this build keeps running.
+    Failed {
+        /// The build's output from its first error on.
+        output: String,
+    },
+}
+
+/// The rebuild's process. Dropping it while the build runs kills the
+/// build.
 #[derive(Resource)]
-pub struct ReloadBuild {
+struct ReloadBuild {
     child: Child,
     /// The agent that asked, whose model is told when the build fails.
     agent: Entity,
     lines: Receiver<String>,
     output: VecDeque<String>,
-    latest: Option<String>,
-    progress: Option<(u32, u32)>,
     exited: bool,
-    ready: bool,
 }
 
 impl ReloadBuild {
-    /// cargo's compilation units done and in total, once it reported them.
-    /// Before that the build is resolving dependencies.
-    pub fn progress(&self) -> Option<(u32, u32)> {
-        self.progress
-    }
-
-    /// The build's latest line other than cargo's counter: the launcher's
-    /// `Resolving dependencies…`, or cargo's own, such as
-    /// `Downloaded serde v1.0.228`.
-    pub fn latest(&self) -> Option<&str> {
-        self.latest.as_deref()
-    }
-
-    /// Whether the build succeeded and the restart waits for every agent
-    /// to be idle.
-    pub fn is_ready(&self) -> bool {
-        self.ready
-    }
-
     fn start(launcher: &std::ffi::OsStr, agent: Entity, wake: Wake) -> std::io::Result<Self> {
         let mut command = Command::new(launcher);
         command
@@ -156,23 +168,15 @@ impl ReloadBuild {
             agent,
             lines,
             output: VecDeque::new(),
-            latest: None,
-            progress: None,
             exited: false,
-            ready: false,
         })
     }
 
-    fn take(&mut self, line: String) {
-        if let Some(progress) = cargo_progress(&line) {
-            self.progress = Some(progress);
-        } else if !line.trim().is_empty() {
-            if self.output.len() == KEPT_LINES {
-                self.output.pop_front();
-            }
-            self.latest = Some(line.trim().to_owned());
-            self.output.push_back(line);
+    fn keep(&mut self, line: String) {
+        if self.output.len() == KEPT_LINES {
+            self.output.pop_front();
         }
+        self.output.push_back(line);
     }
 
     /// At most `count` lines of the output from the first error on, or its
@@ -196,29 +200,6 @@ impl Drop for ReloadBuild {
             self.child.wait().ok();
         }
     }
-}
-
-/// A reload asked for while a turn ran, by `/reload` or the `reload`
-/// tool: its build starts once no turn runs. `/reload cancel` or
-/// [`CancelReload`] drops it.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct ReloadQueued {
-    agent: Entity,
-}
-
-impl ReloadQueued {
-    /// The agent that asked, whose model is told when the build fails.
-    pub fn agent(&self) -> Entity {
-        self.agent
-    }
-}
-
-/// A `/reload` build failed. Views show its output until the user
-/// dismisses it; it is logged too.
-#[derive(Message, Clone, Debug)]
-pub struct ReloadFailed {
-    /// The build's output from its first error on.
-    pub output: String,
 }
 
 /// Stops the running rebuild, or drops the queued one, if any.
@@ -270,58 +251,30 @@ fn cargo_progress(line: &str) -> Option<(u32, u32)> {
     Some((done.parse().ok()?, total.parse().ok()?))
 }
 
-/// What asking for a reload did.
-enum Asked {
-    /// The build started.
-    Started,
-    /// The build waits for the running turns.
-    Queued,
-    /// Nothing changed, for the reason given.
-    Refused(String),
-}
-
-/// Starts the rebuild for `agent`, or queues it while a turn runs.
-fn ask_reload(
-    agent: Entity,
-    turns_run: bool,
-    build: Option<&ReloadBuild>,
-    queued: Option<&ReloadQueued>,
-    wake: &Wake,
-    commands: &mut Commands,
-) -> Asked {
-    if build.is_some() {
-        return Asked::Refused("A rebuild is already running; Esc cancels it.".to_owned());
-    }
-    if queued.is_some() {
-        return Asked::Refused(
+/// Queues a reload for `agent`: its build starts once no turn runs.
+fn ask_reload(agent: Entity, status: &mut ReloadStatus) -> Result<(), String> {
+    match status {
+        ReloadStatus::Idle | ReloadStatus::Failed { .. } if launcher::executable().is_some() => {
+            *status = ReloadStatus::Queued { agent };
+            Ok(())
+        }
+        ReloadStatus::Idle | ReloadStatus::Failed { .. } => {
+            Err("/reload needs the rig launcher: start the agent with `rig`.".to_owned())
+        }
+        ReloadStatus::Queued { .. } => Err(
             "A reload is already queued for when no turn runs; /reload cancel cancels it."
                 .to_owned(),
-        );
-    }
-    let Some(launcher) = launcher::executable() else {
-        return Asked::Refused(
-            "/reload needs the rig launcher: start the agent with `rig`.".to_owned(),
-        );
-    };
-    if turns_run {
-        commands.insert_resource(ReloadQueued { agent });
-        return Asked::Queued;
-    }
-    match ReloadBuild::start(&launcher, agent, wake.clone()) {
-        Ok(build) => {
-            commands.insert_resource(build);
-            Asked::Started
+        ),
+        ReloadStatus::Building { .. } | ReloadStatus::Ready => {
+            Err("A rebuild is already running; Esc cancels it.".to_owned())
         }
-        Err(failure) => Asked::Refused(format!("Could not start the rebuild: {failure}")),
     }
 }
 
 fn reload(
     In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
-    build: Option<Res<ReloadBuild>>,
-    queued: Option<Res<ReloadQueued>>,
-    wake: Res<Wake>,
+    mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -329,19 +282,13 @@ fn reload(
         commands.trigger(CancelReload);
         return;
     }
-    let notice = match ask_reload(
-        args.agent,
-        !turns.is_empty(),
-        build.as_deref(),
-        queued.as_deref(),
-        &wake,
-        &mut commands,
-    ) {
-        Asked::Started => "Rebuilding the agent…".to_owned(),
-        Asked::Queued => "A turn is running: the agent rebuilds and restarts once no turn \
-                          runs. /reload cancel cancels it."
+    let notice = match ask_reload(args.agent, &mut status) {
+        // The build starts this frame, with its own notice.
+        Ok(()) if turns.is_empty() => return,
+        Ok(()) => "A turn is running: the agent rebuilds and restarts once no turn runs. \
+                   /reload cancel cancels it."
             .to_owned(),
-        Asked::Refused(why) => why,
+        Err(why) => why,
     };
     notices.write(Notice::info(None, notice));
 }
@@ -358,13 +305,10 @@ struct ReloadArgs {
 /// naming the agent and its reason, and answers whether it is queued.
 fn on_reload_tool(
     called: On<ToolCalled<ReloadArgs>>,
-    build: Option<Res<ReloadBuild>>,
-    queued: Option<Res<ReloadQueued>>,
-    wake: Res<Wake>,
+    mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let (call, agent) = (called.call, called.agent);
     let reason = called
         .args
         .reason
@@ -373,16 +317,8 @@ fn on_reload_tool(
         .filter(|reason| !reason.is_empty())
         .map(|reason| format!(" ({reason})"))
         .unwrap_or_default();
-    // The caller's own turn runs: the reload always waits for it.
-    let output = match ask_reload(
-        agent,
-        true,
-        build.as_deref(),
-        queued.as_deref(),
-        &wake,
-        &mut commands,
-    ) {
-        Asked::Started | Asked::Queued => {
+    let output = match ask_reload(called.agent, &mut status) {
+        Ok(()) => {
             notices.write(Notice::info(
                 None,
                 format!(
@@ -399,36 +335,41 @@ fn on_reload_tool(
                     .into(),
             )
         }
-        Asked::Refused(why) => ToolResult::failed(ToolExecutionError::other(format!(
+        Err(why) => ToolResult::failed(ToolExecutionError::other(format!(
             "{why} Nothing was queued."
         ))),
     };
-    commands.entity(call).insert_if_new(ToolOutput(output));
+    commands
+        .entity(called.call)
+        .insert_if_new(ToolOutput(output));
 }
 
 /// Starts the queued reload's build once no turn runs.
 fn start_queued_reload(
-    queued: Option<Res<ReloadQueued>>,
-    build: Option<Res<ReloadBuild>>,
+    mut status: ResMut<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(queued) = queued else {
+    let ReloadStatus::Queued { agent } = *status else {
         return;
     };
-    if !turns.is_empty() || build.is_some() {
+    if !turns.is_empty() {
         return;
     }
-    commands.remove_resource::<ReloadQueued>();
+    *status = ReloadStatus::Idle;
     let Some(launcher) = launcher::executable() else {
         return;
     };
-    let notice = match ReloadBuild::start(&launcher, queued.agent, wake.clone()) {
+    let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
         Ok(build) => {
             commands.insert_resource(build);
-            "No turn runs: rebuilding the agent…".to_owned()
+            *status = ReloadStatus::Building {
+                progress: None,
+                latest: None,
+            };
+            "Rebuilding the agent…".to_owned()
         }
         Err(failure) => format!("Could not start the rebuild: {failure}"),
     };
@@ -439,25 +380,40 @@ fn start_queued_reload(
 /// build ready.
 fn drain_reload(
     build: Option<ResMut<ReloadBuild>>,
+    mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
-    mut failures: MessageWriter<ReloadFailed>,
 ) {
     let Some(mut build) = build else {
         return;
     };
-    if build.ready {
+    let ReloadStatus::Building {
+        mut progress,
+        mut latest,
+    } = status.clone()
+    else {
+        return;
+    };
+    let ended = loop {
+        match build.lines.try_recv() {
+            Ok(line) => match cargo_progress(&line) {
+                Some(counts) => progress = Some(counts),
+                None if line.trim().is_empty() => {}
+                None => {
+                    latest = Some(line.trim().to_owned());
+                    build.keep(line);
+                }
+            },
+            Err(TryRecvError::Empty) => break false,
+            Err(TryRecvError::Disconnected) => break true,
+        }
+    };
+    status.set_if_neq(ReloadStatus::Building { progress, latest });
+    if !ended {
         return;
     }
-    loop {
-        match build.lines.try_recv() {
-            Ok(line) => build.take(line),
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => break,
-        }
-    }
-    let status = match build.child.try_wait() {
-        Ok(Some(status)) => status,
+    let exit = match build.child.try_wait() {
+        Ok(Some(exit)) => exit,
         Ok(None) => return,
         Err(failure) => {
             notices.write(Notice::error(
@@ -465,54 +421,55 @@ fn drain_reload(
                 format!("The rebuild failed: {failure}"),
             ));
             commands.remove_resource::<ReloadBuild>();
+            *status = ReloadStatus::Idle;
             return;
         }
     };
     build.exited = true;
-    if status.success() {
-        build.ready = true;
+    commands.remove_resource::<ReloadBuild>();
+    if exit.success() {
+        *status = ReloadStatus::Ready;
         notices.write(Notice::info(None, "Build ready; restarting.".to_owned()));
-    } else {
-        let output = build.errors(ERROR_LINES);
-        // The notice is the one log line: the whole output is in the
-        // build log it names.
-        let first = first_errors(build.output.iter().map(String::as_str), 1)
-            .first()
-            .map(|line| format!(": {}", line.trim()))
-            .unwrap_or_default();
-        notices.write(Notice::error(
-            None,
-            format!(
-                "The rebuild failed ({status}){first}; this build keeps running. Whole output: \
-                 {}",
-                Home::from_env().build_log().display()
-            ),
-        ));
-        launcher::note_build_failure(
-            &mut commands,
-            build.agent,
-            launcher::build_failure_note(
-                "/reload",
-                &format!(
-                    "`rig build` exited with {status}. Its output from the first error:\n{}",
-                    build.errors(NOTE_LINES)
-                ),
-            ),
-        );
-        failures.write(ReloadFailed { output });
-        commands.remove_resource::<ReloadBuild>();
+        return;
     }
+    *status = ReloadStatus::Failed {
+        output: build.errors(ERROR_LINES),
+    };
+    // The notice is the one log line: the whole output is in the build log
+    // it names.
+    let first = first_errors(build.output.iter().map(String::as_str), 1)
+        .first()
+        .map(|line| format!(": {}", line.trim()))
+        .unwrap_or_default();
+    notices.write(Notice::error(
+        None,
+        format!(
+            "The rebuild failed ({exit}){first}; this build keeps running. Whole output: {}",
+            Home::from_env().build_log().display()
+        ),
+    ));
+    launcher::note_build_failure(
+        &mut commands,
+        build.agent,
+        launcher::build_failure_note(
+            "/reload",
+            &format!(
+                "`rig build` exited with {exit}. Its output from the first error:\n{}",
+                build.errors(NOTE_LINES)
+            ),
+        ),
+    );
 }
 
 /// Exits with [`RELOAD_EXIT_CODE`] once the build is ready and no turn
 /// runs, at most once.
 fn finish_reload(
-    build: Option<Res<ReloadBuild>>,
+    status: Res<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
     mut exiting: Local<bool>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if !*exiting && build.is_some_and(|build| build.ready) && turns.is_empty() {
+    if !*exiting && *status == ReloadStatus::Ready && turns.is_empty() {
         *exiting = true;
         exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
     }
@@ -526,18 +483,21 @@ fn stop_reload_on_exit(world: &mut World) {
 
 fn on_cancel_reload(
     _: On<CancelReload>,
-    build: Option<Res<ReloadBuild>>,
-    queued: Option<Res<ReloadQueued>>,
+    mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if queued.is_some() {
-        commands.remove_resource::<ReloadQueued>();
-        notices.write(Notice::info(None, "Queued reload cancelled.".to_owned()));
-    } else if build.is_some_and(|build| !build.ready) {
-        commands.remove_resource::<ReloadBuild>();
-        notices.write(Notice::info(None, "Rebuild cancelled.".to_owned()));
-    } else {
-        notices.write(Notice::info(None, "No reload to cancel.".to_owned()));
-    }
+    let notice = match *status {
+        ReloadStatus::Queued { .. } => "Queued reload cancelled.",
+        ReloadStatus::Building { .. } => {
+            commands.remove_resource::<ReloadBuild>();
+            "Rebuild cancelled."
+        }
+        ReloadStatus::Idle | ReloadStatus::Ready | ReloadStatus::Failed { .. } => {
+            notices.write(Notice::info(None, "No reload to cancel.".to_owned()));
+            return;
+        }
+    };
+    *status = ReloadStatus::Idle;
+    notices.write(Notice::info(None, notice.to_owned()));
 }

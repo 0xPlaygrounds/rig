@@ -10,7 +10,6 @@ pub mod defaults;
 pub mod diagnostics;
 pub mod effect_log;
 pub mod inspect;
-pub mod json;
 pub mod login_chatgpt;
 pub mod models;
 pub mod print;
@@ -19,6 +18,4 @@ pub mod reload_tool;
 pub mod sessions;
 pub mod subagents;
 pub mod tools;
-#[cfg(feature = "tui")]
-pub mod tui;
 pub mod usage;

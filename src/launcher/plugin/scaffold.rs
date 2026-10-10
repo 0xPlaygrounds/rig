@@ -28,6 +28,7 @@ impl Plugin for ScaffoldPlugin {
         // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)
         // - saved state:        #[reflect(Component, Saved)] on a component deriving Reflect
         // - a terminal panel:   spawn TuiPanel::new(Placement::Right(Constraint::Length(30)))
+        // - what is loaded:     Query<(&Name, &PluginSource)>, and ProvidedBy(plugin) on what each added
     }
 }
 

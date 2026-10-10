@@ -8,8 +8,8 @@ use super::complete::Completion;
 use super::editor::Editor;
 use super::panel::Focused;
 use super::transcript::Scroll;
-use crate::host::reload::ReloadFailed;
-use crate::view::{Focus, PickItem, PickRequest};
+use crate::front::{Focus, PickItem, PickRequest};
+use crate::host::reload::ReloadStatus;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
 use rig_ecs::inbox::Recalled;
 
@@ -156,12 +156,11 @@ pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: R
 }
 
 /// Shows the output of a failed `/reload` until it is dismissed.
-pub(crate) fn show_reload_failures(
-    mut failures: MessageReader<ReloadFailed>,
-    mut view: ResMut<TuiView>,
-) {
-    if let Some(failure) = failures.read().last() {
-        view.overlay = Some(Overlay::ReloadFailure(failure.output.clone()));
+pub(crate) fn show_reload_failures(reload: Option<Res<ReloadStatus>>, mut view: ResMut<TuiView>) {
+    if let Some(reload) = reload.filter(|reload| reload.is_changed())
+        && let ReloadStatus::Failed { output } = &*reload
+    {
+        view.overlay = Some(Overlay::ReloadFailure(output.clone()));
     }
 }
 

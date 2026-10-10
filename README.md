@@ -331,19 +331,15 @@ RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
 Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
-rebuilds the agent with them and restarts in the same session. The built-in
-tools, the built-in commands, the subagents and the terminal view are entries
-in the same list, so any of them can be removed or replaced:
+rebuilds the agent with them and restarts in the same session. Everything but
+the core (the session, the launcher protocol and `/reload`) is an entry in the
+same list: the project context, sign-in, sessions, compaction, usage, the
+effect log, the tools, the commands, the subagents, `--print` and the terminal
+view, so any of them can be removed or replaced:
 
 ```toml
 [[plugin]]
-plugin = "rig_harness::builtin::BuiltinToolsPlugin"
-
-[[plugin]]
-plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
-
-[[plugin]]
-plugin = "rig_harness::builtin::SubagentsPlugin"
+plugin = "rig_harness::plugins::tools::BuiltinToolsPlugin"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"

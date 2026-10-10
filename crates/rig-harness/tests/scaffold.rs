@@ -1,5 +1,6 @@
 //! The `src/lib.rs` that `rig plugin new` writes builds against this
-//! crate's prelude and registers its command.
+//! crate's prelude, and loaded as the generated `main.rs` loads it, it is
+//! added once and provides its command.
 
 #[path = "../../../src/launcher/plugin/scaffold.rs"]
 mod scaffold;
@@ -8,15 +9,30 @@ use rig_harness::prelude::*;
 use rig_harness::rig_ecs::commands::SlashCommand;
 
 #[test]
-fn the_scaffold_plugin_adds_its_command() {
+fn the_scaffold_plugin_is_loaded_once_and_provides_its_command() {
     let mut app = App::new();
-    app.add_message::<Notice>()
-        .add_plugins(scaffold::ScaffoldPlugin);
+    app.add_message::<Notice>();
+    for _ in 0..2 {
+        rig_harness::load::<scaffold::ScaffoldPlugin>(&mut app, "scaffold", "path plugins/x");
+    }
     let world = app.world_mut();
-    let names: Vec<String> = world
-        .query::<&SlashCommand>()
+    let plugins: Vec<(Entity, String)> = world
+        .query::<(Entity, &PluginSource)>()
         .iter(world)
-        .map(|command| command.name.clone())
+        .map(|(plugin, source)| (plugin, source.krate.clone()))
         .collect();
-    assert_eq!(names, ["__name__"]);
+    let commands: Vec<(Entity, String)> = world
+        .query::<(&ProvidedBy, &SlashCommand)>()
+        .iter(world)
+        .map(|(by, command)| (by.0, command.name.clone()))
+        .collect();
+    let plugin = plugins.first().map(|(plugin, _)| *plugin);
+    assert_eq!(plugins.len(), 1);
+    assert_eq!(
+        commands,
+        plugin
+            .map(|plugin| (plugin, "__name__".to_owned()))
+            .into_iter()
+            .collect::<Vec<_>>()
+    );
 }

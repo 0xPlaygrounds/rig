@@ -17,9 +17,9 @@ use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::panel::TuiScreen;
 use super::view::{Overlay, Picker, TuiView};
-use crate::host::reload::{CancelReload, ReloadBuild};
+use crate::front::send_input;
+use crate::host::reload::{CancelReload, ReloadStatus};
 use crate::host::session::SessionPaths;
-use crate::view::send_input;
 use rig_ecs::agent::{ActiveTurn, Interrupt};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{RunCommand, SlashCommand};
@@ -90,7 +90,7 @@ pub(crate) fn read_input(
     input: Res<TerminalInput>,
     mut view: ResMut<TuiView>,
     agents: Query<Has<ActiveTurn>>,
-    build: Option<Res<ReloadBuild>>,
+    reload: Option<Res<ReloadStatus>>,
     slash: Query<&SlashCommand>,
     mut index: ResMut<FileIndex>,
     clipboard: Res<Clipboard>,
@@ -105,7 +105,8 @@ pub(crate) fn read_input(
         .unwrap_or(false);
     // Esc stops a running turn first, and a running rebuild only when the
     // agent is idle.
-    let esc_cancels_reload = build.is_some_and(|build| !build.is_ready()) && !busy;
+    let esc_cancels_reload =
+        reload.is_some_and(|reload| matches!(*reload, ReloadStatus::Building { .. })) && !busy;
     let mut edited = false;
     for event in input.events.try_iter() {
         match event {

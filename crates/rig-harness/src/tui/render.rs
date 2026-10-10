@@ -22,9 +22,9 @@ use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use crate::host::reload::{ReloadBuild, ReloadQueued};
-use crate::host::sessions::SessionName;
+use crate::host::reload::ReloadStatus;
 use crate::plugins::activity::{Activity, Status};
+use crate::plugins::sessions::SessionTitle;
 use crate::plugins::usage::{Spending, TurnSpending};
 use rig_core::completion::{ContextUse, tokens_label};
 use rig_ecs::agent::{
@@ -85,7 +85,7 @@ pub(crate) fn needs_redraw(
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
-    name: Res<SessionName>,
+    title: Option<Res<SessionTitle>>,
     mut requests: MessageReader<RequestRedraw>,
     panels: Query<(), Changed<TuiPanel>>,
     mut removed_panels: RemovedComponents<TuiPanel>,
@@ -97,7 +97,7 @@ pub(crate) fn needs_redraw(
     let changed = requested
         || removed
         || view.is_changed()
-        || name.is_changed()
+        || title.is_some_and(|title| title.is_changed())
         || !agents.is_empty()
         || !turns.is_empty()
         || !panels.is_empty();
@@ -323,8 +323,7 @@ pub(crate) fn render(
     slash: Query<&SlashCommand>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
-    (build, queued): (Option<Res<ReloadBuild>>, Option<Res<ReloadQueued>>),
-    name: Res<SessionName>,
+    (reload, title): (Option<Res<ReloadStatus>>, Option<Res<SessionTitle>>),
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
     let Some(input_rows) = frame_layout.input_rows else {
@@ -403,7 +402,7 @@ pub(crate) fn render(
             draw_below(frame, below, transcript_area);
             let shown = shown.map(|(_, shown)| shown);
             let mut left = Vec::new();
-            if let Some(name) = &name.0 {
+            if let Some(name) = title.as_ref().and_then(|title| title.name.as_ref()) {
                 left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
             }
             left.extend(spawned_title(view.agent, &everyone));
@@ -421,13 +420,8 @@ pub(crate) fn render(
                     Span::from(format!("this turn {used}")).dim(),
                 ));
             }
-            if let Some(build) = &build {
-                left.push(Piece::new(keep::RELOAD, reload_span(build)));
-            } else if queued.is_some() {
-                left.push(Piece::new(
-                    keep::RELOAD,
-                    Span::from("Reload queued: once no turn runs (/reload cancel)").cyan(),
-                ));
+            if let Some(reload) = reload.as_deref().and_then(reload_span) {
+                left.push(Piece::new(keep::RELOAD, reload));
             }
             let mut right = shown
                 .map(|(.., (spent, last), connection, _)| usage_pieces(spent, last, connection))
@@ -712,29 +706,32 @@ fn usage_pieces(
     pieces
 }
 
-fn reload_span(build: &ReloadBuild) -> Span<'static> {
-    if build.is_ready() {
-        return Span::from("Reloading: restarting…").cyan();
-    }
-    match build.progress() {
-        Some((done, total)) => {
+fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
+    let text = match reload {
+        ReloadStatus::Idle | ReloadStatus::Failed { .. } => return None,
+        ReloadStatus::Queued { .. } => {
+            "Reload queued: once no turn runs (/reload cancel)".to_owned()
+        }
+        ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
+        ReloadStatus::Building {
+            progress: Some((done, total)),
+            ..
+        } => {
+            let (done, total) = (*done, *total);
             let filled = (done.saturating_mul(GAUGE_WIDTH) / total.max(1)).min(GAUGE_WIDTH);
             let bar: String = (0..GAUGE_WIDTH)
                 .map(|cell| if cell < filled { '█' } else { '░' })
                 .collect();
-            Span::from(format!(
-                "Reloading: Compiling {done}/{total} {bar} (Esc cancels)"
-            ))
-            .cyan()
+            format!("Reloading: Compiling {done}/{total} {bar} (Esc cancels)")
         }
         // The launcher's phase, then cargo's own lines while it resolves
         // and downloads dependencies.
-        None => Span::from(format!(
+        ReloadStatus::Building { latest, .. } => format!(
             "Reloading: {} (Esc cancels)",
-            build.latest().unwrap_or("Resolving dependencies…")
-        ))
-        .cyan(),
-    }
+            latest.as_deref().unwrap_or("Resolving dependencies…")
+        ),
+    };
+    Some(Span::from(text).cyan())
 }
 
 /// A centred box over the transcript, `width` and `height` in fifths and
