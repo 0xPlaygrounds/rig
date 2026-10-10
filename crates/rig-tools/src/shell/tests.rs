@@ -1,20 +1,11 @@
-use std::sync::atomic::{AtomicBool, AtomicU32};
-
-use super::{ShellArgs, run};
+use super::{ShellArgs, Stop, run};
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
     let args = ShellArgs {
         command: command.to_owned(),
         timeout_secs: None,
     };
-    run(
-        args,
-        &[],
-        spill,
-        &AtomicBool::new(false),
-        &AtomicU32::new(0),
-    )
-    .unwrap_or_default()
+    run(args, &[], spill, &Stop::default()).unwrap_or_default()
 }
 
 /// A process that leaves the command's process group keeps the output pipe

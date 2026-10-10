@@ -102,7 +102,11 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
     // Every edit is checked, so one reply names all that need fixing.
     let mut failed: Vec<(usize, String)> = Vec::new();
     for (index, replacement) in args.edits.iter().enumerate() {
-        let label = Label { index, many };
+        let label = if many {
+            format!("edits[{index}]: ")
+        } else {
+            String::new()
+        };
         let old = lf(&replacement.old_text);
         let new = lf(&replacement.new_text);
         if old.is_empty() {
@@ -224,23 +228,6 @@ impl Decoded {
 /// `text` with CRLF line endings made LF, as the file is matched.
 fn lf(text: &str) -> String {
     text.replace("\r\n", "\n")
-}
-
-/// Names an edit in messages, when the call has several.
-#[derive(Clone, Copy)]
-struct Label {
-    index: usize,
-    many: bool,
-}
-
-impl std::fmt::Display for Label {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        if self.many {
-            write!(f, "edits[{}]: ", self.index)
-        } else {
-            Ok(())
-        }
-    }
 }
 
 /// A model-visible refusal: nothing was written.
@@ -397,13 +384,7 @@ fn locate(text: &str, old: &str, replace_all: bool) -> Result<Found, Miss> {
         .collect();
     match exact.len() {
         0 => {}
-        1 => {
-            return Ok(Found {
-                spans: exact,
-                note: None,
-            });
-        }
-        _ if replace_all => {
+        count if count == 1 || replace_all => {
             return Ok(Found {
                 spans: exact,
                 note: None,

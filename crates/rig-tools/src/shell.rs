@@ -86,7 +86,7 @@ impl PortableTool for Shell {
         let stop = StopOnDrop(Arc::default());
         let running = Arc::clone(&stop.0);
         let (unset, spill) = (self.unset_env, self.spill.clone());
-        blocking(move || run(args, unset, spill, &running.stopped, &running.leader)).await
+        blocking(move || run(args, unset, spill, &running)).await
     }
 }
 
@@ -122,8 +122,7 @@ fn run(
     args: ShellArgs,
     unset_env: &[&str],
     spill: Option<Spill>,
-    stopped: &AtomicBool,
-    leader: &AtomicU32,
+    stop: &Stop,
 ) -> Result<String, ToolExecutionError> {
     let timeout = Duration::from_secs(
         args.timeout_secs
@@ -153,7 +152,7 @@ fn run(
     drop(command);
     let mut child =
         spawned.map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))?;
-    leader.store(child.id(), Ordering::SeqCst);
+    stop.leader.store(child.id(), Ordering::SeqCst);
     let chunks = drain(reader);
     let mut tail = Tail {
         spill,
@@ -164,11 +163,11 @@ fn run(
         let exited = child.try_wait();
         if !matches!(exited, Ok(None)) {
             // Reaped, or about to be: its pid may be reused.
-            leader.store(0, Ordering::SeqCst);
+            stop.leader.store(0, Ordering::SeqCst);
         }
         match exited {
             Ok(Some(status)) => break End::Exited(status),
-            Ok(None) if stopped.load(Ordering::Relaxed) => break End::Stopped,
+            Ok(None) if stop.stopped.load(Ordering::Relaxed) => break End::Stopped,
             Ok(None) if Instant::now() >= deadline => break End::TimedOut,
             Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
             Ok(None) => match chunks.recv_timeout(POLL) {
@@ -185,7 +184,7 @@ fn run(
             }
         }
     };
-    leader.store(0, Ordering::SeqCst);
+    stop.leader.store(0, Ordering::SeqCst);
     // After a normal exit, something the command left running in the
     // background may still hold the output pipe open; then the rest of its
     // group is killed. The leader was reaped by `try_wait`, so the group id
