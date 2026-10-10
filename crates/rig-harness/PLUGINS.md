@@ -298,7 +298,10 @@ over sets `handled` and triggers `CallModel` once it is ready. Observers
 of one event run in no set order. The compaction plugin (the
 `rig-compaction` crate) is the full example: it summarizes on
 `PrepareRequest` with a `ModelRequest` call of its own, and on a
-`ModelFailed` overflow.
+`ModelFailed` overflow. Before any of it, `Input` is triggered on an
+agent with what the user typed, in any front: an observer may rewrite its
+`text`, such as expanding a template, or set `handled` and deal with it
+itself; a text that starts with `/` then runs as a command.
 
 ```rust,no_run
 use rig_harness::prelude::*;

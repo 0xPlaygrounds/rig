@@ -124,16 +124,48 @@ pub struct PickRequest {
     pub selected: usize,
 }
 
-/// Sends what the user typed to `agent`: a slash command when it starts
-/// with `/`, which runs now, otherwise a message ([`send_message`]).
+/// What the user typed for an agent, triggered on it by [`send_input`]
+/// before it is sent: observers may rewrite `text` or `mode`, such as to
+/// expand a template, or take it over and set `handled`, such as a line
+/// that runs a shell command, and then nothing is sent. Afterwards a text
+/// that starts with `/` runs as a slash command, any other is a message.
+/// Observers run in no set order, so each does its own part only.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct Input {
+    /// The agent.
+    pub entity: Entity,
+    /// The text.
+    pub text: String,
+    /// How a message goes to a busy agent.
+    pub mode: DeliveryMode,
+    /// Whether an observer took it over.
+    pub handled: bool,
+}
+
+/// Sends what the user typed to `agent`, after [`Input`] observers: a
+/// slash command when it starts with `/`, which runs now, otherwise a
+/// message ([`send_message`]).
 pub fn send_input(commands: &mut Commands, agent: Entity, text: String, mode: DeliveryMode) {
-    match text.trim_start().strip_prefix('/') {
-        Some(line) => commands.trigger(RunCommand {
+    commands.queue(move |world: &mut World| {
+        let mut input = Input {
             entity: agent,
-            line: line.to_owned(),
-        }),
-        None => send_message(commands, agent, text, mode),
-    }
+            text,
+            mode,
+            handled: false,
+        };
+        world.trigger_ref(&mut input);
+        if input.handled {
+            return;
+        }
+        let commands = &mut world.commands();
+        match input.text.trim_start().strip_prefix('/') {
+            Some(line) => commands.trigger(RunCommand {
+                entity: agent,
+                line: line.to_owned(),
+            }),
+            None => send_message(commands, agent, input.text, input.mode),
+        }
+    });
 }
 
 /// Sends `text` to `agent` as the user's message, with the files it names
