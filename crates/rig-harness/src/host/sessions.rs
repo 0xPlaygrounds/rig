@@ -27,6 +27,7 @@ use serde::{Deserialize, Serialize};
 use super::launcher;
 use super::session::SessionPaths;
 use crate::attach;
+use crate::plugins::usage::Spending;
 use crate::view::{PickItem, PickRequest};
 use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
 use rig_ecs::StopTurns;
@@ -35,7 +36,6 @@ use rig_ecs::agent::{
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_ecs::usage::Spending;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
@@ -241,7 +241,7 @@ fn mark_turn_end(ended: On<TurnEnded>, mut mark: ResMut<TurnEndedMark>) {
 fn write_meta(
     paths: Option<Res<SessionPaths>>,
     name: Res<SessionName>,
-    agents: Query<(&AgentId, &Conversation, &Spending, Has<SpawnedBy>), With<Agent>>,
+    agents: Query<(&AgentId, &Conversation, Option<&Spending>, Has<SpawnedBy>), With<Agent>>,
 ) {
     let Some(paths) = paths.filter(|paths| paths.is_saved()) else {
         return;
@@ -253,7 +253,8 @@ fn write_meta(
     let mut spent = UsageTotals::default();
     agents
         .iter()
-        .for_each(|(_, _, Spending(each), ..)| spent.add(each));
+        .filter_map(|(_, _, each, ..)| *each)
+        .for_each(|Spending(each)| spent.add(each));
     let meta = Meta {
         title: agents
             .iter()

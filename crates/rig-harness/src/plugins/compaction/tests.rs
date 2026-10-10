@@ -16,6 +16,7 @@ use rig_ecs::effects::Handler;
 use rig_ecs::journal::{SessionStore, commit_message};
 
 use super::*;
+use crate::plugins::usage::{Spending, UsagePlugin};
 
 /// How long a test waits for a turn to end.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -27,7 +28,7 @@ const INJECTED: &str = "Context from another plugin.";
 #[derive(Resource, Default)]
 struct Ended(Vec<TurnOutcome>);
 
-/// The kernel and the compaction plugin on `store`, after the first frame
+/// The kernel, the compaction and usage plugins on `store`, after the first frame
 /// restored the session, with its loop's wakes.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
@@ -38,7 +39,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
             sender.send(()).ok();
         }))
         .insert_resource(SessionStore::new(store.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin))
+        .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
             log.0.push(ended.outcome.clone());
@@ -189,6 +190,9 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             .as_ref()
             .is_some_and(|condensed| condensed.upto > 2)
     );
+    // The usage plugin counts the summary's call with the turn's.
+    let spent = app.world().get::<Spending>(agent).map(|spent| spent.0);
+    assert_eq!(spent.map(|spent| spent.calls), Some(2));
     drop(app);
 
     // A restart starts from the messages the summary kept.
@@ -199,6 +203,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let Ok(agent) = agent else {
         return;
     };
+    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.0), spent);
     let restored = world.get::<Condensed>(agent);
     let summary = |condensed: Option<&Condensed>| condensed.map(|kept| kept.summary.clone());
     assert_eq!(summary(restored), summary(condensed.as_ref()));

@@ -270,9 +270,10 @@ fn recent(
   logged by reflection, and a restart, `/reload` or `/resume` brings the
   newest value back. `Restored` is triggered on each agent after a restart,
   where a plugin re-arms what it owes. The core saves `ModelChoice`,
-  `Effort`, `SystemPrompt`, `ToolAccess`, `Spending` and `LastUsage` the
-  same way, so a plugin that changes them has nothing to log. A generic
-  type is saved only once registered (`app.register_type::<T>()`).
+  `Effort`, `SystemPrompt`, `ToolAccess` and `LastUsage`, and the usage
+  plugin `Spending`, the same way, so a plugin that changes them has
+  nothing to log. A generic type is saved only once registered
+  (`app.register_type::<T>()`).
 - `On<Add<CallOf>>` sees every model and tool call of a turn;
   `On<Add<ToolCallRun>>` the tool calls. `MessageReader<Committed>` sees
   every change of every conversation, as the session log records it.

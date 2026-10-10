@@ -8,13 +8,11 @@ use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
-use super::activity::Activity;
 use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
 use super::model::Effort;
 use super::tools::Footprint;
 use super::turn::Recovery;
-use super::usage::{Spending, TurnSpending};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no
@@ -22,13 +20,11 @@ use super::usage::{Spending, TurnSpending};
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 #[require(
-    Activity,
     AgentId,
     Conversation,
     Effort,
     Inbox,
     LastUsage,
-    Spending,
     SystemPrompt,
     ToolAccess
 )]
@@ -351,12 +347,11 @@ impl ToolAccess {
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
 /// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// sums its model calls' usage in a [`TurnSpending`] and counts its
-/// retries in a [`Recovery`].
+/// counts its retries in a [`Recovery`].
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(TurnSpending, Recovery)]
+#[require(Recovery)]
 pub struct TurnOf(pub Entity);
 
 /// On a turn about to be despawned: how it ended. A turn despawned without

@@ -2,8 +2,8 @@
 //! JSON-lines log in the session's [`SessionStore`], created at its first
 //! message: a header, then one record per change a [`Commit`] made, per
 //! [`Condensed`] and per change of a [`ReflectSaved`] component, such as
-//! the agent's model, reasoning setting, system prompt, tool access,
-//! spending and last usage. Records are queued as they happen and written
+//! the agent's model, reasoning setting, system prompt, tool access and
+//! last usage. Records are queued as they happen and written
 //! at the end of the frame, a subagent's before its parent's, and at once
 //! before a tool that may change something runs. Nothing is ever
 //! rewritten; [`restore`](super::restore) folds the logs back at startup.
@@ -27,7 +27,6 @@ use serde_json::Value;
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{Agent, AgentId, Condensed, Conversation, Halt, Notice, SpawnedBy};
-use super::effects::Effects;
 use super::inbox::Origin;
 use super::{StopTurns, WriteJournal};
 
@@ -558,32 +557,14 @@ fn open_child_log(
     }
 }
 
-/// Writes the frame's records and the resolved effects. A failure is
-/// shown once.
-fn write_logs(
-    log: Res<SessionLog>,
-    effects: Res<Effects>,
-    store: Option<Res<SessionStore>>,
-    mut effects_failed: Local<bool>,
-    mut notices: MessageWriter<Notice>,
-) {
+/// Writes the frame's records. A failure is shown once.
+fn write_logs(log: Res<SessionLog>, mut notices: MessageWriter<Notice>) {
     log.flush();
     if let Some(failure) = log.take_failure() {
         error!("the session log stopped: {failure}");
         notices.write(Notice::error(
             None,
             format!("The session is no longer saved: {failure}"),
-        ));
-    }
-    if let Some(store) = store
-        && let Err(failure) = store.0.append_effects(&effects.take())
-        && !*effects_failed
-    {
-        *effects_failed = true;
-        error!("writing the effect log failed: {failure}");
-        notices.write(Notice::error(
-            None,
-            format!("Writing the effect log failed: {failure}"),
         ));
     }
 }

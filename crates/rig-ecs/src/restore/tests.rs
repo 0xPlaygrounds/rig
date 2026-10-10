@@ -21,7 +21,6 @@ use crate::journal::{
 };
 use crate::model::{Effort, ModelChoice};
 use crate::restore::Restored;
-use crate::usage::Spending;
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity.
@@ -75,15 +74,12 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
     let usage = Usage::new().input_tokens(10).output_tokens(5);
-    let mut spent = Spending::default();
-    spent.0.record(&usage);
     let counts = |reads| ToolCounts(HashMap::from([("read".to_owned(), reads)]));
     first.world_mut().entity_mut(agent).insert((
         ModelChoice("ollama/deepseek-v4-flash".to_owned()),
         Effort(Some(Reasoning::Off)),
         SystemPrompt("You review code.".to_owned()),
         ToolAccess::Only(vec!["read".to_owned()]),
-        spent,
         LastUsage(Some(usage)),
         counts(1),
     ));
@@ -102,7 +98,7 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
         .insert(condensed.clone());
     first.update();
     let before = saved(&mut first);
-    assert_eq!(before.len(), 7, "{before:?}");
+    assert_eq!(before.len(), 6, "{before:?}");
     let newest = serde_json::json!({ "read": 4 });
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
     let id = first.world().get::<AgentId>(agent).cloned();

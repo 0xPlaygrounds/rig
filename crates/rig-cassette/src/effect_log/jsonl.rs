@@ -87,11 +87,6 @@ impl Writer {
         }
     }
 
-    /// The file written to.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     /// Appends `log`'s records, after a header line with what its header
     /// adds to the file's when it differs from the last one appended.
     /// Writes nothing when it has no records: a header alone waits for the

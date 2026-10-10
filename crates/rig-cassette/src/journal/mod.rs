@@ -1,6 +1,6 @@
 //! Where an agent session's journal is kept: one append-only log per
-//! agent, content-addressed blobs such as images, and the effect log, all
-//! behind a [`JournalStore`]. [`MemoryStore`] keeps a session in memory;
+//! agent and content-addressed blobs such as images, behind a
+//! [`JournalStore`]. [`MemoryStore`] keeps a session in memory;
 //! with feature `jsonl`, [`JsonlDirStore`] keeps it as JSON-lines files in
 //! a directory. A logged message names its images' blobs in place of their
 //! data ([`store_images`]), and gets the data back on reading
@@ -9,7 +9,7 @@
 #[cfg(feature = "jsonl")]
 mod jsonl;
 #[cfg(feature = "jsonl")]
-pub use jsonl::JsonlDirStore;
+pub use jsonl::{EFFECT_LOG, JsonlDirStore};
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -19,15 +19,12 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use rig_core::completion::Message;
-use rig_core::effect::EffectId;
 use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
 
-use crate::effect_log::EffectLog;
-
 /// Storage for a session's journal. Every method takes `&self`, so one
-/// store is shared by the agent logs and the effect log.
+/// store is shared by every agent's log.
 pub trait JournalStore: Send + Sync + 'static {
     /// The ids of the agents that have a log, in no particular order.
     fn agents(&self) -> io::Result<Vec<String>>;
@@ -49,13 +46,6 @@ pub trait JournalStore: Send + Sync + 'static {
 
     /// The blob `name`.
     fn blob(&self, name: &str) -> io::Result<Vec<u8>>;
-
-    /// Appends resolved effects, with their header when it changed.
-    fn append_effects(&self, log: &EffectLog) -> io::Result<()>;
-
-    /// The highest effect id stored, so ids keep increasing across
-    /// restarts.
-    fn last_effect(&self) -> io::Result<Option<EffectId>>;
 }
 
 /// How a logged message names an image stored as a blob, in place of its
@@ -122,7 +112,6 @@ pub struct MemoryStore(Arc<Mutex<Memory>>);
 struct Memory {
     logs: BTreeMap<String, Vec<u8>>,
     blobs: BTreeMap<String, Vec<u8>>,
-    last_effect: Option<EffectId>,
 }
 
 impl MemoryStore {
@@ -175,17 +164,6 @@ impl JournalStore for MemoryStore {
             .get(name)
             .cloned()
             .ok_or_else(|| io::ErrorKind::NotFound.into())
-    }
-
-    fn append_effects(&self, log: &EffectLog) -> io::Result<()> {
-        let mut memory = self.memory();
-        let last = log.records.iter().map(|record| record.id).max();
-        memory.last_effect = memory.last_effect.max(last);
-        Ok(())
-    }
-
-    fn last_effect(&self) -> io::Result<Option<EffectId>> {
-        Ok(self.memory().last_effect)
     }
 }
 

@@ -14,8 +14,8 @@ use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_cassette::journal::JsonlDirStore;
 use rig_ecs::journal::SessionStore;
 
-/// The session's directory: the agent logs and the effect log the core
-/// keeps there through its [`SessionStore`], and the launcher's files.
+/// The session's directory: the agent logs the core keeps there through
+/// its [`SessionStore`], the effect log, and the launcher's files.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths(pub SessionDir);
 

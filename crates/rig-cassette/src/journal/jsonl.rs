@@ -1,6 +1,5 @@
-//! A session kept as files in a directory: `<agent>.jsonl` per agent,
-//! `blobs/<name>` for blobs, and `effects.jsonl` written by
-//! [`jsonl::Writer`], which [`jsonl::read`] reads back for its replayer.
+//! A session kept as files in a directory: `<agent>.jsonl` per agent and
+//! `blobs/<name>` for blobs, beside the effect log ([`EFFECT_LOG`]).
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
@@ -8,34 +7,29 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use rig_core::effect::EffectId;
-
 use super::JournalStore;
-use crate::effect_log::{EffectLog, jsonl};
 
-/// The extension of an agent log and of the effect log.
+/// The extension of an agent log.
 const EXTENSION: &str = "jsonl";
 
-/// The effect log's file stem, which no agent id takes.
-const EFFECTS: &str = "effects";
+/// The file of a session directory that holds its effect log, as
+/// [`jsonl::Writer`](crate::effect_log::jsonl::Writer) writes it, and that
+/// is no agent's log.
+pub const EFFECT_LOG: &str = "effects.jsonl";
 
 /// A [`JournalStore`] in the directory it was made for, created as files
 /// are written. Agent logs stay open for appending once written.
 pub struct JsonlDirStore {
     dir: PathBuf,
     open: Mutex<HashMap<String, File>>,
-    effects: Mutex<jsonl::Writer>,
 }
 
 impl JsonlDirStore {
     /// The session in `dir`.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
-        let dir = dir.into();
-        let effects = jsonl::Writer::new(dir.join(format!("{EFFECTS}.{EXTENSION}")));
         Self {
-            dir,
+            dir: dir.into(),
             open: Mutex::new(HashMap::new()),
-            effects: Mutex::new(effects),
         }
     }
 
@@ -50,10 +44,6 @@ impl JsonlDirStore {
     fn open(&self) -> MutexGuard<'_, HashMap<String, File>> {
         self.open.lock().unwrap_or_else(PoisonError::into_inner)
     }
-
-    fn writer(&self) -> MutexGuard<'_, jsonl::Writer> {
-        self.effects.lock().unwrap_or_else(PoisonError::into_inner)
-    }
 }
 
 impl JournalStore for JsonlDirStore {
@@ -67,7 +57,8 @@ impl JournalStore for JsonlDirStore {
             .filter_map(|entry| {
                 let path = entry.path();
                 let stem = path.file_stem()?.to_str()?;
-                let log = path.extension()? == EXTENSION && !stem.is_empty() && stem != EFFECTS;
+                let log = path.extension()? == EXTENSION && !stem.is_empty();
+                let log = log && path.file_name()? != EFFECT_LOG;
                 log.then(|| stem.to_owned())
             })
             .collect())
@@ -113,13 +104,5 @@ impl JournalStore for JsonlDirStore {
 
     fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
         fs::read(self.blobs().join(name))
-    }
-
-    fn append_effects(&self, log: &EffectLog) -> io::Result<()> {
-        self.writer().append(log)
-    }
-
-    fn last_effect(&self) -> io::Result<Option<EffectId>> {
-        self.writer().last_id()
     }
 }

@@ -88,6 +88,11 @@ pub mod prelude {
 
     pub use crate::host::headless::RunMode;
     pub use crate::host::sessions::{SessionName, SwitchSession};
+    pub use crate::plugins::activity::{
+        Activity, ActivitySystems, FedMessage, MessageFeed, Preview, PreviewKind, Status,
+        ToolActivity,
+    };
+    pub use crate::plugins::usage::{Spending, TurnSpending};
     #[cfg(feature = "tui")]
     pub use crate::tui::ratatui::layout::Constraint;
     #[cfg(feature = "tui")]
@@ -98,14 +103,14 @@ pub mod prelude {
     pub use crate::view::{Focus, PickItem, PickRequest, send_input};
     pub use crate::{HeadlessPlugins, RigHarnessPlugins};
     pub use rig_core::transcript::final_answer;
-    pub use rig_ecs::activity::{FedMessage, Preview, PreviewKind, Status, ToolActivity};
     pub use rig_ecs::agent::{PrimaryQuery, primary};
     pub use rig_tools::blocking;
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
 /// (with the print mode), the agent core and the session logs, compaction
-/// (with `/compact`), the project context in the system prompt (`AGENTS.md`
+/// (with `/compact`), usage (with `/usage`), the agents' activity, the
+/// effect log, the project context in the system prompt (`AGENTS.md`
 /// and the environment, with `/context`), the launcher protocol, `/reload`
 /// and `/new`, `/resume` and `/name`. The tools,
 /// the commands other than `/reload` and the views are plugins of their own, so `plugins.toml`
@@ -121,6 +126,9 @@ impl PluginGroup for RigHarnessPlugins {
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
             .add(plugins::compaction::CompactionPlugin)
+            .add(plugins::usage::UsagePlugin)
+            .add(plugins::activity::ActivityPlugin)
+            .add(plugins::effect_log::EffectLogPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::defaults::DefaultsPlugin)
             .add(host::launcher::LauncherPlugin)

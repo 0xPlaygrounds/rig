@@ -1,6 +1,7 @@
 //! The kernel on its own: a headless app with Bevy's task pools, the agent
-//! runtime and its session journal, and nothing else. A scripted model asks
-//! for one tool call, then answers; a second app on the same store gets the
+//! runtime and its session journal, and nothing else: no effect log. A
+//! scripted model asks for one tool call, then answers; with a recorder,
+//! every call is recorded; a second app on the same store gets the
 //! conversation back; a failed call is sent again once its backoff passed
 //! on Bevy's clock; a model connects the same whichever of its settings
 //! comes first. Only rig-ecs's public API is used, as a third-party plugin
@@ -12,17 +13,19 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning};
+use rig_core::effect::{EffectId, HandlerKey, tool_key};
 use rig_core::message::UserContent;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
-use rig_ecs::effects::Handler;
+use rig_ecs::effects::{Effects, Handler};
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use serde::Deserialize;
@@ -147,12 +150,16 @@ fn agents(app: &mut App) -> Vec<(Entity, AgentId)> {
         .collect()
 }
 
-/// A kernel app on `store` whose agent, on a scripted model, was asked a
+/// A kernel app on `store` and `effects` whose agent, on a scripted model, was asked a
 /// question; it ran the frames until the turn ended. The model's first
 /// reply also calls a tool that does not exist. Returns the app, the agent,
 /// the model and how often the tool ran.
-fn one_turn(store: &MemoryStore) -> Option<(App, Entity, MockCompletionModel, u32)> {
+fn one_turn(
+    store: &MemoryStore,
+    effects: Effects,
+) -> Option<(App, Entity, MockCompletionModel, u32)> {
     let (mut app, wakes) = kernel(store);
+    app.insert_resource(effects);
     let calls = Arc::new(AtomicU32::new(0));
     app.add_tool(Add(calls.clone()));
     let model = MockCompletionModel::from_stream_turns([
@@ -175,7 +182,7 @@ fn one_turn(store: &MemoryStore) -> Option<(App, Entity, MockCompletionModel, u3
 
 #[test]
 fn a_turn_ends_answered_after_one_tool_round() {
-    let turn = one_turn(&MemoryStore::default());
+    let turn = one_turn(&MemoryStore::default(), Effects::default());
     assert!(turn.is_some(), "the built-in catalog lists the model");
     let Some((app, agent, model, ran)) = turn else {
         return;
@@ -212,13 +219,35 @@ fn a_turn_ends_answered_after_one_tool_round() {
 #[test]
 fn a_new_app_on_the_store_restores_the_conversation() {
     let store = MemoryStore::default();
-    let turn = one_turn(&store);
+    let recorder = EffectLogRecorder::new();
+    let last = Some(EffectId::from_raw(41));
+    let turn = one_turn(
+        &store,
+        Effects::recorded_by(Arc::new(recorder.clone()), last),
+    );
     assert!(turn.is_some(), "the built-in catalog lists the model");
     let Some((mut app, agent, _, _)) = turn else {
         return;
     };
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
+    // Both model calls and both tool calls, the refused one too, were
+    // recorded, numbered after the given id.
+    let log = recorder.log();
+    let recorded: Vec<_> = log
+        .records
+        .iter()
+        .map(|record| (record.id.as_u64(), &record.key, record.outcome.is_ok()))
+        .collect();
+    let tool = |key: &HandlerKey, name| *key == tool_key(name);
+    assert!(
+        matches!(
+            recorded.as_slice(),
+            [(42, model, true), (43, add, true), (44, sub, false), (45, again, true)]
+                if tool(add, "add") && tool(sub, "sub") && model == again
+        ),
+        "{recorded:?}"
+    );
     let before = agents(&mut app);
     drop(app);
 

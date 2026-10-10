@@ -1,4 +1,4 @@
-//! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
+//! The built-in slash commands: `/model`, `/effort`, `/retry`,
 //! `/agents`, `/help` and `/quit`, with `/login` and `/logout`
 //! from the [`LoginPlugin`] they add.
 
@@ -6,12 +6,11 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
 use super::LoginPlugin;
+use crate::plugins::usage::Spending;
 use crate::view::{Focus, PickItem, PickRequest};
-use rig_core::completion::{ContextUse, UsageTotals};
-use rig_ecs::agent::{ActiveTurn, Agent, AgentId, LastUsage, Notice, Retry, Spawned, SpawnedBy};
+use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Retry, Spawned, SpawnedBy};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_ecs::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
-use rig_ecs::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
 #[derive(Default)]
@@ -28,11 +27,6 @@ impl Plugin for BuiltinCommandsPlugin {
             "effort",
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
-        )
-        .add_command(
-            "usage",
-            "Show the tokens, cost and context this agent, its subagents and the session used",
-            usage,
         )
         .add_command(
             "retry",
@@ -140,92 +134,6 @@ fn effort(
             notices.write(Notice::error(args.agent, why));
         }
     }
-}
-
-/// `/usage`: the shown agent's tokens, cost and context, what each agent
-/// it spawned used, and the session's total over every agent.
-fn usage(
-    In(args): In<CommandArgs>,
-    agents: Query<(
-        &Spending,
-        &LastUsage,
-        Option<&Connection>,
-        Option<&ActiveTurn>,
-    )>,
-    turns: Query<&TurnSpending>,
-    everyone: Query<(&AgentId, Option<&Name>, &Spending), With<Agent>>,
-    families: Query<&Spawned>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok((Spending(spent), last, connection, turn)) = agents.get(args.agent) else {
-        return;
-    };
-    let mut total = UsageTotals::default();
-    let mut spenders = 0;
-    for (.., Spending(other)) in &everyone {
-        if other.calls > 0 {
-            total.add(other);
-            spenders += 1;
-        }
-    }
-    if total.calls == 0 {
-        notices.write(Notice::info(args.agent, "No model call yet."));
-        return;
-    }
-    let mut lines = vec![if spent.calls == 0 {
-        "This agent: no model call yet.".to_owned()
-    } else {
-        format!("This agent: {spent}.")
-    }];
-    if let Some(TurnSpending(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
-        && turn.calls > 0
-    {
-        lines.push(format!("This turn: {turn}."));
-    }
-    let window = connection.and_then(|connection| connection.spec.context_window);
-    match last.context().map(|tokens| ContextUse { tokens, window }) {
-        Some(context) => lines.push(format!(
-            "Context: {context} tokens{}.",
-            if context.window.is_none() {
-                ", the model's window is not in the catalog"
-            } else {
-                ""
-            }
-        )),
-        None if spent.calls > 0 => {
-            lines.push("Context: not reported by the provider.".to_owned());
-        }
-        None => {}
-    }
-    let subagents: Vec<String> = families
-        .iter_descendants_depth_first::<Spawned>(args.agent)
-        .filter_map(|child| everyone.get(child).ok())
-        .filter(|(.., Spending(spent))| spent.calls > 0)
-        .map(|(id, name, Spending(spent))| {
-            let title =
-                name.map_or_else(|| format!("agent {}", id.short()), |name| name.to_string());
-            let calls = match spent.calls {
-                1 => "1 call".to_owned(),
-                calls => format!("{calls} calls"),
-            };
-            format!("  {title}: {}, {calls}", spent.cost_or_tokens())
-        })
-        .collect();
-    if !subagents.is_empty() {
-        lines.push("Its subagents:".to_owned());
-        lines.extend(subagents);
-    }
-    if spenders > 1 {
-        lines.push(format!("Session, {spenders} agents: {total}."));
-    }
-    if total.unpriced > 0 {
-        lines.push(format!(
-            "{} of {} calls had no price: their provider did not report one and the catalog \
-             lists none, or the model is local or billed by subscription.",
-            total.unpriced, total.calls
-        ));
-    }
-    notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
 fn retry(In(args): In<CommandArgs>, mut commands: Commands) {
@@ -340,7 +248,7 @@ type RosterQuery<'w, 's> = Query<
         Option<&'static Spawned>,
         Option<&'static ModelChoice>,
         Has<ActiveTurn>,
-        &'static Spending,
+        Option<&'static Spending>,
     ),
     With<Agent>,
 >;
@@ -364,7 +272,7 @@ fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
         if entries.len() >= total {
             break;
         }
-        let Ok((_, id, name, of, spawned, model, busy, Spending(spent))) = agents.get(agent) else {
+        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
             continue;
         };
         let title = match (name, of) {
@@ -378,7 +286,7 @@ fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
             model.map_or("no model", |model| model.0.as_str()),
             if busy { "working" } else { "idle" }
         );
-        if spent.calls > 0 {
+        if let Some(Spending(spent)) = spent.filter(|spent| spent.0.calls > 0) {
             label.push_str(&format!(" · {}", spent.cost_or_tokens()));
         }
         entries.push(RosterEntry { agent, label });

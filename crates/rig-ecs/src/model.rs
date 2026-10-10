@@ -12,7 +12,7 @@ use rig_core::completion::Reasoning;
 use serde::{Deserialize, Serialize};
 
 use super::agent::{ActiveTurn, Agent, Notice};
-use super::effects::{Effects, Handler};
+use super::effects::Handler;
 use super::journal::ReflectSaved;
 use super::turn::NO_MODEL;
 
@@ -163,7 +163,6 @@ pub(crate) fn on_set_model(
 pub(crate) fn connect(
     inserted: On<Insert<(ModelChoice, Effort)>>,
     agents: Query<(&ModelChoice, &Effort, Option<&Connection>)>,
-    effects: Res<Effects>,
     models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -184,7 +183,6 @@ pub(crate) fn connect(
                     return;
                 }
             };
-            effects.describe(vec![handler.descriptor()]);
             if connected.is_some() {
                 let model = format!("Model: {} ({}).", spec.display_name, choice.0);
                 notices.write(Notice::info(agent, model));

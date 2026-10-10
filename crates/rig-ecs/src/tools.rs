@@ -21,7 +21,7 @@ use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome};
+use rig_core::effect::{EffectId, EffectKind, Outcome};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::adapters::ToolAdapter;
 use rig_core::serve::{ErasedHandler, OpenRecord};
@@ -38,17 +38,6 @@ use super::prompt::ToolRules;
 #[derive(Component, Clone)]
 #[require(ToolRules, Footprint)]
 pub struct ToolDef(pub ToolDefinition);
-
-impl ToolDef {
-    /// How the effect log describes the tool.
-    pub fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor::tool(
-            self.0.name.as_str(),
-            &self.0.description,
-            self.0.parameters.clone(),
-        )
-    }
-}
 
 /// How a tool's calls run, on the tool's entity.
 #[derive(Component, Clone)]

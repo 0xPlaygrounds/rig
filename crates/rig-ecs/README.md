@@ -7,8 +7,10 @@ rig-core, for building your own agent harness:
   reasoning setting, system prompt and tool access. A running turn is an entity
   of its agent, and its model and tool calls are entities of the turn that run
   on Bevy's task pools.
-- **One recorded effect path.** Every model and tool call is dispatched through
-  rig-core's effect recording, into an effect log rig-cassette can replay.
+- **One effect path.** Every model and tool call is dispatched through it,
+  under an effect id; a plugin that inserts `Effects::recorded_by` its
+  recorder sees every effect with rig-core's types, such as rig-harness's
+  effect log, which rig-cassette replays.
 - **Plugins register tools and commands** (`AppToolsExt`, `AppCommandsExt`),
   save their own components with the session, and re-arm their work after a
   restart on `Restored`.

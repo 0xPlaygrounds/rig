@@ -2,13 +2,13 @@
 //! components hold their conversation, model, reasoning setting, system
 //! prompt and tool access; a running turn is an entity of its agent, and
 //! its model and tool calls are entities of the turn that run on Bevy's
-//! task pools. Every call goes through one recorded effect dispatch path.
-//! Tools and commands are registered by plugins, and the session journal
-//! is kept in the [`journal::SessionStore`] the app inserts. Views read what
-//! the agents do from [`activity`]. Time is Bevy's: a retried model call
-//! waits on a delayed command, and plugins that animate or poll run on
-//! `on_real_timer` with a [`calls::KeepAwake`], instead of threads of their
-//! own.
+//! task pools. Every call goes through one effect dispatch path, which a
+//! plugin may record ([`effects`]). Tools and commands are registered by
+//! plugins, and the session journal is kept in the
+//! [`journal::SessionStore`] the app inserts. Time is Bevy's: a retried
+//! model call waits on a delayed command, and plugins that animate or poll
+//! run on `on_real_timer` with a [`calls::KeepAwake`], instead of threads
+//! of their own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store (one of rig-cassette's
@@ -26,7 +26,6 @@
 //!     .add_plugins((AgentPlugin, JournalPlugin));
 //! ```
 
-pub mod activity;
 pub mod agent;
 pub mod calls;
 pub mod commands;
@@ -40,7 +39,6 @@ pub mod restore;
 pub mod subagents;
 pub mod tools;
 pub mod turn;
-pub mod usage;
 
 /// What a plugin needs: Bevy's app, ECS, reflection and time preludes
 /// with the time run conditions, the agent components and requests, and
@@ -53,7 +51,6 @@ pub mod prelude {
     pub use bevy_time::prelude::*;
 
     pub use crate::AgentPlugin;
-    pub use crate::activity::{Activity, ActivitySystems, MessageFeed};
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Condensed, Conversation, EffectParent, Interrupt,
         LastUsage, Notice, NoticeLevel, Retry, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
@@ -72,7 +69,6 @@ pub mod prelude {
     pub use crate::turn::{
         Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
     };
-    pub use crate::usage::{Spending, TurnSpending};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
 }
 
@@ -83,7 +79,6 @@ use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls, settle};
-use effects::Effects;
 use journal::{SessionLog, SessionStore};
 use rig_core::tool::ToolResult;
 use turn::{ModelReply, PollCalls};
@@ -94,9 +89,9 @@ use turn::{ModelReply, PollCalls};
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurns;
 
-/// The system in `Last` that writes the frame's journal records and
-/// effects to the [`SessionStore`]. A system that logs for the frame runs
-/// before it.
+/// The systems in `Last` that write the frame's journal records to the
+/// [`SessionStore`], and those a plugin adds to write its own logs, such as
+/// the effect log. A system that logs for the frame runs before them.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteJournal;
 
@@ -117,16 +112,14 @@ impl Plugin for AgentPlugin {
                 .insert_resource(Time::<Virtual>::from_max_delta(calls::MAX_FRAME_GAP));
         }
         let store = app.world().get_resource::<SessionStore>().cloned();
-        let effects = Effects::continuing(store.as_ref().map(|store| &*store.0));
-        app.add_plugins(activity::ActivityPlugin)
-            .insert_resource(effects)
+        app.init_resource::<effects::Effects>()
             .insert_resource(SessionLog::new(store.map(|store| store.0)))
             .init_resource::<Wake>()
             .init_resource::<model::Models>()
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
-            .add_systems(Startup, (spawn_first_agent, describe_tools))
+            .add_systems(Startup, spawn_first_agent)
             .add_systems(
                 Update,
                 (
@@ -160,9 +153,7 @@ impl Plugin for AgentPlugin {
             .add_observer(inbox::recall_on_turn_end)
             .add_observer(model::on_set_model)
             .add_observer(model::connect)
-            .add_observer(model::on_set_effort)
-            .add_observer(usage::record_spending)
-            .add_observer(usage::log_turn_spending);
+            .add_observer(model::on_set_effort);
     }
 }
 
@@ -185,11 +176,4 @@ fn log_agents(mut notices: MessageReader<Notice>, agents: Query<&AgentId>) {
             NoticeLevel::Error => warn!(agent, "notice: {}", notice.text),
         }
     }
-}
-
-/// Describes every registered tool in the effect log's header, by name.
-fn describe_tools(effects: Res<Effects>, tools: Query<&tools::ToolDef>) {
-    let mut tools: Vec<_> = tools.iter().collect();
-    tools.sort_by(|a, b| a.0.name.as_str().cmp(b.0.name.as_str()));
-    effects.describe(tools.into_iter().map(tools::ToolDef::descriptor).collect());
 }

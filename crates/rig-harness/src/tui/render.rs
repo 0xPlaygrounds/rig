@@ -24,8 +24,9 @@ use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::host::reload::{ReloadBuild, ReloadQueued};
 use crate::host::sessions::SessionName;
+use crate::plugins::activity::{Activity, Status};
+use crate::plugins::usage::{Spending, TurnSpending};
 use rig_core::completion::{ContextUse, tokens_label};
-use rig_ecs::activity::{Activity, Status};
 use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Condensed, Conversation, LastUsage, NoticeLevel, Partial, Spawned,
     SpawnedBy,
@@ -34,7 +35,6 @@ use rig_ecs::commands::SlashCommand;
 use rig_ecs::inbox::Inbox;
 use rig_ecs::model::{Connection, Effort, ModelChoice};
 use rig_ecs::turn::RETRY;
-use rig_ecs::usage::{Spending, TurnSpending};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -311,12 +311,12 @@ pub(crate) fn render(
         Option<&ModelChoice>,
         &Effort,
         &Activity,
-        (&Spending, &LastUsage),
+        (Option<&Spending>, &LastUsage),
         Option<&Connection>,
         &Inbox,
     )>,
     changed: Query<(), Changed<Conversation>>,
-    turns: Query<(Option<&Calls>, &TurnSpending)>,
+    turns: Query<(Option<&Calls>, Option<&TurnSpending>)>,
     (partials, active): (Query<&Partial>, Query<&ActiveTurn>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     everyone: Everyone,
@@ -412,7 +412,7 @@ pub(crate) fn render(
                 loaded("model"),
             ));
             agent_pieces(&mut left, view.agent, &everyone, agents_hint);
-            if let Some((_, spent)) = turn
+            if let Some((_, Some(spent))) = turn
                 && spent.0.calls > 0
             {
                 let used = spent.0.cost_or_tokens();
@@ -672,13 +672,13 @@ fn status_pieces(
 /// cost, then the context against the model's window, yellow past 70% and
 /// red past 90%. `/usage` details the cache writes and reasoning.
 fn usage_pieces(
-    Spending(spent): &Spending,
+    spent: Option<&Spending>,
     last: &LastUsage,
     connection: Option<&Connection>,
 ) -> Vec<Piece> {
-    if spent.calls == 0 {
+    let Some(Spending(spent)) = spent.filter(|spent| spent.0.calls > 0) else {
         return Vec::new();
-    }
+    };
     let mut pieces = vec![Piece::new(
         keep::TOKENS,
         Span::from(format!(

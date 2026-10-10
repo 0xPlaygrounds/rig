@@ -13,8 +13,9 @@
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
 //! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. What the
-//! agents do is rig-ecs's [`activity`](rig_ecs::activity), and
-//! [`ratatui`] is re-exported so a plugin draws with the same version.
+//! agents do is their [`Activity`](crate::plugins::activity::Activity),
+//! which the view adds unless it is there, and [`ratatui`] is re-exported
+//! so a plugin draws with the same version.
 
 mod clipboard;
 mod complete;
@@ -30,9 +31,9 @@ mod transcript;
 mod view;
 mod wrap;
 
+use crate::plugins::activity::{ActivityPlugin, ActivitySystems};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_ecs::activity::ActivitySystems;
 
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
@@ -55,6 +56,9 @@ impl Plugin for TuiPlugin {
             return;
         }
         renderers::add_builtin_renderers(app);
+        if !app.is_plugin_added::<ActivityPlugin>() {
+            app.add_plugins(ActivityPlugin);
+        }
         app.init_resource::<view::TuiView>()
             .init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
