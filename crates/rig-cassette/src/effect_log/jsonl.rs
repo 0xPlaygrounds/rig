@@ -191,10 +191,8 @@ impl Writer {
             .bases(&chain)
             .filter_map(|base| Plan::of(base, history, &texts, tools.as_deref(), known))
             .min_by_key(|plan| plan.cost);
-        // A reader restores the record before noting it, so the requests
-        // the plan refers to are still known to it.
-        known.note(&value, plan.as_ref().map(|plan| plan.after))?;
         let Some(plan) = plan else {
+            known.note(&value, None)?;
             return Ok(serde_json::to_writer(out, &value)?);
         };
         if let Some(request) = value
@@ -209,17 +207,19 @@ impl Writer {
         if let Some(fields) = value.as_object_mut() {
             fields.shift_remove("id");
         }
-        Ok(serde_json::to_writer(
-            out,
-            &DeltaLine {
-                id: record.id,
-                after: plan.after,
-                keep: plan.keep,
-                then: plan.then,
-                same_tools: plan.same_tools,
-                record: value,
-            },
-        )?)
+        let line = DeltaLine {
+            id: record.id,
+            after: plan.after,
+            keep: plan.keep,
+            then: plan.then,
+            same_tools: plan.same_tools,
+            record: value,
+        };
+        serde_json::to_writer(out, &line)?;
+        // Noted as a reader notes the line, which restores it while the
+        // requests it refers to are still known.
+        let (record, texts) = known.restore(line, false)?;
+        known.note(&record, Some(texts))
     }
 }
 
@@ -244,6 +244,14 @@ struct Known {
     highest: Option<EffectId>,
     /// Whether there is a line that is not blank.
     has_lines: bool,
+}
+
+/// A completion request's history and tools as JSON text.
+type Texts = (Vec<Arc<str>>, Option<Arc<str>>);
+
+/// `value` as JSON text.
+fn text(value: &Value) -> Arc<str> {
+    Arc::from(value.to_string())
 }
 
 /// A completion request as written or read: each message and the tools as
@@ -310,7 +318,7 @@ impl Known {
             whole = whole
                 && std::str::from_utf8(&line)
                     .map_err(io::Error::other)
-                    .and_then(|line| known.line(line))
+                    .and_then(|line| known.line(line, false))
                     .is_ok();
             if !whole {
                 known = Self {
@@ -328,8 +336,8 @@ impl Known {
     }
 
     /// Folds one line in: a header merges into the header, a record comes
-    /// back whole. A blank line is neither.
-    fn line(&mut self, line: &str) -> io::Result<Option<Value>> {
+    /// back, whole when `whole`. A blank line is neither.
+    fn line(&mut self, line: &str, whole: bool) -> io::Result<Option<Value>> {
         if line.trim().is_empty() {
             return Ok(None);
         }
@@ -340,22 +348,20 @@ impl Known {
             merge(&mut self.header, header);
             return Ok(None);
         }
-        let (value, base) = if value.get("after").is_some() {
-            let line: DeltaLine<Value> = serde_json::from_value(value)?;
-            let after = line.after;
-            (self.restore(line)?, Some(after))
-        } else {
-            (value, None)
-        };
-        self.note(&value, base)?;
-        Ok(Some(value))
+        if value.get("after").is_none() {
+            self.note(&value, None)?;
+            return Ok(Some(value));
+        }
+        let (record, texts) = self.restore(serde_json::from_value(value)?, whole)?;
+        self.note(&record, Some(texts))?;
+        Ok(Some(record))
     }
 
-    /// Notes a whole record: its id may be the highest; a completion
-    /// becomes its chain's latest request, sharing message texts with
-    /// `base`, the request it was written against; a tool call's result
-    /// becomes the latest.
-    fn note(&mut self, record: &Value, base: Option<EffectId>) -> io::Result<()> {
+    /// Notes a record: its id may be the highest; a completion becomes its
+    /// chain's latest request, with `texts`, its history and tools as
+    /// [`Self::restore`] gives them, or else as the record holds them; a
+    /// tool call's result becomes the latest.
+    fn note(&mut self, record: &Value, texts: Option<Texts>) -> io::Result<()> {
         let id: EffectId = serde_json::from_value(record.get("id").cloned().unwrap_or_default())?;
         self.highest = self.highest.max(Some(id));
         match record.pointer("/kind/effect").and_then(Value::as_str) {
@@ -371,29 +377,14 @@ impl Known {
             }
             _ => return Ok(()),
         }
-        let request = record.pointer("/kind/request");
-        let field = |name: &str| request.and_then(|request| request.get(name));
-        let base = base.and_then(|base| self.head(base));
-        let shared: HashMap<&str, &Arc<str>> = base
-            .map(|base| base.history.iter().map(|text| (&**text, text)).collect())
-            .unwrap_or_default();
-        let history = match field("chat_history") {
-            Some(Value::Array(messages)) => messages
-                .iter()
-                .map(|message| {
-                    let text = message.to_string();
-                    shared
-                        .get(text.as_str())
-                        .map_or_else(|| Arc::from(text.as_str()), |kept| Arc::clone(kept))
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
-        let tools = field("tools").map(|tools| {
-            let text = tools.to_string();
-            base.and_then(|base| base.tools.as_ref())
-                .filter(|kept| ***kept == *text)
-                .map_or_else(|| Arc::from(text.as_str()), Arc::clone)
+        let (history, tools) = texts.unwrap_or_else(|| {
+            let request = record.pointer("/kind/request");
+            let field = |name: &str| request.and_then(|request| request.get(name));
+            let history = match field("chat_history") {
+                Some(Value::Array(messages)) => messages.iter().map(text).collect(),
+                _ => Vec::new(),
+            };
+            (history, field("tools").map(text))
         });
         let reply = match (
             record.pointer("/outcome/Ok/choice"),
@@ -544,9 +535,10 @@ impl Known {
         Ok(message)
     }
 
-    /// The record a continuation line stands for, its request made whole
-    /// from its base and the replies it refers to.
-    fn restore(&self, line: DeltaLine<Value>) -> io::Result<Value> {
+    /// The record a continuation line stands for, from its base and the
+    /// replies it refers to, and its request's history and tools as text,
+    /// which the record holds too only when `whole`: a fold needs the text.
+    fn restore(&self, line: DeltaLine<Value>, whole: bool) -> io::Result<(Value, Texts)> {
         let invalid = |what: String| io::Error::new(io::ErrorKind::InvalidData, what);
         let DeltaLine {
             id,
@@ -561,18 +553,13 @@ impl Known {
                 "record {id} continues completion {after}, which is not a recent request"
             ))
         })?;
-        let messages = |from: usize, to: usize| -> io::Result<Vec<Value>> {
-            base.history
-                .get(from..to)
-                .ok_or_else(|| {
-                    invalid(format!(
-                        "record {id} takes messages {from}..{to} of completion {after}, which has {}",
-                        base.history.len()
-                    ))
-                })?
-                .iter()
-                .map(|text| Ok(serde_json::from_str(text)?))
-                .collect()
+        let messages = |from: usize, to: usize| {
+            base.history.get(from..to).ok_or_else(|| {
+                invalid(format!(
+                    "record {id} takes messages {from}..{to} of completion {after}, which has {}",
+                    base.history.len()
+                ))
+            })
         };
         let short = || invalid(format!("record {id} places more messages than it holds"));
         let request = record
@@ -584,16 +571,16 @@ impl Known {
             _ => Vec::new(),
         }
         .into_iter();
-        let mut history = messages(0, keep)?;
+        let mut history = messages(0, keep)?.to_vec();
         if then.is_empty() {
-            history.extend(held.by_ref());
+            history.extend(held.by_ref().map(|message| text(&message)));
         }
         for piece in then {
             match piece {
-                Piece::Base(from, to) => history.extend(messages(from, to)?),
+                Piece::Base(from, to) => history.extend_from_slice(messages(from, to)?),
                 Piece::New(count) => {
                     for _ in 0..count {
-                        history.push(held.next().ok_or_else(short)?);
+                        history.push(text(&held.next().ok_or_else(short)?));
                     }
                 }
                 Piece::Reply(of) => {
@@ -605,10 +592,11 @@ impl Known {
                                 "record {id} repeats the reply of completion {of}, which is not a recent request with a reply"
                             ))
                         })?;
-                    history.push(reply.restore(held.next().ok_or_else(short)?)?);
+                    history.push(text(&reply.restore(held.next().ok_or_else(short)?)?));
                 }
                 Piece::Results(ids) => {
-                    history.push(self.restore_results(held.next().ok_or_else(short)?, ids)?);
+                    let message = held.next().ok_or_else(short)?;
+                    history.push(text(&self.restore_results(message, ids)?));
                 }
             }
         }
@@ -617,19 +605,28 @@ impl Known {
                 "record {id} holds messages its pieces do not place"
             )));
         }
-        request.insert("chat_history".to_owned(), Value::Array(history));
-        if same_tools {
+        let tools = if same_tools {
             let tools = base.tools.as_ref().ok_or_else(|| {
                 invalid(format!(
                     "record {id} reuses the tools of completion {after}, which has none"
                 ))
             })?;
-            request.insert("tools".to_owned(), serde_json::from_str(tools)?);
+            Some(Arc::clone(tools))
+        } else {
+            request.get("tools").map(text)
+        };
+        if whole {
+            let messages = history.iter().map(|message| serde_json::from_str(message));
+            let messages = messages.collect::<Result<_, _>>()?;
+            request.insert("chat_history".to_owned(), Value::Array(messages));
+            if same_tools && let Some(tools) = &tools {
+                request.insert("tools".to_owned(), serde_json::from_str(tools)?);
+            }
         }
         if let Some(fields) = record.as_object_mut() {
             fields.insert("id".to_owned(), serde_json::to_value(id)?);
         }
-        Ok(record)
+        Ok((record, (history, tools)))
     }
 }
 
@@ -773,7 +770,7 @@ pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
     let mut known = Known::default();
     let mut records = Vec::new();
     for line in BufReader::new(File::open(path)?).lines() {
-        if let Some(record) = known.line(&line?)? {
+        if let Some(record) = known.line(&line?, true)? {
             records.push(serde_json::from_value(record)?);
         }
     }
