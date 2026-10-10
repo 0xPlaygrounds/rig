@@ -55,7 +55,7 @@ pub mod plugin_guide {}
 pub mod host;
 mod load;
 
-pub use load::{Build, BuildKind, PluginSource, ProvidedBy, Provides, load};
+pub use load::{PluginSource, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
 /// that reads it.
@@ -101,9 +101,7 @@ pub mod prelude {
     pub use crate::host::launcher;
     pub use crate::host::reload::{CancelReload, ReloadStatus};
     pub use crate::host::session::{LogEvents, Logged, SessionPaths};
-    pub use crate::{
-        Build, HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
-    };
+    pub use crate::{HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins};
     pub use rig_core::transcript::final_answer;
     pub use rig_ecs::agent::{PrimaryQuery, primary};
     pub use rig_tools::{Spill, blocking};
