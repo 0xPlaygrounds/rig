@@ -231,18 +231,11 @@ pub struct Condensed {
 }
 
 impl Condensed {
-    /// The messages requests send as they are.
-    pub fn live<'a>(&self, messages: &'a [Message]) -> &'a [Message] {
-        messages
-            .get(self.upto.min(messages.len())..)
-            .unwrap_or_default()
-    }
-
-    /// The messages a request sends: the summary, then the live messages.
-    /// The summary goes into the first live message when that is the
-    /// user's, so user and assistant messages still alternate.
+    /// The messages a request sends: the summary, then the messages after
+    /// the first `upto`. The summary goes into the first of those when that
+    /// is the user's, so user and assistant messages still alternate.
     pub fn request(&self, messages: &[Message]) -> Vec<Message> {
-        let mut live = self.live(messages).to_vec();
+        let mut live = messages.get(self.upto..).unwrap_or_default().to_vec();
         let summary = UserContent::text(self.summary.clone());
         match live.first_mut() {
             Some(Message::User { content }) => content.insert(0, summary),
@@ -457,23 +450,19 @@ pub struct Notice {
 }
 
 impl Notice {
+    fn new(agent: Option<Entity>, text: String, level: NoticeLevel) -> Self {
+        Self { agent, text, level }
+    }
+
     /// Information about `agent`, or about the whole app with `None`.
     pub fn info(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
-        Self {
-            agent: agent.into(),
-            text: text.into(),
-            level: NoticeLevel::Info,
-        }
+        Self::new(agent.into(), text.into(), NoticeLevel::Info)
     }
 
     /// A failure or refusal concerning `agent`, or the whole app with
     /// `None`.
     pub fn error(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
-        Self {
-            agent: agent.into(),
-            text: text.into(),
-            level: NoticeLevel::Error,
-        }
+        Self::new(agent.into(), text.into(), NoticeLevel::Error)
     }
 }
 

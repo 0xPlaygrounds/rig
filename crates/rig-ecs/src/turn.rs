@@ -77,8 +77,6 @@ pub struct Backoff {
     pub attempt: u32,
     /// When the call is sent again.
     pub until: Instant,
-    /// Why the last call failed.
-    pub why: String,
 }
 
 impl Backoff {
@@ -468,7 +466,7 @@ fn send_request(
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
             prepare(messages, connection, effort, &id.0, preamble, definitions).map(|request| {
                 (
-                    connection.handler.erased(),
+                    connection.handler.0.clone(),
                     connection.spec.clone(),
                     request,
                 )
@@ -543,7 +541,7 @@ pub(crate) fn on_model_request(
     let (effect, reply) = effects.dispatch(
         &id.0,
         effect_parent.map(|parent| parent.0),
-        connection.handler.erased(),
+        connection.handler.0.clone(),
         EffectKind::Completion {
             request: request.clone(),
             stream: true,
@@ -785,7 +783,6 @@ fn recover(
             let backoff = Backoff {
                 attempt: recovery.retries,
                 until: Instant::now() + delay,
-                why: report.to_string(),
             };
             notices.write(Notice::info(
                 agent,
@@ -1013,7 +1010,7 @@ impl ToolStarter<'_, '_> {
                         .map(|trigger| (tool, trigger))
                         .or_else(|why| refused(ToolErrorKind::InvalidArgs, why)),
                     (None, Serves::Handler(handler)) => {
-                        let work = run_tool_call(&self.effects, &id.0, run, handler.erased());
+                        let work = run_tool_call(&self.effects, &id.0, run, handler.0.clone());
                         let running = Running::spawn(tool_pool(), &self.wake, work);
                         commands.entity(call).insert(running);
                         return;

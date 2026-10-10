@@ -106,13 +106,6 @@ impl Effects {
 #[derive(Clone)]
 pub struct Handler(pub ErasedHandler);
 
-impl Handler {
-    /// The handler, to dispatch to.
-    pub fn erased(&self) -> ErasedHandler {
-        self.0.clone()
-    }
-}
-
 // SAFETY: browser wasm without the `atomics` target feature runs one
 // thread, so a `Handler` is never sent to or shared with another one.
 #[cfg(all(
