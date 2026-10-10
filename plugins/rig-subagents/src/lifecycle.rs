@@ -48,10 +48,7 @@ pub(super) struct Agents<'w, 's> {
 impl Agents<'_, '_> {
     /// The agent with the id `id`.
     pub(super) fn find(&self, id: &AgentId) -> Option<Entity> {
-        let mut agents = self.agents.iter();
-        agents
-            .find(|agent| agent.id == id)
-            .map(|agent| agent.entity)
+        id.find_in(self.agents.iter().map(|agent| (agent.entity, agent.id)))
     }
 
     /// Output of `agent`, titled with its task when it has one.
@@ -146,13 +143,8 @@ impl Agents<'_, '_> {
             };
             let mut origin = from.clone();
             origin.request = Some(last.id.clone());
-            self.commands.trigger(Deliver {
-                entity: asker,
-                text: text.to_owned(),
-                origin,
-                mode,
-                attachments: Vec::new(),
-            });
+            self.commands
+                .trigger(Deliver::new(asker, text, mode).with_origin(origin));
             reported.push(asker);
         }
         reported

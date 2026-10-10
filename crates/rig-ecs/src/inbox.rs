@@ -91,6 +91,14 @@ impl Origin {
         }
     }
 
+    /// Output of the plugin `name`.
+    pub fn plugin(name: impl Into<String>) -> Self {
+        Self {
+            kind: OriginKind::Plugin(name.into()),
+            ..Self::default()
+        }
+    }
+
     /// This origin about `title`, such as a task's.
     pub fn titled(self, title: impl Into<String>) -> Self {
         Self {
@@ -178,20 +186,21 @@ pub struct Deliver {
 }
 
 impl Deliver {
-    /// The user's `text` for `agent`, with what it attaches.
-    pub fn user(
-        agent: Entity,
-        text: impl Into<String>,
-        mode: DeliveryMode,
-        attachments: Vec<Attachment>,
-    ) -> Self {
+    /// `text` for `agent`, as `mode` says, as the user's own text unless
+    /// [`with_origin`](Self::with_origin) names who sent it.
+    pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
             entity: agent,
             text: text.into(),
             origin: Origin::user(),
             mode,
-            attachments,
+            attachments: Vec::new(),
         }
+    }
+
+    /// This message, from `origin`.
+    pub fn with_origin(self, origin: Origin) -> Self {
+        Self { origin, ..self }
     }
 }
 

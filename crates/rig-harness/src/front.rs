@@ -143,7 +143,10 @@ pub fn send_message(commands: &mut Commands, agent: Entity, text: String, mode: 
     for note in notes {
         commands.write_message(Notice::info(agent, note));
     }
-    commands.trigger(Deliver::user(agent, text, mode, attachments));
+    commands.trigger(Deliver {
+        attachments,
+        ..Deliver::new(agent, text, mode)
+    });
 }
 
 /// The largest image attached: providers refuse bigger ones (Anthropic

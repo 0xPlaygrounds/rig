@@ -196,16 +196,8 @@ fn remind(remind: On<Remind>, mut commands: Commands, mut notices: MessageWriter
     // turn's next model call, `Queue` once that turn would end, together
     // with everything else queued; an idle agent starts a turn. A `Note`
     // needs no answer: it goes with the next call and starts no turn.
-    commands.trigger(Deliver {
-        entity: remind.entity,
-        text: format!("Reminder: {}", remind.text),
-        origin: Origin {
-            kind: OriginKind::Plugin("remind".to_owned()),
-            ..Origin::default()
-        },
-        mode: DeliveryMode::Queue,
-        attachments: Vec::new(),
-    });
+    let reminder = Deliver::new(remind.entity, format!("Reminder: {}", remind.text), DeliveryMode::Queue);
+    commands.trigger(reminder.with_origin(Origin::plugin("remind")));
 }
 ```
 

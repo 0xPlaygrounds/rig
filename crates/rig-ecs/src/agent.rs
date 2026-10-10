@@ -50,6 +50,17 @@ impl AgentId {
     pub fn short(&self) -> &str {
         self.0.get(..8).unwrap_or(&self.0)
     }
+
+    /// The agent among `agents` whose id this is, such as in a
+    /// `Query<(Entity, &AgentId)>`: ids name agents across a restart, where
+    /// entities do not, as in an [`Origin`]'s `from`.
+    pub fn find_in<'a>(
+        &self,
+        agents: impl IntoIterator<Item = (Entity, &'a Self)>,
+    ) -> Option<Entity> {
+        let mut agents = agents.into_iter();
+        agents.find_map(|(agent, id)| (id == self).then_some(agent))
+    }
 }
 
 /// The agent that spawned this one, such as the agent whose tool call

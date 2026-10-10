@@ -124,12 +124,8 @@ fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
 fn ask(app: &mut App, agent: Entity) {
     // The first frame restores the (empty) session and starts the journal.
     app.update();
-    app.world_mut().trigger(Deliver::user(
-        agent,
-        "What is 2 + 3?",
-        DeliveryMode::Steer,
-        Vec::new(),
-    ));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "What is 2 + 3?", DeliveryMode::Steer));
 }
 
 fn messages(app: &App, agent: Entity) -> Vec<Message> {

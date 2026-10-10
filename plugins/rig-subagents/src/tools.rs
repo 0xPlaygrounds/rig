@@ -234,13 +234,9 @@ fn on_task(
     if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
         child.insert(connection.clone());
     }
-    let brief = Deliver {
-        entity: child.id(),
-        text: args.prompt.trim().to_owned(),
-        origin: Origin::agent(called.caller.clone(), Some(request.clone())).titled(task.clone()),
-        mode: DeliveryMode::Queue,
-        attachments: Vec::new(),
-    };
+    let origin = Origin::agent(called.caller.clone(), Some(request.clone())).titled(task.clone());
+    let brief = Deliver::new(child.id(), args.prompt.trim(), DeliveryMode::Queue);
+    let brief = brief.with_origin(origin);
     child.insert((
         Agent,
         id.clone(),
@@ -303,16 +299,9 @@ fn send_briefs(
                 brief.text.push_str(&peers);
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
-                commands.trigger(Deliver {
-                    entity: *sibling,
-                    text: format!("A new peer works beside you: {}.", named(me)),
-                    origin: Origin {
-                        kind: OriginKind::Plugin("subagents".to_owned()),
-                        ..Origin::default()
-                    },
-                    mode: DeliveryMode::Note,
-                    attachments: Vec::new(),
-                });
+                let text = format!("A new peer works beside you: {}.", named(me));
+                let note = Deliver::new(*sibling, text, DeliveryMode::Note);
+                commands.trigger(note.with_origin(Origin::plugin("subagents")));
             }
         }
         commands.entity(child).remove::<Brief>();
@@ -440,17 +429,12 @@ impl Agents<'_, '_> {
                 entity.insert(EffectParent(called.effect));
             }
             let origin = Origin::agent(called.caller.clone(), Some(request));
-            self.commands.trigger(Deliver {
-                entity: target.entity,
-                text: text.to_owned(),
-                origin,
-                mode: if waiting {
-                    DeliveryMode::Steer
-                } else {
-                    DeliveryMode::Queue
-                },
-                attachments: Vec::new(),
-            });
+            let mode = match waiting {
+                true => DeliveryMode::Steer,
+                false => DeliveryMode::Queue,
+            };
+            let request = Deliver::new(target.entity, text, mode);
+            self.commands.trigger(request.with_origin(origin));
             match (waiting, busy) {
                 (true, _) => "now; it was waiting for you.",
                 (false, true) => "to read after its current work.",

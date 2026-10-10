@@ -173,10 +173,10 @@ fn every_change_the_log_records_is_committed() {
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
     // No model answers it, so it is taken out; a note is left halted.
-    let hello = Deliver::user(agent, "hello", DeliveryMode::Steer, Vec::new());
+    let hello = Deliver::new(agent, "hello", DeliveryMode::Steer);
     app.world_mut().trigger(hello);
     app.update();
-    let note = Deliver::user(agent, "a note", DeliveryMode::Note, Vec::new());
+    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
     app.world_mut().trigger(note);
     let committed = app.world().resource::<Messages<Committed>>();
     let mut cursor = committed.get_cursor();
@@ -227,7 +227,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
     };
     let live = session(&store, |world, agent| {
         for (at, text) in texts.into_iter().enumerate() {
-            world.trigger(Deliver::user(agent, text, DeliveryMode::Steer, Vec::new()));
+            world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             // The observers' commands start the turn, and end it.
             world.flush();
             world.trigger(Interrupt { entity: agent });

@@ -18,7 +18,7 @@ use rig::harness_protocol::{Home, env};
 
 use super::session::SessionPaths;
 use rig_ecs::agent::{Notice, PrimaryQuery, primary};
-use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, OriginKind};
+use rig_ecs::inbox::{Deliver, DeliveryMode, Origin};
 use rig_ecs::journal::SessionRestored;
 
 /// The plugin name in the [`Origin`] of a failed build's note.
@@ -79,16 +79,8 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
 /// answer it and the user's next message joins it); a busy agent's model
 /// reads it with the turn's next call.
 pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: String) {
-    commands.trigger(Deliver {
-        entity: agent,
-        text: note,
-        origin: Origin {
-            kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
-            ..Origin::default()
-        },
-        mode: DeliveryMode::Note,
-        attachments: Vec::new(),
-    });
+    let note = Deliver::new(agent, note, DeliveryMode::Note);
+    commands.trigger(note.with_origin(Origin::plugin(BUILD_ORIGIN)));
 }
 
 /// The launcher that started this agent, if one did: it sets both
