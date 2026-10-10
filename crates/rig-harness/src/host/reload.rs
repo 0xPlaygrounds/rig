@@ -20,7 +20,6 @@ use std::collections::VecDeque;
 use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -58,12 +57,6 @@ impl Plugin for ReloadPlugin {
             (start_queued_reload, drain_reload, finish_reload)
                 .chain()
                 .after(PollCalls),
-        )
-        .add_systems(
-            Last,
-            stop_reload_on_exit
-                .in_set(OnAppExitSystems)
-                .run_if(on_message::<AppExit>),
         );
     }
 }
@@ -96,7 +89,7 @@ pub enum ReloadStatus {
 }
 
 /// The rebuild's process. Dropping it while the build runs kills the
-/// build.
+/// build, as the app's runner does when it drops the app on exit.
 #[derive(Resource)]
 struct ReloadBuild {
     child: Child,
@@ -345,12 +338,6 @@ fn finish_reload(
         *exiting = true;
         exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
     }
-}
-
-/// Drops a running rebuild when the app exits, which kills it with cargo
-/// and rustc, instead of leaving that to the end of the process.
-fn stop_reload_on_exit(world: &mut World) {
-    world.remove_resource::<ReloadBuild>();
 }
 
 fn on_cancel_reload(
