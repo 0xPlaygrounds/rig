@@ -92,9 +92,9 @@ pub fn store_images<'m>(
 }
 
 /// Puts the data of each image `message` names in `blobs` back in place.
-/// An image whose blob cannot be read has no data any more
-/// ([`Unknown`](rig_core::message::DocumentSourceKind::Unknown)), which a
-/// request sends as a placeholder; the first such failure is returned.
+/// An image whose blob cannot be read has no data any more ([`Unknown`]),
+/// which a request sends as a placeholder; the first such failure is
+/// returned.
 pub fn load_images(message: &mut Message, blobs: &dyn JournalStore) -> io::Result<()> {
     let mut gone = Ok(());
     for image in message.images_mut() {
