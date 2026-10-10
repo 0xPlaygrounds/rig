@@ -354,3 +354,29 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
     );
     assert_eq!(model.request_count(), 1, "the call was not sent again");
 }
+
+/// A plugin's task of its own output type ends as a `Done` with no system
+/// of the plugin's; one still running when the app exits is cancelled.
+#[test]
+fn a_plugin_task_ends_as_done_and_the_exit_cancels_it() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let pool = bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let wake = app.world().resource::<Wake>().clone();
+    let world = app.world_mut();
+    let done = world
+        .spawn(Running::spawn(pool, &wake, async { 7_u8 }))
+        .id();
+    let stuck = world
+        .spawn(Running::spawn(pool, &wake, std::future::pending::<u8>()))
+        .id();
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Done<u8>>(done).is_some()
+    });
+    assert_eq!(
+        app.world().get::<Done<u8>>(done).map(|done| done.0),
+        Some(7)
+    );
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert!(app.world().get::<Running>(stuck).is_none());
+}

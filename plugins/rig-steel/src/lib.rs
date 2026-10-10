@@ -55,7 +55,7 @@ use rig_core::message::ToolCall;
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions};
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
@@ -162,11 +162,13 @@ fn on_run_steel(
         called.caller.clone(),
         called.args.code.clone(),
     );
-    commands.entity(called.call).insert(Running::spawn(
-        AsyncComputeTaskPool::get_or_init(TaskPool::default),
-        &wake,
-        program,
-    ));
+    commands
+        .entity(called.call)
+        .insert(Running::spawn_into::<ToolOutput, _>(
+            AsyncComputeTaskPool::get_or_init(TaskPool::default),
+            &wake,
+            program,
+        ));
 }
 
 /// Runs `code` on a thread of its own and waits for its end, stopping it

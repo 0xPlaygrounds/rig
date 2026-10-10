@@ -75,7 +75,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<
 /// What a tool call did, inserted on the call entity: the one way a call
 /// ends, such as `ToolOutput(ToolResult::success("Done.".into()))`. Insert
 /// it once, with [`EntityCommands::insert_if_new`] when another system may
-/// answer the same call; the first one counts. The turn then starts the
+/// answer the same call; the first one counts. Work off the main thread
+/// ends with one as a `Running::spawn_into::<ToolOutput, _>` task
+/// ([`Running`](super::calls::Running)). The turn then starts the
 /// calls that waited for this one and, once every call of the reply has
 /// one, sends their results to the model.
 #[derive(Component, Clone, Debug)]

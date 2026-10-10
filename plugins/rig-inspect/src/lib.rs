@@ -208,12 +208,16 @@ fn on_inspect(
     let listed = (method == RPC_DISCOVER_METHOD).then_some(names);
     let (registry, spill) = (registry.clone(), answers.0.clone());
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    call.insert(Running::spawn(pool, &wake, async move {
-        let reply = replied.recv().await.ok();
-        blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
-            .await
-            .unwrap_or_else(ToolResult::failed)
-    }));
+    call.insert(Running::spawn_into::<ToolOutput, _>(
+        pool,
+        &wake,
+        async move {
+            let reply = replied.recv().await.ok();
+            blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
+                .await
+                .unwrap_or_else(ToolResult::failed)
+        },
+    ));
 }
 
 /// The tool's output for Bevy's `reply`: the methods `listed`, for

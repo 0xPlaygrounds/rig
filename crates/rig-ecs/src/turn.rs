@@ -87,15 +87,11 @@ impl Backoff {
     }
 }
 
-/// The systems polling running calls, in `Update`.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PollCalls;
-
 /// What a model call's task returns.
 pub type ModelReply = Result<CompletionResponse, ErrorReport>;
 
-/// A streaming model call of the turn it is a [`CallOf`]; its task is a
-/// [`Running<ModelReply>`](Running).
+/// A streaming model call of the turn it is a [`CallOf`]; its [`Running`]
+/// task ends as a [`Done<ModelReply>`](Done).
 #[derive(Component)]
 pub struct ModelCall {
     effect: EffectId,
@@ -316,13 +312,12 @@ pub struct Exiting;
 
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
 /// idle agents) leaves the running turns for the restart to carry on, as
-/// after a crash: every running call is cancelled, the tool results that
-/// came in are logged, and the restart answers the rest.
+/// after a crash: every [`Running`] task, a plugin's too, is cancelled, the
+/// tool results that came in are logged, and the restart answers the rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
     world.insert_resource(Exiting);
     let mut cancelling = Cancelling::new();
-    take_running::<ModelReply>(world, &mut cancelling);
-    take_running::<ToolResult>(world, &mut cancelling);
+    take_running(world, &mut cancelling);
     let deadline = Instant::now() + EXIT_GRACE;
     loop {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
@@ -357,16 +352,18 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     world.flush();
 }
 
-/// Takes every [`Running<T>`] task off its call, to be cancelled.
-fn take_running<T: Send + Sync + 'static>(world: &mut World, cancelling: &mut Cancelling) {
+/// Takes every [`Running`] task off its entity, a plugin's too, to be
+/// cancelled.
+fn take_running(world: &mut World, cancelling: &mut Cancelling) {
     let calls: Vec<Entity> = world
-        .query_filtered::<Entity, With<Running<T>>>()
+        .query_filtered::<Entity, With<Running>>()
         .iter(world)
         .collect();
     for call in calls {
         if let Ok(mut call) = world.get_entity_mut(call)
-            && let Some(Running(task)) = call.take::<Running<T>>()
+            && let Some(running) = call.take::<Running>()
         {
+            let task = running.into_task();
             cancelling.push(Box::pin(async move {
                 task.cancel().await;
             }));
@@ -859,7 +856,7 @@ pub(crate) fn on_tool_done(
     }
     commands
         .entity(done.entity)
-        .try_remove::<(OpenCall, Running<ToolResult>)>();
+        .try_remove::<(OpenCall, Running)>();
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
         return;
     };
@@ -1015,7 +1012,8 @@ impl ToolStarter<'_, '_> {
                         .or_else(|why| refused(ToolErrorKind::InvalidArgs, why)),
                     (None, Serves::Handler(handler)) => {
                         let work = run_tool_call(&self.effects, &id.0, run, handler.0.clone());
-                        let running = Running::spawn(tool_pool(), &self.wake, work);
+                        let running =
+                            Running::spawn_into::<ToolOutput, _>(tool_pool(), &self.wake, work);
                         commands.entity(call).insert(running);
                         return;
                     }

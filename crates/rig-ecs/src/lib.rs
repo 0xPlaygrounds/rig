@@ -52,7 +52,7 @@ pub mod prelude {
         LastUsage, Notice, NoticeLevel, Retry, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
         ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
     };
-    pub use crate::calls::{Done, KeepAwake, Wake};
+    pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
@@ -74,10 +74,8 @@ use bevy_ecs::schedule::SingleThreadedExecutor;
 use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, Notice};
-use calls::{Done, Wake, poll_calls, settle};
+use calls::{PollCalls, Wake, poll_calls, settle};
 use journal::{SessionLog, SessionStore};
-use rig_core::tool::ToolResult;
-use turn::{ModelReply, PollCalls};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart (see [`turn::Exiting`]). A system that logs what
@@ -127,12 +125,7 @@ impl Plugin for AgentPlugin {
             .add_systems(Startup, spawn_first_agent)
             .add_systems(
                 Update,
-                (
-                    poll_calls::<ModelReply, Done<ModelReply>>,
-                    poll_calls::<ToolResult, tools::ToolOutput>,
-                    turn::stream_partials,
-                )
-                    .in_set(PollCalls),
+                (poll_calls, turn::stream_partials).in_set(PollCalls),
             )
             .add_systems(
                 Last,

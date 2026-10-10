@@ -1,7 +1,7 @@
 //! Work that runs off the main thread: a [`Running`] task on a call entity
 //! becomes a [`Done`] component when it finishes, or a tool call's
-//! [`ToolOutput`](super::tools::ToolOutput), through one generic
-//! `poll_calls` system, so observers of that component carry the turn on.
+//! [`ToolOutput`](super::tools::ToolOutput), through one `poll_calls`
+//! system, so observers of that component carry the turn on.
 //! Each finished task also calls [`Wake`], so a loop that sleeps while
 //! nothing happens runs a frame for it.
 
@@ -104,13 +104,34 @@ pub fn settle(wake: Res<Wake>, mut left: Local<u32>) {
     }
 }
 
-/// A call's task. Dropping it, or the entity, cancels the task.
-#[derive(Component)]
-pub struct Running<T: Send + Sync + 'static>(pub Task<T>);
+/// What a finished task does to its entity: inserts its output.
+type Finish = Box<dyn FnOnce(EntityWorldMut) + Send>;
 
-impl<T: Send + Sync + 'static> Running<T> {
-    /// Spawns `work` on `pool`; its end wakes the loop.
-    pub fn spawn(
+/// Work running off the main thread for its entity, such as a call: when
+/// it finishes, [`poll_calls`] replaces it with its output, as a
+/// [`Done<T>`] or the component [`Running::spawn_into`] names, and
+/// observers of that component carry on. Bevy's own pattern
+/// (`examples/async_tasks/async_compute.rs`): one task component for every
+/// kind of output, so no plugin registers a system for its own. Dropping
+/// it, or the entity, cancels the task; so does the app's exit.
+#[derive(Component)]
+pub struct Running(Task<Finish>);
+
+impl Running {
+    /// Spawns `work` on `pool`; it ends as a [`Done<T>`] on the entity, and
+    /// wakes the loop.
+    pub fn spawn<T: Send + Sync + 'static>(
+        pool: &TaskPool,
+        wake: &Wake,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
+    ) -> Self {
+        Self::spawn_into::<Done<T>, T>(pool, wake, work)
+    }
+
+    /// [`Running::spawn`], ending as the component `C` made from the
+    /// output, such as a tool call's
+    /// [`ToolOutput`](super::tools::ToolOutput).
+    pub fn spawn_into<C: Component + From<T>, T: Send + 'static>(
         pool: &TaskPool,
         wake: &Wake,
         work: impl ConditionalSendFuture<Output = T> + 'static,
@@ -119,8 +140,15 @@ impl<T: Send + Sync + 'static> Running<T> {
         Self(pool.spawn(async move {
             let output = work.await;
             wake.wake();
-            output
+            Box::new(move |mut entity: EntityWorldMut| {
+                entity.insert(C::from(output));
+            }) as Finish
         }))
+    }
+
+    /// Takes the task off, to be cancelled: `task.cancel().await`.
+    pub(crate) fn into_task(self) -> Task<Finish> {
+        self.0
     }
 }
 
@@ -134,19 +162,16 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
     }
 }
 
-/// Replaces each finished [`Running<T>`] task with its output as the
-/// component `C`: [`Done<T>`] for most calls, a
-/// [`ToolOutput`](super::tools::ToolOutput) for tool calls.
-pub fn poll_calls<T: Send + Sync + 'static, C: Component + From<T>>(
-    mut calls: Query<(Entity, &mut Running<T>)>,
-    mut commands: Commands,
-) {
+/// The system polling running work, in `Update`: a system that reads what
+/// finished this frame runs after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PollCalls;
+
+/// Replaces each finished [`Running`] task with its output.
+pub fn poll_calls(mut calls: Query<(Entity, &mut Running)>, mut commands: Commands) {
     for (entity, mut running) in &mut calls {
-        if let Some(output) = check_ready(&mut running.bypass_change_detection().0) {
-            commands
-                .entity(entity)
-                .remove::<Running<T>>()
-                .insert(C::from(output));
+        if let Some(finish) = check_ready(&mut running.bypass_change_detection().0) {
+            commands.entity(entity).remove::<Running>().queue(finish);
         }
     }
 }

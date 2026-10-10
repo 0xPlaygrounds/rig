@@ -28,10 +28,9 @@ use rig_core::serve::ErasedHandler;
 use rig_harness::harness_protocol::Home;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
-use rig_ecs::calls::{Done, Running, Wake, poll_calls};
+use rig_ecs::calls::{Done, PollCalls, Running, Wake};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
-use rig_ecs::turn::PollCalls;
 use rig_harness::front::Busy;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
@@ -71,14 +70,7 @@ impl Plugin for ChatgptLoginPlugin {
             on_login,
         )
         .add_command("logout", "Forget a sign-in: /logout chatgpt", on_logout)
-        .add_systems(
-            Update,
-            (
-                poll_calls::<SignedInResult, Done<SignedInResult>>,
-                show_login_prompts,
-            )
-                .in_set(PollCalls),
-        )
+        .add_systems(Update, show_login_prompts.in_set(PollCalls))
         .add_observer(on_signed_in)
         .add_observer(cancel_on_interrupt);
     }
@@ -106,7 +98,8 @@ impl SignIn for ChatGptSignIn {
 }
 
 /// A sign-in waiting for the user, on an entity of its own whose
-/// [`Running<SignedInResult>`] is the flow, [`Busy`] until it ends.
+/// [`Running`] task is the flow, [`Busy`] until it ends as a
+/// [`Done<SignedInResult>`].
 /// Despawning it cancels the flow.
 #[derive(Component)]
 #[require(Busy)]

@@ -390,9 +390,9 @@ pub struct Partial {
 
 /// A tool call of the model's last reply. It is [`Queued`] while an
 /// earlier call of the reply holds it back (see
-/// [`Footprint`]), then runs as a
-/// [`Running<ToolResult>`](super::calls::Running), or stays open for an
-/// open tool, and ends with a [`ToolOutput`](super::tools::ToolOutput).
+/// [`Footprint`]), then runs as a [`Running`](super::calls::Running) task,
+/// or stays open for an open tool, and ends with a
+/// [`ToolOutput`](super::tools::ToolOutput).
 /// Read-only calls run side by side; every other call runs alone, in order.
 #[derive(Component, Clone)]
 pub struct ToolCallRun {

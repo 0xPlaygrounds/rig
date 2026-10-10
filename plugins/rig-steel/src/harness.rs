@@ -18,11 +18,11 @@ use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
     Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
 };
-use rig_ecs::calls::Wake;
+use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
 use rig_ecs::model::{Effort, ModelChoice, Models};
 use rig_ecs::tools::ToolOutput;
-use rig_ecs::turn::{PollCalls, ToolStarter, tool_name};
+use rig_ecs::turn::{ToolStarter, tool_name};
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;
