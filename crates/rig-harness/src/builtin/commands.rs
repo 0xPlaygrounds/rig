@@ -7,13 +7,11 @@ use bevy_ecs::prelude::*;
 
 use super::LoginPlugin;
 use crate::view::{Focus, PickItem, PickRequest};
-use rig_ecs::agent::{
-    ActiveTurn, Agent, AgentId, Connection, Effort, LastUsage, ModelChoice, Notice, Retry,
-    SetEffort, SetModel, Spawned, SpawnedBy,
-};
+use rig_core::completion::{ContextUse, UsageTotals};
+use rig_ecs::agent::{ActiveTurn, Agent, AgentId, LastUsage, Notice, Retry, Spawned, SpawnedBy};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
-use rig_ecs::models::{self, ModelConnector};
-use rig_ecs::usage::{ContextUse, Spending, TurnSpending};
+use rig_ecs::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
+use rig_ecs::usage::{Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
 #[derive(Default)]
@@ -54,18 +52,19 @@ impl Plugin for BuiltinCommandsPlugin {
 
 fn model(
     In(args): In<CommandArgs>,
-    connector: Res<ModelConnector>,
+    models: Res<Models>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
     if args.args.is_empty() {
-        let items: Vec<PickItem> = connector
-            .available()
+        let items: Vec<PickItem> = models
+            .0
+            .reachable()
             .into_iter()
             .map(|spec| {
                 let reference = spec.reference();
-                let note = match connector.plan(spec) {
+                let note = match models.0.plan(spec) {
                     Some(plan) => format!("  ({plan} plan)"),
                     None if spec.provider.requires_credential() => String::new(),
                     None => "  (no key needed)".to_owned(),
@@ -129,15 +128,16 @@ fn effort(
         });
         return;
     }
-    match models::effort_named(spec, &args.args) {
-        Ok(effort) => {
+    match spec.reasoning.named(&args.args) {
+        Ok(choice) => {
             commands.trigger(SetEffort {
                 entity: args.agent,
-                effort: Effort(effort),
+                effort: Effort(choice.reasoning),
             });
         }
         Err(why) => {
-            notices.write(Notice::error(args.agent, format!("{why}.")));
+            let why = format!("{}: {why}.", spec.display_name);
+            notices.write(Notice::error(args.agent, why));
         }
     }
 }
@@ -157,12 +157,12 @@ fn usage(
     families: Query<&Spawned>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((spent, last, connection, turn)) = agents.get(args.agent) else {
+    let Ok((Spending(spent), last, connection, turn)) = agents.get(args.agent) else {
         return;
     };
-    let mut total = Spending::default();
+    let mut total = UsageTotals::default();
     let mut spenders = 0;
-    for (.., other) in &everyone {
+    for (.., Spending(other)) in &everyone {
         if other.calls > 0 {
             total.add(other);
             spenders += 1;
@@ -175,18 +175,17 @@ fn usage(
     let mut lines = vec![if spent.calls == 0 {
         "This agent: no model call yet.".to_owned()
     } else {
-        format!("This agent: {}.", spent.summary())
+        format!("This agent: {spent}.")
     }];
     if let Some(TurnSpending(turn)) = turn.and_then(|turn| turns.get(turn.turn()).ok())
         && turn.calls > 0
     {
-        lines.push(format!("This turn: {}.", turn.summary()));
+        lines.push(format!("This turn: {turn}."));
     }
-    let spec = connection.map(|connection| &*connection.spec);
-    match ContextUse::of(last, spec) {
+    let window = connection.and_then(|connection| connection.spec.context_window);
+    match last.context().map(|tokens| ContextUse { tokens, window }) {
         Some(context) => lines.push(format!(
-            "Context: {} tokens{}.",
-            context.label(),
+            "Context: {context} tokens{}.",
             if context.window.is_none() {
                 ", the model's window is not in the catalog"
             } else {
@@ -201,8 +200,8 @@ fn usage(
     let subagents: Vec<String> = families
         .iter_descendants_depth_first::<Spawned>(args.agent)
         .filter_map(|child| everyone.get(child).ok())
-        .filter(|(.., spent)| spent.calls > 0)
-        .map(|(id, name, spent)| {
+        .filter(|(.., Spending(spent))| spent.calls > 0)
+        .map(|(id, name, Spending(spent))| {
             let title =
                 name.map_or_else(|| format!("agent {}", id.short()), |name| name.to_string());
             let calls = match spent.calls {
@@ -217,7 +216,7 @@ fn usage(
         lines.extend(subagents);
     }
     if spenders > 1 {
-        lines.push(format!("Session, {spenders} agents: {}.", total.summary()));
+        lines.push(format!("Session, {spenders} agents: {total}."));
     }
     if total.unpriced > 0 {
         lines.push(format!(
@@ -365,7 +364,7 @@ fn roster(agents: &RosterQuery) -> Vec<RosterEntry> {
         if entries.len() >= total {
             break;
         }
-        let Ok((_, id, name, of, spawned, model, busy, spent)) = agents.get(agent) else {
+        let Ok((_, id, name, of, spawned, model, busy, Spending(spent))) = agents.get(agent) else {
             continue;
         };
         let title = match (name, of) {

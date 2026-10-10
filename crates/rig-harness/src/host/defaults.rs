@@ -13,8 +13,9 @@ use rig::harness_protocol::Home;
 use rig_tools::fs::write_atomic;
 use serde::{Deserialize, Serialize};
 
-use rig_ecs::agent::{Agent, Effort, ModelChoice, SpawnedBy};
+use rig_ecs::agent::{Agent, SpawnedBy};
 use rig_ecs::journal::SessionLog;
+use rig_ecs::model::{Effort, ModelChoice};
 
 /// Remembers the last chosen model and reasoning setting and gives them to
 /// an agent that starts without a model.
@@ -34,7 +35,7 @@ struct DefaultsFile(PathBuf);
 
 #[derive(Serialize, Deserialize, Default, PartialEq)]
 struct Defaults {
-    model: Option<String>,
+    model: Option<ModelChoice>,
     #[serde(default)]
     effort: Effort,
 }
@@ -79,7 +80,7 @@ fn apply_defaults(
     for agent in &agents {
         commands
             .entity(agent)
-            .insert((defaults.effort, ModelChoice(model.clone())));
+            .insert((defaults.effort, model.clone()));
     }
 }
 
@@ -97,7 +98,7 @@ fn remember(
         return;
     };
     let defaults = Defaults {
-        model: Some(model.0.clone()),
+        model: Some(model.clone()),
         effort: *effort,
     };
     if log.is_live() && file.read() != defaults {

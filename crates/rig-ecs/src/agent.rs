@@ -1,27 +1,24 @@
 //! The agent entity: its components, the calls it owns, and the requests a
 //! view sends it.
 
-use std::sync::Arc;
-
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_core::catalog::ModelSpec;
-use rig_core::completion::{Message, Reasoning, Usage};
+use rig_core::completion::{Message, Usage};
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
 use super::activity::Activity;
-use super::effects::Handler;
 use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
+use super::model::Effort;
 use super::tools::Footprint;
 use super::turn::Recovery;
 use super::usage::{Spending, TurnSpending};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
-/// default, including a fresh [`AgentId`]. An agent has no [`ModelChoice`]
-/// until one is picked.
+/// default, including a fresh [`AgentId`]. An agent has no
+/// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 #[require(
@@ -282,35 +279,6 @@ impl LastUsage {
     }
 }
 
-/// The chosen catalog model, as `vendor/model`. It never changes in place:
-/// choosing another model inserts a new one, and each insert rebuilds the
-/// agent's [`Connection`]. Saved with the session.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
-#[component(immutable)]
-#[reflect(Component, Saved, Clone)]
-pub struct ModelChoice(pub String);
-
-/// The connected model of an agent with a [`ModelChoice`]: its catalog
-/// entry and the effect handler every model call is dispatched to. Built
-/// from the environment once per choice, and not saved: restoring the
-/// choice rebuilds it.
-#[derive(Component, Clone)]
-pub struct Connection {
-    /// The model's catalog entry.
-    pub spec: Arc<ModelSpec>,
-    /// The model as an effect handler.
-    pub handler: Handler,
-}
-
-/// The reasoning setting sent with each request, or `None` for the
-/// provider's default. It never changes in place. Saved with the session.
-#[derive(
-    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
-)]
-#[component(immutable)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct Effort(pub Option<Reasoning>);
-
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the rules of the tools the agent is offered
 /// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
@@ -470,26 +438,6 @@ pub struct Retry {
 pub struct Interrupt {
     /// The agent.
     pub entity: Entity,
-}
-
-/// Choose the agent's model by catalog reference (`vendor/model`).
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SetModel {
-    /// The agent.
-    pub entity: Entity,
-    /// The catalog reference.
-    pub model: String,
-}
-
-/// Choose the agent's reasoning setting; `None` is the provider default.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SetEffort {
-    /// The agent.
-    pub entity: Entity,
-    /// The setting.
-    pub effort: Effort,
 }
 
 /// How a [`Notice`] is shown and logged.

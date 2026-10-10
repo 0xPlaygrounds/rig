@@ -12,13 +12,14 @@ use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Condensed, Conversation, Effort, Halt, Interrupt, LastUsage, ModelChoice,
-    Notice, STOPPED, SystemPrompt, ToolAccess,
+    Agent, AgentId, Condensed, Conversation, Halt, Interrupt, LastUsage, Notice, STOPPED,
+    SystemPrompt, ToolAccess,
 };
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{
     Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionStore, commit_message,
 };
+use crate::model::{Effort, ModelChoice};
 use crate::restore::Restored;
 use crate::usage::Spending;
 
@@ -75,7 +76,7 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
     let Some(agent) = agent else { return };
     let usage = Usage::new().input_tokens(10).output_tokens(5);
     let mut spent = Spending::default();
-    spent.record(&usage);
+    spent.0.record(&usage);
     let counts = |reads| ToolCounts(HashMap::from([("read".to_owned(), reads)]));
     first.world_mut().entity_mut(agent).insert((
         ModelChoice("ollama/deepseek-v4-flash".to_owned()),

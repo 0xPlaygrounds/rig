@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
+use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning};
 use rig_core::message::UserContent;
 use rig_core::operation::Completion;
@@ -23,7 +24,6 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
-use rig_ecs::models::ModelConnector;
 use rig_ecs::prelude::*;
 use serde::Deserialize;
 
@@ -103,7 +103,10 @@ fn a_turn_ended(world: &mut World) -> bool {
 
 /// An agent of `app` on `model`, as the built-in catalog's DeepSeek model.
 fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
-    let spec = ModelConnector::default().resolve("deepseek/deepseek-flash")?;
+    let spec = Catalog::builtin()
+        .resolve("deepseek/deepseek-flash")
+        .ok()?
+        .shared();
     let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(
         spec.reference(),
         model.clone(),

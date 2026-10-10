@@ -6,10 +6,9 @@ use rig_core::message::{ToolCall, ToolFunction, ToolName};
 
 use super::{MESSAGE, SubagentsPlugin, TASK};
 use crate::AgentPlugin;
-use crate::agent::{
-    ActiveTurn, Agent, AgentId, Ending, ModelChoice, Spawned, ToolCallRun, TurnOutcome,
-};
+use crate::agent::{ActiveTurn, Agent, AgentId, Ending, Spawned, ToolCallRun, TurnOutcome};
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
+use crate::model::ModelChoice;
 use crate::tools::{Footprint, Serves, ToolDef, ToolOutput};
 
 /// The request of each message delivered, marked when it is a note, with

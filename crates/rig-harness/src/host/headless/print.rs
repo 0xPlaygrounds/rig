@@ -17,11 +17,10 @@ use crate::builtin::login::PendingLogin;
 use crate::view::send_input;
 use rig_core::transcript::final_answer;
 use rig_ecs::agent::{
-    ActiveTurn, Agent, Connection, Conversation, ModelChoice, Notice, NoticeLevel, PrimaryQuery,
-    SetModel, primary,
+    ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary,
 };
 use rig_ecs::inbox::DeliveryMode;
-use rig_ecs::models::ModelConnector;
+use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
 
 /// Frames to wait for a model to connect before giving up.
 const CONNECT_FRAMES: u32 = 3;
@@ -92,7 +91,7 @@ fn drive(
     working: Query<(), (With<Agent>, With<ActiveTurn>)>,
     conversations: Query<&Conversation>,
     logins: Query<(), With<PendingLogin>>,
-    connector: Res<ModelConnector>,
+    models: Res<Models>,
     mut commands: Commands,
     mut exits: MessageWriter<AppExit>,
 ) {
@@ -110,7 +109,7 @@ fn drive(
                 (Some(model), _) => Some(model.clone()),
                 (None, Some(_)) if connected => None,
                 (None, Some(chosen)) => Some(chosen.0.clone()),
-                (None, None) => match connector.available().first() {
+                (None, None) => match models.0.reachable().first() {
                     Some(spec) => Some(spec.reference()),
                     None if command => None,
                     None => {

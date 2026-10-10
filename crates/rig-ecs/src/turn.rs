@@ -41,14 +41,15 @@ use rig_core::transcript::{arguments_refusal, close_pending_with};
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Connection, Conversation, EffectParent,
-    Effort, Ending, Halt, Interrupt, LastUsage, Notice, Partial, Queued, Retry, SystemPrompt,
-    ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Ending, Halt,
+    Interrupt, LastUsage, Notice, Partial, Queued, Retry, SystemPrompt, ToolAccess, ToolCallRun,
+    TurnEnded, TurnOf, TurnOutcome,
 };
 use super::calls::{Done, Running, Wake};
 use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
 use super::journal::{Commit, SessionLog, commit_message};
+use super::model::{Connection, Effort};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
 use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
 

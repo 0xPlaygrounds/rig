@@ -56,12 +56,12 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::agent::{
-    ActiveTurn, Agent, AgentId, EffectParent, Effort, ModelChoice, Spawned, SpawnedBy,
-    SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
+    ActiveTurn, Agent, AgentId, EffectParent, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
+    TurnEnded, TurnOutcome,
 };
 use crate::inbox::{Deliver, DeliveryMode, Inbox, Origin, RequestId};
 use crate::journal::ReflectSaved;
-use crate::models::{self, ModelConnector};
+use crate::model::{Effort, ModelChoice, Models};
 use crate::restore::Restored;
 use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput};
 
@@ -353,29 +353,20 @@ fn settle(
     args: &TaskArgs,
     parent: &Parent<'_>,
     tools: &[&str],
-    connector: &ModelConnector,
+    models: &Models,
 ) -> Result<Settled, String> {
     let task = args.description.trim().to_owned();
     let instructions = args.prompt.trim().to_owned();
     if task.is_empty() || instructions.is_empty() {
         return Err("`description` and `prompt` must not be empty".to_owned());
     }
-    let (model, effort) = models::child_model(
-        connector,
-        parent.model,
-        parent.effort,
+    let (model, effort) = ModelChoice::inherit(
+        &models.0,
+        (parent.model, parent.effort),
         args.model.as_deref(),
+        args.effort.as_deref(),
     )?;
     let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
-    let effort = match args.effort.as_deref().map(str::trim) {
-        Some(name) if !name.is_empty() => {
-            let spec = connector
-                .resolve(&model.0)
-                .ok_or_else(|| format!("The catalog has no model `{}`", model.0))?;
-            Effort(models::effort_named(&spec, name)?)
-        }
-        _ => effort,
-    };
     let may_delegate = parent.depth + 1 < MAX_DEPTH;
     // A peer keeps `message` for its siblings even where it cannot delegate.
     let delegates = |name: &str| name == TASK || (name == MESSAGE && !args.peers);
@@ -423,7 +414,7 @@ fn on_task(
     agents: Query<(&ToolAccess, Option<&ModelChoice>, &Effort, &SystemPrompt)>,
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
-    connector: Res<ModelConnector>,
+    models: Res<Models>,
     mut commands: Commands,
 ) {
     let (call, caller, run) = (called.call, called.agent, &called.run);
@@ -440,7 +431,7 @@ fn on_task(
         .map(|def| def.0.name.as_str())
         .filter(|name| access.allows(name))
         .collect();
-    let settled = match settle(&called.args, &parent, &mine, &connector) {
+    let settled = match settle(&called.args, &parent, &mine, &models) {
         Ok(settled) => settled,
         Err(why) => {
             let why = format!("{why}. No subagent was started; fix the call and send it again.");

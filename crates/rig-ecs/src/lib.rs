@@ -12,9 +12,9 @@
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store (one of rig-cassette's
-//! [`journal`](rig_cassette::journal) stores) and the
-//! [`models::ModelConnector`]. Feature `subagents` (default) adds the
-//! [`subagents::SubagentsPlugin`] tools.
+//! [`journal`](rig_cassette::journal) stores) and the [`model::Models`].
+//! Feature `subagents` (default) adds the [`subagents::SubagentsPlugin`]
+//! tools.
 //!
 //! ```no_run
 //! use rig_cassette::journal::MemoryStore;
@@ -33,7 +33,7 @@ pub mod commands;
 pub mod effects;
 pub mod inbox;
 pub mod journal;
-pub mod models;
+pub mod model;
 pub mod prompt;
 pub mod restore;
 #[cfg(feature = "subagents")]
@@ -55,9 +55,9 @@ pub mod prelude {
     pub use crate::AgentPlugin;
     pub use crate::activity::{Activity, ActivitySystems, MessageFeed};
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Condensed, Connection, Conversation, EffectParent,
-        Effort, Interrupt, LastUsage, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
-        Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CallOf, Condensed, Conversation, EffectParent, Interrupt,
+        LastUsage, Notice, NoticeLevel, Retry, Spawned, SpawnedBy, SystemPrompt, ToolAccess,
+        ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, KeepAwake, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
@@ -65,6 +65,7 @@ pub mod prelude {
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved};
+    pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
@@ -121,7 +122,7 @@ impl Plugin for AgentPlugin {
             .insert_resource(effects)
             .insert_resource(SessionLog::new(store.map(|store| store.0)))
             .init_resource::<Wake>()
-            .init_resource::<models::ModelConnector>()
+            .init_resource::<model::Models>()
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
@@ -157,9 +158,9 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
-            .add_observer(models::on_set_model)
-            .add_observer(models::connect)
-            .add_observer(models::on_set_effort)
+            .add_observer(model::on_set_model)
+            .add_observer(model::connect)
+            .add_observer(model::on_set_effort)
             .add_observer(usage::record_spending)
             .add_observer(usage::log_turn_spending);
     }

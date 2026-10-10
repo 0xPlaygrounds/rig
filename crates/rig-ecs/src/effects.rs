@@ -6,32 +6,25 @@
 //! their header (the tools and models described, the keys used) whenever
 //! it changed, so the effect log replays with rig-cassette's replayer.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_cassette::journal::JournalStore;
-use rig_core::catalog::ModelSpec;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
 use rig_core::error::ErrorReport;
-use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
 
-use super::models::ModelConnector;
 use bevy_tasks::ConditionalSendFuture;
 
-/// The session's effect recorder, effect id counter and model handlers.
+/// The session's effect recorder and effect id counter.
 #[derive(Resource)]
 pub struct Effects {
     recorder: EffectLogRecorder,
     /// The same recorder, as dispatches and open records hold it.
     shared: Arc<dyn Recorder + Send + Sync>,
     next: AtomicU64,
-    /// One handler per catalog model, built on first use and shared by
-    /// every agent that picks the model.
-    models: HashMap<String, Handler>,
 }
 
 impl Effects {
@@ -47,34 +40,7 @@ impl Effects {
             shared: Arc::new(recorder.clone()),
             recorder,
             next: AtomicU64::new(last + 1),
-            models: HashMap::new(),
         }
-    }
-
-    /// The handler serving `spec`, built by `connector` the first time any
-    /// agent picks it, and
-    /// described in the log header. A signed-in handler reads the
-    /// credential on each request, so a refreshed token needs no rebuild.
-    pub(crate) fn model_handler(
-        &mut self,
-        spec: &ModelSpec,
-        connector: &ModelConnector,
-    ) -> Result<ErasedHandler, ConnectError> {
-        let reference = spec.reference();
-        if let Some(handler) = self.models.get(&reference) {
-            return Ok(handler.erased());
-        }
-        let handler = connector.handler(spec)?;
-        self.describe(vec![handler.descriptor()]);
-        self.models.insert(reference, Handler(handler.clone()));
-        Ok(handler)
-    }
-
-    /// Forgets the handlers of `vendor`'s models, so the next agent that
-    /// picks one connects it again, such as after its sign-in is deleted.
-    pub fn forget_vendor(&mut self, vendor: &str) {
-        self.models
-            .retain(|reference, _| reference.split_once('/').map(|(of, _)| of) != Some(vendor));
     }
 
     /// Adds `handlers` to the ones the log header describes.

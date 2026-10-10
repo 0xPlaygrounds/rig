@@ -28,9 +28,10 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Halt, Notice, TurnOf};
+use super::agent::{ActiveTurn, Agent, AgentId, Conversation, Halt, Notice, TurnOf};
 use super::calls::Wake;
 use super::journal::Commit;
+use super::model::Connection;
 use super::turn::{CallModel, Exiting};
 
 /// The id of a request to an agent, which the reply to it names, such as

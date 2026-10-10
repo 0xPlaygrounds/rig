@@ -18,12 +18,11 @@ use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
-    Agent, AgentId, EffectParent, Effort, ModelChoice, SpawnedBy, SystemPrompt, ToolAccess,
-    TurnEnded, TurnOutcome,
+    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
 };
 use rig_ecs::calls::Wake;
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use rig_ecs::models::{self, ModelConnector};
+use rig_ecs::model::{Effort, ModelChoice, Models};
 use rig_ecs::tools::ToolOutput;
 use rig_ecs::turn::{PollCalls, ToolStarter, tool_name};
 
@@ -262,12 +261,12 @@ fn spawn_agent(
         )
     });
     let (parent_model, parent_effort, parent_prompt, parent_access) = inherited.unwrap_or_default();
-    let connector = world.get_resource_or_init::<ModelConnector>().clone();
-    let (model, effort) = models::child_model(
-        &connector,
-        parent_model.as_ref(),
-        parent_effort,
+    let models = world.get_resource_or_init::<Models>();
+    let (model, effort) = ModelChoice::inherit(
+        &models.0,
+        (parent_model.as_ref(), parent_effort),
         spec.model.as_deref(),
+        None,
     )
     .map_err(HarnessError::Invalid)?;
     let prompt = spec

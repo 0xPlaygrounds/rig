@@ -9,9 +9,8 @@
 //! interrupting the turn cancels it.
 
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{Message, UnsupportedOption, Usage};
+use rig_core::completion::{Message, UnsupportedOption, Usage, tokens_label};
 use rig_ecs::prelude::*;
-use rig_ecs::usage;
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
 };
@@ -287,7 +286,7 @@ fn compact_near_the_window(
                 "The conversation nears the model's context window: cleared {} older tool \
                  outputs (about {} tokens).",
                 cleared.results,
-                usage::tokens(cleared.tokens as u64)
+                tokens_label(cleared.tokens as u64)
             ),
         ));
     }
@@ -352,7 +351,7 @@ fn recover_from_overflow(
                     "The conversation outgrew the model's context window: cleared {} older \
                      tool outputs (about {} tokens) and sending it again.",
                     cleared.results,
-                    usage::tokens(cleared.tokens as u64)
+                    tokens_label(cleared.tokens as u64)
                 ),
             ));
             commands.trigger(CallModel { entity: turn });
@@ -443,13 +442,13 @@ fn take_summary(
                      (about {} tokens) as it was; the model now gets about {} tokens of \
                      conversation.",
                     older.len(),
-                    usage::tokens(policy.0.estimate(older)),
+                    tokens_label(policy.0.estimate(older)),
                     match kept.len() {
                         1 => "the newest message".to_owned(),
                         kept => format!("the newest {kept} messages"),
                     },
-                    usage::tokens(policy.0.estimate(kept)),
-                    usage::tokens(left)
+                    tokens_label(policy.0.estimate(kept)),
+                    tokens_label(left)
                 ),
             ));
         }

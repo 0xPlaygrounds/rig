@@ -28,13 +28,14 @@ use super::launcher;
 use super::session::SessionPaths;
 use crate::attach;
 use crate::view::{PickItem, PickRequest};
+use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
 use rig_ecs::StopTurns;
 use rig_ecs::agent::{
     Agent, AgentId, Conversation, Notice, SpawnedBy, TurnEnded, TurnOf, primary_order,
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_ecs::usage::{self, Spending};
+use rig_ecs::usage::Spending;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
@@ -137,10 +138,10 @@ impl SessionEntry {
         // cut off.
         match self.meta.cost {
             Some(cost) if cost > 0.0 => {
-                label.push_str(&format!("  · {}", usage::dollars(cost)));
+                label.push_str(&format!("  · {}", dollars_label(cost)));
             }
             _ if self.meta.tokens > 0 => {
-                label.push_str(&format!("  · {} tokens", usage::tokens(self.meta.tokens)));
+                label.push_str(&format!("  · {} tokens", tokens_label(self.meta.tokens)));
             }
             _ => {}
         }
@@ -249,6 +250,10 @@ fn write_meta(
     // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
     agents.sort_by(|a, b| primary_order(a.3, a.0).cmp(&primary_order(b.3, b.0)));
+    let mut spent = UsageTotals::default();
+    agents
+        .iter()
+        .for_each(|(_, _, Spending(each), ..)| spent.add(each));
     let meta = Meta {
         title: agents
             .iter()
@@ -256,14 +261,8 @@ fn write_meta(
             .map(|text| title(&text))
             .unwrap_or_default(),
         name: name.0.clone(),
-        cost: agents
-            .iter()
-            .any(|(_, _, spent, ..)| spent.unpriced < spent.calls)
-            .then(|| agents.iter().map(|(_, _, spent, ..)| spent.cost).sum()),
-        tokens: agents
-            .iter()
-            .map(|(_, _, spent, ..)| spent.total_tokens())
-            .sum(),
+        cost: (spent.unpriced < spent.calls).then_some(spent.cost),
+        tokens: spent.total_tokens(),
         updated: now_ms(),
     };
     let written = serde_json::to_vec_pretty(&meta)

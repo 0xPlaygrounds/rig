@@ -24,16 +24,17 @@ use super::view::{Overlay, Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use crate::host::reload::{ReloadBuild, ReloadQueued};
 use crate::host::sessions::SessionName;
+use rig_core::completion::{ContextUse, tokens_label};
 use rig_ecs::activity::{Activity, Status};
 use rig_ecs::agent::{
-    ActiveTurn, Agent, Calls, Condensed, Connection, Conversation, Effort, LastUsage, ModelChoice,
-    NoticeLevel, Partial, Spawned, SpawnedBy,
+    ActiveTurn, Agent, Calls, Condensed, Conversation, LastUsage, NoticeLevel, Partial, Spawned,
+    SpawnedBy,
 };
 use rig_ecs::commands::SlashCommand;
 use rig_ecs::inbox::Inbox;
-use rig_ecs::models;
+use rig_ecs::model::{Connection, Effort, ModelChoice};
 use rig_ecs::turn::RETRY;
-use rig_ecs::usage::{self, ContextUse, Spending, TurnSpending};
+use rig_ecs::usage::{Spending, TurnSpending};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -661,7 +662,7 @@ fn status_pieces(
         Piece::new(keep::ALWAYS, Span::from(model).bold()),
         Piece::new(
             keep::REASONING,
-            Span::from(format!("reasoning {}", models::effort_label(effort.0))).dim(),
+            Span::from(format!("reasoning {effort}")).dim(),
         ),
         Piece::new(keep::ALWAYS, status),
     ]
@@ -670,7 +671,11 @@ fn status_pieces(
 /// The meter: the agent's uncached input and output tokens, cache reads,
 /// cost, then the context against the model's window, yellow past 70% and
 /// red past 90%. `/usage` details the cache writes and reasoning.
-fn usage_pieces(spent: &Spending, last: &LastUsage, connection: Option<&Connection>) -> Vec<Piece> {
+fn usage_pieces(
+    Spending(spent): &Spending,
+    last: &LastUsage,
+    connection: Option<&Connection>,
+) -> Vec<Piece> {
     if spent.calls == 0 {
         return Vec::new();
     }
@@ -678,22 +683,22 @@ fn usage_pieces(spent: &Spending, last: &LastUsage, connection: Option<&Connecti
         keep::TOKENS,
         Span::from(format!(
             "↑{} ↓{}",
-            usage::tokens(spent.uncached_input()),
-            usage::tokens(spent.tokens.output_tokens.unwrap_or(0))
+            tokens_label(spent.uncached_input()),
+            tokens_label(spent.tokens.output_tokens.unwrap_or(0))
         ))
         .dim(),
     )];
     if let Some(read) = spent.tokens.cached_input_tokens.filter(|read| *read > 0) {
         pieces.push(Piece::new(
             keep::CACHE,
-            Span::from(format!("cache {}", usage::tokens(read))).dim(),
+            Span::from(format!("cache {}", tokens_label(read))).dim(),
         ));
     }
     if let Some(cost) = spent.cost_label() {
         pieces.push(Piece::new(keep::COST, Span::from(cost).dim()));
     }
-    let spec = connection.map(|connection| &*connection.spec);
-    if let Some(context) = ContextUse::of(last, spec) {
+    let window = connection.and_then(|connection| connection.spec.context_window);
+    if let Some(context) = last.context().map(|tokens| ContextUse { tokens, window }) {
         let style = match context.percent() {
             Some(90..) => Style::new().red(),
             Some(70..) => Style::new().yellow(),
@@ -701,7 +706,7 @@ fn usage_pieces(spent: &Spending, last: &LastUsage, connection: Option<&Connecti
         };
         pieces.push(Piece::new(
             keep::CONTEXT,
-            Span::styled(format!("ctx {}", context.label()), style),
+            Span::styled(format!("ctx {context}"), style),
         ));
     }
     pieces

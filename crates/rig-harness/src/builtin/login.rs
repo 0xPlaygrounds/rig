@@ -1,6 +1,6 @@
 //! `/login` and `/logout`: signing in to the ChatGPT plan from the agent,
-//! a plugin of its own that the core knows only as [`SignIns`] on its
-//! [`ModelConnector`]. `/login` runs the sign-in on the IO pool: in the browser, which it opens on
+//! a plugin of its own that the core knows only as a [`SignIn`] in its
+//! [`Models`]. `/login` runs the sign-in on the IO pool: in the browser, which it opens on
 //! the sign-in page and whose URL it shows as a notice, or with a device
 //! code shown as a notice when no browser can be assumed (no graphical
 //! session, or an SSH login), when the browser's callback ports are taken,
@@ -10,7 +10,6 @@
 //! request.
 
 use std::path::PathBuf;
-use std::sync::OnceLock;
 use std::{fs, io};
 
 use bevy_app::prelude::*;
@@ -18,7 +17,7 @@ use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::Home;
-use rig_core::catalog::ModelSpec;
+use rig_core::catalog::{ModelSpec, SignIn};
 use rig_core::providers::chatgpt::{
     self, SignedInModel,
     auth::{
@@ -28,11 +27,10 @@ use rig_core::providers::chatgpt::{
 use rig_core::providers::registry::ConnectError;
 use rig_core::serve::ErasedHandler;
 
-use rig_ecs::agent::{ActiveTurn, Agent, Connection, Interrupt, ModelChoice, Notice, SetModel};
+use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
 use rig_ecs::calls::{Done, Running, Wake, poll_calls};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
-use rig_ecs::effects::Effects;
-use rig_ecs::models::{ModelConnector, SignIns};
+use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
 use rig_ecs::turn::PollCalls;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
@@ -53,9 +51,18 @@ pub struct LoginPlugin;
 
 impl Plugin for LoginPlugin {
     fn build(&self, app: &mut App) {
+        // One reader of the credential for every request, so concurrent
+        // calls refresh it once. It never starts a sign-in.
+        let session = Authenticator::new(
+            AuthSource::OAuth,
+            Some(auth_file()),
+            DeviceCodeHandler::default(),
+            false,
+        );
         app.world_mut()
-            .get_resource_or_init::<ModelConnector>()
-            .set_sign_ins(ChatGptSignIn);
+            .get_resource_or_init::<Models>()
+            .0
+            .add_sign_in(ChatGptSignIn(session));
         app.add_command(
             "login",
             "Sign in with your ChatGPT plan: /login chatgpt opens the browser (--device shows \
@@ -81,40 +88,19 @@ fn auth_file() -> PathBuf {
     Home::from_env().auth(PROVIDER)
 }
 
-/// Whether `spec` is one of the plan's models.
-fn of_plan(spec: &ModelSpec) -> bool {
-    spec.provider.vendor() == PROVIDER
-}
+/// The plan's models, connected with the signed-in credential while it is
+/// kept.
+struct ChatGptSignIn(Authenticator);
 
-/// The process's one reader of the credential, so concurrent calls
-/// refresh it once. It never starts a sign-in.
-fn session() -> &'static Authenticator {
-    static SESSION: OnceLock<Authenticator> = OnceLock::new();
-    SESSION.get_or_init(|| {
-        Authenticator::new(
-            AuthSource::OAuth,
-            Some(auth_file()),
-            DeviceCodeHandler::default(),
-            false,
-        )
-    })
-}
-
-/// The plan's models, connected with the signed-in credential.
-struct ChatGptSignIn;
-
-impl SignIns for ChatGptSignIn {
-    fn serves(&self, spec: &ModelSpec) -> bool {
-        of_plan(spec) && auth_file().is_file()
-    }
-
-    fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
-        SignedInModel::new(spec.clone(), session().clone(), rig_reqwest::shared())
-            .map(ErasedHandler::new)
+impl SignIn for ChatGptSignIn {
+    fn handler(&self, spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>> {
+        let model = || SignedInModel::new(spec.clone(), self.0.clone(), rig_reqwest::shared());
+        let signed_in = self.plan(spec).is_some() && auth_file().is_file();
+        signed_in.then(|| model().map(ErasedHandler::new))
     }
 
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str> {
-        of_plan(spec).then_some(TITLE)
+        (spec.provider.vendor() == PROVIDER).then_some(TITLE)
     }
 }
 
@@ -252,7 +238,7 @@ fn on_signed_in(
     done: On<Add<Done<SignedInResult>>>,
     logins: Query<(&PendingLogin, &Done<SignedInResult>)>,
     unconnected: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
-    connector: Res<ModelConnector>,
+    models: Res<Models>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -270,11 +256,11 @@ fn on_signed_in(
                 ),
             ));
             for (agent, choice) in &unconnected {
-                if agent != login.agent
-                    && connector
-                        .resolve(&choice.0)
-                        .is_some_and(|spec| of_plan(&spec))
-                {
+                let catalog = models.0.catalog();
+                let of_plan = catalog
+                    .resolve(&choice.0)
+                    .is_ok_and(|found| found.spec.provider.vendor() == PROVIDER);
+                if agent != login.agent && of_plan {
                     commands.entity(agent).insert(choice.clone());
                 }
             }
@@ -311,12 +297,12 @@ fn cancel_on_interrupt(
     }
 }
 
-/// `/logout`: deletes the credential and forgets the plan's connected
-/// models. Refused while a turn runs.
+/// `/logout`: deletes the credential, so the plan's models no longer
+/// connect, and its connected models' requests fail. Refused while a turn
+/// runs.
 fn on_logout(
     In(args): In<CommandArgs>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
-    mut effects: ResMut<Effects>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
@@ -333,7 +319,6 @@ fn on_logout(
         ));
         return;
     }
-    effects.forget_vendor(PROVIDER);
     let notice = match fs::remove_file(auth_file()) {
         Ok(()) => Notice::info(agent, format!("Signed out of {TITLE}.")),
         Err(error) if error.kind() == io::ErrorKind::NotFound => {

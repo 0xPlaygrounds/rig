@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
+use rig_core::catalog::Catalog;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -13,7 +14,6 @@ use rig_core::transcript::final_answer;
 use rig_ecs::commands::RunCommand;
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::{SessionStore, commit_message};
-use rig_ecs::models::ModelConnector;
 
 use super::*;
 
@@ -57,8 +57,11 @@ fn agent(
     window: u32,
     messages: Vec<Message>,
 ) -> Option<Entity> {
-    let spec = ModelConnector::default().resolve("deepseek/deepseek-flash")?;
-    let spec = Arc::new((*spec).clone().with_context_window(window));
+    let spec = Catalog::builtin()
+        .resolve("deepseek/deepseek-flash")
+        .ok()?
+        .spec;
+    let spec = Arc::new(spec.clone().with_context_window(window));
     let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(
         spec.reference(),
         model.clone(),
