@@ -770,5 +770,9 @@ mod usage_totals {
         assert_eq!(sum.tokens.output_tokens, Some(50));
         assert_eq!(Usage::new().total_tokens(40).context_tokens(), Some(40));
         assert_eq!(Usage::new().context_tokens(), None);
+        assert_eq!(
+            totals.to_string(),
+            "2 model calls: 110 in, 30 cache read, 10 cache written, 25 out; cost unknown"
+        );
     }
 }

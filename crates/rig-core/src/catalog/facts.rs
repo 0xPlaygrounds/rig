@@ -138,10 +138,10 @@ impl Catalog {
         provider: crate::providers::registry::ProviderId,
         model: &str,
     ) -> ModelFacts {
-        let bound = self.entry_for(provider.vendor(), model).map(|spec| {
+        let bound = self.get_vendor(provider.vendor(), model).map(|found| {
             Arc::new(Bound {
                 id: model.to_owned(),
-                spec,
+                spec: found.shared(),
             })
         });
         ModelFacts {
