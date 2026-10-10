@@ -17,5 +17,4 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }

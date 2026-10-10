@@ -431,7 +431,7 @@ impl Plugin for NoShellPlugin {
 Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Conversation`; a subagent is `SpawnedBy` its parent, which lists it in
 `Spawned`. The activity plugin's `rig_activity::Activity` says what an
-agent does now (status, running tools, streamed preview), and its
+agent does now (its status and running tools), and its
 `MessageFeed` resource holds the latest deliveries. `MessageReader<Committed>` sees every change
 of every conversation as the session log records it, and `On<TurnEnded>`
 each turn's end.

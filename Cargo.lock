@@ -12360,7 +12360,6 @@ version = "0.44.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
- "rig-core",
  "rig-ecs",
 ]
 
