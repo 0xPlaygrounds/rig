@@ -464,15 +464,10 @@ fn send_request(
             let preamble =
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
-            prepare(messages, connection, effort, &id.0, preamble, definitions).map(|request| {
-                (
-                    connection.handler.0.clone(),
-                    connection.spec.clone(),
-                    request,
-                )
-            })
+            prepare(messages, connection, effort, &id.0, preamble, definitions)
+                .map(|request| (connection, request))
         });
-    let (handler, spec, request) = match request {
+    let (connection, request) = match request {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, why.clone()));
@@ -484,7 +479,7 @@ fn send_request(
     let (effect, reply) = effects.dispatch(
         &id.0,
         effect_parent.map(|parent| parent.0),
-        handler,
+        connection.handler.0.clone(),
         EffectKind::Completion {
             request,
             stream: true,
@@ -495,7 +490,7 @@ fn send_request(
         "model_call",
         agent = %id.0,
         effect = %effect,
-        model = %spec.reference()
+        model = %connection.spec.reference()
     );
     let reply = effects
         .caught(effect, stream_reply(reply, sender, wake.clone()))
@@ -745,25 +740,8 @@ pub(crate) fn on_model_done(
         end_turn(&mut commands, turn, outcome);
         return;
     }
-    // Every call exists before any starts: an open call may end at once.
-    let mut earlier: Vec<Footprint> = Vec::with_capacity(tool_calls.len());
-    let mut ready = Vec::new();
-    for call in tool_calls {
-        let run = starter.run(call, Some(model_call.effect));
-        let waits = earlier
-            .iter()
-            .any(|&before| run.footprint.waits_for(before));
-        earlier.push(run.footprint);
-        let mut entity = commands.spawn((tool_name(&run), CallOf(turn), run.clone()));
-        if waits {
-            entity.insert(Queued);
-        } else {
-            ready.push((entity.id(), run));
-        }
-    }
-    for (entity, run) in ready {
-        starter.start(&mut commands, entity, agent, &run);
-    }
+    let parent = Some(model_call.effect);
+    starter.spawn_calls(&mut commands, (agent, turn), tool_calls, parent);
 }
 
 /// Carries the turn of `agent` on after its model call failed for
@@ -945,19 +923,19 @@ pub struct ToolStarter<'w, 's> {
 }
 
 impl ToolStarter<'_, '_> {
-    /// The footprint of the tool `name`; a tool that is not registered
-    /// runs on its own.
-    pub fn footprint(&self, name: &str) -> Footprint {
+    /// The registered tool `name`.
+    fn tool(&self, name: &str) -> Option<(Entity, &ToolDef, &Serves, &Footprint)> {
         self.tools
             .iter()
             .find(|(_, def, ..)| def.0.name.as_str() == name)
-            .map_or_else(Footprint::default, |(.., &footprint)| footprint)
     }
 
-    /// The run of `call`, asked for by the effect `parent`.
+    /// The run of `call`, asked for by the effect `parent`. A tool that is
+    /// not registered runs on its own.
     pub fn run(&self, call: ToolCall, parent: Option<EffectId>) -> ToolCallRun {
+        let tool = self.tool(call.function.name.as_str());
         ToolCallRun {
-            footprint: self.footprint(call.function.name.as_str()),
+            footprint: tool.map_or_else(Footprint::default, |(.., &footprint)| footprint),
             call,
             parent,
         }
@@ -967,11 +945,40 @@ impl ToolStarter<'_, '_> {
     /// starts again: an ordinary read-only tool. Any other such call is
     /// answered as interrupted.
     pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tools.iter().any(|(_, def, serves, footprint)| {
-            def.0.name.as_str() == name
-                && matches!(serves, Serves::Handler(_))
-                && *footprint == Footprint::ReadOnly
+        self.tool(name).is_some_and(|(_, _, serves, footprint)| {
+            matches!(serves, Serves::Handler(_)) && *footprint == Footprint::ReadOnly
         })
+    }
+
+    /// Spawns a call entity of `turn`, of `agent`, for each of `calls`,
+    /// asked for by the effect `parent`, then starts each that no earlier
+    /// call holds back; the rest are [`Queued`]. Every call exists before
+    /// any starts: an open call may end at once.
+    pub(crate) fn spawn_calls(
+        &self,
+        commands: &mut Commands,
+        (agent, turn): (Entity, Entity),
+        calls: Vec<ToolCall>,
+        parent: Option<EffectId>,
+    ) {
+        let mut earlier: Vec<Footprint> = Vec::with_capacity(calls.len());
+        let mut ready = Vec::new();
+        for call in calls {
+            let run = self.run(call, parent);
+            let waits = earlier
+                .iter()
+                .any(|&before| run.footprint.waits_for(before));
+            earlier.push(run.footprint);
+            let mut entity = commands.spawn((tool_name(&run), CallOf(turn), run.clone()));
+            if waits {
+                entity.insert(Queued);
+            } else {
+                ready.push((entity.id(), run));
+            }
+        }
+        for (entity, run) in ready {
+            self.start(commands, entity, agent, &run);
+        }
     }
 
     /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
@@ -990,10 +997,7 @@ impl ToolStarter<'_, '_> {
             return;
         };
         let name = run.call.function.name.as_str();
-        let tool = self
-            .tools
-            .iter()
-            .find(|(_, def, ..)| def.0.name.as_str() == name && access.allows(name));
+        let tool = self.tool(name).filter(|_| access.allows(name));
         if !tool.is_some_and(|(.., footprint)| *footprint == Footprint::ReadOnly) {
             self.log.flush();
         }

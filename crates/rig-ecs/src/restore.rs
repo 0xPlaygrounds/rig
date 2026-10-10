@@ -33,13 +33,11 @@ use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
 
-use super::agent::{
-    Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf,
-};
+use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
 use super::journal::{
     AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionStore,
 };
-use super::turn::{CallModel, ToolStarter, tool_name};
+use super::turn::{CallModel, ToolStarter};
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
@@ -390,19 +388,7 @@ fn settle(
     }
     if !reruns.is_empty() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
-        let runs: Vec<(Entity, ToolCallRun)> = reruns
-            .into_iter()
-            .map(|call| {
-                let run = starter.run(call, None);
-                let entity = commands
-                    .spawn((tool_name(&run), CallOf(turn), run.clone()))
-                    .id();
-                (entity, run)
-            })
-            .collect();
-        for (entity, run) in runs {
-            starter.start(&mut commands, entity, agent, &run);
-        }
+        starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
     } else if conversation.awaits_model() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
         commands.trigger(CallModel { entity: turn });
