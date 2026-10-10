@@ -83,8 +83,8 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         "@ecs-boundary" => {
             // rig-ecs is a library runtime: with every feature on, nothing
             // in its normal dependency tree is a view, the `rig` facade
-            // (and its launcher protocol), the app or an HTTP stack. Only
-            // its `fs-journal` store touches files.
+            // (and its launcher protocol), the app or an HTTP stack, and
+            // it touches no files: stores are the app's.
             const FORBIDDEN: [&str; 8] = [
                 "rig",
                 "rig-harness",
@@ -95,7 +95,6 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                 "crossterm",
                 "ignore",
             ];
-            const FS_STORE: &str = "crates/rig-ecs/src/fs_journal.rs";
             let tree = output(
                 root,
                 "cargo",
@@ -126,9 +125,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
             for path in tracked_inputs(root)?
                 .into_iter()
                 .chain(untracked_inputs(root)?)
-                .filter(|p| {
-                    p.starts_with("crates/rig-ecs/src/") && p.ends_with(".rs") && p != FS_STORE
-                })
+                .filter(|p| p.starts_with("crates/rig-ecs/src/") && p.ends_with(".rs"))
             {
                 let Ok(text) = fs::read_to_string(root.join(&path)) else {
                     continue;
@@ -137,8 +134,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
                     let code = line.split("//").next().unwrap_or_default();
                     if names_path(code, "std::fs") {
                         return Err(invalid(format!(
-                            "{path}:{}: rig-ecs names `std::fs`; only its `fs-journal` store \
-                             touches files",
+                            "{path}:{}: rig-ecs names `std::fs`; the app's store touches files",
                             number + 1
                         )));
                     }

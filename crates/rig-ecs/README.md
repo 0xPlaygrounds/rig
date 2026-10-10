@@ -12,8 +12,9 @@ rig-core, for building your own agent harness:
 - **Plugins register tools and commands** (`AppToolsExt`, `AppCommandsExt`),
   save their own components with the session, and re-arm their work after a
   restart on `Restored`.
-- **Session journals** go to the `SessionStore` the app inserts: `MemoryStore`,
-  or `JsonlDirStore` (feature `fs-journal`) for JSON-lines files.
+- **Session journals** go to the `SessionStore` the app inserts, over one of
+  rig-cassette's `journal` stores: `MemoryStore`, or `JsonlDirStore` (its
+  feature `jsonl`) for JSON-lines files.
 - **Turn hooks** for plugins such as compaction: `PrepareRequest` before each
   model request, `ModelFailed` after a call a retry does not fix, and
   `ModelRequest` calls of their own on the agent's model; `Condensed` sends a
@@ -22,8 +23,8 @@ rig-core, for building your own agent harness:
   (`bevy_time`'s delayed commands); `AgentPlugin` adds `TimePlugin` when the
   app has none.
 
-Features: `subagents` (default) adds the `task` and `message` tools; `fs-journal`
-is native-only. Without it the crate builds for `wasm32-unknown-unknown`.
+Features: `subagents` (default) adds the `task` and `message` tools. The crate
+builds for `wasm32-unknown-unknown`.
 
 The [`rig-harness`](../rig-harness) terminal coding agent is built on it.
 

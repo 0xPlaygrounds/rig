@@ -12,6 +12,7 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
+use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::completion::{Message, Reasoning};
 use rig_core::message::UserContent;
@@ -21,9 +22,9 @@ use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
+use rig_ecs::journal::SessionStore;
 use rig_ecs::models::ModelConnector;
 use rig_ecs::prelude::*;
-use rig_ecs::store::{MemoryStore, SessionStore};
 use serde::Deserialize;
 
 /// How long a turn may take before the test gives up.

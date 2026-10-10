@@ -108,8 +108,7 @@ pub(super) fn all() -> Vec<Check> {
                 ]),
                 // rig-harness, rig-ecs, rig-tools and rig-steel are not
                 // default members; the app must also build without the
-                // terminal view, and rig-ecs with its default features
-                // and with all of them.
+                // terminal view.
                 cargo(&[
                     "clippy",
                     "--locked",
@@ -132,17 +131,6 @@ pub(super) fn all() -> Vec<Check> {
                     "-p",
                     "rig-harness",
                     "--no-default-features",
-                    "--all-targets",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]),
-                cargo(&[
-                    "clippy",
-                    "--locked",
-                    "-p",
-                    "rig-ecs",
-                    "--all-features",
                     "--all-targets",
                     "--",
                     "-D",

@@ -1,17 +1,17 @@
 //! A session kept as files in a directory: `<agent>.jsonl` per agent,
-//! `blobs/<name>` for blobs, and `effects.jsonl` written by rig-cassette's
+//! `blobs/<name>` for blobs, and `effects.jsonl` written by
 //! [`jsonl::Writer`], which [`jsonl::read`] reads back for its replayer.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use rig_cassette::effect_log::{EffectLog, jsonl};
 use rig_core::effect::EffectId;
 
-use super::store::JournalStore;
+use super::JournalStore;
+use crate::effect_log::{EffectLog, jsonl};
 
 /// The extension of an agent log and of the effect log.
 const EXTENSION: &str = "jsonl";
@@ -31,7 +31,7 @@ impl JsonlDirStore {
     /// The session in `dir`.
     pub fn new(dir: impl Into<PathBuf>) -> Self {
         let dir = dir.into();
-        let effects = jsonl::Writer::new(Self::effects_in(&dir));
+        let effects = jsonl::Writer::new(dir.join(format!("{EFFECTS}.{EXTENSION}")));
         Self {
             dir,
             open: Mutex::new(HashMap::new()),
@@ -39,23 +39,12 @@ impl JsonlDirStore {
         }
     }
 
-    /// The log of `agent`.
-    pub fn agent_log(&self, agent: &str) -> PathBuf {
+    fn agent_log(&self, agent: &str) -> PathBuf {
         self.dir.join(format!("{agent}.{EXTENSION}"))
     }
 
-    /// The effect log.
-    pub fn effects(&self) -> PathBuf {
-        Self::effects_in(&self.dir)
-    }
-
-    /// Where blobs are kept.
-    pub fn blobs(&self) -> PathBuf {
+    fn blobs(&self) -> PathBuf {
         self.dir.join("blobs")
-    }
-
-    fn effects_in(dir: &Path) -> PathBuf {
-        dir.join(format!("{EFFECTS}.{EXTENSION}"))
     }
 
     fn open(&self) -> MutexGuard<'_, HashMap<String, File>> {
@@ -70,19 +59,16 @@ impl JsonlDirStore {
 impl JournalStore for JsonlDirStore {
     fn agents(&self) -> io::Result<Vec<String>> {
         let entries = match fs::read_dir(&self.dir) {
-            Ok(entries) => entries,
             Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            Err(failure) => return Err(failure),
+            entries => entries?,
         };
         Ok(entries
             .filter_map(Result::ok)
             .filter_map(|entry| {
                 let path = entry.path();
-                if path.extension()? != EXTENSION {
-                    return None;
-                }
                 let stem = path.file_stem()?.to_str()?;
-                (!stem.is_empty() && stem != EFFECTS).then(|| stem.to_owned())
+                let log = path.extension()? == EXTENSION && !stem.is_empty() && stem != EFFECTS;
+                log.then(|| stem.to_owned())
             })
             .collect())
     }

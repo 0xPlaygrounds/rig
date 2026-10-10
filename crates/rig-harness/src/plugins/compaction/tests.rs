@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
+use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::operation::Completion;
@@ -11,9 +12,8 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::commands::RunCommand;
 use rig_ecs::effects::Handler;
-use rig_ecs::journal::commit_message;
+use rig_ecs::journal::{SessionStore, commit_message};
 use rig_ecs::models::ModelConnector;
-use rig_ecs::store::{MemoryStore, SessionStore};
 
 use super::*;
 

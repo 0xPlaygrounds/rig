@@ -4,21 +4,22 @@
 //! its model and tool calls are entities of the turn that run on Bevy's
 //! task pools. Every call goes through one recorded effect dispatch path.
 //! Tools and commands are registered by plugins, and the session journal
-//! is kept in the [`store::SessionStore`] the app inserts. Views read what
+//! is kept in the [`journal::SessionStore`] the app inserts. Views read what
 //! the agents do from [`activity`]. Time is Bevy's: a retried model call
 //! waits on a delayed command, and plugins that animate or poll run on
 //! `on_real_timer` with a [`calls::KeepAwake`], instead of threads of their
 //! own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
-//! what it needs, such as the store and the [`models::ModelConnector`].
-//! Features: `subagents` (default) adds the [`subagents::SubagentsPlugin`]
-//! tools, and `fs-journal` a JSON-lines [`fs_journal::JsonlDirStore`],
-//! native-only.
+//! what it needs, such as the store (one of rig-cassette's
+//! [`journal`](rig_cassette::journal) stores) and the
+//! [`models::ModelConnector`]. Feature `subagents` (default) adds the
+//! [`subagents::SubagentsPlugin`] tools.
 //!
 //! ```no_run
+//! use rig_cassette::journal::MemoryStore;
+//! use rig_ecs::journal::SessionStore;
 //! use rig_ecs::prelude::*;
-//! use rig_ecs::store::{MemoryStore, SessionStore};
 //!
 //! let mut app = App::new();
 //! app.insert_resource(SessionStore::new(MemoryStore::default()))
@@ -30,14 +31,11 @@ pub mod agent;
 pub mod calls;
 pub mod commands;
 pub mod effects;
-#[cfg(feature = "fs-journal")]
-pub mod fs_journal;
 pub mod inbox;
 pub mod journal;
 pub mod models;
 pub mod prompt;
 pub mod restore;
-pub mod store;
 #[cfg(feature = "subagents")]
 pub mod subagents;
 pub mod tools;
@@ -85,9 +83,8 @@ use bevy_time::{Time, TimePlugin, Virtual};
 use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls, settle};
 use effects::Effects;
-use journal::SessionLog;
+use journal::{SessionLog, SessionStore};
 use rig_core::tool::ToolResult;
-use store::SessionStore;
 use turn::{ModelReply, PollCalls};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves

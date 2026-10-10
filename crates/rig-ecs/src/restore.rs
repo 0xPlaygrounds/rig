@@ -27,6 +27,7 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{ReflectFromReflect, TypeRegistry};
+use rig_cassette::journal::{JournalStore, load_images};
 use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
@@ -36,9 +37,8 @@ use super::agent::{
     Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf,
 };
 use super::journal::{
-    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, load_blobs,
+    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionStore,
 };
-use super::store::{JournalStore, SessionStore};
 use super::turn::{CallModel, ToolStarter, tool_name};
 
 /// The result of a call that may change something and was running when
@@ -298,7 +298,9 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
         match line.record {
             Record::Message { message, origin } => {
                 let mut message = message.into_owned();
-                load_blobs(&mut message, store);
+                if let Err(failure) = load_images(&mut message, store) {
+                    warn!("an image agent {agent} logged is gone: {failure}");
+                }
                 folded.conversation.append(message, origin, Some(line.seq));
             }
             Record::Retract => {

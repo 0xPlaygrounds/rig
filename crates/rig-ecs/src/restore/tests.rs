@@ -5,6 +5,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
+use rig_cassette::journal::{JournalStore, MemoryStore};
 use rig_core::completion::{Message, Reasoning, Usage};
 use rig_core::message::UserContent;
 use serde_json::Value;
@@ -15,9 +16,10 @@ use crate::agent::{
     Notice, STOPPED, SystemPrompt, ToolAccess,
 };
 use crate::inbox::{Deliver, DeliveryMode};
-use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, commit_message};
+use crate::journal::{
+    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionStore, commit_message,
+};
 use crate::restore::Restored;
-use crate::store::{JournalStore, MemoryStore, SessionStore};
 use crate::usage::Spending;
 
 /// An app on `store`, after its first frame restored the session. Like

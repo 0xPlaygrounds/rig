@@ -17,12 +17,8 @@ workspace = true
 default = ["subagents"]
 # The `task` and `message` tools: agents that start and message agents.
 subagents = []
-# The session journal as JSON-lines files in a directory
-# (`fs_journal::JsonlDirStore`). Native file I/O.
-fs-journal = ["rig-cassette/jsonl"]
 
 [dependencies]
-base64 = { workspace = true }
 bevy_app = { workspace = true }
 # `serialize`: entities read from and written as JSON.
 bevy_ecs = { workspace = true, features = ["serialize"] }
@@ -40,8 +36,6 @@ rig-core = { path = "../rig-core", version = "0.44.0", default-features = false 
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
-# The names of the images the session journal stores.
-sha2 = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 # `Instant` and the wall clock, also on the web.
 web-time = { workspace = true }

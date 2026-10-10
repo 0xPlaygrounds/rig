@@ -288,12 +288,6 @@ impl SessionDir {
         &self.0
     }
 
-    /// The log of the agent with the id `agent`: one JSON record per line,
-    /// only ever appended to.
-    pub fn agent_log(&self, agent: &str) -> PathBuf {
-        self.0.join(format!("{agent}{AGENT_LOG}"))
-    }
-
     /// Every agent log in the directory, in no particular order.
     pub fn agent_logs(&self) -> Vec<PathBuf> {
         let Ok(entries) = std::fs::read_dir(&self.0) else {
@@ -315,17 +309,6 @@ impl SessionDir {
     /// resumed.
     pub fn is_saved(&self) -> bool {
         !self.agent_logs().is_empty()
-    }
-
-    /// Content-addressed files the agent logs refer to, such as images:
-    /// `blobs/<sha256>.<ext>`.
-    pub fn blobs(&self) -> PathBuf {
-        self.0.join("blobs")
-    }
-
-    /// The effect log, one effect record per line.
-    pub fn effects(&self) -> PathBuf {
-        self.0.join(format!("{EFFECTS}{AGENT_LOG}"))
     }
 
     /// The agent's text log.

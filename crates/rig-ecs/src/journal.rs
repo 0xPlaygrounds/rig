@@ -10,10 +10,8 @@
 
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use base64::Engine;
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -22,19 +20,15 @@ use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
+use rig_cassette::journal::{JournalStore, store_images};
 use rig_core::completion::Message;
-use rig_core::message::{
-    DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
-};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{Agent, AgentId, Condensed, Conversation, Halt, Notice, SpawnedBy};
 use super::effects::Effects;
 use super::inbox::Origin;
-use super::store::{JournalStore, SessionStore};
 use super::{StopTurns, WriteJournal};
 
 /// Saves an agent component with the session: derive `Reflect` and add
@@ -93,10 +87,6 @@ fn log_changed<T: Component + Reflect + TypePath>(
 
 /// The version of the agent logs' layout, in each header.
 pub(crate) const LOG_VERSION: u32 = 1;
-
-/// How an image stored as a blob is named in a logged
-/// message, in place of its data: `blob:<sha256>.<ext>`.
-pub(crate) const BLOB: &str = "blob:";
 
 /// The first record of an agent log.
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -250,6 +240,19 @@ fn enqueue(log: &mut AgentLog, record: Record<'_>) -> serde_json::Result<u64> {
     Ok(seq)
 }
 
+/// Where the session is kept, such as a rig-cassette `MemoryStore` or
+/// `JsonlDirStore`: inserted before the agent plugins are built. Without
+/// one nothing is kept.
+#[derive(Resource, Clone)]
+pub struct SessionStore(pub Arc<dyn JournalStore>);
+
+impl SessionStore {
+    /// The session kept in `store`.
+    pub fn new(store: impl JournalStore) -> Self {
+        Self(Arc::new(store))
+    }
+}
+
 /// The session's agent logs: the open files, the records queued for them,
 /// and each agent's latest-wins state. Every method takes `&self`, so any
 /// system can log; nothing is logged before the session was restored, or
@@ -299,7 +302,7 @@ impl SessionLog {
             return None;
         }
         let store = book.store.clone()?;
-        match stored(message, &*store) {
+        match store_images(message, &*store) {
             Ok(message) => {
                 let seq = book.record(&agent.0, Record::Message { message, origin })?;
                 book.agents.get_mut(&agent.0)?.started = true;
@@ -477,110 +480,6 @@ pub enum Committed {
     Retract { agent: Entity },
     /// The user's last message was left unanswered.
     Halt { agent: Entity, reason: Halt },
-}
-
-/// `message` as it is logged: each image's data stored as a blob in
-/// `blobs` and named by its hash.
-fn stored<'m>(message: &'m Message, blobs: &dyn JournalStore) -> io::Result<Cow<'m, Message>> {
-    let image = |item: &UserContent| match item {
-        UserContent::Image(_) => true,
-        UserContent::ToolResult(result) => {
-            (result.content.iter()).any(|part| matches!(part, ToolResultContent::Image(_)))
-        }
-        _ => false,
-    };
-    let Message::User { content } = message else {
-        return Ok(Cow::Borrowed(message));
-    };
-    if !content.iter().any(image) {
-        return Ok(Cow::Borrowed(message));
-    }
-    let mut message = message.clone();
-    if let Message::User { content } = &mut message {
-        for item in content {
-            match item {
-                UserContent::Image(image) => store(image, blobs)?,
-                UserContent::ToolResult(result) => {
-                    for part in &mut result.content {
-                        if let ToolResultContent::Image(image) = part {
-                            store(image, blobs)?;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    Ok(Cow::Owned(message))
-}
-
-/// Stores the data of `image` in `blobs`, once per content, and names it
-/// there instead.
-fn store(image: &mut Image, blobs: &dyn JournalStore) -> io::Result<()> {
-    let bytes = match &image.data {
-        DocumentSourceKind::Base64(data) => {
-            match base64::engine::general_purpose::STANDARD.decode(data) {
-                Ok(bytes) => bytes,
-                // Kept inline: it is not ours to fix.
-                Err(_) => return Ok(()),
-            }
-        }
-        DocumentSourceKind::Raw(bytes) => bytes.clone(),
-        _ => return Ok(()),
-    };
-    let name = format!(
-        "{:x}.{}",
-        Sha256::digest(&bytes),
-        image
-            .media_type
-            .as_ref()
-            .map_or("bin", ImageMediaType::extension)
-    );
-    blobs.put_blob(&name, &bytes)?;
-    image.data = DocumentSourceKind::Url(format!("{BLOB}{name}"));
-    Ok(())
-}
-
-/// Puts the data of each image `message` names in `blobs` back in place;
-/// an image whose file is gone becomes a line saying so.
-pub(crate) fn load_blobs(message: &mut Message, blobs: &dyn JournalStore) {
-    let Message::User { content } = message else {
-        return;
-    };
-    for item in content.iter_mut() {
-        match item {
-            UserContent::Image(image) => {
-                if let Err(why) = load(image, blobs) {
-                    *item = UserContent::text(why);
-                }
-            }
-            UserContent::ToolResult(result) => {
-                for part in &mut result.content {
-                    if let ToolResultContent::Image(image) = part
-                        && let Err(why) = load(image, blobs)
-                    {
-                        *part = ToolResultContent::text(why);
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
-fn load(image: &mut Image, blobs: &dyn JournalStore) -> Result<(), String> {
-    let DocumentSourceKind::Url(url) = &image.data else {
-        return Ok(());
-    };
-    let Some(name) = url.strip_prefix(BLOB) else {
-        return Ok(());
-    };
-    let bytes = blobs
-        .blob(name)
-        .map_err(|failure| format!("[an image of this message is gone: {failure}]"))?;
-    image.data =
-        DocumentSourceKind::Base64(base64::engine::general_purpose::STANDARD.encode(bytes));
-    Ok(())
 }
 
 /// Restores the session at startup, settles what a crash or restart left

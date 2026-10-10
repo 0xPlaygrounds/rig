@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
 use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
+use rig_cassette::journal::JournalStore;
 use rig_core::catalog::ModelSpec;
 use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
 use rig_core::error::ErrorReport;
@@ -19,7 +20,6 @@ use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
 
 use super::models::ModelConnector;
-use super::store::JournalStore;
 use bevy_tasks::ConditionalSendFuture;
 
 /// The session's effect recorder, effect id counter and model handlers.

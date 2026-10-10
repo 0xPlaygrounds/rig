@@ -11319,7 +11319,6 @@ dependencies = [
 name = "rig-ecs"
 version = "0.44.0"
 dependencies = [
- "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
@@ -11333,7 +11332,6 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "sha2 0.10.9",
  "uuid",
  "web-time",
 ]
@@ -11396,6 +11394,7 @@ dependencies = [
  "pulldown-cmark",
  "ratatui",
  "rig",
+ "rig-cassette",
  "rig-core",
  "rig-ecs",
  "rig-memory",
