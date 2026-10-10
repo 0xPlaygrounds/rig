@@ -4,7 +4,8 @@
 //! has a short copy-ready example of each extension point: a tool and how
 //! its calls look, a slash command, state kept with the session, turn hooks,
 //! a timer, what agents do and say in a terminal panel, and a window. Every
-//! name they use comes from `rig_harness::prelude`; `inspect` shows the rest.
+//! name they use comes from `rig_harness::prelude`; the optional `inspect`
+//! tool (crate `rig-inspect`) shows the rest.
 
 use rig_harness::prelude::*;
 

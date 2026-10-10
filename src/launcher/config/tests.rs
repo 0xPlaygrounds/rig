@@ -27,11 +27,29 @@ fn removing_an_unlisted_type_fails() {
 }
 
 #[test]
-fn the_template_lists_rig_harness_plugins_only() {
-    let plugins = parse(TEMPLATE, Path::new("/home")).map(|config| config.plugins);
+fn the_template_lists_rig_harness_plugins_only_and_inspect_uncommented() {
+    let template = template();
+    let plugins = parse(&template, Path::new("/home")).map(|config| config.plugins);
     assert!(plugins.is_ok_and(
-        |plugins| plugins.len() == 21 && plugins.iter().all(|plugin| plugin.package.is_none())
+        |plugins| plugins.len() == 20 && plugins.iter().all(|plugin| plugin.package.is_none())
     ));
+    // The commented-out rig-inspect entry, uncommented as a user would.
+    let uncommented = template
+        .replace(
+            "# [[plugin]]\n# crate = \"rig-inspect\"",
+            "[[plugin]]\ncrate = \"rig-inspect\"",
+        )
+        .replace("# version = ", "version = ")
+        .replace("# plugin = \"rig_inspect", "plugin = \"rig_inspect");
+    let config = parse(&uncommented, Path::new("/home"));
+    let inspect = config
+        .ok()
+        .and_then(|config| config.plugins.into_iter().nth(18));
+    let package = inspect.as_ref().and_then(|plugin| plugin.package.as_ref());
+    assert_eq!(
+        package.map(|package| (package.name.as_str(), &package.source)),
+        Some(("rig-inspect", &Source::Version(VERSION.to_owned())))
+    );
 }
 
 #[test]

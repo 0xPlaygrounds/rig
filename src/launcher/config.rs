@@ -7,11 +7,17 @@ use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
-use super::Result;
 use super::project::PACKAGE;
+use super::{Result, VERSION};
 
-/// Written when `plugins.toml` does not exist yet.
+/// Written when `plugins.toml` does not exist yet, through [`template`].
 const TEMPLATE: &str = include_str!("plugins.toml");
+
+/// [`TEMPLATE`] with `{version}` this launcher's version, so an optional
+/// rig crate it names is the agent's own.
+fn template() -> String {
+    TEMPLATE.replace("{version}", VERSION)
+}
 
 /// The parsed plugin list.
 pub struct Config {
@@ -83,8 +89,9 @@ impl Config {
                 if let Some(parent) = path.parent() {
                     fs::create_dir_all(parent)?;
                 }
-                fs::write(path, TEMPLATE)?;
-                TEMPLATE.to_owned()
+                let template = template();
+                fs::write(path, &template)?;
+                template
             }
             Err(failure) => return Err(format!("{}: {failure}", path.display()).into()),
         };

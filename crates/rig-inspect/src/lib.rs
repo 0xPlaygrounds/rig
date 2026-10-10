@@ -1,9 +1,8 @@
-//! `inspect`: the agent reads its own world through the Bevy Remote
-//! Protocol, answered in process by Bevy's `RemotePlugin`, with no
-//! transport and no port. Bevy answers each request; rig writes no query
-//! handler. Also the system prompt's section on what the agent is, made
-//! from the same world: the build's plugins, commands and tools, and how
-//! the agent extends itself.
+//! `inspect`, an optional plugin of the rig-harness agent: the agent reads
+//! its own world through the Bevy Remote Protocol, answered in process by
+//! Bevy's `RemotePlugin`, with no transport and no port. Bevy answers each
+//! request; rig writes no query handler. [`InspectPlugin`] is listed in
+//! `plugins.toml` as `crate = "rig-inspect"`.
 //!
 //! Only read-only methods are sent: a method is read-only when its system's
 //! entity has [`ReadOnlyMethod`]. This plugin marks Bevy's nine read-only
@@ -22,7 +21,6 @@
 //! for the frame at a method it does not know.
 
 use std::io::Write as _;
-use std::path::Path;
 
 use bevy_remote::builtin_methods::{
     BRP_GET_COMPONENTS_METHOD, BRP_GET_RESOURCE_METHOD, BRP_LIST_COMPONENTS_METHOD,
@@ -32,16 +30,11 @@ use bevy_remote::builtin_methods::{
 use bevy_remote::schemas::SchemaTypesMetadata;
 use bevy_remote::{BrpMessage, BrpResult, BrpSender, RemoteMethodSystemId, RemoteMethods};
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig::harness_protocol::Home;
-use rig_ecs::calls::Running;
-use rig_ecs::commands::SlashCommand;
-use rig_ecs::tools::ToolDef;
-use rig_tools::Spill;
+use rig_harness::prelude::*;
+use rig_harness::rig_ecs::calls::Running;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value};
-
-use crate::prelude::*;
 
 pub use bevy_remote::RemotePlugin;
 
@@ -79,6 +72,11 @@ const DESCRIPTION: &str = "Read your own running app, a Bevy world, through the 
     added has `ProvidedBy` naming it. A long answer is cut and kept whole in a file to read or \
     search.";
 
+/// The system prompt's line, after the section on what the agent is.
+const PROMPT: &str = "To learn about yourself (plugins and what each added, agents, settings, \
+    saved state, warnings in the `Diagnostics` resource, types), use `inspect` {method, params} \
+    before reading rig's source or running commands; `rpc.discover` lists its methods.";
+
 /// A Bevy Remote method `inspect` may send, on the entity of the method's
 /// system ([`RemoteMethodSystemId`]).
 #[derive(Component, Reflect, Default)]
@@ -86,7 +84,7 @@ const DESCRIPTION: &str = "Read your own running app, a Bevy world, through the 
 pub struct ReadOnlyMethod;
 
 /// Adds Bevy's `RemotePlugin` without a transport, the `inspect` tool, and
-/// the system prompt's section on what this agent is.
+/// a system prompt line on when to use it.
 #[derive(Default)]
 pub struct InspectPlugin;
 
@@ -123,7 +121,11 @@ impl Plugin for InspectPlugin {
                 },
                 on_inspect,
             )
-            .add_systems(Startup, describe);
+            .world_mut()
+            .spawn((
+                Name::new("prompt:inspect"),
+                PromptSection::new(PromptSection::ORDER_PROJECT - 99, "inspect", PROMPT),
+            ));
     }
 }
 
@@ -287,64 +289,6 @@ fn rename(value: &mut Value, to: &impl Fn(&str) -> Option<String>) {
         }
         _ => {}
     }
-}
-
-/// Spawns the system prompt's section on what this agent is: its plugins,
-/// commands and tools, where to look further, and, when the launcher
-/// started it, how it extends itself. Made once, so the prompt stays
-/// cached.
-fn describe(
-    plugins: Query<(&Name, &PluginSource)>,
-    slash_commands: Query<&Name, With<SlashCommand>>,
-    tools: Query<&Name, With<ToolDef>>,
-    mut commands: Commands,
-) {
-    let list = |mut names: Vec<String>| {
-        names.sort();
-        names.join(", ")
-    };
-    let plugins = list(
-        plugins
-            .iter()
-            .map(|(name, source)| {
-                let short = name.rsplit("::").next().unwrap_or_default();
-                match source.krate.as_str() {
-                    "rig-harness" => short.to_owned(),
-                    krate => format!("{short} ({krate})"),
-                }
-            })
-            .collect(),
-    );
-    let slash_commands = list(slash_commands.iter().map(Name::to_string).collect());
-    let tools = list(tools.iter().map(|name| name.replace("tool:", "")).collect());
-    let mut text = format!(
-        "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
-         Slash commands, which the user types: {slash_commands}. Tools: {tools}.\n\
-         To learn about yourself (plugins and what each added, agents, settings, saved state, \
-         warnings in the `Diagnostics` resource, types), use `inspect` before reading rig's \
-         source or running commands."
-    );
-    if let Some(launcher) = launcher::executable() {
-        let home = Home::from_env();
-        let guide = Path::new(env!("CARGO_MANIFEST_DIR")).join("PLUGINS.md");
-        text.push_str(&format!(
-            "\nYou extend yourself with plugins, Bevy plugins in crates of their own. \
-             `$RIG_LAUNCHER plugin new <name>` (the launcher is {launcher}) makes a working one \
-             in {home}/plugins/<name> and lists it in {home}/plugins.toml; change that list only \
-             with `$RIG_LAUNCHER plugin add` or `remove`, and never edit rig's own crates. The \
-             plugin cookbook {guide} shows each extension point; `inspect` shows the rest. Check a \
-             change with `$RIG_LAUNCHER plugin check --build`, not cargo, then call the `reload` \
-             tool and end your turn: the agent rebuilds and restarts in this session. A failed \
-             build keeps this one running and its errors come to you as a note.",
-            launcher = Path::new(&launcher).display(),
-            home = home.root().display(),
-            guide = guide.display(),
-        ));
-    }
-    commands.spawn((
-        Name::new("prompt:rig_harness"),
-        PromptSection::new(PromptSection::ORDER_PROJECT - 100, "rig_harness", text),
-    ));
 }
 
 #[cfg(test)]

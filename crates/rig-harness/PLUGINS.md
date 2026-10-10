@@ -57,14 +57,14 @@ the terminal view's panels and tool renderers. ratatui is
 default plugin's types are in `rig_harness::plugins::<name>`.
 
 Every one of these types is reflected, so the running agent can list
-them: ask its `inspect` tool before reading rig's source.
-`world.list_components` and `world.list_resources` name what exists,
+them with the `inspect` tool of the optional `rig-inspect` plugin (enable it
+by uncommenting its entry in `plugins.toml`): ask it before reading rig's
+source. `world.list_components` and `world.list_resources` name what exists,
 `registry.schema` gives a type's fields (with `type_limit: {with:
 ["Saved"]}`, the state saved with the session), `world.query` with
 `ProvidedBy` shows what each plugin added, and the `Diagnostics` resource
 holds the warnings logged. A plugin's own Bevy Remote method is sent by
-`inspect` once its system's entity has `ReadOnlyMethod`
-(`rig_harness::plugins::inspect`).
+`inspect` once its system's entity has `rig_inspect::ReadOnlyMethod`.
 
 # A tool
 

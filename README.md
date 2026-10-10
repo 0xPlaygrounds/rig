@@ -182,11 +182,6 @@ export OPENAI_API_KEY=...   # or any other provider key in the model catalog
 rig                         # builds the agent (later starts rebuild what changed), then opens it
 ```
 
-On Linux, building the agent needs the ALSA development headers
-(`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora,
-`alsa-lib` on Arch): its `inspect` plugin is built on Bevy Remote, which
-pulls in Bevy's audio crate. The agent plays no sound.
-
 In the agent, `/model` picks a model (providers that need no key, such as a
 local Ollama, are listed last), `/effort` its reasoning setting, `/help`
 lists the commands, and Esc stops a running turn. The status line shows the
@@ -339,7 +334,7 @@ rebuilds the agent with them and restarts in the same session. Everything but
 the core (the session, the launcher protocol and `/reload`) is an entry in the
 same list: the project context, models, sign-in, sessions, compaction, usage,
 activity, the effect log, each tool, the commands, the subagents, diagnostics,
-`inspect`, `--print` and the terminal view, so any of them can be removed or
+`--print` and the terminal view, so any of them can be removed or
 replaced ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml
@@ -367,11 +362,19 @@ terminal panels or a window the way the built-in ones do, never by editing
 rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
 is a cookbook with a copy-ready example of each kind, every name it uses from
 `rig_harness::prelude`, and the `src/lib.rs` that `rig plugin new` writes is a
-working, commented slash command. The agent's `inspect` tool reads its own
-Bevy world (in process, read-only): the plugins loaded and what each added,
-the agents, the state saved with the session, the warnings logged and every
-reflected type. An agent started by the launcher knows all this from its
-system prompt, so it can write and add its own plugins.
+working, commented slash command. An agent started by the launcher knows
+its plugins, commands and tools and how to write and add its own plugins
+from its system prompt.
+
+The optional [`rig-inspect`](crates/rig-inspect) plugin adds the `inspect`
+tool, with which the agent reads its own Bevy world (in process, read-only):
+the plugins loaded and what each added, the agents, the state saved with the
+session, the warnings logged and every reflected type. It is commented out in
+the default `plugins.toml`, since Bevy Remote makes the build heavier and on
+Linux needs the ALSA development headers (`libasound2-dev` on Debian and
+Ubuntu, `alsa-lib-devel` on Fedora, `alsa-lib` on Arch); uncomment its entry,
+or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect
+--version 0.44.0` (your `rig`'s version).
 
 Code mode is an optional plugin crate, `rig-steel`, not in the default list.
 Its `SteelPlugin` adds the `run_steel` tool: the model writes one

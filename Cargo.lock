@@ -12615,14 +12615,12 @@ dependencies = [
 name = "rig-harness"
 version = "0.44.0"
 dependencies = [
- "async-channel",
  "base64 0.22.1",
  "bevy",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
- "bevy_remote",
  "bevy_tasks",
  "chrono",
  "crossbeam-channel",
@@ -12636,6 +12634,7 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-ecs",
+ "rig-inspect",
  "rig-memory",
  "rig-reqwest",
  "rig-tools",
@@ -12682,6 +12681,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "url",
+]
+
+[[package]]
+name = "rig-inspect"
+version = "0.44.0"
+dependencies = [
+ "async-channel",
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_remote",
+ "bevy_tasks",
+ "rig-harness",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

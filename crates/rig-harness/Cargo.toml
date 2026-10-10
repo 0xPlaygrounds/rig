@@ -23,8 +23,6 @@ tui = [
 ]
 
 [dependencies]
-# The reply channel of an `inspect` request.
-async-channel = { workspace = true }
 base64 = { workspace = true }
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }
@@ -32,8 +30,6 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
-# `inspect`: Bevy Remote requests answered in process; no transport, no port.
-bevy_remote = { workspace = true }
 bevy_tasks = { workspace = true }
 # The local date in the system prompt.
 chrono = { workspace = true, features = ["clock"] }
@@ -76,3 +72,6 @@ libc = { workspace = true, optional = true }
 # The scripted model (`test_utils::MockCompletionModel`) plugin tests run
 # turns on.
 rig-core = { workspace = true, features = ["reqwest", "test-utils"] }
+# The optional inspect plugin, added on top of the defaults in
+# `tests/removal.rs`.
+rig-inspect = { path = "../rig-inspect" }

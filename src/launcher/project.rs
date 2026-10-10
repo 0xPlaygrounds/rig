@@ -65,7 +65,14 @@ fn is_checkout(path: &Path) -> bool {
 
 /// The rig crates a plugin may depend on, which the agent and its plugins
 /// must share: one copy of each in the agent's dependency graph.
-pub const RIG_CRATES: [&str; 5] = ["rig", "rig-core", "rig-ecs", "rig-tools", "rig-harness"];
+pub const RIG_CRATES: [&str; 6] = [
+    "rig",
+    "rig-core",
+    "rig-ecs",
+    "rig-tools",
+    "rig-harness",
+    "rig-inspect",
+];
 
 /// The `[patch.crates-io]` table that builds [`RIG_CRATES`] from
 /// `checkout`, so a plugin that names their crates.io release (as

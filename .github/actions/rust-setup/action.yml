@@ -22,7 +22,7 @@ inputs:
     description: Install the system protoc (required whenever the lance chain builds)
     default: "false"
   alsa:
-    description: Install the ALSA development headers (required whenever rig-harness builds)
+    description: Install the ALSA development headers (required whenever rig-inspect builds, as in a workspace build or rig-harness's tests)
     default: "false"
 runs:
   using: composite
@@ -71,7 +71,7 @@ runs:
       shell: bash
       run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
 
-    # rig-harness's `inspect` builds on bevy_remote, which always pulls
+    # rig-inspect builds on bevy_remote, which always pulls
     # bevy_dev_tools and with it bevy_audio's `alsa-sys`; its build script
     # needs the ALSA headers, even for `cargo check` and `cargo doc`.
     - name: Install ALSA headers

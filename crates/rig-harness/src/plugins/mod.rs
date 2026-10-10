@@ -10,7 +10,6 @@ pub mod compaction;
 pub mod defaults;
 pub mod diagnostics;
 pub mod effect_log;
-pub mod inspect;
 pub mod login_chatgpt;
 pub mod models;
 pub mod print;

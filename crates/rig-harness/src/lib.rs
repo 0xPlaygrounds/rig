@@ -107,7 +107,7 @@ pub mod prelude {
     };
     pub use rig_core::transcript::final_answer;
     pub use rig_ecs::agent::{PrimaryQuery, primary};
-    pub use rig_tools::blocking;
+    pub use rig_tools::{Spill, blocking};
 }
 
 /// What the binary needs to run and be relaunched: the session and its

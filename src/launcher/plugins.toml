@@ -73,10 +73,11 @@ plugin = "rig_harness::plugins::subagents::SubagentsPlugin"
 [[plugin]]
 plugin = "rig_harness::plugins::diagnostics::DiagnosticsPlugin"
 
-# The inspect tool: the agent reads its own world (Bevy Remote, in process,
-# read-only), and the system prompt's section on what the agent is.
-[[plugin]]
-plugin = "rig_harness::plugins::inspect::InspectPlugin"
+# The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers. Uncomment to enable it.
+# [[plugin]]
+# crate = "rig-inspect"
+# version = "{version}"
+# plugin = "rig_inspect::InspectPlugin"
 
 # --print: answers one prompt; also the front of a run no other front took.
 [[plugin]]

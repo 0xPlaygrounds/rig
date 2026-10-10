@@ -1,29 +1,27 @@
 use std::time::{Duration, Instant};
 
-use bevy_ecs::system::RunSystemOnce;
 use bevy_remote::BrpReceiver;
-use rig_core::message::{ToolCall, ToolFunction, ToolName};
-use rig_ecs::turn::ToolStarter;
+use rig_harness::load;
+use rig_harness::plugins::basics::BasicCommandsPlugin;
+use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
+use rig_harness::rig_ecs::turn::ToolStarter;
 use serde_json::json;
 
 use super::*;
-use crate::load;
-use crate::plugins::basics::BasicCommandsPlugin;
 
 /// Starts an `inspect` call of `method` with `params` by `agent`.
 fn start(app: &mut App, agent: Entity, method: &str, params: Value) -> Option<Entity> {
     let args = json!({ "method": method, "params": params });
     let name = ToolName::new(INSPECT_TOOL).ok()?;
     let call = ToolCall::from_wire("call", ToolFunction::new(name, args));
-    let started =
-        app.world_mut()
-            .run_system_once(move |starter: ToolStarter, mut commands: Commands| {
-                let run = starter.run(call.clone(), None);
-                let entity = commands.spawn(run.clone()).id();
-                starter.start(&mut commands, entity, agent, &run);
-                entity
-            });
-    started.ok()
+    let world = app.world_mut();
+    let start = world.register_system(move |starter: ToolStarter, mut commands: Commands| {
+        let run = starter.run(call.clone(), None);
+        let entity = commands.spawn(run.clone()).id();
+        starter.start(&mut commands, entity, agent, &run);
+        entity
+    });
+    world.run_system(start).ok()
 }
 
 /// The output of `call`, once it has one.

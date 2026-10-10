@@ -107,9 +107,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-harness, rig-ecs, rig-tools and rig-steel are not
-                // default members; the app must also build without the
-                // terminal view.
+                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
+                // are not default members; the app must also build without
+                // the terminal view.
                 cargo(&[
                     "clippy",
                     "--locked",
@@ -121,6 +121,8 @@ pub(super) fn all() -> Vec<Check> {
                     "rig-tools",
                     "-p",
                     "rig-steel",
+                    "-p",
+                    "rig-inspect",
                     "--all-targets",
                     "--",
                     "-D",
@@ -167,8 +169,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-harness, rig-ecs, rig-tools and rig-steel are not default
-                // members, so the run above never reaches their tests.
+                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
+                // are not default members, so the run above never reaches
+                // their tests.
                 cargo(&[
                     "nextest",
                     "run",
@@ -181,6 +184,8 @@ pub(super) fn all() -> Vec<Check> {
                     "rig-tools",
                     "-p",
                     "rig-steel",
+                    "-p",
+                    "rig-inspect",
                 ]),
             ],
         ),

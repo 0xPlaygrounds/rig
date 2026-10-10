@@ -75,6 +75,16 @@ const GENERATED_CODE_DEPENDENCIES: &[(&str, &str, &str)] = &[
         "prost-types",
         "names the google.protobuf well-known types the generated messages hold",
     ),
+    (
+        "rig-inspect",
+        "bevy_ecs",
+        "named by the code `#[derive(Component)]` generates",
+    ),
+    (
+        "rig-inspect",
+        "bevy_reflect",
+        "named by the code `#[derive(Reflect)]` generates",
+    ),
 ];
 
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {

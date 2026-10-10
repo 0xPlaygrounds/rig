@@ -38,13 +38,20 @@ The default `plugins.toml`, in order (types under `rig_harness::plugins`):
 | `activity::ActivityPlugin` | what each agent is doing, for views |
 | `effect_log::EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `tools::{ReadTool, EditTool, WriteTool, SearchTool, ShellTool}` | the coding tools of [`rig-tools`](../rig-tools), one plugin each |
-| `reload_tool::ReloadTool` | the `reload` tool, with which the agent rebuilds itself |
+| `reload_tool::ReloadTool` | the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
 | `basics::BasicCommandsPlugin` | `/help`, `/retry`, `/agents`, `/quit` |
 | `subagents::SubagentsPlugin` | the `task`, `message` and `wait` tools |
 | `diagnostics::DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
-| `inspect::InspectPlugin` | the `inspect` tool (Bevy Remote, in process, read-only) and the system prompt's section on what the agent is |
 | `print::PrintPlugin` | `--print`, and the front of a run no other front took |
 | `rig_harness::tui::TuiPlugin` | the terminal view (feature `tui`) |
+
+Optional plugins live in crates of their own and are not in the default
+list: [`rig-inspect`](../rig-inspect)'s `InspectPlugin` adds the `inspect`
+tool, with which the agent reads its own Bevy world through Bevy Remote (in
+process, read-only). It makes the build heavier, so it is commented out in
+the default `plugins.toml`; uncomment its entry, or run
+`rig plugin add rig_inspect::InspectPlugin --crate rig-inspect --version 0.44.0`
+(your `rig`'s version). [`rig-steel`](../rig-steel) adds code mode.
 
 [`PLUGINS.md`](PLUGINS.md) shows how to write a plugin, with one example per
 extension point.
@@ -56,8 +63,8 @@ cargo install rig
 rig
 ```
 
-On Linux, building the agent needs the ALSA development headers
-(`libasound2-dev` on Debian and Ubuntu, `alsa-lib-devel` on Fedora,
-`alsa-lib` on Arch): the `inspect` plugin is built on Bevy Remote, which
-pulls in Bevy's audio crate. The agent plays no sound. It needs Rust 1.97.1
-or newer and runs on Linux and macOS.
+It needs Rust 1.97.1 or newer and runs on Linux and macOS. With the
+optional `rig-inspect` plugin enabled, building the agent on Linux also
+needs the ALSA development headers (`libasound2-dev` on Debian and Ubuntu,
+`alsa-lib-devel` on Fedora, `alsa-lib` on Arch): Bevy Remote pulls in
+Bevy's audio crate. The agent plays no sound.

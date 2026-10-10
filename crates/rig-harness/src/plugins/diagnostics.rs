@@ -1,5 +1,6 @@
-//! Warnings and errors the process logs, Bevy's own included, as data the
-//! agent can read with `inspect`, not as notes in its turns. Each names the
+//! Warnings and errors the process logs, Bevy's own included, as data (the
+//! [`Diagnostics`] resource, which the optional `rig-inspect` plugin's
+//! `inspect` tool reads), not as notes in turns. Each names the
 //! plugin whose module logged it when exactly one plugin's module holds
 //! that module, so Bevy's own name none.
 

@@ -1,6 +1,7 @@
 //! Every default plugin can be left out: the app the generated `main.rs`
 //! builds from the default `plugins.toml`, less any one of its plugins,
-//! answers a turn with a tool call on a scripted model. The plugin `rig
+//! answers a turn with a tool call on a scripted model, and so does the
+//! app with the optional `rig-inspect` plugin on top. The plugin `rig
 //! plugin new` writes comes last, listed twice and added once. Each case
 //! is a child process of this test with its own `RIG_HOME`, as a run is.
 #![cfg(feature = "tui")]
@@ -32,7 +33,7 @@ macro_rules! defaults {
     };
 }
 
-const DEFAULTS: [(&str, fn(&mut App)); 21] = defaults![
+const DEFAULTS: [(&str, fn(&mut App)); 20] = defaults![
     rig_harness::plugins::project_context::ProjectContextPlugin,
     rig_harness::plugins::models::ModelsPlugin,
     rig_harness::plugins::login_chatgpt::ChatgptLoginPlugin,
@@ -51,10 +52,12 @@ const DEFAULTS: [(&str, fn(&mut App)); 21] = defaults![
     rig_harness::plugins::basics::BasicCommandsPlugin,
     rig_harness::plugins::subagents::SubagentsPlugin,
     rig_harness::plugins::diagnostics::DiagnosticsPlugin,
-    rig_harness::plugins::inspect::InspectPlugin,
     rig_harness::plugins::print::PrintPlugin,
     rig_harness::tui::TuiPlugin,
 ];
+
+/// The case that adds the optional `rig-inspect` plugin to the defaults.
+const WITH_INSPECT: &str = "with rig_inspect::InspectPlugin";
 
 /// Exits with 2 when the turn takes over 30 s.
 fn give_up(mut exits: MessageWriter<AppExit>) {
@@ -116,6 +119,9 @@ fn every_default_plugin_can_be_left_out() {
         for (_, add) in DEFAULTS.iter().filter(|(name, _)| *name != left_out) {
             add(&mut app);
         }
+        if left_out == WITH_INSPECT {
+            load::<rig_inspect::InspectPlugin>(&mut app, "rig-inspect", "version 0.44.0");
+        }
         for _ in 0..2 {
             load::<scaffold::ScaffoldPlugin>(&mut app, "rig-hello", "path plugins/hello");
         }
@@ -137,7 +143,8 @@ fn every_default_plugin_can_be_left_out() {
     let homes = Path::new(env!("CARGO_TARGET_TMPDIR")).join("removal");
     std::fs::remove_dir_all(&homes).ok();
     let test = std::env::current_exe().unwrap_or_default();
-    let failed: Vec<&str> = std::iter::once("nothing")
+    let failed: Vec<&str> = ["nothing", WITH_INSPECT]
+        .into_iter()
         .chain(names)
         .filter(|left_out| {
             let home = homes.join(left_out.rsplit("::").next().unwrap_or(left_out));
