@@ -44,36 +44,25 @@ impl Plugin for ReloadTool {
     }
 }
 
-/// The arguments of a `reload` call.
+/// The arguments of a `reload` call: none.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct ReloadArgs {
-    /// What the reload applies, in a few words, shown to the user.
-    reason: Option<String>,
-}
+struct ReloadArgs {}
 
 /// The `reload` tool: asks for a reload once no turn runs, with a notice
-/// naming the agent and its reason, and answers whether it is queued.
+/// naming the agent, and answers whether it is queued.
 fn on_reload_tool(
     called: On<ToolCalled<ReloadArgs>>,
     mut status: ResMut<ReloadStatus>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let reason = called
-        .args
-        .reason
-        .as_deref()
-        .map(str::trim)
-        .filter(|reason| !reason.is_empty())
-        .map(|reason| format!(" ({reason})"))
-        .unwrap_or_default();
     let output = match status.ask(called.agent) {
         Ok(()) => {
             notices.write(Notice::info(
                 None,
                 format!(
-                    "The model of agent {} asked to reload{reason}: the agent rebuilds and \
+                    "The model of agent {} asked to reload: the agent rebuilds and \
                      restarts once no turn runs. /reload cancel cancels it.",
                     called.caller.short()
                 ),
