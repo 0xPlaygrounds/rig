@@ -133,16 +133,6 @@ fn first_live(condensed: Option<&Condensed>) -> usize {
     condensed.map_or(0, |condensed| condensed.upto)
 }
 
-/// Clears the older tool outputs of the messages requests send as they are.
-fn clear_old_outputs(
-    policy: &CompactionPolicy,
-    conversation: &mut Conversation,
-    condensed: Option<&Condensed>,
-) -> Cleared {
-    let live = conversation.messages_mut().get_mut(first_live(condensed)..);
-    policy.clearing.clear(live.unwrap_or_default())
-}
-
 /// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
 fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str) -> Notice {
     let tokens = tokens_label(cleared.tokens as u64);
@@ -168,6 +158,14 @@ enum Start {
 }
 
 impl CompactingItem<'_, '_> {
+    /// Clears the older tool outputs of the messages requests send as they
+    /// are.
+    fn clear_old_outputs(&mut self, policy: &CompactionPolicy) -> Cleared {
+        let from = first_live(self.condensed);
+        let live = self.conversation.messages_mut().get_mut(from..);
+        policy.clearing.clear(live.unwrap_or_default())
+    }
+
     /// Starts the summary call of a compaction of `agent` for `reason` on
     /// `turn`, or on a turn of its own when `None`, when it has a model and
     /// anything new would be summarized.
@@ -284,8 +282,7 @@ fn compact_near_the_window(
     if !policy.over_threshold(used, spec) {
         return;
     }
-    let condensed = compacting.condensed;
-    let cleared = clear_old_outputs(policy, &mut compacting.conversation, condensed);
+    let cleared = compacting.clear_old_outputs(policy);
     let left = used.saturating_sub(cleared.tokens as u64);
     if cleared.results > 0 {
         policy.clearing.clear(&mut prepare.event_mut().messages);
@@ -328,8 +325,7 @@ fn recover_from_overflow(
     let outgrew = "The conversation outgrew the model's context window";
     if !compactions.cleared {
         compactions.cleared = true;
-        let condensed = compacting.condensed;
-        let cleared = clear_old_outputs(policy, &mut compacting.conversation, condensed);
+        let cleared = compacting.clear_old_outputs(policy);
         if cleared.results > 0 {
             let then = " and sending it again";
             notices.write(cleared_notice(agent, outgrew, &cleared, then));

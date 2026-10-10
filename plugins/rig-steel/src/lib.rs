@@ -51,7 +51,6 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
-use rig_core::message::ToolCall;
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
@@ -157,7 +156,7 @@ fn on_run_steel(
     mut commands: Commands,
 ) {
     let program = run_program(
-        called.run.call.clone(),
+        called.run.call.id.to_string(),
         harness.within(called.effect),
         called.caller.clone(),
         called.args.code.clone(),
@@ -175,20 +174,14 @@ fn on_run_steel(
 /// when it runs past [`MAX_RUNTIME`]. Dropping this future, as cancelling
 /// the call does, interrupts the VM and ends the host function it waits
 /// in, so the thread stops soon after.
-async fn run_program(call: ToolCall, harness: Harness, me: AgentId, code: String) -> ToolResult {
+async fn run_program(call: String, harness: Harness, me: AgentId, code: String) -> ToolResult {
     let control = Arc::new(Control::default());
     let (cancel, cancelled) = oneshot::channel::<()>();
     let _stopper = Stopper {
         control: control.clone(),
         _cancel: cancel,
     };
-    let host = Host::new(
-        harness,
-        me,
-        call.id.to_string(),
-        control.clone(),
-        cancelled.shared(),
-    );
+    let host = Host::new(harness, me, call, control.clone(), cancelled.shared());
     let (done, mut finished) = oneshot::channel::<Ended>();
     let started = std::thread::Builder::new()
         .name(RUN_STEEL.to_owned())

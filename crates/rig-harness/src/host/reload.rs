@@ -28,8 +28,7 @@ use rig_tools::process::{detach, kill_group};
 
 use super::launcher;
 use rig_ecs::agent::{Notice, TurnOf};
-use rig_ecs::calls::PollCalls;
-use rig_ecs::calls::Wake;
+use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 
 /// Lines of a failed build in the note to the model, from its first error.

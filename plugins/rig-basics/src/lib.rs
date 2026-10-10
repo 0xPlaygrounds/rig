@@ -100,14 +100,13 @@ fn agents(
         }
         return;
     }
-    let mut roots: Vec<(&AgentId, Entity)> = agents
+    let mut roots: Vec<_> = agents
         .iter()
         .filter(|agent| !parents.contains(agent.entity))
-        .map(|agent| (agent.id, agent.entity))
         .collect();
-    roots.sort_by(|a, b| a.0.0.cmp(&b.0.0));
-    let listed = roots.iter().flat_map(|&(_, root)| {
-        std::iter::once(root).chain(spawned.iter_descendants_depth_first(root))
+    roots.sort_by(|a, b| a.id.0.cmp(&b.id.0));
+    let listed = roots.iter().flat_map(|root| {
+        std::iter::once(root.entity).chain(spawned.iter_descendants_depth_first(root.entity))
     });
     let (mut items, mut selected) = (Vec::new(), 0);
     for agent in listed.filter_map(|agent| agents.get(agent).ok()) {

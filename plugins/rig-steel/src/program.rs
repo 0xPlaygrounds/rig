@@ -346,8 +346,7 @@ impl Host {
         let mine = self
             .spawned
             .lock()
-            .map(|spawned| spawned.contains(&to))
-            .unwrap_or(false);
+            .is_ok_and(|spawned| spawned.contains(&to));
         if !mine {
             return Err(format!(
                 "`{}` is not an agent this program spawned; send reaches only those",
