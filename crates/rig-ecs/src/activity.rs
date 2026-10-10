@@ -33,8 +33,8 @@ use rig_core::completion::{AssistantContent, Message};
 use crate::agent::{ActiveTurn, Agent, AgentId, Calls, Conversation, Partial, Queued, ToolCallRun};
 use crate::compaction::Summarizing;
 use crate::inbox::{Deliver, Origin};
-use crate::recovery::Backoff;
 use crate::tools::ToolOutput;
+use crate::turn::Backoff;
 
 /// The most characters a [`Preview`] keeps, from the end of the text.
 pub const PREVIEW_CHARS: usize = 2000;

@@ -1,7 +1,8 @@
 //! The kernel on its own: a headless app with Bevy's task pools, the agent
 //! runtime and its session journal, and nothing else. A scripted model asks
 //! for one tool call, then answers; a second app on the same store gets the
-//! conversation back. Only rig-ecs's public API is used, as a third-party
+//! conversation back; a failed call is sent again once its backoff passed
+//! on Bevy's clock. Only rig-ecs's public API is used, as a third-party
 //! plugin would.
 
 use std::sync::Arc;
@@ -9,11 +10,13 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
+use bevy_time::TimeUpdateStrategy;
+use rig_core::ProviderResponseError;
 use rig_core::completion::Message;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
-use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_ecs::agent::answer_text;
 use rig_ecs::effects::Handler;
 use rig_ecs::models::ModelConnector;
@@ -79,16 +82,45 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
 }
 
 /// Runs frames, sleeping until a wake between them, as a windowless loop
-/// does, until a turn ended or the deadline passed.
-fn run_until_a_turn_ends(app: &mut App, wakes: &Receiver<()>) {
+/// does, until `done` or the deadline passed.
+fn run_until(app: &mut App, wakes: &Receiver<()>, done: impl Fn(&mut World) -> bool) {
     let started = Instant::now();
     while started.elapsed() < DEADLINE {
         app.update();
-        if !app.world().resource::<Ended>().0.is_empty() {
+        if done(app.world_mut()) {
             return;
         }
         wakes.recv_timeout(Duration::from_millis(100)).ok();
     }
+}
+
+fn a_turn_ended(world: &mut World) -> bool {
+    !world.resource::<Ended>().0.is_empty()
+}
+
+/// An agent of `app` on `model`, as the built-in catalog's DeepSeek model.
+fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
+    let spec = ModelConnector::default().resolve("deepseek/deepseek-flash")?;
+    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(
+        spec.reference(),
+        model.clone(),
+    ));
+    let connection = Connection {
+        spec,
+        handler: Handler(handler),
+    };
+    Some(app.world_mut().spawn((Agent, connection)).id())
+}
+
+fn ask(app: &mut App, agent: Entity) {
+    // The first frame restores the (empty) session and starts the journal.
+    app.update();
+    app.world_mut().trigger(Deliver::user(
+        agent,
+        "What is 2 + 3?",
+        DeliveryMode::Steer,
+        Vec::new(),
+    ));
 }
 
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
@@ -126,25 +158,9 @@ fn one_turn(store: &MemoryStore) -> Option<(App, Entity, MockCompletionModel, u3
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ]);
-    let spec = ModelConnector::default().resolve("deepseek/deepseek-flash")?;
-    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(
-        spec.reference(),
-        model.clone(),
-    ));
-    let connection = Connection {
-        spec,
-        handler: Handler(handler),
-    };
-    let agent = app.world_mut().spawn((Agent, connection)).id();
-    // The first frame restores the (empty) session and starts the journal.
-    app.update();
-    app.world_mut().trigger(Deliver::user(
-        agent,
-        "What is 2 + 3?",
-        DeliveryMode::Steer,
-        Vec::new(),
-    ));
-    run_until_a_turn_ends(&mut app, &wakes);
+    let agent = connected(&mut app, &model)?;
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
     let ran = calls.load(Ordering::Relaxed);
     Some((app, agent, model, ran))
 }
@@ -194,4 +210,86 @@ fn a_new_app_on_the_store_restores_the_conversation() {
         return;
     };
     assert_eq!(messages(&restored, *again), said);
+}
+
+/// A kernel app on a model whose first call fails with an error worth
+/// retrying and whose second answers, on a clock that moves only when the
+/// test moves it. It ran until the failed call's [`Backoff`] began.
+fn backing_off() -> Option<(App, Receiver<()>, Entity, MockCompletionModel)> {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    let overloaded = ProviderResponseError::without_status("overloaded").with_transient(Some(true));
+    let model = MockCompletionModel::from_stream_turns([
+        vec![MockStreamEvent::Error(MockError::ProviderResponse(
+            overloaded,
+        ))],
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    let agent = connected(&mut app, &model)?;
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, |world| {
+        world.query::<&Backoff>().iter(world).next().is_some() || a_turn_ended(world)
+    });
+    Some((app, wakes, agent, model))
+}
+
+/// Runs one frame `by` later on the app's clock, then a few with the
+/// clock still.
+fn advance(app: &mut App, by: Duration) {
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
+    app.update();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    for _ in 0..3 {
+        app.update();
+    }
+}
+
+#[test]
+fn a_failed_call_is_sent_again_once_its_backoff_passed_on_the_clock() {
+    let started = backing_off();
+    assert!(started.is_some(), "the built-in catalog lists the model");
+    let Some((mut app, wakes, _, model)) = started else {
+        return;
+    };
+    assert_eq!(
+        model.request_count(),
+        1,
+        "{:?}",
+        app.world().resource::<Ended>().0
+    );
+    // The first backoff is 1.5 to 2 seconds; no time passes on its own.
+    advance(&mut app, Duration::from_secs(1));
+    assert_eq!(model.request_count(), 1, "still waiting");
+    advance(&mut app, Duration::from_secs(1));
+    run_until(&mut app, &wakes, a_turn_ended);
+    let ended = &app.world().resource::<Ended>().0;
+    let answer = match ended.as_slice() {
+        [TurnOutcome::Answered(message)] => answer_text(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");
+    assert_eq!(model.request_count(), 2);
+}
+
+#[test]
+fn an_interrupt_during_a_backoff_cancels_the_retry() {
+    let started = backing_off();
+    assert!(started.is_some(), "the built-in catalog lists the model");
+    let Some((mut app, _wakes, agent, model)) = started else {
+        return;
+    };
+    app.world_mut().trigger(Interrupt { entity: agent });
+    advance(&mut app, Duration::from_secs(5));
+    assert!(
+        matches!(
+            app.world().resource::<Ended>().0.as_slice(),
+            [TurnOutcome::Stopped]
+        ),
+        "{:?}",
+        app.world().resource::<Ended>().0
+    );
+    assert_eq!(model.request_count(), 1, "the call was not sent again");
 }

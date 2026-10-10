@@ -29,12 +29,11 @@ use rig_ecs::agent::{
     ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
     Spawned, SpawnedBy,
 };
-use rig_ecs::calls::Wake;
 use rig_ecs::commands::SlashCommand;
 use rig_ecs::compaction::Compacted;
 use rig_ecs::inbox::Inbox;
 use rig_ecs::models;
-use rig_ecs::recovery::RETRY;
+use rig_ecs::turn::RETRY;
 use rig_ecs::usage::{self, Spending, TurnSpending};
 
 /// Most lines the input box shows.
@@ -51,13 +50,12 @@ const GAUGE_WIDTH: u32 = 20;
 /// the whole reply out again for every few tokens.
 const STREAM_FRAME: Duration = Duration::from_millis(33);
 
-/// When [`needs_redraw`] last drew, whether streamed text waits to be
-/// drawn, and until when a wake for it is pending.
+/// When [`needs_redraw`] last drew, and whether streamed text waits to be
+/// drawn.
 #[derive(Default)]
 pub(crate) struct Paced {
     drawn: Option<Instant>,
     waiting: bool,
-    armed: Option<Instant>,
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
@@ -66,7 +64,9 @@ pub(crate) struct Paced {
 /// streaming reply, a panel, or a plugin's [`RequestRedraw`]. A turn's end
 /// changes its conversation or comes with a notice. The rebuild's progress
 /// is checked separately. A streaming reply alone draws at most every
-/// [`STREAM_FRAME`], with a wake for the text that waits.
+/// [`STREAM_FRAME`]; the text that waits is drawn by one of the frames
+/// that [`settle`](rig_ecs::calls::settle) runs after the wake that brought
+/// it, 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -88,7 +88,7 @@ pub(crate) fn needs_redraw(
     mut requests: MessageReader<RequestRedraw>,
     panels: Query<(), Changed<TuiPanel>>,
     mut removed_panels: RemovedComponents<TuiPanel>,
-    (wake, mut paced): (Res<Wake>, Local<Paced>),
+    mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
@@ -107,13 +107,6 @@ pub(crate) fn needs_redraw(
         paced.drawn = Some(now);
         paced.waiting = false;
         return true;
-    }
-    if paced.waiting
-        && let Some(next) = next
-        && paced.armed.is_none_or(|armed| armed <= now)
-    {
-        wake.after(next.saturating_duration_since(now)).detach();
-        paced.armed = Some(next);
     }
     false
 }

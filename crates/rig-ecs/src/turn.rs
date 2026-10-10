@@ -5,7 +5,9 @@
 //! others alone, in order, as their tools' [`Footprint`]s say; their
 //! results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
-//! retried or recovered from as [`recovery`] decides. A conversation near
+//! retried after a [`Backoff`] or recovered from as rig-core's [`RETRY`]
+//! policy decides; each turn counts its attempts in its [`Recovery`]. A
+//! conversation near
 //! the model's window is [`compaction`]-ed before the next call. Despawning
 //! the turn ends it, and announces its [`TurnEnded`] on the agent.
 
@@ -19,6 +21,7 @@ use bevy_log::{info, info_span};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
+use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::{FutureExt, StreamExt};
 use rig_core::catalog::ModelSpec;
@@ -26,13 +29,13 @@ use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
-use rig_core::error::retry::Verdict;
+use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::message::{ToolCall, ToolResult, UserContent};
 use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
 use rig_core::transcript::arguments_refusal;
-use rig_memory::{Summarizer, SummaryState};
+use rig_memory::{ClearToolOutputs, Summarizer, SummaryState};
 use web_time::Instant;
 
 use super::agent::{
@@ -51,7 +54,6 @@ use super::inbox::{Delivery, Inbox, deliver_notes, deliver_queued, deliver_steer
 use super::journal::SessionLog;
 use super::models::{self, ModelConnector};
 use super::prompt::{PromptSection, ToolRules, system_prompt};
-use super::recovery::{self, Backoff, RETRY, Recovery, RetryDue};
 use super::tools::{
     Footprint, OpenCall, Refused, Serves, ToolDef, ToolOutput, failed, outcome_of, recorded_args,
     run_tool_call,
@@ -60,6 +62,53 @@ use super::usage::{self, Spending, TurnSpending};
 
 /// The notice when the agent has no model to call.
 const NO_MODEL: &str = "No model is connected; pick one first.";
+
+/// How failed model calls are retried: rig-core's default, four retries in
+/// a row per turn (a reply resets the count).
+pub const RETRY: RetryPolicy = RetryPolicy::DEFAULT;
+/// Tokens of the newest tool outputs a clearing keeps (opencode's
+/// `PRUNE_PROTECT`).
+const KEEP_RECENT_OUTPUTS: usize = 40_000;
+
+/// A turn's recovery so far: the failed calls retried since its last
+/// reply, whether it cleared tool outputs after an overflow, and how often
+/// it compacted the conversation.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Recovery {
+    /// Retries since the last reply.
+    pub retries: u32,
+    /// Whether an overflow cleared tool outputs in this turn.
+    pub cleared: bool,
+    /// Compactions in this turn.
+    pub compactions: u32,
+}
+
+/// A wait before the turn's next model call, on a call entity of the turn,
+/// so interrupting the turn cancels it like any other call. The call is
+/// sent again by a delayed command on Bevy's clock, which despawns this
+/// entity first.
+#[derive(Component, Clone, Debug)]
+pub struct Backoff {
+    /// Which retry this wait is for, from 1 to [`RETRY`]'s `max_retries`.
+    pub attempt: u32,
+    /// When the call is sent again.
+    pub until: Instant,
+    /// Why the last call failed.
+    pub why: String,
+}
+
+impl Backoff {
+    /// Whole seconds left to wait, rounded up.
+    pub fn seconds_left(&self) -> u64 {
+        let left = self.until.saturating_duration_since(Instant::now());
+        left.as_secs() + u64::from(left.subsec_nanos() > 0)
+    }
+}
+
+/// How old tool outputs are cleared: all but the newest 40k tokens of them.
+pub fn clearing() -> ClearToolOutputs {
+    ClearToolOutputs::new(KEEP_RECENT_OUTPUTS)
+}
 
 /// The systems polling running calls, in `Update`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -585,7 +634,7 @@ fn must_summarize(
     if !compaction::over_threshold(used, spec) {
         return false;
     }
-    let cleared = recovery::clearing().clear(compacted.live_mut(conversation.messages_mut()));
+    let cleared = clearing().clear(compacted.live_mut(conversation.messages_mut()));
     let left = used.saturating_sub(cleared.tokens as u64);
     if cleared.results > 0 {
         spent.context = Some(left);
@@ -717,7 +766,6 @@ pub(crate) fn on_model_done(
     starter: ToolStarter,
     policy: Res<CompactionPolicy>,
     log: Res<SessionLog>,
-    wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -757,7 +805,6 @@ pub(crate) fn on_model_done(
                 &mut recovery,
                 &mut conversation,
                 compacted,
-                &wake,
                 &mut commands,
                 &mut notices,
             );
@@ -858,7 +905,6 @@ impl Failed<'_> {
         recovery: &mut Recovery,
         conversation: &mut Conversation,
         compacted: &Compacted,
-        wake: &Wake,
         commands: &mut Commands,
         notices: &mut MessageWriter<Notice>,
     ) {
@@ -880,12 +926,15 @@ impl Failed<'_> {
                         RETRY.max_retries
                     ),
                 ));
-                commands.spawn((
-                    Name::new("retry wait"),
-                    backoff,
-                    Running::spawn(model_pool(), wake, recovery::wait(delay)),
-                    CallOf(self.turn),
-                ));
+                let wait = commands
+                    .spawn((Name::new("retry wait"), backoff, CallOf(self.turn)))
+                    .id();
+                // An interrupt despawns the turn and its wait meanwhile;
+                // a call for a turn that is gone does nothing.
+                let mut delayed = commands.delayed();
+                let mut later = delayed.duration(delay);
+                later.entity(wait).try_despawn();
+                later.trigger(CallModel { entity: self.turn });
             }
             Verdict::Overflow => {
                 // Clear old outputs first, which costs no call; then
@@ -954,7 +1003,7 @@ impl Failed<'_> {
         compacted: &Compacted,
         notices: &mut MessageWriter<Notice>,
     ) -> bool {
-        let cleared = recovery::clearing().clear(compacted.live_mut(conversation.messages_mut()));
+        let cleared = clearing().clear(compacted.live_mut(conversation.messages_mut()));
         if cleared.results > 0 {
             notices.write(Notice::info(
                 self.agent,
@@ -981,19 +1030,6 @@ impl Failed<'_> {
         drop_unanswered(self.agent, self.id, conversation, self.log, notices);
         end_turn(commands, self.turn, TurnOutcome::Failed(why));
     }
-}
-
-/// Calls the model again once a retry's wait is over.
-pub(crate) fn on_retry_due(
-    done: On<Add<Done<RetryDue>>>,
-    of: Query<&CallOf>,
-    mut commands: Commands,
-) {
-    let Ok(&CallOf(turn)) = of.get(done.entity) else {
-        return;
-    };
-    commands.entity(done.entity).despawn();
-    commands.trigger(CallModel { entity: turn });
 }
 
 /// Takes a tool call's [`ToolOutput`], however it came: records it as an

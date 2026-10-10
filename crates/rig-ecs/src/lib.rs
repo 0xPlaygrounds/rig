@@ -5,14 +5,15 @@
 //! task pools. Every call goes through one recorded effect dispatch path.
 //! Tools and commands are registered by plugins, and the session journal
 //! is kept in the [`store::SessionStore`] the app inserts. Views read what
-//! the agents do from [`activity`], and plugins that animate or poll run
-//! on [`timer::every`] instead of threads of their own.
+//! the agents do from [`activity`]. Time is Bevy's: a retried model call
+//! waits on a delayed command, and plugins that animate or poll run on
+//! `on_real_timer` with a [`calls::KeepAwake`], instead of threads of their
+//! own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store and the [`models::ModelConnector`].
 //! Features: `subagents` (default) adds the [`subagents::SubagentsPlugin`]
-//! tools, `fs-journal` a JSON-lines [`fs_journal::JsonlDirStore`], and
-//! `runner` a windowless loop ([`runner::RunnerPlugin`]); the last two are
+//! tools, and `fs-journal` a JSON-lines [`fs_journal::JsonlDirStore`],
 //! native-only.
 //!
 //! ```no_run
@@ -36,24 +37,23 @@ pub mod inbox;
 pub mod journal;
 pub mod models;
 pub mod prompt;
-pub mod recovery;
 pub mod restore;
-#[cfg(feature = "runner")]
-pub mod runner;
 pub mod store;
 #[cfg(feature = "subagents")]
 pub mod subagents;
-pub mod timer;
 pub mod tools;
 pub mod turn;
 pub mod usage;
 
-/// What a plugin needs: Bevy's app and ECS preludes, the agent components
-/// and requests, and the tool and command registries.
+/// What a plugin needs: Bevy's app, ECS, reflection and time preludes
+/// with the time run conditions, the agent components and requests, and
+/// the tool and command registries.
 pub mod prelude {
     pub use bevy_app::prelude::*;
     pub use bevy_ecs::prelude::*;
     pub use bevy_reflect::prelude::*;
+    pub use bevy_time::common_conditions::{on_real_timer, on_timer};
+    pub use bevy_time::prelude::*;
 
     pub use crate::AgentPlugin;
     pub use crate::activity::{Activity, ActivitySystems, MessageFeed};
@@ -63,7 +63,7 @@ pub mod prelude {
         SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
         TurnOf, TurnOutcome,
     };
-    pub use crate::calls::Wake;
+    pub use crate::calls::{KeepAwake, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
     pub use crate::compaction::Compacted;
     pub use crate::inbox::{
@@ -71,10 +71,9 @@ pub mod prelude {
     };
     pub use crate::journal::{AppSaveExt, JournalPlugin};
     pub use crate::prompt::{PromptSection, ToolRules};
-    pub use crate::recovery::{Backoff, Recovery};
     pub use crate::restore::Restored;
-    pub use crate::timer::every;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
+    pub use crate::turn::{Backoff, Recovery};
     pub use crate::usage::{Spending, TurnSpending};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, args_schema};
 }
@@ -82,13 +81,13 @@ pub mod prelude {
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::{info, warn};
+use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls, settle};
 use compaction::{CompactionPolicy, Summary};
 use effects::Effects;
 use journal::SessionLog;
-use recovery::RetryDue;
 use rig_core::message::ToolResult;
 use store::SessionStore;
 use turn::{ModelReply, PollCalls};
@@ -109,11 +108,18 @@ pub struct WriteJournal;
 /// Spawns one agent at startup when the restored session has none. Its
 /// [`SessionLog`] logs to the [`SessionStore`] inserted before it is
 /// built, if any, and nothing until [`journal::JournalPlugin`] restored
-/// the session. It sets no error handler: that is the application's choice.
+/// the session. It adds Bevy's `TimePlugin` unless the app has it, for the
+/// clock a retried model call waits on, and then lets that clock count
+/// frames up to [`calls::MAX_FRAME_GAP`] apart in full. It sets no error
+/// handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<TimePlugin>() {
+            app.add_plugins(TimePlugin)
+                .insert_resource(Time::<Virtual>::from_max_delta(calls::MAX_FRAME_GAP));
+        }
         let store = app.world().get_resource::<SessionStore>().cloned();
         let effects = Effects::continuing(store.as_ref().map(|store| &*store.0));
         app.add_plugins(activity::ActivityPlugin)
@@ -130,7 +136,6 @@ impl Plugin for AgentPlugin {
                 (
                     poll_calls::<ModelReply, Done<ModelReply>>,
                     poll_calls::<ToolResult, tools::ToolOutput>,
-                    poll_calls::<RetryDue, Done<RetryDue>>,
                     poll_calls::<Summary, Done<Summary>>,
                     turn::stream_partials,
                 )
@@ -153,7 +158,6 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
             .add_observer(turn::on_tool_done)
-            .add_observer(turn::on_retry_due)
             .add_observer(turn::on_compact)
             .add_observer(turn::on_summarize)
             .add_observer(turn::on_summary_done)

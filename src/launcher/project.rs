@@ -228,9 +228,9 @@ fn main_rs(home: &Home, config: &Config) -> String {
              let mut app = rig_harness::App::new();\n    \
              // A failing system, observer or command from a plugin is logged.\n    \
              app.set_error_handler(rig_harness::error::warn);\n    \
-             // The headless loop comes before the listed plugins, so a windowing\n    \
-             // plugin among them can replace it.\n    \
-             app.add_plugins((rig_harness::RigHarnessPlugins, rig_harness::HeadlessPlugins));\n",
+             // Bevy's base and the headless loop come first, so the agent runs on\n    \
+             // their clock and a windowing plugin listed below can replace the loop.\n    \
+             app.add_plugins((rig_harness::HeadlessPlugins, rig_harness::RigHarnessPlugins));\n",
         home.config().display()
     );
     for plugin in &config.plugins {

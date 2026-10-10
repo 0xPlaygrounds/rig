@@ -41,9 +41,9 @@ pub(crate) fn paths_from_env() -> SessionPaths {
     SessionPaths(dir)
 }
 
-/// Inserts the [`SessionPaths`] from the environment, and the
-/// [`SessionStore`] keeping the session there, and routes panics to the
-/// log.
+/// Inserts the [`SessionPaths`] from the environment, unless the log took
+/// them already, and the [`SessionStore`] keeping the session there, and
+/// routes panics to the log.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -51,25 +51,27 @@ impl Plugin for SessionPlugin {
         std::panic::set_hook(Box::new(|info| {
             error!("{info}\n{}", std::backtrace::Backtrace::capture());
         }));
-        let paths = paths_from_env();
-        app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())))
-            .insert_resource(paths);
+        let paths = app
+            .world_mut()
+            .get_resource_or_insert_with(paths_from_env)
+            .clone();
+        app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
     }
 }
 
 /// The `LogPlugin` formatter: plain text appended to the session's log, so
-/// nothing is written to stderr.
+/// nothing is written to stderr. The log comes before the session's other
+/// plugins, so it takes the session from the environment first.
 pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
-    let file = app
-        .world()
-        .get_resource::<SessionPaths>()
-        .and_then(|paths| {
-            OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(paths.log())
-                .ok()
-        });
+    let paths = app
+        .world_mut()
+        .get_resource_or_insert_with(paths_from_env)
+        .log();
+    let file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(paths)
+        .ok();
     let layer = fmt::Layer::default().with_ansi(false);
     Some(match file {
         Some(file) => Box::new(layer.with_writer(Mutex::new(file))),

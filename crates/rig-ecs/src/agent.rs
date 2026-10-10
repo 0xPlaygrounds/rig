@@ -15,8 +15,8 @@ use super::activity::Activity;
 use super::compaction::Compacted;
 use super::effects::Handler;
 use super::inbox::{Inbox, Origin};
-use super::recovery::Recovery;
 use super::tools::Footprint;
+use super::turn::Recovery;
 use super::usage::{Spending, TurnSpending};
 
 /// Marks an agent. Spawning it adds every per-agent component with its

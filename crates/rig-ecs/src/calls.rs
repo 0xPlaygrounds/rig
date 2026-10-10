@@ -10,15 +10,25 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, ConditionalSendFuture, Task, TaskPool};
+use bevy_tasks::{ConditionalSendFuture, Task, TaskPool};
 
 /// Frames run right after a woken one (see [`settle`]).
 const SETTLE_FRAMES: u32 = 4;
 
+/// The longest gap between two frames that Bevy's virtual clock counts in
+/// full, for a loop that sleeps while idle (a frame a second at least, in
+/// rig-harness). Bevy's default, 250 ms, suits a game's steady frames; across
+/// one-second frames it would make a retry's wait four times as long. A
+/// longer gap, such as a suspended machine, is still cut short, as Bevy
+/// intends: its fixed-step loop runs once for every 15.6 ms counted, all in
+/// the frame after the gap.
+pub const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
+
 /// Wakes the app's loop from another thread: a finished call, a streamed
-/// fragment, terminal input, a signal or a timer ([`Wake::after`]). The
-/// runner that sleeps between frames inserts its own; the default does
+/// fragment, terminal input or a signal. The runner that sleeps between
+/// frames inserts its own; the default does
 /// nothing, for a loop that never sleeps for long. A windowed app inserts
 /// one that sends winit's `WinitUserEvent::WakeUp` through bevy_winit's
 /// `EventLoopProxyWrapper`, in its plugin's `finish`, so the window's loop
@@ -48,20 +58,6 @@ impl Wake {
         self.woken.store(true, Ordering::Release);
         (self.wake)();
     }
-
-    /// Asks the loop for a frame once `delay` has passed, on
-    /// futures-timer's timer thread: a plugin animates or polls without a
-    /// thread of its own. Dropping the task cancels the wake; detach it to
-    /// keep it. For a steady rate, gate a system with [`every`](crate::timer::every).
-    /// The frame it brings is not [`settle`]d: a timer leaves no work for
-    /// the next frame.
-    pub fn after(&self, delay: Duration) -> Task<()> {
-        let wake = Arc::clone(&self.wake);
-        AsyncComputeTaskPool::get_or_init(TaskPool::default).spawn(async move {
-            futures_timer::Delay::new(delay).await;
-            wake();
-        })
-    }
 }
 
 impl Default for Wake {
@@ -69,6 +65,54 @@ impl Default for Wake {
         Self::new(|| {})
     }
 }
+
+/// Keeps a loop that sleeps between frames running a frame at least this
+/// often while the entity exists: a spinner, or a panel that polls. Time
+/// itself is Bevy's: a system paced with
+/// `.run_if(on_real_timer(interval))` runs on time while a `KeepAwake` of
+/// that interval lives, and a one-off wait is a delayed command
+/// (`commands.delayed().duration(wait)`), whose deadline the loop wakes for
+/// on its own.
+///
+/// ```
+/// use std::time::Duration;
+/// use rig_ecs::prelude::*;
+///
+/// #[derive(Resource, Default)]
+/// struct Spinner(u8);
+///
+/// const STEP: Duration = Duration::from_millis(125);
+///
+/// fn busy(agents: Query<(), With<ActiveTurn>>) -> bool {
+///     !agents.is_empty()
+/// }
+///
+/// fn spin(mut spinner: ResMut<Spinner>) {
+///     spinner.0 = spinner.0.wrapping_add(1);
+/// }
+///
+/// /// Frames every step while an agent works, none once all are idle.
+/// fn keep_awake(
+///     agents: Query<(), With<ActiveTurn>>,
+///     awake: Query<Entity, With<KeepAwake>>,
+///     mut commands: Commands,
+/// ) {
+///     match (agents.is_empty(), awake.single()) {
+///         (false, Err(_)) => {
+///             commands.spawn((Name::new("spinner"), KeepAwake(STEP)));
+///         }
+///         (true, Ok(entity)) => commands.entity(entity).despawn(),
+///         _ => {}
+///     }
+/// }
+///
+/// let mut app = App::new();
+/// app.init_resource::<Spinner>()
+///     .add_systems(Update, (keep_awake, spin.run_if(busy.and_then(on_real_timer(STEP)))));
+/// ```
+#[derive(Component, Reflect, Clone, Copy, Debug)]
+#[reflect(Component, Clone, Debug)]
+pub struct KeepAwake(pub Duration);
 
 /// Runs four more frames after a frame some [`Wake`] woke,
 /// in `Last`, by asking the loop for each without counting it as a wake.

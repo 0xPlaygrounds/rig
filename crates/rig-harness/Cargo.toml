@@ -25,6 +25,8 @@ tui = [
 
 [dependencies]
 base64 = { workspace = true }
+# `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
+bevy = { workspace = true }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
@@ -43,8 +45,8 @@ rig-core = { workspace = true, features = ["reqwest"] }
 # credential through.
 rig-reqwest = { workspace = true }
 # The agent runtime, with the session kept as JSON-lines files in its
-# directory and the windowless loop.
-rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["fs-journal", "runner", "subagents"] }
+# directory.
+rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["fs-journal", "subagents"] }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 # The built-in tools and the instruction files and process helpers.

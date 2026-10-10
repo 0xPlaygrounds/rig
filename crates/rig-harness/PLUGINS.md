@@ -270,9 +270,12 @@ fn recent(
   `ModelChoice`, `Effort`, `SystemPrompt`, `ToolAccess` and `Spending` the
   same way, so a plugin that changes them has nothing to log.
 - A `PromptSection` entity adds to every agent's system prompt.
-- `.run_if(every(Duration))` runs a system once per interval and keeps the
-  loop awake for it; `Wake::after(Duration)` wakes the loop once. Neither
-  needs a thread.
+- Time is Bevy's `Time`. `.run_if(on_real_timer(Duration))` runs a system
+  once per interval; the loop sleeps when idle, so an entity with a
+  `KeepAwake(Duration)` keeps it running at that pace while the timer
+  matters. A one-off wait is a delayed command,
+  `commands.delayed().duration(Duration)`; the loop wakes for it on its own.
+  None needs a thread.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -331,6 +334,9 @@ struct AgentsPanel;
 #[derive(Resource, Default)]
 struct Step(usize);
 
+/// How often the spinner turns.
+const TURN: Duration = Duration::from_millis(200);
+
 impl Plugin for AgentsPanelPlugin {
     fn build(&self, app: &mut App) {
         // A print run has no terminal view.
@@ -339,7 +345,7 @@ impl Plugin for AgentsPanelPlugin {
         }
         app.init_resource::<Step>()
             .add_systems(Startup, spawn)
-            .add_systems(Update, spin.run_if(busy.and_then(every(Duration::from_millis(200)))))
+            .add_systems(Update, (keep_awake, spin.run_if(busy.and_then(on_real_timer(TURN)))))
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
 }
@@ -350,6 +356,23 @@ fn spawn(mut commands: Commands) {
 
 fn busy(agents: Query<&Activity>) -> bool {
     agents.iter().any(Activity::is_busy)
+}
+
+/// While an agent works the panel keeps the loop awake, so the spinner
+/// turns; once all are idle the loop sleeps again.
+fn keep_awake(
+    agents: Query<&Activity>,
+    panels: Query<(Entity, Has<KeepAwake>), With<AgentsPanel>>,
+    mut commands: Commands,
+) {
+    let busy = busy(agents);
+    for (panel, awake) in &panels {
+        if busy && !awake {
+            commands.entity(panel).insert(KeepAwake(TURN));
+        } else if !busy && awake {
+            commands.entity(panel).remove::<KeepAwake>();
+        }
+    }
 }
 
 fn spin(mut step: ResMut<Step>, mut redraw: MessageWriter<RequestRedraw>) {

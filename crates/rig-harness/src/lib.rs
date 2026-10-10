@@ -18,9 +18,9 @@
 //! logs, the project context, the launcher protocol, `/reload` and the session
 //! commands (`/new`, `/resume`, `/name`). It adds none of Bevy's own
 //! plugins, so it sits next to `DefaultPlugins` in a windowed app.
-//! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead: the
-//! log, the task pools, a clean exit on signals, and a loop that sleeps
-//! until there is work. The built-in tools and commands and the terminal
+//! [`HeadlessPlugins`] is what a terminal app needs from Bevy instead:
+//! Bevy's `MinimalPlugins` (task pools, frame count, clock) with the log, a
+//! clean exit on signals, and a loop that sleeps until there is work. The built-in tools and commands and the terminal
 //! view are added on their own, as the `rig` launcher's generated
 //! `main.rs` does from `plugins.toml`. The error handler is the
 //! application's to set:
@@ -33,7 +33,7 @@
 //! fn main() -> AppExit {
 //!     App::new()
 //!         .set_error_handler(rig_harness::error::warn)
-//!         .add_plugins((RigHarnessPlugins, HeadlessPlugins))
+//!         .add_plugins((HeadlessPlugins, RigHarnessPlugins))
 //!         // With feature `tui`, `rig_harness::tui::TuiPlugin` adds the terminal view;
 //!         .add_plugins((BuiltinToolsPlugin, BuiltinCommandsPlugin, SubagentsPlugin))
 //!         .run()
@@ -55,6 +55,9 @@ pub mod plugins;
 pub mod tui;
 pub mod view;
 
+use bevy::MinimalPlugins;
+use bevy::diagnostic::FrameCountPlugin;
+use bevy::time::TimePlugin;
 use bevy_app::{
     PluginGroup, PluginGroupBuilder, ScheduleRunnerPlugin, TaskPoolOptions, TaskPoolPlugin,
     TaskPoolThreadAssignmentPolicy,
@@ -125,33 +128,37 @@ impl PluginGroup for RigHarnessPlugins {
 }
 
 /// What a terminal app takes from Bevy where a windowed one has
-/// `DefaultPlugins`: the log written to the session, task pools sized for
-/// an agent, a clean exit on SIGINT, SIGTERM and SIGHUP, and a loop that
-/// sleeps until [`Wake`](rig_ecs::calls::Wake)d. Added after
-/// [`RigHarnessPlugins`], whose session the log writes to; a windowing plugin
-/// added later through [`windowed`] sets its own runner in place of this
-/// loop (see [`plugin_guide`]).
+/// `DefaultPlugins`: Bevy's `MinimalPlugins` with task pools sized for an
+/// agent and the frame count and clock, the log written to the session, a
+/// clean exit on SIGINT, SIGTERM and SIGHUP, and in place of Bevy's
+/// `ScheduleRunnerPlugin` a loop that sleeps until
+/// [`Wake`](rig_ecs::calls::Wake)d or until the clock's next deadline.
+/// Added before [`RigHarnessPlugins`], so the agent core runs on its clock;
+/// a windowing plugin added later through [`windowed`] sets its own runner
+/// in place of this loop (see [`plugin_guide`]).
 pub struct HeadlessPlugins;
 
 impl PluginGroup for HeadlessPlugins {
     fn build(self) -> PluginGroupBuilder {
-        PluginGroupBuilder::start::<Self>()
+        MinimalPlugins
+            .build()
+            .set(TaskPoolPlugin {
+                task_pool_options: task_pools(),
+            })
+            .disable::<ScheduleRunnerPlugin>()
             .add(LogPlugin {
                 fmt_layer: host::session::log_layer,
                 ..LogPlugin::default()
             })
-            .add(TaskPoolPlugin {
-                task_pool_options: task_pools(),
-            })
             .add(host::signals::ExitOnSignalPlugin)
-            .add(rig_ecs::runner::RunnerPlugin)
+            .add(host::runner::RunnerPlugin)
     }
 }
 
 /// `plugins`, such as Bevy's `DefaultPlugins`, without what
-/// [`HeadlessPlugins`] already sets: the log, the task pools, the signal
-/// handler and the loop. Its windowing plugin then runs the loop;
-/// [`plugin_guide`] shows how a window plugin wakes it.
+/// [`HeadlessPlugins`] already sets: the log, the task pools, the frame
+/// count, the clock, the signal handler and the loop. Its windowing plugin
+/// then runs the loop; [`plugin_guide`] shows how a window plugin wakes it.
 pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
     let mut plugins = plugins.build();
     if plugins.contains::<LogPlugin>() {
@@ -159,6 +166,12 @@ pub fn windowed(plugins: impl PluginGroup) -> PluginGroupBuilder {
     }
     if plugins.contains::<TaskPoolPlugin>() {
         plugins = plugins.disable::<TaskPoolPlugin>();
+    }
+    if plugins.contains::<FrameCountPlugin>() {
+        plugins = plugins.disable::<FrameCountPlugin>();
+    }
+    if plugins.contains::<TimePlugin>() {
+        plugins = plugins.disable::<TimePlugin>();
     }
     if plugins.contains::<ScheduleRunnerPlugin>() {
         plugins = plugins.disable::<ScheduleRunnerPlugin>();
