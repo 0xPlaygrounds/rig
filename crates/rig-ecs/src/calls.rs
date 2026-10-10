@@ -28,8 +28,8 @@ pub const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
 
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
-/// frames inserts its own; the default does
-/// nothing, for a loop that never sleeps for long. A windowed app inserts
+/// frames inserts its own; the default does nothing, for a loop that never
+/// sleeps for long. A windowed app inserts
 /// one that sends winit's `WinitUserEvent::WakeUp` through bevy_winit's
 /// `EventLoopProxyWrapper`, in its plugin's `finish`, so the window's loop
 /// runs a frame for agent activity (the recipe is in rig-harness's docs).
@@ -78,37 +78,15 @@ impl Default for Wake {
 /// use std::time::Duration;
 /// use rig_ecs::prelude::*;
 ///
-/// #[derive(Resource, Default)]
-/// struct Spinner(u8);
+/// const STEP: Duration = Duration::from_millis(200);
 ///
-/// const STEP: Duration = Duration::from_millis(125);
-///
-/// fn busy(agents: Query<(), With<ActiveTurn>>) -> bool {
-///     !agents.is_empty()
-/// }
-///
-/// fn spin(mut spinner: ResMut<Spinner>) {
-///     spinner.0 = spinner.0.wrapping_add(1);
-/// }
-///
-/// /// Frames every step while an agent works, none once all are idle.
-/// fn keep_awake(
-///     agents: Query<(), With<ActiveTurn>>,
-///     awake: Query<Entity, With<KeepAwake>>,
-///     mut commands: Commands,
-/// ) {
-///     match (agents.is_empty(), awake.single()) {
-///         (false, Err(_)) => {
-///             commands.spawn((Name::new("spinner"), KeepAwake(STEP)));
-///         }
-///         (true, Ok(entity)) => commands.entity(entity).despawn(),
-///         _ => {}
-///     }
-/// }
+/// fn tick() {}
 ///
 /// let mut app = App::new();
-/// app.init_resource::<Spinner>()
-///     .add_systems(Update, (keep_awake, spin.run_if(busy.and_then(on_real_timer(STEP)))));
+/// // `tick` runs every step while this entity lives; once it is despawned
+/// // the loop sleeps until there is work.
+/// app.world_mut().spawn((Name::new("spinner"), KeepAwake(STEP)));
+/// app.add_systems(Update, tick.run_if(on_real_timer(STEP)));
 /// ```
 #[derive(Component, Reflect, Clone, Copy, Debug)]
 #[reflect(Component, Clone, Debug)]
