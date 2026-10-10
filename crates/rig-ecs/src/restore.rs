@@ -108,14 +108,9 @@ pub(crate) fn restore_session(world: &mut World) {
             )),
         }
     }
-    let parents: HashMap<String, Option<String>> = folded
-        .iter()
-        .map(|agent| (agent.header.agent.clone(), agent.header.parent.clone()))
-        .collect();
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    let mut restored = Vec::new();
     let mut entities = HashMap::new();
     let mut links = Vec::new();
     let mut logs = Vec::new();
@@ -124,7 +119,7 @@ pub(crate) fn restore_session(world: &mut World) {
             header,
             conversation,
             condensed,
-            mut log,
+            log,
         } = agent;
         let id = AgentId(header.agent.clone());
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
@@ -137,11 +132,9 @@ pub(crate) fn restore_session(world: &mut World) {
             }
         }
         let entity = spawned.id();
-        log.depth = depth(&header.agent, &parents);
-        restored.push((log.depth, entity));
         entities.insert(id.0.clone(), entity);
         links.push((entity, header.parent));
-        logs.push((id.0, log));
+        logs.push((entity, id.0, log));
     }
     for (child, parent) in links {
         if let Some(&parent) = parent.and_then(|parent| entities.get(&parent))
@@ -150,28 +143,24 @@ pub(crate) fn restore_session(world: &mut World) {
             child.insert(SpawnedBy(parent));
         }
     }
+    let mut parents = world.query::<&SpawnedBy>();
+    let parents = parents.query(world);
+    let bound = logs.len();
+    let restored = logs
+        .iter_mut()
+        .map(|(entity, _, log)| {
+            // A loop cannot happen, but a bound costs nothing.
+            log.depth = parents.iter_ancestors(*entity).take(bound).count();
+            (log.depth, *entity)
+        })
+        .collect();
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
-    log.resume(logs);
+    log.resume(logs.into_iter().map(|(_, id, log)| (id, log)).collect());
     world.insert_resource(RestoredAgents(restored));
     for notice in notices {
         world.write_message(Notice::error(None, notice));
     }
-}
-
-/// How many agents above `agent` started it.
-fn depth(agent: &str, parents: &HashMap<String, Option<String>>) -> usize {
-    let mut depth = 0;
-    let mut at = agent;
-    while let Some(Some(parent)) = parents.get(at) {
-        depth += 1;
-        // A loop cannot happen, but a bound costs nothing.
-        if depth > parents.len() {
-            break;
-        }
-        at = parent;
-    }
-    depth
 }
 
 /// Inserts on `agent` the saved component of the type path `path` from its
