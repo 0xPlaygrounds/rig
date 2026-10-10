@@ -19,7 +19,6 @@ tui = [
     "dep:ignore",
     "dep:libc",
     "dep:pulldown-cmark",
-    "dep:similar",
     "dep:unicode-width",
 ]
 
@@ -68,7 +67,6 @@ unicode-width = { workspace = true, optional = true }
 # Path completion in the input, as git ignores it.
 ignore = { workspace = true, optional = true }
 # The diffs the terminal view draws.
-similar = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.

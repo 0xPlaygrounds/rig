@@ -12642,7 +12642,6 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "similar",
  "unicode-width 0.2.2",
 ]
 

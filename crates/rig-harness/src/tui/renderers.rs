@@ -214,41 +214,7 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
 fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
-        return lines;
-    }
-    // A tool that returns its own diff is shown by it; otherwise the
-    // change asked for.
-    if let Some(text) = view.result_text()
-        && let Some(diff) = diff::unified_lines(&text, DIFF_LINES)
-    {
-        lines.extend(diff);
-        return lines;
-    }
-    // Before the result: each replacement asked for, on its own.
-    let edits = view
-        .call
-        .function
-        .arguments
-        .get("edits")
-        .and_then(|edits| edits.as_array());
-    let mut asked = Vec::new();
-    for edit in edits.into_iter().flatten() {
-        let text = |key: &str| edit.get(key).and_then(|text| text.as_str());
-        if let (Some(old), Some(new)) = (text("old_text"), text("new_text")) {
-            if !asked.is_empty() {
-                asked.push(Line::from("    ⋯").dark_gray());
-            }
-            asked.extend(diff::diff_lines(old, new, DIFF_LINES));
-        }
-    }
-    if asked.is_empty() {
-        lines.extend(view.result_lines(RESULT_LINES));
-    } else {
-        asked.truncate(DIFF_LINES);
-        lines.extend(asked);
-    }
+    lines.extend(view.result_lines(RESULT_LINES));
     lines
 }
 
