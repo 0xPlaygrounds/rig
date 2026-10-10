@@ -104,14 +104,19 @@ impl Writer {
         self.lines.push(Line::from(spans));
     }
 
-    fn text(&mut self, text: &str) {
-        if let Some(table) = &mut self.table {
-            let style = self.styles.iter().fold(Style::new(), |s, i| s.patch(*i));
-            if let Some(cell) = table.rows.last_mut().and_then(|row| row.last_mut()) {
-                cell.push(Span::styled(text.to_owned(), style));
+    /// Writes `span` on the current line, or in the current table cell.
+    fn push(&mut self, span: Span<'static>) {
+        match &mut self.table {
+            Some(table) => {
+                if let Some(cell) = table.rows.last_mut().and_then(|row| row.last_mut()) {
+                    cell.push(span);
+                }
             }
-            return;
+            None => self.line.push(span),
         }
+    }
+
+    fn text(&mut self, text: &str) {
         if self.code {
             for (index, line) in text.split('\n').enumerate() {
                 if index > 0 {
@@ -124,8 +129,7 @@ impl Writer {
             }
             return;
         }
-        let style = self.style();
-        self.line.push(Span::styled(text.to_owned(), style));
+        self.push(Span::styled(text.to_owned(), self.style()));
     }
 
     /// Ends a line of a code block, keeping empty ones.
@@ -141,18 +145,7 @@ impl Writer {
             Event::Start(tag) => self.start(tag),
             Event::End(tag) => self.end(tag),
             Event::Text(text) => self.text(&text),
-            Event::Code(code) => {
-                if let Some(table) = &mut self.table {
-                    if let Some(cell) = table.rows.last_mut().and_then(|row| row.last_mut()) {
-                        cell.push(Span::styled(code.to_string(), code_style()));
-                    }
-                } else {
-                    self.line.push(Span::styled(code.to_string(), code_style()));
-                }
-            }
-            Event::InlineMath(math) | Event::DisplayMath(math) => {
-                self.line.push(Span::styled(math.to_string(), code_style()));
-            }
+            Event::Code(code) => self.push(Span::styled(code.to_string(), code_style())),
             Event::Html(html) | Event::InlineHtml(html) => {
                 let style = self.style().dim();
                 for (index, line) in html.trim_end_matches('\n').split('\n').enumerate() {
@@ -161,9 +154,6 @@ impl Writer {
                     }
                     self.line.push(Span::styled(line.to_owned(), style));
                 }
-            }
-            Event::FootnoteReference(name) => {
-                self.line.push(Span::from(format!("[^{name}]")).dim());
             }
             Event::SoftBreak => self.line.push(Span::from(" ")),
             Event::HardBreak => self.flush(),
@@ -176,6 +166,8 @@ impl Writer {
                 let mark = if done { "[x] " } else { "[ ] " };
                 self.line.push(Span::from(mark).cyan());
             }
+            // Math and footnotes, which `render` does not turn on.
+            _ => {}
         }
     }
 
@@ -247,26 +239,13 @@ impl Writer {
                     row.push(Vec::new());
                 }
             }
-            Tag::FootnoteDefinition(name) => {
-                self.block();
-                self.line.push(Span::from(format!("[^{name}]: ")).dim());
-            }
-            Tag::DefinitionListDefinition => {
-                self.flush();
-                self.line.push(Span::from("  "));
-            }
-            Tag::HtmlBlock
-            | Tag::DefinitionList
-            | Tag::DefinitionListTitle
-            | Tag::Superscript
-            | Tag::Subscript
-            | Tag::MetadataBlock(_) => {}
+            _ => {}
         }
     }
 
     fn end(&mut self, tag: TagEnd) {
         match tag {
-            TagEnd::Paragraph | TagEnd::HtmlBlock | TagEnd::FootnoteDefinition => {
+            TagEnd::Paragraph | TagEnd::HtmlBlock => {
                 self.flush();
                 self.gap = true;
             }
@@ -324,13 +303,7 @@ impl Writer {
                     table.header_rows = table.rows.len();
                 }
             }
-            TagEnd::DefinitionListTitle | TagEnd::DefinitionListDefinition => self.flush(),
-            TagEnd::TableRow
-            | TagEnd::TableCell
-            | TagEnd::DefinitionList
-            | TagEnd::Superscript
-            | TagEnd::Subscript
-            | TagEnd::MetadataBlock(_) => {}
+            _ => {}
         }
     }
 

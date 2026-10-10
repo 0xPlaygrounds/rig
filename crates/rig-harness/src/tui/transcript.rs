@@ -7,7 +7,6 @@
 
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hasher};
-use std::io;
 use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
@@ -17,7 +16,9 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{ToolResult, UserContent};
 
 use super::markdown;
-use super::renderers::{RESULT_LINES, RenderToolCall, ToolCallView, excerpt};
+use super::renderers::{
+    RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
+};
 use super::wrap::wrap_all;
 use crate::front::attached_file;
 use crate::host::launcher::BUILD_ORIGIN;
@@ -254,20 +255,6 @@ impl Scroll {
     }
 }
 
-/// Feeds what is written to a hasher.
-struct HashWriter<'a>(&'a mut DefaultHasher);
-
-impl io::Write for HashWriter<'_> {
-    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-        self.0.write(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
 /// A hash of the messages a message's look depends on.
 fn fingerprint(messages: [Option<&Message>; 3]) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -275,7 +262,7 @@ fn fingerprint(messages: [Option<&Message>; 3]) -> u64 {
         match message {
             Some(message) => {
                 hasher.write_u8(1);
-                serde_json::to_writer(HashWriter(&mut hasher), message).ok();
+                hasher.write(&serde_json::to_vec(message).unwrap_or_default());
             }
             None => hasher.write_u8(0),
         }
@@ -340,19 +327,11 @@ fn message_lines(
                     }
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
-                    UserContent::ToolResult(result) => {
-                        let text: Vec<&str> = result
-                            .content
-                            .iter()
-                            .filter_map(|content| content.as_text())
-                            .collect();
-                        let style = if result.is_error {
-                            Style::new().red()
-                        } else {
-                            Style::new().dim()
-                        };
-                        lines.extend(excerpt(&text.join("\n"), RESULT_LINES, style));
-                    }
+                    UserContent::ToolResult(result) => lines.extend(excerpt(
+                        &result_text(result),
+                        RESULT_LINES,
+                        result_style(result.is_error),
+                    )),
                     UserContent::Image(_) => lines.push(Line::from("  [image]").dim()),
                     _ => lines.push(Line::from("  [attachment]").dim()),
                 }
@@ -399,17 +378,12 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
 }
 
 /// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads, also one an older version wrote.
+/// without the header the model reads.
 /// `/agents` shows an agent's whole transcript.
 fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
     let body = origin
         .header()
         .and_then(|header| text.strip_prefix(&header))
-        .or_else(|| {
-            text.split_once('\n').and_then(|(first, rest)| {
-                (first.starts_with('[') && first.ends_with("not the user's words]")).then_some(rest)
-            })
-        })
         .map_or(text, |body| body.trim_start_matches('\n'));
     // A failed build's note, which the model reads: told apart by its
     // origin.

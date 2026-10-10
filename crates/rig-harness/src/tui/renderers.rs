@@ -42,14 +42,7 @@ impl ToolCallView<'_> {
 
     /// The result's text, joined, if the tool answered.
     pub fn result_text(&self) -> Option<String> {
-        self.result.map(|result| {
-            result
-                .content
-                .iter()
-                .filter_map(|content| content.as_text())
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        self.result.map(result_text)
     }
 
     /// Whether the tool answered with an error.
@@ -84,12 +77,7 @@ impl ToolCallView<'_> {
         {
             return lines;
         }
-        let style = if self.failed() {
-            Style::new().red()
-        } else {
-            Style::new().dim()
-        };
-        excerpt(&text, limit, style)
+        excerpt(&text, limit, result_style(self.failed()))
     }
 
     /// The look of a tool with no renderer: the name and arguments, then
@@ -100,6 +88,25 @@ impl ToolCallView<'_> {
             vec![self.header(self.name().to_owned(), shorten(&arguments, ARGUMENT_CHARS))];
         lines.extend(self.result_lines(RESULT_LINES));
         lines
+    }
+}
+
+/// A tool result's text, joined.
+pub(crate) fn result_text(result: &ToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|content| content.as_text())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The style of a tool result's lines: red for an error, else dimmed.
+pub(crate) fn result_style(failed: bool) -> Style {
+    if failed {
+        Style::new().red()
+    } else {
+        Style::new().dim()
     }
 }
 
@@ -188,18 +195,8 @@ pub(crate) fn add_builtin_renderers(app: &mut App) {
 
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
-    let range = match (
-        view.call
-            .function
-            .arguments
-            .get("offset")
-            .and_then(|v| v.as_u64()),
-        view.call
-            .function
-            .arguments
-            .get("limit")
-            .and_then(|v| v.as_u64()),
-    ) {
+    let number = |key: &str| view.call.function.arguments.get(key)?.as_u64();
+    let range = match (number("offset"), number("limit")) {
         (Some(offset), Some(limit)) => format!("lines {offset}..{}", offset + limit),
         (Some(offset), None) => format!("from line {offset}"),
         (None, Some(limit)) => format!("first {limit} lines"),
@@ -207,9 +204,7 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     };
     let mut lines = vec![view.header(format!("read {path}"), range)];
     match view.result_text() {
-        Some(text) if view.failed() => {
-            lines.extend(excerpt(&text, RESULT_LINES, Style::new().red()))
-        }
+        Some(_) if view.failed() => lines.extend(view.result_lines(RESULT_LINES)),
         Some(text) => lines.push(Line::from(format!("  ⎿ {} lines", text.lines().count())).dim()),
         None => {}
     }
@@ -287,11 +282,7 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     }
     // The end of a command's output is where its errors and summary are.
     if let Some(text) = view.result_text() {
-        let style = if view.failed() {
-            Style::new().red()
-        } else {
-            Style::new().dim()
-        };
+        let style = result_style(view.failed());
         let total = text.lines().count();
         let skipped = total.saturating_sub(RESULT_LINES + 2);
         if skipped > 0 {
