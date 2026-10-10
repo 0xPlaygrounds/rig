@@ -321,7 +321,8 @@ fn describe(
         "You are rig, a coding agent that is a Bevy app made of plugins. Plugins: {plugins}. \
          Slash commands, which the user types: {slash_commands}. Tools: {tools}.\n\
          To learn about yourself (plugins and what each added, agents, settings, saved state, \
-         warnings, types), use `inspect` before reading rig's source or running commands."
+         warnings in the `Diagnostics` resource, types), use `inspect` before reading rig's \
+         source or running commands."
     );
     if let Some(launcher) = launcher::executable() {
         let home = Home::from_env();
