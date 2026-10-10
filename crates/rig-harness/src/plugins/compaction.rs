@@ -8,8 +8,8 @@
 //! and a [`ModelRequest`] for the summary, a call of the turn, so
 //! interrupting the turn cancels it.
 
-use rig_core::catalog::ModelSpec;
-use rig_core::completion::{Message, UnsupportedOption, Usage, tokens_label};
+use bevy_ecs::query::QueryData;
+use rig_core::completion::{Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
@@ -109,13 +109,15 @@ pub struct Summarizing {
     pub state: SummaryState,
 }
 
-/// What compacting an agent reads: its messages, what requests already
+/// An agent as compacting it reads it: its messages, what requests already
 /// leave out, its summary so far, and its model.
-struct Compacting<'a> {
-    messages: &'a [Message],
-    condensed: Option<&'a Condensed>,
-    summarized: Option<&'a Summarized>,
-    spec: &'a ModelSpec,
+#[derive(QueryData)]
+#[query_data(mutable)]
+struct Compacting {
+    conversation: &'static mut Conversation,
+    condensed: Option<&'static Condensed>,
+    summarized: Option<&'static Summarized>,
+    connection: Option<&'static Connection>,
 }
 
 /// The first message requests send as it is, after what `condensed`
@@ -134,33 +136,51 @@ fn clear_old_outputs(
     policy.clearing.clear(live.unwrap_or_default())
 }
 
-impl Compacting<'_> {
-    /// Where a compaction for `reason` should end, if anything new would be
-    /// summarized.
-    fn cut(&self, policy: &CompactionPolicy, reason: &CompactReason) -> Option<usize> {
-        let from = first_live(self.condensed);
-        policy.cut(self.messages, from, reason, Some(self.spec))
-    }
+/// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
+fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str) -> Notice {
+    let tokens = tokens_label(cleared.tokens as u64);
+    let results = cleared.results;
+    Notice::info(
+        agent,
+        format!("{situation}: cleared {results} older tool outputs (about {tokens} tokens){then}."),
+    )
+}
 
-    /// Starts the summary call of a compaction for `reason` ending at
-    /// `upto`, on `turn`.
+impl CompactingItem<'_, '_> {
+    /// Starts the summary call of a compaction of `agent` for `reason` on
+    /// `turn`, or on a turn of its own when `None`, when it has a model and
+    /// anything new would be summarized, and says whether it started. The
+    /// agent is told why a compaction could not start.
     fn start(
         &self,
+        (agent, turn): (Entity, Option<Entity>),
+        (policy, reason): (&CompactionPolicy, CompactReason),
         commands: &mut Commands,
-        turn: Entity,
-        policy: &CompactionPolicy,
-        (reason, upto): (CompactReason, usize),
-    ) -> Result<(), UnsupportedOption> {
-        let (state, request) = policy.plan(
-            self.summarized
-                .map(|summarized| &summarized.0)
-                .unwrap_or(&SummaryState::default()),
-            self.messages,
-            first_live(self.condensed),
+        notices: &mut MessageWriter<Notice>,
+    ) -> Option<bool> {
+        let (messages, spec) = (self.conversation.messages(), &*self.connection?.spec);
+        let from = first_live(self.condensed);
+        let upto = policy.cut(messages, from, &reason, Some(spec))?;
+        let none = SummaryState::default();
+        let planned = policy.plan(
+            self.summarized.map_or(&none, |summarized| &summarized.0),
+            messages,
+            from,
             upto,
-            self.spec,
+            spec,
             &reason,
-        )?;
+        );
+        let (state, request) = match planned {
+            Ok(planned) => planned,
+            Err(why) => {
+                notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
+                return Some(false);
+            }
+        };
+        let turn = turn.unwrap_or_else(|| {
+            let turn = commands.spawn((Name::new("compaction"), TurnOf(agent)));
+            turn.id()
+        });
         commands.spawn((
             Name::new("compacting"),
             Summarizing {
@@ -171,7 +191,7 @@ impl Compacting<'_> {
             ModelRequest { request },
             CallOf(turn),
         ));
-        Ok(())
+        Some(true)
     }
 }
 
@@ -179,54 +199,37 @@ impl Compacting<'_> {
 /// of its own that ends with the summary.
 fn on_compact(
     compact: On<Compact>,
-    agents: Query<
-        (
-            &Conversation,
-            Option<&Condensed>,
-            Option<&Summarized>,
-            Option<&Connection>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
+    mut agents: Query<(Compacting, Has<ActiveTurn>), With<Agent>>,
     policy: Res<Compaction>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = compact.entity;
-    let Ok((conversation, condensed, summarized, connection, busy)) = agents.get(agent) else {
+    let Ok((compacting, busy)) = agents.get_mut(agent) else {
         return;
     };
     if busy {
         notices.write(Notice::info(agent, "A turn is running; stop it first."));
         return;
     }
-    let Some(connection) = connection else {
+    if compacting.connection.is_none() {
         notices.write(Notice::info(
             agent,
             "No model is connected; pick one first.",
         ));
         return;
-    };
-    let compacting = Compacting {
-        messages: conversation.messages(),
-        condensed,
-        summarized,
-        spec: &connection.spec,
-    };
+    }
     let reason = CompactReason::Asked {
         focus: compact.focus.clone(),
     };
-    let Some(upto) = compacting.cut(&policy.0, &reason) else {
+    let started = compacting.start(
+        (agent, None),
+        (&policy.0, reason),
+        &mut commands,
+        &mut notices,
+    );
+    if started.is_none() {
         notices.write(Notice::info(agent, "Nothing to compact yet."));
-        return;
-    };
-    let turn = commands
-        .spawn((Name::new("compaction"), TurnOf(agent)))
-        .id();
-    if let Err(why) = compacting.start(&mut commands, turn, &policy.0, (reason, upto)) {
-        notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
-        commands.entity(turn).despawn();
     }
 }
 
@@ -236,13 +239,7 @@ fn on_compact(
 /// last reply's or the request's estimate, whichever is larger.
 fn compact_near_the_window(
     mut prepare: On<PrepareRequest>,
-    mut agents: Query<(
-        &mut Conversation,
-        Option<&Condensed>,
-        Option<&Summarized>,
-        Option<&Connection>,
-        &mut LastUsage,
-    )>,
+    mut agents: Query<(Compacting, &mut LastUsage)>,
     mut turns: Query<&mut Compactions>,
     policy: Res<Compaction>,
     mut commands: Commands,
@@ -252,10 +249,10 @@ fn compact_near_the_window(
     let Ok(mut compactions) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((mut conversation, condensed, summarized, connection, mut last)) = agents.get_mut(agent)
-    else {
+    let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
         return;
     };
+    let connection = compacting.connection;
     let Some(connection) = connection.filter(|_| compactions.summaries < MAX_COMPACTIONS) else {
         return;
     };
@@ -267,42 +264,24 @@ fn compact_near_the_window(
     if !policy.over_threshold(used, spec) {
         return;
     }
-    let cleared = clear_old_outputs(policy, &mut conversation, condensed);
+    let condensed = compacting.condensed;
+    let cleared = clear_old_outputs(policy, &mut compacting.conversation, condensed);
     let left = used.saturating_sub(cleared.tokens as u64);
     if cleared.results > 0 {
         policy.clearing.clear(&mut prepare.event_mut().messages);
         *last = LastUsage(Some(Usage::new().total_tokens(left)));
-        notices.write(Notice::info(
-            agent,
-            format!(
-                "The conversation nears the model's context window: cleared {} older tool \
-                 outputs (about {} tokens).",
-                cleared.results,
-                tokens_label(cleared.tokens as u64)
-            ),
-        ));
+        let nears = "The conversation nears the model's context window";
+        notices.write(cleared_notice(agent, nears, &cleared, ""));
     }
     if !policy.over_threshold(left, spec) {
         return;
     }
-    let compacting = Compacting {
-        messages: conversation.messages(),
-        condensed,
-        summarized,
-        spec,
-    };
-    let Some(upto) = compacting.cut(policy, &CompactReason::Threshold) else {
-        return;
-    };
-    compactions.summaries += 1;
-    let started = compacting.start(
-        &mut commands,
-        turn,
-        policy,
-        (CompactReason::Threshold, upto),
-    );
-    if let Err(why) = started {
-        notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
+    let reason = (policy, CompactReason::Threshold);
+    if compacting
+        .start((agent, Some(turn)), reason, &mut commands, &mut notices)
+        .is_some()
+    {
+        compactions.summaries += 1;
     }
 }
 
@@ -311,12 +290,7 @@ fn compact_near_the_window(
 /// summarizes the older messages first. Otherwise the turn fails.
 fn recover_from_overflow(
     mut failed: On<ModelFailed>,
-    mut agents: Query<(
-        &mut Conversation,
-        Option<&Condensed>,
-        Option<&Summarized>,
-        Option<&Connection>,
-    )>,
+    mut agents: Query<Compacting>,
     mut turns: Query<&mut Compactions>,
     policy: Res<Compaction>,
     mut commands: Commands,
@@ -329,53 +303,38 @@ fn recover_from_overflow(
     let Ok(mut compactions) = turns.get_mut(turn) else {
         return;
     };
-    let Ok((mut conversation, condensed, summarized, connection)) = agents.get_mut(agent) else {
+    let Ok(mut compacting) = agents.get_mut(agent) else {
         return;
     };
     let policy = &policy.0;
+    let outgrew = "The conversation outgrew the model's context window";
     if !compactions.cleared {
         compactions.cleared = true;
-        let cleared = clear_old_outputs(policy, &mut conversation, condensed);
+        let condensed = compacting.condensed;
+        let cleared = clear_old_outputs(policy, &mut compacting.conversation, condensed);
         if cleared.results > 0 {
-            notices.write(Notice::info(
-                agent,
-                format!(
-                    "The conversation outgrew the model's context window: cleared {} older \
-                     tool outputs (about {} tokens) and sending it again.",
-                    cleared.results,
-                    tokens_label(cleared.tokens as u64)
-                ),
-            ));
+            let then = " and sending it again";
+            notices.write(cleared_notice(agent, outgrew, &cleared, then));
             commands.trigger(CallModel { entity: turn });
             failed.event_mut().handled = true;
             return;
         }
     }
-    let Some(connection) = connection.filter(|_| compactions.summaries < MAX_COMPACTIONS) else {
+    if compactions.summaries >= MAX_COMPACTIONS {
         return;
-    };
-    let compacting = Compacting {
-        messages: conversation.messages(),
-        condensed,
-        summarized,
-        spec: &connection.spec,
-    };
-    let Some(upto) = compacting.cut(policy, &CompactReason::Overflow) else {
+    }
+    let reason = (policy, CompactReason::Overflow);
+    let Some(started) = compacting.start((agent, Some(turn)), reason, &mut commands, &mut notices)
+    else {
         return;
     };
     compactions.summaries += 1;
-    match compacting.start(&mut commands, turn, policy, (CompactReason::Overflow, upto)) {
-        Ok(()) => {
-            notices.write(Notice::info(
-                agent,
-                "The conversation outgrew the model's context window: summarizing its older \
-                 messages and sending it again.",
-            ));
-            failed.event_mut().handled = true;
-        }
-        Err(why) => {
-            notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
-        }
+    if started {
+        notices.write(Notice::info(
+            agent,
+            format!("{outgrew}: summarizing its older messages and sending it again."),
+        ));
+        failed.event_mut().handled = true;
     }
 }
 
