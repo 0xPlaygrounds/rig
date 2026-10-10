@@ -18,7 +18,7 @@
 //! Nothing here reads the clock: a caller passes `now`, which a browser
 //! target gets from its own clock.
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime};
 
 use super::{ErrorKind, ErrorReport};
 
@@ -112,7 +112,9 @@ impl ErrorReport {
         if let Some(value) = header("retry-after") {
             return match value.parse::<f64>() {
                 Ok(secs) => seconds(secs),
-                Err(_) => http_date(value).map(|at| at.duration_since(now).unwrap_or_default()),
+                Err(_) => httpdate::parse_http_date(value)
+                    .ok()
+                    .map(|at| at.duration_since(now).unwrap_or_default()),
             };
         }
         let body = self
@@ -217,42 +219,6 @@ fn hinted_wait(text: &str) -> Option<Duration> {
         "s" => seconds(amount),
         _ => None,
     }
-}
-
-/// The time an HTTP date names, in its one current form, the IMF-fixdate
-/// of RFC 9110: `Sun, 06 Nov 1994 08:49:37 GMT`.
-fn http_date(text: &str) -> Option<SystemTime> {
-    let mut words = text.split_whitespace().skip(1);
-    let day: u64 = words.next()?.parse().ok()?;
-    let month = words.next()?;
-    let year: i64 = words.next()?.parse().ok()?;
-    let mut clock = words
-        .next()?
-        .split(':')
-        .map(|part| part.parse::<u64>().ok());
-    let (hour, minute, second) = (clock.next()??, clock.next()??, clock.next()??);
-    if words.next()? != "GMT" {
-        return None;
-    }
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    let month = MONTHS.iter().position(|name| *name == month)?;
-    let days = u64::try_from(days_from_civil(year, month as i64 + 1, day as i64)).ok()?;
-    let secs = days * 86_400 + hour * 3_600 + minute * 60 + second;
-    UNIX_EPOCH.checked_add(Duration::from_secs(secs))
-}
-
-/// Days from 1970-01-01 to the proleptic Gregorian `year`-`month`-`day`
-/// (Howard Hinnant's `days_from_civil`).
-fn days_from_civil(year: i64, month: i64, day: i64) -> i64 {
-    let year = if month <= 2 { year - 1 } else { year };
-    let era = year.div_euclid(400);
-    let year_of_era = year - era * 400;
-    let month_from_march = (month + 9) % 12;
-    let day_of_year = (153 * month_from_march + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    era * 146_097 + day_of_era - 719_468
 }
 
 #[cfg(test)]
