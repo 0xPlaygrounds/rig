@@ -295,7 +295,7 @@ pub struct SystemPrompt(pub String);
 
 impl From<SystemPrompt> for Option<String> {
     fn from(prompt: SystemPrompt) -> Self {
-        (prompt.0 != SystemPrompt::default().0).then_some(prompt.0)
+        (prompt.0 != DEFAULT_SYSTEM_PROMPT).then_some(prompt.0)
     }
 }
 
@@ -305,28 +305,29 @@ impl From<Option<String>> for SystemPrompt {
     }
 }
 
+/// An agent's [`SystemPrompt`] unless it is given another.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
+    user's project from their terminal: \
+    you read and search code, edit files and run commands with the tools you are \
+    given, and answer questions about the code.\n\
+    \n\
+    - Work in the working directory named below, unless the user says otherwise.\n\
+    - Read a file before you edit it. Change what was asked, in the style of the \
+    code around it, and nothing else.\n\
+    - After a change, check it when you can: build it, run the tests, or run the \
+    code.\n\
+    - When something fails, read the error and fix the cause. Ask the user when the \
+    request is unclear or you are blocked, rather than guess.\n\
+    - Do not undo changes you did not make, and do not run commands that delete \
+    work, rewrite history or reach outside the project unless the user asked.\n\
+    - Keep answers short. Say what you changed and what is left, and name files by \
+    their path.\n\
+    - Give that answer once, at the end of the turn: no running commentary or \
+    interim summaries between tool calls.";
+
 impl Default for SystemPrompt {
     fn default() -> Self {
-        Self(
-            "You are rig, a coding agent. You work in the user's project from their terminal: \
-             you read and search code, edit files and run commands with the tools you are \
-             given, and answer questions about the code.\n\
-             \n\
-             - Work in the working directory named below, unless the user says otherwise.\n\
-             - Read a file before you edit it. Change what was asked, in the style of the \
-             code around it, and nothing else.\n\
-             - After a change, check it when you can: build it, run the tests, or run the \
-             code.\n\
-             - When something fails, read the error and fix the cause. Ask the user when the \
-             request is unclear or you are blocked, rather than guess.\n\
-             - Do not undo changes you did not make, and do not run commands that delete \
-             work, rewrite history or reach outside the project unless the user asked.\n\
-             - Keep answers short. Say what you changed and what is left, and name files by \
-             their path.\n\
-             - Give that answer once, at the end of the turn: no running commentary or \
-             interim summaries between tool calls."
-                .to_owned(),
-        )
+        Self(DEFAULT_SYSTEM_PROMPT.to_owned())
     }
 }
 
