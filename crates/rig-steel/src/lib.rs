@@ -61,7 +61,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
-pub use harness::{AgentSpec, Harness, HarnessError};
+pub use harness::{AgentSpec, Harness};
 use program::{Ended, Host};
 
 /// The tool that runs a program.
@@ -357,11 +357,7 @@ pub(crate) fn capped(mut text: String) -> String {
     if text.len() <= MAX_OUTPUT_BYTES {
         return text;
     }
-    let mut end = MAX_OUTPUT_BYTES;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text.truncate(end);
+    text.truncate(text.floor_char_boundary(MAX_OUTPUT_BYTES));
     text.push_str(&format!("\n[output cut at {MAX_OUTPUT_BYTES} bytes]"));
     text
 }
