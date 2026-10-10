@@ -249,8 +249,8 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check clippy
 
-  # The kernel on its own: rig-ecs without features, native and for the
-  # browser, and its kernel-only turn test. Builds no rig-harness.
+  # The kernel on its own: rig-ecs native and for the browser, and its
+  # kernel-only turn test. Builds no rig-harness.
   kernel-only:
     name: stable / kernel-only rig-ecs
     runs-on: ubuntu-latest
@@ -295,8 +295,6 @@ jobs:
         run: cargo xtask verify --check wasm-rig-candle
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-candle_wasm_chat
-      - if: ${{ !cancelled() }}
-        run: cargo xtask verify --check wasm-rig-ecs
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check native-only-rig-rmcp
       - if: ${{ !cancelled() }}
