@@ -280,48 +280,77 @@ A generic type is saved only once registered (`app.register_type::<T>()`).
 # Turn hooks
 
 `PrepareRequest` is triggered on a turn right before its model request,
-with the messages it sends, which an observer may change. `ModelFailed` is
-triggered on a turn whose model call failed for good; an observer that
-takes the turn over sets `handled` and triggers `CallModel` once it is
-ready. Observers of one event run in no set order. The compaction plugin
-(the `rig-compaction` crate) is the full example: it summarizes on
+with everything it sends, which an observer may change: the system prompt
+(`preamble`), the `messages`, the `tools` offered and the generation
+`options`. The request is checked against the model afterwards. Changing
+the preamble or the tools misses the provider's prompt cache, and a tool
+left out is not offered but still runs if called: `ToolAccess` on the
+agent is the hard limit. A `Connection` on a turn sends its requests to
+that model instead of the agent's, and one on a plugin's `ModelRequest`
+call that call; `Models::connect` makes one. `ModelFailed` is triggered on
+a turn whose model call failed for good; an observer that takes the turn
+over sets `handled` and triggers `CallModel` once it is ready. Observers
+of one event run in no set order. The compaction plugin (the
+`rig-compaction` crate) is the full example: it summarizes on
 `PrepareRequest` with a `ModelRequest` call of its own, and on a
 `ModelFailed` overflow.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{Message, UserContent};
 
 /// The model a turn falls back to when its own fails for good.
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
-#[derive(Default)]
-pub struct FallbackPlugin;
+/// On an agent that only plans.
+#[derive(Component)]
+pub struct PlanMode;
 
-impl Plugin for FallbackPlugin {
+#[derive(Default)]
+pub struct TurnHooksPlugin;
+
+impl Plugin for TurnHooksPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(add_the_time).add_observer(fall_back);
+        app.add_observer(add_the_time)
+            .add_observer(plan_only)
+            .add_observer(fall_back);
     }
 }
 
-/// Every request tells the model how long the agent has run.
+/// Every request tells the model how long the agent has run, at its end,
+/// where the prompt cache is not disturbed.
 fn add_the_time(mut prepare: On<PrepareRequest>, time: Res<Time<Real>>) {
     let note = format!("(The agent has run for {} s.)", time.elapsed().as_secs());
-    if let Some(Message::User { content }) = prepare.messages.last_mut() {
+    if let Some(message::Message::User { content }) = prepare.messages.last_mut() {
         content.push(UserContent::text(note));
     }
 }
 
+/// An agent in plan mode is offered only the tools that read, and told so.
+fn plan_only(mut prepare: On<PrepareRequest>, planning: Query<(), With<PlanMode>>) {
+    if planning.contains(prepare.agent) {
+        prepare.tools.retain(|tool| matches!(tool.name.as_str(), "read" | "search"));
+        prepare.preamble.push_str("\n\nPlan only: change nothing yet.");
+    }
+}
+
 /// A model call that failed for good, other than on a conversation too
-/// long, is sent again once, on the fallback model.
-fn fall_back(mut failed: On<ModelFailed>, choices: Query<&ModelChoice>, mut commands: Commands) {
-    let on_fallback = choices.get(failed.agent).is_ok_and(|choice| choice.0 == FALLBACK);
-    if failed.handled || failed.report.is_context_overflow() || on_fallback {
+/// long, is sent again once, on the fallback model, for this turn only.
+fn fall_back(
+    mut failed: On<ModelFailed>,
+    routed: Query<(), With<Connection>>,
+    models: Res<Models>,
+    mut commands: Commands,
+) {
+    let turn = failed.entity;
+    if failed.handled || failed.report.is_context_overflow() || routed.contains(turn) {
         return;
     }
+    let Ok(fallback) = models.connect(FALLBACK) else {
+        return;
+    };
     failed.handled = true;
-    commands.entity(failed.agent).insert(ModelChoice(FALLBACK.to_owned()));
-    commands.trigger(CallModel { entity: failed.entity });
+    commands.entity(turn).insert(fallback);
+    commands.trigger(CallModel { entity: turn });
 }
 ```
 

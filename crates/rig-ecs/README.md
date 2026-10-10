@@ -16,9 +16,10 @@ What it holds, by module:
 - `turn`: the turn loop (model request, tool calls, results, the next
   request or the end), steering, interrupts, and retries that wait on
   Bevy's clock. Plugins extend a turn with `PrepareRequest` (before each
-  request), `ModelFailed` (after a call a retry does not fix) and
-  `ModelRequest` calls of their own on the agent's model; `Condensed` sends
-  a summary in place of older messages.
+  request: its system prompt, messages, tools and options), `ModelFailed`
+  (after a call a retry does not fix) and `ModelRequest` calls of their
+  own; a `Connection` on a turn or call sends it to another model than the
+  agent's. `Condensed` sends a summary in place of older messages.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens; `KeepAwake` keeps it running for a
   timer.

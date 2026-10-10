@@ -27,7 +27,9 @@ use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
-use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
+use rig_core::completion::{
+    CompletionRequest, CompletionResponse, GenerationOptions, Message, ToolDefinition,
+};
 use rig_core::effect::Outcome;
 use rig_core::effect::family::Completion;
 use rig_core::effect::{EffectId, EffectKind, Family};
@@ -116,21 +118,39 @@ pub struct CallModel {
     pub entity: Entity,
 }
 
-/// Triggered on a turn right before its model request is built, with the
-/// messages it sends: the agent's conversation, after its [`Condensed`]
-/// summary if any, with what was delivered meanwhile. Observers may
-/// rewrite `messages`, or spawn calls [`CallOf`] the turn, such as a
-/// [`ModelRequest`]: while the turn has calls afterwards, nothing is sent,
-/// and the plugin that spawned them triggers [`CallModel`] again once they
-/// are done. Observers run in no set order, so each does its own part only.
+/// Triggered on a turn right before its model request is sent, with
+/// everything it sends, which observers may change: the system prompt, the
+/// messages (the agent's conversation, after its [`Condensed`] summary if
+/// any, with what was delivered meanwhile), the tools offered and the
+/// generation options. A changed system prompt or tool list misses the
+/// provider's prompt cache. The request is checked against the model only
+/// afterwards, and a tool left out is still refused only if the agent's
+/// [`ToolAccess`] does not allow it. Observers may also spawn calls
+/// [`CallOf`] the turn, such as a [`ModelRequest`]: while the turn has
+/// calls afterwards, nothing is sent, and the plugin that spawned them
+/// triggers [`CallModel`] again once they are done. Observers run in no
+/// set order, so each does its own part only.
+///
+/// The request goes to the turn's model: a [`Connection`] on the turn,
+/// such as one a plugin inserts on `On<Add<TurnOf>>`, else the agent's. The
+/// options are made for that model, with the agent's reasoning setting
+/// when the model takes it; the agent's model still decides its
+/// [`LastUsage`] and context window.
 #[derive(EntityEvent, Clone, Debug)]
 pub struct PrepareRequest {
     /// The turn.
     pub entity: Entity,
     /// The turn's agent.
     pub agent: Entity,
+    /// The system prompt: the agent's [`SystemPrompt`], the rules of the
+    /// tools offered and the prompt sections.
+    pub preamble: String,
     /// The messages the request sends, oldest first.
     pub messages: Vec<Message>,
+    /// The tools offered, by name.
+    pub tools: Vec<ToolDefinition>,
+    /// The generation options, such as `temperature` or `max_tokens`.
+    pub options: GenerationOptions,
 }
 
 /// Triggered on a turn whose model call failed in a way sending the same
@@ -408,30 +428,42 @@ pub(crate) fn on_call_model(
         None => conversation.messages().to_vec(),
     };
     commands.queue(move |world: &mut World| {
-        let mut prepare = PrepareRequest {
-            entity: turn,
-            agent,
-            messages,
-        };
-        world.trigger_ref(&mut prepare);
-        // The observers' calls exist once their commands are applied.
-        world.flush();
-        if world.get::<Calls>(turn).is_some() {
-            return;
-        }
-        if let Err(error) = world.run_system_cached_with(send_request, (turn, prepare.messages)) {
-            warn!("could not send a model request: {error}");
+        if let Err(why) = request(world, turn, messages) {
+            if let Err(error) = world.run_system_cached_with(fail_turn, (turn, why)) {
+                warn!("could not end a failed turn: {error}");
+            }
         }
     });
 }
 
-/// Sends `messages` for the turn to its agent's model. When that cannot be
-/// done the turn ends.
-fn send_request(
+/// Prepares the turn's request with `messages`, lets [`PrepareRequest`]
+/// observers change it, and sends it unless they gave the turn calls to
+/// wait for; or why the turn fails.
+fn request(world: &mut World, turn: Entity, messages: Vec<Message>) -> Result<(), String> {
+    let prepared = world.run_system_cached_with(prepare_request, (turn, messages));
+    let Some(mut prepare) = prepared.map_err(|error| error.to_string())?? else {
+        return Ok(());
+    };
+    world.trigger_ref(&mut prepare);
+    // The observers' calls exist once their commands are applied.
+    world.flush();
+    if world.get::<Calls>(turn).is_some() {
+        return Ok(());
+    }
+    let sent = world.run_system_cached_with(send_request, prepare);
+    sent.map_err(|error| error.to_string())?
+}
+
+/// What the turn's request sends with `messages`, on the turn's model: its
+/// system prompt, the tools offered and the options; `None` for a turn
+/// that is gone. It asks for the provider's prompt cache where the model
+/// has one; the preamble and tools come first and do not change between
+/// calls, so each call reads the prefix the last one wrote.
+fn prepare_request(
     In((turn, messages)): In<(Entity, Vec<Message>)>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<(
-        (&AgentId, &mut Conversation, Option<&EffectParent>),
+    turns: Query<(&TurnOf, Option<&Connection>)>,
+    agents: Query<(
+        &AgentId,
         Option<&Connection>,
         &Effort,
         &SystemPrompt,
@@ -439,45 +471,66 @@ fn send_request(
     )>,
     tools: Query<(&ToolDef, &ToolRules)>,
     sections: Query<&PromptSection>,
+) -> Result<Option<PrepareRequest>, String> {
+    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
+        return Ok(None);
+    };
+    let Ok((id, own, effort, prompt, access)) = agents.get(agent) else {
+        return Ok(None);
+    };
+    let spec = &routed.or(own).ok_or(NO_MODEL)?.spec;
+    // Sorted by name, so the tools, and the prompt with their rules, are
+    // the same on every call and stay cached.
+    let mut offered: Vec<(&ToolDef, &ToolRules)> = tools
+        .iter()
+        .filter(|(def, _)| spec.tools && access.allows(def.0.name.as_str()))
+        .collect();
+    offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+    let rules = offered.iter().map(|(_, rules)| *rules);
+    // A model the turn is routed to may not take the agent's setting.
+    let options = Some(spec.default_options(effort.0))
+        .filter(|options| spec.validate(options).is_ok())
+        .unwrap_or_else(|| spec.default_options(None));
+    Ok(Some(PrepareRequest {
+        entity: turn,
+        agent,
+        preamble: system_prompt(&prompt.0, rules, sections),
+        messages,
+        tools: offered.iter().map(|(def, _)| def.0.clone()).collect(),
+        options: options.cache_key(&id.0),
+    }))
+}
+
+/// Sends what `prepare` says to the turn's model, once the options are
+/// checked against it; or why it cannot be sent.
+fn send_request(
+    In(prepare): In<PrepareRequest>,
+    turns: Query<Option<&Connection>, With<TurnOf>>,
+    agents: Query<(&AgentId, Option<&Connection>, Option<&EffectParent>)>,
     effects: Res<Effects>,
-    mut commit: Commit,
     wake: Res<Wake>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(&TurnOf(agent)) = turns.get(turn) else {
-        return;
+) -> Result<(), String> {
+    let PrepareRequest {
+        entity: turn,
+        agent,
+        preamble,
+        mut messages,
+        tools,
+        options,
+    } = prepare;
+    let (Ok(routed), Ok((id, own, effect_parent))) = (turns.get(turn), agents.get(agent)) else {
+        return Ok(());
     };
-    let Ok(((id, mut conversation, effect_parent), connection, effort, prompt, access)) =
-        agents.get_mut(agent)
-    else {
-        return;
-    };
-    let request = connection
-        .ok_or_else(|| NO_MODEL.to_owned())
-        .and_then(|connection| {
-            // Sorted by name, so the tools, and the prompt with their
-            // rules, are the same on every call and stay cached.
-            let mut offered: Vec<(&ToolDef, &ToolRules)> = tools
-                .iter()
-                .filter(|(def, _)| connection.spec.tools && access.allows(def.0.name.as_str()))
-                .collect();
-            offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
-            let preamble =
-                system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
-            let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
-            prepare(messages, connection, effort, &id.0, preamble, definitions)
-                .map(|request| (connection, request))
-        });
-    let (connection, request) = match request {
-        Ok(request) => request,
-        Err(why) => {
-            notices.write(Notice::error(agent, why.clone()));
-            drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
-            end_turn(&mut commands, turn, TurnOutcome::Failed(why));
-            return;
-        }
-    };
+    let connection = routed.or(own).ok_or(NO_MODEL)?;
+    let validated = connection.spec.validate(&options);
+    validated.map_err(|refusal| refusal.to_string())?;
+    let prompt = messages.pop().ok_or("The conversation is empty.")?;
+    let request = CompletionRequest::new(prompt)
+        .messages(messages)
+        .preamble(preamble)
+        .tools(tools)
+        .options(options);
     let (effect, reply) = effects.dispatch(
         &id.0,
         effect_parent.map(|parent| parent.0),
@@ -504,31 +557,32 @@ fn send_request(
         Partial::default(),
         CallOf(turn),
     ));
+    Ok(())
 }
 
-/// Dispatches a plugin's [`ModelRequest`] with its turn's agent's model,
-/// on the one dispatch path. Without a model it is done at once, failed.
+/// Dispatches a plugin's [`ModelRequest`] on the one dispatch path, to the
+/// model of a [`Connection`] on the call, else on its turn, else its
+/// turn's agent's. Without a model it is done at once, failed.
 pub(crate) fn on_model_request(
     add: On<Add<ModelRequest>>,
-    calls: Query<(&CallOf, &ModelRequest)>,
-    turns: Query<&TurnOf>,
+    calls: Query<(&CallOf, &ModelRequest, Option<&Connection>)>,
+    turns: Query<(&TurnOf, Option<&Connection>)>,
     agents: Query<(&AgentId, Option<&Connection>, Option<&EffectParent>)>,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let call = add.entity;
-    let Ok((&CallOf(turn), ModelRequest { request })) = calls.get(call) else {
+    let Ok((&CallOf(turn), ModelRequest { request }, own)) = calls.get(call) else {
         return;
     };
-    let Some((id, connection, effect_parent)) = turns
-        .get(turn)
-        .ok()
-        .and_then(|&TurnOf(agent)| agents.get(agent).ok())
-    else {
+    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
         return;
     };
-    let Some(connection) = connection else {
+    let Ok((id, agents, effect_parent)) = agents.get(agent) else {
+        return;
+    };
+    let Some(connection) = own.or(routed).or(agents) else {
         let failed = ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL);
         commands
             .entity(call)
@@ -578,35 +632,6 @@ fn drop_unanswered(
             "Your last message was taken out of the conversation; send it again.",
         ));
     }
-}
-
-/// The request for the agent's next model call, checked against the
-/// model's spec, or what the user must fix first. It asks for the
-/// provider's prompt cache where the model has one; the preamble and tools
-/// come first and do not change between calls, so each call reads the
-/// prefix the last one wrote.
-fn prepare(
-    mut messages: Vec<Message>,
-    connection: &Connection,
-    effort: &Effort,
-    cache_key: &str,
-    preamble: String,
-    tools: Vec<rig_core::completion::ToolDefinition>,
-) -> Result<CompletionRequest, String> {
-    let options = connection
-        .spec
-        .default_options(effort.0)
-        .cache_key(cache_key);
-    connection
-        .spec
-        .validate(&options)
-        .map_err(|refusal| refusal.to_string())?;
-    let prompt_message = messages.pop().ok_or("The conversation is empty.")?;
-    Ok(CompletionRequest::new(prompt_message)
-        .messages(messages)
-        .preamble(preamble)
-        .tools(tools)
-        .options(options))
 }
 
 /// Streams the reply, feeding text and reasoning to the view and waking

@@ -104,8 +104,8 @@ fn a_turn_ended(world: &mut World) -> bool {
     !world.resource::<Ended>().0.is_empty()
 }
 
-/// An agent of `app` on `model`, as the built-in catalog's DeepSeek model.
-fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
+/// `model` as the built-in catalog's DeepSeek model.
+fn connection(model: &MockCompletionModel) -> Option<Connection> {
     let spec = Catalog::builtin()
         .resolve("deepseek/deepseek-flash")
         .ok()?
@@ -114,10 +114,15 @@ fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
         spec.reference(),
         model.clone(),
     ));
-    let connection = Connection {
+    Some(Connection {
         spec,
         handler: Handler(handler),
-    };
+    })
+}
+
+/// An agent of `app` on `model`.
+fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
+    let connection = connection(model)?;
     Some(app.world_mut().spawn((Agent, connection)).id())
 }
 
@@ -446,4 +451,52 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
         .map(|n| n.text.as_str())
         .collect();
     assert_eq!(said, ["new"]);
+}
+
+/// A `PrepareRequest` observer changes the system prompt, the tools and
+/// the options, and a `Connection` on the turn sends the request to
+/// another model than the agent's.
+#[test]
+fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    app.add_tool(Add(Arc::default()));
+    let answer = || {
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]
+    };
+    let (own, routed) = (
+        MockCompletionModel::from_stream_turns([answer()]),
+        MockCompletionModel::from_stream_turns([answer()]),
+    );
+    let route = connection(&routed);
+    app.add_observer(
+        move |turn: On<bevy_ecs::lifecycle::Add<TurnOf>>, mut commands: Commands| {
+            if let Some(route) = route.clone() {
+                commands.entity(turn.entity).insert(route);
+            }
+        },
+    )
+    .add_observer(|mut prepare: On<PrepareRequest>| {
+        prepare.preamble.push_str("\n\nPlan only.");
+        prepare.tools.clear();
+        prepare.options.seed = Some(7);
+    });
+    let agent = connected(&mut app, &own);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    assert_eq!((own.request_count(), routed.request_count()), (0, 1));
+    let sent = routed.requests();
+    let sent = sent.first();
+    let prompt = sent.and_then(|request| request.system_instructions());
+    assert!(
+        prompt.is_some_and(|prompt| prompt.ends_with("Plan only.")),
+        "{prompt:?}"
+    );
+    assert!(
+        sent.is_some_and(|request| request.tools.is_empty() && request.options.seed == Some(7))
+    );
 }

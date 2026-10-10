@@ -22,6 +22,21 @@ use super::turn::NO_MODEL;
 #[derive(Resource, Clone, Default)]
 pub struct Models(pub Connector);
 
+impl Models {
+    /// A connection to the catalog model `reference` (`vendor/model`), such
+    /// as for a turn or a call a plugin sends to another model than its
+    /// agent's; or why it cannot be used.
+    pub fn connect(&self, reference: &str) -> Result<Connection, String> {
+        match self.0.connect(reference) {
+            Ok((spec, handler)) => Ok(Connection {
+                spec,
+                handler: Handler(handler),
+            }),
+            Err(why) => Err(format!("Cannot use {reference}: {why}.")),
+        }
+    }
+}
+
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, which rebuilds the agent's
 /// [`Connection`]. Saved with the session.
@@ -175,18 +190,16 @@ pub(crate) fn connect(
     if connected.is_some_and(|connection| connection.spec.reference() == choice.0) {
         return;
     }
-    match models.0.connect(&choice.0) {
-        Ok((spec, handler)) => {
+    match models.connect(&choice.0) {
+        Ok(connection) => {
             if connected.is_some() {
-                let model = format!("Model: {} ({}).", spec.display_name, choice.0);
+                let model = format!("Model: {} ({}).", connection.spec.display_name, choice.0);
                 notices.write(Notice::info(agent, model));
             }
-            let handler = Handler(handler);
-            commands.entity(agent).insert(Connection { spec, handler });
+            commands.entity(agent).insert(connection);
         }
         Err(why) => {
             commands.entity(agent).remove::<Connection>();
-            let why = format!("Cannot use {}: {why}.", choice.0);
             notices.write(Notice::error(agent, why));
         }
     }
