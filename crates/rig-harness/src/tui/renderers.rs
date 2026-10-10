@@ -20,6 +20,9 @@ const ARGUMENT_CHARS: usize = 160;
 pub const RESULT_LINES: usize = 4;
 /// Lines of a diff shown.
 const DIFF_LINES: usize = 40;
+/// Characters of one result line shown: a longer line, such as a whole
+/// JSON answer, ends in `…`.
+const LINE_CHARS: usize = 240;
 
 /// A tool call and its result, if it has one yet, as a renderer sees them.
 pub struct ToolCallView<'a> {
@@ -110,26 +113,38 @@ pub(crate) fn result_style(failed: bool) -> Style {
     }
 }
 
-/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, and a
-/// count of the rest.
+/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, a
+/// count of the rest, and the cut marker that ends a cut result.
 pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
-    let total = text.lines().count();
-    let mut lines: Vec<Line<'static>> = text
-        .lines()
-        .take(limit)
+    let mut all: Vec<&str> = text.lines().collect();
+    let marker = all.pop_if(|last| is_cut_marker(last));
+    let more = format!("… {} more lines", all.len().saturating_sub(limit));
+    let more = (all.len() > limit).then_some(more.as_str());
+    let shown = all.into_iter().take(limit).chain(more).chain(marker);
+    shown
         .enumerate()
-        .map(|(index, line)| {
-            let prefix = if index == 0 { "  ⎿ " } else { "    " };
-            Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
-        })
-        .collect();
-    if total > limit {
-        lines.push(Line::styled(
-            format!("    … {} more lines", total - limit),
-            style,
-        ));
-    }
-    lines
+        .map(|(index, line)| result_line(index == 0, line, style))
+        .collect()
+}
+
+/// Whether `line` is a tool's cut marker, which says what was cut and
+/// which file has all of it, such as `[Cut at 16384 of 113000 bytes; all
+/// of it is in …]`.
+fn is_cut_marker(line: &str) -> bool {
+    line.starts_with('[') && line.ends_with(']') && line.to_lowercase().contains("cut")
+}
+
+/// A line of a result in `style`, under a `⎿` when `first`; a long one is
+/// shortened, but a cut marker is shown whole.
+fn result_line(first: bool, line: &str, style: Style) -> Line<'static> {
+    let prefix = if first { "  ⎿ " } else { "    " };
+    let line = line.replace('\t', "    ");
+    let line = if is_cut_marker(&line) {
+        line
+    } else {
+        shorten(&line, LINE_CHARS)
+    };
+    Line::styled(format!("{prefix}{line}"), style)
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.
@@ -246,26 +261,23 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if lines.is_empty() {
         lines.push(view.header("$", ""));
     }
-    // The end of a command's output is where its errors and summary are.
+    // The end of a command's output is where its errors and summary are;
+    // a cut marker before it names the file with all of it.
     if let Some(text) = view.result_text() {
+        let mut output = text.lines().peekable();
+        let marker = output.next_if(|first| is_cut_marker(first));
+        let output: Vec<&str> = output.collect();
+        let skipped = output.len().saturating_sub(RESULT_LINES + 2);
+        let earlier = format!("… {skipped} earlier lines");
+        let earlier = (skipped > 0).then_some(earlier.as_str());
+        let shown = marker.into_iter().chain(earlier);
+        let shown = shown.chain(output.into_iter().skip(skipped));
         let style = result_style(view.failed());
-        let total = text.lines().count();
-        let skipped = total.saturating_sub(RESULT_LINES + 2);
-        if skipped > 0 {
-            lines.push(Line::styled(
-                format!("  ⎿ … {skipped} earlier lines"),
-                style,
-            ));
-        }
-        let tail: Vec<&str> = text.lines().skip(skipped).collect();
-        lines.extend(tail.iter().enumerate().map(|(index, line)| {
-            let prefix = if index == 0 && skipped == 0 {
-                "  ⎿ "
-            } else {
-                "    "
-            };
-            Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
-        }));
+        lines.extend(
+            shown
+                .enumerate()
+                .map(|(index, line)| result_line(index == 0, line, style)),
+        );
     }
     lines
 }
@@ -283,3 +295,6 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines.extend(view.result_lines(RESULT_LINES));
     lines
 }
+
+#[cfg(test)]
+mod tests;
