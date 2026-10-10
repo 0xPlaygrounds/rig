@@ -4,6 +4,7 @@
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryData;
 
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Retry, Spawned, SpawnedBy};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
@@ -63,21 +64,23 @@ fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {
     exit.write(AppExit::Success);
 }
 
+/// An agent as `/agents` lists it.
+#[derive(QueryData)]
+struct Listed {
+    entity: Entity,
+    id: &'static AgentId,
+    name: &'static Name,
+    model: Option<&'static ModelChoice>,
+    busy: Has<ActiveTurn>,
+}
+
 /// `/agents`: picks an agent to show, each listed under the agent that
 /// spawned it, or shows the one whose id starts with the argument.
 fn agents(
     In(args): In<CommandArgs>,
-    agents: Query<
-        (
-            Entity,
-            &AgentId,
-            &Name,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    (spawned, parents): (Query<&Spawned>, Query<&SpawnedBy>),
+    agents: Query<Listed, With<Agent>>,
+    spawned: Query<&Spawned>,
+    parents: Query<&SpawnedBy>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
@@ -85,9 +88,11 @@ fn agents(
     if !args.args.is_empty() {
         match agents
             .iter()
-            .find(|(_, id, ..)| id.0.starts_with(&args.args))
+            .find(|agent| agent.id.0.starts_with(&args.args))
         {
-            Some((entity, ..)) => commands.trigger(Focus { entity }),
+            Some(agent) => commands.trigger(Focus {
+                entity: agent.entity,
+            }),
             None => {
                 let why = format!("No agent's id starts with `{}`.", args.args);
                 notices.write(Notice::error(args.agent, why));
@@ -97,24 +102,24 @@ fn agents(
     }
     let mut roots: Vec<(&AgentId, Entity)> = agents
         .iter()
-        .filter(|(agent, ..)| !parents.contains(*agent))
-        .map(|(agent, id, ..)| (id, agent))
+        .filter(|agent| !parents.contains(agent.entity))
+        .map(|agent| (agent.id, agent.entity))
         .collect();
     roots.sort_by(|a, b| a.0.0.cmp(&b.0.0));
     let listed = roots.iter().flat_map(|&(_, root)| {
         std::iter::once(root).chain(spawned.iter_descendants_depth_first(root))
     });
     let (mut items, mut selected) = (Vec::new(), 0);
-    for (agent, id, name, model, busy) in listed.filter_map(|agent| agents.get(agent).ok()) {
-        if agent == args.agent {
+    for agent in listed.filter_map(|agent| agents.get(agent).ok()) {
+        if agent.entity == args.agent {
             selected = items.len();
         }
-        let depth = parents.iter_ancestors(agent).count();
-        let model = model.map_or("no model", |model| model.0.as_str());
-        let state = if busy { "working" } else { "idle" };
+        let depth = parents.iter_ancestors(agent.entity).count();
+        let model = agent.model.map_or("no model", |model| model.0.as_str());
+        let state = if agent.busy { "working" } else { "idle" };
         items.push(PickItem {
-            label: format!("{}{name} · {model} · {state}", "  ".repeat(depth)),
-            command: format!("agents {}", id.0),
+            label: format!("{}{} · {model} · {state}", "  ".repeat(depth), agent.name),
+            command: format!("agents {}", agent.id.0),
         });
     }
     picks.write(PickRequest {

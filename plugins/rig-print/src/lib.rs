@@ -16,6 +16,7 @@ use std::io::{IsTerminal, Read as _};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 
 use rig_core::transcript::final_answer;
 use rig_ecs::agent::{ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
@@ -92,16 +93,23 @@ fn full_prompt(prompt: &str) -> String {
     }
 }
 
+/// The agents as the print run reads them.
+#[derive(SystemParam)]
+struct Agents<'w, 's> {
+    primary: PrimaryQuery<'w, 's>,
+    choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
+    conversations: Query<'w, 's, &'static Conversation>,
+    /// Agents in a turn.
+    working: Query<'w, 's, (), (With<Agent>, With<ActiveTurn>)>,
+    /// Other work a front waits for, such as a sign-in.
+    busy: Query<'w, 's, (), With<Busy>>,
+}
+
 /// Chooses the model, sends the prompt, and exits after the turn.
-#[allow(clippy::too_many_arguments)]
 fn drive(
     mut run: ResMut<PrintRun>,
     mode: Res<RunMode>,
-    agents: PrimaryQuery,
-    models_of: Query<(Option<&ModelChoice>, Has<Connection>)>,
-    working: Query<(), (With<Agent>, With<ActiveTurn>)>,
-    conversations: Query<&Conversation>,
-    busy: Query<(), With<Busy>>,
+    agents: Agents,
     models: Res<Models>,
     mut commands: Commands,
     mut exits: MessageWriter<AppExit>,
@@ -110,10 +118,10 @@ fn drive(
     let command = run.prompt.trim_start().starts_with('/');
     match run.step {
         Step::Start => {
-            let Some(agent) = primary(&agents) else {
+            let Some(agent) = primary(&agents.primary) else {
                 return;
             };
-            let Ok((chosen, _)) = models_of.get(agent) else {
+            let Ok((chosen, _)) = agents.choices.get(agent) else {
                 return;
             };
             let model = match (&mode.0.model, chosen) {
@@ -143,7 +151,11 @@ fn drive(
             run.step = Step::Connecting { agent };
         }
         Step::Connecting { agent } => {
-            let connected = command || models_of.get(agent).is_ok_and(|(_, connected)| connected);
+            let connected = command
+                || agents
+                    .choices
+                    .get(agent)
+                    .is_ok_and(|(_, connected)| connected);
             if !connected {
                 // The notice of the failed choice says why.
                 run.step = Step::Done;
@@ -157,7 +169,8 @@ fn drive(
                 exits.write(AppExit::from_code(2));
                 return;
             }
-            let before = conversations
+            let before = agents
+                .conversations
                 .get(agent)
                 .map_or(0, |conversation| conversation.messages().len());
             send_input(&mut commands, agent, text, DeliveryMode::Steer);
@@ -167,10 +180,11 @@ fn drive(
             // The turn starts with the request; a command may start none,
             // or other work, such as a sign-in. A subagent's answer starts
             // another turn of the agent that started it.
-            if !working.is_empty() || !busy.is_empty() {
+            if !agents.working.is_empty() || !agents.busy.is_empty() {
                 return;
             }
-            let answer = conversations
+            let answer = agents
+                .conversations
                 .get(agent)
                 .ok()
                 .filter(|conversation| conversation.messages().len() > before)
