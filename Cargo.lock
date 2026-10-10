@@ -12761,6 +12761,7 @@ dependencies = [
  "bevy_tasks",
  "rig-basics",
  "rig-harness",
+ "rig-harness-test-support",
  "schemars 1.2.1",
  "serde",
  "serde_json",

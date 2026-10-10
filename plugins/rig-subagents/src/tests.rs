@@ -1,17 +1,14 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_ecs::system::RunSystemOnce;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
-use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::journal::commit_message;
-use rig_ecs::turn::ToolStarter;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, calls, connect, reply, run_until, start_call};
 
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode and its text.
@@ -56,21 +53,8 @@ impl Session {
     /// `agent` calls `tool` with `args` in call `id`, as the model call 1
     /// asked, and gets its output once it has one.
     fn call(&mut self, agent: Entity, tool: &str, id: &str, args: serde_json::Value) -> String {
-        let Ok(name) = ToolName::new(tool) else {
-            return String::new();
-        };
-        let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
-        let started = self.app.world_mut().run_system_once(
-            move |starter: ToolStarter, mut commands: Commands| {
-                let run = starter.run(call.clone(), Some(EffectId::from_raw(1)));
-                let entity = commands.spawn(run.clone()).id();
-                starter.start(&mut commands, entity, agent, &run);
-                entity
-            },
-        );
-        let output = started
-            .ok()
-            .and_then(|call| self.app.world().get::<ToolOutput>(call));
+        let started = start_call(self.app.world_mut(), agent, (tool, id), args);
+        let output = started.and_then(|call| self.app.world().get::<ToolOutput>(call));
         output
             .map(|output| output.0.output().render())
             .unwrap_or_default()
