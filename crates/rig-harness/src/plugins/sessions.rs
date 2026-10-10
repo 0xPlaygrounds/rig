@@ -20,7 +20,7 @@ use bevy_reflect::prelude::*;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE, SessionDir, SessionId};
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
-use rig_tools::fs::write_atomic;
+use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
@@ -166,9 +166,7 @@ pub fn list(home: &Home, current: &Path) -> Vec<SessionEntry> {
             if dir.path() == current || !dir.is_saved() {
                 return None;
             }
-            let meta: Option<Meta> = fs::read(dir.meta())
-                .ok()
-                .and_then(|bytes| serde_json::from_slice(&bytes).ok());
+            let meta: Option<Meta> = read_json(&dir.meta());
             let saved = match &meta {
                 Some(meta) => UNIX_EPOCH + Duration::from_millis(meta.updated),
                 None => fs::metadata(dir.path()).ok()?.modified().ok()?,
@@ -211,10 +209,7 @@ fn restore_title(paths: Option<Res<SessionPaths>>, mut title: ResMut<SessionTitl
     let Some(paths) = paths else {
         return;
     };
-    if let Some(meta) = fs::read(paths.meta())
-        .ok()
-        .and_then(|bytes| serde_json::from_slice::<Meta>(&bytes).ok())
-    {
+    if let Some(meta) = read_json::<Meta>(&paths.meta()) {
         // Not a change: nothing to write back.
         *title.bypass_change_detection() = meta.title;
     }
@@ -253,10 +248,7 @@ fn write_meta(
         tokens: spent.total_tokens(),
         updated: now_ms(),
     };
-    let written = serde_json::to_vec_pretty(&meta)
-        .map_err(std::io::Error::other)
-        .and_then(|bytes| write_atomic(&paths.meta(), &bytes));
-    if let Err(failure) = written {
+    if let Err(failure) = write_json(&paths.meta(), &meta) {
         error!("could not write the session's meta.json: {failure}");
     }
 }

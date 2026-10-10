@@ -79,9 +79,7 @@ pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: S
         text: note,
         origin: Origin {
             kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
-            from: None,
-            request: None,
-            title: None,
+            ..Origin::default()
         },
         mode: DeliveryMode::Note,
         attachments: Vec::new(),

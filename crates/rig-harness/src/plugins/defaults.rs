@@ -3,13 +3,11 @@
 //! [`Home::defaults`](rig::harness_protocol::Home::defaults). A restored
 //! session keeps its own; subagents never change the defaults.
 
-use std::fs;
-
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use rig::harness_protocol::Home;
-use rig_tools::fs::write_atomic;
+use rig_tools::fs::{read_json, write_json};
 use serde::{Deserialize, Serialize};
 
 use rig_ecs::agent::{Agent, SpawnedBy};
@@ -37,20 +35,14 @@ struct Defaults {
 
 impl Defaults {
     fn read() -> Self {
-        fs::read_to_string(Home::from_env().defaults())
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
+        read_json(&Home::from_env().defaults()).unwrap_or_default()
     }
 
-    /// Writes them with [`write_atomic`], so a crash never leaves half a
+    /// Writes them with [`write_json`], so a crash never leaves half a
     /// file.
     fn write(&self) {
         let path = Home::from_env().defaults();
-        let written = serde_json::to_vec_pretty(self)
-            .map_err(std::io::Error::other)
-            .and_then(|bytes| write_atomic(&path, &bytes));
-        if let Err(failure) = written {
+        if let Err(failure) = write_json(&path, self) {
             warn!(
                 "could not remember the model in {}: {failure}",
                 path.display()

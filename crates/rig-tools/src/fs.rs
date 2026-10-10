@@ -1,4 +1,5 @@
-//! File helpers the tools share: an atomic write and capped text reads.
+//! File helpers the tools share: an atomic write, capped text reads and
+//! JSON files.
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _, Write as _};
@@ -6,6 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rig_core::tool::ToolExecutionError;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 use crate::MAX_FILE_BYTES;
 
@@ -128,6 +131,18 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     written.inspect_err(|_| {
         fs::remove_file(&temporary).ok();
     })
+}
+
+/// The JSON file at `path` as a `T`, or `None` when it is missing or is
+/// not one.
+pub fn read_json<T: DeserializeOwned>(path: &Path) -> Option<T> {
+    serde_json::from_slice(&fs::read(path).ok()?).ok()
+}
+
+/// Replaces the file at `path` with `value` as pretty JSON, by
+/// [`write_atomic`].
+pub fn write_json(path: &Path, value: &impl Serialize) -> io::Result<()> {
+    write_atomic(path, &serde_json::to_vec_pretty(value)?)
 }
 
 /// Where a missing `path` is created: the end of its chain of dangling
