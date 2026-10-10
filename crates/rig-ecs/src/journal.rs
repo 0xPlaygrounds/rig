@@ -1,15 +1,15 @@
 //! The session's append-only logs. Each agent, a subagent too, has one
 //! JSON-lines log in the session's [`SessionStore`], created at its first
-//! message: a header, then one record per committed message, compaction
+//! message: a header, then one record per committed message, [`Condensed`]
 //! and change of a saved component. Records are queued as they happen and
 //! written at the end of the frame, a subagent's before its parent's, and
-//! at once before a tool that may change something runs. Nothing is ever rewritten: a compaction
-//! is one more record. [`restore`](super::restore) folds the logs back at
+//! at once before a tool that may change something runs. Nothing is ever
+//! rewritten: a condensed conversation is one more record. [`restore`](super::restore) folds the logs back at
 //! startup.
 //!
 //! A component is saved when it was registered with
 //! [`AppSaveExt::save_component`], as the agent's model, reasoning setting,
-//! system prompt, tool access and spending are; a logged component no
+//! system prompt, tool access, spending and last usage are; a logged component no
 //! plugin registers any more is skipped on restore.
 
 use std::collections::{BTreeMap, HashMap};
@@ -25,7 +25,6 @@ use rig_core::completion::Message;
 use rig_core::message::{
     DocumentSourceKind, Image, ImageMediaType, ToolResultContent, UserContent,
 };
-use rig_memory::TrackedSet;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -33,10 +32,9 @@ use sha2::{Digest, Sha256};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{
-    Agent, AgentId, Conversation, Effort, Halt, ModelChoice, Notice, SpawnedBy, SystemPrompt,
-    ToolAccess,
+    Agent, AgentId, Condensed, Conversation, Effort, Halt, LastUsage, ModelChoice, Notice,
+    SpawnedBy, SystemPrompt, ToolAccess,
 };
-use super::compaction::Compacted;
 use super::effects::Effects;
 use super::inbox::Origin;
 use super::store::{JournalStore, SessionStore};
@@ -143,23 +141,20 @@ pub(crate) struct SavedValue {
     pub(crate) value: Value,
 }
 
-/// The latest-wins state a compaction carries, so a restore need not read
-/// what came before it.
+/// The latest-wins state a [`CondensedRecord`] carries, so a restore need
+/// not read what came before it.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub(crate) struct Snapshot {
     #[serde(default)]
     pub(crate) components: BTreeMap<String, SavedValue>,
 }
 
-/// A compaction: requests send `summary` in place of the messages before
-/// the one logged as `first_kept`.
+/// A [`Condensed`] conversation: requests send `summary` in place of the
+/// messages before the one logged as `first_kept`.
 #[derive(Serialize, Deserialize, Clone, Debug)]
-pub(crate) struct CompactionRecord {
+pub(crate) struct CondensedRecord {
     pub(crate) summary: String,
     pub(crate) first_kept: u64,
-    /// The files the summarized messages read and changed.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(crate) tracked: Vec<TrackedSet>,
     pub(crate) snapshot: Snapshot,
 }
 
@@ -194,8 +189,8 @@ pub(crate) enum Record {
         v: u32,
         value: Option<Value>,
     },
-    /// A compaction, with the latest-wins state at that point.
-    Compaction(CompactionRecord),
+    /// A [`Condensed`], with the latest-wins state at that point.
+    Condensed(CondensedRecord),
 }
 
 /// A line of an agent log.
@@ -218,7 +213,7 @@ pub fn now_ms() -> u64 {
 }
 
 /// One agent's log: where it goes, what is queued for it and the
-/// latest-wins state its next records and compactions build on.
+/// latest-wins state its next records build on.
 pub(crate) struct AgentLog {
     /// 0 for an agent the user started, 1 for its subagents, and so on.
     pub(crate) depth: usize,
@@ -425,23 +420,16 @@ impl SessionLog {
         }
     }
 
-    /// Logs the compaction `compacted` of `agent`, with the state it
-    /// carries.
-    pub(crate) fn compaction(
-        &self,
-        agent: &AgentId,
-        conversation: &Conversation,
-        compacted: &Compacted,
-    ) {
+    /// Logs the [`Condensed`] of `agent`, with the state it carries.
+    fn condense(&self, agent: &AgentId, conversation: &Conversation, condensed: &Condensed) {
         let mut book = self.book();
         let Some(log) = book.agent(&agent.0) else {
             return;
         };
-        let first_kept = conversation.seq(compacted.upto).unwrap_or(log.next_seq);
-        let record = Record::Compaction(CompactionRecord {
-            summary: compacted.summary.clone(),
+        let first_kept = conversation.seq(condensed.upto).unwrap_or(log.next_seq);
+        let record = Record::Condensed(CondensedRecord {
+            summary: condensed.summary.clone(),
             first_kept,
-            tracked: compacted.tracked.clone(),
             snapshot: Snapshot {
                 components: log.components.clone(),
             },
@@ -628,6 +616,7 @@ impl Plugin for JournalPlugin {
             .save_component::<SystemPrompt>()
             .save_component::<ToolAccess>()
             .save_component::<Spending>()
+            .save_component::<LastUsage>()
             .add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
             .add_systems(
@@ -637,7 +626,20 @@ impl Plugin for JournalPlugin {
                     .in_set(WriteJournal)
                     .after(StopTurns),
             )
-            .add_observer(open_child_log);
+            .add_observer(open_child_log)
+            .add_observer(log_condensed);
+    }
+}
+
+/// Logs each [`Condensed`] inserted on an agent; one a restore inserts is
+/// not, as nothing is logged before the session was restored.
+fn log_condensed(
+    insert: On<Insert<Condensed>>,
+    agents: Query<(&AgentId, &Conversation, &Condensed)>,
+    log: Res<SessionLog>,
+) {
+    if let Ok((id, conversation, condensed)) = agents.get(insert.entity) {
+        log.condense(id, conversation, condensed);
     }
 }
 

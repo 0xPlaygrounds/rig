@@ -27,7 +27,6 @@ fn result(id: &str, output: &str) -> Message {
 #[test]
 fn a_later_set_overrides_an_earlier_one_in_the_summary() {
     let mut state = SummaryState {
-        upto: 2,
         summary: "did things".to_owned(),
         tracked: Vec::new(),
     };
@@ -60,22 +59,7 @@ fn a_later_set_overrides_an_earlier_one_in_the_summary() {
 }
 
 #[test]
-fn the_summary_leads_the_first_live_user_message() {
-    let state = SummaryState {
-        upto: 1,
-        summary: "s".to_owned(),
-        tracked: Vec::new(),
-    };
-    let request = state.request(&[Message::user("old"), Message::user("new")]);
-    let [Message::User { content }] = request.as_slice() else {
-        panic!("one user message: {request:?}");
-    };
-    assert_eq!(content.len(), 2);
-}
-
-#[test]
 fn a_cut_never_separates_a_call_from_its_result() {
-    let state = SummaryState::default();
     let messages = [
         Message::user("start"),
         call("1", "read", "a.rs"),
@@ -83,9 +67,54 @@ fn a_cut_never_separates_a_call_from_its_result() {
         Message::assistant("done"),
     ];
     let counter = HeuristicTokenCounter::default();
-    assert_eq!(state.cut(&messages, 0, false, &counter), Some(3));
-    assert_eq!(state.cut(&messages, usize::MAX, false, &counter), None);
-    assert_eq!(state.cut(&messages, usize::MAX, true, &counter), Some(3));
+    assert_eq!(cut_at(&messages, 0, 0, false, &counter), Some(3));
+    assert_eq!(cut_at(&messages, 0, usize::MAX, false, &counter), None);
+    assert_eq!(cut_at(&messages, 0, usize::MAX, true, &counter), Some(3));
+}
+
+fn spec(window: u32) -> Option<ModelSpec> {
+    rig_core::providers::registry::ProviderId::catalog("ollama")
+        .map(|vendor| ModelSpec::new(vendor, "test").with_context_window(window))
+}
+
+/// Where `reason` cuts `messages` for a model with `window` tokens.
+fn cut(messages: &[Message], window: u32, reason: &CompactReason) -> Option<usize> {
+    let spec = spec(window);
+    assert!(spec.is_some());
+    CompactionPolicy::default().cut(messages, 0, reason, spec.as_ref())
+}
+
+/// A conversation of turns, each a question and a long answer.
+fn turns(count: usize) -> Vec<Message> {
+    let answer = "word ".repeat(2_000);
+    (0..count)
+        .flat_map(|turn| {
+            [
+                Message::user(format!("question {turn}")),
+                Message::assistant(answer.clone()),
+            ]
+        })
+        .collect()
+}
+
+#[test]
+fn a_compaction_keeps_the_recent_work_unless_asked() {
+    let (short, long) = (turns(2), turns(20));
+    let asked = CompactReason::Asked {
+        focus: String::new(),
+    };
+    // Asked, or refused as too long, a short conversation is summarized
+    // all but its newest reply; near the window, it is left alone.
+    assert_eq!(cut(&short, 200_000, &asked), Some(short.len() - 1));
+    let overflow = CompactReason::Overflow;
+    assert_eq!(cut(&short, 200_000, &overflow), Some(short.len() - 1));
+    assert_eq!(cut(&short, 200_000, &CompactReason::Threshold), None);
+    // Otherwise the newest 20k tokens stay, a quarter of the window at most.
+    let at = cut(&long, 200_000, &overflow);
+    assert!(at.is_some_and(|at| at < long.len() - 2), "{at:?}");
+    let policy = CompactionPolicy::default();
+    let keep = |window| policy.keep(&CompactReason::Threshold, spec(window).as_ref());
+    assert_eq!((keep(200_000), keep(40_000)), (20_000, 10_000));
 }
 
 #[test]

@@ -31,10 +31,9 @@ use bevy_ecs::prelude::*;
 use rig_core::completion::{AssistantContent, Message};
 
 use crate::agent::{ActiveTurn, Agent, AgentId, Calls, Conversation, Partial, Queued, ToolCallRun};
-use crate::compaction::Summarizing;
 use crate::inbox::{Deliver, Origin};
 use crate::tools::ToolOutput;
-use crate::turn::Backoff;
+use crate::turn::{Backoff, ModelCall};
 
 /// The most characters a [`Preview`] keeps, from the end of the text.
 pub const PREVIEW_CHARS: usize = 2000;
@@ -78,7 +77,7 @@ impl Activity {
 }
 
 /// An agent's status.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub enum Status {
     /// No turn runs.
     #[default]
@@ -87,8 +86,9 @@ pub enum Status {
     Thinking,
     /// Its tools run.
     RunningTools,
-    /// Summarizing the older conversation.
-    Compacting,
+    /// A plugin's call of the turn runs, such as a summary of the older
+    /// conversation; the call's [`Name`], such as `compacting`.
+    Busy(String),
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
         /// The retry's number, from 1.
@@ -104,7 +104,7 @@ impl fmt::Display for Status {
             Self::Idle => f.write_str("idle"),
             Self::Thinking => f.write_str("thinking"),
             Self::RunningTools => f.write_str("running tools"),
-            Self::Compacting => f.write_str("compacting"),
+            Self::Busy(what) => f.write_str(what),
             Self::Retrying { attempt, seconds } => write!(f, "retry {attempt} in {seconds}s"),
         }
     }
@@ -233,7 +233,7 @@ fn update_activity(
     partials: Query<&Partial>,
     tools: Query<(&ToolCallRun, Has<Queued>, Has<ToolOutput>)>,
     waits: Query<&Backoff>,
-    summaries: Query<(), With<Summarizing>>,
+    others: Query<&Name, (Without<ModelCall>, Without<ToolCallRun>, Without<Backoff>)>,
 ) {
     for (mut activity, turn, conversation) in &mut agents {
         let Some(turn) = turn else {
@@ -255,8 +255,8 @@ fn update_activity(
                 attempt: wait.attempt,
                 seconds: wait.seconds_left(),
             }
-        } else if calls.iter().any(|call| summaries.contains(*call)) {
-            Status::Compacting
+        } else if let Some(name) = calls.iter().find_map(|call| others.get(*call).ok()) {
+            Status::Busy(name.as_str().to_owned())
         } else if calls.iter().any(|call| tools.contains(*call)) {
             Status::RunningTools
         } else {

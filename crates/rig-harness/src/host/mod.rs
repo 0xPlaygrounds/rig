@@ -3,7 +3,6 @@
 //! the `rig` launcher protocol, with what the model knows about extending itself.
 //! The host depends on the core; the core never depends on the host.
 
-pub mod compaction;
 pub mod context;
 pub mod defaults;
 mod extending;

@@ -1,5 +1,5 @@
 //! The built-in slash commands: `/model`, `/effort`, `/usage`, `/retry`,
-//! `/compact`, `/agents`, `/help` and `/quit`, with `/login` and `/logout`
+//! `/agents`, `/help` and `/quit`, with `/login` and `/logout`
 //! from the [`LoginPlugin`] they add.
 
 use bevy_app::prelude::*;
@@ -8,12 +8,12 @@ use bevy_ecs::prelude::*;
 use super::LoginPlugin;
 use crate::view::{Focus, PickItem, PickRequest};
 use rig_ecs::agent::{
-    ActiveTurn, Agent, AgentId, Compact, Connection, Effort, ModelChoice, Notice, Retry, SetEffort,
-    SetModel, Spawned, SpawnedBy,
+    ActiveTurn, Agent, AgentId, Connection, Effort, LastUsage, ModelChoice, Notice, Retry,
+    SetEffort, SetModel, Spawned, SpawnedBy,
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 use rig_ecs::models::{self, ModelConnector};
-use rig_ecs::usage::{Spending, TurnSpending};
+use rig_ecs::usage::{ContextUse, Spending, TurnSpending};
 
 /// Registers the built-in commands with [`AppCommandsExt::add_command`].
 #[derive(Default)]
@@ -40,11 +40,6 @@ impl Plugin for BuiltinCommandsPlugin {
             "retry",
             "Send the conversation again after a failed model call",
             retry,
-        )
-        .add_command(
-            "compact",
-            "Summarize all but the newest reply to free context; /compact <focus> says what to keep",
-            compact,
         )
         .add_command(
             "agents",
@@ -151,13 +146,18 @@ fn effort(
 /// it spawned used, and the session's total over every agent.
 fn usage(
     In(args): In<CommandArgs>,
-    agents: Query<(&Spending, Option<&Connection>, Option<&ActiveTurn>)>,
+    agents: Query<(
+        &Spending,
+        &LastUsage,
+        Option<&Connection>,
+        Option<&ActiveTurn>,
+    )>,
     turns: Query<&TurnSpending>,
     everyone: Query<(&AgentId, Option<&Name>, &Spending), With<Agent>>,
     families: Query<&Spawned>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((spent, connection, turn)) = agents.get(args.agent) else {
+    let Ok((spent, last, connection, turn)) = agents.get(args.agent) else {
         return;
     };
     let mut total = Spending::default();
@@ -183,7 +183,7 @@ fn usage(
         lines.push(format!("This turn: {}.", turn.summary()));
     }
     let spec = connection.map(|connection| &*connection.spec);
-    match spent.context_use(spec) {
+    match ContextUse::of(last, spec) {
         Some(context) => lines.push(format!(
             "Context: {} tokens{}.",
             context.label(),
@@ -231,13 +231,6 @@ fn usage(
 
 fn retry(In(args): In<CommandArgs>, mut commands: Commands) {
     commands.trigger(Retry { entity: args.agent });
-}
-
-fn compact(In(args): In<CommandArgs>, mut commands: Commands) {
-    commands.trigger(Compact {
-        entity: args.agent,
-        focus: args.args,
-    });
 }
 
 fn help(

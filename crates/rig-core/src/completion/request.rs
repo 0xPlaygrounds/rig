@@ -586,6 +586,14 @@ impl Usage {
         *self != Self::default()
     }
 
+    /// The tokens the call read and wrote, what a conversation's next
+    /// request sends again: [`Self::total_tokens`](field@Self::total_tokens),
+    /// else the input and output tokens. `None` without input tokens.
+    pub fn context_tokens(&self) -> Option<u64> {
+        self.total_tokens
+            .or_else(|| Some(self.input_tokens? + self.output_tokens.unwrap_or(0)))
+    }
+
     /// Set, or with `None` clear, [`Self::input_tokens`](field@Self::input_tokens).
     pub fn input_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
         self.input_tokens = tokens.into();
@@ -829,15 +837,15 @@ impl AddAssign for Usage {
 }
 
 /// Many calls' [`Usage`] summed for a running account: the token counters,
-/// the known cost, how many calls the sum holds and how many of them were
-/// not fully priced, and the context the last call used.
+/// the known cost, and how many calls the sum holds and how many of them
+/// were not fully priced.
 ///
 /// ```
 /// use rig_core::completion::{Usage, UsageTotals};
 ///
 /// let mut totals = UsageTotals::default();
 /// totals.record(&Usage::new().input_tokens(100).output_tokens(20).total_tokens(120));
-/// assert_eq!((totals.calls, totals.unpriced, totals.context), (1, 1, Some(120)));
+/// assert_eq!((totals.calls, totals.unpriced, totals.uncached_input()), (1, 1, 100));
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UsageTotals {
@@ -851,9 +859,6 @@ pub struct UsageTotals {
     pub unpriced: u64,
     /// The calls summed.
     pub calls: u64,
-    /// The tokens the last call that reported them read and wrote: what a
-    /// conversation's next request sends again. `None` before such a call.
-    pub context: Option<u64>,
 }
 
 impl UsageTotals {
@@ -870,23 +875,9 @@ impl UsageTotals {
             None => self.unpriced += 1,
         }
         self.tokens += usage.cost(None);
-        let context = usage
-            .total_tokens
-            .or_else(|| Some(usage.input_tokens? + usage.output_tokens.unwrap_or(0)));
-        if context.is_some() {
-            self.context = context;
-        }
     }
 
-    /// Adds the `usage` of a call that did not send the conversation, such
-    /// as a summary's: it costs, but says nothing about the context.
-    pub fn record_aside(&mut self, usage: &Usage) {
-        let context = self.context;
-        self.record(usage);
-        self.context = context;
-    }
-
-    /// Adds what `other` summed, but not its context.
+    /// Adds what `other` summed.
     pub fn add(&mut self, other: &UsageTotals) {
         self.tokens += other.tokens;
         self.cost += other.cost;

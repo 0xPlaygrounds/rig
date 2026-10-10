@@ -1,13 +1,15 @@
 //! What each agent's model calls used and cost, and how full its context is.
-//! Every finished model call adds the usage its provider reported to its
-//! agent's [`Spending`], which its log saves, and to its turn's
-//! [`TurnSpending`]. rig-core prices a reply its provider did not price at
+//! Every finished model call of a turn, a plugin's
+//! [`ModelRequest`](super::turn::ModelRequest) too,
+//! adds the usage its provider reported to its agent's [`Spending`], which
+//! its log saves, and to its turn's [`TurnSpending`], also when the
+//! turn-failure rule rejects the reply. rig-core prices a reply its provider did not price at
 //! the model's catalog [`Pricing`](rig_core::catalog::Pricing), so the cost
 //! here is the provider's figure or the catalog's list price.
 //!
-//! The context in use is the last call's input and output: the next request
-//! sends all of it again. [`Spending::context_use`] measures it against the
-//! connected model's window.
+//! The context in use is the agent's [`LastUsage`]: the next request sends
+//! all of it again. [`ContextUse::of`] measures it against the connected
+//! model's window.
 
 use std::ops::{Deref, DerefMut};
 
@@ -18,7 +20,9 @@ use rig_core::catalog::ModelSpec;
 use rig_core::completion::UsageTotals;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{AgentId, TurnOf};
+use super::agent::{AgentId, CallOf, LastUsage, TurnOf};
+use super::calls::Done;
+use super::turn::ModelReply;
 
 /// An agent's model calls' usage summed, as rig-core's [`UsageTotals`]
 /// sums it, saved with the session. A turn's is a [`TurnSpending`].
@@ -64,15 +68,6 @@ impl Spending {
     pub fn cost_or_tokens(&self) -> String {
         self.cost_label()
             .unwrap_or_else(|| format!("{} tokens", tokens(self.total_tokens())))
-    }
-
-    /// The context in use measured against `spec`'s window, when the last
-    /// call reported its tokens.
-    pub fn context_use(&self, spec: Option<&ModelSpec>) -> Option<ContextUse> {
-        self.context.map(|tokens| ContextUse {
-            tokens,
-            window: spec.and_then(|spec| spec.context_window),
-        })
     }
 
     /// One line for the user or the log: the calls, tokens by kind and the
@@ -124,6 +119,15 @@ pub struct ContextUse {
 }
 
 impl ContextUse {
+    /// The context `last` says the next request sends, measured against
+    /// `spec`'s window, when a reply reported its tokens.
+    pub fn of(last: &LastUsage, spec: Option<&ModelSpec>) -> Option<Self> {
+        last.context().map(|tokens| Self {
+            tokens,
+            window: spec.and_then(|spec| spec.context_window),
+        })
+    }
+
     /// The share of the window in use, in percent, when the window is known.
     pub fn percent(&self) -> Option<u64> {
         self.window
@@ -164,6 +168,25 @@ pub fn dollars(cost: f64) -> String {
         format!("${cost:.3}")
     } else {
         format!("${cost:.2}")
+    }
+}
+
+/// Adds a finished model call's usage to its agent's and its turn's.
+pub(crate) fn record_spending(
+    done: On<Add<Done<ModelReply>>>,
+    calls: Query<(&CallOf, &Done<ModelReply>)>,
+    mut turns: Query<(&TurnOf, &mut TurnSpending)>,
+    mut agents: Query<&mut Spending>,
+) {
+    let Ok((&CallOf(turn), Done(Ok(response)))) = calls.get(done.entity) else {
+        return;
+    };
+    let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
+        return;
+    };
+    turn_spent.0.record(&response.usage);
+    if let Ok(mut spent) = agents.get_mut(agent) {
+        spent.record(&response.usage);
     }
 }
 

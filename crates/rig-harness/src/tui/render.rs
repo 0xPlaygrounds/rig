@@ -26,21 +26,20 @@ use crate::host::reload::{ReloadBuild, ReloadQueued};
 use crate::host::sessions::SessionName;
 use rig_ecs::activity::{Activity, Status};
 use rig_ecs::agent::{
-    ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    Spawned, SpawnedBy,
+    ActiveTurn, Agent, Calls, Condensed, Connection, Conversation, Effort, LastUsage, ModelChoice,
+    NoticeLevel, Partial, Spawned, SpawnedBy,
 };
 use rig_ecs::commands::SlashCommand;
-use rig_ecs::compaction::Compacted;
 use rig_ecs::inbox::Inbox;
 use rig_ecs::models;
 use rig_ecs::turn::RETRY;
-use rig_ecs::usage::{self, Spending, TurnSpending};
+use rig_ecs::usage::{self, ContextUse, Spending, TurnSpending};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
-/// Lines of a compaction's summary shown in the transcript.
+/// Lines of a condensed conversation's summary shown in the transcript.
 const SUMMARY_LINES: usize = 12;
 /// Width of the rebuild progress bar.
 const GAUGE_WIDTH: u32 = 20;
@@ -77,7 +76,8 @@ pub(crate) fn needs_redraw(
             Changed<Effort>,
             Changed<ActiveTurn>,
             Changed<Spending>,
-            Changed<Compacted>,
+            Changed<LastUsage>,
+            Changed<Condensed>,
             Changed<Inbox>,
             Changed<Activity>,
         )>,
@@ -186,18 +186,18 @@ type Everyone<'w, 's> = Query<
 >;
 
 /// The transcript's parts after the shown agent's messages are laid out:
-/// each message, after the notices that came before it and the
-/// compaction's summary; then the notices after the last message, the
+/// each message, after the notices that came before it and the summary
+/// sent in place of the messages above; then the notices after the last message, the
 /// reply streaming in and what waits in the inbox. Without an agent, the
 /// app's notices.
 fn transcript_parts(
     view: &TuiView,
-    shown: Option<(&Conversation, &Compacted, &Inbox)>,
+    shown: Option<(&Conversation, Option<&Condensed>, &Inbox)>,
     partial: Option<&Partial>,
     width: usize,
 ) -> Vec<Part> {
     let mut parts = Vec::new();
-    let Some((conversation, compacted, inbox)) = shown else {
+    let Some((conversation, condensed, inbox)) = shown else {
         let mut extra = Vec::new();
         for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
             notice_lines(notice, &mut extra);
@@ -215,8 +215,8 @@ fn transcript_parts(
         while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
             notice_lines(notice, &mut extra);
         }
-        if compacted.upto == index && !compacted.summary.is_empty() {
-            summary_lines(compacted, &mut extra);
+        if let Some(condensed) = condensed.filter(|condensed| condensed.upto == index) {
+            summary_lines(condensed, &mut extra);
         }
         if !extra.is_empty() {
             parts.push(Part::Rows(wrap_all(&extra, width)));
@@ -306,11 +306,11 @@ pub(crate) fn render(
     mut transcript: Local<Transcript>,
     agents: Query<(
         &Conversation,
-        &Compacted,
+        Option<&Condensed>,
         Option<&ModelChoice>,
         &Effort,
         &Activity,
-        &Spending,
+        (&Spending, &LastUsage),
         Option<&Connection>,
         &Inbox,
     )>,
@@ -387,8 +387,8 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
-                shown.map(|(_, (conversation, compacted, .., inbox))| {
-                    (conversation, compacted, inbox)
+                shown.map(|(_, (conversation, condensed, .., inbox))| {
+                    (conversation, condensed, inbox)
                 }),
                 partial,
                 usize::from(transcript_area.width.max(1)),
@@ -407,7 +407,7 @@ pub(crate) fn render(
             }
             left.extend(spawned_title(view.agent, &everyone));
             left.extend(status_pieces(
-                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
+                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, &activity.status)),
                 loaded("model"),
             ));
             agent_pieces(&mut left, view.agent, &everyone, agents_hint);
@@ -429,7 +429,7 @@ pub(crate) fn render(
                 ));
             }
             let mut right = shown
-                .map(|(.., spent, connection, _)| usage_pieces(spent, connection))
+                .map(|(.., (spent, last), connection, _)| usage_pieces(spent, last, connection))
                 .unwrap_or_default();
             fit(&mut left, &mut right, usize::from(status_area.width));
             let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
@@ -635,7 +635,7 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
 
 /// The focused agent's model, reasoning setting and status.
 fn status_pieces(
-    shown: Option<(Option<&ModelChoice>, &Effort, Status)>,
+    shown: Option<(Option<&ModelChoice>, &Effort, &Status)>,
     model_hint: bool,
 ) -> Vec<Piece> {
     let Some((model, effort, status)) = shown else {
@@ -650,7 +650,7 @@ fn status_pieces(
         Status::Idle => Span::from("idle").green(),
         Status::Thinking => Span::from("thinking… (Esc stops)").yellow(),
         Status::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
-        Status::Compacting => Span::from("compacting… (Esc stops)").yellow(),
+        Status::Busy(what) => Span::from(format!("{what}… (Esc stops)")).yellow(),
         Status::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{} in {seconds}s… (Esc stops)",
             RETRY.max_retries
@@ -670,7 +670,7 @@ fn status_pieces(
 /// The meter: the agent's uncached input and output tokens, cache reads,
 /// cost, then the context against the model's window, yellow past 70% and
 /// red past 90%. `/usage` details the cache writes and reasoning.
-fn usage_pieces(spent: &Spending, connection: Option<&Connection>) -> Vec<Piece> {
+fn usage_pieces(spent: &Spending, last: &LastUsage, connection: Option<&Connection>) -> Vec<Piece> {
     if spent.calls == 0 {
         return Vec::new();
     }
@@ -692,7 +692,8 @@ fn usage_pieces(spent: &Spending, connection: Option<&Connection>) -> Vec<Piece>
     if let Some(cost) = spent.cost_label() {
         pieces.push(Piece::new(keep::COST, Span::from(cost).dim()));
     }
-    if let Some(context) = spent.context_use(connection.map(|connection| &*connection.spec)) {
+    let spec = connection.map(|connection| &*connection.spec);
+    if let Some(context) = ContextUse::of(last, spec) {
         let style = match context.percent() {
             Some(90..) => Style::new().red(),
             Some(70..) => Style::new().yellow(),
@@ -778,20 +779,20 @@ fn draw_picker(frame: &mut Frame, picker: &Picker) {
     );
 }
 
-/// Draws where a compaction cut the conversation: the messages above are
-/// sent to the model as the summary under the line.
-fn summary_lines(compacted: &Compacted, lines: &mut Vec<Line<'static>>) {
+/// Draws where the conversation was condensed: the messages above are sent
+/// to the model as the summary under the line.
+fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
     let style = Style::new().fg(Color::Magenta);
     lines.push(Line::default());
     lines.push(Line::styled(
         format!(
             "── {} earlier messages are sent as this summary ──",
-            compacted.upto
+            condensed.upto
         ),
         style.bold(),
     ));
-    let total = compacted.summary.lines().count();
-    for line in compacted.summary.lines().take(SUMMARY_LINES) {
+    let total = condensed.summary.lines().count();
+    for line in condensed.summary.lines().take(SUMMARY_LINES) {
         lines.push(Line::styled(line.replace('\t', "    "), style.dim()));
     }
     if total > SUMMARY_LINES {

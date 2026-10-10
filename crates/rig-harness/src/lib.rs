@@ -103,9 +103,10 @@ pub mod prelude {
 }
 
 /// What every rig-harness app has: the session and its [`RunMode`](host::headless::RunMode)
-/// (with the print mode), the agent core and the session logs, the project
-/// context in the system prompt (`AGENTS.md` and the environment, with `/context`), the
-/// launcher protocol, `/reload` and `/new`, `/resume` and `/name`. The tools,
+/// (with the print mode), the agent core and the session logs, compaction
+/// (with `/compact`), the project context in the system prompt (`AGENTS.md`
+/// and the environment, with `/context`), the launcher protocol, `/reload`
+/// and `/new`, `/resume` and `/name`. The tools,
 /// the commands other than `/reload` and the views are plugins of their own, so `plugins.toml`
 /// lists the built-in ones like any other and can leave them out.
 pub struct RigHarnessPlugins;
@@ -118,7 +119,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(view::ViewPlugin)
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
-            .add(host::compaction::CodingCompactionPlugin)
+            .add(plugins::compaction::CompactionPlugin)
             .add(host::context::ProjectContextPlugin)
             .add(host::defaults::DefaultsPlugin)
             .add(host::launcher::LauncherPlugin)

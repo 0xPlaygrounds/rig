@@ -6,13 +6,12 @@ use std::sync::Arc;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{AssistantContent, Message, Reasoning};
+use rig_core::completion::{AssistantContent, Message, Reasoning, Usage};
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
 use super::activity::Activity;
-use super::compaction::Compacted;
 use super::effects::Handler;
 use super::inbox::{Inbox, Origin};
 use super::tools::Footprint;
@@ -27,10 +26,10 @@ use super::usage::{Spending, TurnSpending};
 #[require(
     Activity,
     AgentId,
-    Compacted,
     Conversation,
     Effort,
     Inbox,
+    LastUsage,
     Spending,
     SystemPrompt,
     ToolAccess
@@ -83,7 +82,7 @@ pub struct EffectParent(pub EffectId);
 
 /// The conversation: every message sent to and received from the model,
 /// and where each delivered text came from when it is not the user's own.
-/// Requests leave out the messages its agent's [`Compacted`] replaced with
+/// Requests leave out the messages its agent's [`Condensed`] replaced with
 /// a summary. Messages are added only through the
 /// [`SessionLog`](super::journal::SessionLog), which logs each one.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
@@ -137,8 +136,10 @@ impl Conversation {
     }
 
     /// The messages, to change in place, such as clearing old tool outputs.
-    /// Nothing can be added or taken out through it.
-    pub(crate) fn messages_mut(&mut self) -> &mut [Message] {
+    /// Nothing can be added or taken out through it, and nothing changed
+    /// through it is logged: a restored session has the messages as they
+    /// were added.
+    pub fn messages_mut(&mut self) -> &mut [Message] {
         &mut self.messages
     }
 
@@ -216,6 +217,67 @@ impl Conversation {
         self.origins.retain(|(at, ..)| *at < len);
         self.seqs.truncate(len);
         Some(message)
+    }
+}
+
+/// What requests send in place of the conversation's older messages, such
+/// as a compaction's summary: `summary`, as one user text, in place of the
+/// first `upto` messages, which stay in the [`Conversation`] for views. It
+/// never changes in place: inserting another logs it, and a restored
+/// session starts from the first message it kept. An agent without one
+/// sends every message.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[component(immutable)]
+#[reflect(Component, Default, Clone, Debug)]
+pub struct Condensed {
+    /// How many of the conversation's first messages `summary` replaces.
+    pub upto: usize,
+    /// The text sent in their place.
+    pub summary: String,
+}
+
+impl Condensed {
+    /// The messages requests send as they are.
+    pub fn live<'a>(&self, messages: &'a [Message]) -> &'a [Message] {
+        messages
+            .get(self.upto.min(messages.len())..)
+            .unwrap_or_default()
+    }
+
+    /// The messages a request sends: the summary, then the live messages.
+    /// The summary goes into the first live message when that is the
+    /// user's, so user and assistant messages still alternate.
+    pub fn request(&self, messages: &[Message]) -> Vec<Message> {
+        let mut live = self.live(messages).to_vec();
+        let summary = UserContent::text(self.summary.clone());
+        match live.first_mut() {
+            Some(Message::User { content }) => content.insert(0, summary),
+            _ => live.insert(
+                0,
+                Message::User {
+                    content: vec![summary],
+                },
+            ),
+        }
+        live
+    }
+}
+
+/// The usage of the agent's last model reply that reported its tokens,
+/// `None` before one did. A plugin that shrinks what requests send, as
+/// compaction does,
+/// replaces it with its estimate of the tokens the next request sends, in
+/// `total_tokens`. Saved with the session.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LastUsage(pub Option<Usage>);
+
+impl LastUsage {
+    /// The tokens the last reply read and wrote, which the next request
+    /// sends again, when it reported them.
+    pub fn context(&self) -> Option<u64> {
+        self.0.as_ref()?.context_tokens()
     }
 }
 
@@ -399,20 +461,6 @@ pub struct Queued;
 pub struct Retry {
     /// The agent.
     pub entity: Entity,
-}
-
-/// Compact the agent's conversation now: its messages up to the small tail
-/// the [`CompactionPolicy`](crate::compaction::CompactionPolicy) keeps (by
-/// default the newest reply alone) are replaced in requests by a summary
-/// the model writes, focused on `focus` when it is not empty. Refused while
-/// a turn runs.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Compact {
-    /// The agent.
-    pub entity: Entity,
-    /// What the summary should keep above all; may be empty.
-    pub focus: String,
 }
 
 /// Stop the agent's running turn.

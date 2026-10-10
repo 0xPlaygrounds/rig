@@ -29,7 +29,6 @@ pub mod activity;
 pub mod agent;
 pub mod calls;
 pub mod commands;
-pub mod compaction;
 pub mod effects;
 #[cfg(feature = "fs-journal")]
 pub mod fs_journal;
@@ -58,14 +57,13 @@ pub mod prelude {
     pub use crate::AgentPlugin;
     pub use crate::activity::{Activity, ActivitySystems, MessageFeed};
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Compact, Connection, Conversation, EffectParent,
-        Effort, Interrupt, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
+        ActiveTurn, Agent, AgentId, CallOf, Condensed, Connection, Conversation, EffectParent,
+        Effort, Interrupt, LastUsage, ModelChoice, Notice, NoticeLevel, Retry, SetEffort, SetModel,
         SettingsChosen, Spawned, SpawnedBy, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded,
         TurnOf, TurnOutcome,
     };
-    pub use crate::calls::{KeepAwake, Wake};
+    pub use crate::calls::{Done, KeepAwake, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand};
-    pub use crate::compaction::Compacted;
     pub use crate::inbox::{
         Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
     };
@@ -73,7 +71,9 @@ pub mod prelude {
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput, failed};
-    pub use crate::turn::{Backoff, Recovery};
+    pub use crate::turn::{
+        Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
+    };
     pub use crate::usage::{Spending, TurnSpending};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, args_schema};
 }
@@ -85,7 +85,6 @@ use bevy_time::{Time, TimePlugin, Virtual};
 
 use agent::{Agent, AgentId, Notice, NoticeLevel};
 use calls::{Done, Wake, poll_calls, settle};
-use compaction::{CompactionPolicy, Summary};
 use effects::Effects;
 use journal::SessionLog;
 use rig_core::message::ToolResult;
@@ -127,7 +126,6 @@ impl Plugin for AgentPlugin {
             .insert_resource(SessionLog::new(store.map(|store| store.0)))
             .init_resource::<Wake>()
             .init_resource::<models::ModelConnector>()
-            .init_resource::<CompactionPolicy>()
             .add_message::<Notice>()
             .add_message::<inbox::Recalled>()
             .add_systems(Startup, (spawn_first_agent, describe_tools))
@@ -136,7 +134,6 @@ impl Plugin for AgentPlugin {
                 (
                     poll_calls::<ModelReply, Done<ModelReply>>,
                     poll_calls::<ToolResult, tools::ToolOutput>,
-                    poll_calls::<Summary, Done<Summary>>,
                     turn::stream_partials,
                 )
                     .in_set(PollCalls),
@@ -158,9 +155,7 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
             .add_observer(turn::on_tool_done)
-            .add_observer(turn::on_compact)
-            .add_observer(turn::on_summarize)
-            .add_observer(turn::on_summary_done)
+            .add_observer(turn::on_model_request)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_despawn)
@@ -168,6 +163,7 @@ impl Plugin for AgentPlugin {
             .add_observer(turn::on_set_model)
             .add_observer(turn::on_model_chosen)
             .add_observer(turn::on_set_effort)
+            .add_observer(usage::record_spending)
             .add_observer(usage::log_turn_spending);
     }
 }

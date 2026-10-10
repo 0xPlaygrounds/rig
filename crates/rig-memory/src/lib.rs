@@ -38,8 +38,8 @@ use rig_core::id::ConversationId;
 mod compaction;
 
 pub use compaction::{
-    ClearToolOutputs, Cleared, ModelCompactor, Summarizer, SummaryError, SummaryLimits,
-    SummaryPrompts, SummaryState, TrackArgument, TrackedSet, completion_of,
+    ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, ModelCompactor, Summarizer,
+    SummaryError, SummaryLimits, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
 };
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};

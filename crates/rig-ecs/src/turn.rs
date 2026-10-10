@@ -6,10 +6,12 @@
 //! results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
 //! retried after a [`Backoff`] or recovered from as rig-core's [`RETRY`]
-//! policy decides; each turn counts its attempts in its [`Recovery`]. A
-//! conversation near
-//! the model's window is [`compaction`]-ed before the next call. Despawning
-//! the turn ends it, and announces its [`TurnEnded`] on the agent.
+//! policy decides; each turn counts its attempts in its [`Recovery`].
+//! Plugins extend a turn: [`PrepareRequest`] before each model request,
+//! which may rewrite what it sends or hold it with calls of their own, such
+//! as a [`ModelRequest`] on the agent's model; and [`ModelFailed`] after a
+//! call fails in a way a retry does not fix. Despawning the turn ends it,
+//! and announces its [`TurnEnded`] on the agent.
 
 use std::pin::Pin;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -17,38 +19,33 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_log::tracing::Instrument;
-use bevy_log::{info, info_span};
+use bevy_log::{info, info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
-use futures::{FutureExt, StreamExt};
-use rig_core::catalog::ModelSpec;
+use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
-use rig_core::effect::{EffectId, EffectKind};
-use rig_core::error::ErrorReport;
+use rig_core::effect::family::Completion;
+use rig_core::effect::{EffectId, EffectKind, Family};
 use rig_core::error::retry::{RetryPolicy, Verdict};
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolResult, UserContent};
 use rig_core::serve::{ErasedHandler, Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::ToolErrorKind;
 use rig_core::transcript::arguments_refusal;
-use rig_memory::{ClearToolOutputs, Summarizer, SummaryState};
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Compact, Connection, Conversation, EffectParent,
-    Effort, Ending, Halt, Interrupt, ModelChoice, Notice, Partial, Queued, Retry, SetEffort,
-    SetModel, SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Connection, Conversation, EffectParent,
+    Effort, Ending, Halt, Interrupt, LastUsage, ModelChoice, Notice, Partial, Queued, Retry,
+    SetEffort, SetModel, SettingsChosen, SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf,
     TurnOutcome,
 };
 use super::calls::{Done, Running, Wake};
-use super::compaction::{
-    self, CompactReason, Compacted, CompactionPolicy, MAX_COMPACTIONS, Summarize, Summarizing,
-    Summary,
-};
 use super::effects::{Effects, Handler};
 use super::inbox::{Delivery, Inbox, deliver_notes, deliver_queued, deliver_steering};
 use super::journal::SessionLog;
@@ -58,7 +55,6 @@ use super::tools::{
     Footprint, OpenCall, Refused, Serves, ToolDef, ToolOutput, failed, outcome_of, recorded_args,
     run_tool_call,
 };
-use super::usage::{self, Spending, TurnSpending};
 
 /// The notice when the agent has no model to call.
 const NO_MODEL: &str = "No model is connected; pick one first.";
@@ -66,21 +62,12 @@ const NO_MODEL: &str = "No model is connected; pick one first.";
 /// How failed model calls are retried: rig-core's default, four retries in
 /// a row per turn (a reply resets the count).
 pub const RETRY: RetryPolicy = RetryPolicy::DEFAULT;
-/// Tokens of the newest tool outputs a clearing keeps (opencode's
-/// `PRUNE_PROTECT`).
-const KEEP_RECENT_OUTPUTS: usize = 40_000;
 
-/// A turn's recovery so far: the failed calls retried since its last
-/// reply, whether it cleared tool outputs after an overflow, and how often
-/// it compacted the conversation.
+/// A turn's recovery so far: the failed calls retried since its last reply.
 #[derive(Component, Clone, Copy, Debug, Default)]
 pub struct Recovery {
     /// Retries since the last reply.
     pub retries: u32,
-    /// Whether an overflow cleared tool outputs in this turn.
-    pub cleared: bool,
-    /// Compactions in this turn.
-    pub compactions: u32,
 }
 
 /// A wait before the turn's next model call, on a call entity of the turn,
@@ -103,11 +90,6 @@ impl Backoff {
         let left = self.until.saturating_duration_since(Instant::now());
         left.as_secs() + u64::from(left.subsec_nanos() > 0)
     }
-}
-
-/// How old tool outputs are cleared: all but the newest 40k tokens of them.
-pub fn clearing() -> ClearToolOutputs {
-    ClearToolOutputs::new(KEEP_RECENT_OUTPUTS)
 }
 
 /// The systems polling running calls, in `Update`.
@@ -137,6 +119,52 @@ enum Delta {
 pub struct CallModel {
     /// The turn.
     pub entity: Entity,
+}
+
+/// Triggered on a turn right before its model request is built, with the
+/// messages it sends: the agent's conversation, after its [`Condensed`]
+/// summary if any, with what was delivered meanwhile. Observers may
+/// rewrite `messages`, or spawn calls [`CallOf`] the turn, such as a
+/// [`ModelRequest`]: while the turn has calls afterwards, nothing is sent,
+/// and the plugin that spawned them triggers [`CallModel`] again once they
+/// are done. Observers run in no set order, so each does its own part only.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct PrepareRequest {
+    /// The turn.
+    pub entity: Entity,
+    /// The turn's agent.
+    pub agent: Entity,
+    /// The messages the request sends, oldest first.
+    pub messages: Vec<Message>,
+}
+
+/// Triggered on a turn whose model call failed in a way sending the same
+/// request again does not fix, such as a request longer than the model's
+/// window ([`ErrorReport::is_context_overflow`]). An observer that takes
+/// the turn over, such as by shrinking the conversation and triggering
+/// [`CallModel`], sets `handled`; otherwise the turn fails, and the user's
+/// last message is taken out.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct ModelFailed {
+    /// The turn.
+    pub entity: Entity,
+    /// The turn's agent.
+    pub agent: Entity,
+    /// Why the call failed.
+    pub report: ErrorReport,
+    /// Whether an observer took the turn over.
+    pub handled: bool,
+}
+
+/// A plugin's model call on the agent's model, such as a summary of its
+/// conversation. Spawned [`CallOf`] a turn, it is dispatched and recorded
+/// like the turn's own calls, with the agent's connection, and ends with a
+/// [`Done<ModelReply>`](Done) on its entity, which is the plugin's to take.
+/// Interrupting the turn cancels it.
+#[derive(Component, Clone, Debug)]
+pub struct ModelRequest {
+    /// The request.
+    pub request: CompletionRequest,
 }
 
 /// Model calls wait on the network: they run on the IO pool.
@@ -298,7 +326,6 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     let log = world.get_resource::<SessionLog>().cloned();
     let mut cancelling = Cancelling::new();
     take_running::<ModelReply>(world, &mut cancelling);
-    take_running::<Summary>(world, &mut cancelling);
     take_running::<ToolResult>(world, &mut cancelling);
     let deadline = Instant::now() + EXIT_GRACE;
     loop {
@@ -474,10 +501,10 @@ pub(crate) fn on_set_effort(
     }
 }
 
-/// Refuses a model or reasoning change, or a compaction, while the
-/// agent's turn runs: the rest of the turn would go to a model, or use a
-/// setting, it did not start with. Every sender of [`SetModel`],
-/// [`SetEffort`] and [`Compact`] gets the same refusal.
+/// Refuses a model or reasoning change while the agent's turn runs: the
+/// rest of the turn would go to a model, or use a setting, it did not start
+/// with. Every sender of [`SetModel`] and [`SetEffort`] gets the same
+/// refusal.
 fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
     if busy {
         notices.write(Notice::info(agent, "A turn is running; stop it first."));
@@ -485,68 +512,30 @@ fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notic
     busy
 }
 
-/// Sends the conversation of the turn's agent to its model. When that
-/// cannot be done the turn ends.
+/// Delivers what waits for the turn's agent, then lets [`PrepareRequest`]
+/// observers see what the request sends. Unless they gave the turn calls
+/// to wait for, the request is sent.
 pub(crate) fn on_call_model(
     call: On<CallModel>,
-    mut turns: Query<(&TurnOf, &mut Recovery)>,
+    turns: Query<&TurnOf>,
     mut agents: Query<(
-        (
-            &AgentId,
-            &mut Conversation,
-            &mut Inbox,
-            Option<&EffectParent>,
-        ),
-        &Compacted,
-        &mut Spending,
+        &AgentId,
+        &mut Conversation,
+        &mut Inbox,
+        Option<&Condensed>,
         Option<&Connection>,
-        &Effort,
-        &SystemPrompt,
-        &ToolAccess,
     )>,
-    tools: Query<(&ToolDef, &ToolRules)>,
-    sections: Query<&PromptSection>,
-    policy: Res<CompactionPolicy>,
-    effects: Res<Effects>,
     log: Res<SessionLog>,
-    wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let turn = call.entity;
-    let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
+    let Ok(&TurnOf(agent)) = turns.get(turn) else {
         return;
     };
-    let Ok((
-        (id, mut conversation, mut inbox, effect_parent),
-        compacted,
-        mut spent,
-        connection,
-        effort,
-        prompt,
-        access,
-    )) = agents.get_mut(agent)
-    else {
+    let Ok((id, mut conversation, mut inbox, condensed, connection)) = agents.get_mut(agent) else {
         return;
     };
-    if let Some(connection) = connection
-        && recovery.compactions < MAX_COMPACTIONS
-        && must_summarize(
-            agent,
-            &mut conversation,
-            (compacted, &policy),
-            &mut spent,
-            &connection.spec,
-            &mut notices,
-        )
-    {
-        recovery.compactions += 1;
-        commands.trigger(Summarize {
-            entity: turn,
-            reason: CompactReason::Threshold,
-        });
-        return;
-    }
     let to = Delivery {
         agent,
         id,
@@ -555,6 +544,56 @@ pub(crate) fn on_call_model(
     };
     deliver_notes(&to, &mut inbox, &mut conversation, &mut notices);
     deliver_steering(&to, &mut inbox, &mut conversation, &mut notices);
+    let messages = match condensed {
+        Some(condensed) => condensed.request(conversation.messages()),
+        None => conversation.messages().to_vec(),
+    };
+    commands.queue(move |world: &mut World| {
+        let mut prepare = PrepareRequest {
+            entity: turn,
+            agent,
+            messages,
+        };
+        world.trigger_ref(&mut prepare);
+        // The observers' calls exist once their commands are applied.
+        world.flush();
+        if world.get::<Calls>(turn).is_some() {
+            return;
+        }
+        if let Err(error) = world.run_system_cached_with(send_request, (turn, prepare.messages)) {
+            warn!("could not send a model request: {error}");
+        }
+    });
+}
+
+/// Sends `messages` for the turn to its agent's model. When that cannot be
+/// done the turn ends.
+fn send_request(
+    In((turn, messages)): In<(Entity, Vec<Message>)>,
+    turns: Query<&TurnOf>,
+    mut agents: Query<(
+        (&AgentId, &mut Conversation, Option<&EffectParent>),
+        Option<&Connection>,
+        &Effort,
+        &SystemPrompt,
+        &ToolAccess,
+    )>,
+    tools: Query<(&ToolDef, &ToolRules)>,
+    sections: Query<&PromptSection>,
+    effects: Res<Effects>,
+    log: Res<SessionLog>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok(&TurnOf(agent)) = turns.get(turn) else {
+        return;
+    };
+    let Ok(((id, mut conversation, effect_parent), connection, effort, prompt, access)) =
+        agents.get_mut(agent)
+    else {
+        return;
+    };
     let request = connection
         .ok_or_else(|| NO_MODEL.to_owned())
         .and_then(|connection| {
@@ -568,7 +607,6 @@ pub(crate) fn on_call_model(
             let preamble =
                 system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
             let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
-            let messages = compacted.request(conversation.messages());
             prepare(messages, connection, effort, &id.0, preamble, definitions).map(|request| {
                 (
                     connection.handler.erased(),
@@ -614,49 +652,56 @@ pub(crate) fn on_call_model(
     ));
 }
 
-/// Whether the next request leaves less than the reserve of the model's
-/// window free and must be summarized first. It clears old tool outputs
-/// before that, which costs no model call, and asks for a summary only when
-/// clearing was not enough. The context in use is the last call's reported
-/// one or the conversation's estimate, whichever is larger.
-fn must_summarize(
-    agent: Entity,
-    conversation: &mut Mut<Conversation>,
-    (compacted, policy): (&Compacted, &CompactionPolicy),
-    spent: &mut Mut<Spending>,
-    spec: &ModelSpec,
-    notices: &mut MessageWriter<Notice>,
-) -> bool {
-    let used = spent
-        .context
-        .unwrap_or(0)
-        .max(compacted.estimate(conversation.messages()));
-    if !compaction::over_threshold(used, spec) {
-        return false;
-    }
-    let cleared = clearing().clear(compacted.live_mut(conversation.messages_mut()));
-    let left = used.saturating_sub(cleared.tokens as u64);
-    if cleared.results > 0 {
-        spent.context = Some(left);
-        notices.write(Notice::info(
-            agent,
-            format!(
-                "The conversation nears the model's context window: cleared {} older tool \
-                 outputs (about {} tokens).",
-                cleared.results,
-                usage::tokens(cleared.tokens as u64)
-            ),
-        ));
-    }
-    compaction::over_threshold(left, spec)
-        && compacted
-            .cut(
-                conversation.messages(),
-                policy,
-                spec,
-                &CompactReason::Threshold,
-            )
-            .is_some()
+/// Dispatches a plugin's [`ModelRequest`] with its turn's agent's model,
+/// on the one dispatch path. Without a model it is done at once, failed.
+pub(crate) fn on_model_request(
+    add: On<Add<ModelRequest>>,
+    calls: Query<(&CallOf, &ModelRequest)>,
+    turns: Query<&TurnOf>,
+    agents: Query<(&AgentId, Option<&Connection>, Option<&EffectParent>)>,
+    effects: Res<Effects>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+) {
+    let call = add.entity;
+    let Ok((&CallOf(turn), ModelRequest { request })) = calls.get(call) else {
+        return;
+    };
+    let Some((id, connection, effect_parent)) = turns
+        .get(turn)
+        .ok()
+        .and_then(|&TurnOf(agent)| agents.get(agent).ok())
+    else {
+        return;
+    };
+    let Some(connection) = connection else {
+        let failed = ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL);
+        commands
+            .entity(call)
+            .insert(Done::<ModelReply>(Err(failed)));
+        return;
+    };
+    let (effect, reply) = effects.dispatch(
+        &id.0,
+        effect_parent.map(|parent| parent.0),
+        connection.handler.erased(),
+        EffectKind::Completion {
+            request: request.clone(),
+            stream: true,
+        },
+    );
+    let span = info_span!("model_request", agent = %id.0, effect = %effect);
+    let work = async move {
+        reply
+            .await
+            .into_outcome()
+            .await
+            .and_then(Completion::unwrap)
+    };
+    let work = effects.caught(effect, work).instrument(span);
+    commands
+        .entity(call)
+        .insert(Running::spawn(model_pool(), &wake, work));
 }
 
 /// Removes the user's last message when no model answered it, so the next
@@ -756,15 +801,13 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending, &mut Recovery)>,
+    mut turns: Query<(&TurnOf, &mut Recovery)>,
     mut agents: Query<(
         (&AgentId, &mut Conversation, &mut Inbox),
-        &Compacted,
         Option<&Connection>,
-        &mut Spending,
+        &mut LastUsage,
     )>,
     starter: ToolStarter,
-    policy: Res<CompactionPolicy>,
     log: Res<SessionLog>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -774,37 +817,27 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut turn_spent, mut recovery)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((id, mut conversation, mut inbox), compacted, connection, mut spent)) =
-        agents.get_mut(agent)
+    let Ok(((id, mut conversation, mut inbox), connection, mut last)) = agents.get_mut(agent)
     else {
         return;
     };
     let spec = connection.map(|connection| &*connection.spec);
     let response = match reply {
         Ok(response) => {
-            // A reply the turn-failure rule rejects was still billed.
-            spent.record(&response.usage);
-            turn_spent.0.record(&response.usage);
+            if response.usage.context_tokens().is_some() {
+                *last = LastUsage(Some(response.usage));
+            }
             recovery.retries = 0;
             response
         }
         Err(report) => {
-            let failed = Failed {
-                agent,
-                id,
-                turn,
+            recover(
+                (agent, turn),
                 report,
-                spec,
-                policy: &policy,
-                log: &log,
-            };
-            failed.recover(
                 &mut recovery,
-                &mut conversation,
-                compacted,
                 &mut commands,
                 &mut notices,
             );
@@ -882,154 +915,98 @@ pub(crate) fn on_model_done(
     }
 }
 
-/// A failed model call of a turn.
-struct Failed<'a> {
-    agent: Entity,
-    id: &'a AgentId,
-    turn: Entity,
-    report: &'a ErrorReport,
-    /// The model that failed.
-    spec: Option<&'a ModelSpec>,
-    /// How a compaction after an overflow keeps the newest messages.
-    policy: &'a CompactionPolicy,
-    log: &'a SessionLog,
-}
-
-impl Failed<'_> {
-    /// Carries the turn on after the failure, as the [`RETRY`] policy
-    /// decides: waits and calls again; clears old tool outputs, or else
-    /// compacts, and calls again; or ends the turn, keeping the user's message when nothing is
-    /// wrong with it.
-    fn recover(
-        &self,
-        recovery: &mut Recovery,
-        conversation: &mut Conversation,
-        compacted: &Compacted,
-        commands: &mut Commands,
-        notices: &mut MessageWriter<Notice>,
-    ) {
-        let (agent, report) = (self.agent, self.report);
-        match RETRY.verdict(report, recovery.retries, now()) {
-            Verdict::Retry(delay) => {
-                recovery.retries += 1;
-                let backoff = Backoff {
-                    attempt: recovery.retries,
-                    until: Instant::now() + delay,
-                    why: report.to_string(),
-                };
-                notices.write(Notice::info(
-                    agent,
-                    format!(
-                        "The model call failed: {report}. Retrying in {}s ({}/{}).",
-                        backoff.seconds_left(),
-                        backoff.attempt,
-                        RETRY.max_retries
-                    ),
-                ));
-                let wait = commands
-                    .spawn((Name::new("retry wait"), backoff, CallOf(self.turn)))
-                    .id();
-                // An interrupt despawns the turn and its wait meanwhile;
-                // a call for a turn that is gone does nothing.
-                let mut delayed = commands.delayed();
-                let mut later = delayed.duration(delay);
-                later.entity(wait).try_despawn();
-                later.trigger(CallModel { entity: self.turn });
-            }
-            Verdict::Overflow => {
-                // Clear old outputs first, which costs no call; then
-                // summarize; then fail.
-                if !recovery.cleared {
-                    recovery.cleared = true;
-                    if self.clear(conversation, compacted, notices) {
-                        commands.trigger(CallModel { entity: self.turn });
-                        return;
-                    }
-                }
-                if recovery.compactions < MAX_COMPACTIONS
-                    && self.spec.is_some_and(|spec| {
-                        compacted
-                            .cut(
-                                conversation.messages(),
-                                self.policy,
-                                spec,
-                                &CompactReason::Overflow,
-                            )
-                            .is_some()
-                    })
-                {
-                    recovery.compactions += 1;
-                    notices.write(Notice::info(
-                        agent,
-                        "The conversation outgrew the model's context window: summarizing its \
-                         older messages and sending it again.",
-                    ));
-                    commands.trigger(Summarize {
-                        entity: self.turn,
-                        reason: CompactReason::Overflow,
-                    });
-                    return;
-                }
-                let why = format!(
-                    "The conversation does not fit the model's context window, even \
-                     compacted and with old tool outputs cleared: {report}"
-                );
-                notices.write(Notice::error(agent, why.clone()));
-                self.fail(why, conversation, commands, notices);
-            }
-            Verdict::GaveUp(why) => {
-                notices.write(Notice::error(
-                    agent,
-                    format!(
-                        "The model call failed: {report}. Not retrying: {why}. Your message is \
-                         kept for a retry."
-                    ),
-                ));
-                end_turn(commands, self.turn, TurnOutcome::Failed(report.to_string()));
-            }
-            Verdict::Final => {
-                let why = format!("The model call failed: {report}");
-                notices.write(Notice::error(agent, why.clone()));
-                self.fail(why, conversation, commands, notices);
-            }
-        }
-    }
-
-    /// Clears the older tool outputs of the live conversation. Whether it
-    /// cleared any.
-    fn clear(
-        &self,
-        conversation: &mut Conversation,
-        compacted: &Compacted,
-        notices: &mut MessageWriter<Notice>,
-    ) -> bool {
-        let cleared = clearing().clear(compacted.live_mut(conversation.messages_mut()));
-        if cleared.results > 0 {
+/// Carries the turn of `agent` on after its model call failed for
+/// `report`, as the [`RETRY`] policy decides: waits and calls again; ends
+/// the turn, keeping the user's message when nothing is wrong with it; or
+/// hands the turn to [`ModelFailed`] observers.
+fn recover(
+    (agent, turn): (Entity, Entity),
+    report: &ErrorReport,
+    recovery: &mut Recovery,
+    commands: &mut Commands,
+    notices: &mut MessageWriter<Notice>,
+) {
+    let why = match RETRY.verdict(report, recovery.retries, now()) {
+        Verdict::Retry(delay) => {
+            recovery.retries += 1;
+            let backoff = Backoff {
+                attempt: recovery.retries,
+                until: Instant::now() + delay,
+                why: report.to_string(),
+            };
             notices.write(Notice::info(
-                self.agent,
+                agent,
                 format!(
-                    "The conversation outgrew the model's context window: cleared {} older \
-                     tool outputs (about {} tokens) and sending it again.",
-                    cleared.results,
-                    usage::tokens(cleared.tokens as u64)
+                    "The model call failed: {report}. Retrying in {}s ({}/{}).",
+                    backoff.seconds_left(),
+                    backoff.attempt,
+                    RETRY.max_retries
                 ),
             ));
+            let wait = commands
+                .spawn((Name::new("retry wait"), backoff, CallOf(turn)))
+                .id();
+            // An interrupt despawns the turn and its wait meanwhile; a call
+            // for a turn that is gone does nothing.
+            let mut delayed = commands.delayed();
+            let mut later = delayed.duration(delay);
+            later.entity(wait).try_despawn();
+            later.trigger(CallModel { entity: turn });
+            return;
         }
-        cleared.results > 0
-    }
+        Verdict::GaveUp(why) => {
+            notices.write(Notice::error(
+                agent,
+                format!(
+                    "The model call failed: {report}. Not retrying: {why}. Your message is \
+                     kept for a retry."
+                ),
+            ));
+            end_turn(commands, turn, TurnOutcome::Failed(report.to_string()));
+            return;
+        }
+        Verdict::Overflow => {
+            format!("The conversation does not fit the model's context window: {report}")
+        }
+        Verdict::Final => format!("The model call failed: {report}"),
+    };
+    let report = report.clone();
+    commands.queue(move |world: &mut World| {
+        let mut failed = ModelFailed {
+            entity: turn,
+            agent,
+            report,
+            handled: false,
+        };
+        world.trigger_ref(&mut failed);
+        if failed.handled {
+            return;
+        }
+        if let Err(error) = world.run_system_cached_with(fail_turn, (turn, why)) {
+            warn!("could not end a failed turn: {error}");
+        }
+    });
+}
 
-    /// Ends the turn as failed for `why`, taking out the user's message:
-    /// the same request would fail again.
-    fn fail(
-        &self,
-        why: String,
-        conversation: &mut Conversation,
-        commands: &mut Commands,
-        notices: &mut MessageWriter<Notice>,
-    ) {
-        drop_unanswered(self.agent, self.id, conversation, self.log, notices);
-        end_turn(commands, self.turn, TurnOutcome::Failed(why));
-    }
+/// Ends the turn as failed for `why`, taking out the user's message: the
+/// same request would fail again.
+fn fail_turn(
+    In((turn, why)): In<(Entity, String)>,
+    turns: Query<&TurnOf>,
+    mut agents: Query<(&AgentId, &mut Conversation)>,
+    log: Res<SessionLog>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok(&TurnOf(agent)) = turns.get(turn) else {
+        return;
+    };
+    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+        return;
+    };
+    notices.write(Notice::error(agent, why.clone()));
+    drop_unanswered(agent, id, &mut conversation, &log, &mut notices);
+    end_turn(&mut commands, turn, TurnOutcome::Failed(why));
 }
 
 /// Takes a tool call's [`ToolOutput`], however it came: records it as an
@@ -1217,205 +1194,6 @@ impl ToolStarter<'_, '_> {
 /// The [`Name`] of a tool call's entity.
 pub fn tool_name(run: &ToolCallRun) -> Name {
     Name::new(format!("tool call {}", run.call.function.name.as_str()))
-}
-
-/// Compacts an idle agent's conversation on the user's request, in a turn
-/// of its own that ends with the summary.
-pub(crate) fn on_compact(
-    compact: On<Compact>,
-    agents: Query<
-        (
-            &Conversation,
-            &Compacted,
-            Option<&Connection>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    policy: Res<CompactionPolicy>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = compact.entity;
-    let Ok((conversation, compacted, connection, busy)) = agents.get(agent) else {
-        return;
-    };
-    if refused_mid_turn(agent, busy, &mut notices) {
-        return;
-    }
-    let Some(connection) = connection else {
-        notices.write(Notice::info(agent, NO_MODEL));
-        return;
-    };
-    let reason = CompactReason::Asked {
-        focus: compact.focus.clone(),
-    };
-    if compacted
-        .cut(conversation.messages(), &policy, &connection.spec, &reason)
-        .is_none()
-    {
-        notices.write(Notice::info(agent, "Nothing to compact yet."));
-        return;
-    }
-    let turn = commands
-        .spawn((Name::new("compaction"), TurnOf(agent)))
-        .id();
-    commands.trigger(Summarize {
-        entity: turn,
-        reason,
-    });
-}
-
-/// Starts the summary call of a compaction, on the one dispatch path, with
-/// the agent's model. When there is nothing to summarize, or no model, the
-/// turn carries on, or ends when the user asked.
-pub(crate) fn on_summarize(
-    summarize: On<Summarize>,
-    turns: Query<&TurnOf>,
-    agents: Query<(
-        &AgentId,
-        &Conversation,
-        &Compacted,
-        Option<&Connection>,
-        Option<&EffectParent>,
-    )>,
-    policy: Res<CompactionPolicy>,
-    effects: Res<Effects>,
-    wake: Res<Wake>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let turn = summarize.entity;
-    let Ok(&TurnOf(agent)) = turns.get(turn) else {
-        return;
-    };
-    let Ok((id, conversation, compacted, connection, effect_parent)) = agents.get(agent) else {
-        return;
-    };
-    let reason = &summarize.reason;
-    let planned = connection
-        .ok_or_else(|| "no model is connected".to_owned())
-        .and_then(|connection| {
-            let upto = compacted
-                .cut(conversation.messages(), &policy, &connection.spec, reason)
-                .ok_or_else(|| "nothing to summarize yet".to_owned())?;
-            compaction::plan(
-                &policy,
-                compacted,
-                conversation.messages(),
-                upto,
-                &connection.spec,
-                reason.clone(),
-            )
-            .map(|(summarizing, request)| (connection.handler.erased(), summarizing, request))
-        });
-    let (handler, summarizing, request) = match planned {
-        Ok(planned) => planned,
-        Err(why) => {
-            notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
-            carry_on(turn, reason, &mut commands);
-            return;
-        }
-    };
-    let (effect, reply) = effects.dispatch(
-        &id.0,
-        effect_parent.map(|parent| parent.0),
-        handler,
-        EffectKind::Completion {
-            request,
-            stream: true,
-        },
-    );
-    let span = info_span!("summary_call", agent = %id.0, effect = %effect);
-    let work = effects
-        .caught(effect, rig_memory::completion_of(reply))
-        .map(Summary)
-        .instrument(span);
-    commands.spawn((
-        Name::new("summary call"),
-        summarizing,
-        Running::spawn(model_pool(), &wake, work),
-        CallOf(turn),
-    ));
-}
-
-/// Takes a finished summary: the agent's [`Compacted`] now replaces the
-/// summarized messages with it, and its log records the compaction. A
-/// failed summary replaces nothing. Either way the turn carries on with its
-/// model call, or ends when the user asked for the compaction.
-pub(crate) fn on_summary_done(
-    done: On<Add<Done<Summary>>>,
-    calls: Query<(&CallOf, &Summarizing, &Done<Summary>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending)>,
-    mut agents: Query<(&AgentId, &Conversation, &mut Compacted, &mut Spending)>,
-    log: Res<SessionLog>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let call = done.entity;
-    let Ok((&CallOf(turn), summarizing, Done(Summary(reply)))) = calls.get(call) else {
-        return;
-    };
-    commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
-        return;
-    };
-    let Ok((id, conversation, mut compacted, mut spent)) = agents.get_mut(agent) else {
-        return;
-    };
-    let summary = reply
-        .as_ref()
-        .map_err(ToString::to_string)
-        .and_then(|response| {
-            spent.record_aside(&response.usage);
-            turn_spent.0.record_aside(&response.usage);
-            Summarizer::summary_text(response).map_err(|why| why.to_string())
-        });
-    match summary {
-        Ok(summary) => {
-            *compacted = Compacted(SummaryState {
-                upto: summarizing.upto,
-                summary,
-                tracked: summarizing.tracked.clone(),
-            });
-            log.compaction(id, conversation, &compacted);
-            let left = compacted.estimate(conversation.messages());
-            spent.context = Some(left);
-            notices.write(Notice::info(
-                agent,
-                format!(
-                    "Compacted {} messages (about {} tokens) into a summary and kept {} \
-                     (about {} tokens) as it was; the model now gets about {} tokens of \
-                     conversation.",
-                    summarizing.messages,
-                    usage::tokens(summarizing.tokens),
-                    match summarizing.kept {
-                        1 => "the newest message".to_owned(),
-                        kept => format!("the newest {kept} messages"),
-                    },
-                    usage::tokens(summarizing.kept_tokens),
-                    usage::tokens(left)
-                ),
-            ));
-        }
-        Err(why) => {
-            notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
-        }
-    }
-    carry_on(turn, &summarizing.reason, &mut commands);
-}
-
-/// After a compaction: the turn calls the model, or ends when the user
-/// asked for the compaction.
-fn carry_on(turn: Entity, reason: &CompactReason, commands: &mut Commands) {
-    match reason {
-        CompactReason::Asked { .. } => {
-            commands.entity(turn).despawn();
-        }
-        CompactReason::Threshold | CompactReason::Overflow => {
-            commands.trigger(CallModel { entity: turn });
-        }
-    }
 }
 
 /// The wall clock as std's `SystemTime`, which rig-core's retry policy

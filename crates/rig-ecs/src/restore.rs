@@ -1,6 +1,7 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
 //! pass that settles what a crash or a restart left half done. Each log is
-//! read from its newest compaction on, with a torn last line cut off and
+//! read from its newest [`Condensed`] record on, with a torn last line cut
+//! off and
 //! records of unknown types skipped. Each fix the reconcile pass makes is an
 //! ordinary record, so the next restore finds nothing left to fix; the
 //! request-build repair that answers any call still without a result stays
@@ -26,12 +27,12 @@ use bevy_log::warn;
 use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolResult};
 use rig_core::transcript::pending_calls;
-use rig_memory::SummaryState;
 use serde::Deserialize;
 use serde::de::IgnoredAny;
 
-use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf};
-use super::compaction::Compacted;
+use super::agent::{
+    Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf,
+};
 use super::journal::{
     AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
     load_blobs,
@@ -45,7 +46,7 @@ use super::turn::{CallModel, ToolStarter, tool_name};
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
 /// The first fields of a line, read from every line to find the newest
-/// compaction and the newest record of each saved component.
+/// condensed record and the newest record of each saved component.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
@@ -58,7 +59,7 @@ struct Envelope {
 struct Folded {
     header: Header,
     conversation: Conversation,
-    compacted: Compacted,
+    condensed: Option<Condensed>,
     log: AgentLog,
 }
 
@@ -85,7 +86,7 @@ pub struct Restored {
 }
 
 /// Spawns the agents of the session's logs, with their conversations,
-/// compactions and saved components, links each agent to the agent that
+/// condensed summaries and saved components, links each agent to the agent that
 /// spawned it, and starts logging. Anything that does not load is skipped
 /// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
@@ -125,19 +126,15 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            compacted,
+            condensed,
             mut log,
         } = agent;
         let id = AgentId(header.agent.clone());
-        let entity = world
-            .spawn((
-                Name::new("agent"),
-                Agent,
-                id.clone(),
-                conversation,
-                compacted,
-            ))
-            .id();
+        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        if let Some(condensed) = condensed {
+            spawned.insert(condensed);
+        }
+        let entity = spawned.id();
         // In the order registered, which inserts the reasoning setting
         // before the model that checks it.
         for (path, insert) in &saved_components {
@@ -248,26 +245,26 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
     let mut folded = Folded {
         header,
         conversation: Conversation::default(),
-        compacted: Compacted::default(),
+        condensed: None,
         log: AgentLog {
             next_seq: next_seq.max().unwrap_or(1),
             started: true,
             ..AgentLog::new(0)
         },
     };
-    // Messages are read from the first one the newest compaction kept, the
-    // rest from the compaction on.
-    let compaction = envelopes
+    // Messages are read from the first one the newest condensed record
+    // kept, the rest from that record on.
+    let condensed = envelopes
         .iter()
-        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "compaction"))
+        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "condensed"))
         .and_then(|at| {
             let line = serde_json::from_slice::<Line>(lines.get(at)?).ok()?;
             match line.record {
-                Record::Compaction(record) => Some((at, record)),
+                Record::Condensed(record) => Some((at, record)),
                 _ => None,
             }
         });
-    let (from_messages, from_rest) = match compaction {
+    let (from_messages, from_rest) = match condensed {
         Some((at, record)) => {
             let first_kept = envelopes
                 .iter()
@@ -278,10 +275,9 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 })
                 .map_or(at, |(index, _)| index.min(at));
             folded.log.components = record.snapshot.components;
-            folded.compacted = Compacted(SummaryState {
+            folded.condensed = Some(Condensed {
                 upto: 0,
                 summary: record.summary,
-                tracked: record.tracked,
             });
             (first_kept, at + 1)
         }
@@ -340,7 +336,7 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                     folded.log.components.remove(&component);
                 }
             },
-            Record::Header(_) | Record::Compaction(_) => {}
+            Record::Header(_) | Record::Condensed(_) => {}
         }
     }
     Ok(folded)

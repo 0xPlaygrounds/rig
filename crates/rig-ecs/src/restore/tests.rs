@@ -1,19 +1,14 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_core::completion::{AssistantContent, CompletionResponse, Message, Usage};
-use rig_core::message::{Origin, UserContent};
+use rig_core::completion::Message;
+use rig_core::message::UserContent;
 
 use crate::AgentPlugin;
-use crate::agent::{
-    Agent, AgentId, CallOf, Conversation, Halt, Interrupt, STOPPED, ToolAccess, TurnOf,
-};
-use crate::calls::Done;
-use crate::compaction::{CompactReason, Summarizing, Summary};
+use crate::agent::{Agent, AgentId, Condensed, Conversation, Halt, Interrupt, STOPPED, ToolAccess};
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{JournalPlugin, SessionLog};
 use crate::restore::Restored;
 use crate::store::{MemoryStore, SessionStore};
-use crate::usage::Spending;
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity.
@@ -41,7 +36,7 @@ fn say(app: &mut App, agent: Entity, message: Message) {
 }
 
 #[test]
-fn a_restored_agent_keeps_the_context_its_compaction_left() {
+fn a_restored_agent_starts_from_the_messages_its_summary_kept() {
     let store = MemoryStore::default();
     let mut first = app(&store);
     let agent = first_agent(&mut first);
@@ -51,42 +46,31 @@ fn a_restored_agent_keeps_the_context_its_compaction_left() {
         say(&mut first, agent, Message::user(format!("question {n}")));
         say(&mut first, agent, Message::assistant(format!("answer {n}")));
     }
-    // What the last reply reported, near the model's window.
-    if let Some(mut spent) = first.world_mut().get_mut::<Spending>(agent) {
-        spent.context = Some(150_000);
-    }
-    let turn = first.world_mut().spawn(TurnOf(agent)).id();
-    let summary = CompletionResponse::new(
-        vec![AssistantContent::text("The user asked four questions.")],
-        Usage::new().input_tokens(100).output_tokens(10),
-        Origin::new("test", "test", "test/model"),
-        serde_json::Value::Null,
-    );
-    first.world_mut().spawn((
-        CallOf(turn),
-        Summarizing {
-            reason: CompactReason::Asked {
-                focus: String::new(),
-            },
-            upto: 6,
-            messages: 6,
-            tokens: 0,
-            kept: 2,
-            kept_tokens: 0,
-            tracked: Vec::new(),
-        },
-        Done(Summary(Ok(summary))),
-    ));
+    let summary = "The user asked three questions.".to_owned();
+    first.world_mut().entity_mut(agent).insert(Condensed {
+        upto: 6,
+        summary: summary.clone(),
+    });
     first.update();
-    let context = |app: &mut App| {
-        first_agent(app)
-            .and_then(|agent| app.world().get::<Spending>(agent))
-            .and_then(|spent| spent.context)
-    };
-    let left = context(&mut first);
-    assert!(left.is_some_and(|left| left < 150_000), "{left:?}");
     let mut second = app(&store);
-    assert_eq!(context(&mut second), left);
+    let agent = first_agent(&mut second);
+    assert!(agent.is_some(), "the agent was restored");
+    let Some(agent) = agent else { return };
+    let world = second.world();
+    let kept = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.messages().to_vec());
+    let last = [Message::user("question 3"), Message::assistant("answer 3")];
+    assert_eq!(kept.as_deref(), Some(last.as_slice()));
+    let condensed = world.get::<Condensed>(agent);
+    assert_eq!(condensed, Some(&Condensed { upto: 0, summary }));
+    // Requests send the summary at the head of the first kept message.
+    let sent = condensed.map(|condensed| condensed.request(&last));
+    let first_sent = sent.as_ref().and_then(|sent| sent.first());
+    assert!(
+        matches!(first_sent, Some(Message::User { content }) if content.len() == 2),
+        "{sent:?}"
+    );
 }
 
 #[test]

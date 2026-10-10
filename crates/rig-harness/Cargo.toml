@@ -68,3 +68,8 @@ similar = { workspace = true, optional = true }
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.
 libc = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The scripted model (`test_utils::MockCompletionModel`) plugin tests run
+# turns on.
+rig-core = { workspace = true, features = ["reqwest", "test-utils"] }
