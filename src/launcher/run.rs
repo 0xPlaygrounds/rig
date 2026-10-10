@@ -5,18 +5,14 @@
 //! one `RIG_HOME`: building and staging take the root's lock, and a
 //! `/reload` build, its trial and the ready file are per session.
 //!
-//! A session belongs to the directory it runs in. Until it quits cleanly
-//! (exit code 0), `resume/<hash of the directory>` names it, so after a
-//! crash, a kill or a closed terminal the next `rig` there resumes it where
-//! it stopped, unless another launcher still runs it. The agent's `/new`
-//! and `/resume` leave a
+//! `rig` starts a new session, and `rig --resume <id>` an earlier one, in
+//! the directory it ran in. The agent's `/new` and `/resume` leave a
 //! [`SessionDir::switch`] file and exit with the reload code; the launcher
 //! then runs that session instead, in its own directory. A session left
 //! without a message, by a clean quit or a switch, leaves no directory.
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
-//! headless run (`--print`) never becomes the session its directory
-//! resumes, and is not restarted on the reload code.
+//! headless run (`--print`) is not restarted on the reload code.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
@@ -35,9 +31,6 @@ const POLL: Duration = Duration::from_millis(100);
 /// Which session `rig` runs.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Start {
-    /// The working directory's session that did not quit cleanly, else a
-    /// new one.
-    Default,
     /// The named session, in the directory it ran in.
     Resume(SessionId),
     /// A new session.
@@ -54,7 +47,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         home::sweep(home)?;
-        let (claimed, claim_notice) = claim(home, start, here.as_deref(), !headless)?;
+        let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
         let failure = rebuild(home, &claimed.id)?;
         let built = failure.as_ref().map(|failure| {
             format!("Building the agent failed, so the previous build is running: {failure}")
@@ -120,13 +113,12 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         let reload = status.code() == Some(i32::from(RELOAD_EXIT_CODE));
         if reload && !headless {
             if let Some(target) = take_switch(&directory)? {
-                (claimed, notice) = switch(home, claimed, target, !headless)?;
+                (claimed, notice) = switch(home, claimed, target)?;
             }
             continue;
         }
         if !rejected && (status.success() || headless) {
             if status.success() {
-                claimed.forget()?;
                 claimed.discard_if_unsaved(home);
             }
             return Ok(exit_code(status));
@@ -136,7 +128,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         }
         if !rejected {
             eprintln!(
-                "The agent stopped ({status}). Run `rig` here again to resume the session \
+                "The agent stopped ({status}). `rig --resume {session}` resumes the session \
                  where it stopped. Log: {}",
                 log.display()
             );
@@ -176,20 +168,13 @@ fn take_switch(directory: &SessionDir) -> Result<Option<Start>> {
 }
 
 /// Leaves the `current` session for `target`, which the agent asked for.
-/// The current session quit cleanly, so its directory no longer resumes
-/// it, and a build `/reload` staged for it goes with the switch. When the
-/// target cannot be run, the current session carries on, told why.
-fn switch(
-    home: &Home,
-    current: Claimed,
-    target: Start,
-    mark: bool,
-) -> Result<(Claimed, Option<String>)> {
+/// A build `/reload` staged for it goes with the switch. When the target
+/// cannot be run, the current session carries on, told why.
+fn switch(home: &Home, current: Claimed, target: Start) -> Result<(Claimed, Option<String>)> {
     let _lock = home::lock(home)?;
     let here = current.directory.clone();
-    match claim(home, target, here.as_deref(), mark) {
+    match claim(home, target, here.as_deref()) {
         Ok((next, notice)) => {
-            current.forget()?;
             current.discard_if_unsaved(home);
             absent(fs::rename(
                 home.staged_for(&current.id),
@@ -209,28 +194,15 @@ struct Claimed {
     id: SessionId,
     /// The directory the session runs in, when known and still there.
     directory: Option<PathBuf>,
-    /// That directory's resume marker.
-    marker: Option<PathBuf>,
     _lock: File,
 }
 
 impl Claimed {
-    /// After a clean quit, the next `rig` in this directory starts a new
-    /// session: the marker goes, when it still names this one.
-    fn forget(&self) -> Result<()> {
-        if let Some(marker) = &self.marker
-            && names(marker, &self.id)
-        {
-            absent(fs::remove_file(marker))?;
-        }
-        Ok(())
-    }
-
     /// Removes the session's directory when no agent logged a message in
     /// it, such as a `/new` session left at once: a session with nothing
     /// to resume leaves nothing behind. Call it once the agent exited
     /// cleanly or switched away. Best effort: a directory left behind has
-    /// no agent log, so neither `/resume` nor the launcher resumes it.
+    /// no agent log, so `/resume` does not list it.
     fn discard_if_unsaved(&self, home: &Home) {
         let session = home.session(&self.id);
         if !session.is_saved() {
@@ -239,44 +211,11 @@ impl Claimed {
     }
 }
 
-/// Whether `marker` names `session`.
-fn names(marker: &Path, session: &SessionId) -> bool {
-    fs::read_to_string(marker).is_ok_and(|named| named.trim() == session.as_str())
-}
-
-/// The session a marker file names, when it has an agent log.
-fn named_session(home: &Home, marker: Option<&Path>) -> Option<SessionId> {
-    fs::read_to_string(marker?)
-        .ok()
-        // A marker that is not a session id cannot name a path elsewhere.
-        .and_then(|id| id.trim().parse::<SessionId>().ok())
-        .filter(|id| home.session(id).is_saved())
-}
-
 /// The session to run for `start` from the working directory `here`, held
-/// locked, and the line the agent shows about it. Its directory's marker
-/// then names it, unless the resume marker names a session another launcher
-/// runs. A headless run passes `mark` false: its directory's resume marker
-/// is left alone. Call it holding [`home::lock`].
-fn claim(
-    home: &Home,
-    start: Start,
-    here: Option<&Path>,
-    mark: bool,
-) -> Result<(Claimed, Option<String>)> {
-    let resume_marker = here.map(|here| home.resume_marker(here));
+/// locked, and the line the agent shows about it. Call it holding
+/// [`home::lock`].
+fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Option<String>)> {
     let (id, lock, notice) = match start {
-        Start::Default => match named_session(home, resume_marker.as_deref()) {
-            Some(id) => match home::hold_session(home, &id)? {
-                Some(lock) => (
-                    id,
-                    lock,
-                    Some("Resumed this directory's session where it stopped.".to_owned()),
-                ),
-                None => fresh(home)?,
-            },
-            None => fresh(home)?,
-        },
         Start::Resume(id) => {
             if !home.session(&id).is_saved() {
                 return Err(format!("session {id} has no saved conversation").into());
@@ -285,7 +224,12 @@ fn claim(
                 .ok_or_else(|| format!("session {id} is open in another rig"))?;
             (id, lock, Some("Resumed the session.".to_owned()))
         }
-        Start::New => fresh(home)?,
+        Start::New => {
+            let id = SessionId::generate();
+            let lock = home::hold_session(home, &id)?
+                .ok_or_else(|| format!("session {id} is already running"))?;
+            (id, lock, None)
+        }
     };
     let session = home.session(&id);
     let directory = match session.working_directory() {
@@ -297,41 +241,14 @@ fn claim(
             here.map(Path::to_path_buf)
         }
     };
-    let marker = directory
-        .as_deref()
-        .filter(|_| mark)
-        .map(|directory| home.resume_marker(directory));
-    if let Some(marker) = &marker
-        && !held_elsewhere(home, marker, &id)?
-    {
-        write_atomic(marker, id.as_str())?;
-    }
     Ok((
         Claimed {
             id,
             directory,
-            marker,
             _lock: lock,
         },
         notice,
     ))
-}
-
-/// A new session, held locked.
-fn fresh(home: &Home) -> Result<(SessionId, File, Option<String>)> {
-    let id = SessionId::generate();
-    let lock =
-        home::hold_session(home, &id)?.ok_or_else(|| format!("session {id} is already running"))?;
-    Ok((id, lock, None))
-}
-
-/// Whether `marker` names a session other than `own` that another launcher
-/// runs, which the marker must keep naming.
-fn held_elsewhere(home: &Home, marker: &Path, own: &SessionId) -> Result<bool> {
-    match named_session(home, Some(marker)) {
-        Some(id) if id != *own => Ok(home::hold_session(home, &id)?.is_none()),
-        _ => Ok(false),
-    }
 }
 
 /// Writes `text` to `path` through a temporary file, creating its

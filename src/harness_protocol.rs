@@ -240,26 +240,6 @@ impl Home {
     pub fn session(&self, session: &SessionId) -> SessionDir {
         SessionDir(self.sessions().join(session.as_str()))
     }
-
-    /// The file naming the session to resume in `directory`: the last one
-    /// run there that did not quit cleanly. The name is a hash of the path,
-    /// so a session comes back only where it ran.
-    pub fn resume_marker(&self, directory: &Path) -> PathBuf {
-        self.root.join("resume").join(directory_key(directory))
-    }
-}
-
-/// A file name for `directory`: a hash of its path. FNV-1a, which is
-/// stable across builds and toolchains, unlike std's hasher.
-fn directory_key(directory: &Path) -> String {
-    let key = directory
-        .as_os_str()
-        .as_encoded_bytes()
-        .iter()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
-    format!("{key:016x}")
 }
 
 /// A session's directory: one append-only log per agent, the listing cache,

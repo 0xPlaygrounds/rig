@@ -231,15 +231,14 @@ append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
 usage and compactions; images are stored once in `blobs/`, and `meta.json`
 caches what `/resume` lists. A tool call that may change something starts
 only once the reply that asked for it is on disk. After a crash, a closed
-terminal or a `/quit` mid-turn, the next start reads the logs back and settles what
+terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
 was left half done: read-only tool calls run again, other unfinished tool
 calls are answered as interrupted by the restart, and a turn that waited on
 the model carries on.
-If the agent crashes or the terminal closes, the next `rig` in the same
-directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
+Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
-and `rig --resume <id>` resumes a given one.
+and `rig --resume <id>` resumes a given one, such as after a crash.
 
 A ChatGPT subscription can pay for the model
 calls instead of an API key: `/login chatgpt` opens your browser on the
@@ -296,8 +295,7 @@ and exits: the answer goes to stdout, failures to stderr, and the exit code is
 in follows the prompt (`git diff | rig -p "review this"`), `-m vendor/model`
 picks the model (else the session's, else the first one with a key; in the
 terminal view too), and `-r <id>` resumes a given
-session instead of starting a new one. A headless run never becomes the
-session its directory resumes.
+session instead of starting a new one.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
