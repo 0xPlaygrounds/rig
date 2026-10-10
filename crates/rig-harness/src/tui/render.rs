@@ -42,8 +42,6 @@ const INPUT_LINES: usize = 10;
 const COMPLETION_ROWS: usize = 8;
 /// Lines of a condensed conversation's summary shown in the transcript.
 const SUMMARY_LINES: usize = 12;
-/// Width of the rebuild progress bar.
-const GAUGE_WIDTH: u32 = 20;
 
 /// The shortest time between two frames drawn only for a streaming
 /// reply's new text: the loop's own limit of 60 frames a second would lay
@@ -712,20 +710,8 @@ fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
             "Reload queued: once no turn runs (/reload cancel)".to_owned()
         }
         ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
-        ReloadStatus::Building {
-            progress: Some((done, total)),
-            ..
-        } => {
-            let (done, total) = (*done, *total);
-            let filled = (done.saturating_mul(GAUGE_WIDTH) / total.max(1)).min(GAUGE_WIDTH);
-            let bar: String = (0..GAUGE_WIDTH)
-                .map(|cell| if cell < filled { '█' } else { '░' })
-                .collect();
-            format!("Reloading: Compiling {done}/{total} {bar} (Esc cancels)")
-        }
-        // The launcher's phase, then cargo's own lines while it resolves
-        // and downloads dependencies.
-        ReloadStatus::Building { latest, .. } => format!(
+        // The launcher's phase, then cargo's latest line.
+        ReloadStatus::Building { latest } => format!(
             "Reloading: {} (Esc cancels)",
             latest.as_deref().unwrap_or("Resolving dependencies…")
         ),

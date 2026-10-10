@@ -1,8 +1,7 @@
 //! `/reload`: rebuild the agent through the `rig` launcher and restart on
 //! the new build. The build runs as a child process whose stderr a std
-//! thread forwards line by line. Until cargo's own `done/total` counter
-//! appears, the build is resolving dependencies and its latest line is the
-//! progress. Quitting during the build kills it with cargo and rustc.
+//! thread forwards line by line; its latest line is the progress. Quitting
+//! during the build kills it with cargo and rustc.
 //!
 //! `/reload` typed while a turn runs is queued: the build starts once no
 //! turn runs, and `/reload cancel` drops it. A plugin queues one with
@@ -18,7 +17,7 @@
 //! `rig build` keeps the whole output in `RIG_HOME/build.log`.
 
 use std::collections::VecDeque;
-use std::io::{BufReader, Read};
+use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
 use bevy_app::OnAppExitSystems;
@@ -85,12 +84,9 @@ pub enum ReloadStatus {
     },
     /// The build runs.
     Building {
-        /// cargo's compilation units done and in total, once it reported
-        /// them; before that the build is resolving dependencies.
-        progress: Option<(u32, u32)>,
-        /// The build's latest line other than cargo's counter: the
-        /// launcher's `Resolving dependencies…`, or cargo's own, such as
-        /// `Downloaded serde v1.0.228`.
+        /// The build's latest line: the launcher's `Resolving
+        /// dependencies…`, or cargo's own, such as `Compiling serde
+        /// v1.0.228`.
         latest: Option<String>,
     },
     /// The build succeeded; the restart waits for every agent to be idle.
@@ -116,8 +112,6 @@ impl ReloadBuild {
         let mut command = Command::new(launcher);
         command
             .arg("build")
-            .env("CARGO_TERM_PROGRESS_WHEN", "always")
-            .env("CARGO_TERM_PROGRESS_WIDTH", "80")
             .env("CARGO_TERM_COLOR", "never")
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -174,48 +168,16 @@ impl Drop for ReloadBuild {
 #[reflect(Event, Clone, Debug, Default)]
 pub struct CancelReload;
 
-/// Sends each `\r`- or `\n`-separated segment of the build's stderr, and
-/// wakes the loop for each and at the end; cargo redraws its progress bar
-/// after `\r`.
+/// Sends each line of the build's stderr, and wakes the loop for each and
+/// at the end.
 fn forward(stderr: ChildStderr, lines: Sender<String>, wake: Wake) {
-    let mut segment = Vec::new();
-    for byte in BufReader::new(stderr).bytes() {
-        let Ok(byte) = byte else {
-            break;
-        };
-        if byte != b'\r' && byte != b'\n' {
-            segment.push(byte);
-            continue;
+    for line in BufReader::new(stderr).lines().map_while(Result::ok) {
+        if lines.send(line).is_err() {
+            return;
         }
-        if !segment.is_empty() {
-            if lines
-                .send(String::from_utf8_lossy(&segment).into_owned())
-                .is_err()
-            {
-                return;
-            }
-            wake.wake();
-        }
-        segment.clear();
-    }
-    if !segment.is_empty() {
-        lines
-            .send(String::from_utf8_lossy(&segment).into_owned())
-            .ok();
+        wake.wake();
     }
     wake.wake();
-}
-
-/// `done/total` of cargo's progress bar:
-/// `    Building [=====>      ] 37/41: crate_a, crate_b`.
-fn cargo_progress(line: &str) -> Option<(u32, u32)> {
-    let (_, counts) = line
-        .trim_start()
-        .strip_prefix("Building [")?
-        .split_once("] ")?;
-    let counts = counts.split(':').next()?;
-    let (done, total) = counts.trim().split_once('/')?;
-    Some((done.parse().ok()?, total.parse().ok()?))
 }
 
 impl ReloadStatus {
@@ -284,10 +246,7 @@ fn start_queued_reload(
     let notice = match ReloadBuild::start(&launcher, agent, wake.clone()) {
         Ok(build) => {
             commands.insert_resource(build);
-            *status = ReloadStatus::Building {
-                progress: None,
-                latest: None,
-            };
+            *status = ReloadStatus::Building { latest: None };
             "Rebuilding the agent…".to_owned()
         }
         Err(failure) => format!("Could not start the rebuild: {failure}"),
@@ -306,28 +265,24 @@ fn drain_reload(
     let Some(mut build) = build else {
         return;
     };
-    let ReloadStatus::Building {
-        mut progress,
-        mut latest,
-    } = status.clone()
-    else {
+    let ReloadStatus::Building { mut latest } = status.clone() else {
         return;
     };
     let ended = loop {
         match build.lines.try_recv() {
-            Ok(line) => match cargo_progress(&line) {
-                Some(counts) => progress = Some(counts),
-                None if line.trim().is_empty() => {}
-                None => {
-                    latest = Some(line.trim().to_owned());
-                    build.keep(line);
-                }
-            },
+            Ok(line) if line.trim().is_empty() => {}
+            Ok(line) => {
+                // Without the source path cargo appends, so it fits the
+                // status line: `Compiling serde v1.0.228`.
+                let shown = line.split(" (").next().unwrap_or_default();
+                latest = Some(shown.trim().to_owned());
+                build.keep(line);
+            }
             Err(TryRecvError::Empty) => break false,
             Err(TryRecvError::Disconnected) => break true,
         }
     };
-    status.set_if_neq(ReloadStatus::Building { progress, latest });
+    status.set_if_neq(ReloadStatus::Building { latest });
     if !ended {
         return;
     }
