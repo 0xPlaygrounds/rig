@@ -64,7 +64,9 @@ pub mod prelude {
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{PromptSection, ToolRules};
     pub use crate::restore::Restored;
-    pub use crate::tools::{AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput};
+    pub use crate::tools::{
+        AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, WorldToolsExt,
+    };
     pub use crate::turn::{
         Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
     };

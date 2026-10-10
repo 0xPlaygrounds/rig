@@ -16,12 +16,12 @@ use rig_cassette::effect_log::EffectLogRecorder;
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
-use rig_core::completion::{Message, Reasoning};
+use rig_core::completion::{Message, Reasoning, ToolDefinition};
 use rig_core::effect::{EffectId, HandlerKey, tool_key};
-use rig_core::message::UserContent;
+use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
+use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::{Effects, Handler};
@@ -392,7 +392,8 @@ fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> 
 
 /// What another plugin added is turned off by inserting Bevy's
 /// `Disabled` on its entity, which frees its name: a tool, a command and
-/// a prompt section given way to their replacements.
+/// a prompt section give way to their replacements, the tool one
+/// registered while the app runs, as an MCP plugin would.
 #[test]
 fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
@@ -414,8 +415,16 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
     for entity in picked.into_iter().flatten() {
         app.world_mut().entity_mut(entity).insert(Disabled);
     }
-    app.add_tool(Add(new.clone()))
-        .add_command("hi", "Says hi", say("new"));
+    let (tool, name) = (Add(new.clone()), ToolName::new(<Add as PortableTool>::NAME));
+    assert!(name.is_ok());
+    let Ok(name) = name else { return };
+    let schema = PortableTool::parameters(&tool);
+    let definition = ToolDefinition::new(name, PortableTool::description(&tool), schema);
+    let handler = ErasedHandler::new(ToolAdapter::new(tool));
+    // From a system: `commands.queue(move |world: &mut World| { .. })`.
+    let world = app.world_mut();
+    world.spawn_tool(definition, handler, ToolOptions::default());
+    app.add_command("hi", "Says hi", say("new"));
     app.world_mut()
         .spawn(PromptSection::new(200, "rules", "the new rules"));
     let add = MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 }));

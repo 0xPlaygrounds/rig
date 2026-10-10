@@ -263,6 +263,43 @@ impl AppToolsExt for App {
     }
 }
 
+/// Registers tools while the app runs, such as those an MCP server lists
+/// once it answers, from a system:
+/// `commands.queue(move |world: &mut World| { world.spawn_tool(..); })`.
+/// Each request reads the registered tools again, so the next one offers
+/// it; despawning its entity removes it. A tool list that changes misses
+/// the provider's prompt cache once.
+pub trait WorldToolsExt {
+    /// Make the tool `definition` describes available as
+    /// [`AppToolsExt::add_tool_with`] does, its calls answered by `handler`
+    /// on the one dispatch path (a rig-core `Serve` of the tool family,
+    /// such as a `ToolAdapter`). Its entity, or `None`, with a warning,
+    /// when its name is taken.
+    fn spawn_tool(
+        &mut self,
+        definition: ToolDefinition,
+        handler: ErasedHandler,
+        options: ToolOptions<'_>,
+    ) -> Option<Entity>;
+}
+
+impl WorldToolsExt for World {
+    fn spawn_tool(
+        &mut self,
+        definition: ToolDefinition,
+        handler: ErasedHandler,
+        options: ToolOptions<'_>,
+    ) -> Option<Entity> {
+        let ToolDefinition {
+            name,
+            description,
+            parameters,
+        } = definition;
+        let serves = Serves::Handler(Handler(handler));
+        register_tool(self, &name, description, parameters, serves, options)
+    }
+}
+
 /// Spawns the entity of the tool `name`, whose calls run as `serves` says,
 /// and returns it; `None`, with a warning, when the name is invalid or
 /// taken.

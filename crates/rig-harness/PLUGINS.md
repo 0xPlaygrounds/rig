@@ -139,7 +139,12 @@ A tool the plugin answers itself, later, is an open tool:
 call's arguments into the type the observer takes and triggers
 `ToolCalled<Args>` with the call's entity (`call`), the calling `agent`
 and the `args`. The call ends when the plugin inserts a `ToolOutput` on
-it, such as `ToolOutput(ToolResult::success("Done.".into()))`. How the
+it, such as `ToolOutput(ToolResult::success("Done.".into()))`. A tool
+found while the agent runs, such as one an MCP server lists, is
+registered from a system with
+`commands.queue(move |world: &mut World| { world.spawn_tool(definition, handler, options); })`:
+its `ToolDefinition`, and a rig-core `ErasedHandler` that answers its
+calls; despawning the entity it returns removes it. How the
 terminal view (`rig-tui`) draws a tool's calls:
 
 ```rust,no_run
