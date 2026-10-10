@@ -470,6 +470,15 @@ impl ToolCall {
             ..self.result(content)
         }
     }
+
+    /// The result answering this call with what its tool did: the output
+    /// the model reads, an error result for anything but a success.
+    pub fn answer(&self, result: &crate::tool::ToolResult) -> ToolResult {
+        ToolResult {
+            is_error: !result.is_success(),
+            ..self.result(result.output().clone().into_content())
+        }
+    }
 }
 
 /// A tool function to call: its name and its arguments, always a JSON
@@ -556,6 +565,14 @@ impl ToolFunction {
     /// The arguments as a JSON value.
     pub fn arguments_value(&self) -> serde_json::Value {
         serde_json::Value::Object(self.arguments.clone())
+    }
+
+    /// The arguments as JSON text: what the model sent when it was not an
+    /// object, else the object.
+    pub fn raw_arguments(&self) -> String {
+        self.invalid_arguments
+            .clone()
+            .unwrap_or_else(|| self.arguments_value().to_string())
     }
 }
 
@@ -973,6 +990,59 @@ impl Message {
         Message::User {
             content: results.into_iter().map(UserContent::ToolResult).collect(),
         }
+    }
+
+    /// The images of this message, in order: a user message's own and
+    /// those of its tool results, or an assistant turn's.
+    pub fn images(&self) -> impl Iterator<Item = &Image> {
+        let (user, turn): (&[UserContent], &[AssistantContent]) = match self {
+            Message::User { content } => (content, &[]),
+            Message::Assistant(turn) => (&[], &turn.content),
+            Message::System { .. } => (&[], &[]),
+        };
+        let user = user.iter().flat_map(|item| {
+            let (image, results): (_, &[ToolResultContent]) = match item {
+                UserContent::Image(image) => (Some(image), &[]),
+                UserContent::ToolResult(result) => (None, &result.content),
+                _ => (None, &[]),
+            };
+            let results = results.iter().filter_map(|part| match part {
+                ToolResultContent::Image(image) => Some(image),
+                _ => None,
+            });
+            image.into_iter().chain(results)
+        });
+        let turn = turn.iter().filter_map(|block| match block {
+            AssistantContent::Image(image) => Some(image),
+            _ => None,
+        });
+        user.chain(turn)
+    }
+
+    /// The images of this message, as [`Self::images`], to change in place.
+    pub fn images_mut(&mut self) -> impl Iterator<Item = &mut Image> {
+        let (user, turn): (&mut [UserContent], &mut [AssistantContent]) = match self {
+            Message::User { content } => (content, Default::default()),
+            Message::Assistant(turn) => (Default::default(), &mut turn.content),
+            Message::System { .. } => Default::default(),
+        };
+        let user = user.iter_mut().flat_map(|item| {
+            let (image, results): (_, &mut [ToolResultContent]) = match item {
+                UserContent::Image(image) => (Some(image), Default::default()),
+                UserContent::ToolResult(result) => (None, &mut result.content),
+                _ => Default::default(),
+            };
+            let results = results.iter_mut().filter_map(|part| match part {
+                ToolResultContent::Image(image) => Some(image),
+                _ => None,
+            });
+            image.into_iter().chain(results)
+        });
+        let turn = turn.iter_mut().filter_map(|block| match block {
+            AssistantContent::Image(image) => Some(image),
+            _ => None,
+        });
+        user.chain(turn)
     }
 }
 

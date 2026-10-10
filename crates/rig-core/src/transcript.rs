@@ -278,20 +278,22 @@ pub fn answers(pending: &[CallId], results: &[UserContent]) -> Result<(), Answer
 /// The user message closing `calls` nothing answered: a [`NO_RESULT_PROVIDED`]
 /// error result per occurrence, in call order, exactly as [`pair`] closes them.
 pub fn close_pending<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Message {
+    close_pending_with(calls, NO_RESULT_PROVIDED)
+}
+
+/// [`close_pending`], each error result saying `why`, such as why the
+/// calls never ran.
+pub fn close_pending_with<'a>(calls: impl IntoIterator<Item = &'a ToolCall>, why: &str) -> Message {
     Message::User {
-        content: unanswered(calls),
+        content: unanswered(calls, why),
     }
 }
 
-fn unanswered<'a>(calls: impl IntoIterator<Item = &'a ToolCall>) -> Vec<UserContent> {
+fn unanswered<'a>(calls: impl IntoIterator<Item = &'a ToolCall>, why: &str) -> Vec<UserContent> {
     calls
         .into_iter()
         .map(|call| {
-            tool_result_message(
-                call.id.clone(),
-                call.function.name.clone(),
-                NO_RESULT_PROVIDED.to_owned(),
-            )
+            tool_result_message(call.id.clone(), call.function.name.clone(), why.to_owned())
         })
         .collect()
 }
@@ -380,7 +382,7 @@ impl Walk {
                         call_id: call.id.clone(),
                     }
                 }));
-                unanswered(&waiting)
+                unanswered(&waiting, NO_RESULT_PROVIDED)
             } else {
                 Vec::new()
             };
@@ -490,6 +492,33 @@ pub fn not_executed(call: &ToolCall) -> UserContent {
 /// empty turn must not enter history.
 pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
     content.iter().all(AssistantContent::is_blank)
+}
+
+/// The text of a final answer: the text parts of the model's message,
+/// joined by blank lines and trimmed. `None` when `message` is not the
+/// model's, still asks for tool calls, or has no text.
+///
+/// ```
+/// use rig_core::{message::Message, transcript::final_answer};
+///
+/// assert_eq!(final_answer(&Message::assistant(" Done. ")).as_deref(), Some("Done."));
+/// assert_eq!(final_answer(&Message::user("Done.")), None);
+/// ```
+pub fn final_answer(message: &Message) -> Option<String> {
+    let Message::Assistant(reply) = message else {
+        return None;
+    };
+    let mut parts = Vec::new();
+    for item in reply.content.iter() {
+        match item {
+            AssistantContent::Text(text) => parts.push(text.text.as_str()),
+            AssistantContent::ToolCall(_) => return None,
+            _ => {}
+        }
+    }
+    let text = parts.join("\n\n");
+    let text = text.trim();
+    (!text.is_empty()).then(|| text.to_owned())
 }
 
 /// The text parts of an assistant turn, concatenated.

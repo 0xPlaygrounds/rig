@@ -28,9 +28,10 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{ActiveTurn, Agent, AgentId, Connection, Conversation, Halt, Notice, TurnOf};
+use super::agent::{ActiveTurn, Agent, AgentId, Conversation, Halt, Notice, TurnOf};
 use super::calls::Wake;
-use super::journal::SessionLog;
+use super::journal::Commit;
+use super::model::Connection;
 use super::turn::{CallModel, Exiting};
 
 /// The id of a request to an agent, which the reply to it names, such as
@@ -230,26 +231,17 @@ impl Inbox {
 #[derive(Component, Debug)]
 pub(crate) struct Starting;
 
-/// Messages the user typed that the agent's turn ended without sending,
-/// joined in the order they were typed. A view puts them back in its input.
+/// Text the user typed that was not sent: the messages the agent's turn
+/// ended without sending, joined in the order they were typed, or a
+/// refused slash command, with `why`. A view puts it back in its input.
 #[derive(Message, Clone, Debug)]
 pub struct Recalled {
     /// The agent.
     pub agent: Entity,
-    /// The messages.
+    /// The text.
     pub text: String,
-}
-
-/// The agent a message goes to, and what adding it needs.
-pub(crate) struct Delivery<'a> {
-    /// The agent.
-    pub(crate) agent: Entity,
-    /// Its id, which names its log.
-    pub(crate) id: &'a AgentId,
-    /// Its model, which decides whether images go with the message.
-    pub(crate) spec: Option<&'a ModelSpec>,
-    /// The log every message goes through.
-    pub(crate) log: &'a SessionLog,
+    /// Why a command was refused.
+    pub why: Option<String>,
 }
 
 /// Starts a turn of an idle agent with the message, or keeps it in a busy
@@ -259,7 +251,6 @@ pub(crate) fn on_deliver(
     deliver: On<Deliver>,
     mut agents: Query<
         (
-            &AgentId,
             &mut Inbox,
             &mut Conversation,
             Option<&Connection>,
@@ -268,13 +259,13 @@ pub(crate) fn on_deliver(
         With<Agent>,
     >,
     starting: Query<(), With<Starting>>,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = deliver.entity;
-    let Ok((id, mut inbox, mut conversation, connection, active)) = agents.get_mut(agent) else {
+    let Ok((mut inbox, mut conversation, connection, active)) = agents.get_mut(agent) else {
         return;
     };
     let text = deliver.text.trim();
@@ -300,16 +291,12 @@ pub(crate) fn on_deliver(
         }
         return;
     }
-    let to = Delivery {
-        agent,
-        id,
-        spec: connection.map(|connection| &*connection.spec),
-        log: &log,
-    };
+    let spec = connection.map(|connection| &*connection.spec);
     // After a failure that kept the user's message, the new text joins it.
-    commit(&to, pending, &mut conversation, &mut notices);
+    let conversation = &mut *conversation;
+    commit.pending(agent, spec, [pending], conversation, &mut notices);
     if deliver.mode == DeliveryMode::Note {
-        log.halt(id, &mut conversation, Halt::Kept);
+        commit.halt(agent, conversation, Halt::Kept);
         return;
     }
     commands.spawn((Name::new("turn"), TurnOf(agent), Starting));
@@ -333,143 +320,81 @@ pub(crate) fn start_turns(turns: Query<Entity, With<Starting>>, mut commands: Co
 /// the app is [`Exiting`].
 pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
-    mut agents: Query<(&AgentId, &mut Inbox, &mut Conversation, Option<&Connection>)>,
-    log: Res<SessionLog>,
+    mut agents: Query<(&mut Inbox, &mut Conversation, Option<&Connection>)>,
+    mut commit: Commit,
     exiting: Option<Res<Exiting>>,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = end.entity;
-    let Ok((id, mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
+    let Ok((mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let to = Delivery {
-        agent,
-        id,
-        spec: connection.map(|connection| &*connection.spec),
-        log: &log,
-    };
-    let mut typed = Vec::new();
     let inbox = &mut *inbox;
-    let waiting: Vec<Pending> = inbox
-        .notes
-        .drain(..)
-        .chain(inbox.steering.drain(..))
+    let waiting = inbox.notes.drain(..).chain(inbox.steering.drain(..));
+    let (typed, sent): (Vec<Pending>, Vec<Pending>) = waiting
         .chain(inbox.queued.drain(..))
-        .collect();
-    for pending in waiting {
-        if pending.origin.kind == OriginKind::User {
-            typed.push(pending.text);
-        } else {
-            commit(&to, pending, &mut conversation, &mut notices);
-        }
-    }
+        .partition(|pending| pending.origin.kind == OriginKind::User);
+    let spec = connection.map(|connection| &*connection.spec);
+    commit.pending(agent, spec, sent, &mut conversation, &mut notices);
     if exiting.is_none() {
-        log.halt(id, &mut conversation, Halt::Kept);
+        commit.halt(agent, &mut conversation, Halt::Kept);
     }
     if !typed.is_empty() {
+        let typed: Vec<String> = typed.into_iter().map(|pending| pending.text).collect();
         recalled.write(Recalled {
             agent,
             text: typed.join("\n\n"),
+            why: None,
         });
     }
 }
 
-/// Moves the notes into the conversation, for a model call about to be
-/// made: into its last message when that is the user's.
-pub(crate) fn deliver_notes(
-    to: &Delivery<'_>,
-    inbox: &mut Inbox,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) {
-    for pending in inbox.notes.drain(..) {
-        commit(to, pending, conversation, notices);
-    }
-}
-
-/// Moves the notes, then the steering messages into the conversation:
-/// into its last message when that is the user's, such as the tool
-/// results the model waits for, so user and model keep taking turns.
-/// Whether there were steering messages; without them nothing moves.
-pub(crate) fn deliver_steering(
-    to: &Delivery<'_>,
-    inbox: &mut Inbox,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) -> bool {
-    if inbox.steering.is_empty() {
-        return false;
-    }
-    deliver_notes(to, inbox, conversation, notices);
-    for pending in inbox.steering.drain(..) {
-        commit(to, pending, conversation, notices);
-    }
-    true
-}
-
-/// Moves the notes, then every queued message into the conversation, as
-/// one step. Whether there were queued messages; without them nothing
-/// moves.
-pub(crate) fn deliver_queued(
-    to: &Delivery<'_>,
-    inbox: &mut Inbox,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) -> bool {
-    if inbox.queued.is_empty() {
-        return false;
-    }
-    deliver_notes(to, inbox, conversation, notices);
-    for pending in inbox.queued.drain(..) {
-        commit(to, pending, conversation, notices);
-    }
-    true
-}
-
-/// Commits `pending` as a user message with its origin: its attachments
-/// the model takes, then its text, headed by its origin's line when it is
-/// not the user's own. It goes into the last message when that is the
-/// user's.
-fn commit(
-    to: &Delivery<'_>,
-    pending: Pending,
-    conversation: &mut Conversation,
-    notices: &mut MessageWriter<Notice>,
-) {
-    let Pending {
-        text,
-        origin,
-        attachments,
-    } = pending;
-    let mut content = Vec::with_capacity(attachments.len() + 1);
-    for Attachment {
-        label,
-        content: item,
-    } in attachments
-    {
-        let refused = match (&item, to.spec) {
-            (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
-                "{} does not read images, so {label} is sent as its name only.",
-                spec.display_name
-            )),
-            (UserContent::Image(_), None) => Some(format!(
-                "No model is connected, so {label} is sent as its name only."
-            )),
-            _ => None,
-        };
-        match refused {
-            Some(note) => {
-                notices.write(Notice::info(to.agent, note));
+impl Commit<'_, '_> {
+    /// Commits each of `waiting` to `conversation`, that of `agent`, whose
+    /// model is `spec`, as a user message with its origin: its attachments
+    /// the model takes, then its text, headed by its origin's line when it
+    /// is not the user's own. Each goes into the last message when that is
+    /// the user's, such as the tool results the model waits for, so user
+    /// and model keep taking turns.
+    pub(crate) fn pending(
+        &mut self,
+        agent: Entity,
+        spec: Option<&ModelSpec>,
+        waiting: impl IntoIterator<Item = Pending>,
+        conversation: &mut Conversation,
+        notices: &mut MessageWriter<Notice>,
+    ) {
+        for pending in waiting {
+            let mut content = Vec::with_capacity(pending.attachments.len() + 1);
+            for Attachment {
+                label,
+                content: item,
+            } in pending.attachments
+            {
+                let refused = match (&item, spec) {
+                    (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
+                        "{} does not read images, so {label} is sent as its name only.",
+                        spec.display_name
+                    )),
+                    (UserContent::Image(_), None) => Some(format!(
+                        "No model is connected, so {label} is sent as its name only."
+                    )),
+                    _ => None,
+                };
+                match refused {
+                    Some(note) => {
+                        notices.write(Notice::info(agent, note));
+                    }
+                    None => content.push(item),
+                }
             }
-            None => content.push(item),
+            let (text, origin) = match pending.origin.header() {
+                None => (pending.text, None),
+                Some(header) => (format!("{header}\n{}", pending.text), Some(pending.origin)),
+            };
+            content.push(UserContent::text(text));
+            self.message_from(agent, conversation, Message::User { content }, origin);
         }
     }
-    let (text, origin) = match origin.header() {
-        None => (text, None),
-        Some(header) => (format!("{header}\n{text}"), Some(origin)),
-    };
-    content.push(UserContent::text(text));
-    to.log
-        .commit(to.id, conversation, Message::User { content }, origin);
 }

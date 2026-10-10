@@ -228,6 +228,11 @@ fn references_name_a_vendor_and_a_model() {
         .resolve("openrouter/anthropic/claude-sonnet-4.5")
         .expect("OpenRouter lists it");
     assert_eq!(openrouter.spec.id, "anthropic/claude-sonnet-4.5");
+    let found = catalog.resolve("anthropic/claude-x").expect("listed");
+    let again = catalog
+        .resolve("anthropic/anthropic:claude-x")
+        .expect("listed");
+    assert!(Arc::ptr_eq(&found.shared(), &again.shared()), "not copied");
 }
 
 /// `get` and `resolve` follow one rule: the id as listed, else the longest
@@ -1273,6 +1278,12 @@ fn reasoning_choices_and_default_options_follow_the_spec() {
         ]
     );
     assert_eq!(ReasoningSupport::None.choices().len(), 1);
+    let off = budgeted.named("off").map(|choice| choice.reasoning);
+    assert_eq!(off, Ok(Some(Reasoning::Off)));
+    assert_eq!(
+        budgeted.named("xhigh").map_err(|why| why.to_string()),
+        Err("the reasoning settings are default, off, low, medium, high, not `xhigh`".to_owned())
+    );
 
     let provider = ProviderId::catalog("anthropic").expect("a known vendor");
     let cached = ModelSpec::new(provider, "claude-x")

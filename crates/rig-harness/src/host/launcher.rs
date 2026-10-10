@@ -1,8 +1,7 @@
 //! The agent's side of the `rig` launcher protocol
-//! ([`rig::harness_protocol`]): the launcher's path for rebuilds, the system
-//! prompt section on extending the agent with plugins, the launcher's
-//! startup notice, the failed build it started after, and the ready file
-//! that tells it this build started.
+//! ([`rig::harness_protocol`]): the launcher's path for rebuilds, the
+//! launcher's startup notice, the failed build it started after, and the
+//! ready file that tells it this build started.
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
@@ -25,21 +24,12 @@ use rig_ecs::journal::SessionLog;
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
 
-/// Tells the model it is the rig harness and how it extends itself
-/// (`extending`), shows the launcher's startup notice, hands a failed build
-/// to the primary agent, and writes the ready file.
+/// Shows the launcher's startup notice, hands a failed build to the
+/// primary agent, and writes the ready file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
-        // Only an agent the launcher started can rebuild itself with
-        // plugins, so only it is told how.
-        if let Some(launcher) = executable() {
-            app.world_mut().spawn((
-                Name::new("prompt:rig_harness"),
-                super::extending::section(std::path::Path::new(&launcher)),
-            ));
-        }
         app.add_systems(Startup, launcher_notice)
             .add_systems(Update, deliver_build_failure)
             .add_systems(Last, signal_ready);
@@ -50,16 +40,6 @@ impl Plugin for LauncherPlugin {
 /// has it.
 #[derive(Resource)]
 struct StartBuildFailure(String);
-
-/// The [`Origin`] of a failed build's note.
-pub fn build_origin() -> Origin {
-    Origin {
-        kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
-        from: None,
-        request: None,
-        title: None,
-    }
-}
 
 /// The note on a failed build of `what`, for the model: `summary` (the
 /// reason and the first errors), where the whole output is, and the files
@@ -88,8 +68,8 @@ pub fn build_failure_note(what: &str, summary: &str) -> String {
     note
 }
 
-/// Puts `note`, on a failed build, in `agent`'s conversation from
-/// [`build_origin`], as a [`DeliveryMode::Note`]: an idle agent gets it at
+/// Puts `note`, on a failed build, in `agent`'s conversation from the
+/// plugin [`BUILD_ORIGIN`], as a [`DeliveryMode::Note`]: an idle agent gets it at
 /// once without a turn starting (logged as halted, so a restore does not
 /// answer it and the user's next message joins it); a busy agent's model
 /// reads it with the turn's next call.
@@ -97,7 +77,10 @@ pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: S
     commands.trigger(Deliver {
         entity: agent,
         text: note,
-        origin: build_origin(),
+        origin: Origin {
+            kind: OriginKind::Plugin(BUILD_ORIGIN.to_owned()),
+            ..Origin::default()
+        },
         mode: DeliveryMode::Note,
         attachments: Vec::new(),
     });
@@ -106,7 +89,7 @@ pub(crate) fn note_build_failure(commands: &mut Commands, agent: Entity, note: S
 /// The launcher that started this agent, if one did: it sets both
 /// [`env::LAUNCHER`] and [`env::SESSION`]. A nested agent, run by this
 /// agent's shell, inherits only the launcher's path, which the model uses.
-pub(crate) fn executable() -> Option<OsString> {
+pub fn executable() -> Option<OsString> {
     std::env::var_os(env::SESSION).filter(|session| !session.is_empty())?;
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }

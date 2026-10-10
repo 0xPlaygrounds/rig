@@ -52,15 +52,16 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
-use rig_core::message::{ToolCall, ToolResult, ToolResultContent};
+use rig_core::message::ToolCall;
+use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, failed};
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
 
-pub use harness::{AgentSpec, Harness, HarnessError};
+pub use harness::{AgentSpec, Harness};
 use program::{Ended, Host};
 
 /// The tool that runs a program.
@@ -105,21 +106,6 @@ const DESCRIPTION: &str = "Run a Steel program (Scheme) that orchestrates agents
     (call-tool name [args]) -> string\n    \
     Calls one of your own tools with args, a hash such as (hash 'path \"src/lib.rs\"), and \
     returns its text output; raises an error when the tool fails.\n\n\
-    Two agents write a poem together, relayed four times, then summarised:\n\
-    (define a (spawn-agent \"poet-a\"))\n\
-    (define b (spawn-agent \"poet-b\"))\n\
-    (define (ask agent text) (reply (send agent text)))\n\
-    (define poem\n  \
-      (let loop ([turn 0] [stanzas (list (ask a \"Write the first stanza of a poem about the sea.\"))])\n    \
-        (if (= turn 4)\n        \
-            stanzas\n        \
-            (loop (+ turn 1)\n              \
-                  (append stanzas\n                          \
-                          (list (ask (if (even? turn) b a)\n                                     \
-                                     (string-append \"Continue this poem with one stanza:\\n\\n\"\n                                                    \
-                                                    (string-join stanzas \"\\n\\n\")))))))))\n\
-    (hash 'poem poem\n      \
-          'summary (ask a (string-append \"Summarise this poem in one sentence:\\n\\n\" (string-join poem \"\\n\\n\"))))\n\n\
     Fan out over three agents at once and keep the shortest answer:\n\
     (define agents (map (lambda (i) (spawn-agent (string-append \"solver-\" (number->string i)))) (range 0 3)))\n\
     (define requests (map (lambda (agent) (send agent \"How does src/lib.rs load plugins? Three sentences.\")) agents))\n\
@@ -210,16 +196,13 @@ async fn run_program(call: ToolCall, harness: Harness, me: AgentId, code: String
             done.send(program::run(code, host)).ok();
         });
     if let Err(error) = started {
-        return failed(&call, format!("The interpreter did not start: {error}"));
+        return failure(format!("The interpreter did not start: {error}"));
     }
     loop {
         match future::select(&mut finished, pin!(Delay::new(WATCH_EVERY))).await {
-            Either::Left((Ok(ended), _)) => return result(&call, ended, control.stopped()),
+            Either::Left((Ok(ended), _)) => return result(ended, control.stopped()),
             Either::Left((Err(_), _)) => {
-                return failed(
-                    &call,
-                    "The interpreter stopped without a result.".to_owned(),
-                );
+                return failure("The interpreter stopped without a result.".to_owned());
             }
             Either::Right(_) => {
                 if control.spent() > MAX_RUNTIME {
@@ -322,7 +305,7 @@ impl Drop for Stopper {
 }
 
 /// The call's result for a program that ended.
-fn result(call: &ToolCall, ended: Ended, stopped: Option<Stop>) -> ToolResult {
+fn result(ended: Ended, stopped: Option<Stop>) -> ToolResult {
     let mut text = String::new();
     if !ended.printed.is_empty() {
         text.push_str("Printed:\n");
@@ -337,15 +320,20 @@ fn result(call: &ToolCall, ended: Ended, stopped: Option<Stop>) -> ToolResult {
                 "The program was stopped: it ran for more than {} s, not counting its waits on agents and tools.",
                 MAX_RUNTIME.as_secs()
             ));
-            return call.error_result(vec![ToolResultContent::text(capped(text))]);
+            return failure(capped(text));
         }
         (Err(why), _) => {
             text.push_str("The program failed:\n");
             text.push_str(&why);
-            return call.error_result(vec![ToolResultContent::text(capped(text))]);
+            return failure(capped(text));
         }
     }
-    call.result(vec![ToolResultContent::text(capped(text))])
+    ToolResult::success(capped(text).into())
+}
+
+/// The result of a call that failed, saying `why`.
+fn failure(why: String) -> ToolResult {
+    ToolResult::failed(ToolExecutionError::other(why))
 }
 
 /// `text` cut to [`MAX_OUTPUT_BYTES`] on a character boundary, with a note
@@ -354,11 +342,7 @@ pub(crate) fn capped(mut text: String) -> String {
     if text.len() <= MAX_OUTPUT_BYTES {
         return text;
     }
-    let mut end = MAX_OUTPUT_BYTES;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text.truncate(end);
+    text.truncate(text.floor_char_boundary(MAX_OUTPUT_BYTES));
     text.push_str(&format!("\n[output cut at {MAX_OUTPUT_BYTES} bytes]"));
     text
 }

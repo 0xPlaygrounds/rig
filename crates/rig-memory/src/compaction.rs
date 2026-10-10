@@ -1,20 +1,19 @@
-//! Building blocks for compacting a long conversation: a [`SummaryState`]
-//! that says which leading messages a summary replaces, a [`Summarizer`]
-//! that asks a model for that summary, a [`ModelCompactor`] that runs it as
-//! a [`Compactor`], and [`ClearToolOutputs`], a [`MemoryPolicy`] that frees
-//! context without a model call.
+//! Building blocks for compacting a long conversation: a
+//! [`CompactionPolicy`] that says when and where to cut it and plans the
+//! summary of its older messages, a [`SummaryState`] with the summary and
+//! the values tracked across compactions, a [`Summarizer`] that asks a
+//! model for the summary, and [`ClearToolOutputs`], which frees context
+//! without a model call.
 //!
-//! Nothing here knows a tool or a domain: the summarizer's prompts, the
-//! tool arguments a summary keeps track of and the cleared-output text are
-//! the caller's.
+//! The summarizer's default prompts ask for pi's structured checkpoint;
+//! the tool arguments a summary keeps track of are the caller's.
 //!
 //! ```
-//! use rig_memory::{ClearToolOutputs, HeuristicTokenCounter, SummaryState};
+//! use rig_memory::{CompactionPolicy, SummaryState};
 //!
-//! let state = SummaryState::default();
-//! let counter = HeuristicTokenCounter::default();
-//! assert_eq!(state.estimate(&[], &counter), 0);
-//! let _policy = ClearToolOutputs::new(40_000);
+//! let policy = CompactionPolicy::default();
+//! assert_eq!(policy.cut(&[], 0, &rig_memory::CompactReason::Threshold, None), None);
+//! assert_eq!(SummaryState::default().message(), None);
 //! ```
 
 use std::borrow::Cow;
@@ -26,25 +25,16 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
-use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::id::ConversationId;
 use rig_core::message::{ToolResultContent, UserContent};
-use rig_core::serve::{Dispatch, ErasedHandler, Reply};
-use rig_core::wasm_compat::WasmBoxedFuture;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    Compactor, HeuristicTokenCounter, MemoryError, MemoryPolicy, TextSummary, TokenCounter,
-};
+use crate::{HeuristicTokenCounter, TokenCounter};
 
-/// Which of a conversation's first messages a summary replaces, the
-/// summary, and the values tracked across compactions (such as the files a
-/// coding agent read). The default replaces none.
+/// A summary of a conversation's older messages and the values tracked
+/// across compactions (such as the files a coding agent read). The default
+/// is the state before the first compaction.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SummaryState {
-    /// How many of the conversation's first messages the summary replaces.
-    pub upto: usize,
     /// The summary; empty before the first compaction.
     pub summary: String,
     /// Named sets of values, in the order they were first tracked.
@@ -75,50 +65,6 @@ pub struct TrackArgument<'a> {
 }
 
 impl SummaryState {
-    /// The messages requests still send as they are.
-    pub fn live<'a>(&self, messages: &'a [Message]) -> &'a [Message] {
-        messages
-            .get(self.upto.min(messages.len())..)
-            .unwrap_or_default()
-    }
-
-    /// [`Self::live`], to change in place.
-    pub fn live_mut<'a>(&self, messages: &'a mut [Message]) -> &'a mut [Message] {
-        let from = self.upto.min(messages.len());
-        messages.get_mut(from..).unwrap_or_default()
-    }
-
-    /// The messages a request sends: the summary, then the live messages.
-    /// The summary goes into the first live message when that is the
-    /// user's, so user and assistant messages still alternate.
-    pub fn request(&self, messages: &[Message]) -> Vec<Message> {
-        let mut live = self.live(messages).to_vec();
-        let Some(summary) = self.message() else {
-            return live;
-        };
-        let summary = UserContent::text(summary);
-        match live.first_mut() {
-            Some(Message::User { content }) => content.insert(0, summary),
-            _ => live.insert(
-                0,
-                Message::User {
-                    content: vec![summary],
-                },
-            ),
-        }
-        live
-    }
-
-    /// The tokens of [`Self::request`]'s messages, by `counter`.
-    pub fn estimate(&self, messages: &[Message], counter: &impl TokenCounter) -> usize {
-        let summary = self.message().map_or(0, |summary| {
-            counter.count(&Message::User {
-                content: vec![UserContent::text(summary)],
-            })
-        });
-        summary + counter.count_all(self.live(messages))
-    }
-
     /// The text that stands for the summarized messages, `None` before the
     /// first compaction. A value appears only in the last set that holds
     /// it, so a later set (files changed) overrides an earlier one (files
@@ -150,35 +96,6 @@ impl SummaryState {
             }
         }
         Some(text)
-    }
-
-    /// Where a new compaction should end: the first message it keeps.
-    /// Walking back from the newest message, it keeps at least
-    /// `keep_tokens` and cuts before a reply or a user's own message, never
-    /// between a tool call and its result. With `force`, a shorter
-    /// conversation still has its older messages summarized, all but the
-    /// newest reply or message. `None` when nothing new would be
-    /// summarized.
-    pub fn cut(
-        &self,
-        messages: &[Message],
-        keep_tokens: usize,
-        force: bool,
-        counter: &impl TokenCounter,
-    ) -> Option<usize> {
-        let mut kept = 0;
-        let mut newest = None;
-        for (index, message) in messages.iter().enumerate().skip(self.upto + 1).rev() {
-            kept += counter.count(message);
-            if !can_start_live(message) {
-                continue;
-            }
-            newest.get_or_insert(index);
-            if kept >= keep_tokens {
-                return Some(index);
-            }
-        }
-        newest.filter(|_| force)
     }
 
     /// Adds the arguments `rules` name of the tool calls in `messages` to
@@ -218,14 +135,180 @@ impl SummaryState {
     }
 }
 
-/// Whether the live messages may start with `message`: a reply, or a user
-/// message that answers no tool call.
+/// Where a new compaction of `messages`, whose first `from` are summarized
+/// already, should end: the first message it keeps. Walking back from the
+/// newest message, it keeps at least `keep_tokens` and cuts before a reply
+/// or a user's own message, never between a tool call and its result.
+/// With `force`, a shorter conversation still has its older messages
+/// summarized, all but the newest reply or message. `None` when nothing
+/// new would be summarized.
+fn cut_at(
+    messages: &[Message],
+    from: usize,
+    keep_tokens: usize,
+    force: bool,
+    counter: &impl TokenCounter,
+) -> Option<usize> {
+    let mut kept = 0;
+    let mut newest = None;
+    for (index, message) in messages.iter().enumerate().skip(from + 1).rev() {
+        kept += counter.count(message);
+        if !can_start_live(message) {
+            continue;
+        }
+        newest.get_or_insert(index);
+        if kept >= keep_tokens {
+            return Some(index);
+        }
+    }
+    newest.filter(|_| force)
+}
+
+/// Whether the messages a request sends as they are may start with
+/// `message`: a reply, or a user message that answers no tool call.
 fn can_start_live(message: &Message) -> bool {
     match message {
         Message::User { content } => !content
             .iter()
             .any(|item| matches!(item, UserContent::ToolResult(_))),
         Message::Assistant(_) | Message::System { .. } => true,
+    }
+}
+
+/// Why a conversation is compacted.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CompactReason {
+    /// The user asked, with what to focus on, if anything.
+    Asked {
+        /// What the summary should keep above all; may be empty.
+        focus: String,
+    },
+    /// The next request would leave less than the reserve of the model's
+    /// window free.
+    Threshold,
+    /// The model refused the request as too long.
+    Overflow,
+}
+
+/// How a conversation is compacted: what the summarizer is asked, the tool
+/// arguments a summary keeps track of, such as the files a coding agent's
+/// file tools read and changed, how much of the newest conversation stays
+/// as it is, and how old tool outputs are cleared first. Tokens are
+/// estimated by the default [`HeuristicTokenCounter`].
+#[derive(Clone, Debug)]
+pub struct CompactionPolicy {
+    /// The summarizer; its reserve is how much of the model's window is
+    /// kept free.
+    pub summarizer: Summarizer,
+    /// The tool arguments tracked across compactions.
+    pub tracked: Vec<TrackArgument<'static>>,
+    /// Tokens of the newest messages an automatic compaction keeps as they
+    /// are, a quarter of the model's window at most (pi's
+    /// `keepRecentTokens`): the work carries on, so its recent part stays.
+    pub keep_recent: usize,
+    /// Tokens of the newest messages a compaction the user asked for keeps
+    /// as they are; the newest reply or message always stays.
+    pub keep_asked: usize,
+    /// How old tool outputs are cleared before a summary is asked for.
+    pub clearing: ClearToolOutputs,
+}
+
+impl Default for CompactionPolicy {
+    /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
+    /// by an automatic compaction and none beyond the newest reply or
+    /// message by an asked one, and all but the newest 40k tokens of tool
+    /// output cleared (opencode's `PRUNE_PROTECT`).
+    fn default() -> Self {
+        Self {
+            summarizer: Summarizer::DEFAULT,
+            tracked: Vec::new(),
+            keep_recent: 20_000,
+            keep_asked: 0,
+            clearing: ClearToolOutputs::new(40_000),
+        }
+    }
+}
+
+impl CompactionPolicy {
+    /// The estimated tokens of `messages`.
+    pub fn estimate(&self, messages: &[Message]) -> u64 {
+        let counter = HeuristicTokenCounter::default();
+        messages
+            .iter()
+            .map(|message| counter.count(message))
+            .sum::<usize>() as u64
+    }
+
+    /// Whether a request of `tokens` leaves less than the summarizer's
+    /// reserve of `spec`'s window free. Never, when the window is not known.
+    pub fn over_threshold(&self, tokens: u64, spec: &ModelSpec) -> bool {
+        spec.context_window.is_some_and(|window| {
+            tokens > u64::from(window).saturating_sub(self.summarizer.limits.reserve)
+        })
+    }
+
+    /// Tokens of the newest messages a compaction for `reason` with `spec`
+    /// keeps as they are.
+    pub fn keep(&self, reason: &CompactReason, spec: Option<&ModelSpec>) -> usize {
+        match reason {
+            CompactReason::Asked { .. } => self.keep_asked,
+            CompactReason::Threshold | CompactReason::Overflow => spec
+                .and_then(|spec| spec.context_window)
+                .map_or(self.keep_recent, |window| {
+                    self.keep_recent
+                        .min(usize::try_from(window / 4).unwrap_or(usize::MAX))
+                }),
+        }
+    }
+
+    /// Where a new compaction for `reason` of `messages`, whose first
+    /// `from` are summarized already, should end with `spec`: the first
+    /// message it keeps, or `None` when nothing new would be summarized. A
+    /// compaction that must happen (the user asked, or the model refused
+    /// the request as too long) still summarizes a short conversation's
+    /// older messages.
+    pub fn cut(
+        &self,
+        messages: &[Message],
+        from: usize,
+        reason: &CompactReason,
+        spec: Option<&ModelSpec>,
+    ) -> Option<usize> {
+        let force = !matches!(reason, CompactReason::Threshold);
+        cut_at(
+            messages,
+            from,
+            self.keep(reason, spec),
+            force,
+            &HeuristicTokenCounter::default(),
+        )
+    }
+
+    /// Plans a compaction for `reason` ending at `upto` (from
+    /// [`Self::cut`]), of `messages` whose first `from` were summarized into
+    /// `state` already: the state the new summary goes into, with the tool
+    /// arguments the messages summarized anew used that the policy tracks,
+    /// and the request for that summary to `spec`.
+    pub fn plan(
+        &self,
+        state: &SummaryState,
+        messages: &[Message],
+        from: usize,
+        upto: usize,
+        spec: &ModelSpec,
+        reason: &CompactReason,
+    ) -> Result<(SummaryState, CompletionRequest), UnsupportedOption> {
+        let older = messages.get(from.min(upto)..upto).unwrap_or_default();
+        let focus = match reason {
+            CompactReason::Asked { focus } => focus.trim(),
+            _ => "",
+        };
+        let request = self
+            .summarizer
+            .request(older, &state.summary, focus, spec)?;
+        let mut next = state.clone();
+        next.track(older, &self.tracked);
+        Ok((next, request))
     }
 }
 
@@ -240,6 +323,56 @@ pub struct SummaryPrompts {
     pub update: Cow<'static, str>,
     /// The summary's format, after either request.
     pub format: Cow<'static, str>,
+}
+
+impl SummaryPrompts {
+    /// pi's structured checkpoint of an agent's work: goal, constraints,
+    /// progress, decisions, next steps and critical context.
+    pub const DEFAULT: Self = Self {
+        system: Cow::Borrowed(
+            "You summarize a conversation between a user and a coding agent so that another \
+             model can continue the work from the summary alone. Read the conversation and \
+             write the summary in the exact format asked for.\n\n\
+             Do not continue the conversation. Do not answer questions in it. Output only the \
+             summary.",
+        ),
+        initial: Cow::Borrowed(
+            "The conversation above is to be summarized. Write a structured checkpoint of it \
+             that another model will use to continue the work.",
+        ),
+        update: Cow::Borrowed(
+            "The conversation above is the NEW part of a conversation whose earlier part is \
+             summarized in <previous-summary>. Update that summary with it:\n\
+             - keep everything in the previous summary that still holds;\n\
+             - add the new progress, decisions and context;\n\
+             - move items from \"In progress\" to \"Done\" when they were completed;\n\
+             - update \"Next steps\" to what is left;\n\
+             - drop what is no longer relevant.",
+        ),
+        format: Cow::Borrowed(
+            "\n\nUse exactly this format:\n\n\
+             ## Goal\n\
+             [What the user is trying to get done; several items if the session covers several \
+             tasks.]\n\n\
+             ## Constraints and preferences\n\
+             - [What the user asked for or ruled out, or \"(none)\"]\n\n\
+             ## Progress\n\
+             ### Done\n\
+             - [x] [Completed tasks and changes]\n\
+             ### In progress\n\
+             - [ ] [Current work]\n\
+             ### Blocked\n\
+             - [What prevents progress, if anything]\n\n\
+             ## Key decisions\n\
+             - **[Decision]**: [Why]\n\n\
+             ## Next steps\n\
+             1. [What should happen next, in order]\n\n\
+             ## Critical context\n\
+             - [Data, examples, commands or references needed to continue, or \"(none)\"]\n\n\
+             Keep each section short. Keep exact file paths, function names, commands and error \
+             messages.",
+        ),
+    };
 }
 
 /// The sizes a [`Summarizer`] works within.
@@ -266,12 +399,6 @@ impl SummaryLimits {
     };
 }
 
-impl Default for SummaryLimits {
-    fn default() -> Self {
-        Self::DEFAULT
-    }
-}
-
 /// Builds the request for a summary of a conversation's older messages and
 /// reads the summary from the model's answer. The conversation goes as
 /// text in one user message, so the model reads it rather than continues
@@ -283,6 +410,14 @@ pub struct Summarizer {
     pub prompts: SummaryPrompts,
     /// Sizes.
     pub limits: SummaryLimits,
+}
+
+impl Summarizer {
+    /// [`SummaryPrompts::DEFAULT`] within [`SummaryLimits::DEFAULT`].
+    pub const DEFAULT: Self = Self {
+        prompts: SummaryPrompts::DEFAULT,
+        limits: SummaryLimits::DEFAULT,
+    };
 }
 
 /// Why a summary cannot be used.
@@ -464,72 +599,6 @@ fn snippet(text: &str, chars: usize) -> String {
     }
 }
 
-/// Waits for a completion's reply, streamed or not, as one response.
-pub async fn completion_of(
-    reply: impl Future<Output = Reply>,
-) -> Result<CompletionResponse, ErrorReport> {
-    match reply.await.into_outcome().await? {
-        Outcome::Completion(response) => Ok(response),
-        _ => Err(ErrorReport::new(
-            ErrorKind::Internal,
-            "the model answered a completion request with something other than a completion",
-        )),
-    }
-}
-
-/// A [`Compactor`] that asks a model for the summary through its handler,
-/// unrecorded. A host that records its effects builds the request with
-/// [`Summarizer::request`] and dispatches it itself.
-#[derive(Clone, Debug)]
-pub struct ModelCompactor {
-    summarizer: Summarizer,
-    handler: ErasedHandler,
-    spec: ModelSpec,
-}
-
-impl ModelCompactor {
-    /// Summarize with the model `spec`, served by `handler`.
-    pub fn new(summarizer: Summarizer, handler: ErasedHandler, spec: ModelSpec) -> Self {
-        Self {
-            summarizer,
-            handler,
-            spec,
-        }
-    }
-}
-
-impl Compactor for ModelCompactor {
-    type Artifact = TextSummary;
-
-    fn compact<'a>(
-        &'a self,
-        _conversation_id: &'a ConversationId,
-        evicted: &'a [Message],
-        carry_over: Option<&'a Self::Artifact>,
-    ) -> WasmBoxedFuture<'a, Result<Self::Artifact, MemoryError>> {
-        Box::pin(async move {
-            let previous = carry_over.map_or("", TextSummary::as_str);
-            let request = self
-                .summarizer
-                .request(evicted, previous, "", &self.spec)
-                .map_err(|refusal| MemoryError::Policy(refusal.to_string()))?;
-            let kind = EffectKind::Completion {
-                request,
-                stream: false,
-            };
-            let reply = self
-                .handler
-                .handle(kind, Dispatch::new(EffectId::from_raw(0), false));
-            let response = completion_of(reply)
-                .await
-                .map_err(|report| MemoryError::Policy(report.to_string()))?;
-            Summarizer::summary_text(&response)
-                .map(TextSummary)
-                .map_err(|why| MemoryError::Policy(why.to_string()))
-        })
-    }
-}
-
 /// What [`ClearToolOutputs::clear`] took out.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Cleared {
@@ -539,8 +608,7 @@ pub struct Cleared {
     pub tokens: usize,
 }
 
-/// A [`MemoryPolicy`] that frees context by clearing the outputs of older
-/// tool calls, newest kept first: walking back from the end, the outputs
+/// Frees context by clearing the outputs of older tool calls, newest kept first: walking back from the end, the outputs
 /// within the first `keep_tokens` stay, and every older one is replaced by
 /// a placeholder. The last message is never touched: it is what the model
 /// must answer. Error results stay, being short and telling the model what
@@ -550,12 +618,10 @@ pub struct Cleared {
 #[derive(Clone, Debug)]
 pub struct ClearToolOutputs {
     keep_tokens: usize,
-    placeholder: Cow<'static, str>,
-    counter: HeuristicTokenCounter,
 }
 
 impl ClearToolOutputs {
-    /// What a cleared output says by default.
+    /// What a cleared output says.
     pub const PLACEHOLDER: &'static str =
         "[output cleared to fit the context window; run the tool again if needed]";
 
@@ -563,29 +629,12 @@ impl ClearToolOutputs {
     /// [`HeuristicTokenCounter`], and say [`Self::PLACEHOLDER`] instead of
     /// the rest.
     pub fn new(keep_tokens: usize) -> Self {
-        Self {
-            keep_tokens,
-            placeholder: Cow::Borrowed(Self::PLACEHOLDER),
-            counter: HeuristicTokenCounter::default(),
-        }
-    }
-
-    /// Say `placeholder` instead of a cleared output.
-    #[must_use = "the setting applies to the returned value"]
-    pub fn with_placeholder(mut self, placeholder: impl Into<Cow<'static, str>>) -> Self {
-        self.placeholder = placeholder.into();
-        self
-    }
-
-    /// Count tool outputs with `counter`.
-    #[must_use = "the setting applies to the returned value"]
-    pub fn with_counter(mut self, counter: HeuristicTokenCounter) -> Self {
-        self.counter = counter;
-        self
+        Self { keep_tokens }
     }
 
     /// Clears older tool outputs of `messages` in place.
     pub fn clear(&self, messages: &mut [Message]) -> Cleared {
+        let counter = HeuristicTokenCounter::default();
         let mut cleared = Cleared::default();
         let mut kept = 0;
         let Some((_, earlier)) = messages.split_last_mut() else {
@@ -596,35 +645,29 @@ impl ClearToolOutputs {
                 continue;
             };
             for item in content.iter_mut().rev() {
-                let tokens = self.counter.count_user(item);
+                let tokens = counter.count_user(item);
                 let UserContent::ToolResult(result) = item else {
                     continue;
                 };
-                if result.is_error || self.is_cleared(&result.content) {
+                if result.is_error || is_cleared(&result.content) {
                     continue;
                 }
                 kept += tokens;
                 if kept <= self.keep_tokens {
                     continue;
                 }
-                result.content = vec![ToolResultContent::text(self.placeholder.clone())];
+                result.content = vec![ToolResultContent::text(Self::PLACEHOLDER)];
                 cleared.results += 1;
                 cleared.tokens += tokens;
             }
         }
         cleared
     }
-
-    fn is_cleared(&self, content: &[ToolResultContent]) -> bool {
-        matches!(content, [only] if only.as_text() == Some(&*self.placeholder))
-    }
 }
 
-impl MemoryPolicy for ClearToolOutputs {
-    fn apply(&self, mut messages: Vec<Message>) -> Result<Vec<Message>, MemoryError> {
-        self.clear(&mut messages);
-        Ok(messages)
-    }
+/// Whether `content` is a cleared output.
+fn is_cleared(content: &[ToolResultContent]) -> bool {
+    matches!(content, [only] if only.as_text() == Some(ClearToolOutputs::PLACEHOLDER))
 }
 
 #[cfg(test)]

@@ -1,7 +1,9 @@
 //! The `shell` tool.
 
 use std::collections::VecDeque;
-use std::io::Read;
+use std::fs::File;
+use std::io::{Read, Write as _};
+use std::path::PathBuf;
 use std::process::{Command, ExitStatus, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -14,7 +16,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::process::{detach, kill_group};
-use crate::{MAX_BYTES, MAX_LINES, blocking};
+use crate::{MAX_BYTES, MAX_LINES, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
@@ -29,11 +31,13 @@ const POLL: Duration = Duration::from_millis(20);
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group.
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct Shell {
     /// Environment variables the command does not inherit, such as those
     /// that make a program act as the agent running it.
     pub unset_env: &'static [&'static str],
+    /// Where output that is cut is kept whole, named in the cut output.
+    pub spill: Option<Spill>,
 }
 
 /// Arguments of [`Shell`].
@@ -81,8 +85,8 @@ impl PortableTool for Shell {
     async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
         let stop = StopOnDrop(Arc::default());
         let running = Arc::clone(&stop.0);
-        let unset = self.unset_env;
-        blocking(move || run(args, unset, &running.stopped, &running.leader)).await
+        let (unset, spill) = (self.unset_env, self.spill.clone());
+        blocking(move || run(args, unset, spill, &running)).await
     }
 }
 
@@ -117,8 +121,8 @@ impl Drop for StopOnDrop {
 fn run(
     args: ShellArgs,
     unset_env: &[&str],
-    stopped: &AtomicBool,
-    leader: &AtomicU32,
+    spill: Option<Spill>,
+    stop: &Stop,
 ) -> Result<String, ToolExecutionError> {
     let timeout = Duration::from_secs(
         args.timeout_secs
@@ -148,19 +152,22 @@ fn run(
     drop(command);
     let mut child =
         spawned.map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))?;
-    leader.store(child.id(), Ordering::SeqCst);
+    stop.leader.store(child.id(), Ordering::SeqCst);
     let chunks = drain(reader);
-    let mut tail = Tail::default();
+    let mut tail = Tail {
+        spill,
+        ..Tail::default()
+    };
     let deadline = Instant::now() + timeout;
     let end = loop {
         let exited = child.try_wait();
         if !matches!(exited, Ok(None)) {
             // Reaped, or about to be: its pid may be reused.
-            leader.store(0, Ordering::SeqCst);
+            stop.leader.store(0, Ordering::SeqCst);
         }
         match exited {
             Ok(Some(status)) => break End::Exited(status),
-            Ok(None) if stopped.load(Ordering::Relaxed) => break End::Stopped,
+            Ok(None) if stop.stopped.load(Ordering::Relaxed) => break End::Stopped,
             Ok(None) if Instant::now() >= deadline => break End::TimedOut,
             Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
             Ok(None) => match chunks.recv_timeout(POLL) {
@@ -177,7 +184,7 @@ fn run(
             }
         }
     };
-    leader.store(0, Ordering::SeqCst);
+    stop.leader.store(0, Ordering::SeqCst);
     // After a normal exit, something the command left running in the
     // background may still hold the output pipe open; then the rest of its
     // group is killed. The leader was reaped by `try_wait`, so the group id
@@ -261,15 +268,25 @@ struct Tail {
     cut: bool,
     /// Whole lines dropped before `bytes`.
     cut_lines: usize,
+    /// Where the whole output goes once some is cut.
+    spill: Option<Spill>,
+    /// The file it goes to, from the first cut on, and its path.
+    spilled: Option<(PathBuf, File)>,
 }
 
 impl Tail {
     /// Appends `chunk`, keeping only the last `MAX_BYTES` bytes.
     fn push(&mut self, chunk: &[u8]) {
         self.written += chunk.len() as u64;
+        if let Some((_, file)) = &mut self.spilled
+            && file.write_all(chunk).is_err()
+        {
+            self.spilled = None;
+        }
         self.bytes.extend(chunk);
         let excess = self.bytes.len().saturating_sub(MAX_BYTES);
         if excess > 0 {
+            self.spill();
             self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
             self.cut = true;
         }
@@ -289,9 +306,24 @@ impl Tail {
         }
     }
 
+    /// Starts keeping the whole output, from the bytes kept so far, which
+    /// are all of it before the first cut. Tried once.
+    fn spill(&mut self) {
+        let Some(spill) = self.spill.take() else {
+            return;
+        };
+        let (front, back) = self.bytes.as_slices();
+        self.spilled = spill.create("shell").ok().filter(|(_, file)| {
+            let mut file = file;
+            file.write_all(front)
+                .and_then(|()| file.write_all(back))
+                .is_ok()
+        });
+    }
+
     /// The kept output, at most `MAX_LINES` lines, after a line saying how
-    /// many earlier ones were cut.
-    fn text(self) -> String {
+    /// many earlier ones were cut and which file has them all.
+    fn text(mut self) -> String {
         let (front, back) = self.bytes.as_slices();
         let output = String::from_utf8_lossy(&[front, back].concat()).into_owned();
         let mut cut = self.cut_lines;
@@ -308,7 +340,14 @@ impl Tail {
         cut += lines.len() - kept;
         let mut text = String::new();
         if cut > 0 {
-            text.push_str(&format!("[{cut} earlier lines cut]\n"));
+            self.spill();
+            match &self.spilled {
+                Some((path, _)) => text.push_str(&format!(
+                    "[{cut} earlier lines cut; all of the output is in {}: read or search it]\n",
+                    path.display()
+                )),
+                None => text.push_str(&format!("[{cut} earlier lines cut]\n")),
+            }
         }
         for line in lines.iter().skip(lines.len() - kept) {
             text.push_str(line);

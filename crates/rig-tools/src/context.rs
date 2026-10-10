@@ -35,9 +35,8 @@ impl Instructions {
     /// A file reached twice is read once; empty files are left out.
     pub fn discover(general: impl IntoIterator<Item = PathBuf>, cwd: &Path) -> Self {
         let mut dirs: Vec<PathBuf> = general.into_iter().collect();
-        let mut above: Vec<PathBuf> = cwd.ancestors().map(Path::to_path_buf).collect();
-        above.reverse();
-        dirs.extend(above);
+        let above: Vec<&Path> = cwd.ancestors().collect();
+        dirs.extend(above.into_iter().rev().map(Path::to_path_buf));
 
         let mut found: Vec<PathBuf> = Vec::new();
         let mut seen: Vec<PathBuf> = Vec::new();

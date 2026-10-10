@@ -24,7 +24,7 @@ use super::view::TuiView;
 use rig::harness_protocol::{Home, RELOAD_EXIT_CODE};
 use rig_ecs::calls::Wake;
 
-use crate::host::session::SessionPaths;
+use crate::prelude::SessionPaths;
 
 /// Bytes buffered before a write to the terminal: a full frame of a large
 /// screen.

@@ -80,7 +80,7 @@ impl SessionId {
     }
 
     /// The id in [`env::SESSION`], or `None` when it is unset or empty.
-    pub fn from_env() -> Result<Option<Self>, InvalidSessionId> {
+    pub fn from_env() -> Result<Option<Self>, String> {
         let id = std::env::var_os(env::SESSION).filter(|id| !id.is_empty());
         id.map(|id| id.to_string_lossy().parse()).transpose()
     }
@@ -92,7 +92,7 @@ impl SessionId {
 }
 
 impl FromStr for SessionId {
-    type Err = InvalidSessionId;
+    type Err = String;
 
     fn from_str(id: &str) -> Result<Self, Self::Err> {
         let valid = id.starts_with(|c: char| c.is_ascii_digit())
@@ -100,7 +100,9 @@ impl FromStr for SessionId {
         if valid {
             Ok(Self(id.to_owned()))
         } else {
-            Err(InvalidSessionId(id.to_owned()))
+            Err(format!(
+                "`{id}` is not a session id: it must be digits and dashes"
+            ))
         }
     }
 }
@@ -110,22 +112,6 @@ impl fmt::Display for SessionId {
         f.write_str(&self.0)
     }
 }
-
-/// Text that is not a [`SessionId`].
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InvalidSessionId(String);
-
-impl fmt::Display for InvalidSessionId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "`{}` is not a session id: it must be digits and dashes",
-            self.0
-        )
-    }
-}
-
-impl std::error::Error for InvalidSessionId {}
 
 /// The `RIG_HOME` layout. Every file the launcher and the agent write lives
 /// under this one root.
@@ -254,26 +240,6 @@ impl Home {
     pub fn session(&self, session: &SessionId) -> SessionDir {
         SessionDir(self.sessions().join(session.as_str()))
     }
-
-    /// The file naming the session to resume in `directory`: the last one
-    /// run there that did not quit cleanly. The name is a hash of the path,
-    /// so a session comes back only where it ran.
-    pub fn resume_marker(&self, directory: &Path) -> PathBuf {
-        self.root.join("resume").join(directory_key(directory))
-    }
-}
-
-/// A file name for `directory`: a hash of its path. FNV-1a, which is
-/// stable across builds and toolchains, unlike std's hasher.
-fn directory_key(directory: &Path) -> String {
-    let key = directory
-        .as_os_str()
-        .as_encoded_bytes()
-        .iter()
-        .fold(0xcbf2_9ce4_8422_2325_u64, |hash, byte| {
-            (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
-        });
-    format!("{key:016x}")
 }
 
 /// A session's directory: one append-only log per agent, the listing cache,
@@ -288,44 +254,18 @@ impl SessionDir {
         &self.0
     }
 
-    /// The log of the agent with the id `agent`: one JSON record per line,
-    /// only ever appended to.
-    pub fn agent_log(&self, agent: &str) -> PathBuf {
-        self.0.join(format!("{agent}{AGENT_LOG}"))
-    }
-
-    /// Every agent log in the directory, in no particular order.
-    pub fn agent_logs(&self) -> Vec<PathBuf> {
-        let Ok(entries) = std::fs::read_dir(&self.0) else {
-            return Vec::new();
-        };
-        entries
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.file_name()
-                    .and_then(|name| name.to_str())
-                    .and_then(|name| name.strip_suffix(AGENT_LOG))
-                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
-            })
-            .collect()
-    }
-
     /// Whether any agent of the session wrote its log, so it can be
     /// resumed.
     pub fn is_saved(&self) -> bool {
-        !self.agent_logs().is_empty()
-    }
-
-    /// Content-addressed files the agent logs refer to, such as images:
-    /// `blobs/<sha256>.<ext>`.
-    pub fn blobs(&self) -> PathBuf {
-        self.0.join("blobs")
-    }
-
-    /// The effect log, one effect record per line.
-    pub fn effects(&self) -> PathBuf {
-        self.0.join(format!("{EFFECTS}{AGENT_LOG}"))
+        std::fs::read_dir(&self.0).is_ok_and(|entries| {
+            entries.filter_map(Result::ok).any(|entry| {
+                entry
+                    .file_name()
+                    .to_str()
+                    .and_then(|name| name.strip_suffix(AGENT_LOG))
+                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
+            })
+        })
     }
 
     /// The agent's text log.
@@ -396,8 +336,8 @@ pub struct Invocation {
 }
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
-pub const INVOCATION_USAGE: &str = "\
-  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
+pub const INVOCATION_USAGE: &str =
+    "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
                          Text piped in on stdin follows the prompt.
   -m, --model <model>    The catalog model (vendor/model) to use.
 ";

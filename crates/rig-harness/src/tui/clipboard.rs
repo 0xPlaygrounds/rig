@@ -2,7 +2,7 @@
 //! session's [`SessionDir::images`](rig::harness_protocol::SessionDir::images)
 //! and types `@path` for it, and a pasted path to an image file (a file
 //! dropped on the terminal) becomes `@path` too. The message attaches what
-//! `@path` names (see [`attach`](crate::attach)). The clipboard is
+//! `@path` names (see [`front`](crate::front)). The clipboard is
 //! read by `wl-paste`, `xclip` or `pngpaste` on a thread of its own, which
 //! wakes the loop when it is done.
 
@@ -13,8 +13,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 
+use super::editor::Editor;
 use super::view::TuiView;
-use crate::attach;
+use crate::front;
 use rig_core::message::ImageMediaType;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
@@ -60,15 +61,7 @@ pub(crate) fn receive_images(
 ) {
     for result in clipboard.results.try_iter() {
         match result {
-            Ok(path) => {
-                let before = view
-                    .editor
-                    .text()
-                    .get(..view.editor.cursor())
-                    .unwrap_or_default();
-                let space = separator(before);
-                view.editor.insert(&format!("{space}@{} ", path.display()));
-            }
+            Ok(path) => type_path(&mut view.editor, &path),
             Err(why) => {
                 notices.write(Notice::info(view.agent, why));
             }
@@ -76,14 +69,16 @@ pub(crate) fn receive_images(
     }
 }
 
-/// A space when the text before the cursor does not end in whitespace, so
-/// `@path` is a token of its own.
-pub(crate) fn separator(before: &str) -> &'static str {
-    if before.is_empty() || before.ends_with(char::is_whitespace) {
+/// Types `@path` at the cursor, after a space when the text before it does
+/// not end in whitespace, so `@path` is a token of its own.
+pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
+    let before = editor.text().get(..editor.cursor()).unwrap_or_default();
+    let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
         ""
     } else {
         " "
-    }
+    };
+    editor.insert(&format!("{space}@{} ", path.display()));
 }
 
 /// The path a paste holds when it is one image file, as a terminal pastes
@@ -104,7 +99,7 @@ pub(crate) fn dropped_image(text: &str) -> Option<PathBuf> {
         return None;
     }
     let path = Path::new(text);
-    (attach::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
+    (front::is_image_path(path) && path.is_file()).then(|| path.to_path_buf())
 }
 
 /// The commands that print the clipboard's image, in the order tried.

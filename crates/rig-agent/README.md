@@ -4,8 +4,9 @@
 sans-I/O run state, blocking and streaming drivers, typed hooks, contextual
 tools, extraction, and runtime integrations.
 
-Most applications should use the root `rig` facade, where this runtime remains
-enabled by default. Low-level provider and backend contracts live in
+Most applications should use the root `rig` facade with its `agent` feature
+(`rig = { version = "…", features = ["agent"] }`), which re-exports this
+runtime. Low-level provider and backend contracts live in
 `rig-core`.
 
 Direct users import construction and prompting explicitly:

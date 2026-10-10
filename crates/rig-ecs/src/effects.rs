@@ -1,85 +1,37 @@
 //! The one dispatch path. Every model call and tool call goes through
-//! [`Effects::dispatch`], which records it with rig-core's effect types
-//! under the agent's stable id; an open tool call, which no handler
-//! answers, is recorded the same way when it is opened. Resolved records
-//! go to the session's [`JournalStore`] at the end of each frame, with
-//! their header (the tools and models described, the keys used) whenever
-//! it changed, so the effect log replays with rig-cassette's replayer.
+//! [`Effects::dispatch`] under the agent's stable id and an effect id; an
+//! open tool call, which no handler answers, gets its id when it is opened.
+//! A plugin that keeps an effect log, such as rig-harness's, inserts
+//! [`Effects::recorded_by`] its recorder, which then sees every effect with
+//! rig-core's effect types; without one nothing is recorded.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
-use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
-use rig_core::catalog::ModelSpec;
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, tool_key};
+use rig_core::effect::{EffectId, EffectKind, tool_key};
 use rig_core::error::ErrorReport;
-use rig_core::providers::registry::ConnectError;
 use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
 
-use super::models::ModelConnector;
-use super::store::JournalStore;
 use bevy_tasks::ConditionalSendFuture;
 
-/// The session's effect recorder, effect id counter and model handlers.
-#[derive(Resource)]
+/// The effect ids, and the recorder of every effect, if any.
+#[derive(Resource, Default)]
 pub struct Effects {
-    recorder: EffectLogRecorder,
-    /// The same recorder, as dispatches and open records hold it.
-    shared: Arc<dyn Recorder + Send + Sync>,
-    next: AtomicU64,
-    /// One handler per catalog model, built on first use and shared by
-    /// every agent that picks the model.
-    models: HashMap<String, Handler>,
+    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
+    /// The last id taken.
+    last: AtomicU64,
 }
 
 impl Effects {
-    /// A recorder whose ids continue after the highest id already in
-    /// `store`'s effect log, if any, so ids keep increasing across
+    /// Effects recorded by `recorder`, with ids after `last`, such as the
+    /// highest id of the log it continues, so ids keep increasing across
     /// restarts.
-    pub(crate) fn continuing(store: Option<&dyn JournalStore>) -> Self {
-        let last = store
-            .and_then(|store| store.last_effect().ok().flatten())
-            .map_or(0, EffectId::as_u64);
-        let recorder = EffectLogRecorder::new();
+    pub fn recorded_by(recorder: Arc<dyn Recorder + Send + Sync>, last: Option<EffectId>) -> Self {
         Self {
-            shared: Arc::new(recorder.clone()),
-            recorder,
-            next: AtomicU64::new(last + 1),
-            models: HashMap::new(),
+            recorder: Some(recorder),
+            last: AtomicU64::new(last.map_or(0, EffectId::as_u64)),
         }
-    }
-
-    /// The handler serving `spec`, built by `connector` the first time any
-    /// agent picks it, and
-    /// described in the log header. A signed-in handler reads the
-    /// credential on each request, so a refreshed token needs no rebuild.
-    pub(crate) fn model_handler(
-        &mut self,
-        spec: &ModelSpec,
-        connector: &ModelConnector,
-    ) -> Result<ErasedHandler, ConnectError> {
-        let reference = spec.reference();
-        if let Some(handler) = self.models.get(&reference) {
-            return Ok(handler.erased());
-        }
-        let handler = connector.handler(spec)?;
-        self.describe(vec![handler.descriptor()]);
-        self.models.insert(reference, Handler(handler.clone()));
-        Ok(handler)
-    }
-
-    /// Forgets the handlers of `vendor`'s models, so the next agent that
-    /// picks one connects it again, such as after its sign-in is deleted.
-    pub fn forget_vendor(&mut self, vendor: &str) {
-        self.models
-            .retain(|reference, _| reference.split_once('/').map(|(of, _)| of) != Some(vendor));
-    }
-
-    /// Adds `handlers` to the ones the log header describes.
-    pub fn describe(&self, handlers: Vec<HandlerDescriptor>) {
-        self.recorder.handlers(handlers);
     }
 
     /// Dispatch `kind` to `handler`, recorded under `scope` (the agent's
@@ -96,9 +48,13 @@ impl Effects {
         EffectId,
         impl ConditionalSendFuture<Output = Reply> + 'static,
     ) {
-        let streaming = kind.streams();
-        let id = self.begin(scope, parent, handler.descriptor().key, kind.clone());
-        let dispatch = Dispatch::new(id, streaming).recorded_by(self.shared.clone());
+        let id = self.next_id();
+        let mut dispatch = Dispatch::new(id, kind.streams());
+        if let Some(recorder) = &self.recorder {
+            let key = handler.descriptor().key;
+            recorder.begin(id, key, kind.clone(), origin(scope, parent));
+            dispatch = dispatch.recorded_by(recorder.clone());
+        }
         (id, async move { handler.handle(kind, dispatch).await })
     }
 
@@ -118,7 +74,7 @@ impl Effects {
             args,
         };
         OpenRecord::begin(
-            self.shared.clone(),
+            self.recorder.clone(),
             self.next_id(),
             tool_key(name),
             kind,
@@ -126,22 +82,9 @@ impl Effects {
         )
     }
 
-    /// Takes the next effect id and records the effect's start.
-    fn begin(
-        &self,
-        scope: &str,
-        parent: Option<EffectId>,
-        key: HandlerKey,
-        kind: EffectKind,
-    ) -> EffectId {
-        let id = self.next_id();
-        self.recorder.begin(id, key, kind, origin(scope, parent));
-        id
-    }
-
     /// Takes the next effect id.
     fn next_id(&self) -> EffectId {
-        EffectId::from_raw(self.next.fetch_add(1, Ordering::Relaxed))
+        EffectId::from_raw(self.last.fetch_add(1, Ordering::Relaxed) + 1)
     }
 
     /// Run `work`, the task that drives the effect `id`. A panic in it, in
@@ -152,13 +95,7 @@ impl Effects {
         id: EffectId,
         work: impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static,
     ) -> impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static {
-        catch_panics(self.shared.clone(), id, work)
-    }
-
-    /// Every resolved effect, taken out of the recorder; effects still in
-    /// flight stay for a later take.
-    pub(crate) fn take(&self) -> EffectLog {
-        self.recorder.take()
+        catch_panics(self.recorder.clone(), id, work)
     }
 }
 
@@ -168,13 +105,6 @@ impl Effects {
 /// every target.
 #[derive(Clone)]
 pub struct Handler(pub ErasedHandler);
-
-impl Handler {
-    /// The handler, to dispatch to.
-    pub fn erased(&self) -> ErasedHandler {
-        self.0.clone()
-    }
-}
 
 // SAFETY: browser wasm without the `atomics` target feature runs one
 // thread, so a `Handler` is never sent to or shared with another one.

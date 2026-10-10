@@ -1,0 +1,96 @@
+# The rig agent's plugins, added in this order. `rig build`, or /reload in
+# the agent, applies changes. CARGO_BUILD_JOBS sets cargo's -j for them.
+
+# Each [[plugin]] names a type implementing Bevy's Plugin + Default. An entry
+# without `crate` comes from rig-harness itself. The core (the session, the
+# launcher protocol and /reload) is always there; every entry below can go.
+
+# AGENTS.md and the environment in the system prompt, and /context.
+[[plugin]]
+plugin = "rig_harness::plugins::project_context::ProjectContextPlugin"
+
+# /model, /effort and the model picker.
+[[plugin]]
+plugin = "rig_harness::plugins::models::ModelsPlugin"
+
+# /login and /logout for the ChatGPT plan's models.
+[[plugin]]
+plugin = "rig_harness::plugins::login_chatgpt::ChatgptLoginPlugin"
+
+# The model and reasoning a new session starts with: the last ones chosen.
+[[plugin]]
+plugin = "rig_harness::plugins::defaults::DefaultsPlugin"
+
+# /new, /resume and /name.
+[[plugin]]
+plugin = "rig_harness::plugins::sessions::SessionsPlugin"
+
+# Summarizing a conversation near the context window, and /compact.
+[[plugin]]
+plugin = "rig_harness::plugins::compaction::CompactionPlugin"
+
+# What model calls cost, and /usage.
+[[plugin]]
+plugin = "rig_harness::plugins::usage::UsagePlugin"
+
+# What each agent is doing, for views.
+[[plugin]]
+plugin = "rig_harness::plugins::activity::ActivityPlugin"
+
+# Every model and tool call recorded in the session's effects.jsonl.
+[[plugin]]
+plugin = "rig_harness::plugins::effect_log::EffectLogPlugin"
+
+# The tools: read, edit, write, search, shell, and reload, which the agent
+# uses to rebuild itself.
+[[plugin]]
+plugin = "rig_harness::plugins::tools::ReadTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::EditTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::WriteTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::SearchTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::tools::ShellTool"
+
+[[plugin]]
+plugin = "rig_harness::plugins::reload_tool::ReloadTool"
+
+# /help, /retry, /agents and /quit.
+[[plugin]]
+plugin = "rig_harness::plugins::basics::BasicCommandsPlugin"
+
+# Subagents: the task, message and wait tools.
+[[plugin]]
+plugin = "rig_harness::plugins::subagents::SubagentsPlugin"
+
+# Warnings and errors the process logs, Bevy's own included, as data.
+[[plugin]]
+plugin = "rig_harness::plugins::diagnostics::DiagnosticsPlugin"
+
+# The inspect tool, with which the agent reads its own running world; it pulls in Bevy Remote, a heavier build, and on Linux the ALSA headers. Uncomment to enable it.
+# [[plugin]]
+# crate = "rig-inspect"
+# version = "{version}"
+# plugin = "rig_inspect::InspectPlugin"
+
+# --print: answers one prompt; also the front of a run no other front took.
+[[plugin]]
+plugin = "rig_harness::plugins::print::PrintPlugin"
+
+# The terminal view. Without it the agent answers what is piped in.
+[[plugin]]
+plugin = "rig_harness::tui::TuiPlugin"
+
+# A plugin from another crate. `rig plugin new <name>` makes one in
+# plugins/<name> and adds its entry; `rig plugin check` checks this file.
+# [[plugin]]
+# crate = "rig-hello"               # the package name
+# path = "plugins/rig-hello"        # exactly one of: path (relative to this file),
+#                                   # git (with optional branch or rev), version
+# plugin = "rig_hello::HelloPlugin"

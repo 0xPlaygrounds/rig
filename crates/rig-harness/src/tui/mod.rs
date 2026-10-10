@@ -13,8 +13,9 @@
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
 //! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. What the
-//! agents do is rig-ecs's [`activity`](rig_ecs::activity), and
-//! [`ratatui`] is re-exported so a plugin draws with the same version.
+//! agents do is their [`Activity`](crate::plugins::activity::Activity),
+//! which the view adds unless it is there, and [`ratatui`] is re-exported
+//! so a plugin draws with the same version.
 
 mod clipboard;
 mod complete;
@@ -30,9 +31,10 @@ mod transcript;
 mod view;
 mod wrap;
 
+use crate::front::{Front, RunMode};
+use crate::prelude::{ActivityPlugin, ActivitySystems, ReloadStatus};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_ecs::activity::ActivitySystems;
 
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
@@ -47,21 +49,25 @@ pub struct TuiPlugin;
 impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
         // A print run has stdout for its own output.
-        if app
-            .world()
-            .get_resource::<crate::host::headless::RunMode>()
-            .is_some_and(crate::host::headless::RunMode::is_headless)
+        let world = app.world();
+        if world.contains_resource::<Front>()
+            || world
+                .get_resource::<RunMode>()
+                .is_some_and(RunMode::is_headless)
         {
             return;
         }
+        app.insert_resource(Front("tui".to_owned()));
         renderers::add_builtin_renderers(app);
+        if !app.is_plugin_added::<ActivityPlugin>() {
+            app.add_plugins(ActivityPlugin);
+        }
         app.init_resource::<view::TuiView>()
             .init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .add_message::<RequestRedraw>()
             .init_resource::<complete::FileIndex>()
             .init_resource::<clipboard::Clipboard>()
-            .init_resource::<crate::host::sessions::SessionName>()
             .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 PreUpdate,
@@ -76,7 +82,6 @@ impl Plugin for TuiPlugin {
                 Update,
                 (
                     (view::focus_agent, view::mark_focused).chain(),
-                    view::show_reload_failures,
                     // A picker that cannot open writes a notice instead.
                     (view::open_pickers, view::collect_notices).chain(),
                     view::recall_messages,
@@ -99,12 +104,7 @@ impl Plugin for TuiPlugin {
                     render::layout.in_set(TuiSystems::Layout).run_if(
                         resource_exists::<terminal::Tui>.and_then(
                             render::needs_redraw
-                                .or_eager(resource_changed_or_removed::<
-                                    crate::host::reload::ReloadBuild,
-                                >)
-                                .or_eager(resource_changed_or_removed::<
-                                    crate::host::reload::ReloadQueued,
-                                >),
+                                .or_eager(resource_changed_or_removed::<ReloadStatus>),
                         ),
                     ),
                     render::render

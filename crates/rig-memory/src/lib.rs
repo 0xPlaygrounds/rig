@@ -38,8 +38,8 @@ use rig_core::id::ConversationId;
 mod compaction;
 
 pub use compaction::{
-    ClearToolOutputs, Cleared, ModelCompactor, Summarizer, SummaryError, SummaryLimits,
-    SummaryPrompts, SummaryState, TrackArgument, TrackedSet, completion_of,
+    ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryError,
+    SummaryLimits, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
 };
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
@@ -230,11 +230,6 @@ fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<
 pub trait TokenCounter: WasmCompatSend + WasmCompatSync {
     /// Approximate the number of tokens contributed by `message`.
     fn count(&self, message: &Message) -> usize;
-
-    /// Approximate the number of tokens contributed by `messages`.
-    fn count_all(&self, messages: &[Message]) -> usize {
-        messages.iter().map(|message| self.count(message)).sum()
-    }
 }
 
 impl<F> TokenCounter for F
@@ -315,7 +310,7 @@ impl HeuristicTokenCounter {
 
     /// Approximate the tokens of one item of a user message, without the
     /// per-message overhead.
-    pub fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
+    fn count_user(&self, content: &rig_core::message::UserContent) -> usize {
         use rig_core::message::UserContent;
         match content {
             UserContent::Text(text) => self.bytes_to_tokens(text.text.len()),
@@ -341,7 +336,7 @@ impl HeuristicTokenCounter {
 
     /// Approximate the tokens of one item of an assistant message, without
     /// the per-message overhead.
-    pub fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
+    fn count_assistant(&self, content: &rig_core::message::AssistantContent) -> usize {
         use rig_core::message::AssistantContent;
         match content {
             AssistantContent::Text(text) => self.bytes_to_tokens(text.text.len()),

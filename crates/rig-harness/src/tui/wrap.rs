@@ -69,26 +69,9 @@ pub(crate) fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
 }
 
 /// The cells split into words, each with the spaces that follow it.
-fn words<'a, 'b>(cells: &'b [(&'a str, Style)]) -> Vec<&'b [(&'a str, Style)]> {
-    let mut words = Vec::new();
-    let mut start = 0;
-    let mut in_space = false;
-    for (index, (symbol, _)) in cells.iter().enumerate() {
-        let space = symbol.trim().is_empty();
-        if in_space && !space {
-            if let Some(word) = cells.get(start..index) {
-                words.push(word);
-            }
-            start = index;
-        }
-        in_space = space;
-    }
-    if let Some(word) = cells.get(start..)
-        && !word.is_empty()
-    {
-        words.push(word);
-    }
-    words
+fn words<'a, 'b>(cells: &'b [(&'a str, Style)]) -> impl Iterator<Item = &'b [(&'a str, Style)]> {
+    let space = |symbol: &str| symbol.trim().is_empty();
+    cells.chunk_by(move |(before, _), (after, _)| !space(before) || space(after))
 }
 
 /// The width of the leading spaces, plus a list marker and its space.
@@ -119,21 +102,18 @@ fn numbered_marker(cells: &[(&str, Style)]) -> usize {
 
 /// One row from its cells, neighbouring cells of one style in one span.
 fn join(cells: &[(&str, Style)]) -> Line<'static> {
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    let mut text = String::new();
-    let mut current: Option<Style> = None;
-    for &(symbol, style) in cells {
-        if current.is_some_and(|current| current != style) {
-            spans.push(Span::styled(
-                std::mem::take(&mut text),
-                current.unwrap_or_default(),
-            ));
-        }
-        current = Some(style);
-        text.push_str(symbol);
-    }
-    if let Some(style) = current {
-        spans.push(Span::styled(text, style));
-    }
+    let spans: Vec<Span<'static>> = cells
+        .chunk_by(|(_, before), (_, after)| before == after)
+        .map(|run| {
+            let style = run.first().map(|(_, style)| *style).unwrap_or_default();
+            Span::styled(
+                run.iter().map(|(symbol, _)| *symbol).collect::<String>(),
+                style,
+            )
+        })
+        .collect();
     Line::from(spans)
 }
+
+#[cfg(test)]
+mod tests;

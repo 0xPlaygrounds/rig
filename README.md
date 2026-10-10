@@ -64,7 +64,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 
 ## Features
 - Agentic workflows that can handle multi-turn streaming and prompting
-- A classic agent runtime enabled by default
+- A classic agent runtime (the `rig` facade's `agent` feature)
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - 10+ vector store integrations, all under one singular unified interface
@@ -83,11 +83,10 @@ Rig separates portable provider/backend contracts from agent orchestration:
   contextual tool contracts, memory and vector-store contracts, and built-in
   provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
-  the live tool registry, extraction, and the serializable `AgentRun` state machine. It
-  remains enabled by default.
+  the live tool registry, extraction, and the serializable `AgentRun` state machine.
 
-The root `rig` facade re-exports both at their familiar paths, so most code
-depends only on `rig`.
+The root `rig` facade re-exports both at their familiar paths, `rig-agent` with
+its `agent` feature, so most code depends only on `rig`.
 
 Hosts construct HTTP or SDK models with their chosen authentication, transport
 policy and runtime lifetime; the agent runtime executes the resulting
@@ -121,8 +120,8 @@ Use the root `rig` facade when you want feature-gated access to companion crates
 or use `rig-core` directly when you only need the core provider abstractions.
 
 ```bash
-cargo add rig
-# or: cargo add rig-core
+cargo add rig --features agent
+# or, without the agent runtime: cargo add rig-core
 ```
 
 ### Simple example
@@ -206,10 +205,10 @@ session starts from the messages the summary kept. `/reload` rebuilds the agent
 and restarts it on the same session; typed while a turn runs, it waits until no
 turn runs (`/reload cancel` drops it), and a turn started during the build
 delays the restart until it ends. The agent can ask for a reload itself with
-its `reload` tool, which waits the same way and shows a notice. It shows cargo's progress, keeps the
-current build running if the new one does not compile (Esc closes the
-compiler output it shows), and rolls back to it if
-the new one crashes during startup.
+its `reload` tool, which waits the same way and shows a notice. It shows
+cargo's latest line, keeps the current build running if the new one does not
+compile (its error notice names the build log), and rolls back to it if the new
+one crashes during startup.
 
 Every build, the one before each start and `/reload`'s, writes its whole
 output (the launcher's and cargo's) to `RIG_HOME/build.log`, and a failure
@@ -226,15 +225,14 @@ append-only log, `sessions/<id>/<agent-id>.jsonl`, of its messages, settings,
 usage and compactions; images are stored once in `blobs/`, and `meta.json`
 caches what `/resume` lists. A tool call that may change something starts
 only once the reply that asked for it is on disk. After a crash, a closed
-terminal or a `/quit` mid-turn, the next start reads the logs back and settles what
+terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
 was left half done: read-only tool calls run again, other unfinished tool
 calls are answered as interrupted by the restart, and a turn that waited on
 the model carries on.
-If the agent crashes or the terminal closes, the next `rig` in the same
-directory resumes the session. `/quit` ends it. `/new` starts a new session, `/name`
+Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
-and `rig --resume <id>` resumes a given one.
+and `rig --resume <id>` resumes a given one, such as after a crash.
 
 A ChatGPT subscription can pay for the model
 calls instead of an API key: `/login chatgpt` opens your browser on the
@@ -271,27 +269,29 @@ subset of the tools. `task` returns the subagent's id at once, and `message`
 sends one of the model's own subagents a follow-up, which it reads with its
 conversation kept. Each `task` or `message` call is a request, and exactly one
 report for it (done, failed or interrupted) arrives later as a message to the
-agent that sent it, which starts a turn of an idle agent or follows the
-running one; reports that arrive together go to the model in one step, and a
-report that only points at another (answered together with it) starts no turn
-of its own. Nothing waits for them, so you can keep talking to the main
-agent, or steer it, meanwhile. Esc stops only the shown agent's turn, not its
-subagents. `/agents` lists every agent with its model, state and cost, and
+agent that asked, which starts a turn of an idle agent or follows the running
+one; the reports of one reply's `task` calls reach it together. Nothing waits
+for them, so you can keep talking to the main agent, or steer it, meanwhile.
+An agent that needs a message before it goes on calls `wait`, which keeps its
+turn open until that agent sends it one, and a subagent whose turn ends while
+a request it made is open is waiting, not done: it reports the answer it
+gives once that request is answered. Esc stops only the shown agent's turn,
+not its subagents. `/agents` lists every agent with its model and state, and
 shows the one picked: its transcript, and what you type then goes to it. A
 subagent can start subagents of its own, one level deep. Subagents started
-with `peers` can also send each other requests with `message`, answered the
-same way, to the one that asked; one never asks a peer that waits on its own
-report.
+with `peers` can also send each other requests with `message` and `wait` for
+each other; a request or `wait` that would make agents wait on each other is
+refused.
 In the effect log, a subagent's model calls name the call that gave it its
 work as their parent.
 
 Without the terminal view, `rig -p "fix the failing test"` answers one prompt
 and exits: the answer goes to stdout, failures to stderr, and the exit code is
-0 when the turn ended with an answer. Text piped in follows the prompt
-(`git diff | rig -p "review this"`), `-m vendor/model` picks the model (else
-the session's, else the first one with a key), and `-r <id>` resumes a given
-session instead of starting a new one. A headless run never becomes the
-session its directory resumes.
+0 when the turn ended with an answer, 2 for a refused slash command. Text piped
+in follows the prompt (`git diff | rig -p "review this"`), `-m vendor/model`
+picks the model (else the session's, else the first one with a key; in the
+terminal view too), and `-r <id>` resumes a given
+session instead of starting a new one.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
@@ -305,15 +305,18 @@ Enter starts a new line, Up and Down move between lines and through the
 prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
 keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
-Tab or Enter takes the selected one. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
+Tab or Enter takes the selected one. A command that is unknown or refused, such
+as one with arguments it does not take, comes back in the input with the
+reason; Enter then sends it to the model as it is. Ctrl+C clears the input. Answers are drawn as markdown, edits as diffs, and each built-in
 tool's call in its own way; a plugin can draw its own tools' calls with
 `app.add_tool_renderer` (`rig_harness::tui::AppToolRenderersExt`). PageUp, PageDown and
 Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl` and
-the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
+the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs, `meta.json`, `blobs/`, the effect log `effects.jsonl`,
+`spill/` (the whole output of a `shell` call that was cut, which the model reads
+by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a
 cache directory. Several `rig` processes can share one `RIG_HOME`.
 
@@ -326,19 +329,16 @@ RIG_HOME=/some/dir/home RIG_SOURCE=$PWD /some/dir/bin/rig
 ```
 
 Plugins are Bevy plugins, listed in `$RIG_HOME/plugins.toml`; `/reload`
-rebuilds the agent with them and restarts in the same session. The built-in
-tools, the built-in commands, the subagents and the terminal view are entries
-in the same list, so any of them can be removed or replaced:
+rebuilds the agent with them and restarts in the same session. Everything but
+the core (the session, the launcher protocol and `/reload`) is an entry in the
+same list: the project context, models, sign-in, sessions, compaction, usage,
+activity, the effect log, each tool, the commands, the subagents, diagnostics,
+`--print` and the terminal view, so any of them can be removed or
+replaced ([`crates/rig-harness`](crates/rig-harness/README.md) lists them):
 
 ```toml
 [[plugin]]
-plugin = "rig_harness::builtin::BuiltinToolsPlugin"
-
-[[plugin]]
-plugin = "rig_harness::builtin::BuiltinCommandsPlugin"
-
-[[plugin]]
-plugin = "rig_harness::builtin::SubagentsPlugin"
+plugin = "rig_harness::plugins::tools::ReadTool"
 
 [[plugin]]
 plugin = "rig_harness::tui::TuiPlugin"
@@ -347,15 +347,13 @@ plugin = "rig_harness::tui::TuiPlugin"
 crate = "hello"                   # the package name
 path = "plugins/hello"            # relative to plugins.toml; or git = "..." (branch, rev), or version = "..."
 plugin = "hello::HelloPlugin"     # implements Plugin + Default
-bevy_features = []                # optional extra Bevy features
 ```
 
 `rig plugin new hello` makes that crate in `$RIG_HOME/plugins/hello`, outside
 any workspace, and adds its entry; `rig plugin add <type> --path <dir>` (or
 `--git`, `--version`) adds an entry for an existing crate and `rig plugin
-remove <type>` takes one out (`--delete` also deletes its crate in
-`$RIG_HOME/plugins`), each checked before plugins.toml is written; `rig
-plugin list` shows the list and `rig plugin check` checks it, with `--build`
+remove <type>` takes one out (its crate stays), each checked before
+plugins.toml is written; `rig plugin check` checks the list, with `--build`
 also building the agent with its plugins in `$RIG_HOME/target` without
 staging it. A plugin crate depends on
 `rig-harness` alone and registers tools, slash commands, tool renderers,
@@ -363,8 +361,19 @@ terminal panels or a window the way the built-in ones do, never by editing
 rig-harness. [`crates/rig-harness/PLUGINS.md`](crates/rig-harness/PLUGINS.md)
 is a cookbook with a copy-ready example of each kind, every name it uses from
 `rig_harness::prelude`, and the `src/lib.rs` that `rig plugin new` writes is a
-working, commented slash command. An agent started by the launcher knows all
-this from its system prompt, so it can write and add its own plugins.
+working, commented slash command. An agent started by the launcher knows
+its plugins, commands and tools and how to write and add its own plugins
+from its system prompt.
+
+The optional [`rig-inspect`](crates/rig-inspect) plugin adds the `inspect`
+tool, with which the agent reads its own Bevy world (in process, read-only):
+the plugins loaded and what each added, the agents, the state saved with the
+session, the warnings logged and every reflected type. It is commented out in
+the default `plugins.toml`, since Bevy Remote makes the build heavier and on
+Linux needs the ALSA development headers (`libasound2-dev` on Debian and
+Ubuntu, `alsa-lib-devel` on Fedora, `alsa-lib` on Arch); uncomment its entry,
+or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect
+--version 0.44.0` (your `rig`'s version).
 
 Code mode is an optional plugin crate, `rig-steel`, not in the default list.
 Its `SteelPlugin` adds the `run_steel` tool: the model writes one

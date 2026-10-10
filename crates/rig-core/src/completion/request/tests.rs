@@ -746,21 +746,19 @@ mod generation_option_shortcuts {
 }
 
 mod usage_totals {
-    use crate::completion::{Usage, UsageTotals};
+    use crate::completion::{ContextUse, Cost, Usage, UsageTotals, dollars_label, tokens_label};
 
     #[test]
-    fn calls_tokens_and_context_are_summed_and_an_aside_keeps_the_context() {
+    fn calls_and_tokens_are_summed() {
         let mut totals = UsageTotals::default();
-        totals.record(
-            &Usage::new()
-                .input_tokens(100)
-                .output_tokens(20)
-                .cached_input_tokens(30)
-                .cache_creation_input_tokens(10),
-        );
-        assert_eq!(totals.context, Some(120));
-        totals.record_aside(&Usage::new().input_tokens(50).output_tokens(5));
-        assert_eq!(totals.context, Some(120));
+        let first = Usage::new()
+            .input_tokens(100)
+            .output_tokens(20)
+            .cached_input_tokens(30)
+            .cache_creation_input_tokens(10);
+        assert_eq!(first.context_tokens(), Some(120));
+        totals.record(&first);
+        totals.record(&Usage::new().input_tokens(50).output_tokens(5));
         assert_eq!((totals.calls, totals.unpriced), (2, 2));
         assert_eq!(totals.tokens.input_tokens, Some(150));
         assert_eq!(totals.uncached_input(), 110);
@@ -768,16 +766,59 @@ mod usage_totals {
         let mut sum = UsageTotals::default();
         sum.add(&totals);
         sum.add(&totals);
-        assert_eq!((sum.calls, sum.unpriced, sum.context), (4, 4, None));
+        assert_eq!((sum.calls, sum.unpriced), (4, 4));
         assert_eq!(sum.tokens.output_tokens, Some(50));
+        assert_eq!(Usage::new().total_tokens(40).context_tokens(), Some(40));
+        assert_eq!(Usage::new().context_tokens(), None);
+        assert_eq!(
+            totals.to_string(),
+            "2 model calls: 110 in, 30 cache read, 10 cache written, 25 out; cost unknown"
+        );
     }
 
     #[test]
-    fn a_call_without_token_counts_leaves_the_context() {
+    fn labels_round_tokens_dollars_and_context() {
+        for (count, label) in [
+            (999, "999"),
+            (1_234, "1.2k"),
+            (45_000, "45k"),
+            (1_234_567, "1.2M"),
+            (12_000_000, "12M"),
+        ] {
+            assert_eq!(tokens_label(count), label);
+        }
+        assert_eq!(dollars_label(0.1234), "$0.123");
+        for (window, label) in [
+            (Some(200_000), "45k/200k (22%)"),
+            (Some(0), "45k"),
+            (None, "45k"),
+        ] {
+            assert_eq!(
+                ContextUse {
+                    tokens: 45_000,
+                    window
+                }
+                .to_string(),
+                label
+            );
+        }
+    }
+
+    #[test]
+    fn a_priced_total_shows_its_cost_and_an_unpriced_one_its_tokens() {
         let mut totals = UsageTotals::default();
-        totals.record(&Usage::new().total_tokens(40));
-        totals.record(&Usage::new());
-        assert_eq!(totals.context, Some(40));
-        assert_eq!(totals.uncached_input(), 0);
+        assert_eq!(totals.cost_or_tokens(), "0 tokens");
+        let usage = Usage::new()
+            .input_tokens(1_500)
+            .output_tokens(500)
+            .reasoning_tokens(200);
+        totals.record(&usage.cost(Cost::from_parts(0.5, 0.75, 0.0, 0.0)));
+        assert_eq!(totals.total_tokens(), 2_000);
+        assert_eq!(
+            totals.to_string(),
+            "1 model call: 1.5k in, 500 out (200 reasoning); $1.25"
+        );
+        totals.record(&usage);
+        assert_eq!(totals.cost_or_tokens(), "$1.25+");
     }
 }

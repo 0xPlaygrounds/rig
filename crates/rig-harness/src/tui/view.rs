@@ -1,5 +1,5 @@
 //! View state, kept apart from the agent core: the focused agent, the input
-//! editor and its completion, scrolling, the open overlay and recent
+//! editor and its completion, scrolling, the open picker and recent
 //! notices.
 
 use bevy_ecs::prelude::*;
@@ -8,8 +8,7 @@ use super::complete::Completion;
 use super::editor::Editor;
 use super::panel::Focused;
 use super::transcript::Scroll;
-use crate::host::reload::ReloadFailed;
-use crate::view::{Focus, PickItem, PickRequest};
+use crate::front::{Focus, PickItem, PickRequest};
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
 use rig_ecs::inbox::Recalled;
 
@@ -29,18 +28,13 @@ pub(crate) struct TuiView {
     pub(crate) dismissed: Option<usize>,
     /// Where the transcript is scrolled.
     pub(crate) scroll: Scroll,
-    /// What is shown over the transcript and takes the keys.
-    pub(crate) overlay: Option<Overlay>,
+    /// The picker shown over the transcript, which takes the keys.
+    pub(crate) picker: Option<Picker>,
     /// Recent notices, oldest first.
     pub(crate) notices: Vec<ShownNotice>,
-}
-
-/// What is shown over the transcript, one at a time.
-pub(crate) enum Overlay {
-    /// A list to pick from.
-    Picker(Picker),
-    /// A failed rebuild's output, until Esc or Enter.
-    ReloadFailure(String),
+    /// A refused command put back in the input: sent again unchanged, it
+    /// goes to the model as a message.
+    pub(crate) refused: Option<String>,
 }
 
 /// A notice placed in a transcript.
@@ -145,23 +139,13 @@ pub(crate) fn on_focus(
 /// Opens the picker a command asked for.
 pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: ResMut<TuiView>) {
     for request in requests.read() {
-        view.overlay = Some(Overlay::Picker(Picker {
+        view.picker = Some(Picker {
             agent: request.agent,
             title: request.title.clone(),
             items: request.items.clone(),
             filter: String::new(),
             selected: request.selected,
-        }));
-    }
-}
-
-/// Shows the output of a failed `/reload` until it is dismissed.
-pub(crate) fn show_reload_failures(
-    mut failures: MessageReader<ReloadFailed>,
-    mut view: ResMut<TuiView>,
-) {
-    if let Some(failure) = failures.read().last() {
-        view.overlay = Some(Overlay::ReloadFailure(failure.output.clone()));
+        });
     }
 }
 
@@ -192,12 +176,27 @@ pub(crate) fn collect_notices(
     view.notices.drain(..excess);
 }
 
-/// Puts the messages a turn did not send back in the input, before what
-/// is typed there now.
-pub(crate) fn recall_messages(mut recalled: MessageReader<Recalled>, mut view: ResMut<TuiView>) {
+/// Puts what was typed and not sent back in the input, before what is
+/// typed there now, and says why a refused command was.
+pub(crate) fn recall_messages(
+    mut recalled: MessageReader<Recalled>,
+    conversations: Query<&Conversation>,
+    mut view: ResMut<TuiView>,
+) {
     for recalled in recalled.read() {
         if view.agent != Some(recalled.agent) {
             continue;
+        }
+        if let Some(why) = &recalled.why {
+            view.notices.push(ShownNotice {
+                agent: Some(recalled.agent),
+                after: conversations
+                    .get(recalled.agent)
+                    .map_or(0, |conversation| conversation.messages().len()),
+                level: NoticeLevel::Error,
+                text: format!("{why} Enter sends it to the model as it is."),
+            });
+            view.refused = Some(recalled.text.clone());
         }
         let typed = view.editor.take();
         let text = if typed.trim().is_empty() {

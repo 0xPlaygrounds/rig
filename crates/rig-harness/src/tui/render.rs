@@ -1,5 +1,5 @@
 //! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the overlays.
+//! completion list, and the picker.
 
 use std::time::{Duration, Instant};
 
@@ -11,53 +11,46 @@ use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Clear, List, ListState, Paragraph, Wrap};
+use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::complete::{Completion, Kind as CompletionKind};
 use super::editor::Layout as InputLayout;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
-use super::renderers::ToolRenderer;
+use super::renderers::{ToolRenderer, excerpt};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{Overlay, Picker, ShownNotice, TuiView};
+use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use crate::host::reload::{ReloadBuild, ReloadQueued};
-use crate::host::sessions::SessionName;
-use rig_ecs::activity::{Activity, Status};
+use crate::prelude::{Activity, ReloadStatus, SessionTitle, Spending, Status, TurnSpending};
+use rig_core::completion::{ContextUse, tokens_label};
 use rig_ecs::agent::{
-    ActiveTurn, Agent, Calls, Connection, Conversation, Effort, ModelChoice, NoticeLevel, Partial,
-    Spawned, SpawnedBy,
+    ActiveTurn, Agent, Calls, Condensed, Conversation, LastUsage, NoticeLevel, Partial, Spawned,
+    SpawnedBy,
 };
-use rig_ecs::calls::Wake;
 use rig_ecs::commands::SlashCommand;
-use rig_ecs::compaction::Compacted;
 use rig_ecs::inbox::Inbox;
-use rig_ecs::models;
-use rig_ecs::recovery::RETRY;
-use rig_ecs::usage::{self, Spending, TurnSpending};
+use rig_ecs::model::{Connection, Effort, ModelChoice};
+use rig_ecs::turn::RETRY;
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
-/// Lines of a compaction's summary shown in the transcript.
+/// Lines of a condensed conversation's summary shown in the transcript.
 const SUMMARY_LINES: usize = 12;
-/// Width of the rebuild progress bar.
-const GAUGE_WIDTH: u32 = 20;
 
 /// The shortest time between two frames drawn only for a streaming
 /// reply's new text: the loop's own limit of 60 frames a second would lay
 /// the whole reply out again for every few tokens.
 const STREAM_FRAME: Duration = Duration::from_millis(33);
 
-/// When [`needs_redraw`] last drew, whether streamed text waits to be
-/// drawn, and until when a wake for it is pending.
+/// When [`needs_redraw`] last drew, and whether streamed text waits to be
+/// drawn.
 #[derive(Default)]
 pub(crate) struct Paced {
     drawn: Option<Instant>,
     waiting: bool,
-    armed: Option<Instant>,
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
@@ -66,7 +59,9 @@ pub(crate) struct Paced {
 /// streaming reply, a panel, or a plugin's [`RequestRedraw`]. A turn's end
 /// changes its conversation or comes with a notice. The rebuild's progress
 /// is checked separately. A streaming reply alone draws at most every
-/// [`STREAM_FRAME`], with a wake for the text that waits.
+/// [`STREAM_FRAME`]; the text that waits is drawn by one of the frames
+/// that [`settle`](rig_ecs::calls::settle) runs after the wake that brought
+/// it, 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     agents: Query<
@@ -77,18 +72,19 @@ pub(crate) fn needs_redraw(
             Changed<Effort>,
             Changed<ActiveTurn>,
             Changed<Spending>,
-            Changed<Compacted>,
+            Changed<LastUsage>,
+            Changed<Condensed>,
             Changed<Inbox>,
             Changed<Activity>,
         )>,
     >,
     turns: Query<(), Or<(Changed<Calls>, Changed<TurnSpending>)>>,
     partials: Query<(), Changed<Partial>>,
-    name: Res<SessionName>,
+    title: Option<Res<SessionTitle>>,
     mut requests: MessageReader<RequestRedraw>,
     panels: Query<(), Changed<TuiPanel>>,
     mut removed_panels: RemovedComponents<TuiPanel>,
-    (wake, mut paced): (Res<Wake>, Local<Paced>),
+    mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
@@ -96,7 +92,7 @@ pub(crate) fn needs_redraw(
     let changed = requested
         || removed
         || view.is_changed()
-        || name.is_changed()
+        || title.is_some_and(|title| title.is_changed())
         || !agents.is_empty()
         || !turns.is_empty()
         || !panels.is_empty();
@@ -107,13 +103,6 @@ pub(crate) fn needs_redraw(
         paced.drawn = Some(now);
         paced.waiting = false;
         return true;
-    }
-    if paced.waiting
-        && let Some(next) = next
-        && paced.armed.is_none_or(|armed| armed <= now)
-    {
-        wake.after(next.saturating_duration_since(now)).detach();
-        paced.armed = Some(next);
     }
     false
 }
@@ -150,9 +139,7 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
-    let rows = view
-        .editor
-        .layout(size.width.saturating_sub(2), Style::new());
+    let rows = view.editor.layout(size.width.saturating_sub(2));
     let input_height = rows.rows.len().clamp(1, INPUT_LINES);
     let [above, status, input] = Layout::vertical([
         Constraint::Min(1),
@@ -193,18 +180,18 @@ type Everyone<'w, 's> = Query<
 >;
 
 /// The transcript's parts after the shown agent's messages are laid out:
-/// each message, after the notices that came before it and the
-/// compaction's summary; then the notices after the last message, the
+/// each message, after the notices that came before it and the summary
+/// sent in place of the messages above; then the notices after the last message, the
 /// reply streaming in and what waits in the inbox. Without an agent, the
 /// app's notices.
 fn transcript_parts(
     view: &TuiView,
-    shown: Option<(&Conversation, &Compacted, &Inbox)>,
+    shown: Option<(&Conversation, Option<&Condensed>, &Inbox)>,
     partial: Option<&Partial>,
     width: usize,
 ) -> Vec<Part> {
     let mut parts = Vec::new();
-    let Some((conversation, compacted, inbox)) = shown else {
+    let Some((conversation, condensed, inbox)) = shown else {
         let mut extra = Vec::new();
         for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
             notice_lines(notice, &mut extra);
@@ -222,8 +209,8 @@ fn transcript_parts(
         while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
             notice_lines(notice, &mut extra);
         }
-        if compacted.upto == index && !compacted.summary.is_empty() {
-            summary_lines(compacted, &mut extra);
+        if let Some(condensed) = condensed.filter(|condensed| condensed.upto == index) {
+            summary_lines(condensed, &mut extra);
         }
         if !extra.is_empty() {
             parts.push(Part::Rows(wrap_all(&extra, width)));
@@ -313,24 +300,23 @@ pub(crate) fn render(
     mut transcript: Local<Transcript>,
     agents: Query<(
         &Conversation,
-        &Compacted,
+        Option<&Condensed>,
         Option<&ModelChoice>,
         &Effort,
         &Activity,
-        &Spending,
+        (Option<&Spending>, &LastUsage),
         Option<&Connection>,
         &Inbox,
     )>,
     changed: Query<(), Changed<Conversation>>,
-    turns: Query<(Option<&Calls>, &TurnSpending)>,
+    turns: Query<(Option<&Calls>, Option<&TurnSpending>)>,
     (partials, active): (Query<&Partial>, Query<&ActiveTurn>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     everyone: Everyone,
-    slash: Query<&SlashCommand>,
+    slash: Query<&Name, With<SlashCommand>>,
     renderers: Query<Ref<ToolRenderer>>,
     mut removed_renderers: RemovedComponents<ToolRenderer>,
-    (build, queued): (Option<Res<ReloadBuild>>, Option<Res<ReloadQueued>>),
-    name: Res<SessionName>,
+    (reload, title): (Option<Res<ReloadStatus>>, Option<Res<SessionTitle>>),
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
     let Some(input_rows) = frame_layout.input_rows else {
@@ -348,8 +334,11 @@ pub(crate) fn render(
         .and_then(|turn| turns.get(turn.turn()).ok());
     let calls = turn.and_then(|(calls, _)| calls);
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
-    panels.sort_by_key(|(entity, ..)| *entity);
+    panels.sort_by_key(|(entity, panel, _)| {
+        (matches!(panel.placement, Placement::Over { .. }), *entity)
+    });
     if removed_renderers.read().count() > 0
         || renderers.iter().any(|renderer| renderer.is_changed())
     {
@@ -364,8 +353,8 @@ pub(crate) fn render(
         .collect();
     // /model and /agents come from plugins, so point at them only when
     // loaded.
-    let loaded = |name: &str| slash.iter().any(|command| command.name == name);
-    let agents_hint = if loaded("agents") { " (/agents)" } else { "" };
+    let loaded = |name: &str| slash.iter().any(|command| command.as_str() == name);
+    let agents_hint = if loaded("/agents") { " (/agents)" } else { "" };
     // The frame is written in one synchronized update with the cursor
     // hidden, so the cursor never shows travelling across the screen; it
     // is shown at the input once the frame is out, when the input has the
@@ -394,8 +383,8 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
-                shown.map(|(_, (conversation, compacted, .., inbox))| {
-                    (conversation, compacted, inbox)
+                shown.map(|(_, (conversation, condensed, .., inbox))| {
+                    (conversation, condensed, inbox)
                 }),
                 partial,
                 usize::from(transcript_area.width.max(1)),
@@ -409,16 +398,16 @@ pub(crate) fn render(
             draw_below(frame, below, transcript_area);
             let shown = shown.map(|(_, shown)| shown);
             let mut left = Vec::new();
-            if let Some(name) = &name.0 {
+            if let Some(name) = title.as_ref().and_then(|title| title.name.as_ref()) {
                 left.push(Piece::new(keep::SESSION, Span::from(name.clone()).cyan()));
             }
             left.extend(spawned_title(view.agent, &everyone));
             left.extend(status_pieces(
-                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, activity.status)),
-                loaded("model"),
+                shown.map(|(_, _, model, effort, activity, ..)| (model, effort, &activity.status)),
+                loaded("/model"),
             ));
             agent_pieces(&mut left, view.agent, &everyone, agents_hint);
-            if let Some((_, spent)) = turn
+            if let Some((_, Some(spent))) = turn
                 && spent.0.calls > 0
             {
                 let used = spent.0.cost_or_tokens();
@@ -427,16 +416,11 @@ pub(crate) fn render(
                     Span::from(format!("this turn {used}")).dim(),
                 ));
             }
-            if let Some(build) = &build {
-                left.push(Piece::new(keep::RELOAD, reload_span(build)));
-            } else if queued.is_some() {
-                left.push(Piece::new(
-                    keep::RELOAD,
-                    Span::from("Reload queued: once no turn runs (/reload cancel)").cyan(),
-                ));
+            if let Some(reload) = reload.as_deref().and_then(reload_span) {
+                left.push(Piece::new(keep::RELOAD, reload));
             }
             let mut right = shown
-                .map(|(.., spent, connection, _)| usage_pieces(spent, connection))
+                .map(|(.., (spent, last), connection, _)| usage_pieces(spent, last, connection))
                 .unwrap_or_default();
             fit(&mut left, &mut right, usize::from(status_area.width));
             let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
@@ -453,18 +437,11 @@ pub(crate) fn render(
                     .block(Block::bordered().title_bottom(Line::from(hint).dim().right_aligned())),
                 input,
             );
-            // The panels at the sides, then the boxes over the screen.
-            let over = |panel: &TuiPanel| matches!(panel.placement, Placement::Over { .. });
-            for top in [false, true] {
-                for (_, panel, canvas) in &panels {
-                    if over(panel) == top {
-                        canvas.copy_to(frame.buffer_mut());
-                    }
-                }
+            for (.., canvas) in &panels {
+                canvas.copy_to(frame.buffer_mut());
             }
-            match &view.overlay {
-                Some(Overlay::Picker(picker)) => draw_picker(frame, picker),
-                Some(Overlay::ReloadFailure(output)) => draw_reload_failure(frame, output),
+            match &view.picker {
+                Some(picker) => draw_picker(frame, picker),
                 None => {
                     if let Some(completion) = &view.completion {
                         draw_completion(frame, completion, input);
@@ -642,7 +619,7 @@ fn join(pieces: Vec<Piece>, gap: &'static str) -> Line<'static> {
 
 /// The focused agent's model, reasoning setting and status.
 fn status_pieces(
-    shown: Option<(Option<&ModelChoice>, &Effort, Status)>,
+    shown: Option<(Option<&ModelChoice>, &Effort, &Status)>,
     model_hint: bool,
 ) -> Vec<Piece> {
     let Some((model, effort, status)) = shown else {
@@ -655,9 +632,9 @@ fn status_pieces(
     };
     let status = match status {
         Status::Idle => Span::from("idle").green(),
-        Status::Thinking => Span::from("thinking… (Esc stops)").yellow(),
-        Status::RunningTools => Span::from("running tools… (Esc stops)").yellow(),
-        Status::Compacting => Span::from("compacting… (Esc stops)").yellow(),
+        Status::Thinking | Status::RunningTools | Status::Busy(_) => {
+            Span::from(format!("{status}… (Esc stops)")).yellow()
+        }
         Status::Retrying { attempt, seconds } => Span::from(format!(
             "retry {attempt}/{} in {seconds}s… (Esc stops)",
             RETRY.max_retries
@@ -668,7 +645,7 @@ fn status_pieces(
         Piece::new(keep::ALWAYS, Span::from(model).bold()),
         Piece::new(
             keep::REASONING,
-            Span::from(format!("reasoning {}", models::effort_label(effort.0))).dim(),
+            Span::from(format!("reasoning {effort}")).dim(),
         ),
         Piece::new(keep::ALWAYS, status),
     ]
@@ -677,29 +654,34 @@ fn status_pieces(
 /// The meter: the agent's uncached input and output tokens, cache reads,
 /// cost, then the context against the model's window, yellow past 70% and
 /// red past 90%. `/usage` details the cache writes and reasoning.
-fn usage_pieces(spent: &Spending, connection: Option<&Connection>) -> Vec<Piece> {
-    if spent.calls == 0 {
+fn usage_pieces(
+    spent: Option<&Spending>,
+    last: &LastUsage,
+    connection: Option<&Connection>,
+) -> Vec<Piece> {
+    let Some(Spending(spent)) = spent.filter(|spent| spent.0.calls > 0) else {
         return Vec::new();
-    }
+    };
     let mut pieces = vec![Piece::new(
         keep::TOKENS,
         Span::from(format!(
             "↑{} ↓{}",
-            usage::tokens(spent.uncached_input()),
-            usage::tokens(spent.tokens.output_tokens.unwrap_or(0))
+            tokens_label(spent.uncached_input()),
+            tokens_label(spent.tokens.output_tokens.unwrap_or(0))
         ))
         .dim(),
     )];
     if let Some(read) = spent.tokens.cached_input_tokens.filter(|read| *read > 0) {
         pieces.push(Piece::new(
             keep::CACHE,
-            Span::from(format!("cache {}", usage::tokens(read))).dim(),
+            Span::from(format!("cache {}", tokens_label(read))).dim(),
         ));
     }
     if let Some(cost) = spent.cost_label() {
         pieces.push(Piece::new(keep::COST, Span::from(cost).dim()));
     }
-    if let Some(context) = spent.context_use(connection.map(|connection| &*connection.spec)) {
+    let window = connection.and_then(|connection| connection.spec.context_window);
+    if let Some(context) = last.context().map(|tokens| ContextUse { tokens, window }) {
         let style = match context.percent() {
             Some(90..) => Style::new().red(),
             Some(70..) => Style::new().yellow(),
@@ -707,63 +689,34 @@ fn usage_pieces(spent: &Spending, connection: Option<&Connection>) -> Vec<Piece>
         };
         pieces.push(Piece::new(
             keep::CONTEXT,
-            Span::styled(format!("ctx {}", context.label()), style),
+            Span::styled(format!("ctx {context}"), style),
         ));
     }
     pieces
 }
 
-fn reload_span(build: &ReloadBuild) -> Span<'static> {
-    if build.is_ready() {
-        return Span::from("Reloading: restarting…").cyan();
-    }
-    match build.progress() {
-        Some((done, total)) => {
-            let filled = (done.saturating_mul(GAUGE_WIDTH) / total.max(1)).min(GAUGE_WIDTH);
-            let bar: String = (0..GAUGE_WIDTH)
-                .map(|cell| if cell < filled { '█' } else { '░' })
-                .collect();
-            Span::from(format!(
-                "Reloading: Compiling {done}/{total} {bar} (Esc cancels)"
-            ))
-            .cyan()
+fn reload_span(reload: &ReloadStatus) -> Option<Span<'static>> {
+    let text = match reload {
+        ReloadStatus::Idle | ReloadStatus::Failed => return None,
+        ReloadStatus::Queued { .. } => {
+            "Reload queued: once no turn runs (/reload cancel)".to_owned()
         }
-        // The launcher's phase, then cargo's own lines while it resolves
-        // and downloads dependencies.
-        None => Span::from(format!(
+        ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
+        // The launcher's phase, then cargo's latest line.
+        ReloadStatus::Building { latest } => format!(
             "Reloading: {} (Esc cancels)",
-            build.latest().unwrap_or("Resolving dependencies…")
-        ))
-        .cyan(),
-    }
+            latest.as_deref().unwrap_or("Resolving dependencies…")
+        ),
+    };
+    Some(Span::from(text).cyan())
 }
 
-/// A centred box over the transcript, `width` and `height` in fifths and
-/// quarters of the screen, cleared for drawing on.
-fn popup(frame: &mut Frame, fifths: u32, quarters: u32) -> Rect {
+/// The picker in a centred box over the transcript.
+fn draw_picker(frame: &mut Frame, picker: &Picker) {
     let popup = frame
         .area()
-        .centered(Constraint::Ratio(fifths, 5), Constraint::Ratio(quarters, 4));
+        .centered(Constraint::Ratio(4, 5), Constraint::Ratio(3, 4));
     frame.render_widget(Clear, popup);
-    popup
-}
-
-/// A failed rebuild's output, from its first error on, over the transcript.
-fn draw_reload_failure(frame: &mut Frame, output: &str) {
-    let popup = popup(frame, 5, 4);
-    let block = Block::bordered()
-        .border_style(Style::new().red())
-        .title(" The rebuild failed; this build keeps running · Esc closes ");
-    frame.render_widget(
-        Paragraph::new(plain_lines(output, Style::new()))
-            .wrap(Wrap { trim: false })
-            .block(block),
-        popup,
-    );
-}
-
-fn draw_picker(frame: &mut Frame, picker: &Picker) {
-    let popup = popup(frame, 4, 3);
     let block = Block::bordered().title(format!(
         " {} · type to filter, Enter picks, Esc closes ",
         picker.title
@@ -785,28 +738,19 @@ fn draw_picker(frame: &mut Frame, picker: &Picker) {
     );
 }
 
-/// Draws where a compaction cut the conversation: the messages above are
-/// sent to the model as the summary under the line.
-fn summary_lines(compacted: &Compacted, lines: &mut Vec<Line<'static>>) {
+/// Draws where the conversation was condensed: the messages above are sent
+/// to the model as the summary under the line.
+fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
     let style = Style::new().fg(Color::Magenta);
     lines.push(Line::default());
     lines.push(Line::styled(
         format!(
             "── {} earlier messages are sent as this summary ──",
-            compacted.upto
+            condensed.upto
         ),
         style.bold(),
     ));
-    let total = compacted.summary.lines().count();
-    for line in compacted.summary.lines().take(SUMMARY_LINES) {
-        lines.push(Line::styled(line.replace('\t', "    "), style.dim()));
-    }
-    if total > SUMMARY_LINES {
-        lines.push(Line::styled(
-            format!("  … {} more lines", total - SUMMARY_LINES),
-            style.dim(),
-        ));
-    }
+    lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
 /// What waits in the agent's inbox, under the transcript.

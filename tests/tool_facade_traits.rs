@@ -4,7 +4,7 @@
 
 //! Regression tests for the root `rig::tool` facade surface (PR #2188).
 //!
-//! With default features, `rig::tool::Tool` must remain the classic *contextual*
+//! With the `agent` feature, `rig::tool::Tool` must remain the classic *contextual*
 //! trait (so pre-split `use rig::tool::{Tool, ToolContext};` keeps compiling),
 //! while the runtime-independent contract stays reachable as
 //! `rig::tool::PortableTool`. Portable tools must still register with the classic

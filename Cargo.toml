@@ -112,6 +112,53 @@ name = "rig"
 path = "src/main.rs"
 doc = false
 
+# The root test targets that drive the classic agent runtime, which is not a
+# default feature. CI's test sweeps get `agent` through rig-cassette's
+# dev-dependency on the facade; the `default-check` lane names it.
+[[test]]
+name = "azure"
+required-features = ["agent"]
+
+[[test]]
+name = "core"
+required-features = ["agent"]
+
+[[test]]
+name = "huggingface"
+required-features = ["agent"]
+
+[[test]]
+name = "hyperbolic"
+required-features = ["agent"]
+
+[[test]]
+name = "minimax"
+required-features = ["agent"]
+
+[[test]]
+name = "mira"
+required-features = ["agent"]
+
+[[test]]
+name = "moonshot"
+required-features = ["agent"]
+
+[[test]]
+name = "together"
+required-features = ["agent"]
+
+[[test]]
+name = "tool_facade_traits"
+required-features = ["agent"]
+
+[[test]]
+name = "xiaomimimo"
+required-features = ["agent"]
+
+[[test]]
+name = "zai"
+required-features = ["agent"]
+
 [workspace]
 resolver = "3"
 members = [
@@ -249,6 +296,9 @@ rig-cassette = { path = "crates/rig-cassette", version = "0.44.0", default-featu
 anyhow = "1"
 arrow-array = "58"
 assert_fs = "1"
+# 2.3: `force_send`, which Bevy Remote answers an in-process request with
+# (`BrpMessage::sender`).
+async-channel = "2.3"
 async-stream = "0.3"
 axum = "0.8"
 aws-config = { version = "1", default-features = false }
@@ -263,11 +313,19 @@ base64 = "0.22"
 # version of its app, and rig-harness is the app. `bevy_tasks` is also the
 # runtime-agnostic executor of the `agent_no_tokio` example. crates.io, never
 # git; the tooling check verifies Bevy sources and requirements.
+# `bevy` itself only for `MinimalPlugins` (in `bevy_internal`, no feature
+# needed); default features off keeps render, window and audio out.
+# `bevy_remote` without `http`, `bevy_asset` or `bevy_render`: in-process
+# BRP only, never a server. `reflect_documentation` puts doc comments in
+# the type registry.
+bevy = { version = "=0.20.0", default-features = false }
 bevy_app = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect", "reflect_auto_register"] }
 bevy_ecs = { version = "=0.20.0", default-features = false, features = ["std", "multi_threaded", "bevy_reflect", "reflect_auto_register"] }
 bevy_log = "=0.20.0"
-bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory"] }
+bevy_reflect = { version = "=0.20.0", default-features = false, features = ["std", "auto_register_inventory", "reflect_documentation"] }
+bevy_remote = { version = "=0.20.0", default-features = false }
 bevy_tasks = { version = "=0.20.0", default-features = false, features = ["multi_threaded"] }
+bevy_time = { version = "=0.20.0", default-features = false, features = ["std", "bevy_reflect"] }
 bytes = "1"
 candle-core = "0.11"
 candle-nn = "0.11"
@@ -480,7 +538,7 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
-default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
+default = ["rig-core/default", "reqwest", "derive", "rustls"]
 agent = ["dep:rig-agent", "rig-cassette?/agent"]
 # `rig::cassette`: effect-log recording and replay. With `agent`, also the
 # classic-agent adapter (`rig::cassette::agent`).

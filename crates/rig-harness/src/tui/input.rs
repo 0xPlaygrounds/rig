@@ -16,10 +16,9 @@ use ratatui::layout::Rect;
 use super::clipboard::{self, Clipboard};
 use super::complete::{self, FileIndex};
 use super::panel::TuiScreen;
-use super::view::{Overlay, Picker, TuiView};
-use crate::host::reload::{CancelReload, ReloadBuild};
-use crate::host::session::SessionPaths;
-use crate::view::send_input;
+use super::view::{Picker, TuiView};
+use crate::front::{send_input, send_message};
+use crate::prelude::{CancelReload, ReloadStatus, SessionPaths};
 use rig_ecs::agent::{ActiveTurn, Interrupt};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{RunCommand, SlashCommand};
@@ -36,25 +35,20 @@ const POLL: Duration = Duration::from_millis(100);
 #[derive(Resource)]
 pub(crate) struct TerminalInput {
     events: Receiver<Event>,
-    flags: Arc<Flags>,
-}
-
-/// What the input thread is told and tells back.
-#[derive(Default)]
-struct Flags {
-    stop: AtomicBool,
+    /// Tells the input thread to stop.
+    stop: Arc<AtomicBool>,
 }
 
 impl TerminalInput {
     /// Starts the input thread.
     pub(crate) fn start(wake: Wake) -> std::io::Result<Self> {
         let (sender, events) = crossbeam_channel::unbounded();
-        let flags = Arc::new(Flags::default());
-        let shared = Arc::clone(&flags);
+        let stop = Arc::new(AtomicBool::new(false));
+        let shared = Arc::clone(&stop);
         std::thread::Builder::new()
             .name("rig-harness-input".to_owned())
             .spawn(move || {
-                while !shared.stop.load(Ordering::Relaxed) {
+                while !shared.load(Ordering::Relaxed) {
                     let event = match event::poll(POLL) {
                         Ok(false) => continue,
                         Ok(true) => event::read(),
@@ -74,13 +68,13 @@ impl TerminalInput {
                     }
                 }
             })?;
-        Ok(Self { events, flags })
+        Ok(Self { events, stop })
     }
 }
 
 impl Drop for TerminalInput {
     fn drop(&mut self) {
-        self.flags.stop.store(true, Ordering::Relaxed);
+        self.stop.store(true, Ordering::Relaxed);
     }
 }
 
@@ -90,8 +84,8 @@ pub(crate) fn read_input(
     input: Res<TerminalInput>,
     mut view: ResMut<TuiView>,
     agents: Query<Has<ActiveTurn>>,
-    build: Option<Res<ReloadBuild>>,
-    slash: Query<&SlashCommand>,
+    reload: Option<Res<ReloadStatus>>,
+    slash: Query<(&Name, &SlashCommand)>,
     mut index: ResMut<FileIndex>,
     clipboard: Res<Clipboard>,
     paths: Option<Res<SessionPaths>>,
@@ -105,20 +99,15 @@ pub(crate) fn read_input(
         .unwrap_or(false);
     // Esc stops a running turn first, and a running rebuild only when the
     // agent is idle.
-    let esc_cancels_reload = build.is_some_and(|build| !build.is_ready()) && !busy;
+    let esc_cancels_reload =
+        reload.is_some_and(|reload| matches!(*reload, ReloadStatus::Building { .. })) && !busy;
     let mut edited = false;
     for event in input.events.try_iter() {
         match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => match &mut view.overlay {
-                // The report is modal: Esc or Enter closes it.
-                Some(Overlay::ReloadFailure(_)) => {
-                    if matches!(key.code, KeyCode::Esc | KeyCode::Enter) {
-                        view.overlay = None;
-                    }
-                }
-                Some(Overlay::Picker(picker)) => {
+            Event::Key(key) if key.kind != KeyEventKind::Release => match &mut view.picker {
+                Some(picker) => {
                     if picker_key(key, picker, &mut commands) {
-                        view.overlay = None;
+                        view.picker = None;
                     }
                 }
                 None if key.code == KeyCode::Char('v')
@@ -132,36 +121,23 @@ pub(crate) fn read_input(
                 }
                 None => {
                     edited = true;
-                    let keys = Keys {
-                        busy,
-                        esc_cancels_reload,
-                    };
-                    input_key(key, &mut view, &mut commands, keys);
+                    input_key(key, &mut view, &mut commands, busy, esc_cancels_reload);
                 }
             },
             // A paste arrives whole, newlines included, so it is not sent
             // line by line.
-            Event::Paste(text) => match &mut view.overlay {
-                Some(Overlay::Picker(picker)) => {
+            Event::Paste(text) => match &mut view.picker {
+                Some(picker) => {
                     picker
                         .filter
                         .push_str(text.lines().next().unwrap_or_default());
                     picker.selected = 0;
                 }
-                Some(Overlay::ReloadFailure(_)) => {}
                 None => {
                     edited = true;
                     // A dropped image file becomes `@path`, which attaches it.
                     match clipboard::dropped_image(&text) {
-                        Some(path) => {
-                            let before = view
-                                .editor
-                                .text()
-                                .get(..view.editor.cursor())
-                                .unwrap_or_default();
-                            let space = clipboard::separator(before);
-                            view.editor.insert(&format!("{space}@{} ", path.display()));
-                        }
+                        Some(path) => clipboard::type_path(&mut view.editor, &path),
                         None => view.editor.insert(&text),
                     }
                 }
@@ -178,24 +154,15 @@ pub(crate) fn read_input(
     }
 }
 
-/// What a key does depends on.
-#[derive(Clone, Copy)]
-struct Keys {
-    /// The focused agent runs a turn: Enter steers it and Tab queues a
-    /// follow-up.
-    busy: bool,
-    /// Esc cancels the running rebuild.
-    esc_cancels_reload: bool,
-}
-
+/// Handles a key in the input. With `busy`, the focused agent runs a turn:
+/// Enter steers it and Tab queues a follow-up; with `esc_cancels_reload`,
+/// Esc cancels the running rebuild.
 fn input_key(
     key: KeyEvent,
     view: &mut TuiView,
     commands: &mut Commands,
-    Keys {
-        busy,
-        esc_cancels_reload,
-    }: Keys,
+    busy: bool,
+    esc_cancels_reload: bool,
 ) {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
@@ -273,7 +240,7 @@ fn input_key(
 
 /// Sends the input to the focused agent: a slash command, or a message
 /// that starts a turn, or steers the running one, or is queued for after
-/// it with `queue`.
+/// it with `queue`. A refused command sent again unchanged is a message.
 fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     let Some(entity) = view.agent else {
         return;
@@ -289,7 +256,11 @@ fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     } else {
         DeliveryMode::Steer
     };
-    send_input(commands, entity, text, mode);
+    if view.refused.take().as_ref() == Some(&text) {
+        send_message(commands, entity, text, mode);
+    } else {
+        send_input(commands, entity, text, mode);
+    }
 }
 
 /// Puts the selected completion in place of the token being completed.
@@ -341,3 +312,6 @@ fn picker_key(key: KeyEvent, picker: &mut Picker, commands: &mut Commands) -> bo
     }
     false
 }
+
+#[cfg(test)]
+mod tests;

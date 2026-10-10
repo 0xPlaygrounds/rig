@@ -37,7 +37,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Widget;
 
 /// The terminal view's steps in `PostUpdate`, in order, after the agents'
-/// [`ActivitySystems`](rig_ecs::activity::ActivitySystems).
+/// [`ActivitySystems`](crate::plugins::activity::ActivitySystems).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and
@@ -100,7 +100,7 @@ pub enum Placement {
     /// Columns right of the transcript.
     Right(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
-    /// view's own overlays (pickers, completion, a failed rebuild).
+    /// view's own overlays (the picker and the completion list).
     Over {
         /// Its width.
         width: Constraint,

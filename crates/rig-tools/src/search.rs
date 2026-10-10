@@ -1,7 +1,5 @@
 //! The `search` tool.
 
-use std::path::Path;
-
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use regex::Regex;
@@ -90,7 +88,11 @@ fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
             if pattern.is_match(line) {
                 found.push(format!(
                     "{}:{}: {}",
-                    show(entry.path()),
+                    entry
+                        .path()
+                        .strip_prefix("./")
+                        .unwrap_or(entry.path())
+                        .display(),
                     number + 1,
                     clip(line, MAX_LINE)
                 ));
@@ -105,13 +107,4 @@ fn search(args: SearchArgs) -> Result<String, ToolExecutionError> {
         return Ok("No matches.".to_owned());
     }
     Ok(found.join("\n"))
-}
-
-/// `path` as the model named it: relative to the working directory.
-fn show(path: &Path) -> String {
-    path.strip_prefix("./")
-        .ok()
-        .unwrap_or(path)
-        .display()
-        .to_string()
 }

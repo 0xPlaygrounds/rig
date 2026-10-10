@@ -13,7 +13,6 @@ use rig_core::message::{ToolCall, ToolResult};
 use rig_tools::shorten;
 
 use super::diff;
-use rig_ecs::subagents::{MESSAGE, TASK};
 
 /// Characters of a call's arguments shown on its header line.
 const ARGUMENT_CHARS: usize = 160;
@@ -21,6 +20,9 @@ const ARGUMENT_CHARS: usize = 160;
 pub const RESULT_LINES: usize = 4;
 /// Lines of a diff shown.
 const DIFF_LINES: usize = 40;
+/// Characters of one result line shown: a longer line, such as a whole
+/// JSON answer, ends in `…`.
+const LINE_CHARS: usize = 240;
 
 /// A tool call and its result, if it has one yet, as a renderer sees them.
 pub struct ToolCallView<'a> {
@@ -43,14 +45,7 @@ impl ToolCallView<'_> {
 
     /// The result's text, joined, if the tool answered.
     pub fn result_text(&self) -> Option<String> {
-        self.result.map(|result| {
-            result
-                .content
-                .iter()
-                .filter_map(|content| content.as_text())
-                .collect::<Vec<_>>()
-                .join("\n")
-        })
+        self.result.map(result_text)
     }
 
     /// Whether the tool answered with an error.
@@ -85,12 +80,7 @@ impl ToolCallView<'_> {
         {
             return lines;
         }
-        let style = if self.failed() {
-            Style::new().red()
-        } else {
-            Style::new().dim()
-        };
-        excerpt(&text, limit, style)
+        excerpt(&text, limit, result_style(self.failed()))
     }
 
     /// The look of a tool with no renderer: the name and arguments, then
@@ -104,26 +94,57 @@ impl ToolCallView<'_> {
     }
 }
 
-/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, and a
-/// count of the rest.
-pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
-    let total = text.lines().count();
-    let mut lines: Vec<Line<'static>> = text
-        .lines()
-        .take(limit)
-        .enumerate()
-        .map(|(index, line)| {
-            let prefix = if index == 0 { "  ⎿ " } else { "    " };
-            Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
-        })
-        .collect();
-    if total > limit {
-        lines.push(Line::styled(
-            format!("    … {} more lines", total - limit),
-            style,
-        ));
+/// A tool result's text, joined.
+pub(crate) fn result_text(result: &ToolResult) -> String {
+    result
+        .content
+        .iter()
+        .filter_map(|content| content.as_text())
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The style of a tool result's lines: red for an error, else dimmed.
+pub(crate) fn result_style(failed: bool) -> Style {
+    if failed {
+        Style::new().red()
+    } else {
+        Style::new().dim()
     }
-    lines
+}
+
+/// Up to `limit` lines of `text` in `style`, the first under a `⎿`, a
+/// count of the rest, and the cut marker that ends a cut result.
+pub fn excerpt(text: &str, limit: usize, style: Style) -> Vec<Line<'static>> {
+    let mut all: Vec<&str> = text.lines().collect();
+    let marker = all.pop_if(|last| is_cut_marker(last));
+    let more = format!("… {} more lines", all.len().saturating_sub(limit));
+    let more = (all.len() > limit).then_some(more.as_str());
+    let shown = all.into_iter().take(limit).chain(more).chain(marker);
+    shown
+        .enumerate()
+        .map(|(index, line)| result_line(index == 0, line, style))
+        .collect()
+}
+
+/// Whether `line` is a tool's cut marker, which says what was cut and
+/// which file has all of it, such as `[Cut at 16384 of 113000 bytes; all
+/// of it is in …]`.
+fn is_cut_marker(line: &str) -> bool {
+    line.starts_with('[') && line.ends_with(']') && line.to_lowercase().contains("cut")
+}
+
+/// A line of a result in `style`, under a `⎿` when `first`; a long one is
+/// shortened, but a cut marker is shown whole.
+fn result_line(first: bool, line: &str, style: Style) -> Line<'static> {
+    let prefix = if first { "  ⎿ " } else { "    " };
+    let line = line.replace('\t', "    ");
+    let line = if is_cut_marker(&line) {
+        line
+    } else {
+        shorten(&line, LINE_CHARS)
+    };
+    Line::styled(format!("{prefix}{line}"), style)
 }
 
 /// Draws a tool call as transcript lines, not yet wrapped.
@@ -178,32 +199,19 @@ impl AppToolRenderersExt for App {
 
 /// The looks of the built-in tools: `read` and `search` summarize what
 /// they found, `edit` shows its change as a diff, `write` the start of the
-/// new file, `shell` the command and the end of its output, and the
-/// subagents' `task` and `message` whom they went to.
+/// new file, and `shell` the command and the end of its output.
 pub(crate) fn add_builtin_renderers(app: &mut App) {
     app.add_tool_renderer("read", read)
         .add_tool_renderer("edit", edit)
         .add_tool_renderer("write", write)
         .add_tool_renderer("shell", shell)
-        .add_tool_renderer("search", search)
-        .add_tool_renderer(TASK, task)
-        .add_tool_renderer(MESSAGE, message);
+        .add_tool_renderer("search", search);
 }
 
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
-    let range = match (
-        view.call
-            .function
-            .arguments
-            .get("offset")
-            .and_then(|v| v.as_u64()),
-        view.call
-            .function
-            .arguments
-            .get("limit")
-            .and_then(|v| v.as_u64()),
-    ) {
+    let number = |key: &str| view.call.function.arguments.get(key)?.as_u64();
+    let range = match (number("offset"), number("limit")) {
         (Some(offset), Some(limit)) => format!("lines {offset}..{}", offset + limit),
         (Some(offset), None) => format!("from line {offset}"),
         (None, Some(limit)) => format!("first {limit} lines"),
@@ -211,9 +219,7 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     };
     let mut lines = vec![view.header(format!("read {path}"), range)];
     match view.result_text() {
-        Some(text) if view.failed() => {
-            lines.extend(excerpt(&text, RESULT_LINES, Style::new().red()))
-        }
+        Some(_) if view.failed() => lines.extend(view.result_lines(RESULT_LINES)),
         Some(text) => lines.push(Line::from(format!("  ⎿ {} lines", text.lines().count())).dim()),
         None => {}
     }
@@ -223,41 +229,7 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
 fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
-    if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
-        return lines;
-    }
-    // A tool that returns its own diff is shown by it; otherwise the
-    // change asked for.
-    if let Some(text) = view.result_text()
-        && let Some(diff) = diff::unified_lines(&text, DIFF_LINES)
-    {
-        lines.extend(diff);
-        return lines;
-    }
-    // Before the result: each replacement asked for, on its own.
-    let edits = view
-        .call
-        .function
-        .arguments
-        .get("edits")
-        .and_then(|edits| edits.as_array());
-    let mut asked = Vec::new();
-    for edit in edits.into_iter().flatten() {
-        let text = |key: &str| edit.get(key).and_then(|text| text.as_str());
-        if let (Some(old), Some(new)) = (text("old_text"), text("new_text")) {
-            if !asked.is_empty() {
-                asked.push(Line::from("    ⋯").dark_gray());
-            }
-            asked.extend(diff::diff_lines(old, new, DIFF_LINES));
-        }
-    }
-    if asked.is_empty() {
-        lines.extend(view.result_lines(RESULT_LINES));
-    } else {
-        asked.truncate(DIFF_LINES);
-        lines.extend(asked);
-    }
+    lines.extend(view.result_lines(RESULT_LINES));
     lines
 }
 
@@ -289,30 +261,23 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if lines.is_empty() {
         lines.push(view.header("$", ""));
     }
-    // The end of a command's output is where its errors and summary are.
+    // The end of a command's output is where its errors and summary are;
+    // a cut marker before it names the file with all of it.
     if let Some(text) = view.result_text() {
-        let style = if view.failed() {
-            Style::new().red()
-        } else {
-            Style::new().dim()
-        };
-        let total = text.lines().count();
-        let skipped = total.saturating_sub(RESULT_LINES + 2);
-        if skipped > 0 {
-            lines.push(Line::styled(
-                format!("  ⎿ … {skipped} earlier lines"),
-                style,
-            ));
-        }
-        let tail: Vec<&str> = text.lines().skip(skipped).collect();
-        lines.extend(tail.iter().enumerate().map(|(index, line)| {
-            let prefix = if index == 0 && skipped == 0 {
-                "  ⎿ "
-            } else {
-                "    "
-            };
-            Line::styled(format!("{prefix}{}", line.replace('\t', "    ")), style)
-        }));
+        let mut output = text.lines().peekable();
+        let marker = output.next_if(|first| is_cut_marker(first));
+        let output: Vec<&str> = output.collect();
+        let skipped = output.len().saturating_sub(RESULT_LINES + 2);
+        let earlier = format!("… {skipped} earlier lines");
+        let earlier = (skipped > 0).then_some(earlier.as_str());
+        let shown = marker.into_iter().chain(earlier);
+        let shown = shown.chain(output.into_iter().skip(skipped));
+        let style = result_style(view.failed());
+        lines.extend(
+            shown
+                .enumerate()
+                .map(|(index, line)| result_line(index == 0, line, style)),
+        );
     }
     lines
 }
@@ -331,37 +296,5 @@ fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines
 }
 
-/// A subagent request's result, or that it is still being sent.
-fn sent(view: &ToolCallView<'_>, lines: &mut Vec<Line<'static>>) {
-    match view.result_text() {
-        Some(text) => {
-            let style = if view.failed() {
-                Style::new().red()
-            } else {
-                Style::new().dim()
-            };
-            lines.extend(excerpt(&text, RESULT_LINES, style));
-        }
-        None => lines.push(Line::from("  ⎿ sending…").dim()),
-    }
-}
-
-/// The subagent's title and model, then whether it started.
-fn task(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let title = view.argument("description").unwrap_or("task").to_owned();
-    let detail = view
-        .argument("model")
-        .map(|model| format!("on {model}"))
-        .unwrap_or_default();
-    let mut lines = vec![view.header(format!("task {title}"), detail)];
-    sent(view, &mut lines);
-    lines
-}
-
-/// The subagent written to, then whether the request went out.
-fn message(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let agent = view.argument("agent").unwrap_or("?").to_owned();
-    let mut lines = vec![view.header(format!("message {agent}"), String::new())];
-    sent(view, &mut lines);
-    lines
-}
+#[cfg(test)]
+mod tests;

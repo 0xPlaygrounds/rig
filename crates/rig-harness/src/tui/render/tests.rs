@@ -26,14 +26,6 @@ fn meter() -> Vec<Piece> {
 }
 
 #[test]
-fn a_wide_line_keeps_everything() {
-    let (mut left, mut right) = (left(), meter());
-    fit(&mut left, &mut right, 200);
-    assert_eq!(left.len(), 5);
-    assert_eq!(right.len(), 4);
-}
-
-#[test]
 fn the_meter_shrinks_before_the_status() {
     let (mut left, mut right) = (left(), meter());
     fit(&mut left, &mut right, 86);

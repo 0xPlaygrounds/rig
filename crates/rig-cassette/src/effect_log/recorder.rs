@@ -169,6 +169,17 @@ impl EffectLogRecorder {
         log
     }
 
+    /// Dispatches resolved and not yet taken: what [`take`](Self::take)
+    /// would take, without copying the header.
+    pub fn resolved(&self) -> usize {
+        self.slots
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|slot| slot.outcome.is_some())
+            .count()
+    }
+
     /// Dispatches recorded and not yet resolved.
     pub fn in_flight(&self) -> usize {
         self.slots

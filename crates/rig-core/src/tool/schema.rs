@@ -6,7 +6,6 @@
 //! use serde::Deserialize;
 //!
 //! #[derive(Deserialize, JsonSchema)]
-//! #[serde(deny_unknown_fields)]
 //! struct Args {
 //!     /// How many lines to read.
 //!     limit: Option<u32>,
@@ -27,8 +26,9 @@ use serde_json::Value;
 /// The JSON schema of the arguments type `A`, in the plain shape tool
 /// definitions use: inline, without `$schema`, `title`, `default`, `format`
 /// (providers support it unevenly) or the type's own doc comment, and with
-/// `Option` fields optional, not nullable. With `deny_unknown_fields` on
-/// every struct, each object refuses keys it does not declare.
+/// `Option` fields optional, not nullable, and each object refusing keys
+/// it does not declare (`additionalProperties: false`, as
+/// `deny_unknown_fields` says; a map keeps its own).
 pub fn args_schema<A: JsonSchema>() -> Value {
     let mut settings = SchemaSettings::draft2020_12().with_transform(RecursiveTransform(plain));
     settings.inline_subschemas = true;
@@ -41,7 +41,8 @@ pub fn args_schema<A: JsonSchema>() -> Value {
 }
 
 /// Drops from one subschema what [`args_schema`] leaves out, keeping the
-/// other keys' order, and joins a doc comment's lines as rustdoc does.
+/// other keys' order, closes an object to undeclared keys, and joins a doc
+/// comment's lines as rustdoc does.
 fn plain(schema: &mut Schema) {
     let Some(schema) = schema.as_object_mut() else {
         return;
@@ -52,6 +53,9 @@ fn plain(schema: &mut Schema) {
     }
     for key in ["title", "default", "format"] {
         schema.shift_remove(key);
+    }
+    if schema.contains_key("properties") && !schema.contains_key("additionalProperties") {
+        schema.insert("additionalProperties".to_owned(), Value::Bool(false));
     }
     if let Some(Value::Array(types)) = schema.get_mut("type") {
         types.retain(|kind| kind != "null");

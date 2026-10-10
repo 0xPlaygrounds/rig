@@ -586,6 +586,14 @@ impl Usage {
         *self != Self::default()
     }
 
+    /// The tokens the call read and wrote, what a conversation's next
+    /// request sends again: [`Self::total_tokens`](field@Self::total_tokens),
+    /// else the input and output tokens. `None` without input tokens.
+    pub fn context_tokens(&self) -> Option<u64> {
+        self.total_tokens
+            .or_else(|| Some(self.input_tokens? + self.output_tokens.unwrap_or(0)))
+    }
+
     /// Set, or with `None` clear, [`Self::input_tokens`](field@Self::input_tokens).
     pub fn input_tokens(mut self, tokens: impl Into<Option<u64>>) -> Self {
         self.input_tokens = tokens.into();
@@ -829,15 +837,15 @@ impl AddAssign for Usage {
 }
 
 /// Many calls' [`Usage`] summed for a running account: the token counters,
-/// the known cost, how many calls the sum holds and how many of them were
-/// not fully priced, and the context the last call used.
+/// the known cost, and how many calls the sum holds and how many of them
+/// were not fully priced.
 ///
 /// ```
 /// use rig_core::completion::{Usage, UsageTotals};
 ///
 /// let mut totals = UsageTotals::default();
 /// totals.record(&Usage::new().input_tokens(100).output_tokens(20).total_tokens(120));
-/// assert_eq!((totals.calls, totals.unpriced, totals.context), (1, 1, Some(120)));
+/// assert_eq!((totals.calls, totals.unpriced, totals.uncached_input()), (1, 1, 100));
 /// ```
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct UsageTotals {
@@ -851,9 +859,6 @@ pub struct UsageTotals {
     pub unpriced: u64,
     /// The calls summed.
     pub calls: u64,
-    /// The tokens the last call that reported them read and wrote: what a
-    /// conversation's next request sends again. `None` before such a call.
-    pub context: Option<u64>,
 }
 
 impl UsageTotals {
@@ -870,23 +875,9 @@ impl UsageTotals {
             None => self.unpriced += 1,
         }
         self.tokens += usage.cost(None);
-        let context = usage
-            .total_tokens
-            .or_else(|| Some(usage.input_tokens? + usage.output_tokens.unwrap_or(0)));
-        if context.is_some() {
-            self.context = context;
-        }
     }
 
-    /// Adds the `usage` of a call that did not send the conversation, such
-    /// as a summary's: it costs, but says nothing about the context.
-    pub fn record_aside(&mut self, usage: &Usage) {
-        let context = self.context;
-        self.record(usage);
-        self.context = context;
-    }
-
-    /// Adds what `other` summed, but not its context.
+    /// Adds what `other` summed.
     pub fn add(&mut self, other: &UsageTotals) {
         self.tokens += other.tokens;
         self.cost += other.cost;
@@ -901,6 +892,120 @@ impl UsageTotals {
             .unwrap_or(0)
             .saturating_sub(self.tokens.cached_input_tokens.unwrap_or(0))
             .saturating_sub(self.tokens.cache_creation_input_tokens.unwrap_or(0))
+    }
+
+    /// The tokens read and written, cached input included.
+    pub fn total_tokens(&self) -> u64 {
+        self.tokens
+            .input_tokens
+            .unwrap_or(0)
+            .saturating_add(self.tokens.output_tokens.unwrap_or(0))
+    }
+
+    /// The cost as `$0.123`, ending in `+` when some calls were not priced,
+    /// or `None` when no call was.
+    pub fn cost_label(&self) -> Option<String> {
+        if self.unpriced >= self.calls {
+            return None;
+        }
+        let more = if self.unpriced > 0 { "+" } else { "" };
+        Some(format!("{}{more}", dollars_label(self.cost)))
+    }
+
+    /// The [cost](Self::cost_label), or as `1.2M tokens` when no call was
+    /// priced, such as a local or subscription model's.
+    pub fn cost_or_tokens(&self) -> String {
+        self.cost_label()
+            .unwrap_or_else(|| format!("{} tokens", tokens_label(self.total_tokens())))
+    }
+}
+
+/// One line for a person or a log: the calls, the tokens by kind and the
+/// cost.
+impl std::fmt::Display for UsageTotals {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self.calls {
+            1 => f.write_str("1 model call")?,
+            calls => write!(f, "{calls} model calls")?,
+        }
+        write!(f, ": {} in", tokens_label(self.uncached_input()))?;
+        if let Some(read) = self.tokens.cached_input_tokens.filter(|read| *read > 0) {
+            write!(f, ", {} cache read", tokens_label(read))?;
+        }
+        if let Some(written) = self
+            .tokens
+            .cache_creation_input_tokens
+            .filter(|written| *written > 0)
+        {
+            write!(f, ", {} cache written", tokens_label(written))?;
+        }
+        write!(
+            f,
+            ", {} out",
+            tokens_label(self.tokens.output_tokens.unwrap_or(0))
+        )?;
+        if let Some(thought) = self.tokens.reasoning_tokens.filter(|thought| *thought > 0) {
+            write!(f, " ({} reasoning)", tokens_label(thought))?;
+        }
+        let cost = self.cost_label();
+        write!(f, "; {}", cost.as_deref().unwrap_or("cost unknown"))
+    }
+}
+
+/// The context a conversation's next request sends, against the model's
+/// window.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ContextUse {
+    /// Tokens in use.
+    pub tokens: u64,
+    /// The model's window, when known.
+    pub window: Option<u32>,
+}
+
+impl ContextUse {
+    /// The share of the window in use, in percent, when the window is known.
+    pub fn percent(&self) -> Option<u64> {
+        self.window
+            .filter(|window| *window > 0)
+            .map(|window| self.tokens.saturating_mul(100) / u64::from(window))
+    }
+}
+
+/// `45k/200k (22%)`, or `45k` when the window is not known.
+impl std::fmt::Display for ContextUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match (self.window, self.percent()) {
+            (Some(window), Some(percent)) => write!(
+                f,
+                "{}/{} ({percent}%)",
+                tokens_label(self.tokens),
+                tokens_label(u64::from(window))
+            ),
+            _ => f.write_str(&tokens_label(self.tokens)),
+        }
+    }
+}
+
+/// A token count in at most four characters plus a unit: `999`, `1.2k`,
+/// `45k`, `1.2M`.
+pub fn tokens_label(count: u64) -> String {
+    // Shown rounded, so the float conversion's precision does not matter.
+    let scaled = |unit: f64| count as f64 / unit;
+    match count {
+        0..1_000 => count.to_string(),
+        1_000..10_000 => format!("{:.1}k", scaled(1e3)),
+        10_000..1_000_000 => format!("{:.0}k", scaled(1e3)),
+        1_000_000..10_000_000 => format!("{:.1}M", scaled(1e6)),
+        _ => format!("{:.0}M", scaled(1e6)),
+    }
+}
+
+/// A cost in USD: tenths of a cent below a dollar, cents above.
+pub fn dollars_label(cost: f64) -> String {
+    if cost < 1.0 {
+        format!("${cost:.3}")
+    } else {
+        format!("${cost:.2}")
     }
 }
 

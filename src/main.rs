@@ -15,18 +15,15 @@ use rig::harness_protocol::{Home, INVOCATION_USAGE, Invocation};
 const USAGE: &str = "\
 Usage: rig [session] [mode] | rig build | rig plugin <command> | rig help
 
-  rig                    Build the agent if needed and run it. In a directory
-                         whose last session did not quit cleanly, that session
-                         resumes.
+  rig                    Build the agent if needed and run it in a new session.
   rig build              Regenerate the agent project from plugins.toml, build
                          it, and stage the new binary for the next start.
 ";
 
 const SESSION: &str = "
-Session (a print run starts a new one unless told otherwise):
+Session:
   -r, --resume <id>      Resume the session <id>, in the directory it ran in.
                          In the agent, /resume lists the sessions.
-  -n, --new              Start a new session.
 
 Mode:
 ";
@@ -70,32 +67,14 @@ fn main() -> ExitCode {
     })
 }
 
-/// The session to run and the agent's arguments: the session options come
+/// The session to run and the agent's arguments: the session option comes
 /// first, and the rest is the agent's.
 fn parse(args: &[String]) -> Result<(Start, Invocation), String> {
-    let mut start = None;
-    let mut rest = args;
-    loop {
-        let (chosen, taken) = match rest {
-            [flag, ..] if flag == "-n" || flag == "--new" => (Start::New, 1),
-            [flag, id, ..] if flag == "-r" || flag == "--resume" => (
-                Start::Resume(id.parse().map_err(|failure| format!("{failure}"))?),
-                2,
-            ),
-            _ => break,
-        };
-        if start.replace(chosen).is_some() {
-            return Err("give at most one of --resume and --new".to_owned());
+    let (start, rest) = match args {
+        [flag, id, rest @ ..] if flag == "-r" || flag == "--resume" => {
+            (Start::Resume(id.parse()?), rest)
         }
-        rest = rest.get(taken..).unwrap_or_default();
-    }
-    let invocation = Invocation::parse(rest)?;
-    // A headless run is its own session unless one is named: it must not
-    // pick up the session this directory's terminal view left behind.
-    let start = start.unwrap_or(if invocation.is_headless() {
-        Start::New
-    } else {
-        Start::Default
-    });
-    Ok((start, invocation))
+        rest => (Start::New, rest),
+    };
+    Ok((start, Invocation::parse(rest)?))
 }

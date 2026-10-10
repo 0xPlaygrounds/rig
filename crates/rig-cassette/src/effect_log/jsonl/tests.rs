@@ -28,18 +28,18 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
     let mut writer = Writer::new(&path);
-    writer
-        .append(&EffectLog::from_records(vec![record(1, "model")]))
-        .expect("first append");
-    let second = EffectLog::from_records(vec![record(2, "model"), record(3, "tool")]);
-    writer.append(&second).expect("second append");
-    // Same header, no records: nothing to write.
+    let first = EffectLog::from_records(vec![record(1, "model")]);
+    // A header without records: nothing to write.
     writer
         .append(&EffectLog {
-            header: second.header.clone(),
             records: Vec::new(),
+            ..first.clone()
         })
-        .expect("empty append");
+        .expect("header only");
+    assert!(!path.exists(), "a header alone is not written");
+    writer.append(&first).expect("first append");
+    let second = EffectLog::from_records(vec![record(2, "model"), record(3, "tool")]);
+    writer.append(&second).expect("second append");
 
     let text = std::fs::read_to_string(&path).expect("log text");
     assert_eq!(
@@ -86,26 +86,6 @@ fn appended_logs_read_back_as_one_with_merged_headers() {
         .expect("append after a restart");
     let text = std::fs::read_to_string(&path).expect("log text");
     assert_eq!(text.lines().count(), 6, "no header line again: {text}");
-}
-
-#[test]
-fn a_log_without_records_writes_no_file() {
-    let dir = assert_fs::TempDir::new().expect("scratch directory");
-    let path = dir.path().join("effects.jsonl");
-    let mut writer = Writer::new(&path);
-    let described = EffectLog::from_records(vec![record(1, "model")]);
-    writer
-        .append(&EffectLog {
-            header: described.header.clone(),
-            records: Vec::new(),
-        })
-        .expect("header only");
-    assert!(!path.exists(), "a header alone is not written");
-    // The first record brings the header it waited with.
-    writer.append(&described).expect("first record");
-    let text = std::fs::read_to_string(&path).expect("log text");
-    assert_eq!(text.lines().count(), 2, "header and record: {text}");
-    assert!(text.starts_with("{\"header\""));
 }
 
 /// A completion record on `scope` whose request is `history`, as user
@@ -165,6 +145,30 @@ fn completion_of(
         ))),
         events: None,
     }
+}
+
+/// The listing the shell tool returned, long enough to be worth referring to.
+const LISTING: &str = "Cargo.toml src target, the listing the shell tool returned";
+
+/// A shell call that returned [`LISTING`], and the tool-result message that
+/// carries it.
+fn shell_call() -> (EffectRecord, rig_core::completion::Message) {
+    use rig_core::message::{CallId, ProviderCallId, ToolName};
+    use rig_core::tool::{ToolOutput, ToolResult};
+    let mut shell = record(10, "tool:shell");
+    shell.kind = EffectKind::ToolCall {
+        name: "shell".into(),
+        args: "{}".into(),
+    };
+    shell.outcome = Ok(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text(LISTING)),
+    });
+    let result = rig_core::completion::Message::tool_result(
+        CallId::from(ProviderCallId::new("call_1").expect("call id")),
+        ToolName::new("shell").expect("tool name"),
+        LISTING,
+    );
+    (shell, result)
 }
 
 /// The chat history of a completion record, as text.
@@ -262,26 +266,11 @@ fn completion_requests_are_written_as_continuations_and_read_back_whole() {
 #[test]
 fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_tail() {
     use rig_core::completion::Message;
-    use rig_core::message::{CallId, ProviderCallId, ToolName};
-    use rig_core::tool::{ToolOutput, ToolResult};
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
     let system = Message::system("a long system prompt for the agent");
     let first = Message::user("first task, with enough words to be worth referring to");
-    let listing = "Cargo.toml src target, the listing the shell tool returned";
-    let second = Message::tool_result(
-        CallId::from(ProviderCallId::new("call_1").expect("call id")),
-        ToolName::new("shell").expect("tool name"),
-        listing,
-    );
-    let mut shell = record(10, "tool:shell");
-    shell.kind = EffectKind::ToolCall {
-        name: "shell".into(),
-        args: "{}".into(),
-    };
-    shell.outcome = Ok(Outcome::ToolResult {
-        result: ToolResult::success(ToolOutput::text(listing)),
-    });
+    let (shell, second) = shell_call();
     let written = vec![
         completion_of(1, "parent", vec![system.clone(), first.clone()]),
         shell,
@@ -331,7 +320,7 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
     // Each reply once: in the four outcomes, never in a request; the tool
     // result in its call's outcome only.
     assert_eq!(text.matches("\"text\":\"ok\"").count(), 4, "{text}");
-    assert_eq!(text.matches(listing).count(), 1, "{text}");
+    assert_eq!(text.matches(LISTING).count(), 1, "{text}");
 
     let log = read(&path).expect("log");
     assert_eq!(log.records.len(), written.len());
@@ -343,19 +332,9 @@ fn replies_and_tool_results_are_stored_once_and_a_compacted_request_keeps_its_ta
 #[test]
 fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
     use rig_core::completion::Message;
-    use rig_core::message::{CallId, ProviderCallId, ToolName};
-    use rig_core::tool::{ToolOutput, ToolResult};
     let dir = assert_fs::TempDir::new().expect("scratch directory");
     let path = dir.path().join("effects.jsonl");
-    let listing = "Cargo.toml src target, the listing the shell tool returned";
-    let mut shell = record(10, "tool:shell");
-    shell.kind = EffectKind::ToolCall {
-        name: "shell".into(),
-        args: "{}".into(),
-    };
-    shell.outcome = Ok(Outcome::ToolResult {
-        result: ToolResult::success(ToolOutput::text(listing)),
-    });
+    let (shell, result) = shell_call();
     let mut writer = Writer::new(&path);
     // A directory in the file's place: the tool call never reaches the file.
     std::fs::create_dir(&path).expect("directory in the way");
@@ -365,11 +344,6 @@ fn a_tool_result_whose_write_failed_is_written_whole_when_repeated() {
     std::fs::remove_dir(&path).expect("directory removed");
 
     let task = Message::user("first task, with enough words to be worth referring to");
-    let result = Message::tool_result(
-        CallId::from(ProviderCallId::new("call_1").expect("call id")),
-        ToolName::new("shell").expect("tool name"),
-        listing,
-    );
     writer
         .append(&EffectLog::from_records(vec![
             completion_of(1, "parent", vec![task.clone()]),

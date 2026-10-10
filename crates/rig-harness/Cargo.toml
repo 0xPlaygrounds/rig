@@ -19,12 +19,13 @@ tui = [
     "dep:ignore",
     "dep:libc",
     "dep:pulldown-cmark",
-    "dep:similar",
     "dep:unicode-width",
 ]
 
 [dependencies]
 base64 = { workspace = true }
+# `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
+bevy = { workspace = true }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
@@ -37,14 +38,15 @@ crossbeam-channel = { workspace = true }
 ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
 rig = { path = "../..", version = "0.44.0", default-features = false }
+# The session kept as JSON-lines files in its directory.
+rig-cassette = { workspace = true, features = ["jsonl"] }
 # `reqwest`: the shared HTTP client rig-ecs connects models on.
 rig-core = { workspace = true, features = ["reqwest"] }
 # The shared HTTP client `/login` and signed-in model calls read the
 # credential through.
 rig-reqwest = { workspace = true }
-# The agent runtime, with the session kept as JSON-lines files in its
-# directory and the windowless loop.
-rig-ecs = { path = "../rig-ecs", version = "0.44.0", features = ["fs-journal", "runner", "subagents"] }
+# The agent runtime.
+rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The token estimate compaction decides by.
 rig-memory = { path = "../rig-memory", version = "0.44.0", default-features = false }
 # The built-in tools and the instruction files and process helpers.
@@ -61,8 +63,15 @@ unicode-width = { workspace = true, optional = true }
 # Path completion in the input, as git ignores it.
 ignore = { workspace = true, optional = true }
 # The diffs the terminal view draws.
-similar = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.
 libc = { workspace = true, optional = true }
+
+[dev-dependencies]
+# The scripted model (`test_utils::MockCompletionModel`) plugin tests run
+# turns on.
+rig-core = { workspace = true, features = ["reqwest", "test-utils"] }
+# The optional inspect plugin, added on top of the defaults in
+# `tests/removal.rs`.
+rig-inspect = { path = "../rig-inspect" }

@@ -1,7 +1,8 @@
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use super::{RetryPolicy, Verdict, http_date};
+use super::{RetryPolicy, Verdict};
 use crate::error::{ErrorKind, ErrorReport};
+use crate::provider_response::ProviderResponseError;
 
 fn report(message: &str) -> ErrorReport {
     ErrorReport::new(ErrorKind::Provider, message)
@@ -52,12 +53,19 @@ fn a_body_hint_names_the_wait() {
 }
 
 #[test]
-fn an_http_date_is_read() {
-    assert_eq!(
-        http_date("Sun, 06 Nov 1994 08:49:37 GMT"),
-        Some(UNIX_EPOCH + Duration::from_secs(784_111_777))
+fn a_retry_after_date_names_the_wait() {
+    let mut headers = http::HeaderMap::new();
+    headers.insert(
+        "retry-after",
+        http::HeaderValue::from_static("Sun, 06 Nov 1994 08:49:37 GMT"),
     );
-    assert_eq!(http_date("Sunday, 06-Nov-94 08:49:37 GMT"), None);
+    let mut dated = report("busy");
+    dated.provider_response = Some(
+        ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "busy")
+            .with_headers(Some(headers)),
+    );
+    let now = UNIX_EPOCH + Duration::from_secs(784_111_770);
+    assert_eq!(dated.retry_after(now), Some(Duration::from_secs(7)));
 }
 
 #[test]

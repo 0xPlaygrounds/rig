@@ -138,6 +138,7 @@ impl super::Observe for RecordingObserver {
 /// The record of an effect no handler serves, such as a tool call a person
 /// or another program answers: begun when it opens, resolved by
 /// [`Self::settle`], and recorded as cancelled when dropped unsettled.
+/// Without a recorder it only carries the effect's id.
 ///
 /// ```
 /// use std::sync::Arc;
@@ -145,7 +146,7 @@ impl super::Observe for RecordingObserver {
 /// use rig_core::serve::{OpenRecord, Origin, Recorder};
 /// # fn demo(recorder: Arc<dyn Recorder + Send + Sync>) {
 /// let kind = EffectKind::ToolCall { name: "ask".into(), args: "{}".into() };
-/// let mut open = OpenRecord::begin(recorder, EffectId::from_raw(1), tool_key("ask"), kind, Origin::default());
+/// let mut open = OpenRecord::begin(Some(recorder), EffectId::from_raw(1), tool_key("ask"), kind, Origin::default());
 /// open.settle(Err(rig_core::serve::cancelled()));
 /// # }
 /// ```
@@ -155,19 +156,19 @@ pub struct OpenRecord {
 }
 
 impl OpenRecord {
-    /// Records the start of the effect `id`, `kind` routed to `key`.
+    /// Records the start of the effect `id`, `kind` routed to `key`, with
+    /// `recorder`, if any.
     pub fn begin(
-        recorder: Arc<dyn Recorder + Send + Sync>,
+        recorder: Option<Arc<dyn Recorder + Send + Sync>>,
         id: EffectId,
         key: HandlerKey,
         kind: EffectKind,
         origin: Origin,
     ) -> Self {
-        recorder.begin(id, key, kind, origin);
-        Self {
-            recorder: Some(recorder),
-            id,
+        if let Some(recorder) = &recorder {
+            recorder.begin(id, key, kind, origin);
         }
+        Self { recorder, id }
     }
 
     /// The effect's id.
@@ -191,10 +192,11 @@ impl Drop for OpenRecord {
 
 /// `work`, the task that drives the dispatch `id`, with a panic in it (in
 /// the handler or in its reply's stream) turned into an internal error that
-/// `recorder` also records as the dispatch's outcome. Unwinding drops the
-/// dispatch's observer, which records a cancellation; this replaces it.
+/// `recorder`, if any, also records as the dispatch's outcome. Unwinding
+/// drops the dispatch's observer, which records a cancellation; this
+/// replaces it.
 pub fn catch_panics<T>(
-    recorder: Arc<dyn Recorder + Send + Sync>,
+    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     id: EffectId,
     work: impl Future<Output = Result<T, ErrorReport>>,
 ) -> impl Future<Output = Result<T, ErrorReport>> {
@@ -213,7 +215,9 @@ pub fn catch_panics<T>(
                     crate::error::ErrorKind::Internal,
                     format!("panicked: {message}"),
                 );
-                recorder.resolve(id, Err(report.clone()));
+                if let Some(recorder) = recorder {
+                    recorder.resolve(id, Err(report.clone()));
+                }
                 Err(report)
             })
     }

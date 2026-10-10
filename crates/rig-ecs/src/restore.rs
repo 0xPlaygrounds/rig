@@ -1,6 +1,7 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
 //! pass that settles what a crash or a restart left half done. Each log is
-//! read from its newest compaction on, with a torn last line cut off and
+//! read from its newest [`Condensed`] record on, with a torn last line cut
+//! off and
 //! records of unknown types skipped. Each fix the reconcile pass makes is an
 //! ordinary record, so the next restore finds nothing left to fix; the
 //! request-build repair that answers any call still without a result stays
@@ -22,30 +23,28 @@ use std::collections::HashMap;
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
-use rig_core::completion::Message;
-use rig_core::message::{ToolCall, ToolResult};
-use rig_core::transcript::pending_calls;
-use rig_memory::SummaryState;
+use bevy_reflect::serde::TypedReflectDeserializer;
+use bevy_reflect::{ReflectFromReflect, TypeRegistry};
+use rig_cassette::journal::{JournalStore, load_images};
+use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::Deserialize;
-use serde::de::IgnoredAny;
+use serde::de::{DeserializeSeed, IgnoredAny};
+use serde_json::Value;
 
-use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, ToolCallRun, TurnOf};
-use super::compaction::Compacted;
+use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
 use super::journal::{
-    AgentLog, COMPONENT_VERSION, Header, Line, Record, SavedComponents, SavedValue, SessionLog,
-    load_blobs,
+    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionStore,
 };
-use super::store::{JournalStore, SessionStore};
-use super::tools::failed;
-use super::turn::{CallModel, ToolStarter, tool_name};
+use super::turn::{CallModel, ToolStarter};
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
 
 /// The first fields of a line, read from every line to find the newest
-/// compaction and the newest record of each saved component.
+/// condensed record and the newest record of each saved component.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
@@ -58,7 +57,7 @@ struct Envelope {
 struct Folded {
     header: Header,
     conversation: Conversation,
-    compacted: Compacted,
+    condensed: Option<Condensed>,
     log: AgentLog,
 }
 
@@ -85,7 +84,7 @@ pub struct Restored {
 }
 
 /// Spawns the agents of the session's logs, with their conversations,
-/// compactions and saved components, links each agent to the agent that
+/// condensed summaries and saved components, links each agent to the agent that
 /// spawned it, and starts logging. Anything that does not load is skipped
 /// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
@@ -109,15 +108,9 @@ pub(crate) fn restore_session(world: &mut World) {
             )),
         }
     }
-    let parents: HashMap<String, Option<String>> = folded
-        .iter()
-        .map(|agent| (agent.header.agent.clone(), agent.header.parent.clone()))
-        .collect();
-    let saved_components = world
-        .get_resource::<SavedComponents>()
-        .map(|saved| saved.0.clone())
-        .unwrap_or_default();
-    let mut restored = Vec::new();
+    let registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let registry = registry.unwrap_or_default();
+    let registry = registry.read();
     let mut entities = HashMap::new();
     let mut links = Vec::new();
     let mut logs = Vec::new();
@@ -125,52 +118,23 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            compacted,
-            mut log,
+            condensed,
+            log,
         } = agent;
         let id = AgentId(header.agent.clone());
-        let entity = world
-            .spawn((
-                Name::new("agent"),
-                Agent,
-                id.clone(),
-                conversation,
-                compacted,
-            ))
-            .id();
-        // In the order registered, which inserts the reasoning setting
-        // before the model that checks it.
-        for (path, insert) in &saved_components {
-            let Some(saved) = log.components.get(*path) else {
-                continue;
-            };
-            let inserted = if saved.v > COMPONENT_VERSION {
-                Err(format!(
-                    "it was saved by a newer build (version {})",
-                    saved.v
-                ))
-            } else {
-                insert(&mut world.entity_mut(entity), saved.value.clone())
-                    .map_err(|failure| format!("its saved value no longer fits: {failure}"))
-            };
-            if let Err(failure) = inserted {
+        let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
+        if let Some(condensed) = condensed {
+            spawned.insert(condensed);
+        }
+        for (path, value) in &log.components {
+            if let Err(failure) = insert_saved(&mut spawned, path, value, &registry) {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
-        for path in log
-            .components
-            .keys()
-            .filter(|path| saved_components.iter().all(|(name, _)| name != path))
-        {
-            notices.push(format!(
-                "Skipped saved component `{path}`: no plugin saves it any more."
-            ));
-        }
-        log.depth = depth(&header.agent, &parents);
-        restored.push((log.depth, entity));
+        let entity = spawned.id();
         entities.insert(id.0.clone(), entity);
         links.push((entity, header.parent));
-        logs.push((id.0, log));
+        logs.push((entity, id.0, log));
     }
     for (child, parent) in links {
         if let Some(&parent) = parent.and_then(|parent| entities.get(&parent))
@@ -179,28 +143,49 @@ pub(crate) fn restore_session(world: &mut World) {
             child.insert(SpawnedBy(parent));
         }
     }
+    let mut parents = world.query::<&SpawnedBy>();
+    let parents = parents.query(world);
+    let bound = logs.len();
+    let restored = logs
+        .iter_mut()
+        .map(|(entity, _, log)| {
+            // A loop cannot happen, but a bound costs nothing.
+            log.depth = parents.iter_ancestors(*entity).take(bound).count();
+            (log.depth, *entity)
+        })
+        .collect();
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
-    log.resume(logs);
+    log.resume(logs.into_iter().map(|(_, id, log)| (id, log)).collect());
     world.insert_resource(RestoredAgents(restored));
     for notice in notices {
         world.write_message(Notice::error(None, notice));
     }
 }
 
-/// How many agents above `agent` started it.
-fn depth(agent: &str, parents: &HashMap<String, Option<String>>) -> usize {
-    let mut depth = 0;
-    let mut at = agent;
-    while let Some(Some(parent)) = parents.get(at) {
-        depth += 1;
-        // A loop cannot happen, but a bound costs nothing.
-        if depth > parents.len() {
-            break;
-        }
-        at = parent;
-    }
-    depth
+/// Inserts on `agent` the saved component of the type path `path` from its
+/// logged `value`, in place of an immutable one too.
+fn insert_saved(
+    agent: &mut EntityWorldMut,
+    path: &str,
+    value: &Value,
+    registry: &TypeRegistry,
+) -> Result<(), String> {
+    let registration = registry
+        .get_with_type_path(path)
+        .filter(|registration| registration.data::<ReflectSaved>().is_some())
+        .ok_or("no plugin saves it in this build")?;
+    let component = registration.data::<ReflectComponent>();
+    let component = component.ok_or("it is not a reflected component")?;
+    let reflected = TypedReflectDeserializer::new(registration, registry)
+        .deserialize(value)
+        .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
+    let value = registration
+        .data::<ReflectFromReflect>()
+        .and_then(|from| from.from_reflect(&*reflected))
+        .ok_or("its saved value no longer fits")?;
+    component.insert(agent, value.as_partial_reflect(), registry);
+    Ok(())
 }
 
 /// Reads and folds the log of `agent` in `store`, cutting off a torn last
@@ -248,71 +233,61 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
     let mut folded = Folded {
         header,
         conversation: Conversation::default(),
-        compacted: Compacted::default(),
+        condensed: None,
         log: AgentLog {
             next_seq: next_seq.max().unwrap_or(1),
             started: true,
-            ..AgentLog::new(0)
+            ..AgentLog::default()
         },
     };
-    // Messages are read from the first one the newest compaction kept, the
-    // rest from the compaction on.
-    let compaction = envelopes
+    // Messages are read from the first one the newest condensed record
+    // kept.
+    let condensed = envelopes
         .iter()
-        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "compaction"))
-        .and_then(|at| {
-            let line = serde_json::from_slice::<Line>(lines.get(at)?).ok()?;
-            match line.record {
-                Record::Compaction(record) => Some((at, record)),
-                _ => None,
-            }
+        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "condensed"))
+        .and_then(|at| match serde_json::from_slice(lines.get(at)?).ok()? {
+            Line {
+                record:
+                    Record::Condensed {
+                        summary,
+                        first_kept,
+                    },
+                ..
+            } => Some((at, summary, first_kept)),
+            _ => None,
         });
-    let (from_messages, from_rest) = match compaction {
-        Some((at, record)) => {
-            let first_kept = envelopes
+    let from = match condensed {
+        Some((at, summary, first_kept)) => {
+            folded.condensed = Some(Condensed { upto: 0, summary });
+            envelopes
                 .iter()
                 .enumerate()
                 .skip(1)
                 .find(|(_, envelope)| {
-                    matches!(envelope, Some(envelope) if envelope.seq >= record.first_kept)
+                    matches!(envelope, Some(envelope) if envelope.seq >= first_kept)
                 })
-                .map_or(at, |(index, _)| index.min(at));
-            folded.log.components = record.snapshot.components;
-            folded.compacted = Compacted(SummaryState {
-                upto: 0,
-                summary: record.summary,
-                tracked: record.tracked,
-            });
-            (first_kept, at + 1)
+                .map_or(at, |(index, _)| index.min(at))
         }
-        None => (1, 1),
+        None => 1,
     };
-    // Only the newest record of a saved component is read.
-    let newest: HashMap<&str, usize> = envelopes
-        .iter()
-        .enumerate()
-        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
-        .collect();
-    for (index, line) in lines.iter().enumerate().skip(from_messages) {
-        if let Some(Some(Envelope {
-            component: Some(component),
-            ..
-        })) = envelopes.get(index)
-            && newest.get(component.as_str()) != Some(&index)
+    for (line, envelope) in lines.iter().zip(&envelopes).skip(from) {
+        // Saved components are read below; unknown record types are
+        // skipped and left on disk.
+        if envelope
+            .as_ref()
+            .is_some_and(|envelope| envelope.component.is_some())
         {
             continue;
         }
-        // Unknown record types are skipped and left on disk.
         let Ok(line) = serde_json::from_slice::<Line>(line) else {
             continue;
         };
-        let superseded = index < from_rest;
         match line.record {
-            Record::Message {
-                mut message,
-                origin,
-            } => {
-                load_blobs(&mut message, store);
+            Record::Message { message, origin } => {
+                let mut message = message.into_owned();
+                if let Err(failure) = load_images(&mut message, store) {
+                    warn!("an image agent {agent} logged is gone: {failure}");
+                }
                 folded.conversation.append(message, origin, Some(line.seq));
             }
             Record::Retract => {
@@ -324,23 +299,29 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
                 folded.conversation.resume();
                 folded.conversation.halt(reason);
             }
-            _ if superseded => {}
-            Record::Component {
-                component,
-                v,
-                value,
-            } => match value {
-                Some(value) => {
-                    folded
-                        .log
-                        .components
-                        .insert(component, SavedValue { v, value });
-                }
-                None => {
-                    folded.log.components.remove(&component);
-                }
-            },
-            Record::Header(_) | Record::Compaction(_) => {}
+            Record::Header(_) | Record::Component { .. } | Record::Condensed { .. } => {}
+        }
+    }
+    // Only the newest record of each saved component is read, wherever it
+    // is in the log.
+    let newest: HashMap<&str, usize> = envelopes
+        .iter()
+        .enumerate()
+        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
+        .collect();
+    for at in newest.into_values() {
+        let line = lines
+            .get(at)
+            .and_then(|line| serde_json::from_slice(line).ok());
+        if let Some(Line {
+            record: Record::Component { component, value },
+            ..
+        }) = line
+        {
+            folded
+                .log
+                .components
+                .extend(value.map(|value| (component, value)));
         }
     }
     Ok(folded)
@@ -376,44 +357,27 @@ pub(crate) fn reconcile(world: &mut World) {
 /// [`Restored`] observers left.
 fn settle(
     In((agent, resume)): In<(Entity, bool)>,
-    mut agents: Query<(&AgentId, &mut Conversation)>,
+    mut agents: Query<&mut Conversation>,
     starter: ToolStarter,
-    log: Res<SessionLog>,
+    mut commit: Commit,
     mut commands: Commands,
 ) {
-    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+    let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    let mut results: Vec<ToolResult> = Vec::new();
-    let mut reruns: Vec<ToolCall> = Vec::new();
-    for call in pending_calls(conversation.messages()) {
-        if resume && starter.reruns(call.function.name.as_str()) {
-            reruns.push(call);
-        } else {
-            results.push(failed(&call, INTERRUPTED.to_owned()));
-        }
-    }
-    if !results.is_empty() {
-        log.commit(id, &mut conversation, Message::tool_results(results), None);
+    let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
+        .into_iter()
+        .partition(|call| resume && starter.reruns(call.function.name.as_str()));
+    if !interrupted.is_empty() {
+        let results = close_pending_with(&interrupted, INTERRUPTED);
+        commit.message(agent, &mut conversation, results);
     }
     if !resume {
         return;
     }
     if !reruns.is_empty() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
-        let runs: Vec<(Entity, ToolCallRun)> = reruns
-            .into_iter()
-            .map(|call| {
-                let run = starter.run(call, None);
-                let entity = commands
-                    .spawn((tool_name(&run), CallOf(turn), run.clone()))
-                    .id();
-                (entity, run)
-            })
-            .collect();
-        for (entity, run) in runs {
-            starter.start(&mut commands, entity, agent, &run);
-        }
+        starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
     } else if conversation.awaits_model() {
         let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
         commands.trigger(CallModel { entity: turn });

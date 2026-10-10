@@ -622,6 +622,16 @@ impl ReasoningChoice {
     }
 }
 
+/// A reasoning setting a model does not take, and the ones it does.
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
+#[error("the reasoning settings are {}, not `{name}`", choices.join(", "))]
+pub struct UnknownReasoning {
+    /// The name asked for.
+    pub name: String,
+    /// The names of the model's [`ReasoningSupport::choices`].
+    pub choices: Vec<&'static str>,
+}
+
 /// Token budgets for the named levels on a model that takes a budget
 /// instead of levels, clamped into its range.
 const NAMED_BUDGETS: [(&str, u32); 3] = [("low", 2048), ("medium", 8192), ("high", 16384)];
@@ -668,6 +678,23 @@ impl ReasoningSupport {
             }));
         }
         choices
+    }
+
+    /// The choice of [`Self::choices`] named `name`.
+    ///
+    /// # Errors
+    ///
+    /// [`UnknownReasoning`] with the names there are, when none is `name`.
+    pub fn named(&self, name: &str) -> Result<ReasoningChoice, UnknownReasoning> {
+        let choices = self.choices();
+        choices
+            .iter()
+            .find(|choice| choice.name == name)
+            .copied()
+            .ok_or_else(|| UnknownReasoning {
+                name: name.to_owned(),
+                choices: choices.iter().map(|choice| choice.name).collect(),
+            })
     }
 
     /// Whether the model reasons at all.

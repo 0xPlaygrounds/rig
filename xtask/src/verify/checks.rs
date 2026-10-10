@@ -51,6 +51,7 @@ pub(super) fn all() -> Vec<Check> {
                 ),
                 Step::new("@fixture-paths", &[]),
                 Step::new("@ecs-boundary", &[]),
+                Step::new("@plugin-boundary", &[]),
                 Step::new("@options-guards", &[]),
                 Step::new(
                     "node",
@@ -106,10 +107,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // rig-harness, rig-ecs, rig-tools and rig-steel are not
-                // default members; the app must also build without the
-                // terminal view, and rig-ecs with its default features
-                // and with all of them.
+                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
+                // are not default members; the app must also build without
+                // the terminal view.
                 cargo(&[
                     "clippy",
                     "--locked",
@@ -121,6 +121,8 @@ pub(super) fn all() -> Vec<Check> {
                     "rig-tools",
                     "-p",
                     "rig-steel",
+                    "-p",
+                    "rig-inspect",
                     "--all-targets",
                     "--",
                     "-D",
@@ -137,32 +139,33 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                cargo(&[
-                    "clippy",
-                    "--locked",
-                    "-p",
-                    "rig-ecs",
-                    "--all-features",
-                    "--all-targets",
-                    "--",
-                    "-D",
-                    "warnings",
-                ]),
             ],
         ),
         check(
             "default-check",
             // A dependency's #[cfg(test)] bodies are not compiled by the
             // facade's test targets after moving helpers into this crate.
-            vec![cargo(&[
-                "check",
-                "--locked",
-                "-p",
-                "rig",
-                "-p",
-                "rig-test-support",
-                "--tests",
-            ])],
+            // The second step adds the targets that require `agent`.
+            vec![
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "-p",
+                    "rig-test-support",
+                    "--tests",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "--tests",
+                    "--features",
+                    "agent",
+                ]),
+            ],
         ),
         check(
             "default-tests",
@@ -178,8 +181,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // rig-harness, rig-ecs, rig-tools and rig-steel are not default
-                // members, so the run above never reaches their tests.
+                // rig-harness, rig-ecs, rig-tools, rig-steel and rig-inspect
+                // are not default members, so the run above never reaches
+                // their tests.
                 cargo(&[
                     "nextest",
                     "run",
@@ -192,6 +196,8 @@ pub(super) fn all() -> Vec<Check> {
                     "rig-tools",
                     "-p",
                     "rig-steel",
+                    "-p",
+                    "rig-inspect",
                 ]),
             ],
         ),
@@ -478,6 +484,19 @@ pub(super) fn all() -> Vec<Check> {
                 "wasm32-unknown-unknown",
             ]));
         }
+        // The facade's agent runtime is opt-in; check it on the web too.
+        if package == "rig" {
+            steps.push(cargo(&[
+                "check",
+                "--locked",
+                "--package",
+                package,
+                "--features",
+                "agent",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]));
+        }
         if ["rig-core", "rig-http"].contains(&package) {
             steps.push(cargo(&[
                 "check",
@@ -491,30 +510,28 @@ pub(super) fn all() -> Vec<Check> {
         }
         checks.push(check(&format!("wasm-{package}"), steps));
     }
-    // rig-ecs on the web: the runtime without its native features
-    // (`fs-journal`, `runner`), and with subagents.
+    // The kernel alone (rig-ecs has no features): it builds natively and
+    // for the web, and a headless app of only the kernel and Bevy's task
+    // pools runs a turn with a tool call on a scripted model.
     checks.push(check(
-        "wasm-rig-ecs",
+        "kernel-only",
         vec![
+            cargo(&["check", "--locked", "--package", "rig-ecs"]),
             cargo(&[
                 "check",
                 "--locked",
                 "--package",
                 "rig-ecs",
-                "--no-default-features",
                 "--target",
                 "wasm32-unknown-unknown",
             ]),
             cargo(&[
-                "check",
+                "test",
                 "--locked",
                 "--package",
                 "rig-ecs",
-                "--no-default-features",
-                "--features",
-                "subagents",
-                "--target",
-                "wasm32-unknown-unknown",
+                "--test",
+                "kernel_only",
             ]),
         ],
     ));

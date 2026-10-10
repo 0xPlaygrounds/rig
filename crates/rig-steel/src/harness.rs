@@ -7,22 +7,20 @@
 //! ([`ToolStarter`]), like the model's own.
 
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, ToolFunction, ToolName, ToolResult};
+use rig_core::message::{ToolCall, ToolFunction, ToolName};
+use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
-    Agent, AgentId, EffectParent, Effort, ModelChoice, SpawnedBy, SystemPrompt, ToolAccess,
-    TurnEnded, TurnOutcome,
+    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
 };
 use rig_ecs::calls::Wake;
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
-use rig_ecs::models::{self, ModelConnector};
+use rig_ecs::model::{Effort, ModelChoice, Models};
 use rig_ecs::tools::ToolOutput;
 use rig_ecs::turn::{PollCalls, ToolStarter, tool_name};
 
@@ -44,34 +42,12 @@ impl Plugin for HarnessPlugin {
 /// A job the world runs for a [`Harness`] call.
 type Job = Box<dyn FnOnce(&mut World) + Send>;
 
-/// Where a call's answer goes.
-type Answer<T> = oneshot::Sender<Result<T, HarnessError>>;
+/// Where a call's answer goes: its value, or why it failed.
+type Answer<T> = oneshot::Sender<Result<T, String>>;
 
-/// Why a [`Harness`] call failed.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum HarnessError {
-    /// The app stopped, or dropped the call, before it answered.
-    Closed,
-    /// No agent has this id.
-    NoAgent(String),
-    /// No request with this id was sent through a harness.
-    UnknownRequest(String),
-    /// The call does not fit, for the reason given.
-    Invalid(String),
-}
-
-impl fmt::Display for HarnessError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Closed => f.write_str("the app stopped before it answered"),
-            Self::NoAgent(id) => write!(f, "no agent has the id `{id}`"),
-            Self::UnknownRequest(id) => write!(f, "no request `{id}` was sent"),
-            Self::Invalid(why) => f.write_str(why),
-        }
-    }
-}
-
-impl Error for HarnessError {}
+/// Why a call failed when the app stopped, or dropped the call, before it
+/// answered.
+const CLOSED: &str = "the app stopped before it answered";
 
 /// What [`Harness::spawn_agent`] starts. Each setting left out is taken
 /// from the parent, or is the default without one; the effort is the
@@ -86,16 +62,6 @@ pub struct AgentSpec {
     pub system_prompt: Option<String>,
     /// The tools it may call, by name.
     pub tools: Option<Vec<String>>,
-}
-
-impl AgentSpec {
-    /// An agent named `name`, with every setting from its parent.
-    pub fn named(name: impl Into<String>) -> Self {
-        Self {
-            name: name.into(),
-            ..Self::default()
-        }
-    }
 }
 
 /// A handle that drives the agents from async code. Clone it out of the
@@ -125,7 +91,7 @@ impl Harness {
         &self,
         spec: AgentSpec,
         parent: Option<AgentId>,
-    ) -> Result<AgentId, HarnessError> {
+    ) -> Result<AgentId, String> {
         let effect = self.parent;
         self.ask(move |world, answer: Answer<AgentId>| {
             answer.send(spawn_agent(world, spec, parent, effect)).ok();
@@ -143,7 +109,7 @@ impl Harness {
         to: AgentId,
         text: String,
         origin: Origin,
-    ) -> Result<RequestId, HarnessError> {
+    ) -> Result<RequestId, String> {
         self.ask(move |world, answer: Answer<RequestId>| {
             answer.send(send(world, &to, text, origin)).ok();
         })
@@ -153,9 +119,8 @@ impl Harness {
     /// How the turn that answered `request` ended: the first turn of its
     /// agent to end once the request was sent, which reads it before it
     /// ends. Resolves at once when that turn already ended. The outcome is
-    /// kept for one `reply`; another for the same request is
-    /// [`HarnessError::UnknownRequest`].
-    pub async fn reply(&self, request: RequestId) -> Result<TurnOutcome, HarnessError> {
+    /// kept for one `reply`; another for the same request fails.
+    pub async fn reply(&self, request: RequestId) -> Result<TurnOutcome, String> {
         self.ask(move |world, answer: Answer<TurnOutcome>| {
             await_reply(world, request, answer);
         })
@@ -171,7 +136,7 @@ impl Harness {
         agent: AgentId,
         name: &str,
         args: serde_json::Value,
-    ) -> Result<ToolResult, HarnessError> {
+    ) -> Result<ToolResult, String> {
         let effect = self.parent;
         let name = name.to_owned();
         self.ask(move |world, answer: Answer<ToolResult>| {
@@ -185,7 +150,7 @@ impl Harness {
     async fn ask<T: Send + 'static>(
         &self,
         job: impl FnOnce(&mut World, Answer<T>) + Send + 'static,
-    ) -> Result<T, HarnessError> {
+    ) -> Result<T, String> {
         let (answer, answered) = oneshot::channel();
         let sent = self
             .jobs
@@ -193,9 +158,9 @@ impl Harness {
             .is_ok();
         self.wake.wake();
         if !sent {
-            return Err(HarnessError::Closed);
+            return Err(CLOSED.to_owned());
         }
-        answered.await.unwrap_or(Err(HarnessError::Closed))
+        answered.await.unwrap_or_else(|_| Err(CLOSED.to_owned()))
     }
 }
 
@@ -236,13 +201,13 @@ fn run_jobs(world: &mut World) {
 }
 
 /// The agent with the id `id`.
-fn find(world: &mut World, id: &AgentId) -> Result<Entity, HarnessError> {
+fn find(world: &mut World, id: &AgentId) -> Result<Entity, String> {
     world
         .query_filtered::<(Entity, &AgentId), With<Agent>>()
         .iter(world)
         .find(|(_, of)| *of == id)
         .map(|(agent, _)| agent)
-        .ok_or_else(|| HarnessError::NoAgent(id.0.clone()))
+        .ok_or_else(|| format!("no agent has the id `{}`", id.0))
 }
 
 fn spawn_agent(
@@ -250,7 +215,7 @@ fn spawn_agent(
     spec: AgentSpec,
     parent: Option<AgentId>,
     effect: Option<EffectId>,
-) -> Result<AgentId, HarnessError> {
+) -> Result<AgentId, String> {
     let parent = parent.map(|parent| find(world, &parent)).transpose()?;
     let inherited = parent.map(|parent| {
         (
@@ -261,14 +226,13 @@ fn spawn_agent(
         )
     });
     let (parent_model, parent_effort, parent_prompt, parent_access) = inherited.unwrap_or_default();
-    let connector = world.get_resource_or_init::<ModelConnector>().clone();
-    let (model, effort) = models::child_model(
-        &connector,
-        parent_model.as_ref(),
-        parent_effort,
+    let models = world.get_resource_or_init::<Models>();
+    let (model, effort) = ModelChoice::inherit(
+        &models.0,
+        (parent_model.as_ref(), parent_effort),
         spec.model.as_deref(),
-    )
-    .map_err(HarnessError::Invalid)?;
+        None,
+    )?;
     let prompt = spec
         .system_prompt
         .map(SystemPrompt)
@@ -318,10 +282,10 @@ fn send(
     to: &AgentId,
     text: String,
     origin: Origin,
-) -> Result<RequestId, HarnessError> {
+) -> Result<RequestId, String> {
     let agent = find(world, to)?;
     if text.trim().is_empty() {
-        return Err(HarnessError::Invalid("the message is empty".to_owned()));
+        return Err("the message is empty".to_owned());
     }
     let request = origin
         .request
@@ -353,29 +317,23 @@ fn send(
 
 fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome>) {
     let mut replies = world.get_resource_or_init::<Replies>();
-    match replies.0.get_mut(&request) {
-        None => {
-            answer
-                .send(Err(HarnessError::UnknownRequest(request.0)))
-                .ok();
-        }
-        Some(Reply {
-            state: ReplyState::Ended(_),
-            ..
-        }) => {
-            // Read once: the outcome is not kept after its reply.
-            if let Some(Reply {
-                state: ReplyState::Ended(outcome),
-                ..
-            }) = replies.0.remove(&request)
-            {
-                answer.send(Ok(outcome)).ok();
-            }
-        }
-        Some(Reply {
-            state: ReplyState::Waiting(waiting),
-            ..
-        }) => waiting.push(answer),
+    let Some(reply) = replies.0.get_mut(&request) else {
+        answer
+            .send(Err(format!("no request `{}` was sent", request.0)))
+            .ok();
+        return;
+    };
+    if let ReplyState::Waiting(waiting) = &mut reply.state {
+        waiting.push(answer);
+        return;
+    }
+    // Read once: the outcome is not kept after its reply.
+    if let Some(Reply {
+        state: ReplyState::Ended(outcome),
+        ..
+    }) = replies.0.remove(&request)
+    {
+        answer.send(Ok(outcome)).ok();
     }
 }
 
@@ -383,9 +341,6 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
 /// turn's outcome: a turn reads every message queued for it before it
 /// ends, so it answers them all.
 fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
-    if end.entity != end.original_event_target() {
-        return;
-    }
     for reply in replies.0.values_mut() {
         if reply.agent != end.entity {
             continue;
@@ -399,8 +354,8 @@ fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
     }
 }
 
-/// Drops the replies of a despawned agent: whoever waits for one gets
-/// [`HarnessError::Closed`].
+/// Drops the replies of a despawned agent: whoever waits for one is told
+/// the app stopped before it answered.
 fn drop_replies(gone: On<Remove<Agent>>, mut replies: ResMut<Replies>) {
     replies.0.retain(|_, reply| reply.agent != gone.entity);
 }
@@ -417,19 +372,11 @@ fn call_tool(
     effect: Option<EffectId>,
     answer: Answer<ToolResult>,
 ) {
-    let agent = match find(world, agent) {
-        Ok(agent) => agent,
+    let name = ToolName::new(name).map_err(|error| error.to_string());
+    let (agent, name) = match find(world, agent).and_then(|agent| Ok((agent, name?))) {
+        Ok(found) => found,
         Err(error) => {
             answer.send(Err(error)).ok();
-            return;
-        }
-    };
-    let name = match ToolName::new(name) {
-        Ok(name) => name,
-        Err(error) => {
-            answer
-                .send(Err(HarnessError::Invalid(error.to_string())))
-                .ok();
             return;
         }
     };

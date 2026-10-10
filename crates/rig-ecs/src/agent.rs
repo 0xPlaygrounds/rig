@@ -1,37 +1,30 @@
 //! The agent entity: its components, the calls it owns, and the requests a
 //! view sends it.
 
-use std::sync::Arc;
-
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_core::catalog::ModelSpec;
-use rig_core::completion::{AssistantContent, Message, Reasoning};
+use rig_core::completion::{Message, Usage};
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, UserContent};
 use serde::{Deserialize, Serialize};
 
-use super::activity::Activity;
-use super::compaction::Compacted;
-use super::effects::Handler;
 use super::inbox::{Inbox, Origin};
-use super::recovery::Recovery;
+use super::journal::ReflectSaved;
+use super::model::Effort;
 use super::tools::Footprint;
-use super::usage::{Spending, TurnSpending};
+use super::turn::Recovery;
 
 /// Marks an agent. Spawning it adds every per-agent component with its
-/// default, including a fresh [`AgentId`]. An agent has no [`ModelChoice`]
-/// until one is picked.
+/// default, including a fresh [`AgentId`]. An agent has no
+/// [`ModelChoice`](super::model::ModelChoice) until one is picked.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component)]
 #[require(
-    Activity,
     AgentId,
-    Compacted,
     Conversation,
     Effort,
     Inbox,
-    Spending,
+    LastUsage,
     SystemPrompt,
     ToolAccess
 )]
@@ -62,7 +55,7 @@ impl AgentId {
 /// The agent that spawned this one, such as the agent whose tool call
 /// started it. Despawning that agent despawns this one. The core gives it
 /// no other meaning: a restore links the agents again by their logs'
-/// headers, views list agents by it, and [`TurnEnded`] travels up it.
+/// headers, and views list agents by it.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = Spawned)]
@@ -83,9 +76,9 @@ pub struct EffectParent(pub EffectId);
 
 /// The conversation: every message sent to and received from the model,
 /// and where each delivered text came from when it is not the user's own.
-/// Requests leave out the messages its agent's [`Compacted`] replaced with
-/// a summary. Messages are added only through the
-/// [`SessionLog`](super::journal::SessionLog), which logs each one.
+/// Requests leave out the messages its agent's [`Condensed`] replaced with
+/// a summary. It changes only through a
+/// [`Commit`](super::journal::Commit), which logs each change.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub struct Conversation {
@@ -137,8 +130,10 @@ impl Conversation {
     }
 
     /// The messages, to change in place, such as clearing old tool outputs.
-    /// Nothing can be added or taken out through it.
-    pub(crate) fn messages_mut(&mut self) -> &mut [Message] {
+    /// Nothing can be added or taken out through it, and nothing changed
+    /// through it is logged: a restored session has the messages as they
+    /// were added.
+    pub fn messages_mut(&mut self) -> &mut [Message] {
         &mut self.messages
     }
 
@@ -219,34 +214,59 @@ impl Conversation {
     }
 }
 
-/// The chosen catalog model, as `vendor/model`. It never changes in place:
-/// choosing another model inserts a new one, and each insert rebuilds the
-/// agent's [`Connection`]. Saved with the session.
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+/// What requests send in place of the conversation's older messages, such
+/// as a compaction's summary: `summary`, as one user text, in place of the
+/// first `upto` messages, which stay in the [`Conversation`] for views. It
+/// never changes in place: inserting another logs it, and a restored
+/// session starts from the first message it kept. An agent without one
+/// sends every message.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[component(immutable)]
-#[reflect(Component, Clone)]
-pub struct ModelChoice(pub String);
-
-/// The connected model of an agent with a [`ModelChoice`]: its catalog
-/// entry and the effect handler every model call is dispatched to. Built
-/// from the environment once per choice, and not saved: restoring the
-/// choice rebuilds it.
-#[derive(Component, Clone)]
-pub struct Connection {
-    /// The model's catalog entry.
-    pub spec: Arc<ModelSpec>,
-    /// The model as an effect handler.
-    pub handler: Handler,
+#[reflect(Component, Default, Clone, Debug)]
+pub struct Condensed {
+    /// How many of the conversation's first messages `summary` replaces.
+    pub upto: usize,
+    /// The text sent in their place.
+    pub summary: String,
 }
 
-/// The reasoning setting sent with each request, or `None` for the
-/// provider's default. It never changes in place. Saved with the session.
-#[derive(
-    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
-)]
-#[component(immutable)]
-#[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
-pub struct Effort(pub Option<Reasoning>);
+impl Condensed {
+    /// The messages a request sends: the summary, then the messages after
+    /// the first `upto`. The summary goes into the first of those when that
+    /// is the user's, so user and assistant messages still alternate.
+    pub fn request(&self, messages: &[Message]) -> Vec<Message> {
+        let mut live = messages.get(self.upto..).unwrap_or_default().to_vec();
+        let summary = UserContent::text(self.summary.clone());
+        match live.first_mut() {
+            Some(Message::User { content }) => content.insert(0, summary),
+            _ => live.insert(
+                0,
+                Message::User {
+                    content: vec![summary],
+                },
+            ),
+        }
+        live
+    }
+}
+
+/// The usage of the agent's last model reply that reported its tokens,
+/// `None` before one did. A plugin that shrinks what requests send, as
+/// compaction does,
+/// replaces it with its estimate of the tokens the next request sends, in
+/// `total_tokens`. Saved with the session.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LastUsage(pub Option<Usage>);
+
+impl LastUsage {
+    /// The tokens the last reply read and wrote, which the next request
+    /// sends again, when it reported them.
+    pub fn context(&self) -> Option<u64> {
+        self.0.as_ref()?.context_tokens()
+    }
+}
 
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the rules of the tools the agent is offered
@@ -255,7 +275,7 @@ pub struct Effort(pub Option<Reasoning>);
 /// session, as `null` when it is the default, so a restored agent gets the
 /// default of the build that restores it.
 #[derive(Component, Reflect, Clone, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(from = "Option<String>", into = "Option<String>")]
 pub struct SystemPrompt(pub String);
 
@@ -298,7 +318,7 @@ impl Default for SystemPrompt {
 
 /// Which registered tools the agent may call. Saved with the session.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub enum ToolAccess {
     /// Every registered tool.
     #[default]
@@ -320,12 +340,11 @@ impl ToolAccess {
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
 /// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// sums its model calls' usage in a [`TurnSpending`] and counts its
-/// retries in a [`Recovery`].
+/// counts its retries in a [`Recovery`].
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(TurnSpending, Recovery)]
+#[require(Recovery)]
 pub struct TurnOf(pub Entity);
 
 /// On a turn about to be despawned: how it ended. A turn despawned without
@@ -401,53 +420,10 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Compact the agent's conversation now: its messages up to the small tail
-/// the [`CompactionPolicy`](crate::compaction::CompactionPolicy) keeps (by
-/// default the newest reply alone) are replaced in requests by a summary
-/// the model writes, focused on `focus` when it is not empty. Refused while
-/// a turn runs.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Compact {
-    /// The agent.
-    pub entity: Entity,
-    /// What the summary should keep above all; may be empty.
-    pub focus: String,
-}
-
 /// Stop the agent's running turn.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Interrupt {
-    /// The agent.
-    pub entity: Entity,
-}
-
-/// Choose the agent's model by catalog reference (`vendor/model`).
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SetModel {
-    /// The agent.
-    pub entity: Entity,
-    /// The catalog reference.
-    pub model: String,
-}
-
-/// Choose the agent's reasoning setting; `None` is the provider default.
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct SetEffort {
-    /// The agent.
-    pub entity: Entity,
-    /// The setting.
-    pub effort: Effort,
-}
-
-/// The user chose the agent's model or reasoning setting with [`SetModel`]
-/// or [`SetEffort`], and it took: the agent's [`ModelChoice`] and [`Effort`]
-/// hold the choice. Restoring a session never sends it.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct SettingsChosen {
     /// The agent.
     pub entity: Entity,
 }
@@ -462,7 +438,7 @@ pub enum NoticeLevel {
     Error,
 }
 
-/// A line for the user, shown by views and logged.
+/// A line for the user, shown by views.
 #[derive(Message, Clone, Debug)]
 pub struct Notice {
     /// The agent it is about, or `None` when it is about the whole app.
@@ -474,23 +450,19 @@ pub struct Notice {
 }
 
 impl Notice {
+    fn new(agent: Option<Entity>, text: String, level: NoticeLevel) -> Self {
+        Self { agent, text, level }
+    }
+
     /// Information about `agent`, or about the whole app with `None`.
     pub fn info(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
-        Self {
-            agent: agent.into(),
-            text: text.into(),
-            level: NoticeLevel::Info,
-        }
+        Self::new(agent.into(), text.into(), NoticeLevel::Info)
     }
 
     /// A failure or refusal concerning `agent`, or the whole app with
     /// `None`.
     pub fn error(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
-        Self {
-            agent: agent.into(),
-            text: text.into(),
-            level: NoticeLevel::Error,
-        }
+        Self::new(agent.into(), text.into(), NoticeLevel::Error)
     }
 }
 
@@ -525,36 +497,12 @@ pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
         .map(|(entity, ..)| entity)
 }
 
-/// The text of a final answer: the text parts of the model's message,
-/// joined by blank lines and trimmed. `None` when `message` is not the
-/// model's, still asks for tool calls, or has no text.
-pub fn answer_text(message: &Message) -> Option<String> {
-    let Message::Assistant(reply) = message else {
-        return None;
-    };
-    let mut parts = Vec::new();
-    for item in reply.content.iter() {
-        match item {
-            AssistantContent::Text(text) => parts.push(text.text.as_str()),
-            AssistantContent::ToolCall(_) => return None,
-            _ => {}
-        }
-    }
-    let text = parts.join("\n\n");
-    let text = text.trim();
-    (!text.is_empty()).then(|| text.to_owned())
-}
-
 /// An agent's turn ended, however its turn entity went away. Triggered on
-/// the agent once it is idle, then on each agent it was
-/// [`SpawnedBy`] up the chain: an observer's `entity` is the agent seeing
-/// it and `original_event_target()` the agent whose turn ended.
-/// Not triggered for a turn the app's exit stops: the restart carries
-/// that one on.
+/// the agent once it is idle. Not triggered for a turn the app's exit
+/// stops: the restart carries that one on.
 #[derive(EntityEvent, Clone, Debug)]
-#[entity_event(propagate = &'static SpawnedBy, auto_propagate)]
 pub struct TurnEnded {
-    /// The agent seeing the event.
+    /// The agent.
     pub entity: Entity,
     /// How the turn ended.
     pub outcome: TurnOutcome,
