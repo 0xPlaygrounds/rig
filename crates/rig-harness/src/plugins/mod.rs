@@ -17,5 +17,7 @@ pub mod project_context;
 pub mod reload_tool;
 pub mod sessions;
 pub mod subagents;
+#[cfg(test)]
+pub(crate) mod testing;
 pub mod tools;
 pub mod usage;

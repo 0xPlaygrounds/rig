@@ -1,25 +1,19 @@
 use std::sync::Arc;
-use std::sync::mpsc::{Receiver, channel};
-use std::time::{Duration, Instant};
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::Catalog;
+use rig_core::completion::Message;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
-use rig_core::operation::Completion;
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::commands::RunCommand;
-use rig_ecs::effects::Handler;
-use rig_ecs::journal::{SessionStore, commit_message};
+use rig_ecs::journal::commit_message;
 
 use super::*;
+use crate::plugins::testing::{app_on, connect, reply, run_until};
 use crate::plugins::usage::{Spending, UsagePlugin};
-
-/// How long a test waits for a turn to end.
-const DEADLINE: Duration = Duration::from_secs(10);
 
 /// What a second `PrepareRequest` observer adds to every request.
 const INJECTED: &str = "Context from another plugin.";
@@ -31,14 +25,8 @@ struct Ended(Vec<TurnOutcome>);
 /// The kernel, the compaction and usage plugins on `store`, after the first frame
 /// restored the session, with its loop's wakes.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
-    let (sender, wakes) = channel();
-    let mut app = App::new();
+    let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins(TaskPoolPlugin::default())
-        .insert_resource(Wake::new(move || {
-            sender.send(()).ok();
-        }))
-        .insert_resource(SessionStore::new(store.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
@@ -58,24 +46,14 @@ fn agent(
     window: u32,
     messages: Vec<Message>,
 ) -> Option<Entity> {
-    let spec = Catalog::builtin()
-        .resolve("deepseek/deepseek-flash")
-        .ok()?
-        .spec;
-    let spec = Arc::new(spec.clone().with_context_window(window));
-    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(
-        spec.reference(),
-        model.clone(),
-    ));
+    let mut connection = connect(model)?;
+    connection.spec = Arc::new(connection.spec.as_ref().clone().with_context_window(window));
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
         .iter(world)
         .next()?;
-    world.entity_mut(agent).insert(Connection {
-        spec,
-        handler: Handler(handler),
-    });
+    world.entity_mut(agent).insert(connection);
     for message in messages {
         commit_message(world, agent, message);
     }
@@ -95,22 +73,13 @@ fn read(id: &str, path: &str, output: &str) -> Vec<Message> {
     ]
 }
 
-/// A reply of `text`, then the end of the stream.
-fn reply(text: &str) -> Vec<MockStreamEvent> {
-    vec![
-        MockStreamEvent::text(text),
-        MockStreamEvent::final_response_with_default_usage(),
-    ]
-}
-
 /// A refusal of the request as longer than the model's window.
 fn too_long() -> Vec<MockStreamEvent> {
     let refusal = ProviderResponseError::without_status("prompt is too long: 210000 tokens");
     vec![MockStreamEvent::Error(MockError::ProviderResponse(refusal))]
 }
 
-/// Asks `agent` a question, then runs frames, sleeping until a wake
-/// between them, until a turn ended or the deadline passed.
+/// Asks `agent` a question, then runs frames until a turn ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity) {
     app.world_mut().trigger(Deliver::user(
         agent,
@@ -118,11 +87,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity) {
         DeliveryMode::Steer,
         Vec::new(),
     ));
-    let started = Instant::now();
-    while started.elapsed() < DEADLINE && app.world().resource::<Ended>().0.is_empty() {
-        app.update();
-        wakes.recv_timeout(Duration::from_millis(100)).ok();
-    }
+    run_until(app, wakes, |world| !world.resource::<Ended>().0.is_empty());
 }
 
 /// The answer the one turn of `app` ended with.

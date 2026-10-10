@@ -1,24 +1,17 @@
-use std::sync::mpsc::{Receiver, channel};
-use std::time::{Duration, Instant};
+use std::sync::mpsc::Receiver;
 
 use bevy_ecs::system::RunSystemOnce;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
-use rig_core::operation::Completion;
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::effects::Handler;
-use rig_ecs::journal::{SessionStore, commit_message};
+use rig_ecs::journal::commit_message;
 use rig_ecs::turn::ToolStarter;
 use serde_json::json;
 
 use super::*;
-
-/// How long a test waits for the agents.
-const DEADLINE: Duration = Duration::from_secs(10);
+use crate::plugins::testing::{app_on, calls, connect, reply, run_until};
 
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode and its text.
@@ -38,14 +31,8 @@ struct Session {
 impl Session {
     /// A session on `store`; a new parent answered by `model`, when given.
     fn new(store: &MemoryStore, model: Option<&MockCompletionModel>) -> Self {
-        let (sender, wakes) = channel();
-        let mut app = App::new();
-        app.add_plugins(TaskPoolPlugin::default())
-            .insert_resource(Wake::new(move || {
-                sender.send(()).ok();
-            }))
-            .insert_resource(SessionStore::new(store.clone()))
-            .insert_resource(Models(Connector::new(Catalog::default())))
+        let (mut app, wakes) = app_on(store);
+        app.insert_resource(Models(Connector::new(Catalog::default())))
             .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
             .init_resource::<Delivered>()
             .add_observer(|sent: On<Deliver>, mut delivered: ResMut<Delivered>| {
@@ -111,16 +98,6 @@ impl Session {
         }
     }
 
-    /// Runs frames, sleeping until a wake between them, until `done` or
-    /// the deadline passed.
-    fn run_until(&mut self, done: impl Fn(&World) -> bool) {
-        let started = Instant::now();
-        while started.elapsed() < DEADLINE && !done(self.app.world()) {
-            self.app.update();
-            self.wakes.recv_timeout(Duration::from_millis(100)).ok();
-        }
-    }
-
     /// The messages delivered to `to`, as (request, mode, text).
     fn to(&self, to: Entity) -> Vec<(&str, DeliveryMode, &str)> {
         let delivered = self.app.world().resource::<Delivered>().0.iter();
@@ -131,31 +108,9 @@ impl Session {
     }
 }
 
-/// `model` as the catalog's DeepSeek model.
-fn connect(model: &MockCompletionModel) -> Option<Connection> {
-    let spec = Catalog::builtin()
-        .resolve("deepseek/deepseek-flash")
-        .ok()?
-        .shared();
-    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
-    Some(Connection {
-        spec,
-        handler: Handler(ErasedHandler::new(handler)),
-    })
-}
-
-/// A model reply of `text`, or that calls `(id, tool, args)`.
-fn reply(text: &str, call: Option<(&str, &str, serde_json::Value)>) -> Vec<MockStreamEvent> {
-    let said = match call {
-        Some((id, tool, args)) => MockStreamEvent::tool_call(id, tool, args),
-        None => MockStreamEvent::text(text),
-    };
-    vec![said, MockStreamEvent::final_response_with_default_usage()]
-}
-
 #[test]
 fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch() {
-    let parent = MockCompletionModel::from_stream_turns([reply("Settled.", None)]);
+    let parent = MockCompletionModel::from_stream_turns([reply("Settled.")]);
     let mut session = Session::new(&MemoryStore::default(), Some(&parent));
     let section = PromptSection::new(PromptSection::ORDER_PROJECT, "project", "One-word names.");
     session.app.world_mut().spawn(section);
@@ -164,18 +119,18 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     // and answers once that came; the critic waits for the proposal.
     let ask = json!({ "agent": session.short(b), "text": "How about Lumen?" });
     let proposer = MockCompletionModel::from_stream_turns([
-        reply("", Some(("m1", MESSAGE, ask))),
-        reply("Waiting for the critic.", None),
-        reply("We agreed on Lumen.", None),
+        calls("m1", MESSAGE, ask),
+        reply("Waiting for the critic."),
+        reply("We agreed on Lumen."),
     ]);
     let wait = json!({ "agent": session.short(a) });
-    let critic = MockCompletionModel::from_stream_turns([
-        reply("", Some(("w1", WAIT, wait))),
-        reply("Lumen is good.", None),
-    ]);
+    let critic =
+        MockCompletionModel::from_stream_turns([calls("w1", WAIT, wait), reply("Lumen is good.")]);
     session.answer_by(a, &proposer);
     session.answer_by(b, &critic);
-    session.run_until(|_| parent.request_count() > 0);
+    run_until(&mut session.app, &session.wakes, |_| {
+        parent.request_count() > 0
+    });
 
     // Each request got one report; the critic's came first, as a note read
     // with the proposer's, which carried the parent on.
