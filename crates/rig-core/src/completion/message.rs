@@ -470,6 +470,15 @@ impl ToolCall {
             ..self.result(content)
         }
     }
+
+    /// The result answering this call with what its tool did: the output
+    /// the model reads, an error result for anything but a success.
+    pub fn answer(&self, result: &crate::tool::ToolResult) -> ToolResult {
+        ToolResult {
+            is_error: !result.is_success(),
+            ..self.result(result.output().clone().into_content())
+        }
+    }
 }
 
 /// A tool function to call: its name and its arguments, always a JSON
@@ -556,6 +565,14 @@ impl ToolFunction {
     /// The arguments as a JSON value.
     pub fn arguments_value(&self) -> serde_json::Value {
         serde_json::Value::Object(self.arguments.clone())
+    }
+
+    /// The arguments as JSON text: what the model sent when it was not an
+    /// object, else the object.
+    pub fn raw_arguments(&self) -> String {
+        self.invalid_arguments
+            .clone()
+            .unwrap_or_else(|| self.arguments_value().to_string())
     }
 }
 
