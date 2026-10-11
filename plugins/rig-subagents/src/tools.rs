@@ -68,10 +68,11 @@ pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave y
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
-    ones started before or with you, and a note names each one started later. `message` sends \
-    one of them a request by its id, or answers one it sent you; your last message answers the \
-    requests still open. To wait for a peer's message, call `wait`: never end your turn to wait, \
-    since your last message is your answer. Ask only for what you need.";
+    ones started before or with you. Peers may also start later, in a later reply of that \
+    agent: a note names each one when it starts. `message` sends one of them a request by its \
+    id, or answers one it sent you; your last message answers the requests still open. To wait \
+    for a peer's message, call `wait`, which returns once that peer messages you: never end \
+    your turn to wait, since your last message is your answer. Ask only for what you need.";
 
 pub(super) fn add(app: &mut App) {
     let independent = |rules| ToolOptions {
@@ -286,10 +287,13 @@ impl Agents<'_, '_> {
             return Ok(reach.swap_remove(at));
         }
         let named: Vec<String> = reach.iter().map(Reachable::named).collect();
-        let named = if named.is_empty() {
-            "none".to_owned()
-        } else {
-            named.join(", ")
+        let named = match (named.is_empty(), me.peers) {
+            (false, _) => named.join(", "),
+            (true, false) => "none".to_owned(),
+            (true, true) => "none yet. Peers may start later, in a later reply of the agent \
+                             that started you: a note names each one when it starts, and `wait` \
+                             returns once a peer messages you"
+                .to_owned(),
         };
         Err(format!(
             "`{wanted}` is not an agent you can reach. You can reach: {named}."
