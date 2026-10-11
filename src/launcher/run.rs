@@ -20,7 +20,7 @@
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus};
+use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
 use rig::harness_protocol::{
@@ -48,6 +48,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
     let here = std::env::current_dir().ok();
     let headless = invocation.is_headless() || !std::io::stdin().is_terminal();
     let (run, claimed, notice, build_failure) = {
+        let _typing = (!headless).then(TypeAhead::hold).flatten();
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
@@ -320,6 +321,39 @@ fn restore_terminal() {
     eprint!("\x1b[?1049l\x1b[?25h");
     if std::io::stdin().is_terminal() {
         Command::new("stty").arg("sane").status().ok();
+    }
+}
+
+/// The terminal's line mode, put aside while the launcher waits for and
+/// runs a build before an interactive start, and given back when dropped,
+/// before the agent starts. Meanwhile the terminal neither echoes what is
+/// typed over the build's output nor turns a typed Enter (CR) into a line
+/// feed, which the agent, in raw mode, would read as Ctrl+J.
+struct TypeAhead {
+    /// The mode `stty -g` printed.
+    saved: String,
+}
+
+impl TypeAhead {
+    /// Puts the mode aside, or `None` when `stty` cannot.
+    fn hold() -> Option<Self> {
+        let output = Command::new("stty")
+            .arg("-g")
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|output| output.status.success())?;
+        let saved = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+        let set = Command::new("stty").args(["-icrnl", "-echo"]).status();
+        set.is_ok_and(|status| status.success())
+            .then_some(Self { saved })
+    }
+}
+
+impl Drop for TypeAhead {
+    fn drop(&mut self) {
+        Command::new("stty").arg(&self.saved).status().ok();
     }
 }
 
