@@ -75,7 +75,7 @@ pub mod prelude {
         ToolRequest, WorldToolsExt,
     };
     pub use crate::turn::{
-        Backoff, BuildFrom, DeltaKind, FirstChunk, ModelRequest, Recovery, RetryVerdict,
+        Adapter, Backoff, BuildFrom, DeltaKind, FirstChunk, ModelRequest, Recovery, RetryVerdict,
         StreamDelta, TurnCall,
     };
     pub use rig_core::error::retry::Verdict;

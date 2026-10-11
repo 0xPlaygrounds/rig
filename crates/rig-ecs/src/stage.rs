@@ -126,7 +126,8 @@ pub enum Stage {
     /// calls of a failed or stopped turn: it accepts messages
     /// ([`Incoming`]), runs a user's slash command, and starts an idle
     /// agent's turn or carries on one that would end answered; it runs
-    /// handlers, fits a model call to its model and sends it, refuses a
+    /// handlers, applies a model call's adapters to the model it goes to,
+    /// fits the call to the result and sends it, refuses a
     /// tool call its agent cannot make, and opens an open tool's call. An
     /// effect it does not run stays open, [`Started`], until answered.
     Start,

@@ -69,8 +69,9 @@ pub struct AgentSections(Vec<Entity>);
 pub struct ToolRules(pub Vec<String>);
 
 /// The `<tool_rules>` block of tools with `rules` (in the order the tools
-/// are sent), saying a rule two tools share once; empty without rules.
-pub(crate) fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
+/// are sent), saying a rule two tools share once; empty without rules. The
+/// kernel writes it in a request's system prompt for the tools it offers.
+pub fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
     let mut lines: Vec<&str> = Vec::new();
     for rule in rules.into_iter().flat_map(|rules| rules.0.iter()) {
         let rule = rule.trim();
@@ -87,8 +88,11 @@ pub(crate) fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> 
 }
 
 /// The system prompt of an agent whose own prompt is `role`, with the
-/// [`tool_rules`] of the tools it is offered and the app's `sections`.
-pub(crate) fn system_prompt<'a>(
+/// [`tool_rules`] of the tools it is offered and the `sections` it gets,
+/// the app's and its own, as the kernel builds a request's: the role,
+/// then the rules, then each non-empty section between its tags, by
+/// `order`, then `tag`.
+pub fn system_prompt<'a>(
     role: &str,
     tool_rules: &str,
     sections: impl IntoIterator<Item = &'a PromptSection>,

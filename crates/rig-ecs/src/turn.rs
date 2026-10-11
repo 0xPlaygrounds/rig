@@ -19,7 +19,10 @@
 //! the turn settled, Commit ends the turn and marks it [`Settled`] for
 //! the readers of how it ended. [`Interrupt`] ends it at once.
 
+use std::borrow::Cow;
+use std::fmt;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::lifecycle::HookContext;
@@ -104,15 +107,16 @@ impl Backoff {
 }
 
 /// A model call: an effect entity whose request is `request`, sent to
-/// `connection`, else to the model of the agent it is [`ForAgent`]. Its
-/// [`Outcome`] is rig-core's `Outcome::Completion` (see
-/// [`Outcome::completion`]). Prepare may change the request and the
-/// connection; Start then fits the request to the model it goes to (an
-/// option the model cannot take is left out, as rig-core's `ModelSpec::fit`
-/// says, and the tools of a model that calls none) and sends it streamed.
-/// A [`TurnCall`] or [`BuildFrom`] has its request built by the kernel when
-/// it is admitted; a plugin's own call, such as a summary, brings its own
-/// with [`ModelRequest::new`].
+/// `connection`, else to the model of the agent it is [`ForAgent`], as its
+/// `adapters` change that model. Its [`Outcome`] is rig-core's
+/// `Outcome::Completion` (see [`Outcome::completion`]). Prepare may change
+/// the request, the connection and the adapters; Start then takes the
+/// model it goes to, applies the adapters to it in order, fits the request
+/// to the result (an option the model cannot take is left out, as
+/// rig-core's `ModelSpec::fit` says, and the tools of a model that calls
+/// none) and sends it streamed. A [`TurnCall`] or [`BuildFrom`] has its
+/// request built by the kernel when it is admitted; a plugin's own call,
+/// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
 #[require(Effect)]
@@ -122,6 +126,9 @@ pub struct ModelRequest {
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
+    /// What changes the model it goes to, whichever that is, applied in
+    /// order at Start, such as a wrap that sends tools as text.
+    pub adapters: Vec<Adapter>,
     /// The tool rules the kernel wrote in the system prompt when it built
     /// the request, swapped at Start for those of the tools it carries.
     rules: Option<String>,
@@ -133,6 +140,7 @@ impl ModelRequest {
         Self {
             request,
             connection: None,
+            adapters: Vec::new(),
             rules: None,
         }
     }
@@ -153,6 +161,43 @@ impl ModelRequest {
             Some(Message::System { content }) => Some(content),
             _ => None,
         }
+    }
+}
+
+/// A change to the model a call goes to, on its [`ModelRequest`]: Start
+/// applies it to the call's final [`Connection`], after every Prepare edit,
+/// so routing a call (its `connection`) and adapting it commute. It may
+/// wrap the handler, such as with a stream transform, and change the spec
+/// to say what the wrapped model takes, such as tools it reads as text;
+/// the request is fitted to the adapted spec.
+#[derive(Clone)]
+pub struct Adapter {
+    /// What it does, for readers, such as `text-tools`.
+    pub name: Cow<'static, str>,
+    apply: Arc<dyn Fn(Connection) -> Connection + Send + Sync>,
+}
+
+impl Adapter {
+    /// The adapter `name`, which changes a connection with `apply`.
+    pub fn new(
+        name: impl Into<Cow<'static, str>>,
+        apply: impl Fn(Connection) -> Connection + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            apply: Arc::new(apply),
+        }
+    }
+
+    /// `connection`, adapted.
+    pub fn apply(&self, connection: Connection) -> Connection {
+        (self.apply)(connection)
+    }
+}
+
+impl fmt::Debug for Adapter {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Adapter").field(&self.name).finish()
     }
 }
 
@@ -603,11 +648,12 @@ fn build(
     parts: &Parts,
     messages: Vec<Message>,
 ) -> ModelRequest {
-    let tools = spec.is_none_or(|spec| spec.tools);
+    // Offered by access alone: Start takes them away from a final model
+    // that calls none.
     let mut offered: Vec<(&ToolDef, &ToolRules)> = parts
         .tools
         .iter()
-        .filter(|(def, _)| tools && builder.access.allows(def.0.name.as_str()))
+        .filter(|(def, _)| builder.access.allows(def.0.name.as_str()))
         .collect();
     offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
     let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
@@ -635,6 +681,7 @@ fn build(
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
+        adapters: Vec::new(),
         rules: Some(rules),
     }
 }
@@ -657,14 +704,18 @@ pub(crate) struct ModelStarts<'w, 's> {
 
 impl ModelStarts<'_, '_> {
     /// How `model`, a call for `agent`, starts: on its connection, else the
-    /// agent's model, its request fitted to that model and, when the kernel
-    /// built it, with the rules of the tools it carries; refused without a
-    /// model.
+    /// agent's model, as its adapters change it, its request fitted to
+    /// that and, when the kernel built it, with the rules of the tools it
+    /// carries; refused without a model.
     pub(crate) fn start(&self, model: &mut ModelRequest, agent: Option<Entity>) -> ModelStart {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(connection) = model.connection.as_ref().or(own).cloned() else {
             return ModelStart::Refused(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
+        let connection = model
+            .adapters
+            .iter()
+            .fold(connection, |connection, adapter| adapter.apply(connection));
         let spec = &connection.spec;
         let request = &mut model.request;
         if !spec.tools {

@@ -504,10 +504,21 @@ in the `Prepare` stage, which sees each call once (`Added<Admitted>`);
 Start then fits it to the model it goes to (an option that model cannot
 take is left out, plugin edits stay) and makes the tool rules in the
 prompt follow the tools it carries. Routing a call to another model is a
-Prepare edit of its `connection`. A tool left out is not offered but still
-runs if called: a `Gate` system refuses a call (`Outcome::refused`), and
-`ToolAccess` on the agent is the hard limit. Changing the system prompt or
-the tools misses the provider's prompt cache.
+Prepare edit of its `connection`. Changing the model itself, whichever
+it is, such as wrapping its handler so tools go to it as text, is an
+`Adapter` pushed on the call's `adapters`: Start applies the adapters in
+order to the connection the call finally goes to, after every Prepare
+edit, then fits the request to the adapted spec, so a router and an
+adapter never undo each other, and a router never needs to come after
+one. The kernel offers an agent the tools its `ToolAccess` allows and
+leaves taking them away to the model the call goes to: a call routed from
+a model that calls no tools to one that does is sent its tools. A tool
+left out is not offered but still runs if called: a `Gate` system refuses
+a call (`Outcome::refused`), and `ToolAccess` on the agent is the hard
+limit. Changing the system prompt or the tools misses the provider's
+prompt cache. `rig_ecs::prompt::system_prompt` and `tool_rules` put a
+prompt together exactly as the kernel does, such as for a view of what an
+agent is told.
 
 A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
 `Overflow`, `Final`) in `Review`. A plugin that takes the failure over
@@ -526,6 +537,7 @@ alone, despawned with it.
 
 ```rust,no_run
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs;
 
 /// The model a turn falls back to when its own gave up.
 const FALLBACK: &str = "deepseek/deepseek-flash";
@@ -542,10 +554,31 @@ impl Plugin for ModelRequestsPlugin {
         app.add_systems(
             AgentPass,
             (
-                (add_the_time, plan_only).in_set(Stage::Prepare),
+                (add_the_time, plan_only, tools_as_text).in_set(Stage::Prepare),
                 fall_back.in_set(Stage::Review),
             ),
         );
+    }
+}
+
+/// Wraps a model's handler so it reads tools as text (the plugin's own).
+fn text_tools(handler: rig_ecs::effects::Handler) -> rig_ecs::effects::Handler {
+    handler
+}
+
+/// Every turn's call goes to its model with the tools as text, when that
+/// model calls none, whichever model a router picks.
+fn tools_as_text(mut calls: NewTurnCalls) {
+    for (mut call, _) in &mut calls {
+        call.adapters.push(Adapter::new("text-tools", |mut connection: Connection| {
+            if !connection.spec.tools {
+                let mut spec = (*connection.spec).clone();
+                spec.tools = true;
+                connection.spec = std::sync::Arc::new(spec);
+                connection.handler = text_tools(connection.handler);
+            }
+            connection
+        }));
     }
 }
 

@@ -1898,3 +1898,111 @@ fn a_streams_items_arrive_in_order_and_wake_the_loop() {
     let woken = woken.load(std::sync::atomic::Ordering::Relaxed);
     assert!(woken >= 3, "woken {woken} times");
 }
+
+/// `model` as the catalog's DeepSeek model, said to call tools or not.
+fn connection_with(model: &MockCompletionModel, tools: bool) -> Option<Connection> {
+    let mut connection = connection(model)?;
+    let mut spec = (*connection.spec).clone();
+    spec.tools = tools;
+    connection.spec = Arc::new(spec);
+    Some(connection)
+}
+
+/// The app's agent on a model that calls no tools, answering with
+/// `model`, offered `add` with a rule besides `look` and `touch`.
+fn plain_agent(app: &mut App, model: &MockCompletionModel) -> Entity {
+    let agent = agent_on(app, model);
+    let rules = ToolOptions {
+        rules: &["Add with add."],
+        ..ToolOptions::default()
+    };
+    app.add_tool_with(Sum, rules);
+    let plain = connection_with(model, false);
+    if let Some(plain) = plain {
+        app.world_mut().entity_mut(agent).insert(plain);
+    }
+    agent
+}
+
+/// The tools a request offers, by name, and whether its system prompt
+/// has tool rules.
+fn offered(request: Option<&rig_core::completion::CompletionRequest>) -> (Vec<String>, bool) {
+    let Some(request) = request else {
+        return (Vec::new(), false);
+    };
+    let tools = request.tools.iter().map(|tool| tool.name.to_string());
+    let rules = match request.chat_history.first() {
+        Some(Message::System { content }) => content.contains("<tool_rules>"),
+        _ => false,
+    };
+    (tools.collect(), rules)
+}
+
+#[test]
+fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("own")]);
+    let routed = MockCompletionModel::from_stream_turns([answer("routed")]);
+    let adapted = MockCompletionModel::from_stream_turns([answer("adapted")]);
+    // What the adapter was given: whether that model calls tools.
+    let given = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (seen, wrap) = (Arc::clone(&given), adapted.clone());
+    let adapt = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            let (seen, wrap) = (Arc::clone(&seen), wrap.clone());
+            call.adapters
+                .push(Adapter::new("wrap", move |connection: Connection| {
+                    if let Ok(mut seen) = seen.lock() {
+                        seen.push(connection.spec.tools);
+                    }
+                    let model =
+                        ModelAdapter::<Completion>::new(connection.spec.reference(), wrap.clone());
+                    Connection {
+                        handler: Handler(ErasedHandler::new(model)),
+                        ..connection
+                    }
+                }));
+        }
+    };
+    let to = connection_with(&routed, true);
+    let route = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            call.connection = to.clone();
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, (adapt, route).chain().in_set(Stage::Prepare));
+    plain_agent(&mut app, &own);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("adapted"), "{:?}", ended(&app));
+    let counts = (own.request_count(), routed.request_count());
+    assert_eq!(counts, (0, 0), "only the adapted handler is called");
+    assert_eq!(
+        given.lock().map(|given| given.clone()).ok(),
+        Some(vec![true])
+    );
+    // The agent's model calls no tools; the model it was routed to does,
+    // so the request offers them, with their rules.
+    let (tools, rules) = offered(adapted.requests().first());
+    assert_eq!(tools, ["add", "look", "touch"]);
+    assert!(rules);
+}
+
+#[test]
+fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("plain")]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    plain_agent(&mut app, &own);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let (tools, rules) = offered(own.requests().first());
+    assert!(tools.is_empty(), "{tools:?}");
+    assert!(!rules);
+}
