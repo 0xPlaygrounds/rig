@@ -73,7 +73,6 @@ use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::{SessionLog, millis, now_ms};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
-    tool_kind,
 };
 use super::turn::{
     Adapters, ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
@@ -1231,7 +1230,7 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
         let key = world
             .get::<CallHandler>(entity)
             .map_or_else(|| tool_key(name), |handler| handler.0.0.descriptor().key);
-        return Some((key, tool_kind(call)));
+        return Some((key, EffectKind::from(call)));
     }
     if let Some(model) = world.get::<ModelRequest>(entity) {
         let key = model.connection.as_ref().map_or_else(

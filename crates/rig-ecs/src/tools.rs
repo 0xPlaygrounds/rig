@@ -357,14 +357,6 @@ fn register_tool(
     Some(entity.id())
 }
 
-/// The kind of effect a tool call is.
-pub(crate) fn tool_kind(call: &ToolCall) -> EffectKind {
-    EffectKind::ToolCall {
-        name: call.function.name.as_str().to_owned(),
-        args: call.function.raw_arguments(),
-    }
-}
-
 /// What `call` touches, run by `handler`, of the tool `tool` (its default
 /// footprint, and whether that was declared): the declared one, else what
 /// the handler says of the call, else the tool's default. A call of a tool
@@ -377,7 +369,7 @@ pub(crate) fn footprint_of(
     match tool {
         Some((footprint, true)) => footprint.clone(),
         _ => handler
-            .and_then(|handler| handler.0.footprint(&tool_kind(call)))
+            .and_then(|handler| handler.0.footprint(&EffectKind::from(call)))
             .map(Footprint)
             .or_else(|| tool.map(|(footprint, _)| footprint.clone()))
             .unwrap_or_default(),
@@ -491,7 +483,7 @@ impl ToolStarts<'_, '_> {
         }
         match (handler, serves) {
             (Some(CallHandler(handler)), _) | (None, Serves::Handler(handler)) => {
-                ToolStart::Run(handler.clone(), tool_kind(call))
+                ToolStart::Run(handler.clone(), EffectKind::from(call))
             }
             (None, Serves::Open(open)) => match open(call) {
                 Ok(opened) => {
