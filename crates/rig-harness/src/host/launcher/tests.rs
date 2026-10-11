@@ -1,5 +1,7 @@
+use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use rig::harness_protocol::{Home, Invocation};
+use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 
 use super::{Invoked, LauncherPlugin, LauncherRun};
@@ -10,12 +12,12 @@ use crate::host::exit::{Exit, ExitPlugin, ExitReason};
 fn started(args: &[&str], terminal: bool) -> App {
     let mut app = App::new();
     app.add_message::<AppExit>()
-        .add_message::<Notice>()
         .insert_resource(Invoked {
             args: Invocation::parse(args).unwrap_or_default(),
             terminal,
         })
-        .add_plugins(LauncherPlugin);
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_plugins((LauncherPlugin, ExitPlugin));
     app.finish();
     app.cleanup();
     app
@@ -26,9 +28,11 @@ fn a_run_the_build_cannot_take_exits_with_2_after_its_first_frame() {
     for (args, terminal) in [(&["--nope"][..], false), (&[], true)] {
         let mut app = started(args, terminal);
         app.update();
+        app.update();
         assert_eq!(app.should_exit(), Some(AppExit::from_code(2)), "{args:?}");
     }
     let mut fine = started(&["-p", "hi"], false);
+    fine.update();
     fine.update();
     assert_eq!(fine.should_exit(), None);
 }

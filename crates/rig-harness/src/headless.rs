@@ -41,6 +41,7 @@ use rig_core::completion::Message;
 use rig_core::transcript::final_answer;
 use rig_ecs::prelude::*;
 
+use crate::host::exit::{Exit, ExitReason};
 use crate::host::launcher::Invoked;
 use crate::primary::{PrimaryQuery, primary};
 
@@ -71,7 +72,7 @@ impl AppHeadlessExt for App {
     }
 }
 
-/// How a headless run ended, triggered just before its `AppExit`.
+/// How a headless run ended, triggered as it asks to exit ([`Exit`]).
 #[derive(Event, Clone, Debug, PartialEq, Eq)]
 pub struct HeadlessEnded {
     /// The agent the prompt went to, if it got that far.
@@ -80,8 +81,9 @@ pub struct HeadlessEnded {
     pub answer: Option<String>,
     /// Why the run could not send the prompt, such as no model.
     pub why: Option<String>,
-    /// The exit it ends with.
-    pub exit: AppExit,
+    /// Why it exits: [`ExitReason::Quit`] when it answered, else
+    /// [`ExitReason::Failed`] with its exit code.
+    pub exit: ExitReason,
 }
 
 /// Where the headless run is.
@@ -142,7 +144,6 @@ fn drive(
     models: Res<Models>,
     (mut notices, mut recalled): (MessageReader<Notice>, MessageReader<Recalled>),
     mut commands: Commands,
-    exits: MessageWriter<AppExit>,
 ) {
     if recalled.read().any(|recalled| recalled.why.is_some()) {
         run.refused = true;
@@ -161,7 +162,7 @@ fn drive(
         agent,
         answer: None,
         why: why.map(str::to_owned),
-        exit: AppExit::from_code(code),
+        exit: ExitReason::Failed(code),
     };
     let ended = match run.step {
         Step::Start => {
@@ -181,7 +182,7 @@ fn drive(
                     None => {
                         let why = "no model can be reached: set a provider's API key, or name \
                                    one with --model";
-                        return end(&mut run, failed(Some(agent), Some(why), 1), commands, exits);
+                        return end(&mut run, failed(Some(agent), Some(why), 1), commands);
                     }
                 },
             };
@@ -202,11 +203,11 @@ fn drive(
                     .is_ok_and(|(_, connected)| connected);
             if !connected {
                 // The notice of the failed choice says why.
-                return end(&mut run, failed(Some(agent), None, 1), commands, exits);
+                return end(&mut run, failed(Some(agent), None, 1), commands);
             }
             if run.prompt.trim().is_empty() {
                 let why = "no prompt: give one after --print, or pipe it in";
-                return end(&mut run, failed(Some(agent), Some(why), 2), commands, exits);
+                return end(&mut run, failed(Some(agent), Some(why), 2), commands);
             }
             let text = run.prompt.clone();
             commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
@@ -223,9 +224,9 @@ fn drive(
             }
             let answer = run.answer.as_ref().and_then(final_answer);
             let exit = match (run.refused, run.failed && answer.is_none()) {
-                (true, _) => AppExit::from_code(2),
-                (false, false) => AppExit::Success,
-                (false, true) => AppExit::from_code(1),
+                (true, _) => ExitReason::Failed(2),
+                (false, false) => ExitReason::Quit,
+                (false, true) => ExitReason::Failed(1),
             };
             HeadlessEnded {
                 agent: Some(agent),
@@ -236,7 +237,7 @@ fn drive(
         }
         Step::Done => return,
     };
-    end(&mut run, ended, commands, exits);
+    end(&mut run, ended, commands);
 }
 
 /// Keeps the answer of each turn of the agent the prompt went to that ended
@@ -255,14 +256,9 @@ fn keep_answer(
 }
 
 /// Ends the run as `ended` says.
-fn end(
-    run: &mut HeadlessRun,
-    ended: HeadlessEnded,
-    mut commands: Commands,
-    mut exits: MessageWriter<AppExit>,
-) {
+fn end(run: &mut HeadlessRun, ended: HeadlessEnded, mut commands: Commands) {
     run.step = Step::Done;
-    exits.write(ended.exit.clone());
+    commands.trigger(Exit(ended.exit.clone()));
     commands.trigger(ended);
 }
 

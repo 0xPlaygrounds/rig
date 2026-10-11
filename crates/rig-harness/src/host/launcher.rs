@@ -25,7 +25,7 @@ use bevy_log::error;
 use rig::harness_protocol::{Home, Invocation, RunDir, env};
 
 use super::cli::{self, Cli};
-use super::exit::{ExitReason, reason_from_exit};
+use super::exit::{Exit, ExitReason, reason_from_exit};
 use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_ecs::agent::Notice;
@@ -106,8 +106,12 @@ impl Plugin for LauncherPlugin {
     /// Refuses a run the build cannot take: see [`cli`].
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app) {
-            app.insert_resource(Refused(refusal))
-                .add_systems(Last, exit_refused.after(signal_ready));
+            app.insert_resource(Refused(refusal)).add_systems(
+                Last,
+                exit_refused
+                    .after(signal_ready)
+                    .run_if(resource_exists::<Refused>),
+            );
         }
     }
 }
@@ -116,11 +120,12 @@ impl Plugin for LauncherPlugin {
 #[derive(Resource)]
 struct Refused(String);
 
-/// Says why the run cannot go on, and exits once the launcher knows that
-/// the build started: it is not rolled back.
-fn exit_refused(refused: Res<Refused>, mut exit: MessageWriter<AppExit>) {
+/// Says why the run cannot go on, and asks to exit once the launcher knows
+/// that the build started: it is not rolled back.
+fn exit_refused(refused: Res<Refused>, mut commands: Commands) {
     eprintln!("rig: {}.", refused.0);
-    exit.write(AppExit::from_code(2));
+    commands.remove_resource::<Refused>();
+    commands.trigger(Exit(ExitReason::Failed(2)));
 }
 
 /// The failed build the launcher started after, until the primary agent

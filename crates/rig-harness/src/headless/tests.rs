@@ -13,6 +13,7 @@ use rig_ecs::AgentPlugin;
 use rig_ecs::effects::Handler;
 
 use super::*;
+use crate::host::exit::ExitPlugin;
 
 /// How the runs ended.
 #[derive(Resource, Default)]
@@ -30,7 +31,7 @@ fn run(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> Vec
         args,
         terminal: false,
     })
-    .add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+    .add_plugins((TaskPoolPlugin::default(), AgentPlugin, ExitPlugin))
     .init_resource::<Ends>()
     .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
         ends.0.push(ended.event().clone());
@@ -87,7 +88,7 @@ fn the_prompt_is_answered_and_the_run_ends_beside_an_open_stream() {
         agent,
         answer: Some("hello".to_owned()),
         why: None,
-        exit: AppExit::Success,
+        exit: ExitReason::Quit,
     };
     assert_eq!(ends, [answered]);
 }
@@ -130,7 +131,7 @@ fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
         .iter()
         .map(|ended| (ended.answer.as_deref(), &ended.exit));
     let answers: Vec<_> = answers.collect();
-    assert_eq!(answers, [(Some("hello"), &AppExit::Success)]);
+    assert_eq!(answers, [(Some("hello"), &ExitReason::Quit)]);
 }
 
 #[test]
@@ -154,7 +155,7 @@ fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
         });
         ends.into_iter().map(|ended| ended.exit).collect::<Vec<_>>()
     });
-    assert_eq!(exits, [vec![AppExit::Success], vec![AppExit::from_code(1)]]);
+    assert_eq!(exits, [vec![ExitReason::Quit], vec![ExitReason::Failed(1)]]);
 }
 
 #[test]
@@ -170,7 +171,7 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         agent,
         answer: None,
         why: None,
-        exit: AppExit::from_code(1),
+        exit: ExitReason::Failed(1),
     };
     assert_eq!(ends, [failed]);
 }
@@ -183,9 +184,9 @@ fn an_empty_prompt_says_why() {
             world.entity_mut(primary).insert(connection);
         }
     });
-    let codes: Vec<(AppExit, bool)> = ends
+    let codes: Vec<(ExitReason, bool)> = ends
         .into_iter()
         .map(|ended| (ended.exit, ended.why.is_some()))
         .collect();
-    assert_eq!(codes, [(AppExit::from_code(2), true)]);
+    assert_eq!(codes, [(ExitReason::Failed(2), true)]);
 }

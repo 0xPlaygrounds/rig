@@ -1713,11 +1713,58 @@ fn show(
 A plugin that ends the run triggers `Exit(reason)`: `ExitReason::Quit`,
 `Reload` (the launcher restarts the session on its staged build),
 `Switch(Some(id))` or `Switch(None)` (the launcher runs another session,
-or a new one). The harness writes the exit code and tells the launcher
-what to run; any exit's reason is the `ExitReason` resource from then on,
-for code on the way out in Bevy's `OnAppExitSystems` (a background job
-kept across a reload, stopped on a quit). `ForkSession { before }` copies
-this session into a new one (`SessionForked` names it; the copy names
+or a new one), `Signal` or `Failed(code)`, such as a plugin's refusal to
+start (`Failed(2)` in `Startup`, with a notice). `Exit` is the one door:
+no plugin writes `AppExit` itself. The first reason of a run is the
+`ExitReason` resource from the moment it is asked, for code on the way
+out in Bevy's `OnAppExitSystems` (a background job kept across a reload,
+stopped on a quit). The harness tells the launcher what to run, and
+spawns each exit asked for as an app-level effect, an `ExitRequest`; the
+app exits when the first one settles, whatever answered it. A plugin
+delays the exit by holding that effect, with a deadline of its own:
+nothing cancels an exit, the agents keep working while it is held (hold
+their work too to freeze it), and a single SIGTERM waits as long as the
+hold. A second exit asked for meanwhile is a second effect, which a
+holder may take as "stop waiting". An `AppExit` Bevy writes itself, such
+as a window closing, cannot be held.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Component)]
+struct NotesHold;
+
+/// Holds the first exit until the notes are written, at most 10 s.
+fn hold_exit(
+    exits: Query<(Entity, &Decision), (With<ExitRequest>, Undecided, PluginEffects)>,
+    mut held: Local<bool>,
+    mut commands: Commands,
+) {
+    // Once: a second exit asked for passes, as "do not wait".
+    if *held {
+        return;
+    }
+    if let Some((exit, _)) = exits.iter().find(|(_, decision)| !decision.is_decided()) {
+        *held = true;
+        commands.spawn((NotesHold, HoldOf(exit), WakeAt::after(Duration::from_secs(10))));
+        // ... write the notes, then despawn the hold.
+    }
+}
+
+/// `WakeAt` only marks its entity `Due`: the deadline releases the hold.
+fn give_up(due: On<Add<Due>>, holds: Query<(), With<NotesHold>>, mut commands: Commands) {
+    if holds.contains(due.entity) {
+        commands.entity(due.entity).despawn();
+    }
+}
+
+fn build(app: &mut App) {
+    app.add_systems(AgentPass, hold_exit.in_set(Stage::Gate))
+        .add_observer(give_up);
+}
+```
+
+`ForkSession { before }` copies this session into a new one (`SessionForked` names it; the copy names
 its parent and where it was cut, with the text the user wrote in the
 message it stopped before, `ForkedFrom::of(&dir)`, so a view of a
 session's family reads no other session's log), and

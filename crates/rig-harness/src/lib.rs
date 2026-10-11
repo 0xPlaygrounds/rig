@@ -115,7 +115,7 @@ pub mod prelude {
     pub use crate::harness_protocol::Home;
     pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
-    pub use crate::host::exit::{Exit, ExitReason};
+    pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
         DeleteSession, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted, SessionForked,

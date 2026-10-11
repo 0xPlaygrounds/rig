@@ -12,6 +12,7 @@ use bevy_reflect::prelude::*;
 
 use rig_ecs::agent::{Notice, Retry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_harness::host::exit::{Exit, ExitReason};
 
 pub mod project_context;
 #[cfg(feature = "tui")]
@@ -101,6 +102,6 @@ fn help(
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
-fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {
-    exit.write(AppExit::Success);
+fn quit(In(_): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(Exit(ExitReason::Quit));
 }

@@ -48,6 +48,7 @@ fn session(root: &Path, model: &MockCompletionModel, say: &[&str]) -> Vec<Messag
             AgentPlugin,
             JournalPlugin,
             BasicCommandsPlugin,
+            rig_harness::host::exit::ExitPlugin,
             WriteTool,
             ExitNotesPlugin,
         ))
