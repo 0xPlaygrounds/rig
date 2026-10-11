@@ -13,10 +13,11 @@ use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Condensed, Conversation, Halt, Interrupt, LastUsage, Notice, STOPPED,
-    SystemPrompt, ToolAccess, TurnOf, TurnOutcome,
+    Agent, AgentId, Conversation, Entry, Halt, Interrupt, LastUsage, Notice, STOPPED, SystemPrompt,
+    ToolAccess, TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
+use crate::inbox::Origin;
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::tests::commit_message;
 use crate::journal::{
@@ -121,13 +122,23 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
         first.world_mut().insert_resource(Compactions(n + 2));
         first.update();
     }
-    let summary = "The user asked three questions.".to_owned();
-    let condensed = Condensed { upto: 6, summary };
-    first
-        .world_mut()
-        .entity_mut(agent)
-        .insert(condensed.clone());
+    let summarize =
+        |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
+            if let Ok(mut conversation) = agents.get_mut(agent) {
+                let summary = Message::user("The user asked three questions.");
+                let summary = Entry::from(summary, Origin::plugin("compaction"));
+                commit.splice(agent, &mut conversation, ..6, [summary]);
+            }
+        };
+    assert!(
+        first
+            .world_mut()
+            .run_system_cached_with(summarize, agent)
+            .is_ok()
+    );
     first.update();
+    let live = first.world().get::<Conversation>(agent);
+    let live = live.map(|conversation| conversation.messages().to_vec());
     let before = saved(&mut first);
     assert_eq!(before.len(), 6, "{before:?}");
     let newest = serde_json::json!({ "read": 4 });
@@ -153,20 +164,16 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert!(texts.any(|text| text.contains("a_plugin::Gone")));
     let kept = agent.and_then(|agent| world.get::<Conversation>(agent));
     let kept = kept.map(|conversation| conversation.messages().to_vec());
-    let last = [Message::user("question 3"), Message::assistant("answer 3")];
-    assert_eq!(kept.as_deref(), Some(last.as_slice()));
-    let restored = agent.and_then(|agent| world.get::<Condensed>(agent));
-    let summary = Condensed {
-        upto: 0,
-        ..condensed
+    assert_eq!(kept, live);
+    // The summary went into the first kept question, so user and model
+    // still take turns.
+    let summary = ["The user asked three questions.", "question 3"].map(UserContent::text);
+    let summary = Message::User {
+        content: summary.into(),
     };
-    assert_eq!(restored, Some(&summary));
-    // Requests send the summary at the head of the first kept message.
-    let sent = restored.map(|condensed| condensed.request(&last));
-    let first_sent = sent.as_ref().and_then(|sent| sent.first());
-    assert!(
-        matches!(first_sent, Some(Message::User { content }) if content.len() == 2),
-        "{sent:?}"
+    assert_eq!(
+        kept.unwrap_or_default(),
+        [summary, Message::assistant("answer 3")]
     );
 }
 
@@ -222,13 +229,13 @@ fn every_change_the_log_records_is_committed() {
     let mut cursor = committed.get_cursor();
     let changes = cursor.read(committed).map(|change| match change {
         Committed::Message { .. } => "message",
-        Committed::Truncate { .. } => "truncate",
+        Committed::Splice { .. } => "splice",
         Committed::Halt { .. } => "halt",
         Committed::Retired { .. } => "retired",
     });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["message", "truncate", "message", "halt"]
+        ["message", "splice", "message", "halt"]
     );
 }
 
@@ -271,7 +278,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
     // The second is asked for again, and that turn fails and keeps it.
     let keep = |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
         if let Ok(mut conversation) = agents.get_mut(agent) {
-            assert!(conversation.resume());
+            assert!(commit.resume(agent, &mut conversation));
             commit.halt(agent, &mut conversation, Halt::Kept);
         }
     };

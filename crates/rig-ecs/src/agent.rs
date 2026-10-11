@@ -1,6 +1,8 @@
 //! The agent entity: its components, the calls it owns, and the requests a
 //! view sends it.
 
+use std::collections::HashSet;
+
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::{Message, Usage};
@@ -88,25 +90,100 @@ pub struct Spawned(Vec<Entity>);
 pub struct EffectParent(pub EffectId);
 
 /// The conversation: every message sent to and received from the model,
-/// and where each delivered text came from when it is not the user's own.
-/// Requests leave out the messages its agent's [`Condensed`] replaced with
-/// a summary. It changes only through a
-/// [`Commit`](super::journal::Commit), which logs each change.
+/// each with its [`MessageId`], and where each delivered text came from
+/// when it is not the user's own. Requests send it as it is. It changes
+/// only through a [`Commit`](super::journal::Commit), which logs each
+/// change: a message added, or a [`splice`](super::journal::Commit::splice)
+/// that cuts, replaces or edits messages after the fact.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 pub struct Conversation {
     messages: Vec<Message>,
+    /// Each message's id, by index.
+    #[serde(default)]
+    ids: Vec<MessageId>,
+    /// The id the next new message gets.
+    #[serde(default)]
+    next_id: u64,
     /// The origin of each content item that is not the user's own or the
-    /// model's, by message and item index, in the order they were added.
+    /// model's, by message and item index.
     origins: Vec<(usize, usize, Origin)>,
     /// Why the user's last message was left unanswered, until a message
-    /// is added or taken out.
+    /// is added or the end is spliced.
     #[serde(default)]
     halted: Option<Halt>,
-    /// The `seq` of the log record that began each message, while the
-    /// session is logged.
-    #[serde(skip)]
-    seqs: Vec<u64>,
+}
+
+/// A message's identity in its agent's conversation: it stays while
+/// messages around it are added, cut or replaced, while any of its content
+/// items survive an edit, and across a restore. Ids rise in the order
+/// messages were first made.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    PartialEq,
+    Eq,
+    Hash,
+    PartialOrd,
+    Ord,
+    Serialize,
+    Deserialize,
+    Reflect,
+)]
+#[reflect(Clone, Debug, Default, PartialEq, Hash)]
+#[serde(transparent)]
+pub struct MessageId(pub(crate) u64);
+
+/// A message as a [`splice`](super::journal::Commit::splice) puts it in:
+/// the message, where its content items came from (by item index), and,
+/// for a message taken from the conversation ([`Conversation::entry`]),
+/// its id, which the splice keeps.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Entry {
+    /// The message.
+    pub message: Message,
+    /// The origin of each content item that has one, by item index.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub origins: Vec<(usize, Origin)>,
+    /// The id of the message it was taken from, if any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<MessageId>,
+}
+
+impl Entry {
+    /// A new message, every content item of it from `origin`.
+    pub fn from(message: Message, origin: Origin) -> Self {
+        let items = match &message {
+            Message::User { content } => content.len(),
+            _ => 0,
+        };
+        let origins = (0..items).map(|item| (item, origin.clone())).collect();
+        Self {
+            message,
+            origins,
+            id: None,
+        }
+    }
+}
+
+impl From<Message> for Entry {
+    /// A new message without origins.
+    fn from(message: Message) -> Self {
+        Self {
+            message,
+            origins: Vec::new(),
+            id: None,
+        }
+    }
+}
+
+/// What a splice changed: the ids no longer in the conversation, and
+/// those of the messages it made or changed.
+pub(crate) struct Spliced {
+    pub(crate) removed: Vec<MessageId>,
+    pub(crate) changed: Vec<MessageId>,
 }
 
 /// The text that goes between a request the user stopped and the next
@@ -145,17 +222,69 @@ impl Conversation {
 
     /// Why the user's last message is left unanswered, if it was halted:
     /// stopped by the user, or kept for the next turn. Cleared when a
-    /// message is added or taken out.
+    /// message is added or a splice reaches the end.
     pub fn halted(&self) -> Option<Halt> {
         self.halted
     }
 
-    /// The messages, to change in place, such as clearing old tool outputs.
-    /// Nothing can be added or taken out through it, and nothing changed
-    /// through it is logged: a restored session has the messages as they
-    /// were added.
-    pub fn messages_mut(&mut self) -> &mut [Message] {
-        &mut self.messages
+    /// The id of message `at`.
+    pub fn id(&self, at: usize) -> Option<MessageId> {
+        self.ids.get(at).copied()
+    }
+
+    /// Where message `id` is now; `None` once no item of it is left.
+    pub fn index_of(&self, id: MessageId) -> Option<usize> {
+        self.ids.iter().position(|&known| known == id)
+    }
+
+    /// Where a span that began at message `id` begins now, such as a turn
+    /// ([`Turn::first_message`]): its index while it is there; the end for
+    /// a message not made yet; 0 for one an edit took out, as a summary
+    /// then stands for what came before it.
+    pub fn start_of(&self, id: MessageId) -> usize {
+        self.index_of(id).unwrap_or(if id.0 >= self.next_id {
+            self.messages.len()
+        } else {
+            0
+        })
+    }
+
+    /// Message `at`, with its origins and id, to splice back changed.
+    pub fn entry(&self, at: usize) -> Option<Entry> {
+        let message = self.messages.get(at)?.clone();
+        let origins = self.origins.iter().filter(|(message, ..)| *message == at);
+        Some(Entry {
+            message,
+            origins: origins
+                .map(|(_, item, origin)| (*item, origin.clone()))
+                .collect(),
+            id: self.id(at),
+        })
+    }
+
+    /// The messages, to load their images in place.
+    pub(crate) fn each_message(&mut self) -> std::slice::IterMut<'_, Message> {
+        self.messages.iter_mut()
+    }
+
+    /// The id the next new message gets.
+    pub(crate) fn next_id(&self) -> u64 {
+        self.next_id
+    }
+
+    /// Where a turn starting now begins: the user's last message, which it
+    /// answers, else the first message it adds.
+    pub(crate) fn turn_start(&self) -> MessageId {
+        match (self.messages.last(), self.ids.last()) {
+            (Some(Message::User { .. }), Some(&id)) => id,
+            _ => MessageId(self.next_id),
+        }
+    }
+
+    fn new_id(&mut self) -> MessageId {
+        let id = MessageId(self.next_id);
+        self.next_id = self.next_id.saturating_add(1);
+        id
     }
 
     /// Whether the model owes an answer: the last message is the user's,
@@ -175,32 +304,17 @@ impl Conversation {
     }
 
     /// Asks the model again for an answer to the user's last message, also
-    /// a halted one; whether the last message is the user's. Not logged: a
-    /// restore reads a halt after a halt as asked again in between.
+    /// a halted one; whether the last message is the user's.
     pub(crate) fn resume(&mut self) -> bool {
         self.halted = None;
         self.awaits_model()
     }
 
-    /// The `seq` of the agent log's record that began message `message`,
-    /// if it was logged: where a fork of the session cuts it
-    /// ([`fork_session`](super::journal::fork_session)).
-    pub fn seq(&self, message: usize) -> Option<u64> {
-        self.seqs.get(message).copied()
-    }
-
-    /// The first message whose log record is `seq` or later; the length
-    /// when none is.
-    pub(crate) fn at_seq(&self, seq: u64) -> usize {
-        self.seqs.partition_point(|&begun| begun < seq)
-    }
-
-    /// Adds `message`, whose content came from `origin` and which the log
-    /// recorded as `seq`: a user message goes into the last message when
-    /// that is the user's too, such as the tool results the model waits
-    /// for, so user and model keep taking turns. After [`STOPPED`] when
-    /// that is a request the user stopped.
-    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>, seq: Option<u64>) {
+    /// Adds `message`, whose content came from `origin`: a user message
+    /// goes into the last message when that is the user's too, such as the
+    /// tool results the model waits for, so user and model keep taking
+    /// turns. After [`STOPPED`] when that is a request the user stopped.
+    pub(crate) fn append(&mut self, message: Message, origin: Option<Origin>) {
         let stopped = self.halted.take() == Some(Halt::Stopped);
         let (at, first) = match (self.messages.last(), &message) {
             (Some(Message::User { content }), Message::User { .. }) => (
@@ -226,57 +340,94 @@ impl Conversation {
             }
             (_, message) => {
                 self.messages.push(message);
-                self.seqs.extend(seq);
+                let id = self.new_id();
+                self.ids.push(id);
             }
         }
     }
 
-    /// Takes out every message from `len` on; whether any was.
-    pub(crate) fn truncate(&mut self, len: usize) -> bool {
-        if len >= self.messages.len() {
-            return false;
+    /// Replaces messages `from..to`, clamped to the conversation, with
+    /// `with`. An entry keeps its id unless that id is in use outside the
+    /// range or by an earlier entry; every other one gets a new id. A user
+    /// message beside a user message is merged into it, at both seams and
+    /// inside `with`, keeping the id that existed before the splice, the
+    /// earlier one when both did. The halt goes when the splice reaches
+    /// the end.
+    pub(crate) fn splice(&mut self, from: usize, to: usize, with: Vec<Entry>) -> Spliced {
+        let len = self.messages.len();
+        let to = to.min(len);
+        let from = from.min(to);
+        if to == len {
+            self.halted = None;
         }
-        self.messages.truncate(len);
-        self.halted = None;
-        self.origins.retain(|(at, ..)| *at < len);
-        self.seqs.truncate(len);
-        true
-    }
-}
-
-/// What requests send in place of the conversation's older messages, such
-/// as a compaction's summary: `summary`, as one user text, in place of the
-/// first `upto` messages, which stay in the [`Conversation`] for views. It
-/// never changes in place: inserting another logs it, and a restored
-/// session starts from the first message it kept. An agent without one
-/// sends every message.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[component(immutable)]
-#[reflect(Component, Default, Clone, Debug)]
-pub struct Condensed {
-    /// How many of the conversation's first messages `summary` replaces.
-    pub upto: usize,
-    /// The text sent in their place.
-    pub summary: String,
-}
-
-impl Condensed {
-    /// The messages a request sends: the summary, then the messages after
-    /// the first `upto`. The summary goes into the first of those when that
-    /// is the user's, so user and assistant messages still alternate.
-    pub fn request(&self, messages: &[Message]) -> Vec<Message> {
-        let mut live = messages.get(self.upto..).unwrap_or_default().to_vec();
-        let summary = UserContent::text(self.summary.clone());
-        match live.first_mut() {
-            Some(Message::User { content }) => content.insert(0, summary),
-            _ => live.insert(
-                0,
-                Message::User {
-                    content: vec![summary],
-                },
-            ),
+        let existed = self.next_id;
+        let old = |id: MessageId| id.0 < existed;
+        // The replaced range and a neighbour on each side, which a user
+        // message may merge with.
+        let start = from.saturating_sub(1);
+        let end = to.saturating_add(1).min(len);
+        let outside = self.ids.iter().take(from).chain(self.ids.iter().skip(to));
+        let mut used: HashSet<MessageId> = outside.copied().collect();
+        let neighbour = |at: usize| {
+            let entry = self.entry(at)?;
+            Some((entry.id?, entry.message, entry.origins, false))
+        };
+        let before: Vec<_> = (start..from).filter_map(neighbour).collect();
+        let after: Vec<_> = (to..end).filter_map(neighbour).collect();
+        let mut window = before;
+        for entry in with {
+            let kept = entry.id.filter(|&id| old(id) && used.insert(id));
+            let id = kept.unwrap_or_else(|| self.new_id());
+            window.push((id, entry.message, entry.origins, true));
         }
-        live
+        window.extend(after);
+        let mut merged: Vec<(MessageId, Message, Vec<(usize, Origin)>, bool)> =
+            Vec::with_capacity(window.len());
+        for (id, message, origins, changed) in window {
+            if let (
+                Some((last_id, Message::User { content }, last_origins, last_changed)),
+                Message::User { content: added },
+            ) = (merged.last_mut(), &message)
+            {
+                let offset = content.len();
+                let origins = origins.into_iter();
+                last_origins.extend(origins.map(|(item, origin)| (item + offset, origin)));
+                content.extend(added.iter().cloned());
+                if !old(*last_id) && old(id) {
+                    *last_id = id;
+                }
+                *last_changed = true;
+                continue;
+            }
+            merged.push((id, message, origins, changed));
+        }
+        let kept: HashSet<MessageId> = merged.iter().map(|(id, ..)| *id).collect();
+        let replaced = self.ids.get(start..end).unwrap_or_default();
+        let removed = replaced.iter().filter(|id| !kept.contains(id)).copied();
+        let removed = removed.collect();
+        let changed = merged.iter().filter(|(.., changed)| *changed);
+        let changed = changed.map(|(id, ..)| *id).collect();
+        let grown = merged.len();
+        self.origins.retain(|(at, ..)| *at < start || *at >= end);
+        for (at, ..) in &mut self.origins {
+            if *at >= end {
+                *at = *at - (end - start) + grown;
+            }
+        }
+        let mut messages = Vec::with_capacity(grown);
+        let mut ids = Vec::with_capacity(grown);
+        for (offset, (id, message, origins, _)) in merged.into_iter().enumerate() {
+            let at = start + offset;
+            let origins = origins.into_iter();
+            self.origins
+                .extend(origins.map(|(item, origin)| (at, item, origin)));
+            messages.push(message);
+            ids.push(id);
+        }
+        self.messages.splice(start..end, messages);
+        self.ids.splice(start..end, ids);
+        self.origins.sort_by_key(|&(at, item, _)| (at, item));
+        Spliced { removed, changed }
     }
 }
 
@@ -374,10 +525,11 @@ pub struct Turn {
     /// How many turns its agent started before this one, over the whole
     /// session: the agent's count is saved with it.
     pub index: u64,
-    /// Where the turn begins in its agent's [`Conversation`]: the index of
+    /// Where the turn begins in its agent's [`Conversation`]: the id of
     /// the user's message it answers, or, when the conversation does not
-    /// end in one, of the first message the turn adds.
-    pub first_message: usize,
+    /// end in one, of the first message the turn adds. Its index now is
+    /// [`Conversation::start_of`] it, as splices move messages.
+    pub first_message: MessageId,
     /// The model call whose reply's tool calls run now, their effects'
     /// parent, until their results are committed. Other calls of the turn
     /// keep it open but are never committed as tool results.

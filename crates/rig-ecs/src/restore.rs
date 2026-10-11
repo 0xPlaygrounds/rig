@@ -2,7 +2,7 @@
 //! pass that settles what a crash or a restart left half done, with
 //! ordinary records, so the next restore finds nothing left to fix. Each
 //! log is read as [`read_session`](super::journal::read_session) reads it,
-//! from its newest standing summary, a torn last line cut off; a retired
+//! a torn last line cut off; a retired
 //! agent and the agents it spawned are not restored.
 //!
 //! A call left without a result whose tool may change something is
@@ -53,7 +53,7 @@ use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn
 use super::effects::Effects;
 use super::journal::{
     AgentLog, Commit, Folded, ReflectSaved, SESSION, SessionLog, SessionRestored, SessionStore,
-    fold,
+    fold, load_images,
 };
 use super::stage::{Effect, ForAgent};
 use super::tools::{Footprint, ToolDef, ToolRequest};
@@ -77,8 +77,8 @@ pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 #[reflect(Component, Default)]
 pub struct Restored;
 
-/// Spawns the agents of the session's logs, with their conversations,
-/// condensed summaries and saved components, links each agent to the agent that
+/// Spawns the agents of the session's logs, with their conversations and
+/// saved components, links each agent to the agent that
 /// spawned it, restores the saved resources, and starts logging. Anything that does not load is skipped
 /// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
@@ -122,7 +122,6 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            condensed,
             ..
         } = agent;
         if header.agent == SESSION {
@@ -141,9 +140,6 @@ pub(crate) fn restore_session(world: &mut World) {
         }
         let id = AgentId(header.agent.clone());
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
-        if let Some(condensed) = condensed {
-            spawned.insert(condensed);
-        }
         for (path, value) in &log.components {
             let restored = saved(path, value, &registry).map(|(component, value)| {
                 component.insert(&mut spawned, value.as_partial_reflect(), &registry);
@@ -229,15 +225,16 @@ fn resource_entity<'w>(
         .map_err(|failure| failure.to_string())
 }
 
-/// Reads and folds the log of `agent` in `store` from the newest summary
-/// that stands, cutting off a torn last line there first. Images come back
-/// from the store's blobs.
+/// Reads and folds the log of `agent` in `store`, cutting off a torn last
+/// line there first. Images come back from the store's blobs.
 fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
     let log = LogLines::read(store, agent)?;
     if log.torn() {
         store.truncate(agent, log.len())?;
     }
-    Ok(fold(&log, store, false)?)
+    let mut folded = fold(&log)?;
+    load_images(&mut folded, store);
+    Ok(folded)
 }
 
 /// The ids of the agents a restore skips: those retired, and the agents

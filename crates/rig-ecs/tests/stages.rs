@@ -1372,10 +1372,17 @@ fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
         .init_resource::<Numbered>()
         .add_observer(log_ended)
         .add_observer(
-            |settled: On<Add<Settled>>, turns: Query<&Turn>, mut log: ResMut<Numbered>| {
-                let turn = turns.get(settled.entity).ok();
-                log.0
-                    .extend(turn.map(|turn| (turn.index, turn.first_message)));
+            |settled: On<Add<Settled>>,
+             turns: Query<(&Turn, &ForAgent)>,
+             agents: Query<&Conversation>,
+             mut log: ResMut<Numbered>| {
+                let Ok((turn, agent)) = turns.get(settled.entity) else {
+                    return;
+                };
+                let conversation = agents.get(agent.0).ok();
+                let first =
+                    conversation.map(|conversation| conversation.start_of(turn.first_message));
+                log.0.extend(first.map(|first| (turn.index, first)));
             },
         )
         .add_systems(AgentPass, nudge.in_set(Stage::Review));

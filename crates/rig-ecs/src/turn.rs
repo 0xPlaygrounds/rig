@@ -50,9 +50,9 @@ use rig_core::transcript::close_pending_with;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Halt,
-    Interrupt, LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf,
-    TurnOutcome, TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Halt, Interrupt,
+    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
@@ -316,6 +316,7 @@ pub(crate) fn spawn_turn_call(commands: &mut Commands, turn: Entity, agent: Enti
 pub(crate) fn on_retry(
     retry: On<Retry>,
     mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -327,7 +328,7 @@ pub(crate) fn on_retry(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    if !conversation.resume() {
+    if !commit.resume(agent, &mut conversation) {
         notices.write(Notice::info(
             agent,
             "Nothing to retry: the model answered the last message.",
@@ -350,11 +351,10 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .commands()
         .entity(context.entity)
         .try_insert(ForAgent(agent));
-    let first_message = world.get::<Conversation>(agent).map_or(0, |conversation| {
-        let messages = conversation.messages();
-        let asks = matches!(messages.last(), Some(Message::User { .. }));
-        messages.len().saturating_sub(usize::from(asks))
-    });
+    let first_message = world
+        .get::<Conversation>(agent)
+        .map(Conversation::turn_start)
+        .unwrap_or_default();
     let index = match world.get_mut::<TurnsStarted>(agent) {
         Some(mut started) => {
             let index = started.0;
@@ -554,7 +554,6 @@ pub(crate) struct Builder {
     prompt: &'static SystemPrompt,
     access: &'static ToolAccess,
     conversation: &'static mut Conversation,
-    condensed: Option<&'static Condensed>,
     parent: Option<&'static EffectParent>,
 }
 
@@ -581,7 +580,7 @@ pub(crate) struct Parts<'w, 's> {
 /// Builds the [`ModelRequest`] of each [`TurnCall`] and [`BuildFrom`]
 /// admitted this pass without one, in [`Stage::Admit`]: the agent's system
 /// prompt with the rules of the tools it is offered and its prompt
-/// sections, its conversation after its [`Condensed`] summary, the tools,
+/// sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
 /// with its reasoning setting. A turn's call first delivers the steering
 /// messages and notes its agent accepted meanwhile. A call the kernel
@@ -636,10 +635,7 @@ pub(crate) fn build_requests(
             let into = (turn, &mut commands);
             commit.deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
-        let messages = match builder.condensed {
-            Some(condensed) => condensed.request(builder.conversation.messages()),
-            None => builder.conversation.messages().to_vec(),
-        };
+        let messages = builder.conversation.messages().to_vec();
         if call.turn_call && messages.is_empty() {
             let why = ErrorReport::new(ErrorKind::Internal, "The conversation is empty.");
             commands
@@ -1205,8 +1201,8 @@ fn drop_unanswered(
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
-        let len = conversation.messages().len().saturating_sub(1);
-        commit.truncate(agent, conversation, len);
+        let last = conversation.messages().len().saturating_sub(1);
+        commit.splice(agent, conversation, last.., []);
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",

@@ -50,8 +50,8 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent,
-        Interrupt, LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
+        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Entry, Interrupt,
+        LastUsage, MessageId, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
         SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
