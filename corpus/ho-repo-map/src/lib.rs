@@ -461,11 +461,14 @@ struct MapArgs {
 }
 
 /// Answers a `repo_map` call from the map as it stands.
-fn answer(called: On<ToolCalled<MapArgs>>, map: Res<RepoMap>, mut commands: Commands) {
-    let text = map.look_up(&called.args);
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(ToolResult::success(text.into())));
+fn answer(
+    called: On<ToolCalled<MapArgs>>,
+    map: Res<RepoMap>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+) {
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success(map.look_up(&called.args).into()));
+    }
 }
 
 /// `path`, relative to the project unless absolute, made relative to
