@@ -16,6 +16,8 @@ bevy_log = { workspace = true }
 bevy_tasks = { workspace = true }
 # Dates of the sessions a hit names.
 chrono = { workspace = true }
+# A picked excerpt is attached after the files a message names.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 # Past sessions' logs, read without restoring them.
 rig-cassette = { workspace = true, features = ["jsonl"] }
@@ -28,4 +30,5 @@ serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
