@@ -70,12 +70,15 @@ struct NestedEntry;
 /// files of the place the call worked in that its agent does not hold
 /// yet, or that changed since it was given them.
 fn add_rules(
-    calls: Query<(Entity, &ToolRequest, &ForAgent, &Outcome), (Unreviewed, Without<Checked>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &mut Outcome),
+        (Unreviewed, ToolCalls, Without<Checked>),
+    >,
     mut agents: Query<&mut NestedLoaded>,
     root: Res<ProjectRoot>,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent), outcome) in &calls {
+    for (call, request, &ForAgent(agent), mut outcome) in &mut calls {
         commands.entity(call).insert(Checked);
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
@@ -102,8 +105,7 @@ fn add_rules(
         let mut content = result.output().as_content().to_vec();
         content.push(ToolResultContent::text(notes.join("\n\n")));
         if let Ok(output) = ToolOutput::content(content) {
-            let result = result.clone().with_output(output);
-            commands.entity(call).insert(Outcome::from(result));
+            *outcome = Outcome::from(result.clone().with_output(output));
         }
     }
 }
