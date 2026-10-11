@@ -16,6 +16,7 @@ use super::{
     SessionPlugin,
 };
 use crate::host::cli::{AppCliExt, Front};
+use crate::host::launcher::LauncherRun;
 use crate::services::RigHome;
 
 /// What the session plugin said, frame after frame.
@@ -151,14 +152,17 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
 }
 
 #[test]
-fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
+fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     let root = std::env::temp_dir().join(format!("rig-sessionless-{}", std::process::id()));
     let home = Home::at(&root);
+    let run = home.run(1);
+    std::fs::create_dir_all(run.path()).ok();
     let ended = |sessionless: bool, exit: AppExit| {
         let id = format!("{}-{}", u8::from(sessionless), exit.is_success());
         let id: SessionId = id.replace("true", "1").replace("false", "0").parse().ok()?;
         let session = home.session(&id);
         std::fs::create_dir_all(session.path()).ok();
+        std::fs::write(session.log(), id.as_str()).ok();
         let front = Front::new("replay").headless();
         let front = if sessionless {
             front.sessionless()
@@ -170,6 +174,7 @@ fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(SessionStore::new(JsonlDirStore::new(session.path())))
+            .insert_resource(LauncherRun(run.clone()))
             .add_plugins(SessionPlugin)
             .add_front(front);
         assert!(app.runs_front("replay"));
@@ -178,8 +183,10 @@ fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
         Some(session.path().exists())
     };
     assert_eq!(ended(true, AppExit::Success), Some(false));
-    let failed = ended(true, AppExit::from_code(1));
-    assert_eq!(failed, Some(true), "a failed run keeps its log");
-    assert_eq!(ended(false, AppExit::Success), Some(true));
+    assert!(!run.log().exists(), "a run that ended well keeps no log");
+    assert_eq!(ended(true, AppExit::from_code(1)), Some(false));
+    let log = std::fs::read_to_string(run.log()).ok();
+    assert_eq!(log.as_deref(), Some("1-0"), "the launcher points at it");
+    assert_eq!(ended(false, AppExit::from_code(1)), Some(true));
     std::fs::remove_dir_all(&root).ok();
 }

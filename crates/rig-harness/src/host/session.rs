@@ -35,6 +35,7 @@ use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
 
 use super::cli::Cli;
+use super::launcher::LauncherRun;
 use crate::services::RigHome;
 
 /// The session's directory: the agent logs the core keeps there through
@@ -112,17 +113,25 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Removes the session's directory when a sessionless front's run ends
-/// well, once everything was written there.
+/// Removes the session's directory when a sessionless front's run ends,
+/// however, once everything was written there. A run that failed first
+/// moves its text log into the launcher's run directory, where the
+/// launcher's failure message points.
 fn discard_sessionless(
     mut exits: MessageReader<AppExit>,
     cli: Option<Res<Cli>>,
     paths: Res<SessionPaths>,
+    run: Option<Res<LauncherRun>>,
 ) {
-    let ended_well = exits.read().all(AppExit::is_success);
-    if ended_well && cli.is_some_and(|cli| cli.sessionless()) {
-        fs::remove_dir_all(paths.path()).ok();
+    if !cli.is_some_and(|cli| cli.sessionless()) {
+        return;
     }
+    if !exits.read().all(AppExit::is_success)
+        && let Some(run) = run
+    {
+        fs::rename(paths.log(), run.0.log()).ok();
+    }
+    fs::remove_dir_all(paths.path()).ok();
 }
 
 /// Copies this session into a new one: every agent's log, saved state and

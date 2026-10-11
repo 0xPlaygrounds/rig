@@ -16,8 +16,8 @@
 //! plugin offered what it has, and sets itself up only then. An
 //! interactive run that no front takes says so and exits. A front whose
 //! runs leave nothing to resume, such as one replaying a recording, is
-//! [`Front::sessionless`]: a run it takes that ends well removes its
-//! session's directory.
+//! [`Front::sessionless`]: a run it takes removes its session's directory
+//! when it ends.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -94,8 +94,8 @@ pub struct Front {
     pub headless: bool,
     /// The option that gives it the run, whatever the terminal.
     pub flag: Option<Flag>,
-    /// Whether its runs keep no session: a run it takes that ends well
-    /// removes its session's directory.
+    /// Whether its runs keep no session: a run it takes removes its
+    /// session's directory when it ends.
     pub sessionless: bool,
 }
 

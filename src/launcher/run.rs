@@ -95,7 +95,6 @@ fn launch(
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
-        let log = directory.log();
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         let mut command = Command::new(binary.path());
@@ -136,6 +135,11 @@ fn launch(
             }
         };
         promoted?;
+        // A sessionless run that failed moved its log here, out of the
+        // session directory it removed.
+        let log = Some(run.log())
+            .filter(|log| log.exists())
+            .unwrap_or_else(|| directory.log());
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
             build::reject(home, &trial)?;
