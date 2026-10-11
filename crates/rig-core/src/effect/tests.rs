@@ -535,3 +535,55 @@ fn a_row_diff_names_every_difference() {
     let wire = serde_json::to_value(&this).expect("serializes");
     assert_eq!(wire, json!({ "a": "completion", "b": "tool" }));
 }
+
+/// A record leaves out what it does not know, so one from before the times,
+/// purpose, review and disposition reads back as a plain handler run; set,
+/// they travel.
+#[test]
+fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
+    let outcome = Ok(Outcome::ToolResult {
+        result: ToolResult::success(ToolOutput::text("raw")),
+    });
+    let mut record = EffectRecord {
+        tool_output: None,
+        id: EffectId::from_raw(1),
+        key: tool_key("add"),
+        kind: EffectKind::ToolCall {
+            name: "add".into(),
+            args: "{}".into(),
+        },
+        outcome,
+        events: None,
+        stream_origin: None,
+        parent: None,
+        scope: None,
+        purpose: None,
+        started_ms: None,
+        finished_ms: None,
+        reviewed: None,
+        disposition: Disposition::default(),
+    };
+    let plain = serde_json::to_value(&record).expect("serializes");
+    for left_out in [
+        "purpose",
+        "started_ms",
+        "finished_ms",
+        "reviewed",
+        "disposition",
+    ] {
+        assert!(plain.get(left_out).is_none(), "{left_out} in {plain}");
+    }
+    let read: EffectRecord = serde_json::from_value(plain).expect("reads back");
+    assert_eq!(read.disposition, Disposition::Ran);
+
+    record.purpose = Some("summary".into());
+    (record.started_ms, record.finished_ms) = (Some(1), Some(2));
+    record.reviewed = Some(Err(ErrorReport::new(ErrorKind::Internal, "redacted")));
+    record.disposition = Disposition::AnsweredWhileRunning;
+    let wire = serde_json::to_value(&record).expect("serializes");
+    let disposition = wire.get("disposition");
+    assert_eq!(disposition, Some(&json!("answered_while_running")));
+    let read: EffectRecord = serde_json::from_value(wire.clone()).expect("reads back");
+    assert_eq!(serde_json::to_value(&read).expect("serializes"), wire);
+    assert_eq!(read.purpose.as_deref(), Some("summary"));
+}

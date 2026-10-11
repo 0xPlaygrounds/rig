@@ -16,6 +16,7 @@
 pub mod adapters;
 mod handler;
 mod layer;
+mod record_buffer;
 mod recorder;
 mod writer;
 
@@ -24,6 +25,7 @@ pub use handler::{
     cancelled, deferred, serve_inline, serve_inline_with, stream_truncated,
 };
 pub use layer::{Decision, Intercept, Layer, Verdict};
+pub use record_buffer::RecordBuffer;
 pub use recorder::{OpenRecord, Origin, Recorder, catch_panics};
 pub use writer::StreamWriter;
 

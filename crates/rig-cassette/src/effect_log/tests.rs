@@ -267,6 +267,11 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
 fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
             stream_origin: None,
             tool_output: None,
             parent: None,
@@ -286,6 +291,11 @@ fn effect_record_and_log_round_trip() {
             events: None,
         },
         EffectRecord {
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
             stream_origin: None,
             tool_output: None,
             parent: None,
@@ -432,6 +442,11 @@ fn custom_kind() -> EffectKind {
 fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
             stream_origin: None,
             tool_output: None,
             parent: None,
@@ -445,6 +460,11 @@ fn two_records() -> EffectLog {
             events: None,
         },
         EffectRecord {
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
             stream_origin: None,
             tool_output: None,
             parent: None,
@@ -828,4 +848,50 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     let mut legacy = json;
     assert_eq!(erase_tags(&mut legacy), 8);
     assert!(serde_json::from_value::<EffectLog>(legacy).is_err());
+}
+
+/// A timed recorder stamps when each dispatch began and resolved, and
+/// records what it was for; an untimed one, as goldens use, keeps no times.
+#[test]
+fn a_timed_recorder_stamps_its_records_and_an_untimed_one_does_not() {
+    use rig_core::serve::{Origin, Recorder};
+    let origin = Origin {
+        purpose: Some("summary".into()),
+        ..Origin::default()
+    };
+    for (recorder, timed) in [
+        (EffectLogRecorder::new().timed(), true),
+        (EffectLogRecorder::new(), false),
+    ] {
+        let id = EffectId::from_raw(1);
+        let kind = EffectKind::ToolCall {
+            name: "t".into(),
+            args: "{}".into(),
+        };
+        recorder.begin(id, "t".into(), kind, origin.clone());
+        recorder.resolve(id, Err(ErrorReport::new(ErrorKind::Internal, "no")));
+        let log = recorder.take();
+        let record = log.records.first().expect("one record");
+        assert_eq!(record.purpose.as_deref(), Some("summary"));
+        let times = (record.started_ms.is_some(), record.finished_ms.is_some());
+        assert_eq!(times, (timed, timed));
+    }
+}
+
+/// The header notes each delivery limitation once, discarding a dispatch
+/// the recorder never saw changes nothing, and the recorder shows its counts.
+#[test]
+fn limitations_are_noted_once_and_an_unknown_discard_is_a_no_op() {
+    use rig_core::serve::Recorder;
+    let recorder = EffectLogRecorder::new();
+    recorder.unsupported_delivery("a detached sink");
+    recorder.unsupported_delivery("a detached sink");
+    recorder.discard(EffectId::from_raw(9));
+    let header = recorder.header();
+    assert_eq!(header.delivery_limitations, ["a detached sink"]);
+    assert!(header.signature.is_empty());
+    assert_eq!(
+        format!("{recorder:?}"),
+        "EffectLogRecorder { records: 0, in_flight: 0 }"
+    );
 }

@@ -863,6 +863,59 @@ fn refusals_apply_the_sampling_rule_beside_reasoning_and_cache() {
     );
 }
 
+/// Fitting a request to a model takes out only what the model refuses,
+/// reasoning first: once a refused effort is the provider default, a model
+/// that then does not reason takes `temperature` again.
+#[test]
+fn fit_takes_out_only_what_the_model_refuses() {
+    use crate::completion::CompletionRequest;
+    let names = |dropped: Vec<crate::completion::UnsupportedOption>| -> Vec<String> {
+        dropped
+            .into_iter()
+            .map(|refusal| refusal.option.into_owned())
+            .collect()
+    };
+    let openai = ProviderId::catalog("openai").expect("a known vendor");
+    let levels = |can_disable| ReasoningSupport::Listed {
+        levels: vec![Effort::Low, Effort::High],
+        budget: None,
+        can_disable,
+        default: None,
+    };
+    let thinker = ModelSpec::new(openai, "thinker")
+        .with_reasoning(levels(false))
+        .with_caching(CacheSupport {
+            retention: vec![CacheRetention::Short],
+        })
+        .with_sampling(Sampling::ReasoningOff);
+    let options = GenerationOptions::default()
+        .reasoning(Effort::Medium)
+        .cache(CacheRetention::Long)
+        .top_p(0.9)
+        .seed(7);
+    let mut request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .options(options);
+    assert_eq!(
+        names(thinker.fit(&mut request)),
+        ["reasoning", "cache", "temperature", "top_p"]
+    );
+    assert!(thinker.refusals(&request).is_empty());
+    assert_eq!(request.options.seed, Some(7), "what it takes stays");
+
+    let optional = thinker.with_reasoning(levels(true));
+    let options = GenerationOptions::default().reasoning(Effort::Medium);
+    let mut request = CompletionRequest::new("hi")
+        .temperature(0.2)
+        .options(options);
+    assert_eq!(names(optional.fit(&mut request)), ["reasoning"]);
+    assert_eq!(request.temperature, Some(0.2), "it no longer reasons");
+    assert!(
+        optional.fit(&mut request).is_empty(),
+        "a fitted request stays"
+    );
+}
+
 /// The requests the consistency test checks every row with: each reasoning
 /// value, each cache retention, the sampling parameters with and without
 /// reasoning, and `stop`.

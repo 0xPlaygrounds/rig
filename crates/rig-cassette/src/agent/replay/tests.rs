@@ -944,6 +944,11 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
     let log: EffectLog = EffectLog {
         header: LogHeader::default(),
         records: vec![EffectRecord {
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Default::default(),
             stream_origin: None,
             tool_output: None,
             parent: None,
