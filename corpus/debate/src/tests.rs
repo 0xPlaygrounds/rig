@@ -55,3 +55,8 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     let spawned: Vec<Entity> = debaters.iter(world).map(|(_, by)| by.0).collect();
     assert_eq!(spawned, [host; 3], "three debaters, spawned by the agent");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(DebatePlugin);
+}
