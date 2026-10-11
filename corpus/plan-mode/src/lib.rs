@@ -11,6 +11,7 @@
 //! agent's tools are never changed, so leaving gives back exactly what it
 //! had.
 
+use rig_basics::ProjectContextSystems;
 use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -47,8 +48,9 @@ struct PlanQuestion;
 /// The plan mode plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlanModeSystems {
-    /// In [`Stage::Prepare`], before compaction measures the request: a
-    /// planning agent's requests offer only the read-only tools.
+    /// In [`Stage::Prepare`], after the default prompt went in and before
+    /// compaction measures the request: a planning agent's requests offer
+    /// only the read-only tools.
     Prepare,
     /// In [`Stage::Gate`]: refuses a planning agent's calls of any other
     /// tool.
@@ -74,6 +76,7 @@ impl Plugin for PlanModePlugin {
                 (
                     PlanModeSystems::Prepare
                         .in_set(Stage::Prepare)
+                        .after(ProjectContextSystems)
                         .before(CompactionSystems::Prepare),
                     PlanModeSystems::Gate.in_set(Stage::Gate),
                 ),
@@ -123,7 +126,7 @@ fn plans(agent: Entity, planning: &Query<(), With<PlanMode>>, parents: &Query<&S
 /// A planning agent's turn calls offer only the read-only tools, and tell
 /// the model to plan only.
 fn plan_only(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     tools: Query<(&ToolDef, &Footprint)>,
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
@@ -148,16 +151,13 @@ fn plan_only(
 /// Refuses each call of a tool that is not read-only, of a planning agent,
 /// when it is about to run.
 fn no_changes(
-    calls: Query<(Entity, &Footprint, &ForAgent), (Undecided, With<ToolRequest>)>,
+    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
-    mut commands: Commands,
 ) {
-    for (call, footprint, &ForAgent(agent)) in &calls {
+    for (footprint, &ForAgent(agent), mut decision) in &mut calls {
         if !footprint.0.reads_only() && plans(agent, &planning, &parents) {
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused(REFUSED));
+            decision.decide(Outcome::refused(REFUSED));
         }
     }
 }

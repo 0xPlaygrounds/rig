@@ -132,3 +132,8 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     assert!(!app.world().entity(agent).contains::<PlanMode>());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(PlanModePlugin);
+}
