@@ -216,7 +216,9 @@ impl Plugin for VoicePlugin {
             .add_observer(on_heard)
             .add_observer(on_send)
             .add_observer(on_turn_ended)
-            .add_observer(on_condensed);
+            .add_observer(on_condensed)
+            // A summary call sent again is still the one to speak.
+            .add_observer(follow_successor::<Condensing>);
         let config = app.world().resource::<VoiceConfig>();
         let key = config.key.as_deref().unwrap_or(KEY);
         let keys = key.parse::<Keys>().unwrap_or_else(|why| {
