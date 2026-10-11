@@ -12,11 +12,8 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# A request's head, kept to send it again on another key.
-http = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Unused since the pool wraps the transport; kept only so Cargo.lock does not
-# change in this rework (drop it with the lock update).
+# Its Review set, which reads the retry verdict the pool edits.
 rig-compaction = { path = "../../plugins/rig-compaction" }
 serde = { workspace = true, features = ["derive"] }
 # `RIG_HOME/key-pool.toml` (already in Cargo.lock, through rig-harness).

@@ -225,3 +225,8 @@ fn walk(dir: &std::path::Path) -> Vec<PathBuf> {
         })
         .collect()
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(KeyPoolPlugin);
+}

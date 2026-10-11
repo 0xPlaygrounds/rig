@@ -10,32 +10,38 @@
 //!
 //! The provider's models connect with a stand-in key, and the pool wraps
 //! the HTTP client every model is reached through
-//! ([`Connector::wrap_http`]). Each request carrying a pool's stand-in goes
-//! out on that pool's current key, which it stays on for the prompt cache.
-//! A rate limit or a spent quota cools the key (`Retry-After`, else 60 s
-//! doubling to 15 minutes) and a refused key is disabled for the session;
-//! either way the same request is sent again at once on the next key, so
-//! no model call, a turn's, a subagent's or a plugin's own, sees the
-//! failure. With every key cooling, the failure goes up asking to wait for
-//! the key that cools down first, and the kernel's retry waits for it.
-//! `/keys` shows each key's state, requests and tokens; the usage is saved
-//! with the session. Key values live only in the pool, never in a request
-//! an effect sees, a notice or a record.
+//! ([`Connector::wrap_http`]). Each request a model call of a pooled
+//! provider sends (its [`Serving`] names the provider) goes out on that
+//! pool's current key, which it stays on for the prompt cache. A rate limit
+//! or a spent quota cools the key (`Retry-After`, else 60 s doubling to 15
+//! minutes) and a refused key is disabled for the session; either way the
+//! same request is sent again at once on the next key, so no model call,
+//! a turn's, a subagent's or a plugin's own, sees the failure. With every
+//! key cooling, the failure goes up, and a Review system makes the kernel's
+//! retry wait for the key that cools down first. What each call's requests
+//! did is kept by its effect id and read back when the call settles: the
+//! requests and tokens of each key, saved with the session and shown by
+//! `/keys`, and one warning per refused key. Key values live only in the
+//! pool, never in a request an effect sees, a notice or a record.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::ProviderError;
 use rig_harness::rig_core::catalog::Connector;
+use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::retry::Verdict;
 use rig_harness::rig_core::http_client::{
-    self, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, LazyBytes, MultipartForm, Request,
+    self, Bytes, DynHttpClient, HeaderValue, HttpClientExt, LazyBody, MultipartForm, Request,
     Response, StreamingResponse,
 };
 use rig_harness::rig_core::providers::registry::{ConnectOptions, Format};
+use rig_harness::rig_core::serve::Serving;
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::rig_core::wire::Secret;
 use serde::Deserialize;
@@ -47,19 +53,6 @@ mod tests;
 const FIRST_COOLDOWN: Duration = Duration::from_secs(60);
 /// The longest cooldown the pool picks itself.
 const MAX_COOLDOWN: Duration = Duration::from_secs(15 * 60);
-
-/// `bytes::Bytes`, the body type of rig-core's HTTP client trait, named
-/// through a public alias: neither rig-core nor rig-http re-exports it.
-type Bytes = <<LazyBytes as Future>::Output as OkOf>::Ok;
-
-/// The success type of a `Result`, for [`Bytes`].
-trait OkOf {
-    type Ok;
-}
-
-impl<T, E> OkOf for Result<T, E> {
-    type Ok = T;
-}
 
 /// One provider's table of `key-pool.toml`.
 #[derive(Deserialize, Debug)]
@@ -120,8 +113,6 @@ struct Key {
     health: Health,
     /// Rate limits in a row, which double the next cooldown.
     strikes: u32,
-    /// Requests sent on it and not yet counted in [`KeyUsage`].
-    sent: u64,
 }
 
 /// One provider's keys and the one its requests go to.
@@ -134,18 +125,16 @@ struct Pool {
     options: ConnectOptions,
     current: usize,
     keys: Vec<Key>,
-    /// The references of keys refused since the last notice.
-    refused: Vec<String>,
 }
 
 /// What became of a request sent on a key.
 enum Failed {
     /// Try the next key.
     Next,
-    /// Give the failure up, as it came.
+    /// Give the failure up.
     Up,
-    /// Give it up, asking to wait this long: every key cools.
-    Wait(Duration),
+    /// Give it up: every key cools, the first until then.
+    Wait(Instant),
 }
 
 impl Pool {
@@ -168,10 +157,8 @@ impl Pool {
             .find(|index| !tried.contains(index) && self.usable(*index, now));
         let first = || tried.is_empty().then(|| self.first_cooled()).flatten();
         let index = usable.or_else(|| first().map(|(index, _)| index))?;
-        let key = self.keys.get_mut(index)?;
-        key.sent += 1;
         self.current = index;
-        Some((index, key.value.clone()?))
+        Some((index, self.keys.get(index)?.value.clone()?))
     }
 
     /// The cooling key whose cooldown ends first, and when.
@@ -187,13 +174,14 @@ impl Pool {
 
     /// Reads a request's failure on the key `index`, after it `tried`
     /// those: a rate limit or a spent quota cools the key, a refusal
-    /// disables it, and either sends the request on to the next key, if
-    /// one it did not try is usable.
+    /// disables it (noted in `call`), and either sends the request on to
+    /// the next key, if one it did not try is usable.
     fn failed(
         &mut self,
         index: usize,
         tried: &[usize],
         error: &http_client::Error,
+        call: &mut Served,
         now: Instant,
     ) -> Failed {
         let (Some(status), Some(headers), Some(body)) = (
@@ -221,7 +209,7 @@ impl Pool {
         } else if matches!(report.http_status, Some(401 | 403)) {
             if key.health != Health::Disabled {
                 key.health = Health::Disabled;
-                self.refused.push(key.reference.clone());
+                call.refused.push(key.reference.clone());
             }
         } else {
             return Failed::Up;
@@ -230,27 +218,44 @@ impl Pool {
         if untried.any(|index| self.usable(index, now)) {
             Failed::Next
         } else if let Some((_, until)) = self.first_cooled() {
-            Failed::Wait(until.saturating_duration_since(now))
+            Failed::Wait(until)
         } else {
             Failed::Up
         }
     }
-
-    /// A reply came on the key `index`: its rate limits are over.
-    fn answered(&mut self, index: usize) {
-        if let Some(key) = self.keys.get_mut(index) {
-            key.strikes = 0;
-        }
-    }
 }
 
-/// Every pool, by provider, in the order of `key-pool.toml`, shared with
-/// the HTTP client wrapper. Never reflected, logged or saved.
+/// What one model call's requests did on its pool, by the call's effect
+/// id, until the call settles.
+#[derive(Default)]
+struct Served {
+    pool: usize,
+    /// The key each request went to.
+    sent: Vec<usize>,
+    /// The key that answered.
+    answered: Option<usize>,
+    /// The references of the keys refused on it.
+    refused: Vec<String>,
+    /// When the key that cools down first can be used again, once every
+    /// key cools.
+    wait: Option<Instant>,
+}
+
+/// The pools in the order of `key-pool.toml`, and what each model call
+/// did on them.
+#[derive(Default)]
+struct Shared {
+    pools: Vec<Pool>,
+    calls: HashMap<EffectId, Served>,
+}
+
+/// The pools, shared with the HTTP client wrapper. Never reflected,
+/// logged or saved.
 #[derive(Resource, Clone, Default)]
-struct Pools(Arc<Mutex<Vec<Pool>>>);
+struct Pools(Arc<Mutex<Shared>>);
 
 impl Pools {
-    fn lock(&self) -> MutexGuard<'_, Vec<Pool>> {
+    fn lock(&self) -> MutexGuard<'_, Shared> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -260,6 +265,13 @@ impl Pools {
 #[derive(Resource, Reflect, Default, Debug)]
 #[reflect(Resource, Saved, Default)]
 pub struct KeyUsage(pub HashMap<String, KeyCount>);
+
+impl KeyUsage {
+    /// The usage of `vendor`'s key `reference`.
+    fn count(&mut self, vendor: &str, reference: &str) -> &mut KeyCount {
+        self.0.entry(format!("{vendor} {reference}")).or_default()
+    }
+}
 
 /// One key's usage.
 #[derive(Reflect, Default, Debug, Clone, Copy)]
@@ -272,6 +284,11 @@ pub struct KeyCount {
 #[derive(Resource)]
 struct PoolProblem(Option<String>);
 
+/// The pool's stage system, which edits a failed model call's
+/// [`RetryVerdict`] in Review, before compaction reads it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct KeyPoolSystems;
+
 #[derive(Default)]
 pub struct KeyPoolPlugin;
 
@@ -283,6 +300,13 @@ impl Plugin for KeyPoolPlugin {
         app.insert_resource(pools)
             .insert_resource(PoolProblem(problem))
             .insert_resource(KeyUsage::default())
+            .configure_sets(
+                AgentPass,
+                KeyPoolSystems
+                    .in_set(Stage::Review)
+                    .before(CompactionSystems::Recover),
+            )
+            .add_systems(AgentPass, wait_for_the_first_key.in_set(KeyPoolSystems))
             .add_systems(Startup, provide)
             .add_observer(count)
             .add_command(
@@ -321,12 +345,7 @@ fn load(home: &Home) -> (Pools, Option<String>) {
         if let Some(url) = config.base_url {
             options = options.base_url(url);
         }
-        let format = config.format.as_deref().and_then(|name| {
-            Format::ALL
-                .into_iter()
-                .find(|format| format.as_str() == name)
-        });
-        if let Some(format) = format {
+        if let Some(format) = config.format.as_deref().and_then(Format::named) {
             options = options.format(format);
         }
         let keys = config.keys.iter().map(|reference| {
@@ -340,7 +359,6 @@ fn load(home: &Home) -> (Pools, Option<String>) {
                 },
                 value,
                 strikes: 0,
-                sent: 0,
             }
         });
         Pool {
@@ -349,10 +367,13 @@ fn load(home: &Home) -> (Pools, Option<String>) {
             options,
             current: 0,
             keys: keys.collect(),
-            refused: Vec::new(),
         }
     });
-    (Pools(Arc::new(Mutex::new(pools.collect()))), problem)
+    let shared = Shared {
+        pools: pools.collect(),
+        calls: HashMap::new(),
+    };
+    (Pools(Arc::new(Mutex::new(shared))), problem)
 }
 
 /// Each pooled provider's models connect with the pool's stand-in for a
@@ -366,7 +387,7 @@ fn provide(
     if let Some(problem) = &problem.0 {
         notices.write(Notice::error(None, problem.clone()));
     }
-    for pool in pools.lock().iter() {
+    for pool in &pools.lock().pools {
         let catalog = models.0.catalog();
         let found = catalog
             .iter()
@@ -388,8 +409,8 @@ fn wrap(models: &mut Connector, pools: Pools) {
     });
 }
 
-/// An HTTP client that sends each request carrying a pool's stand-in on
-/// that pool's keys, the next one after a rate limit or a refusal.
+/// An HTTP client that sends each request of a pooled provider's model
+/// call on that pool's keys, the next one after a rate limit or a refusal.
 #[derive(Clone)]
 struct Rotating {
     inner: DynHttpClient,
@@ -397,9 +418,9 @@ struct Rotating {
 }
 
 impl Rotating {
-    /// Sends `request` with `send`, on the keys of the pool whose stand-in
-    /// it carries until one answers or the failure is given up; a request
-    /// for no pool goes as it is.
+    /// Sends `request` with `send`, on the keys of the pool of the
+    /// provider its [`Serving`] names until one answers or the failure is
+    /// given up; any other request goes as it is.
     async fn send_keyed<R, F>(
         self,
         request: Request<Bytes>,
@@ -408,78 +429,85 @@ impl Rotating {
     where
         F: Future<Output = http_client::Result<R>>,
     {
-        let (head, body) = request.into_parts();
-        let carries = |stand_in: &str| {
-            head.uri.to_string().contains(stand_in)
-                || head.headers.values().any(|value| {
-                    let text = value.to_str().unwrap_or_default();
-                    text.contains(stand_in)
-                })
-        };
-        let pool = self
-            .pools
-            .lock()
-            .iter()
-            .position(|pool| carries(&pool.stand_in));
-        let Some(pool) = pool else {
-            return send(self.inner, Request::from_parts(head, body)).await;
+        let serving = request.extensions().get::<Serving>();
+        let call = serving.and_then(|serving| Some((serving.effect, serving.provider?)));
+        let pool = call.and_then(|(effect, provider)| {
+            let mut shared = self.pools.lock();
+            let pool = shared
+                .pools
+                .iter()
+                .position(|pool| pool.vendor == provider.vendor())?;
+            shared.calls.entry(effect).or_default().pool = pool;
+            Some((effect, pool))
+        });
+        let Some((effect, pool)) = pool else {
+            return send(self.inner, request).await;
         };
         let mut tried = Vec::new();
         loop {
-            let picked = self.pools.lock().get_mut(pool).and_then(|pool| {
-                let (index, key) = pool.pick(&tried, Instant::now())?;
-                Some((index, key, pool.stand_in.clone()))
-            });
+            let picked = {
+                let mut shared = self.pools.lock();
+                let Shared { pools, calls } = &mut *shared;
+                let pool = pools.get_mut(pool);
+                let picked = pool.and_then(|pool| {
+                    let (index, key) = pool.pick(&tried, Instant::now())?;
+                    Some((index, key, pool.stand_in.clone()))
+                });
+                if let (Some((index, ..)), Some(call)) = (&picked, calls.get_mut(&effect)) {
+                    call.sent.push(*index);
+                }
+                picked
+            };
             let Some((index, key, stand_in)) = picked else {
                 let why = "no key of the pool can be used";
                 return Err(http_client::Error::instance(std::io::Error::other(why)));
             };
             tried.push(index);
-            let keyed = keyed(&head, body.clone(), &stand_in, &key)?;
-            let error = match send(self.inner.clone(), keyed).await {
+            let error = match send(self.inner.clone(), keyed(&request, &stand_in, &key)?).await {
                 Ok(reply) => {
-                    if let Some(pool) = self.pools.lock().get_mut(pool) {
-                        pool.answered(index);
+                    let mut shared = self.pools.lock();
+                    let Shared { pools, calls } = &mut *shared;
+                    if let Some(key) = pools.get_mut(pool).and_then(|p| p.keys.get_mut(index)) {
+                        key.strikes = 0;
+                    }
+                    if let Some(call) = calls.get_mut(&effect) {
+                        call.answered = Some(index);
                     }
                     return Ok(reply);
                 }
                 Err(error) => error,
             };
-            let failed = self
-                .pools
-                .lock()
+            let mut shared = self.pools.lock();
+            let Shared { pools, calls } = &mut *shared;
+            let call = calls.entry(effect).or_default();
+            let failed = pools
                 .get_mut(pool)
-                .map(|pool| pool.failed(index, &tried, &error, Instant::now()));
+                .map(|pool| pool.failed(index, &tried, &error, call, Instant::now()));
             match failed {
                 Some(Failed::Next) => {}
-                Some(Failed::Wait(wait)) => return Err(waiting(error, wait)),
+                Some(Failed::Wait(until)) => {
+                    call.wait = Some(until);
+                    return Err(error);
+                }
                 Some(Failed::Up) | None => return Err(error),
             }
         }
     }
 }
 
-/// The request `head` with `body`, with `key` wherever it carries
-/// `stand_in`, marked sensitive.
+/// `request` with `key` wherever it carries `stand_in`, marked sensitive.
 fn keyed(
-    head: &http::request::Parts,
-    body: Bytes,
+    request: &Request<Bytes>,
     stand_in: &str,
     key: &Secret,
 ) -> http_client::Result<Request<Bytes>> {
-    let mut request = Request::new(body);
-    *request.method_mut() = head.method.clone();
-    *request.version_mut() = head.version;
-    let uri = head.uri.to_string();
-    *request.uri_mut() = match uri.contains(stand_in) {
-        true => uri
-            .replace(stand_in, key.expose())
-            .parse()
-            .map_err(http_client::Error::instance)?,
-        false => head.uri.clone(),
-    };
-    let mut headers = head.headers.clone();
-    for value in headers.values_mut() {
+    let mut keyed = request.clone();
+    let uri = request.uri().to_string();
+    if uri.contains(stand_in) {
+        let uri = uri.replace(stand_in, key.expose());
+        *keyed.uri_mut() = uri.parse().map_err(http_client::Error::instance)?;
+    }
+    for value in keyed.headers_mut().values_mut() {
         let text = value.to_str().unwrap_or_default();
         if text.contains(stand_in) {
             let mut with_key = HeaderValue::from_str(&text.replace(stand_in, key.expose()))
@@ -488,25 +516,7 @@ fn keyed(
             *value = with_key;
         }
     }
-    *request.headers_mut() = headers;
-    Ok(request)
-}
-
-/// `error`, a rate limit, asking to wait `wait` instead, as the key that
-/// cools down first does.
-fn waiting(error: http_client::Error, wait: Duration) -> http_client::Error {
-    let (Some(status), Some(headers), Some(body)) = (
-        error.non_success_status(),
-        error.non_success_headers(),
-        error.non_success_body(),
-    ) else {
-        return error;
-    };
-    let mut headers = headers.clone();
-    headers.remove("retry-after-ms");
-    let seconds = wait.as_secs_f64().ceil() as u64;
-    headers.insert("retry-after", HeaderValue::from(seconds));
-    http_client::Error::non_success_with_details(status, headers, body.to_owned())
+    Ok(keyed)
 }
 
 impl HttpClientExt for Rotating {
@@ -555,45 +565,61 @@ impl HttpClientExt for Rotating {
     }
 }
 
-/// When a model call settles: counts the requests each key sent and the
-/// call's tokens, on the key its provider's pool is on, and says which
-/// keys were refused since.
+/// In Review: a model call that failed with every key of its pool cooling
+/// is retried when the key that cools down first can be used again.
+fn wait_for_the_first_key(
+    mut failed: Query<(&Effect, &mut RetryVerdict), Without<Settled>>,
+    pools: Res<Pools>,
+) {
+    let shared = pools.lock();
+    for (effect, mut verdict) in &mut failed {
+        let wait = shared.calls.get(&effect.id()).and_then(|call| call.wait);
+        if let (Some(until), Verdict::Retry(delay)) = (wait, &mut verdict.0) {
+            *delay = until.saturating_duration_since(Instant::now());
+        }
+    }
+}
+
+/// When a model call settles: counts what its requests did on its pool's
+/// keys, its tokens on the key that answered, and says which keys were
+/// refused on it.
 fn count(
     settled: On<Add<Settled>>,
-    calls: Query<(&SentTo, &Outcome, Option<&ForAgent>)>,
+    calls: Query<(&Effect, &Outcome, Option<&ForAgent>)>,
     pools: Res<Pools>,
     mut usage: ResMut<KeyUsage>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((sent, outcome, agent)) = calls.get(settled.entity) else {
+    let Ok((effect, outcome, agent)) = calls.get(settled.entity) else {
         return;
     };
-    let agent = agent.map(|agent| agent.0);
-    let vendor = sent.0.spec.provider.vendor();
-    for pool in pools.lock().iter_mut() {
-        for key in &mut pool.keys {
-            let entry = format!("{} {}", pool.vendor, key.reference);
-            usage.0.entry(entry).or_default().requests += std::mem::take(&mut key.sent);
-        }
-        for reference in pool.refused.drain(..) {
-            notices.write(Notice::warn(
-                agent,
-                format!(
-                    "The {} key {reference} was refused; it is left out for the rest \
-                     of the session.",
-                    pool.vendor
-                ),
-            ));
-        }
-        let current = pool.keys.get(pool.current);
-        if let (true, Some(key), Some(response)) =
-            (pool.vendor == vendor, current, outcome.completion())
-        {
-            let used = &response.usage;
-            let sum = used.input_tokens.unwrap_or(0) + used.output_tokens.unwrap_or(0);
-            let entry = format!("{vendor} {}", key.reference);
-            usage.0.entry(entry).or_default().tokens += used.total_tokens.unwrap_or(sum);
-        }
+    let mut shared = pools.lock();
+    let Some(call) = shared.calls.remove(&effect.id()) else {
+        return;
+    };
+    let Some(pool) = shared.pools.get(call.pool) else {
+        return;
+    };
+    let reference = |index: usize| pool.keys.get(index).map(|key| key.reference.as_str());
+    for reference in call.sent.into_iter().filter_map(reference) {
+        usage.count(&pool.vendor, reference).requests += 1;
+    }
+    if let (Some(reference), Some(response)) =
+        (call.answered.and_then(reference), outcome.completion())
+    {
+        let used = &response.usage;
+        let sum = used.input_tokens.unwrap_or(0) + used.output_tokens.unwrap_or(0);
+        usage.count(&pool.vendor, reference).tokens += used.total_tokens.unwrap_or(sum);
+    }
+    for reference in call.refused {
+        notices.write(Notice::warn(
+            agent.map(|agent| agent.0),
+            format!(
+                "The {} key {reference} was refused; it is left out for the rest of the \
+                 session.",
+                pool.vendor
+            ),
+        ));
     }
 }
 
@@ -605,15 +631,15 @@ fn keys_command(
     usage: Res<KeyUsage>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let pools = pools.lock();
-    if pools.is_empty() {
+    let shared = pools.lock();
+    if shared.pools.is_empty() {
         let text = "No key pool: list keys in RIG_HOME/key-pool.toml.";
         notices.write(Notice::info(args.agent, text));
         return;
     }
     let now = Instant::now();
     let mut lines = Vec::new();
-    for pool in pools.iter() {
+    for pool in &shared.pools {
         for (index, key) in pool.keys.iter().enumerate() {
             let state = match key.health {
                 Health::Cooling(until) if until > now => {

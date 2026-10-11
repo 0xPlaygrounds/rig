@@ -4690,7 +4690,6 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
- "http 1.4.2",
  "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
