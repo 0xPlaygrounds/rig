@@ -24,23 +24,17 @@ fn start(store: &MemoryStore, home: &Home) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
-/// Presses this plugin's binding of `keys` in the input, as the terminal
-/// view does on a match (there is no public headless view), then runs a
-/// frame.
-fn press(app: &mut App, keys: KeyPress) {
+/// Up or Down as the terminal view does them, on the history it browses
+/// (the view's key reading needs a terminal, so this calls the input's
+/// own Up and Down the view's keys run), then a frame.
+fn browse(app: &mut App, up: bool) {
     let world = app.world_mut();
-    let mut bindings = world.query::<(Entity, &KeyBinding)>();
-    let bound = bindings
-        .iter(world)
-        .find(|(_, binding)| binding.scope == KeyScope::Input && binding.keys == keys.into())
-        .map(|(entity, _)| entity);
-    assert!(bound.is_some(), "{keys} is not bound");
-    if let Some(entity) = bound {
-        world.trigger(KeyPressed {
-            entity,
-            agent: None,
-            released: false,
-        });
+    let entries = world.resource::<PromptHistory>().entries.clone();
+    let mut input = world.resource_mut::<TuiInput>();
+    if up {
+        input.up(&entries);
+    } else {
+        input.down(&entries);
     }
     app.update();
 }
@@ -99,9 +93,10 @@ fn history_skips_repeats_and_secrets_and_the_draft_survives_a_restart() {
 
     let (mut app, _wakes) = start(&store, &home);
     assert_eq!(input(&app), ("half writ".to_owned(), 9));
-    press(&mut app, KeyPress::key(KeyCode::Up));
+    assert_eq!(app.world().resource::<PromptHistory>().entries, ["a"]);
+    browse(&mut app, true);
     assert_eq!(input(&app).0, "a");
-    press(&mut app, KeyPress::key(KeyCode::Down));
+    browse(&mut app, false);
     assert_eq!(input(&app), ("half writ".to_owned(), 9));
     fs::remove_dir_all(home.root()).ok();
 }
