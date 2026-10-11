@@ -20,6 +20,8 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
+use rig_basics::ProjectContextSystems;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::watch::WatchPlugin;
 use rig_tui::{FRONT, RunInTerminal, TerminalExit};
@@ -83,7 +85,14 @@ impl Plugin for LongTermMemoryPlugin {
             )
             .add_systems(Startup, open)
             .add_systems(Update, (reload, edited).before(AgentLoop))
-            .add_systems(AgentPass, recall.in_set(Stage::Prepare));
+            .configure_sets(
+                AgentPass,
+                MemorySystems
+                    .in_set(Stage::Prepare)
+                    .after(ProjectContextSystems)
+                    .before(CompactionSystems::Prepare),
+            )
+            .add_systems(AgentPass, recall.in_set(MemorySystems));
     }
 
     fn finish(&self, app: &mut App) {
@@ -91,6 +100,12 @@ impl Plugin for LongTermMemoryPlugin {
         app.insert_resource(TerminalView(shown));
     }
 }
+
+/// The plugin's Prepare system, which adds the recalled memories to each
+/// turn's requests: after the default prompt went in, before compaction
+/// measures what is sent.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MemorySystems;
 
 /// Whether the terminal view runs, which `/memory edit` needs.
 #[derive(Resource)]
@@ -373,7 +388,7 @@ type NewTurnCalls<'w, 's> = Query<
         &'static CallOf,
         &'static ForAgent,
     ),
-    (Added<Admitted>, With<TurnCall>),
+    (Added<Admitted>, ModelCalls, With<TurnCall>),
 >;
 
 /// Recalls the memories for the user's message the turn answers at its
@@ -542,16 +557,16 @@ struct RememberArgs {
 fn remember(
     called: On<ToolCalled<RememberArgs>>,
     mut memories: ResMut<Memories>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let result = match memories.remember(&called.args.fact, called.args.scope) {
         Ok((id, true)) => ToolResult::success(format!("Remembered as {id}.").into()),
         Ok((id, false)) => ToolResult::success(format!("Already remembered as {id}.").into()),
         Err(error) => ToolResult::failed(ToolExecutionError::from_error(error)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut decision) = calls.get_mut(called.call) {
+        decision.decide(result);
+    }
 }
 
 /// What `forget` takes.
@@ -565,7 +580,7 @@ struct ForgetArgs {
 fn forget(
     called: On<ToolCalled<ForgetArgs>>,
     mut memories: ResMut<Memories>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let id = &called.args.id;
     let result = match memories.forget(id) {
@@ -575,7 +590,7 @@ fn forget(
         ))),
         Err(error) => ToolResult::failed(ToolExecutionError::from_error(error)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut decision) = calls.get_mut(called.call) {
+        decision.decide(result);
+    }
 }
