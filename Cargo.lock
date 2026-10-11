@@ -12527,6 +12527,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-tui",
+ "serde_json",
 ]
 
 [[package]]
