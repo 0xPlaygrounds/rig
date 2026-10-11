@@ -23,6 +23,7 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

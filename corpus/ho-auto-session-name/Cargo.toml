@@ -20,5 +20,6 @@ rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

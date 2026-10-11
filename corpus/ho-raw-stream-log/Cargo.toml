@@ -24,5 +24,6 @@ rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
