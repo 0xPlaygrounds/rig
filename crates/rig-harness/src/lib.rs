@@ -64,8 +64,10 @@ pub mod host;
 mod load;
 pub mod pick;
 pub mod primary;
+pub mod progress;
 pub mod services;
 pub mod settings;
+pub mod successor;
 pub mod watch;
 
 pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
@@ -123,8 +125,10 @@ pub mod prelude {
     };
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
+    pub use crate::progress::ToolProgress;
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime};
     pub use crate::settings::{AppSettingsExt, Settings};
+    pub use crate::successor::{follow_successor, resend};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::{
         HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,

@@ -157,9 +157,10 @@ system. So a broken guard never lets a call through.
 
 **Taking over and trying again.** A reviewer that takes a failure over
 spawns a successor that `Supersedes(failed)`, with the request it needs
-and the same `CallOf`: the failed effect is recorded as superseded and
-never reaches the conversation. Work that takes time holds the outcome
-first, then supersedes it.
+and the same `CallOf`, or sends the same request again with
+`commands.queue(resend(failed))`: the failed effect is recorded as
+superseded and never reaches the conversation. Work that takes time holds
+the outcome first, then supersedes it.
 
 **The loop's edge.** Work spawned, answered or released after `AgentLoop`
 ran (in `PostUpdate` or `Last`) waits for the next frame. A system that
@@ -1152,14 +1153,14 @@ becomes its outcome.
 **An owner follows its effect's successor.** Another plugin may take the
 effect over ([Taking over and trying
 again](#how-a-plugin-steps-in-effects-and-stages)), such as a watchdog
-that sends a stalled model call again: the effect then settles with no
-outcome applied, recorded as superseded, and its `SupersededBy` names
-the successor that carries the work on (`successor()`, which may itself
-be superseded later). A plugin waiting for its own effect's outcome, on
-`Add<Settled>`, checks for `SupersededBy` and moves its markers and any
-hold it keeps with the effect to the successor. Commit runs before Admit,
-so they are there when the successor is prepared. The kernel follows its
-own turn and tool calls this way.
+that sends a stalled call again with `commands.queue(resend(call))`: the
+effect then settles with no outcome applied, recorded as superseded, and
+its `SupersededBy` names the successor that carries the work on. A plugin
+that waits for its own effect's outcome by a marker registers
+`app.add_observer(follow_successor::<Marker>)`, which moves the marker,
+and the hold the effect keeps, to each successor. The kernel follows its
+own turn and tool calls. A running call's owner keeps a `ToolProgress`
+line on it, which the fronts show.
 
 ```rust,no_run
 use rig_harness::prelude::*;
