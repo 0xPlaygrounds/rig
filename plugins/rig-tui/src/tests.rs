@@ -13,6 +13,19 @@ struct Drawn(usize);
 #[derive(Resource, Default)]
 pub(crate) struct Delivered(pub(crate) Vec<String>);
 
+/// A directory of its own for test `name`, beside the test binary, so
+/// nothing lands in the source tree; empty.
+pub(crate) fn scratch(name: &str) -> std::path::PathBuf {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe
+        .parent()
+        .map(|deps| deps.join(format!("rig-tui-{name}")))
+        .unwrap_or_default();
+    std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).ok();
+    dir
+}
+
 /// An agent with the terminal view's input and choices, but no terminal:
 /// its keys are the [`TerminalEvent`]s [`press`] writes. Also returns the
 /// agent.

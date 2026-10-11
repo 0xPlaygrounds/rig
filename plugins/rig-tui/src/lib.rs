@@ -178,10 +178,15 @@ fn add_view(app: &mut App) {
                     .chain()
                     .in_set(TuiSystems::Render)
                     .run_if(resource_exists::<terminal::Tui>),
-                terminal::write_to_terminal
-                    .after(TuiSystems::Render)
-                    .run_if(resource_exists::<terminal::Tui>),
             ),
+        )
+        // After the frame, and after what runs on the way out, which may
+        // write to the terminal before the view lets it go.
+        .add_systems(
+            Last,
+            terminal::write_to_terminal
+                .after(bevy_app::OnAppExitSystems)
+                .run_if(resource_exists::<terminal::Tui>),
         )
         .add_observer(view::on_focus);
 }

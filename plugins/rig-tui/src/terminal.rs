@@ -3,7 +3,7 @@
 //! ([`RunInTerminal`]), whether the terminal has the user's focus
 //! ([`TerminalFocus`]), and a plugin's own escape codes, such as a desktop
 //! notification ([`TerminalWrite`]) or a copy to the clipboard
-//! ([`CopyToClipboard`]), written between frames.
+//! ([`CopyToClipboard`]), written after each frame, the last one included.
 
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -68,8 +68,9 @@ pub struct TerminalFocus(pub Option<bool>);
 
 /// Bytes for the terminal itself, such as an escape code that shows a
 /// desktop notification (OSC 9 or 777): the view writes them after its
-/// frame, through its own writer, so they never land inside a frame.
-/// Nothing writes them in a run without the terminal view.
+/// frame, through its own writer, so they never land inside a frame. Bytes
+/// sent in Bevy's `OnAppExitSystems` are written before the terminal is
+/// given back. Nothing writes them in a run without the terminal view.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct TerminalWrite(pub Vec<u8>);
 
@@ -258,7 +259,8 @@ pub(crate) fn track_focus(
 }
 
 /// Writes the [`TerminalWrite`]s and [`CopyToClipboard`]s sent, in order
-/// each, after the frame.
+/// each, after the frame and after Bevy's `OnAppExitSystems`, so bytes
+/// sent on the way out are written too.
 pub(crate) fn write_to_terminal(
     mut tui: ResMut<Tui>,
     mut writes: MessageReader<TerminalWrite>,
