@@ -3766,6 +3766,606 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-agent-profiles"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ask-user"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-auto-commit"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-background-jobs"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-chat-bridge"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-check-after-turn"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-checkpoint-rewind"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-code-search-index"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-confirm-destructive"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-context-inspector"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-cost-budget"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-cron-agent"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-custom-provider"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-debate"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-effect-query"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-export"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-few-shot-examples"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-files-panel"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-fork-session"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-format-on-write"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-git-status-item"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-handoff"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-http-api"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-json-stream"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-keybindings"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-local-models"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-long-term-memory"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-loop-breaker"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-map-reduce"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-mcp-client"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-model-fallback"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-model-router"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-nested-context"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-notify"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-otel-tracing"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-output-truncate"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-permission-modes"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-pinned-notes"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-plan-mode"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-prompt-templates"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-protected-paths"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-retry-with-model"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-review-agent"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-secret-redaction"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-session-goal"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-session-replay"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-share"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-shell-rewrite"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-shell-sandbox"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-skills"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-subagent-policy"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-summarize-tool-output"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-supervisor"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-text-tool-calls"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-think-tag-splitter"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-todo-tracker"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-tool-rate-limit"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-tool-search"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-voice"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-window-gui"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
 name = "cpal"
 version = "0.17.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

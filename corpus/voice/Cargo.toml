@@ -1,0 +1,17 @@
+[package]
+name = "corpus-voice"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 49. Voice input and spoken answers"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness = { path = "../../crates/rig-harness" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

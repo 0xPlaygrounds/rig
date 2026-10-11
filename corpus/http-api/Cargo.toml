@@ -1,0 +1,17 @@
+[package]
+name = "corpus-http-api"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 46. HTTP API front"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness = { path = "../../crates/rig-harness" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
