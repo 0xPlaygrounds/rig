@@ -55,6 +55,7 @@ impl Plugin for HandoffPlugin {
             )
             .add_systems(Update, show_successor)
             .add_observer(take_brief)
+            .add_observer(follow_successor::<Briefing>)
             .add_observer(name_successor);
     }
 
@@ -85,7 +86,8 @@ pub struct HandedOffFrom {
 }
 
 /// On the brief's [`ModelRequest`]: the goal, and whether the brief goes
-/// to the new agent unedited.
+/// to the new agent unedited. It follows the call to a successor that
+/// sends it again.
 #[derive(Component, Clone, Debug)]
 pub struct Briefing {
     /// The next goal.
