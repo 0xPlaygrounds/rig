@@ -1,0 +1,17 @@
+[package]
+name = "corpus-ho-stale-read-elision"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H06: Elide superseded file reads from requests"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness = { path = "../../crates/rig-harness" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

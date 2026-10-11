@@ -1,0 +1,17 @@
+[package]
+name = "corpus-ho-command-provider"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H29: Any program as a model"
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { workspace = true }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness = { path = "../../crates/rig-harness" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

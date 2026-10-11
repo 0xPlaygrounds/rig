@@ -4669,6 +4669,316 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-ho-api-key-pool"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-auto-session-name"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-background-verify"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-best-of-n"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-blackboard"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-cancellable-run"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-command-palette"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-command-provider"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-conversation-surgery"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-degenerate-stream-cutter"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-dry-run"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-exit-notes"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-file-lease"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-history-and-drafts"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-hunk-review"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-inline-shell"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-raw-stream-log"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-read-before-edit"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-relay-pipeline"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-repo-map"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-script-tools"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-session-recall"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-socket-attach"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-spend-by-origin"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-stale-read-elision"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-stall-watchdog"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-submit-result"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-terminal-title"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-throughput-item"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-tool-arg-repair"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
+name = "corpus-ho-working-set-carryover"
+version = "0.0.0"
+dependencies = [
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+]
+
+[[package]]
 name = "corpus-http-api"
 version = "0.0.0"
 dependencies = [
