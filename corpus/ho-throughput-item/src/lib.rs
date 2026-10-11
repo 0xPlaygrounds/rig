@@ -5,20 +5,15 @@
 //! `/speed` lists every model's calls, median and p90 time to first token
 //! and median tokens per second, kept with the session.
 //!
-//! Tokens are estimated as a quarter of the characters streamed (text and
-//! reasoning from `StreamDelta`, tool arguments from a stream tap, since
-//! `StreamDelta` carries no argument fragments), and corrected to the
+//! Tokens are estimated as a quarter of the characters streamed (text,
+//! reasoning and tool arguments, from `StreamDelta`), and corrected to the
 //! provider's output tokens when its usage arrives. Times are the kernel's
 //! own stamps on the call: `Started` and `Streamed`.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::SystemTime;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::streaming::{Item, Relayed, StreamEvent};
-use rig_harness::rig_ecs::effects::Handler;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// After the agent's status, before its subagents at work.
@@ -28,6 +23,11 @@ const EVERY: Duration = Duration::from_millis(250);
 /// The samples kept per model for the medians.
 const SAMPLES: usize = 500;
 
+/// The Review system that adds up what each model call streamed, for
+/// others to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ThroughputSystems;
+
 #[derive(Default)]
 pub struct ThroughputPlugin;
 
@@ -35,13 +35,9 @@ impl Plugin for ThroughputPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(SpeedTable::default())
             .register_required_components::<Agent, LiveSpeed>()
-            .add_systems(
-                AgentPass,
-                (
-                    tap_arguments.in_set(Stage::Prepare),
-                    tally_deltas.in_set(Stage::Review),
-                ),
-            )
+            .register_required_components::<ModelRequest, Tally>()
+            .configure_sets(AgentPass, ThroughputSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, tally_deltas.in_set(ThroughputSystems))
             .add_systems(PostUpdate, show.in_set(StatusSystems))
             .add_observer(went_live)
             .add_observer(answered)
@@ -95,20 +91,18 @@ fn keep_latest<T>(samples: &mut Vec<T>, sample: T) {
     }
 }
 
-/// What a model call streamed so far: the characters of its text and
-/// reasoning, of its tool arguments (counted by its stream tap, off the
-/// main thread), and when its outcome came.
-#[derive(Component)]
+/// On every model call: the characters of the text, reasoning and tool
+/// arguments it streamed so far, and when its outcome came.
+#[derive(Component, Default)]
 struct Tally {
     chars: u64,
-    arguments: Arc<AtomicU64>,
     ended: Option<SystemTime>,
 }
 
 impl Tally {
     /// The tokens streamed, estimated.
     fn tokens(&self) -> u64 {
-        (self.chars + self.arguments.load(Ordering::Relaxed)) / 4
+        self.chars / 4
     }
 }
 
@@ -130,53 +124,14 @@ struct Done {
     rate: Option<f64>,
 }
 
-/// Every model call gets its tally, and a tap on its stream that counts
-/// its tool arguments' characters, which no `StreamDelta` carries.
-fn tap_arguments(
-    mut calls: Query<(Entity, &mut Adapters), Added<Admitted>>,
-    mut commands: Commands,
-) {
-    for (call, mut adapters) in &mut calls {
-        let arguments = Arc::new(AtomicU64::new(0));
-        adapters.0.push(tap(arguments.clone()));
-        commands.entity(call).insert(Tally {
-            chars: 0,
-            arguments,
-            ended: None,
-        });
-    }
-}
-
-/// Passes the stream on, counting the characters of its tool arguments.
-fn tap(arguments: Arc<AtomicU64>) -> Adapter {
-    Adapter::new("throughput", move |mut connection: Connection| {
-        let arguments = arguments.clone();
-        let handler = connection.handler.0.map_stream("throughput", move |_| {
-            let arguments = arguments.clone();
-            move |item: Relayed| {
-                if let Relayed::Item(Item::Event(StreamEvent::Arguments { json, .. })) = &item {
-                    arguments.fetch_add(chars(json), Ordering::Relaxed);
-                }
-                vec![item]
-            }
-        });
-        connection.handler = Handler(handler);
-        connection
-    })
-}
-
 fn chars(text: &str) -> u64 {
     u64::try_from(text.chars().count()).unwrap_or(u64::MAX)
 }
 
-/// Adds the text and reasoning each call streamed to its tally, in the
-/// pass it arrived, so it is all there when the call settles.
+/// Adds what each call streamed to its tally, in the pass it arrived, so
+/// it is all there when the call settles.
 fn tally_deltas(mut deltas: MessageReader<StreamDelta>, mut calls: Query<&mut Tally>) {
-    // Argument fragments are counted by the stream tap.
-    for delta in deltas
-        .read()
-        .filter(|delta| delta.kind != DeltaKind::Arguments)
-    {
+    for delta in deltas.read() {
         if let Ok(mut tally) = calls.get_mut(delta.effect) {
             tally.chars += chars(&delta.text);
         }
