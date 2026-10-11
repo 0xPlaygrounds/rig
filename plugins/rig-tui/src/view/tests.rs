@@ -23,8 +23,14 @@ fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
     };
     let mut rows = Transcript::default();
     let view = world.resource::<TuiView>();
-    let renderers = Default::default();
-    let parts = lay_out_transcript(&mut rows, view, Some(&shown), (&renderers, None), 80);
+    let (renderers, calls) = (Default::default(), Default::default());
+    let parts = lay_out_transcript(
+        &mut rows,
+        view,
+        Some(&shown),
+        (&renderers, &calls, None),
+        80,
+    );
     let (lines, _) = rows.visible(&parts, (80, 100), &mut Scroll::default());
     lines.iter().map(ToString::to_string).collect()
 }

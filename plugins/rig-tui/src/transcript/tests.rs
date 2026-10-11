@@ -1,4 +1,19 @@
-use super::{Below, Scroll};
+use std::collections::{BTreeMap, HashMap};
+
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::RunSystemOnce;
+use rig_core::completion::Message;
+use rig_core::message::{
+    AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
+};
+use rig_ecs::agent::Conversation;
+use rig_ecs::stage::HoldOf;
+use rig_ecs::tools::ToolRequest;
+use serde_json::json;
+
+use super::{Below, Look, Part, Renderers, Scroll, Transcript};
+use crate::CallState;
+use crate::render::CallStates;
 
 const WIDTH: u16 = 80;
 
@@ -58,4 +73,62 @@ fn following_again_drops_the_held_row() {
     assert_eq!(scroll.place(&[50], 10, WIDTH), (30, Below::More));
     scroll.follow();
     assert_eq!(scroll.place(&[55], 10, WIDTH), (45, Below::Nothing));
+}
+
+/// The rows `transcript` draws of `conversation`'s first message with the
+/// calls standing as `calls` say.
+fn drawn(
+    transcript: &mut Transcript,
+    conversation: &Conversation,
+    calls: &BTreeMap<CallId, CallState>,
+) -> String {
+    let renderers = Renderers::default();
+    let look = Look {
+        renderers: &renderers,
+        calls,
+        notices: HashMap::new(),
+    };
+    // The conversation is the same each time.
+    transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
+    let parts = [Part::Message(0)];
+    let (rows, _) = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default());
+    let rows: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    rows.join("\n")
+}
+
+#[test]
+fn a_held_call_names_its_holds_and_is_drawn_again_when_they_go() {
+    let Ok(name) = ToolName::new("edit") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "src/a.rs" })));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    let conversation = serde_json::from_value::<Conversation>(json!({
+        "messages": [Message::Assistant(reply)],
+        "origins": [],
+    }));
+    assert!(conversation.is_ok());
+    let Ok(conversation) = conversation else {
+        return;
+    };
+    let mut world = World::new();
+    let effect = world.spawn(ToolRequest { call: call.clone() }).id();
+    let lease = "waiting for lease on src/a.rs";
+    let hold = world.spawn((Name::new(lease), HoldOf(effect))).id();
+    let states = |world: &mut World| {
+        let states = world.run_system_once(move |calls: CallStates| calls.of([effect]));
+        states.unwrap_or_default()
+    };
+    let held = states(&mut world);
+    let names = vec![lease.to_owned()];
+    assert_eq!(held.get(&call.id), Some(&CallState::Held(names)));
+    let mut transcript = Transcript::default();
+    let shown = drawn(&mut transcript, &conversation, &held);
+    assert!(shown.contains(&format!("held: {lease}")), "{shown}");
+
+    world.despawn(hold);
+    let waiting = states(&mut world);
+    assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
+    let shown = drawn(&mut transcript, &conversation, &waiting);
+    assert!(!shown.contains("held:"), "{shown}");
 }

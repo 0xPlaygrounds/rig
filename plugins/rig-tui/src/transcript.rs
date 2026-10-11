@@ -6,7 +6,7 @@
 //! screen. Before, every frame and every streamed delta re-wrapped the
 //! whole history.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
@@ -14,11 +14,11 @@ use bevy_ecs::entity::Entity;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{ToolResult, UserContent};
+use rig_core::message::{CallId, ToolResult, UserContent};
 
 use super::markdown;
 use super::renderers::{
-    RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
+    CallState, RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
 };
 use super::view::ShownNotice;
 use super::wrap::wrap_all;
@@ -34,6 +34,8 @@ pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
 pub(crate) struct Look<'a> {
     /// The renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
+    /// The state of each call of the running turn.
+    pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The notices written inside a message, by its index, each with the
     /// content item it goes before.
     pub(crate) notices: HashMap<usize, Vec<(usize, &'a ShownNotice)>>,
@@ -45,12 +47,35 @@ impl Look<'_> {
         self.notices.get(&index).map_or(&[], Vec::as_slice)
     }
 
-    /// Hashes what message `index` looks like besides its messages.
-    fn hash_message(&self, index: usize, hasher: &mut DefaultHasher) {
+    /// Hashes the notices inside message `index`.
+    fn hash_notices(&self, index: usize, hasher: &mut DefaultHasher) {
         for (item, notice) in self.notices(index) {
             item.hash(hasher);
             level_code(notice.level).hash(hasher);
             notice.text.hash(hasher);
+        }
+    }
+
+    /// Where the call `call` stands: as its effect says while it has one,
+    /// else done once it has `result`.
+    fn state(&self, call: &CallId, result: Option<&ToolResult>) -> CallState {
+        match self.calls.get(call) {
+            Some(state) => state.clone(),
+            None if result.is_some() => CallState::Done,
+            None => CallState::Running,
+        }
+    }
+
+    /// Hashes what message `index` looks like besides its messages: its
+    /// notices and the states of its calls.
+    fn hash_message(&self, index: usize, message: &Message, hasher: &mut DefaultHasher) {
+        self.hash_notices(index, hasher);
+        if let Message::Assistant(assistant) = message {
+            for item in assistant.content.iter() {
+                if let AssistantContent::ToolCall(call) = item {
+                    self.calls.get(&call.id).hash(hasher);
+                }
+            }
         }
     }
 
@@ -62,8 +87,9 @@ impl Look<'_> {
         indices.sort();
         for index in indices {
             index.hash(&mut hasher);
-            self.hash_message(*index, &mut hasher);
+            self.hash_notices(*index, &mut hasher);
         }
+        self.calls.hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -312,7 +338,9 @@ impl Scroll {
 /// neighbours, and `look`'s part for it.
 fn fingerprint(messages: [Option<&Message>; 3], look: &Look<'_>, index: usize) -> u64 {
     let mut hasher = DefaultHasher::new();
-    look.hash_message(index, &mut hasher);
+    if let [_, Some(message), _] = messages {
+        look.hash_message(index, message, &mut hasher);
+    }
     for message in messages {
         match message {
             Some(message) => {
@@ -412,9 +440,11 @@ fn message_lines(
                         lines.extend(plain_lines(&reasoning.text, Style::new().dim().italic()));
                     }
                     AssistantContent::ToolCall(call) => {
+                        let result = tool_results(next).find(|result| result.call == call.id);
                         let view = ToolCallView {
                             call,
-                            result: tool_results(next).find(|result| result.call == call.id),
+                            result,
+                            state: look.state(&call.id, result),
                         };
                         match look.renderers.get(call.function.name.as_str()) {
                             Some(render) => lines.extend(render(&view)),

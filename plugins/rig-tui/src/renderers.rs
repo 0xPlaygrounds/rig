@@ -31,9 +31,30 @@ const LINE_CHARS: usize = 240;
 pub struct ToolCallView<'a> {
     /// The call.
     pub call: &'a ToolCall,
-    /// Its result, once the tool answered.
+    /// Its result, once it is in the conversation.
     pub result: Option<&'a ToolResult>,
+    /// Where the call stands.
+    pub state: CallState,
 }
+
+/// Where a tool call stands. A call of an earlier turn, or one whose
+/// effect is gone, is `Done` when it has a result and `Running` when not.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum CallState {
+    /// Not started: it waits for earlier calls of its reply it must not
+    /// run beside, or to be let through.
+    Waiting,
+    /// Held from starting, or from settling once answered: the holds'
+    /// [`Name`]s, which say why, such as `waiting for lease on src/a.rs`.
+    Held(Vec<String>),
+    /// Running.
+    Running,
+    /// Answered.
+    Done,
+}
+
+/// What a hold without a [`Name`] is called.
+pub(crate) const UNNAMED_HOLD: &str = "unnamed hold";
 
 impl ToolCallView<'_> {
     /// The tool's name.
@@ -56,18 +77,23 @@ impl ToolCallView<'_> {
         self.result.is_some_and(|result| result.is_error)
     }
 
-    /// The header line: a dot coloured by state (yellow running, green
-    /// done, red failed), `title` in bold and `detail` dimmed.
+    /// The header line: a dot coloured by state (dim waiting, yellow
+    /// running or held, green done, red failed), `title` in bold, `detail`
+    /// dimmed, and what holds a held call.
     pub fn header(&self, title: impl Into<String>, detail: impl Into<String>) -> Line<'static> {
-        let dot = match self.result {
-            None => Span::from("● ").yellow(),
-            Some(result) if result.is_error => Span::from("● ").red(),
-            Some(_) => Span::from("● ").green(),
+        let dot = match (self.result, &self.state) {
+            (Some(result), _) if result.is_error => Span::from("● ").red(),
+            (Some(_), _) => Span::from("● ").green(),
+            (None, CallState::Waiting) => Span::from("○ ").dim(),
+            (None, _) => Span::from("● ").yellow(),
         };
         let detail = detail.into();
         let mut spans = vec![dot, Span::from(title.into()).bold()];
         if !detail.is_empty() {
             spans.push(Span::from(format!(" {detail}")).dim());
+        }
+        if let CallState::Held(holds) = &self.state {
+            spans.push(Span::from(format!(" · held: {}", holds.join(", "))).yellow());
         }
         Line::from(spans)
     }

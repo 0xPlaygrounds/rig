@@ -1,10 +1,11 @@
 //! Draws the focused agent: transcript, status line, input editor with its
 //! completion list, and the picker or question shown.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::{execute, queue};
@@ -21,15 +22,17 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::ToolRenderer;
+use super::renderers::{CallState, ToolRenderer, UNNAMED_HOLD};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{Below, Look, Part, Renderers, Transcript, notice_lines, plain_lines};
 use super::view::{ShownNotice, Slot, TuiView};
 use super::wrap::wrap_all;
+use rig_core::message::CallId;
 use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
-use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
+use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
+use rig_ecs::tools::ToolRequest;
 use rig_harness::primary::Shown;
 
 /// Most lines the input box shows.
@@ -52,7 +55,8 @@ pub(crate) struct Paced {
 
 /// Whether anything drawn changed since the last frame: the view state (a
 /// key, a notice, a resize, a picker or question), the input and who has
-/// the keys, an agent's drawn components, a turn's calls, a
+/// the keys, an agent's drawn components, a turn's calls and where a tool
+/// call stands (held, waiting, started, answered), a
 /// streaming reply, a status line item (a retry's wait counts down there),
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
@@ -74,14 +78,26 @@ pub(crate) fn needs_redraw(
     >,
     partials: Query<(), Changed<Partial>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
+    calls: Query<
+        (),
+        (
+            With<ToolRequest>,
+            Or<(Added<Started>, Added<Outcome>, Changed<Holds>)>,
+        ),
+    >,
     app_status: Option<Res<AppStatus>>,
     mut requests: MessageReader<RequestRedraw>,
-    mut removed: (RemovedComponents<TuiPanel>, RemovedComponents<StatusItems>),
+    mut removed: (
+        RemovedComponents<TuiPanel>,
+        RemovedComponents<StatusItems>,
+        RemovedComponents<Holds>,
+    ),
     mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
-    let removed = removed.0.read().count() + removed.1.read().count() > 0;
+    let removed =
+        removed.0.read().count() + removed.1.read().count() + removed.2.read().count() > 0;
     let changed = requested
         || removed
         || view.is_changed()
@@ -90,7 +106,8 @@ pub(crate) fn needs_redraw(
         || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || !changed.is_empty()
-        || !messages.is_empty();
+        || !messages.is_empty()
+        || !calls.is_empty();
     paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
@@ -159,6 +176,55 @@ pub(crate) fn layout(
     };
 }
 
+/// What the transcript reads of where a turn's tool calls stand.
+#[derive(SystemParam)]
+pub(crate) struct CallStates<'w, 's> {
+    calls: Query<
+        'w,
+        's,
+        (
+            &'static ToolRequest,
+            Option<&'static Holds>,
+            Has<Started>,
+            Has<Outcome>,
+        ),
+    >,
+    names: Query<'w, 's, &'static Name>,
+}
+
+impl CallStates<'_, '_> {
+    /// Where each tool call of `calls` stands, by its id: held while it
+    /// has holds, else done once answered, running once started, else
+    /// waiting.
+    pub(crate) fn of(
+        &self,
+        calls: impl IntoIterator<Item = Entity>,
+    ) -> BTreeMap<CallId, CallState> {
+        let found = calls
+            .into_iter()
+            .filter_map(|call| self.calls.get(call).ok());
+        found
+            .map(|(request, holds, started, answered)| {
+                let state = match holds {
+                    Some(holds) => {
+                        CallState::Held(holds.iter().map(|hold| self.name(hold)).collect())
+                    }
+                    None if answered => CallState::Done,
+                    None if started => CallState::Running,
+                    None => CallState::Waiting,
+                };
+                (request.call.id.clone(), state)
+            })
+            .collect()
+    }
+
+    /// A hold's name, which says why it holds.
+    fn name(&self, hold: Entity) -> String {
+        let name = self.names.get(hold).map_or(UNNAMED_HOLD, Name::as_str);
+        name.to_owned()
+    }
+}
+
 /// The agent shown, as its transcript draws it.
 pub(crate) struct ShownAgent<'a> {
     pub(crate) entity: Entity,
@@ -180,7 +246,11 @@ pub(crate) fn lay_out_transcript(
     transcript: &mut Transcript,
     view: &TuiView,
     shown: Option<&ShownAgent<'_>>,
-    (renderers, partial): (&Renderers<'_>, Option<&Partial>),
+    (renderers, calls, partial): (
+        &Renderers<'_>,
+        &BTreeMap<CallId, CallState>,
+        Option<&Partial>,
+    ),
     width: u16,
 ) -> Vec<Part> {
     let wrap_width = usize::from(width.max(1));
@@ -199,6 +269,7 @@ pub(crate) fn lay_out_transcript(
     let mut after: Vec<Vec<&ShownNotice>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers,
+        calls,
         notices: HashMap::new(),
     };
     for notice in &view.notices {
@@ -273,7 +344,7 @@ pub(crate) fn render(
     ),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
-    renderers: Query<Ref<ToolRenderer>>,
+    (renderers, call_states): (Query<Ref<ToolRenderer>>, CallStates),
     mut removed_renderers: RemovedComponents<ToolRenderer>,
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
@@ -287,6 +358,7 @@ pub(crate) fn render(
     let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let call_states = call_states.of(calls.into_iter().flat_map(Calls::iter));
     let mut inbox: Vec<(&Effect, &Incoming)> = accepted
         .iter()
         .filter(|(.., to)| Some(to.0) == shown_agent)
@@ -342,7 +414,7 @@ pub(crate) fn render(
                 &mut transcript,
                 view,
                 shown.as_ref(),
-                (&by_tool, partial),
+                (&by_tool, &call_states, partial),
                 transcript_area.width,
             );
             let (rows, below) = transcript.visible(

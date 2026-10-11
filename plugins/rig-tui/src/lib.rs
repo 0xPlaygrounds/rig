@@ -72,7 +72,8 @@ pub use keys::{
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
 pub use renderers::{
-    AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
+    AppToolRenderersExt, CallState, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer,
+    excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
