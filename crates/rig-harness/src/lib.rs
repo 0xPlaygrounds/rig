@@ -97,6 +97,11 @@ pub use rig::harness_protocol;
 pub use rig_core;
 /// The agent runtime this app is built on.
 pub use rig_ecs;
+/// The tool library this app is built on, for the process runner
+/// [`Processes`](services::Processes) hands out
+/// (`rig_harness::rig_tools::process::Spawn`) and the file tools' rules
+/// (`rig_harness::rig_tools::fs::place`).
+pub use rig_tools;
 
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
 /// prelude (Bevy's app and ECS preludes, the agent components and
@@ -108,6 +113,8 @@ pub mod prelude {
     pub use rig_ecs::prelude::*;
 
     pub use std::time::Duration;
+
+    pub use bevy_app::OnAppExitSystems;
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::clock::{Due, KeepAwake, WakeAt};

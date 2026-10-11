@@ -93,7 +93,7 @@ impl KeyPress {
 
     /// Whether it types its character into the input: a character with
     /// neither Ctrl nor Alt.
-    pub(crate) fn typed(&self) -> Option<char> {
+    pub fn typed(&self) -> Option<char> {
         match self.code {
             KeyCode::Char(character)
                 if !self
