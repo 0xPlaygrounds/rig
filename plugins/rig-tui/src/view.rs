@@ -9,8 +9,9 @@ use super::complete::Completion;
 use super::editor::Editor;
 use super::panel::Focused;
 use super::transcript::Scroll;
-use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
+use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
+use rig_harness::primary::{PrimaryQuery, primary};
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;

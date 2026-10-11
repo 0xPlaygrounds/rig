@@ -30,3 +30,9 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The instruction files.
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# The app on a session store and the scripted model the tests run on.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }

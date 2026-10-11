@@ -25,7 +25,9 @@ use rig::harness_protocol::{Home, Invocation, env};
 
 use super::session::SessionPaths;
 use crate::PluginSource;
-use rig_ecs::agent::{Notice, PrimaryQuery, primary};
+use rig_ecs::agent::Notice;
+
+use crate::primary::{PrimaryQuery, primary};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin};
 use rig_ecs::journal::SessionRestored;
 

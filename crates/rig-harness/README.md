@@ -33,7 +33,7 @@ The default `plugins.toml`, in order:
 
 | Crate | Plugin | What it adds |
 |---|---|---|
-| `rig-basics` | `ProjectContextPlugin` | `AGENTS.md`/`CLAUDE.md` and the environment in the system prompt; `/context` |
+| `rig-basics` | `ProjectContextPlugin` | rig's own prompt for an agent without one, `AGENTS.md`/`CLAUDE.md` and the environment in the system prompt; `/context` |
 | `rig-models` | `ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-login-chatgpt` | `ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-models` | `DefaultsPlugin` | a new session starts on the last model and reasoning chosen |

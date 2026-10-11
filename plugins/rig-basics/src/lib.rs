@@ -1,8 +1,8 @@
 //! The basic slash commands: `/help`, `/retry` and `/quit`, with the
 //! default `tui` feature `/agents` and the agent tree in each agent's
 //! status line ([`BasicCommandsPlugin`]), and the project context in the
-//! system prompt ([`ProjectContextPlugin`]): `AGENTS.md`, the environment
-//! and `/context`.
+//! system prompt ([`ProjectContextPlugin`]): rig's own prompt for an agent
+//! without one, `AGENTS.md`, the environment and `/context`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -14,7 +14,7 @@ pub mod project_context;
 #[cfg(feature = "tui")]
 mod tui;
 
-pub use project_context::ProjectContextPlugin;
+pub use project_context::{DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin};
 
 /// Registers the basic commands; with the `tui` feature, `/agents` and the
 /// agent tree it picks from in each agent's status line.

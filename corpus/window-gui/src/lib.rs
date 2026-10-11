@@ -23,7 +23,8 @@ use std::collections::{HashSet, VecDeque};
 use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
-use rig_harness::rig_ecs::agent::{STOPPED, primary_order};
+use rig_harness::primary::primary_order;
+use rig_harness::rig_ecs::agent::STOPPED;
 use rig_tui::{PickItem, PickRequest};
 
 /// Set to a non-empty value, it opens the window as the front, in place of

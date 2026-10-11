@@ -12564,8 +12564,11 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "chrono",
+ "rig-cassette",
+ "rig-core",
  "rig-ecs",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-tools",
  "rig-tui",
 ]

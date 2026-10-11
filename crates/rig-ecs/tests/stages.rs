@@ -1240,7 +1240,9 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     };
     assert_eq!(side.system_instructions(), turn.system_instructions());
     assert_eq!(side.tools.len(), turn.tools.len());
-    assert_eq!(side.chat_history.len(), 4, "{:?}", side.chat_history);
+    // The agent has no system prompt here: the conversation and the
+    // question.
+    assert_eq!(side.chat_history.len(), 3, "{:?}", side.chat_history);
 }
 
 /// How each turn that ended was numbered: its index and first message.

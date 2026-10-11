@@ -293,49 +293,25 @@ impl LastUsage {
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the rules of the tools the agent is offered
 /// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
-/// the project's instructions and the environment. Saved with the
-/// session, as `null` when it is the default, so a restored agent gets the
-/// default of the build that restores it.
-#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+/// the project's instructions and the environment. Empty, the agent has
+/// none of its own, and the app's plugins may give it one in `Prepare`,
+/// as rig-basics gives rig's. Saved with the session, as `null` when empty,
+/// so a restored agent without its own gets what the build that restores
+/// it gives.
+#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(from = "Option<String>", into = "Option<String>")]
 pub struct SystemPrompt(pub String);
 
 impl From<SystemPrompt> for Option<String> {
     fn from(prompt: SystemPrompt) -> Self {
-        (prompt.0 != DEFAULT_SYSTEM_PROMPT).then_some(prompt.0)
+        (!prompt.0.is_empty()).then_some(prompt.0)
     }
 }
 
 impl From<Option<String>> for SystemPrompt {
     fn from(prompt: Option<String>) -> Self {
-        prompt.map_or_else(Self::default, Self)
-    }
-}
-
-/// An agent's [`SystemPrompt`] unless it is given another.
-pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
-    user's project from their terminal: \
-    you read and search code, edit files and run commands with the tools you are \
-    given, and answer questions about the code.\n\
-    \n\
-    - Work in the working directory named below, unless the user says otherwise.\n\
-    - Read a file before you edit it. Change what was asked, in the style of the \
-    code around it, and nothing else.\n\
-    - After a change, check it when you can: build it, run the tests, or run the \
-    code.\n\
-    - When something fails, read the error and fix the cause. Ask the user when the \
-    request is unclear or you are blocked, rather than guess.\n\
-    - Do not undo changes you did not make, and do not run commands that delete \
-    work, rewrite history or reach outside the project unless the user asked.\n\
-    - Keep answers short. Say what you changed and what is left, and name files by \
-    their path.\n\
-    - Give that answer once, at the end of the turn: no running commentary or \
-    interim summaries between tool calls.";
-
-impl Default for SystemPrompt {
-    fn default() -> Self {
-        Self(DEFAULT_SYSTEM_PROMPT.to_owned())
+        Self(prompt.unwrap_or_default())
     }
 }
 
@@ -576,24 +552,4 @@ impl TurnOutcome {
             Self::Stopped(Some(why)) => Some(format!("stopped: {why}")),
         }
     }
-}
-
-/// The agents, each with whether it is a subagent, for [`primary`].
-pub type PrimaryQuery<'w, 's> =
-    Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
-
-/// Where an agent sorts among the agents of a session: the ones the user
-/// started first, each group by id. The first is the agent the user talks
-/// to when none is named.
-pub fn primary_order(spawned: bool, id: &AgentId) -> (bool, &str) {
-    (spawned, id.0.as_str())
-}
-
-/// The agent the user talks to when none is named: the first one by
-/// [`primary_order`].
-pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
-    agents
-        .iter()
-        .min_by(|a, b| primary_order(a.2, a.1).cmp(&primary_order(b.2, b.1)))
-        .map(|(entity, ..)| entity)
 }

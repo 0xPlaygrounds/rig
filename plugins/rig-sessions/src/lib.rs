@@ -27,12 +27,11 @@ use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{
-    ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf, primary_order,
-};
+use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
 use rig_harness::prelude::{SessionPaths, launcher};
+use rig_harness::primary::primary_order;
 use rig_telemetry::Spending;
 use rig_tools::attach::attached_file;
 

@@ -54,6 +54,7 @@
 pub mod plugin_guide {}
 pub mod host;
 mod load;
+pub mod primary;
 
 pub use load::{PluginSource, ProvidedBy, Provides, load};
 
@@ -97,9 +98,9 @@ pub mod prelude {
     pub use crate::harness_protocol::Home;
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{LogEvents, Logged, SessionPaths};
+    pub use crate::primary::{PrimaryQuery, primary};
     pub use crate::{HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins};
     pub use rig_core::transcript::final_answer;
-    pub use rig_ecs::agent::{PrimaryQuery, primary};
     pub use rig_tools::{Spill, blocking};
 }
 

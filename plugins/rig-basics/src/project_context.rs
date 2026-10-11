@@ -5,6 +5,8 @@
 //! [`PromptSection`]s, re-read when a turn starts and by `/context`, so an
 //! edited `AGENTS.md` counts from the next message without a rebuild.
 //! A section only changes when its text does, so the prompt stays cached.
+//! An agent with no [`SystemPrompt`] of its own is told it is rig, a coding
+//! agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its system prompt.
 
 use std::path::PathBuf;
 
@@ -13,12 +15,35 @@ use bevy_ecs::prelude::*;
 use rig_harness::harness_protocol::Home;
 use rig_tools::context::Instructions;
 
-use rig_ecs::agent::{Notice, TurnOf};
+use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::prompt::PromptSection;
+use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
+use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+
+/// What an agent with no [`SystemPrompt`] of its own is told it is.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
+    user's project from their terminal: \
+    you read and search code, edit files and run commands with the tools you are \
+    given, and answer questions about the code.\n\
+    \n\
+    - Work in the working directory named below, unless the user says otherwise.\n\
+    - Read a file before you edit it. Change what was asked, in the style of the \
+    code around it, and nothing else.\n\
+    - After a change, check it when you can: build it, run the tests, or run the \
+    code.\n\
+    - When something fails, read the error and fix the cause. Ask the user when the \
+    request is unclear or you are blocked, rather than guess.\n\
+    - Do not undo changes you did not make, and do not run commands that delete \
+    work, rewrite history or reach outside the project unless the user asked.\n\
+    - Keep answers short. Say what you changed and what is left, and name files by \
+    their path.\n\
+    - Give that answer once, at the end of the turn: no running commentary or \
+    interim summaries between tool calls.";
 
 /// Spawns the project and environment [`PromptSection`]s, re-reads them
-/// when a turn starts, and adds `/context`.
+/// when a turn starts, adds `/context`, and gives an agent with no prompt
+/// of its own rig's ([`DEFAULT_SYSTEM_PROMPT`]).
 #[derive(Default)]
 pub struct ProjectContextPlugin;
 
@@ -37,7 +62,31 @@ impl Plugin for ProjectContextPlugin {
             "Re-read AGENTS.md and the environment, and list what the prompt holds",
             show_context,
         )
-        .add_observer(refresh_on_turn);
+        .add_observer(refresh_on_turn)
+        .add_systems(AgentPass, default_prompt.in_set(Stage::Prepare));
+    }
+}
+
+/// Puts [`DEFAULT_SYSTEM_PROMPT`] at the head of the system prompt of each
+/// model call the kernel built from an agent with no prompt of its own,
+/// as its own part of it.
+fn default_prompt(
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+    >,
+    agents: Query<&SystemPrompt>,
+) {
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        if !agents.get(agent).is_ok_and(|own| own.0.is_empty()) {
+            continue;
+        }
+        if let Some(prompt) = call.system_prompt_mut() {
+            *prompt = match prompt.is_empty() {
+                true => DEFAULT_SYSTEM_PROMPT.to_owned(),
+                false => format!("{DEFAULT_SYSTEM_PROMPT}\n\n{prompt}"),
+            };
+        }
     }
 }
 
@@ -157,3 +206,6 @@ fn show_context(
     lines.push(context.section(Section::Environment).text);
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
+
+#[cfg(test)]
+mod tests;
