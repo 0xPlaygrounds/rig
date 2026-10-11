@@ -21,7 +21,8 @@
 //! [`Shown`]), and showing another, [`Focus`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
-//! ([`keys`]: the view's own keys are bindings as well), the keys for a
+//! ([`keys`]: the view's own keys are bindings as well, each doing an
+//! [`InputAction`], which a plugin may also send), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
 //! candidates for a command's argument ([`ArgCompletion`]), the terminal's
 //! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
@@ -62,7 +63,8 @@ pub use crossterm;
 pub use editor::TuiInput;
 pub use input::TerminalEvent;
 pub use keys::{
-    AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, run_command,
+    AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
+    run_command,
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
@@ -97,6 +99,7 @@ impl Plugin for TuiPlugin {
             .add_message::<TerminalEvent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
+            .add_message::<InputAction>()
             .configure_sets(
                 PostUpdate,
                 (

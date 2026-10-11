@@ -14,8 +14,9 @@
 //! do it in `Plugin::finish`, once every plugin's `build` ran.
 //!
 //! A plugin's pressed binding triggers [`KeyPressed`] on its entity,
-//! which the observer given with it handles (the view's own act on the
-//! input instead); one made with
+//! which the observer given with it handles, unless the entity has an
+//! [`InputAction`], which the view does instead (the view's own keys are
+//! such bindings); one made with
 //! [`KeyBinding::with_releases`] also triggers it when the key is let go,
 //! where the terminal reports that. A panel takes the keys while it is the
 //! [`KeyFocus`], which only an entity with a [`TuiPanel`](crate::TuiPanel) can be: its own
@@ -423,34 +424,69 @@ pub fn run_command(
     }
 }
 
-/// What the view's own keys do in the input, on their bindings' entities.
-#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum InputAction {
+/// A built-in action of the input. On a [`KeyBinding`]'s entity it is what
+/// the binding does, in order with the other keys of the frame, instead of
+/// triggering [`KeyPressed`]: the view's own keys are such bindings, and a
+/// plugin rebinds one by spawning its own.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::{InputAction, KeyBinding, KeyPress};
+///
+/// fn build(app: &mut App) {
+///     // Ctrl+K browses back as Up does: the completion, the line, the history.
+///     app.world_mut().spawn((KeyBinding::new(KeyPress::ctrl('k'), "Up"), InputAction::Up));
+/// }
+/// ```
+///
+/// Sent as a message, it is done after the keys of the frame it is read in.
+#[derive(Component, Message, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputAction {
+    /// Empties the input.
     Clear,
+    /// Types a newline.
     NewLine,
+    /// The start of the cursor's line.
     LineStart,
+    /// The end of the cursor's line.
     LineEnd,
+    /// A character back.
     Left,
+    /// A character forward.
     Right,
+    /// The start of the word before the cursor.
     WordLeft,
+    /// The end of the word after the cursor.
     WordRight,
+    /// Deletes the character before the cursor.
     Backspace,
+    /// Deletes the character after the cursor.
     Delete,
+    /// Deletes the word before the cursor.
     DeleteWordBefore,
+    /// Deletes the word after the cursor.
     DeleteWordAfter,
+    /// Deletes to the start of the line, or the newline before it.
     DeleteToLineStart,
+    /// Deletes to the end of the line, or the newline after it.
     DeleteToLineEnd,
-    /// The line above, or the history: Ctrl+P.
+    /// The line above, or an earlier prompt of the history: Ctrl+P.
     LineUp,
-    /// The line below, or the history: Ctrl+N.
+    /// The line below, or a later prompt of the history: Ctrl+N.
     LineDown,
-    /// The completion's previous item, else the line above.
+    /// The completion's previous item, else the line above, else an earlier
+    /// prompt.
     Up,
-    /// The completion's next item, else the line below.
+    /// The completion's next item, else the line below, else a later
+    /// prompt.
     Down,
+    /// Scrolls the transcript a row up.
     ScrollUp,
+    /// Scrolls the transcript a row down.
     ScrollDown,
+    /// Scrolls the transcript a page up.
     PageUp,
+    /// Scrolls the transcript a page down.
     PageDown,
     /// Completes, or with a turn running and nothing to complete, sends
     /// for after the turn.
@@ -458,8 +494,9 @@ pub(crate) enum InputAction {
     /// Completes a partly typed command or path, continues a line ending
     /// in `\`, else sends.
     Send,
-    /// Closes the completion, else interrupts the agent.
+    /// Closes the completion, else interrupts the agent shown.
     Stop,
+    /// Pastes an image from the clipboard as an attachment.
     PasteImage,
 }
 

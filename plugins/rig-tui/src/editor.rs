@@ -97,7 +97,7 @@ impl TuiInput {
     }
 
     /// Empties the editor and stops browsing the history.
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.text.clear();
         self.cursor = 0;
         self.browsing = None;
@@ -117,7 +117,8 @@ impl TuiInput {
         self.cursor += text.len();
     }
 
-    pub(crate) fn insert_char(&mut self, character: char) {
+    /// Types `character` at the cursor, which ends up after it.
+    pub fn insert_char(&mut self, character: char) {
         self.text.insert(self.cursor, character);
         self.cursor += character.len_utf8();
     }
@@ -160,11 +161,13 @@ impl TuiInput {
             .map_or(self.text.len(), |character| from + character.len_utf8())
     }
 
-    pub(crate) fn left(&mut self) {
+    /// A character back.
+    pub fn left(&mut self) {
         self.cursor = self.previous_boundary(self.cursor);
     }
 
-    pub(crate) fn right(&mut self) {
+    /// A character forward.
+    pub fn right(&mut self) {
         self.cursor = self.next_boundary(self.cursor);
     }
 
@@ -197,11 +200,13 @@ impl TuiInput {
         self.cursor + skipped + word
     }
 
-    pub(crate) fn word_left(&mut self) {
+    /// The start of the word before the cursor.
+    pub fn word_left(&mut self) {
         self.cursor = self.word_start();
     }
 
-    pub(crate) fn word_right(&mut self) {
+    /// The end of the word after the cursor.
+    pub fn word_right(&mut self) {
         self.cursor = self.word_end();
     }
 
@@ -221,39 +226,45 @@ impl TuiInput {
             .map_or(self.text.len(), |index| self.cursor + index)
     }
 
-    pub(crate) fn home(&mut self) {
+    /// The start of the cursor's line.
+    pub fn home(&mut self) {
         self.cursor = self.line_start();
     }
 
-    pub(crate) fn end(&mut self) {
+    /// The end of the cursor's line.
+    pub fn end(&mut self) {
         self.cursor = self.line_end();
     }
 
-    pub(crate) fn backspace(&mut self) {
+    /// Deletes the character before the cursor.
+    pub fn backspace(&mut self) {
         let start = self.previous_boundary(self.cursor);
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
-    pub(crate) fn delete(&mut self) {
+    /// Deletes the character after the cursor.
+    pub fn delete(&mut self) {
         let end = self.next_boundary(self.cursor);
         self.text.replace_range(self.cursor..end, "");
     }
 
-    pub(crate) fn delete_word_before(&mut self) {
+    /// Deletes the word before the cursor.
+    pub fn delete_word_before(&mut self) {
         let start = self.word_start();
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
-    pub(crate) fn delete_word_after(&mut self) {
+    /// Deletes the word after the cursor.
+    pub fn delete_word_after(&mut self) {
         let end = self.word_end();
         self.text.replace_range(self.cursor..end, "");
     }
 
     /// Deletes to the start of the line, or the newline before it when the
     /// cursor is at the start already.
-    pub(crate) fn delete_to_line_start(&mut self) {
+    pub fn delete_to_line_start(&mut self) {
         let start = match self.line_start() {
             start if start == self.cursor => self.previous_boundary(start),
             start => start,
@@ -264,7 +275,7 @@ impl TuiInput {
 
     /// Deletes to the end of the line, or the newline after it when the
     /// cursor is at the end already.
-    pub(crate) fn delete_to_line_end(&mut self) {
+    pub fn delete_to_line_end(&mut self) {
         let end = match self.line_end() {
             end if end == self.cursor => self.next_boundary(end),
             end => end,
@@ -291,7 +302,7 @@ impl TuiInput {
     }
 
     /// Up: the line above, else the previous prompt of the history.
-    pub(crate) fn up(&mut self) {
+    pub fn up(&mut self) {
         let start = self.line_start();
         if start == 0 {
             self.history_back();
@@ -307,7 +318,7 @@ impl TuiInput {
     }
 
     /// Down: the line below, else the next prompt of the history.
-    pub(crate) fn down(&mut self) {
+    pub fn down(&mut self) {
         let end = self.line_end();
         if end == self.text.len() {
             self.history_forward();

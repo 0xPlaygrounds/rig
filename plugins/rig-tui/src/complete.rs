@@ -235,7 +235,11 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
         return Some((Kind::Path, start, query, ""));
     }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
-    let position = before.get(..start)?.split_whitespace().count().checked_sub(1)?;
+    let position = before
+        .get(..start)?
+        .split_whitespace()
+        .count()
+        .checked_sub(1)?;
     Some((Kind::Arg(position), start, word, command))
 }
 

@@ -142,7 +142,8 @@ pub(crate) struct Context<'a> {
     wake: &'a Wake,
 }
 
-/// Handles every terminal event written since the last frame.
+/// Handles every terminal event written since the last frame, then every
+/// [`InputAction`] sent.
 pub(crate) fn read_input(
     mut events: MessageReader<TerminalEvent>,
     (mut view, shown): (ResMut<TuiView>, Res<Shown>),
@@ -151,7 +152,7 @@ pub(crate) fn read_input(
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
     (clipboard, paths, wake): (Res<Clipboard>, Option<Res<SessionPaths>>, Res<Wake>),
-    mut screen: ResMut<TuiScreen>,
+    (mut screen, mut actions): (ResMut<TuiScreen>, MessageReader<InputAction>),
     mut commands: Commands,
 ) {
     let busy = shown
@@ -214,6 +215,9 @@ pub(crate) fn read_input(
             }
             _ => {}
         }
+    }
+    for action in actions.read() {
+        act(*action, &mut view, &mut input, &context, &mut commands);
     }
 }
 

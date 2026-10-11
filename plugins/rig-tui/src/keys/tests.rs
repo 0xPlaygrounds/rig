@@ -3,8 +3,10 @@ use crossterm::event::KeyEventKind;
 
 use super::*;
 use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
-use crate::{Placement, TuiInput, TuiPanel};
+use crate::view::TuiView;
+use crate::{ArgCompletion, Placement, TuiInput, TuiPanel};
 use ratatui::layout::Constraint;
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
 /// What the test bindings heard: for each, whether it was a release.
 #[derive(Resource, Default)]
@@ -150,4 +152,35 @@ fn a_held_key_is_heard_once_and_again_when_let_go() {
         key_events(&mut app, "ctrl+space", kind);
     }
     assert_eq!(app.world().resource::<Heard>().0, [false, true]);
+}
+
+#[test]
+fn a_plugins_binding_and_message_do_built_in_actions() {
+    let (mut app, _) = view_app();
+    let down = KeyBinding::new(KeyPress::ctrl('o'), "Down");
+    app.world_mut().spawn((down, InputAction::Down));
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    let models = ArgCompletion::new("model").candidate("a/one", "");
+    app.world_mut().spawn(models.candidate("a/two", ""));
+    let selected = |app: &App| {
+        let view = app.world().resource::<TuiView>();
+        view.completion
+            .as_ref()
+            .map(|completion| completion.selected)
+    };
+    // With a completion open, Down selects its next item.
+    type_text(&mut app, "/model a/");
+    assert_eq!(selected(&app), Some(0));
+    press(&mut app, "ctrl+o");
+    assert_eq!(selected(&app), Some(1));
+    // Without one, it moves the cursor a line down.
+    app.world_mut().resource_mut::<TuiInput>().set("ab\ncd");
+    app.world_mut().resource_mut::<TuiInput>().set_cursor(1);
+    app.update();
+    press(&mut app, "ctrl+o");
+    assert_eq!(app.world().resource::<TuiInput>().cursor(), 4);
+    // Sent as a message, it is done too.
+    app.world_mut().write_message(InputAction::LineStart);
+    app.update();
+    assert_eq!(app.world().resource::<TuiInput>().cursor(), 3);
 }
