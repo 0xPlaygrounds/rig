@@ -123,3 +123,8 @@ fn a_spent_budget_stops_the_next_request_and_is_kept_with_the_session() {
     });
     assert_eq!(model.request_count(), 3);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(CostBudgetPlugin);
+}
