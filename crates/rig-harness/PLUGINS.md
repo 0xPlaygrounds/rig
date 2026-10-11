@@ -339,6 +339,16 @@ fn count(
 
 A generic type is saved only once registered (`app.register_type::<T>()`).
 
+A conversation changes only through `Commit`, so the log records every
+change: `commit.truncate(agent, &mut conversation, len)` cuts it back,
+such as to rewind it, and `commit.retire(agent)` despawns an agent for
+good, so a restart brings back neither it nor the agents it spawned.
+`rig_ecs::journal::read_session(store)` reads a session's logs, another
+session's too, without restoring or writing anything: each agent's whole
+conversation, summary and saved components. `fork_session(from, to,
+before)` copies a session as of a message, `before` being its agent's id
+and `conversation.seq(index)`.
+
 # Model requests
 
 A model call is an effect entity with a `ModelRequest`: the rig-core

@@ -174,10 +174,17 @@ impl Conversation {
         self.awaits_model()
     }
 
-    /// The `seq` of the log record that began message `message`, if it was
-    /// logged.
-    pub(crate) fn seq(&self, message: usize) -> Option<u64> {
+    /// The `seq` of the agent log's record that began message `message`,
+    /// if it was logged: where a fork of the session cuts it
+    /// ([`fork_session`](super::journal::fork_session)).
+    pub fn seq(&self, message: usize) -> Option<u64> {
         self.seqs.get(message).copied()
+    }
+
+    /// The first message whose log record is `seq` or later; the length
+    /// when none is.
+    pub(crate) fn at_seq(&self, seq: u64) -> usize {
+        self.seqs.partition_point(|&begun| begun < seq)
     }
 
     /// Adds `message`, whose content came from `origin` and which the log
@@ -216,14 +223,16 @@ impl Conversation {
         }
     }
 
-    /// Takes out the last message.
-    pub(crate) fn retract(&mut self) -> Option<Message> {
-        let message = self.messages.pop()?;
+    /// Takes out every message from `len` on; whether any was.
+    pub(crate) fn truncate(&mut self, len: usize) -> bool {
+        if len >= self.messages.len() {
+            return false;
+        }
+        self.messages.truncate(len);
         self.halted = None;
-        let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
         self.seqs.truncate(len);
-        Some(message)
+        true
     }
 }
 

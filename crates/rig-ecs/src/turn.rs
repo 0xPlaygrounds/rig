@@ -1037,7 +1037,8 @@ fn drop_unanswered(
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
-        commit.retract(agent, conversation);
+        let len = conversation.messages().len().saturating_sub(1);
+        commit.truncate(agent, conversation, len);
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",

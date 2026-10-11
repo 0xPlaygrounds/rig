@@ -221,12 +221,13 @@ fn every_change_the_log_records_is_committed() {
     let mut cursor = committed.get_cursor();
     let changes = cursor.read(committed).map(|change| match change {
         Committed::Message { .. } => "message",
-        Committed::Retract { .. } => "retract",
+        Committed::Truncate { .. } => "truncate",
         Committed::Halt { .. } => "halt",
+        Committed::Retired { .. } => "retired",
     });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["message", "retract", "message", "halt"]
+        ["message", "truncate", "message", "halt"]
     );
 }
 

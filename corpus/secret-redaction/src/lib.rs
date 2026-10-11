@@ -468,4 +468,12 @@ impl JournalStore for RedactingStore {
     fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
         self.inner.blob(name)
     }
+
+    fn blobs(&self) -> io::Result<Vec<String>> {
+        self.inner.blobs()
+    }
+
+    fn remove(&self, agent: &str) -> io::Result<()> {
+        self.inner.remove(agent)
+    }
 }

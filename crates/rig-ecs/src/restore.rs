@@ -1,11 +1,11 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
 //! pass that settles what a crash or a restart left half done. Each log is
-//! read from its newest [`Condensed`] record on, with a torn last line cut
-//! off and
-//! records of unknown types skipped. Each fix the reconcile pass makes is an
-//! ordinary record, so the next restore finds nothing left to fix; the
-//! request-build repair that answers any call still without a result stays
-//! as the backstop.
+//! read as [`read_session`](super::journal::read_session) reads it, but
+//! from the first message its newest summary that still stands kept, and
+//! with a torn last line cut off; a retired agent and the agents it spawned
+//! are not restored. Each fix the reconcile pass makes is an ordinary record, so
+//! the next restore finds nothing left to fix; the request-build repair
+//! that answers any call still without a result stays as the backstop.
 //!
 //! A call left without a result whose tool may change something is
 //! answered as interrupted at once; the work an agent carries on is spawned
@@ -41,7 +41,7 @@
 //! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
@@ -50,19 +50,16 @@ use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
-use rig_cassette::journal::{JournalStore, load_images};
+use rig_cassette::journal::{JournalStore, LogLines};
 use rig_core::transcript::{close_pending_with, pending_calls};
-use serde::Deserialize;
-use serde::de::{DeserializeSeed, IgnoredAny};
+use serde::de::DeserializeSeed;
 use serde_json::Value;
 
-use super::agent::{
-    Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, Turn, TurnOf,
-};
+use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
 use super::journal::{
-    AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
-    SessionStore,
+    AgentLog, Commit, Folded, ReflectSaved, SESSION, SessionLog, SessionRestored, SessionStore,
+    fold,
 };
 use super::stage::{Effect, ForAgent};
 use super::tools::{Footprint, ToolDef, ToolRequest};
@@ -71,24 +68,6 @@ use super::turn::TurnCall;
 /// The result of a call that may change something and was running when
 /// the session stopped.
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
-
-/// The first fields of a line, read from every line to find the newest
-/// condensed record and the newest record of each saved component.
-#[derive(Deserialize)]
-struct Envelope {
-    seq: u64,
-    #[serde(rename = "type")]
-    kind: String,
-    component: Option<String>,
-}
-
-/// An agent log folded into the agent's state, and the log to carry on.
-struct Folded {
-    header: Header,
-    conversation: Conversation,
-    condensed: Option<Condensed>,
-    log: AgentLog,
-}
 
 /// The agents [`restore_session`] spawned, each with its depth, until
 /// [`reconcile`] took them.
@@ -129,6 +108,8 @@ pub(crate) fn restore_session(world: &mut World) {
             )),
         }
     }
+    let retired = retired(&folded);
+    folded.retain(|agent| !retired.contains(&agent.header.agent));
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
@@ -137,11 +118,17 @@ pub(crate) fn restore_session(world: &mut World) {
     let mut logs = Vec::new();
     let mut session = None;
     for agent in folded {
+        let log = AgentLog {
+            next_seq: agent.next_seq,
+            started: true,
+            components: agent.components,
+            ..AgentLog::default()
+        };
         let Folded {
             header,
             conversation,
             condensed,
-            log,
+            ..
         } = agent;
         if header.agent == SESSION {
             for (path, value) in &log.components {
@@ -243,143 +230,45 @@ fn resource_entity<'w>(
         .map_err(|failure| failure.to_string())
 }
 
-/// Reads and folds the log of `agent` in `store`, cutting off a torn last
-/// line there first. Images come back from the store's blobs.
+/// Reads and folds the log of `agent` in `store` from the newest summary
+/// that stands, cutting off a torn last line there first. Images come back
+/// from the store's blobs.
 fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
-    let bytes = store.read(agent)?;
-    let complete = bytes
+    let log = LogLines::read(store, agent)?;
+    if log.torn() {
+        store.truncate(agent, log.len())?;
+    }
+    Ok(fold(&log, store, false)?)
+}
+
+/// The ids of the agents a restore skips: those retired, and the agents
+/// they spawned, all the way down.
+fn retired(agents: &[Folded]) -> HashSet<String> {
+    let parents: HashMap<&str, Option<&str>> = agents
         .iter()
-        .rposition(|byte| *byte == b'\n')
-        .map_or(0, |at| at + 1);
-    let mut lines: Vec<&[u8]> = bytes
-        .get(..complete)
-        .unwrap_or_default()
-        .split(|byte| *byte == b'\n')
+        .map(|agent| (agent.header.agent.as_str(), agent.header.parent.as_deref()))
         .collect();
-    if lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-    let mut keep = complete;
-    if let Some(last) = lines.last()
-        && serde_json::from_slice::<IgnoredAny>(last).is_err()
-    {
-        keep = keep.saturating_sub(last.len() + 1);
-        lines.pop();
-    }
-    if keep < bytes.len() {
-        store.truncate(agent, u64::try_from(keep)?)?;
-    }
-    lines.retain(|line| !line.is_empty());
-    let header = match lines
-        .first()
-        .and_then(|first| serde_json::from_slice::<Line>(first).ok())
-    {
-        Some(Line {
-            record: Record::Header(header),
-            ..
-        }) => header,
-        _ => return Err("it does not start with a header".into()),
-    };
-    let envelopes: Vec<Option<Envelope>> = lines
+    let gone: HashSet<&str> = agents
         .iter()
-        .map(|line| serde_json::from_slice(line).ok())
+        .filter(|agent| agent.retired)
+        .map(|agent| agent.header.agent.as_str())
         .collect();
-    let next_seq = envelopes.iter().flatten().map(|envelope| envelope.seq + 1);
-    let mut folded = Folded {
-        header,
-        conversation: Conversation::default(),
-        condensed: None,
-        log: AgentLog {
-            next_seq: next_seq.max().unwrap_or(1),
-            started: true,
-            ..AgentLog::default()
-        },
-    };
-    // Messages are read from the first one the newest condensed record
-    // kept.
-    let condensed = envelopes
-        .iter()
-        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "condensed"))
-        .and_then(|at| match serde_json::from_slice(lines.get(at)?).ok()? {
-            Line {
-                record:
-                    Record::Condensed {
-                        summary,
-                        first_kept,
-                    },
-                ..
-            } => Some((at, summary, first_kept)),
-            _ => None,
-        });
-    let from = match condensed {
-        Some((at, summary, first_kept)) => {
-            folded.condensed = Some(Condensed { upto: 0, summary });
-            envelopes
-                .iter()
-                .enumerate()
-                .skip(1)
-                .find(|(_, envelope)| {
-                    matches!(envelope, Some(envelope) if envelope.seq >= first_kept)
-                })
-                .map_or(at, |(index, _)| index.min(at))
-        }
-        None => 1,
-    };
-    for (line, envelope) in lines.iter().zip(&envelopes).skip(from) {
-        // Saved components are read below; unknown record types are
-        // skipped and left on disk.
-        if envelope
-            .as_ref()
-            .is_some_and(|envelope| envelope.component.is_some())
-        {
-            continue;
-        }
-        let Ok(line) = serde_json::from_slice::<Line>(line) else {
-            continue;
-        };
-        match line.record {
-            Record::Message { message, origin } => {
-                let mut message = message.into_owned();
-                if let Err(failure) = load_images(&mut message, store) {
-                    warn!("an image agent {agent} logged is gone: {failure}");
-                }
-                folded.conversation.append(message, origin, Some(line.seq));
+    let mut skipped = HashSet::new();
+    for agent in agents {
+        let mut at = Some(agent.header.agent.as_str());
+        // A loop cannot happen, but a bound costs nothing.
+        for _ in 0..=agents.len() {
+            let Some(id) = at else {
+                break;
+            };
+            if gone.contains(id) {
+                skipped.insert(agent.header.agent.clone());
+                break;
             }
-            Record::Retract => {
-                folded.conversation.retract();
-            }
-            // Only a conversation waiting for its model is halted, so a
-            // halt after a halt means it was asked again, as by a retry.
-            Record::Halt { reason } => {
-                folded.conversation.resume();
-                folded.conversation.halt(reason);
-            }
-            Record::Header(_) | Record::Component { .. } | Record::Condensed { .. } => {}
+            at = parents.get(id).copied().flatten();
         }
     }
-    // Only the newest record of each saved component is read, wherever it
-    // is in the log.
-    let newest: HashMap<&str, usize> = envelopes
-        .iter()
-        .enumerate()
-        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
-        .collect();
-    for at in newest.into_values() {
-        let line = lines
-            .get(at)
-            .and_then(|line| serde_json::from_slice(line).ok());
-        if let Some(Line {
-            record: Record::Component { component, value },
-            ..
-        }) = line
-        {
-            folded
-                .log
-                .components
-                .extend(value.map(|value| (component, value)));
-        }
-    }
-    Ok(folded)
+    skipped
 }
 
 /// Settles what the restored agents left half done, parents before the
