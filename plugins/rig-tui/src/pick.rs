@@ -8,9 +8,13 @@
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use ratatui::style::Stylize;
+use ratatui::text::{Line, Span};
 use rig_ecs::stage::{Effect, Outcome, Settled};
 use rig_harness::ask::Ask;
 use rig_harness::pick::{Chosen, Picker};
+use rig_tools::shorten;
+use unicode_width::UnicodeWidthStr;
 
 use super::view::TuiView;
 
@@ -32,9 +36,33 @@ pub(crate) struct Choosing {
 pub(crate) struct Listing<'a> {
     pub(crate) title: &'a str,
     pub(crate) body: &'a str,
-    pub(crate) labels: Vec<&'a str>,
+    pub(crate) items: Vec<Item<'a>>,
     pub(crate) free_text: bool,
     pub(crate) selected: usize,
+}
+
+/// An item or choice of a [`Listing`].
+pub(crate) struct Item<'a> {
+    pub(crate) label: &'a str,
+    /// What is shown beside the label, such as a session's age.
+    pub(crate) detail: Option<&'a str>,
+}
+
+impl Item<'_> {
+    /// Its row, `width` wide: the label, shortened with `…` to fit, and
+    /// the detail whole and dimmed at the right edge.
+    pub(crate) fn line(&self, width: usize) -> Line<'static> {
+        let Some(detail) = self.detail else {
+            return Line::from(shorten(self.label, width));
+        };
+        let label = shorten(self.label, width.saturating_sub(detail.width() + 2));
+        let gap = width.saturating_sub(label.width() + detail.width());
+        Line::from(vec![
+            Span::from(label),
+            Span::from(" ".repeat(gap)),
+            Span::from(detail.to_owned()).dim(),
+        ])
+    }
 }
 
 impl Listing<'_> {
@@ -42,13 +70,12 @@ impl Listing<'_> {
     /// word of it, ignoring case, then, for free text, the typed answer.
     pub(crate) fn rows(&self, filter: &str) -> Vec<Row> {
         let lower = filter.to_lowercase();
-        let mut rows: Vec<Row> = (0..self.labels.len())
-            .filter(|&index| {
-                let label = self.labels.get(index).map(|label| label.to_lowercase());
-                let label = label.unwrap_or_default();
+        let mut rows: Vec<Row> = (self.items.iter().enumerate())
+            .filter(|(_, item)| {
+                let label = item.label.to_lowercase();
                 lower.split_whitespace().all(|word| label.contains(word))
             })
-            .map(Row::Item)
+            .map(|(index, _)| Row::Item(index))
             .collect();
         if self.free_text {
             rows.push(Row::Typed);
@@ -80,10 +107,13 @@ impl Choices<'_, '_> {
             return Some(Listing {
                 title: &picker.title,
                 body: &picker.body,
-                labels: picker
+                items: picker
                     .items
                     .iter()
-                    .map(|item| item.label.as_str())
+                    .map(|item| Item {
+                        label: &item.label,
+                        detail: item.detail.as_deref(),
+                    })
                     .collect(),
                 free_text: picker.free_text,
                 selected: picker.selected,
@@ -93,10 +123,13 @@ impl Choices<'_, '_> {
         Some(Listing {
             title: &ask.title,
             body: &ask.body,
-            labels: ask
+            items: ask
                 .choices
                 .iter()
-                .map(|choice| choice.label.as_str())
+                .map(|choice| Item {
+                    label: &choice.label,
+                    detail: None,
+                })
                 .collect(),
             free_text: ask.free_text,
             selected: 0,
@@ -141,7 +174,7 @@ pub(crate) fn first(queue: &[Entity], choices: &Choices) -> Option<Choosing> {
         Some(Choosing {
             entity,
             filter: String::new(),
-            selected: shown.selected.min(shown.labels.len().saturating_sub(1)),
+            selected: shown.selected.min(shown.items.len().saturating_sub(1)),
         })
     })
 }

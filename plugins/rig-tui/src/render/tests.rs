@@ -96,13 +96,18 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
     use ratatui::backend::TestBackend;
     use ratatui::layout::Position;
 
-    use super::super::pick::{Choosing, Listing, Row};
+    use super::super::pick::{Choosing, Item, Listing, Row};
     use super::draw_choice;
 
     let shown = Listing {
         title: "Allow `rm -rf build`?",
         body: "It matches `rm -rf`.\nType a reason to deny it with.",
-        labels: vec!["Deny", "Allow once", "Allow for this session"],
+        items: ["Deny", "Allow once", "Allow for this session"]
+            .map(|label| Item {
+                label,
+                detail: None,
+            })
+            .into(),
         free_text: true,
         selected: 0,
     };

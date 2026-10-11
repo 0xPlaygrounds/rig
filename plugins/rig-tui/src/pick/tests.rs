@@ -171,3 +171,22 @@ fn the_view_answers_the_questions_of_every_agent() {
     app.update();
     assert_eq!(shown(&mut app), None);
 }
+
+#[test]
+fn a_long_label_is_shortened_beside_its_whole_detail() {
+    use unicode_width::UnicodeWidthStr;
+
+    let item = Item {
+        label: "fix the flaky picker test in the terminal view · ~/code/rigs",
+        detail: Some("$0.42 · 3h ago"),
+    };
+    let row = item.line(40).to_string();
+    assert_eq!(row.width(), 40, "{row}");
+    assert!(row.ends_with(" $0.42 · 3h ago"), "{row}");
+    assert!(row.starts_with("fix the flaky picker te…  "), "{row}");
+    let short = Item {
+        label: "main",
+        detail: None,
+    };
+    assert_eq!(short.line(40).to_string(), "main");
+}

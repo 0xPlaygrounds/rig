@@ -692,8 +692,8 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
 }
 
 /// The picker or question in a centred box over the transcript: its body,
-/// what is typed, then the rows it leaves, and for free text, the typed
-/// answer.
+/// what is typed, then the rows it leaves, each with its detail at the
+/// right, and for free text, the typed answer.
 fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
@@ -735,17 +735,15 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
     .areas(inner);
     frame.render_widget(Paragraph::new(body), body_area);
     frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
+    let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
-            Row::Item(index) => Line::from(
-                shown
-                    .labels
-                    .get(*index)
-                    .copied()
-                    .unwrap_or_default()
-                    .to_owned(),
-            ),
+            Row::Item(index) => shown
+                .items
+                .get(*index)
+                .map(|item| item.line(width))
+                .unwrap_or_default(),
             Row::Typed if choosing.filter.trim().is_empty() => {
                 Line::from("✎ or type an answer").dim()
             }
