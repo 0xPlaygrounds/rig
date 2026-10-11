@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
 use super::model::Effort;
-use super::turn::NO_MODEL;
-use super::turn::Recovery;
+use super::stage::moved;
+use super::turn::{NO_MODEL, Recovery, number_turn};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no
@@ -26,7 +26,8 @@ use super::turn::Recovery;
     Inbox,
     LastUsage,
     SystemPrompt,
-    ToolAccess
+    ToolAccess,
+    TurnsStarted
 )]
 pub struct Agent;
 
@@ -352,20 +353,38 @@ impl ToolAccess {
 }
 
 /// A running turn of the agent it names: from a user message to the reply
-/// that ends it. At most one per agent. Despawning the turn stops it and
-/// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// counts its retries in a [`Recovery`]. Its `Name` is `turn` unless it
-/// is spawned with another.
+/// that ends it. At most one per agent. A turn ends with a [`TurnOutcome`]
+/// on it: the kernel proposes one in Commit when the model answered or
+/// the turn failed, Review may replace it, hold it ([`HoldOf`]) or carry
+/// the turn on, and a plugin may insert `Failed` or `Stopped` at any
+/// time. Once nothing holds the outcome and every call of the turn
+/// settled, Commit ends the turn: it removes this, so the agent is idle,
+/// and marks the turn [`ForAgent`] its agent and
+/// [`Settled`](super::stage::Settled) for the readers of how it ended.
+/// The turn counts its retries in a [`Recovery`]. Its `Name` is `turn`
+/// unless it is spawned with another.
+///
+/// [`HoldOf`]: super::stage::HoldOf
+/// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
 #[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
-/// Where a turn stands, on the turn: the kernel keeps it.
+/// Where a turn stands, on the turn. The kernel fills it in when the turn
+/// is spawned and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
+#[component(on_add = number_turn)]
 #[reflect(Component, Default)]
 pub struct Turn {
+    /// How many turns its agent started before this one, over the whole
+    /// session: the agent's count is saved with it.
+    pub index: u64,
+    /// Where the turn begins in its agent's [`Conversation`]: the index of
+    /// the user's message it answers, or, when the conversation does not
+    /// end in one, of the first message the turn adds.
+    pub first_message: usize,
     /// The model call whose reply's tool calls run now, their effects'
     /// parent, until their results are committed. Other calls of the turn
     /// keep it open but are never committed as tool results.
@@ -373,10 +392,24 @@ pub struct Turn {
     pub reply: Option<EffectId>,
 }
 
-/// On a turn about to be despawned: how it ended. A turn despawned without
-/// one, such as by [`Interrupt`] or on exit, ended [`TurnOutcome::Stopped`].
-#[derive(Component, Clone, Debug)]
-pub(crate) struct Ending(pub(crate) TurnOutcome);
+/// How many turns the agent started, the next turn's [`Turn::index`].
+/// Saved with the session, as `null` before the first.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[serde(from = "Option<u64>", into = "Option<u64>")]
+pub(crate) struct TurnsStarted(pub(crate) u64);
+
+impl From<TurnsStarted> for Option<u64> {
+    fn from(started: TurnsStarted) -> Self {
+        (started.0 > 0).then_some(started.0)
+    }
+}
+
+impl From<Option<u64>> for TurnsStarted {
+    fn from(started: Option<u64>) -> Self {
+        Self(started.unwrap_or_default())
+    }
+}
 
 /// The agent's running turn. An agent with it is busy.
 #[derive(Component, Reflect, Debug)]
@@ -425,12 +458,28 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Stop the agent's running turn.
+/// Stop the agent's running turn at once: it ends
+/// [`TurnOutcome::Stopped`] with `reason`, the text its reply streamed so
+/// far is kept, every call of the turn that has not settled is answered as
+/// interrupted, and whatever held them is despawned. It cannot be reviewed
+/// or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Interrupt {
     /// The agent.
     pub entity: Entity,
+    /// Why, when it is not the user who stops it.
+    pub reason: Option<String>,
+}
+
+impl Interrupt {
+    /// The user stopping `agent`'s turn.
+    pub fn new(agent: Entity) -> Self {
+        Self {
+            entity: agent,
+            reason: None,
+        }
+    }
 }
 
 /// How a [`Notice`] is shown and logged.
@@ -483,15 +532,41 @@ impl Notice {
     }
 }
 
-/// How a turn ended.
-#[derive(Clone, Debug)]
+/// How a turn ends, on the turn. The kernel proposes `Answered` or `Failed`
+/// in Commit; in the next pass Review may replace it (`insert`), hold it
+/// ([`HoldOf`](super::stage::HoldOf) the turn), or carry the turn on by
+/// sending it a `Queue` or `Steer` message, which takes an `Answered`
+/// proposal away, or by spawning its next
+/// [`TurnCall`](super::turn::TurnCall), which takes any away once
+/// admitted. A plugin may insert `Failed` or `Stopped` at any time: the
+/// turn's calls that have not started then never start, the others are
+/// answered as stopped, and the turn ends once they settled. A turn that
+/// ended is [`Settled`](super::stage::Settled) with it, until the next
+/// frame: `On<Add<Settled>>` or `Added<Settled>` readers of
+/// `(&TurnOutcome, &ForAgent)` see each turn's last outcome once.
+#[derive(Component, Clone, Debug)]
+#[component(on_insert = moved::<TurnOutcome>, on_remove = moved::<TurnOutcome>)]
 pub enum TurnOutcome {
     /// The model answered: its last message, which ended the turn.
     Answered(Message),
     /// The turn failed, for the reason given.
     Failed(String),
-    /// The turn was stopped before an answer, by the user or on exit.
-    Stopped,
+    /// The turn was stopped before an answer: by the user when no reason
+    /// is given, or on exit.
+    Stopped(Option<String>),
+}
+
+impl TurnOutcome {
+    /// What the calls of a turn that ends this way are told, when it
+    /// stops them: `Failed` and `Stopped` do, `Answered` does not.
+    pub(crate) fn stops(&self) -> Option<String> {
+        match self {
+            Self::Answered(_) => None,
+            Self::Failed(why) => Some(format!("stopped: the turn failed: {why}")),
+            Self::Stopped(None) => Some("stopped".to_owned()),
+            Self::Stopped(Some(why)) => Some(format!("stopped: {why}")),
+        }
+    }
 }
 
 /// The agents, each with whether it is a subagent, for [`primary`].
@@ -512,15 +587,4 @@ pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
         .iter()
         .min_by(|a, b| primary_order(a.2, a.1).cmp(&primary_order(b.2, b.1)))
         .map(|(entity, ..)| entity)
-}
-
-/// An agent's turn ended, however its turn entity went away. Triggered on
-/// the agent once it is idle. Not triggered for a turn the app's exit
-/// stops: the restart carries that one on.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct TurnEnded {
-    /// The agent.
-    pub entity: Entity,
-    /// How the turn ended.
-    pub outcome: TurnOutcome,
 }

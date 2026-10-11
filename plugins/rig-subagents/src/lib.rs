@@ -1,6 +1,6 @@
 //! Subagents: agents that start, message and wait on other agents, built
 //! only on the kernel's public API: open tools, spawned agents
-//! ([`SpawnedBy`]), [`Deliver`] with an [`Origin`], [`TurnEnded`],
+//! ([`SpawnedBy`]), [`Deliver`] with an [`Origin`], [`TurnOutcome`],
 //! [`Restored`] and saved components. Leave [`SubagentsPlugin`] out of the
 //! app, or replace it, and there are no subagents.
 //!

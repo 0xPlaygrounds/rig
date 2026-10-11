@@ -45,7 +45,10 @@ impl Plugin for ScaffoldPlugin {
         //                       ("What the user types")
         // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
         //                       agent's StatusItems ("The status line")
-        // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
+        // - a turn's end:       a system in `Stage::Review` reads, replaces or holds a
+        //                       turn's proposed `TurnOutcome`, or carries the turn on;
+        //                       `On<Add<Settled>>` on a turn sees how it ended
+        //                       ("How a turn ends")
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
         //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
         // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)

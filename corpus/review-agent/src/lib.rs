@@ -178,7 +178,7 @@ fn on_user_message(
     if let Some(&Reviewing(by)) = reviewing {
         commands.entity(agent).remove::<Reviewing>();
         if busy.contains(by) {
-            commands.trigger(Interrupt { entity: by });
+            commands.trigger(Interrupt::new(by));
         } else if takings.contains(by) {
             commands.entity(by).despawn();
         }

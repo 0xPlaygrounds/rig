@@ -197,22 +197,26 @@ fn work_on_turn_start(
 /// [`Lifecycle::WaitingOn`] an agent that owes it a report, else
 /// [`Lifecycle::Finished`] with its answer, or why there is none.
 fn step_on_turn_end(
-    end: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
     idle: Query<(), (With<SpawnedBy>, Without<ActiveTurn>)>,
     mut agents: Agents,
 ) {
-    let agent = end.entity;
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
     if !idle.contains(agent) {
         return;
     }
     let failed = |why: &str| format!("{why} {NO_ANSWER}");
     let step = match agents.awaited(agent).first() {
         Some(&owing) => Lifecycle::WaitingOn(owing),
-        None => Lifecycle::Finished(match &end.outcome {
+        None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => final_answer(message)
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
-            TurnOutcome::Stopped => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(Some(why)) => failed(&format!("Stopped: {why}.")),
         }),
     };
     agents.commands.entity(agent).insert(step);

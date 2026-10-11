@@ -63,7 +63,8 @@ use rig_core::serve::{Origin, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use web_time::{SystemTime, UNIX_EPOCH};
 
-use super::agent::{AgentId, Notice};
+use super::agent::Notice;
+use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::journal::SessionLog;
@@ -72,9 +73,9 @@ use super::tools::{
     tool_kind,
 };
 use super::turn::{
-    ModelRequest, ModelStart, ModelStarts, TurnCall, back_off, build_requests, commit_replies,
-    commit_turn_calls, feed, judge_failures, keeps_settled, model_pool, stream_reply,
-    wait_in_order,
+    ModelRequest, ModelStart, ModelStarts, TurnCall, back_off, build_requests, carry_on_called,
+    commit_replies, commit_turn_calls, end_turns, feed, judge_failures, keeps_settled, model_pool,
+    stop_calls, stream_reply, wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -97,28 +98,33 @@ pub enum Stage {
     /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, replace (`insert`) or hold an [`Outcome`]
-    /// ([`Unreviewed`]).
+    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`].
     Review,
-    /// The kernel waits out a failed turn call's retry, settles the
-    /// answered effects nothing holds, and the superseded ones, and writes
-    /// their [`Recorded`]; it commits a turn call's reply, and once every
-    /// call of a reply settled, their results, and calls the model again.
+    /// The kernel answers the calls of a failed or stopped turn, waits out
+    /// a failed turn call's retry, settles the answered effects nothing
+    /// holds, and the superseded ones, and writes their [`Recorded`]; once
+    /// every call of a reply settled, it commits their results and calls
+    /// the model again; it ends the turns whose outcome nothing holds and
+    /// whose calls settled; and it commits a turn call's reply, then calls
+    /// tools or proposes how the turn ends.
     Commit,
     /// The kernel admits the effects spawned since the last pass, gives
     /// each tool call its tool's [`Footprint`] and [`CallHandler`], builds
     /// the request of a [`TurnCall`] or
-    /// [`BuildFrom`](super::turn::BuildFrom), and marks the calls of a
-    /// reply that must wait for an earlier one [`Waiting`].
+    /// [`BuildFrom`](super::turn::BuildFrom), takes the outcome off a turn
+    /// whose next [`TurnCall`] it admitted, and marks the calls of a reply
+    /// that must wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`).
     Prepare,
     /// Plugins hold ([`HoldOf`]) or answer ([`Outcome`]) what is about to
     /// start ([`Undecided`]).
     Gate,
-    /// The kernel starts what is admitted, unheld and unanswered: it runs
-    /// handlers, fits a model call to its model and sends it, refuses a
-    /// tool call its agent cannot make, and opens an open tool's call. An
-    /// effect it does not run stays open, [`Started`], until answered.
+    /// The kernel starts what is admitted, unheld and unanswered, but the
+    /// calls of a failed or stopped turn: it runs handlers, fits a model
+    /// call to its model and sends it, refuses a tool call its agent cannot
+    /// make, and opens an open tool's call. An effect it does not run stays
+    /// open, [`Started`], until answered.
     Start,
 }
 
@@ -449,10 +455,23 @@ pub(crate) fn build(app: &mut App) {
             AgentPass,
             (
                 (arrive, judge_failures).chain().in_set(Stage::Arrive),
-                (back_off, settle, commit_turn_calls, commit_replies)
+                (
+                    stop_calls,
+                    back_off,
+                    settle,
+                    commit_replies,
+                    end_turns,
+                    commit_turn_calls,
+                )
                     .chain()
                     .in_set(Stage::Commit),
-                (complete_calls, admit, build_requests, wait_in_order)
+                (
+                    complete_calls,
+                    admit,
+                    carry_on_called,
+                    build_requests,
+                    wait_in_order,
+                )
                     .chain()
                     .in_set(Stage::Admit),
                 answer_unprepared.in_set(Enter(Stage::Gate)),
@@ -463,7 +482,7 @@ pub(crate) fn build(app: &mut App) {
             Update,
             run_passes
                 .in_set(AgentLoop)
-                .run_if(any_with_component::<Effect>),
+                .run_if(any_match_filter::<Or<(With<Effect>, With<Turn>)>>),
         );
     for stage in Stage::ALL {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
@@ -644,7 +663,7 @@ fn closed(passes: &mut Passes, failure: Failure, what: &str) -> Option<Notice> {
 }
 
 /// Counts a move of a stage entity, by the component `C`.
-fn moved<C: Component>(mut world: DeferredWorld, context: HookContext) {
+pub(crate) fn moved<C: Component>(mut world: DeferredWorld, context: HookContext) {
     if let Some(mut passes) = world.get_resource_mut::<Passes>() {
         passes.moved = passes.moved.wrapping_add(1);
         passes.last = Some((std::any::type_name::<C>(), context.entity));
@@ -762,6 +781,7 @@ fn answer_unprepared(
 fn start(
     mut ready: Query<StartItem, Undecided>,
     agents: Query<&AgentId>,
+    turns: Query<&TurnOutcome>,
     (tools, models): (ToolStarts, ModelStarts),
     effects: Res<Effects>,
     wake: Res<Wake>,
@@ -787,6 +807,10 @@ fn start(
         log.flush();
     }
     for item in &mut ready {
+        let ending = item.of.and_then(|of| turns.get(of.0).ok());
+        if ending.and_then(TurnOutcome::stops).is_some() {
+            continue;
+        }
         let (entity, effect) = (item.entity, item.effect);
         let agent = item.agent.map(|agent| agent.0);
         let caller = agent.and_then(|agent| agents.get(agent).ok());
@@ -888,6 +912,7 @@ struct StartItem {
     handler: Option<&'static CallHandler>,
     footprint: Option<&'static Footprint>,
     agent: Option<&'static ForAgent>,
+    of: Option<&'static CallOf>,
 }
 
 /// Plugin effects run on the async compute pool, as tool calls do.
@@ -943,6 +968,40 @@ fn settle(
         }
     }
     record_nested(world, live);
+}
+
+/// Settles `entity` at once, cancelled, if it is an unsettled effect, such
+/// as a call of a turn being interrupted: whatever holds it is despawned,
+/// it is answered with `why` unless it has an answer, its task is
+/// cancelled, and its record is written.
+pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
+    let unsettled = world
+        .get_entity(entity)
+        .is_ok_and(|effect| effect.contains::<Effect>() && !effect.contains::<Settled>());
+    if !unsettled {
+        return;
+    }
+    let holds: Vec<Entity> = world
+        .get::<Holds>(entity)
+        .map(|holds| holds.iter().collect())
+        .unwrap_or_default();
+    for hold in holds {
+        world.try_despawn(hold).ok();
+    }
+    let Ok(mut effect) = world.get_entity_mut(entity) else {
+        return;
+    };
+    if !effect.contains::<Outcome>() {
+        let why = ErrorReport::new(ErrorKind::Cancelled, why);
+        effect.insert(Outcome(Err(why)));
+    }
+    let record = assemble(world, entity, Some(Disposition::Cancelled), true);
+    if let Ok(mut effect) = world.get_entity_mut(entity) {
+        effect.remove::<Running>().insert(Settled);
+    }
+    if let Some(record) = record {
+        world.write_message(Recorded(record));
+    }
 }
 
 /// Writes the resolved records that belong to no unsettled effect: the

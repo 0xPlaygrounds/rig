@@ -430,8 +430,7 @@ impl Commit<'_, '_> {
     /// Leaves the user's last message in `conversation`, that of `agent`,
     /// unanswered for `reason` when the model owes an answer to it, so a
     /// restore does not send it to the model. Not for a turn the app's
-    /// exit stops (see [`Exiting`](super::turn::Exiting)): the restart
-    /// carries that one on.
+    /// exit stops: the restart carries that one on.
     pub fn halt(&mut self, agent: Entity, conversation: &mut Conversation, reason: Halt) {
         if let Ok(id) = self.ids.get(agent)
             && conversation.halt(reason)

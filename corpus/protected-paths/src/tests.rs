@@ -3,14 +3,10 @@ use std::path::PathBuf;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, SearchTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 use serde_json::json;
 
 use super::*;
-
-/// Whether the one turn ended.
-#[derive(Resource, Default)]
-struct Ended(bool);
 
 /// A project in the system's temporary directory with a secret `.env`, a
 /// key file and an ordinary file, each holding `KEY`.
@@ -40,7 +36,7 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool, SearchTool))
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 = true);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
@@ -68,7 +64,9 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     };
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Look around.", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
 
     let sent: Vec<String> = model
         .requests()

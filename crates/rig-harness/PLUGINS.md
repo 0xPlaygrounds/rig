@@ -331,8 +331,9 @@ spawns a new call that `Supersedes` the failed one (the old one is
 recorded as superseded and never reaches the conversation), or holds it
 (`HoldOf`) while it works, as compaction (the `rig-compaction` crate)
 does to summarize first; otherwise the kernel retries after a `Backoff`
-or ends the turn. A call refused before it was sent ends the turn and
-keeps the user's message. Before any of it, what the user typed can be
+or proposes the turn's end ([How a turn ends](#how-a-turn-ends)). A
+call refused before it was sent fails the turn and keeps the user's
+message. Before any of it, what the user typed can be
 changed as it is delivered ([What the user types](#what-the-user-types)).
 A part of the system prompt that does not change from request to request
 is a `PromptSection` entity, `PromptSection::new(order, tag, text)`, in
@@ -418,6 +419,72 @@ fn fall_back(
             ForAgent(agent.0),
             Effect::child_of(effect.parent),
         ));
+    }
+}
+```
+
+# How a turn ends
+
+A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among
+the agent's turns and its `first_message` in the conversation. When the
+model answers without calling tools, or the turn fails, the kernel
+proposes a `TurnOutcome` on the turn in `Commit` (`Answered(message)`,
+`Failed(reason)`), and a `Review` system sees it in the next pass. It may
+replace it (`insert`), hold it (spawn an entity `HoldOf(turn)`, despawn it
+when done), or carry the turn on: a `Queue` or `Steer` message delivered
+to the agent takes an `Answered` proposal away, and a new
+`(TurnCall, CallOf(turn), ForAgent(agent))` takes any away once it is
+admitted. A plugin may insert `TurnOutcome::Failed(reason)` or
+`Stopped(Some(reason))` at any time, such as a budget: the turn's calls
+that have not started never start, the others are answered as stopped,
+and the turn ends. Once nothing holds the outcome and every call of the
+turn settled, the turn ends: the agent is idle, and the turn entity is
+`Settled`, `ForAgent` its agent, until the next frame. `Interrupt` stops a
+turn at once; it cannot be held.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct TurnEndsPlugin;
+
+impl Plugin for TurnEndsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(AgentPass, check_the_tests.in_set(Stage::Review))
+            .add_observer(announce);
+    }
+}
+
+/// A turn that would end with an answer is asked once more, as its next
+/// step, whether the tests pass.
+fn check_the_tests(
+    proposed: Query<(&TurnOf, &TurnOutcome, &Turn), Added<TurnOutcome>>,
+    mut asked: Local<Vec<(Entity, u64)>>,
+    mut commands: Commands,
+) {
+    for (&TurnOf(agent), outcome, turn) in &proposed {
+        let first = !asked.contains(&(agent, turn.index));
+        if matches!(outcome, TurnOutcome::Answered(_)) && first {
+            asked.push((agent, turn.index));
+            let ask = Deliver::new(agent, "Do the tests pass?", DeliveryMode::Queue);
+            commands.trigger(ask.with_origin(Origin::plugin("check-the-tests")));
+        }
+    }
+}
+
+/// Says how each turn ended.
+fn announce(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) {
+        let how = match outcome {
+            TurnOutcome::Answered(_) => "answered".to_owned(),
+            TurnOutcome::Failed(why) => format!("failed: {why}"),
+            TurnOutcome::Stopped(why) => format!("stopped {}", why.as_deref().unwrap_or("by you")),
+        };
+        notices.write(Notice::info(agent, format!("The turn {how}.")));
     }
 }
 ```
@@ -558,8 +625,8 @@ Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Spawned`. The activity plugin's `rig_activity::Activity` says what an
 agent does now (its status and running tools), and its
 `MessageFeed` resource holds the latest deliveries. `MessageReader<Committed>` sees every change
-of every conversation as the session log records it, and `On<TurnEnded>`
-each turn's end.
+of every conversation as the session log records it, and `On<Add<Settled>>`
+on a turn with a `TurnOutcome` each turn's end ([How a turn ends](#how-a-turn-ends)).
 
 A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 `Left`, `Right`, with a ratatui `Constraint`) or a box over the screen

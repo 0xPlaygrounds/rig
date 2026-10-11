@@ -101,13 +101,17 @@ fn ask(
 }
 
 fn answered(
-    ended: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<&TurnOutcome>,
     provided: Query<(&Name, &ProvidedBy)>,
     plugins: Query<&PluginSource>,
     slash_commands: Query<&Name, With<SlashCommand>>,
     mut exits: MessageWriter<AppExit>,
 ) {
-    let answered = matches!(&ended.outcome,
+    let Ok(outcome) = turns.get(settled.entity) else {
+        return;
+    };
+    let answered = matches!(outcome,
         TurnOutcome::Answered(message) if final_answer(message).as_deref() == Some("read"));
     let scaffold = |plugin: &PluginSource| plugin.krate == "rig-hello";
     let added_once = plugins.iter().filter(|plugin| scaffold(plugin)).count() == 1;

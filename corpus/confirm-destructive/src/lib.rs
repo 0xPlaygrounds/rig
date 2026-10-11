@@ -100,8 +100,8 @@ struct ConfirmFile {
 pub struct SessionAllowances(pub Vec<String>);
 
 /// A hold on a `shell` call waiting for the user's answer: an entity
-/// [`HoldOf`] the call. Interrupting the turn despawns the call, and this
-/// hold and its question with it.
+/// [`HoldOf`] the call. Interrupting or stopping the turn despawns this
+/// hold, and its question with it.
 #[derive(Component, Clone, Debug)]
 pub struct AwaitingApproval {
     /// The calling agent.

@@ -427,7 +427,10 @@ fn settle(
     }
     if !reruns.is_empty() {
         let reply = effects.next_id();
-        let state = Turn { reply: Some(reply) };
+        let state = Turn {
+            reply: Some(reply),
+            ..Turn::default()
+        };
         let turn = commands.spawn((TurnOf(agent), state)).id();
         spawn_reply(&mut commands, (agent, turn), reruns, reply);
     } else if conversation.awaits_model() {

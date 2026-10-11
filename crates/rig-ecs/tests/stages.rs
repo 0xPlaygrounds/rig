@@ -12,30 +12,38 @@
 //! interrupt takes away; a refused model call ends its turn and keeps the
 //! message. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
-//! lands on its call.
+//! lands on its call. A turn's end is a proposal a reviewer carries on
+//! from, holds or replaces, and a new turn call carries on after a length
+//! cutoff; a turn a plugin fails starts nothing more; an interrupt ends a
+//! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
 //! (single-frame chaining, with a plugin effect and with a reply's calls),
 //! 2 (gate when ready), 3 (refusal order), 4 (the conflict rule), 5
-//! (admission), 6 (review), 8 (re-entry), 9 (refusal is not failure) and
-//! 10 (fail closed). The rest land with the kernel's other effect kinds: 7
-//! (turn endings) and 11 (interrupt) with turn endings; 12 (restore) with
-//! the restore commit, in `src/restore/tests.rs`.
+//! (admission), 6 (review), 7 (turn endings, but an `Incoming` taken over
+//! in Gate, which lands with incoming messages), 8 (re-entry), 9 (refusal
+//! is not failure), 10 (fail closed) and 11 (interrupt). 12 (restore)
+//! lands with the restore commit, in `src/restore/tests.rs`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
 use bevy_time::TimeUpdateStrategy;
+use futures::StreamExt;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
-use rig_core::completion::ToolAnnotations;
-use rig_core::effect::{Disposition, EffectKind, EffectRecord};
+use rig_core::completion::{FinishReason, ToolAnnotations};
+use rig_core::effect::family::Dynamic;
+use rig_core::effect::{
+    Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
+};
 use rig_core::error::ErrorKind;
 use rig_core::message::Message;
-use rig_core::operation::Completion;
-use rig_core::serve::ErasedHandler;
+use rig_core::operation::{Completion, Finish};
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
+use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{ExitStatus, ToolContext};
 use rig_core::transcript::final_answer;
@@ -944,8 +952,8 @@ fn a_refused_call_answers_in_call_order_and_is_recorded_as_refused() {
 #[derive(Resource, Default)]
 struct Ended(Vec<TurnOutcome>);
 
-fn log_ended(ended: On<TurnEnded>, mut log: ResMut<Ended>) {
-    log.0.push(ended.outcome.clone());
+fn log_ended(settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut log: ResMut<Ended>) {
+    log.0.extend(turns.get(settled.entity).cloned());
 }
 
 fn ended(app: &App) -> Vec<TurnOutcome> {
@@ -1065,7 +1073,7 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     let world = app.world_mut();
     let mut held = world.query_filtered::<(), (With<TurnCall>, With<Holds>, Without<Settled>)>();
     assert_eq!(held.iter(world).count(), 1, "the failed call waits, held");
-    world.trigger(Interrupt { entity: agent });
+    world.trigger(Interrupt::new(agent));
     world.flush();
     assert_eq!(waits(world), 0, "the wait went with the call");
     // Long past the wait, nothing was sent again.
@@ -1232,4 +1240,294 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
     assert_eq!(side.system_instructions(), turn.system_instructions());
     assert_eq!(side.tools.len(), turn.tools.len());
     assert_eq!(side.chat_history.len(), 4, "{:?}", side.chat_history);
+}
+
+/// How each turn that ended was numbered: its index and first message.
+#[derive(Resource, Default)]
+struct Numbered(Vec<(u64, usize)>);
+
+/// Carries the first turn that would end with an answer on, with a
+/// `Queue` nudge from a plugin.
+fn nudge(
+    turns: Query<(&TurnOf, &TurnOutcome), Added<TurnOutcome>>,
+    mut nudged: Local<bool>,
+    mut commands: Commands,
+) {
+    for (&TurnOf(agent), outcome) in &turns {
+        if matches!(outcome, TurnOutcome::Answered(_)) && !*nudged {
+            *nudged = true;
+            let nudge = Deliver::new(agent, "And the tests?", DeliveryMode::Queue);
+            commands.trigger(nudge.with_origin(Origin::plugin("nudge")));
+        }
+    }
+}
+
+#[test]
+fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Numbered>()
+        .add_observer(log_ended)
+        .add_observer(
+            |settled: On<Add<Settled>>, turns: Query<&Turn>, mut log: ResMut<Numbered>| {
+                let turn = turns.get(settled.entity).ok();
+                log.0
+                    .extend(turn.map(|turn| (turn.index, turn.first_message)));
+            },
+        )
+        .add_systems(AgentPass, nudge.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([
+        answer("first"),
+        answer("second"),
+        answer("third"),
+    ]);
+    let agent = agent_on(&mut app, &model);
+    let ended_once = |world: &mut World| world.resource::<Ended>().0.len() == 1;
+    assert!(run_until(&mut app, ended_once), "{:?}", notices(&app));
+    // One turn: the nudge carried it on instead of ending it.
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
+    assert_eq!(model.request_count(), 2);
+    let second = model.requests().get(1).map(serde_json::to_string);
+    assert!(
+        matches!(&second, Some(Ok(sent)) if sent.contains("And the tests?")),
+        "{second:?}"
+    );
+    assert!(!has::<ActiveTurn>(&app, agent));
+    // The next turn begins after the four messages of the first.
+    app.world_mut()
+        .trigger(Deliver::new(agent, "again", DeliveryMode::Steer));
+    let ended_twice = |world: &mut World| world.resource::<Ended>().0.len() == 2;
+    assert!(run_until(&mut app, ended_twice), "{:?}", notices(&app));
+    assert_eq!(app.world().resource::<Numbered>().0, [(0, 0), (1, 4)]);
+}
+
+/// The hold a reviewer put on a turn's proposed end.
+#[derive(Resource, Default)]
+struct Judging(Option<(Entity, Entity)>);
+
+/// Holds each turn's proposed answer while it is judged.
+fn hold_answers(
+    turns: Query<(Entity, &TurnOutcome), Added<TurnOutcome>>,
+    mut judging: ResMut<Judging>,
+    mut commands: Commands,
+) {
+    for (turn, outcome) in &turns {
+        if matches!(outcome, TurnOutcome::Answered(_)) {
+            let hold = commands.spawn((Name::new("judging"), HoldOf(turn))).id();
+            judging.0 = Some((turn, hold));
+        }
+    }
+}
+
+#[test]
+fn a_held_proposal_keeps_the_turn_until_a_reviewer_replaces_it() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Judging>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, hold_answers.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([answer("good enough?")]);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| world.resource::<Judging>().0.is_some();
+    assert!(run_until(&mut app, held));
+    for _ in 0..5 {
+        app.update();
+    }
+    // Every call settled and went; the held proposal keeps the turn.
+    assert!(has::<ActiveTurn>(&app, agent));
+    assert!(ended(&app).is_empty());
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Effect>().iter(world).count(), 0);
+    let Some((turn, hold)) = world.resource::<Judging>().0 else {
+        return;
+    };
+    let failed = TurnOutcome::Failed("not good enough".to_owned());
+    world.entity_mut(turn).insert(failed);
+    world.despawn(hold);
+    app.update();
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "not good enough"),
+        "{:?}",
+        ended(&app)
+    );
+    assert!(!has::<ActiveTurn>(&app, agent));
+}
+
+/// A reply cut off at the length limit before it answered.
+fn cut_off() -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::Reasoning {
+            id: "r".to_owned(),
+            text: "Let me think about".to_owned(),
+        },
+        MockStreamEvent::FinalResponse(Finish {
+            reason: Some(FinishReason::Length),
+            ..Finish::default()
+        }),
+    ]
+}
+
+/// Carries on each turn the kernel proposes to fail, once, by calling the
+/// model again.
+fn continue_once(
+    turns: Query<(Entity, &TurnOf, &TurnOutcome), Added<TurnOutcome>>,
+    mut continued: Local<bool>,
+    mut commands: Commands,
+) {
+    for (turn, &TurnOf(agent), outcome) in &turns {
+        if matches!(outcome, TurnOutcome::Failed(_)) && !*continued {
+            *continued = true;
+            commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
+        }
+    }
+}
+
+#[test]
+fn a_length_cutoff_is_a_proposal_that_a_new_turn_call_carries_on() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, continue_once.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([cut_off(), answer("done")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("done"), "{:?}", ended(&app));
+    assert_eq!(model.request_count(), 2);
+    // The proposal was carried on from: no failure shown, the message kept.
+    assert!(
+        !notices(&app).iter().any(|notice| notice.contains("failed")),
+        "{:?}",
+        notices(&app)
+    );
+    let first = conversation(&app, agent).into_iter().next();
+    assert!(matches!(first, Some(Message::User { .. })), "{first:?}");
+}
+
+#[test]
+fn a_turn_a_plugin_fails_starts_nothing_more_and_ends_with_its_reason() {
+    let mut app = app();
+    let budget = |calls: Query<&CallOf, (Undecided, With<TurnCall>)>, mut commands: Commands| {
+        for &CallOf(turn) in &calls {
+            let over = TurnOutcome::Failed("over budget".to_owned());
+            commands.entity(turn).insert(over);
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, budget.in_set(Stage::Gate));
+    let model = MockCompletionModel::from_stream_turns([answer("never")]);
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "over budget"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 0, "the turn's call never started");
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    let models: Vec<_> = model_records(&app)
+        .iter()
+        .map(|record| (record.disposition, record.started_ms.is_none()))
+        .collect();
+    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
+}
+
+/// A model that streams the start of an answer, then never finishes.
+struct Halfway;
+
+impl Serve for Halfway {
+    type Family = Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("halfway"),
+            family: FamilyDescriptor::Custom {
+                kind: "test:halfway".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        let text = Relayed::Item(Item::Event(StreamEvent::Text {
+            part: Part::new(0),
+            text: "The answer is".to_owned(),
+        }));
+        let stalls = futures::stream::iter([Ok(text)]).chain(futures::stream::pending());
+        Reply::Stream(Box::pin(stalls))
+    }
+}
+
+#[test]
+fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = Handler(ErasedHandler::new(Halfway));
+    }
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let world = app.world_mut();
+    let turn = world.get::<ActiveTurn>(agent).map(ActiveTurn::turn);
+    let Some(turn) = turn else {
+        return;
+    };
+    let check = world
+        .spawn((open("check"), CallOf(turn), ForAgent(agent)))
+        .id();
+    let hold = world.spawn(HoldOf(check)).id();
+    app.update();
+    let world = app.world_mut();
+    world.trigger(Interrupt::new(agent));
+    world.flush();
+    // At once: the hold is gone, the held call answered and settled, the
+    // turn ended as stopped, and the streamed text kept.
+    assert!(world.get_entity(hold).is_err());
+    let answered = world.get::<Outcome>(check).map(|outcome| outcome.0.clone());
+    assert!(
+        matches!(&answered, Some(Err(report)) if report.message == "interrupted by the user"),
+        "{answered:?}"
+    );
+    assert!(world.get::<Settled>(check).is_some());
+    assert!(world.get::<ActiveTurn>(agent).is_none());
+    assert!(matches!(
+        world.get::<TurnOutcome>(turn),
+        Some(TurnOutcome::Stopped(None))
+    ));
+    assert!(world.get::<Settled>(turn).is_some());
+    assert!(world.get::<Started>(check).is_none());
+    let said = conversation(&app, agent);
+    let kept = said.last().and_then(final_answer);
+    assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
+    // A late release starts nothing.
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(app.world().get_entity(check).is_err(), "settled, then gone");
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Stopped(None)]),
+        "{:?}",
+        ended(&app)
+    );
+    let cancelled: Vec<String> = records(&app)
+        .iter()
+        .filter(|record| record.disposition == Disposition::Cancelled)
+        .map(|record| record.kind.name().to_owned())
+        .collect();
+    assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
 }

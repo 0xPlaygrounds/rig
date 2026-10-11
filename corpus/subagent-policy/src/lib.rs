@@ -519,7 +519,7 @@ fn stop(commands: &mut Commands, agent: Entity, conversation: &Conversation, why
     );
     // Reported first, so the stop's own report finds nothing open.
     commands.entity(agent).insert(Lifecycle::Finished(report));
-    commands.trigger(Interrupt { entity: agent });
+    commands.trigger(Interrupt::new(agent));
 }
 
 /// Tells the first agent once that the policy file could not be read.

@@ -462,8 +462,10 @@ fn take_summary(
                 Effect::child_of(parent),
             ));
         }
+        // The user's own compaction turn ends with it.
         None => {
-            commands.entity(turn).despawn();
+            let compacted = TurnOutcome::Stopped(Some("compacted".to_owned()));
+            commands.entity(turn).try_insert(compacted);
         }
     }
 }

@@ -91,9 +91,11 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
         ])))
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .init_resource::<Seen>()
-        .add_observer(|ended: On<TurnEnded>, mut seen: ResMut<Seen>| {
-            seen.ended.push(ended.outcome.clone());
-        })
+        .add_observer(
+            |settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut seen: ResMut<Seen>| {
+                seen.ended.extend(turns.get(settled.entity).cloned());
+            },
+        )
         .add_systems(
             Last,
             |mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>| {

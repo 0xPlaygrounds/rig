@@ -72,7 +72,11 @@ fn saved(app: &mut App) -> HashMap<String, Value> {
             let component = registration.data::<ReflectComponent>()?.reflect(entity?)?;
             let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
             let path = registration.type_info().type_path().to_owned();
-            Some((path, serde_json::to_value(value).ok()?))
+            // A `null` is saved as absent.
+            let value = serde_json::to_value(value)
+                .ok()
+                .filter(|value| !value.is_null())?;
+            Some((path, value))
         })
         .collect()
 }
@@ -256,7 +260,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
             world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             // The observers' commands start the turn, and end it.
             world.flush();
-            world.trigger(Interrupt { entity: agent });
+            world.trigger(Interrupt::new(agent));
             world.flush();
             if at == 1 {
                 assert!(world.run_system_cached_with(keep, agent).is_ok());

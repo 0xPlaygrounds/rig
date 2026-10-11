@@ -574,7 +574,7 @@ fn on_verdict(
         (Decision::Stop, Some(reason)) => {
             answer(Ok("The worker's turn is stopped and the user told why."));
             if busy {
-                commands.trigger(Interrupt { entity: worker });
+                commands.trigger(Interrupt::new(worker));
             }
             notices.write(Notice::info(
                 worker,

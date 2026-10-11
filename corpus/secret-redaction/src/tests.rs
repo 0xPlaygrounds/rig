@@ -3,15 +3,11 @@ use std::path::PathBuf;
 use rig_cassette::journal::{JournalStore, MemoryStore};
 use rig_coding_tools::{ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 use super::*;
 
 const TOKEN: &str = "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-
-/// Whether a turn ended.
-#[derive(Resource, Default)]
-struct Ended(bool);
 
 /// A directory of this test's own, gone when dropped.
 struct Scratch(PathBuf);
@@ -59,7 +55,7 @@ fn run_the_script() -> io::Result<Ran> {
         SecretRedactionPlugin::default(),
     ))
     .init_resource::<Ended>()
-    .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 = true);
+    .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -72,7 +68,9 @@ fn run_the_script() -> io::Result<Ran> {
     };
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "read cfg.txt", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
 
     let sent: Vec<String> = model
         .requests()

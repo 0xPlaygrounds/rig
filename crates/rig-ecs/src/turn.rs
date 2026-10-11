@@ -13,15 +13,20 @@
 //! replace or act on by superseding the call; Commit carries out what is
 //! left: a [`Backoff`] then a new call, or the turn's end. A call refused
 //! before it was sent ends the turn and keeps the user's message. Each
-//! turn counts its retries in its [`Recovery`]. Despawning the turn ends
-//! it, and announces its [`TurnEnded`] on the agent.
+//! turn counts its retries in its [`Recovery`]. Every end the kernel
+//! decides is a [`TurnOutcome`] proposed on the turn, which Review may
+//! replace, hold or carry on from; once nothing holds it and every call of
+//! the turn settled, Commit ends the turn and marks it [`Settled`] for
+//! the readers of how it ended. [`Interrupt`] ends it at once.
 
 use std::pin::Pin;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
+use bevy_ecs::world::DeferredWorld;
 use bevy_log::{info, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
@@ -42,9 +47,9 @@ use rig_core::transcript::close_pending_with;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Ending, Halt,
-    Interrupt, LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnEnded,
-    TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Halt,
+    Interrupt, LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf,
+    TurnOutcome, TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::effects::Handler;
@@ -56,7 +61,7 @@ use super::prompt::{
 };
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, Outcome, Settled, Stage, Started, SupersededBy,
-    Supersedes, Waiting, failed_in,
+    Supersedes, Waiting, cancel, failed_in,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -228,53 +233,52 @@ pub(crate) fn on_retry(
     spawn_turn_call(&mut commands, turn, agent);
 }
 
-/// Announces a turn's end with [`TurnEnded`], however its entity went
-/// away: with the [`Ending`] it was given, or as stopped. The event goes
-/// once the agent is idle, after the relationship dropped its
-/// [`ActiveTurn`]. A turn the exit stops is not ended: it is left for the
-/// restart to carry on, as after a crash.
-pub(crate) fn on_turn_despawn(
-    end: On<Remove<TurnOf>>,
-    turns: Query<(&TurnOf, Option<&Ending>)>,
-    agents: Query<&AgentId>,
-    exiting: Option<Res<Exiting>>,
-    mut commands: Commands,
-) {
-    let Ok((&TurnOf(agent), ending)) = turns.get(end.entity) else {
+/// Fills in a new turn's [`Turn`]: its index from its agent's count, which
+/// it bumps, and where it begins in the agent's conversation.
+pub(crate) fn number_turn(mut world: DeferredWorld, context: HookContext) {
+    let Some(&TurnOf(agent)) = world.get::<TurnOf>(context.entity) else {
         return;
     };
-    if exiting.is_some() {
-        return;
-    }
-    let outcome = ending.map_or(TurnOutcome::Stopped, |ending| ending.0.clone());
-    if let Ok(id) = agents.get(agent) {
-        let how = match &outcome {
-            TurnOutcome::Answered(_) => "answered",
-            TurnOutcome::Failed(_) => "failed",
-            TurnOutcome::Stopped => "stopped",
-        };
-        info!(agent = %id.0, "turn ended: {how}");
-    }
-    commands.trigger(TurnEnded {
-        entity: agent,
-        outcome,
+    let first_message = world.get::<Conversation>(agent).map_or(0, |conversation| {
+        let messages = conversation.messages();
+        let asks = matches!(messages.last(), Some(Message::User { .. }));
+        messages.len().saturating_sub(usize::from(asks))
     });
+    let index = match world.get_mut::<TurnsStarted>(agent) {
+        Some(mut started) => {
+            let index = started.0;
+            started.0 = index.saturating_add(1);
+            index
+        }
+        None => 0,
+    };
+    if let Some(mut turn) = world.get_mut::<Turn>(context.entity) {
+        turn.index = index;
+        turn.first_message = first_message;
+    }
 }
 
-/// Ends `turn` as `outcome` says.
-fn end_turn(commands: &mut Commands, turn: Entity, outcome: TurnOutcome) {
-    commands.entity(turn).insert(Ending(outcome)).despawn();
+/// On a turn whose outcome the kernel proposed: what the kernel does when
+/// the turn ends that way, unless the turn carries on.
+#[derive(Component, Clone, Debug)]
+pub(crate) struct Ending {
+    /// The error shown to the user.
+    notice: String,
+    /// Whether the user's unanswered message is taken out.
+    take_out: bool,
 }
 
-/// Stops a running turn. The text a streaming reply had sent is kept as
-/// the model's message, every tool call of the last reply gets a result,
-/// real or "interrupted", and despawning the turn cancels its calls. The
-/// outcome is written to the log at once, so a log that ends mid-turn
-/// always means a crash or a restart.
+/// Stops a running turn at once. The text a streaming reply had sent is
+/// kept as the model's message, every tool call of the last reply gets a
+/// result, real or "interrupted", and every call of the turn that has not
+/// settled is answered as interrupted and settled, whatever held it gone.
+/// The turn ends [`TurnOutcome::Stopped`]. The outcome is written to the
+/// log at once, so a log that ends mid-turn always means a crash or a
+/// restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&mut Conversation, &ActiveTurn)>,
-    turns: Query<(&Turn, Option<&Calls>)>,
+    mut turns: Query<(&mut Turn, Option<&Calls>)>,
     replies: Query<ReplyCall>,
     partials: Query<&Partial, (With<TurnCall>, Without<Settled>)>,
     mut commit: Commit,
@@ -287,9 +291,10 @@ pub(crate) fn on_interrupt(
         return;
     };
     let turn = active.turn();
-    let (reply, calls) = turns
-        .get(turn)
-        .map_or((None, None), |(state, calls)| (state.reply, calls));
+    let (reply, calls) = match turns.get_mut(turn) {
+        Ok((mut state, calls)) => (state.reply.take(), calls),
+        Err(_) => (None, None),
+    };
     let aborted: String = partials
         .iter_many(calls.into_iter().flat_map(Calls::iter))
         .flatten()
@@ -298,15 +303,39 @@ pub(crate) fn on_interrupt(
     if !aborted.trim().is_empty() {
         commit.message(agent, &mut conversation, Message::assistant(aborted));
     }
+    let reason = interrupt.reason.clone();
+    let why = match &reason {
+        Some(reason) => format!("interrupted: {reason}"),
+        None => "interrupted by the user".to_owned(),
+    };
     let reply = reply
         .zip(calls)
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));
-    if let Some(results) = stopped_results(reply.unwrap_or_default(), "interrupted by the user") {
+    if let Some(results) = stopped_results(reply.unwrap_or_default(), &why) {
         commit.message(agent, &mut conversation, results);
     }
     commit.halt(agent, &mut conversation, Halt::Stopped);
     log.flush();
-    commands.entity(turn).despawn();
+    let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
+    commands.queue(move |world: &mut World| {
+        for call in calls {
+            cancel(world, call, &why);
+        }
+        let holds: Vec<Entity> = world
+            .get::<Holds>(turn)
+            .map(|holds| holds.iter().collect())
+            .unwrap_or_default();
+        for hold in holds {
+            world.try_despawn(hold).ok();
+        }
+        if let Ok(mut turn) = world.get_entity_mut(turn) {
+            turn.remove::<(TurnOf, Ending)>().insert((
+                TurnOutcome::Stopped(reason),
+                ForAgent(agent),
+                Settled,
+            ));
+        }
+    });
     notices.write(Notice::info(agent, "Interrupted."));
 }
 
@@ -336,10 +365,10 @@ const EXIT_GRACE: Duration = Duration::from_secs(1);
 type Cancelling = Vec<Pin<Box<dyn Future<Output = ()>>>>;
 
 /// Inserted when the app exits: the turns it stops are left for the
-/// restart to carry on, so they end without a [`TurnEnded`] and are not
+/// restart to carry on, so they end without a [`TurnOutcome`] and are not
 /// logged as halted.
 #[derive(Resource, Clone, Copy, Debug, Default)]
-pub struct Exiting;
+pub(crate) struct Exiting;
 
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
 /// idle agents) leaves the running turns for the restart to carry on, as
@@ -697,7 +726,8 @@ pub(crate) fn judge_failures(
 /// Holds each failed [`TurnCall`] whose verdict, after Review, is still
 /// `Retry` with a [`Backoff`], in [`Stage::Commit`] before the kernel
 /// settles, and sends a new call that supersedes it once the wait passed,
-/// if the hold is still there then. Not when a Review system failed.
+/// if the hold is still there then. Not when a Review system failed, nor
+/// for a turn that is failed or stopped.
 pub(crate) fn back_off(
     failed: Query<
         (Entity, &Effect, &Outcome, &RetryVerdict, &CallOf),
@@ -708,7 +738,7 @@ pub(crate) fn back_off(
             Without<SupersededBy>,
         ),
     >,
-    mut turns: Query<(&TurnOf, &mut Recovery)>,
+    mut turns: Query<(&TurnOf, &mut Recovery, Option<&TurnOutcome>)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -719,9 +749,12 @@ pub(crate) fn back_off(
         let (Err(report), Verdict::Retry(delay)) = (outcome, verdict) else {
             continue;
         };
-        let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
+        let Ok((&TurnOf(agent), mut recovery, ending)) = turns.get_mut(turn) else {
             continue;
         };
+        if ending.and_then(TurnOutcome::stops).is_some() {
+            continue;
+        }
         recovery.retries += 1;
         let backoff = Backoff {
             attempt: recovery.retries,
@@ -760,14 +793,48 @@ pub(crate) fn back_off(
     }
 }
 
+/// Answers every admitted call of a failed or stopped turn that has not
+/// settled, in [`Stage::Commit`] before the kernel settles: one not
+/// answered yet as stopped, which cancels it if it runs, and whatever holds
+/// them is despawned, so they settle in this pass and the turn can end. A
+/// call spawned since the last pass is left for Admit, where a new
+/// [`TurnCall`] carries the turn on.
+pub(crate) fn stop_calls(
+    turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
+    calls: Query<(Has<Outcome>, Option<&Holds>), (With<Admitted>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    for (ending, of) in &turns {
+        let Some(why) = ending.stops() else {
+            continue;
+        };
+        for (call, (answered, holds)) in of
+            .iter()
+            .filter_map(|call| Some((call, calls.get(call).ok()?)))
+        {
+            for hold in holds.into_iter().flat_map(Holds::iter) {
+                commands.entity(hold).try_despawn();
+            }
+            if !answered {
+                let stopped = ErrorReport::new(ErrorKind::Cancelled, why.clone());
+                commands
+                    .entity(call)
+                    .try_insert_if_new(Outcome(Err(stopped)));
+            }
+        }
+    }
+}
+
 /// Takes each [`TurnCall`] settled this pass and not superseded, in
-/// [`Stage::Commit`], its streamed [`Partial`] gone: a reply is appended, then rig-core's turn-failure
-/// rule decides. A failed reply runs none of its tool calls and ends the
-/// turn; a reply without tool calls ends it too, unless messages sent
-/// meanwhile carry it on; otherwise its tool calls are spawned, all at
-/// once, and become the turn's [`Turn::reply`]. A failure ends the turn as
-/// its verdict says; one refused before it was sent ends it and keeps the
-/// user's message.
+/// [`Stage::Commit`], its streamed [`Partial`] gone: a reply is appended,
+/// then rig-core's turn-failure rule decides. A failed reply runs none of
+/// its tool calls; a reply without tool calls is the turn's answer, unless
+/// messages sent meanwhile carry it on; otherwise its tool calls are
+/// spawned, all at once, and become the turn's [`Turn::reply`]. A failure
+/// fails the turn as its verdict says; one refused before it was sent
+/// keeps the user's message. Each end is a [`TurnOutcome`] proposed on the
+/// turn, unless it has one: a failed or stopped turn takes in a reply that
+/// still came, its tool calls not run, and goes no further.
 pub(crate) fn commit_turn_calls(
     calls: Query<
         (
@@ -780,7 +847,7 @@ pub(crate) fn commit_turn_calls(
         ),
         (With<TurnCall>, Added<Settled>),
     >,
-    mut turns: Query<(&TurnOf, &mut Recovery, &mut Turn)>,
+    mut turns: Query<(&TurnOf, &mut Recovery, &mut Turn, Option<&TurnOutcome>)>,
     mut agents: Query<Answered>,
     mut commit: Commit,
     mut commands: Commands,
@@ -792,78 +859,109 @@ pub(crate) fn commit_turn_calls(
         let Some(Outcome(outcome)) = outcome.filter(|_| !superseded) else {
             continue;
         };
-        let Ok((&TurnOf(agent), mut recovery, mut state)) = turns.get_mut(turn) else {
+        let Ok((&TurnOf(agent), mut recovery, mut state, ending)) = turns.get_mut(turn) else {
             continue;
         };
         let Ok(mut answered) = agents.get_mut(agent) else {
             continue;
         };
+        let stopped = ending.and_then(TurnOutcome::stops);
+        let propose = |commands: &mut Commands, outcome: TurnOutcome, kernel: Option<Ending>| {
+            if ending.is_none() {
+                let mut turn = commands.entity(turn);
+                turn.try_insert(outcome);
+                if let Some(kernel) = kernel {
+                    turn.try_insert(kernel);
+                }
+            }
+        };
         let report = match outcome {
             Ok(effect::Outcome::Completion(response)) => {
                 recovery.retries = 0;
-                let ending =
-                    commit_reply(agent, response, &mut answered, &mut commit, &mut notices);
-                match ending {
-                    Next::End(outcome) => end_turn(&mut commands, turn, outcome),
-                    Next::Call => spawn_turn_call(&mut commands, turn, agent),
-                    Next::Run(calls) => {
+                let next = commit_reply(agent, response, &mut answered, &mut commit, &mut notices);
+                match (next, stopped) {
+                    (Next::End(outcome, kernel), _) => propose(&mut commands, outcome, kernel),
+                    (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
+                    (Next::Run(calls), None) => {
                         state.reply = Some(effect.id());
                         spawn_reply(&mut commands, (agent, turn), calls, effect.id());
                     }
+                    (Next::Run(calls), Some(why)) => {
+                        let results = close_pending_with(&calls, &format!("not run: {why}"));
+                        commit.message(agent, &mut answered.conversation, results);
+                    }
+                    (Next::Call, Some(_)) => {}
                 }
                 continue;
             }
+            _ if stopped.is_some() => continue,
             Ok(other) => ErrorReport::new(
                 ErrorKind::Internal,
                 format!("the model answered with a {} outcome", other.family()),
             ),
             Err(report) => report.clone(),
         };
-        let conversation = &mut answered.conversation;
-        let why = match verdict.map(|verdict| &verdict.0) {
-            None => {
-                notices.write(Notice::error(agent, report.message.clone()));
-                end_turn(&mut commands, turn, TurnOutcome::Failed(report.message));
-                continue;
-            }
-            Some(Verdict::GaveUp(why)) => {
-                notices.write(Notice::error(
-                    agent,
-                    format!(
-                        "The model call failed: {report}. Not retrying: {why}. Your message is \
-                         kept for a retry."
-                    ),
-                ));
-                end_turn(&mut commands, turn, TurnOutcome::Failed(report.to_string()));
-                continue;
-            }
-            Some(Verdict::Retry(_)) => {
-                notices.write(Notice::error(
-                    agent,
-                    format!("The model call failed: {report}. Your message is kept for a retry."),
-                ));
-                end_turn(&mut commands, turn, TurnOutcome::Failed(report.to_string()));
-                continue;
-            }
-            Some(Verdict::Overflow) => {
-                format!("The conversation does not fit the model's context window: {report}")
-            }
-            Some(Verdict::Final) => format!("The model call failed: {report}"),
+        let kept = |notice: String| {
+            Some(Ending {
+                notice,
+                take_out: false,
+            })
         };
-        notices.write(Notice::error(agent, why.clone()));
-        drop_unanswered(agent, conversation, &mut commit, &mut notices);
-        end_turn(&mut commands, turn, TurnOutcome::Failed(why));
+        let mut propose = |outcome, kernel| propose(&mut commands, outcome, kernel);
+        match verdict.map(|verdict| &verdict.0) {
+            None => propose(
+                TurnOutcome::Failed(report.message.clone()),
+                kept(report.message),
+            ),
+            Some(Verdict::GaveUp(why)) => propose(
+                TurnOutcome::Failed(report.to_string()),
+                kept(format!(
+                    "The model call failed: {report}. Not retrying: {why}. Your message is kept \
+                     for a retry."
+                )),
+            ),
+            Some(Verdict::Retry(_)) => propose(
+                TurnOutcome::Failed(report.to_string()),
+                kept(format!(
+                    "The model call failed: {report}. Your message is kept for a retry."
+                )),
+            ),
+            Some(verdict @ (Verdict::Overflow | Verdict::Final)) => {
+                let why = match verdict {
+                    Verdict::Overflow => format!(
+                        "The conversation does not fit the model's context window: {report}"
+                    ),
+                    _ => format!("The model call failed: {report}"),
+                };
+                let ending = Ending {
+                    notice: why.clone(),
+                    take_out: true,
+                };
+                propose(TurnOutcome::Failed(why), Some(ending));
+            }
+        }
     }
 }
 
 /// What a turn does after a reply.
 enum Next {
-    /// It ends.
-    End(TurnOutcome),
+    /// It would end, as proposed, with what the kernel does then.
+    End(TurnOutcome, Option<Ending>),
     /// It calls the model again, with the messages sent meanwhile.
     Call,
     /// It runs the reply's tool calls.
     Run(Vec<ToolCall>),
+}
+
+/// The messages that carry a turn on that would end: steering first, else
+/// everything queued, as one step, with the notes; none when neither
+/// waits.
+fn carry_on(inbox: &mut Inbox) -> Option<Vec<Pending>> {
+    let next: Vec<Pending> = match inbox.steering.is_empty() {
+        true => inbox.queued.drain(..).collect(),
+        false => inbox.steering.drain(..).collect(),
+    };
+    (!next.is_empty()).then(|| inbox.notes.drain(..).chain(next).collect())
 }
 
 /// Appends `response`, the reply to `agent`, and says what its turn does
@@ -875,7 +973,6 @@ fn commit_reply(
     commit: &mut Commit,
     notices: &mut MessageWriter<Notice>,
 ) -> Next {
-    let spec = answered.connection.map(|connection| &*connection.spec);
     if response.usage.context_tokens().is_some() {
         *answered.last = LastUsage(Some(response.usage));
     }
@@ -894,29 +991,31 @@ fn commit_reply(
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
             commit.message(agent, &mut answered.conversation, results);
         }
-        notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
-        drop_unanswered(agent, &mut answered.conversation, commit, notices);
-        return Next::End(TurnOutcome::Failed(failure.to_string()));
+        let ending = Ending {
+            notice: format!("The turn failed: {failure}."),
+            take_out: true,
+        };
+        return Next::End(TurnOutcome::Failed(failure.to_string()), Some(ending));
     }
     if !tool_calls.is_empty() {
         return Next::Run(tool_calls);
     }
-    // What was sent meanwhile carries the turn on: steering first, else
-    // everything queued, as one step. Notes go along but carry nothing on.
-    let inbox = &mut *answered.inbox;
-    let next: Vec<Pending> = match inbox.steering.is_empty() {
-        true => inbox.queued.drain(..).collect(),
-        false => inbox.steering.drain(..).collect(),
-    };
-    if !next.is_empty() {
-        let waiting = inbox.notes.drain(..).chain(next);
-        commit.pending(agent, spec, waiting, &mut answered.conversation, notices);
+    // What was sent meanwhile carries the turn on. Notes go along but carry
+    // nothing on.
+    if let Some(next) = carry_on(&mut answered.inbox) {
+        let spec = answered.connection.map(|connection| &*connection.spec);
+        commit.pending(agent, spec, next, &mut answered.conversation, notices);
         return Next::Call;
     }
-    Next::End(match answered.conversation.messages().last() {
-        Some(answer @ Message::Assistant(_)) => TurnOutcome::Answered(answer.clone()),
-        _ => TurnOutcome::Failed("the model ended the turn without a message".to_owned()),
-    })
+    match answered.conversation.messages().last() {
+        Some(answer @ Message::Assistant(_)) => {
+            Next::End(TurnOutcome::Answered(answer.clone()), None)
+        }
+        _ => {
+            let why = "the model ended the turn without a message".to_owned();
+            Next::End(TurnOutcome::Failed(why), None)
+        }
+    }
 }
 
 /// Removes the user's last message when no model answered it, so the next
@@ -1047,17 +1146,17 @@ pub(crate) fn wait_in_order(
 }
 
 /// Once every call of a turn's running reply settled, appends their
-/// results in call order and spawns the turn's next [`TurnCall`], in
-/// [`Stage::Commit`](super::stage::Stage::Commit), after the kernel settled
-/// that pass's effects.
+/// results in call order and spawns the turn's next [`TurnCall`], unless
+/// the turn is failed or stopped, in [`Stage::Commit`], after the kernel
+/// settled that pass's effects.
 pub(crate) fn commit_replies(
-    mut turns: Query<(Entity, &TurnOf, &mut Turn, &Calls)>,
+    mut turns: Query<(Entity, &TurnOf, &mut Turn, &Calls, Option<&TurnOutcome>)>,
     replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
     mut commit: Commit,
     mut commands: Commands,
 ) {
-    for (turn, &TurnOf(agent), mut state, calls) in &mut turns {
+    for (turn, &TurnOf(agent), mut state, calls, ending) in &mut turns {
         let Some(reply) = state.reply else {
             continue;
         };
@@ -1080,7 +1179,86 @@ pub(crate) fn commit_replies(
         if !results.is_empty() {
             commit.message(agent, &mut conversation, Message::tool_results(results));
         }
-        spawn_turn_call(&mut commands, turn, agent);
+        if ending.and_then(TurnOutcome::stops).is_none() {
+            spawn_turn_call(&mut commands, turn, agent);
+        }
+    }
+}
+
+/// Ends each turn whose [`TurnOutcome`] nothing holds and whose calls all
+/// settled, in [`Stage::Commit`], before this pass's proposals are made, so
+/// Review sees each proposal first: what the kernel proposed shows its
+/// error and may take the user's unanswered message out, the turn is no
+/// longer [`TurnOf`] its agent, and it is [`ForAgent`] it and [`Settled`].
+/// An `Answered` turn that messages were sent to meanwhile carries on with
+/// them instead. Not when a Review system failed.
+pub(crate) fn end_turns(
+    turns: Query<
+        (
+            Entity,
+            &TurnOf,
+            &TurnOutcome,
+            Option<&Ending>,
+            Option<&Calls>,
+        ),
+        Without<Holds>,
+    >,
+    open: Query<(), (With<Effect>, Without<Settled>)>,
+    mut agents: Query<(&AgentId, &mut Conversation, &mut Inbox, Option<&Connection>)>,
+    mut commit: Commit,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    if failed_in(Stage::Review).is_some() {
+        return;
+    }
+    for (turn, &TurnOf(agent), outcome, ending, calls) in &turns {
+        let Ok((id, mut conversation, mut inbox, connection)) = agents.get_mut(agent) else {
+            continue;
+        };
+        if let TurnOutcome::Answered(_) = outcome
+            && let Some(next) = carry_on(&mut inbox)
+        {
+            let spec = connection.map(|connection| &*connection.spec);
+            commit.pending(agent, spec, next, &mut conversation, &mut notices);
+            commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+            spawn_turn_call(&mut commands, turn, agent);
+            continue;
+        }
+        if calls.is_some_and(|calls| calls.iter().any(|call| open.contains(call))) {
+            continue;
+        }
+        if let Some(ending) = ending {
+            notices.write(Notice::error(agent, ending.notice.clone()));
+            if ending.take_out {
+                drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
+            }
+        }
+        let how = match outcome {
+            TurnOutcome::Answered(_) => "answered",
+            TurnOutcome::Failed(_) => "failed",
+            TurnOutcome::Stopped(_) => "stopped",
+        };
+        info!(agent = %id.0, "turn ended: {how}");
+        commands
+            .entity(turn)
+            .try_remove::<(TurnOf, Ending)>()
+            .try_insert((ForAgent(agent), Settled));
+    }
+}
+
+/// Takes the [`TurnOutcome`] off each turn whose [`TurnCall`] was admitted
+/// this pass, in [`Stage::Admit`]: calling the model again carries the turn
+/// on, whatever was proposed or decided.
+pub(crate) fn carry_on_called(
+    called: Query<&CallOf, (With<TurnCall>, Added<Admitted>)>,
+    ending: Query<(), With<TurnOutcome>>,
+    mut commands: Commands,
+) {
+    for &CallOf(turn) in &called {
+        if ending.contains(turn) {
+            commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+        }
     }
 }
 

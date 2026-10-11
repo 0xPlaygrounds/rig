@@ -12,6 +12,8 @@ workspace = true
 doctest = false
 
 [dependencies]
+# Named by the derive of `Ended`.
+bevy_ecs = { workspace = true }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
@@ -35,5 +37,4 @@ rig-subagents = { path = "../../plugins/rig-subagents" }
 rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tui = { path = "../../plugins/rig-tui" }
 # Named by the derives of the plugin `rig plugin new` writes.
-bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }

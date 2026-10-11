@@ -31,6 +31,16 @@ pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
     (app, wakes)
 }
 
+/// How each turn ended, in the order they ended, kept by [`log_ended`].
+#[derive(Resource, Default)]
+pub struct Ended(pub Vec<TurnOutcome>);
+
+/// Keeps how each turn ended in [`Ended`]: `app.init_resource::<Ended>()`
+/// and `.add_observer(log_ended)`.
+pub fn log_ended(settled: On<Add<Settled>>, turns: Query<&TurnOutcome>, mut log: ResMut<Ended>) {
+    log.0.extend(turns.get(settled.entity).cloned());
+}
+
 /// `model` as the catalog's DeepSeek model.
 pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
     let spec = Catalog::builtin()

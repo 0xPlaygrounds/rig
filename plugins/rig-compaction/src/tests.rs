@@ -12,15 +12,11 @@ use rig_ecs::commands::RunCommand;
 use rig_ecs::journal::commit_message;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 use rig_telemetry::{Spending, UsagePlugin};
 
 /// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
-
-/// How each turn ended, in order.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
 
 /// The kernel, the compaction and usage plugins on `store`, after the first frame
 /// restored the session, with its loop's wakes.
@@ -29,9 +25,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin, UsagePlugin))
         .init_resource::<Ended>()
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(log_ended);
     app.finish();
     app.update();
     (app, wakes)
@@ -258,7 +252,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         matches!(focus.as_slice(), [request] if request.contains("Additional focus: keep the sums")),
         "{focus:?}"
     );
-    world.trigger(Interrupt { entity: agent });
+    world.trigger(Interrupt::new(agent));
     world.flush();
     for _ in 0..5 {
         app.update();
@@ -270,7 +264,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     assert!(
         matches!(
             world.resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped]
+            [TurnOutcome::Stopped(None)]
         ),
         "{:?}",
         world.resource::<Ended>().0

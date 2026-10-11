@@ -16,7 +16,7 @@ use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
-    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
+    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
 };
 use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
@@ -332,16 +332,23 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
 /// Ends every request waiting on the agent whose turn ended with that
 /// turn's outcome: a turn reads every message queued for it before it
 /// ends, so it answers them all.
-fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
+fn end_replies(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    mut replies: ResMut<Replies>,
+) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
     for reply in replies.0.values_mut() {
-        if reply.agent != end.entity {
+        if reply.agent != agent {
             continue;
         }
         if let ReplyState::Waiting(waiting) = &mut reply.state {
             for answer in waiting.drain(..) {
-                answer.send(Ok(end.outcome.clone())).ok();
+                answer.send(Ok(outcome.clone())).ok();
             }
-            reply.state = ReplyState::Ended(end.outcome.clone());
+            reply.state = ReplyState::Ended(outcome.clone());
         }
     }
 }

@@ -346,7 +346,7 @@ fn choose(
 fn stop(commands: &mut Commands, host: Entity, debate: &Debate) {
     commands.entity(host).remove::<Debate>();
     for debater in debate.debaters() {
-        commands.trigger(Interrupt { entity: debater });
+        commands.trigger(Interrupt::new(debater));
     }
 }
 

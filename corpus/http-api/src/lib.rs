@@ -249,7 +249,7 @@ fn answer(
         },
         Call::Interrupt(agent) => match find(&agent) {
             Some((entity, .., true, _)) => {
-                commands.trigger(Interrupt { entity });
+                commands.trigger(Interrupt::new(entity));
                 Reply::new(202, json!({ "accepted": true }))
             }
             Some(_) => Reply::error(409, "no turn runs"),
@@ -305,16 +305,24 @@ fn turn_started(
     }
 }
 
-fn turn_ended(ended: On<TurnEnded>, ids: Query<&AgentId>, mut subscribers: ResMut<Subscribers>) {
-    let Ok(id) = ids.get(ended.entity) else {
+fn turn_ended(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    ids: Query<&AgentId>,
+    mut subscribers: ResMut<Subscribers>,
+) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let data = match &ended.outcome {
+    let Ok(id) = ids.get(agent) else {
+        return;
+    };
+    let data = match outcome {
         TurnOutcome::Answered(message) => {
             json!({ "agent": id.0, "outcome": "answered", "answer": final_answer(message) })
         }
         TurnOutcome::Failed(why) => json!({ "agent": id.0, "outcome": "failed", "error": why }),
-        TurnOutcome::Stopped => json!({ "agent": id.0, "outcome": "stopped" }),
+        TurnOutcome::Stopped(why) => json!({ "agent": id.0, "outcome": "stopped", "reason": why }),
     };
     subscribers.send("turn_end", &data);
 }

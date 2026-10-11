@@ -92,9 +92,13 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
                     .extend(recorded.read().map(|record| record.0.clone()));
             },
         )
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(
+            |settled: On<bevy_ecs::lifecycle::Add<Settled>>,
+             turns: Query<&TurnOutcome>,
+             mut log: ResMut<Ended>| {
+                log.0.extend(turns.get(settled.entity).cloned());
+            },
+        );
     app.finish();
     (app, wakes)
 }
@@ -351,12 +355,12 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
     let Some((mut app, _wakes, agent, model)) = started else {
         return;
     };
-    app.world_mut().trigger(Interrupt { entity: agent });
+    app.world_mut().trigger(Interrupt::new(agent));
     advance(&mut app, Duration::from_secs(5));
     assert!(
         matches!(
             app.world().resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped]
+            [TurnOutcome::Stopped(None)]
         ),
         "{:?}",
         app.world().resource::<Ended>().0

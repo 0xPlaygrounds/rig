@@ -5,11 +5,7 @@ use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
-
-/// How each turn ended, in order.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 /// The kernel and the todo plugin on `store`, after the first frame
 /// restored the session, with its first agent.
@@ -17,9 +13,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>, Option<Entity>) {
     let (mut app, wakes) = app_on(store);
     app.add_plugins((AgentPlugin, JournalPlugin, TodoPlugin))
         .init_resource::<Ended>()
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -54,7 +48,7 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Do a, then b.", DeliveryMode::Steer));
     let idle = |world: &World| {
-        world.resource::<Ended>().0.len() >= 2 && world.get::<ActiveTurn>(agent).is_none()
+        !world.resource::<Ended>().0.is_empty() && world.get::<ActiveTurn>(agent).is_none()
     };
     run_until(&mut app, &wakes, idle);
     // A few more frames: nothing else is sent.
@@ -88,11 +82,8 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
             _ => None,
         })
         .collect();
-    // The nudge starts a second turn after the first ended with "done".
-    assert_eq!(
-        answers,
-        [Some("done".to_owned()), Some("all done".to_owned())]
-    );
+    // The nudge carried the turn on past "done": one turn, one answer.
+    assert_eq!(answers, [Some("all done".to_owned())]);
     drop(app);
 
     let (mut restarted, _wakes, agent) = start(&store);

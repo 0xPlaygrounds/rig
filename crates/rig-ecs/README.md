@@ -20,7 +20,10 @@ What it holds, by module:
   their request built by the kernel, a plugin edits it in Prepare (system
   prompt, messages, tools, options, the model it goes to), and Start fits
   it to that model. A failed call carries its `RetryVerdict`, which Review
-  may act on by superseding the call, such as on another model.
+  may act on by superseding the call, such as on another model. A turn
+  ends with a `TurnOutcome` on it: the kernel proposes one, Review may
+  replace it, hold it or carry the turn on, a plugin may fail or stop the
+  turn, and once its calls settled the turn ends, `Settled`.
   `Condensed` sends a summary in place of older messages.
 - `stage`: effects as entities. An effect's components are its request
   and its outcome, and each frame the `AgentPass` schedule runs its stages

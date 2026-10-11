@@ -54,7 +54,7 @@ pub mod prelude {
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent,
         Interrupt, LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
-        SystemPrompt, ToolAccess, Turn, TurnEnded, TurnOf, TurnOutcome,
+        SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
@@ -90,7 +90,7 @@ use calls::{PollCalls, Wake, poll_calls, settle};
 use journal::SessionLog;
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
-/// them for the restart (see [`turn::Exiting`]). It runs before
+/// them for the restart, unended. It runs before
 /// [`WriteJournal`], both in Bevy's `OnAppExitSystems`.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StopTurns;
@@ -160,7 +160,6 @@ impl Plugin for AgentPlugin {
             .add_observer(commands::on_run_command)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
-            .add_observer(turn::on_turn_despawn)
             .add_observer(inbox::recall_on_turn_end)
             .add_observer(model::on_set_model)
             .add_observer(model::connect)

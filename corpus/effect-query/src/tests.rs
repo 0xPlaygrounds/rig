@@ -7,7 +7,7 @@ use rig_coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::journal::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId, env};
-use rig_harness_test_support::{calls, connect, reply, run_until, start_call};
+use rig_harness_test_support::{Ended, calls, connect, log_ended, reply, run_until, start_call};
 use rig_telemetry::EffectLogPlugin;
 
 use super::*;
@@ -15,10 +15,6 @@ use super::*;
 /// Each finished tool call's output text, by the model's call id.
 #[derive(Resource, Default)]
 struct Outputs(HashMap<String, String>);
-
-/// The turns ended.
-#[derive(Resource, Default)]
-struct Ended(u32);
 
 fn keep_output(
     output: On<Insert<Outcome>>,
@@ -55,7 +51,7 @@ fn start(dir: &SessionDir) -> (App, Receiver<()>) {
         .init_resource::<Outputs>()
         .init_resource::<Ended>()
         .add_observer(keep_output)
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     (app, wakes)
@@ -150,9 +146,8 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
     for (turn, text) in ["read both", "which failed?"].into_iter().enumerate() {
         app.world_mut()
             .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-        let done = u32::try_from(turn + 1).unwrap_or_default();
         run_until(&mut app, &wakes, |world| {
-            world.resource::<Ended>().0 == done
+            world.resource::<Ended>().0.len() == turn + 1
         });
     }
 

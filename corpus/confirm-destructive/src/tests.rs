@@ -9,15 +9,11 @@ use rig_harness::harness_protocol::Invocation;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 /// The pickers the plugin asked the view to show.
 #[derive(Resource, Default)]
 struct Asked(Vec<PickRequest>);
-
-/// How each turn ended.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
 
 fn collect_picks(mut picks: MessageReader<PickRequest>, mut asked: ResMut<Asked>) {
     asked.0.extend(picks.read().cloned());
@@ -47,9 +43,7 @@ fn start(
         .init_resource::<Asked>()
         .init_resource::<Ended>()
         .add_systems(Update, collect_picks)
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();

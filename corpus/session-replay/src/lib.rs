@@ -715,13 +715,16 @@ fn replayed(
 /// After each turn of the replayed agent, stops at a divergence or sends
 /// the next user message.
 fn next_message(
-    ended: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
     mut replay: ResMut<Replay>,
     time: Res<Time<Real>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = ended.entity;
+    let Ok(&ForAgent(agent)) = turns.get(settled.entity) else {
+        return;
+    };
     if replay.primary != Some(agent) || replay.status != ReplayStatus::Running {
         return;
     }

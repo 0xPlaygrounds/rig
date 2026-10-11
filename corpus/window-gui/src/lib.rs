@@ -580,7 +580,7 @@ fn submit(
 
 fn stop(_stop: On<Stop>, list: Res<GuiAgents>, mut commands: Commands) {
     if let Some(entity) = list.shown {
-        commands.trigger(Interrupt { entity });
+        commands.trigger(Interrupt::new(entity));
     }
 }
 

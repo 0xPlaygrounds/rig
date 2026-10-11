@@ -57,7 +57,7 @@ impl Plugin for TodoPlugin {
                 "Show the todo list; `/todo clear` clears it, `/todo panel` toggles its panel",
                 todo_command,
             )
-            .add_observer(nudge)
+            .add_systems(AgentPass, nudge.in_set(Stage::Review))
             .add_observer(reset_nudge)
             .add_systems(Startup, spawn_panel)
             .add_systems(Update, redraw)
@@ -205,31 +205,37 @@ fn on_todo(
         .insert_if_new(Outcome::from(output));
 }
 
-/// A turn the model ended with an answer while items are open carries on
-/// with one nudge per user message.
-fn nudge(ended: On<TurnEnded>, mut agents: Query<(&Todos, &mut Nudged)>, mut commands: Commands) {
-    if !matches!(ended.outcome, TurnOutcome::Answered(_)) {
-        return;
+/// A turn the model would end with an answer while items are open carries
+/// on, with one nudge per user message as its next step: a `Queue` message
+/// delivered while the answer is proposed, in Review.
+fn nudge(
+    proposed: Query<(&TurnOf, &TurnOutcome), Added<TurnOutcome>>,
+    mut agents: Query<(&Todos, &mut Nudged)>,
+    mut commands: Commands,
+) {
+    for (&TurnOf(agent), outcome) in &proposed {
+        if !matches!(outcome, TurnOutcome::Answered(_)) {
+            continue;
+        }
+        let Ok((todos, mut nudged)) = agents.get_mut(agent) else {
+            continue;
+        };
+        let open: Vec<String> = todos
+            .open()
+            .map(|todo| format!("{}. {}", todo.id, todo.text))
+            .collect();
+        if nudged.0 || open.is_empty() {
+            continue;
+        }
+        nudged.0 = true;
+        let text = format!(
+            "You have {} open todo items: {}; continue, or explain why you stopped.",
+            open.len(),
+            open.join(", ")
+        );
+        let nudge = Deliver::new(agent, text, DeliveryMode::Queue);
+        commands.trigger(nudge.with_origin(Origin::plugin(TODO_TOOL)));
     }
-    let agent = ended.entity;
-    let Ok((todos, mut nudged)) = agents.get_mut(agent) else {
-        return;
-    };
-    let open: Vec<String> = todos
-        .open()
-        .map(|todo| format!("{}. {}", todo.id, todo.text))
-        .collect();
-    if nudged.0 || open.is_empty() {
-        return;
-    }
-    nudged.0 = true;
-    let text = format!(
-        "You have {} open todo items: {}; continue, or explain why you stopped.",
-        open.len(),
-        open.join(", ")
-    );
-    let nudge = Deliver::new(agent, text, DeliveryMode::Queue);
-    commands.trigger(nudge.with_origin(Origin::plugin(TODO_TOOL)));
 }
 
 /// A user's message allows one more nudge.

@@ -468,7 +468,7 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
             let deliver = Deliver::new(agent, text, DeliveryMode::Queue);
             rpc.commands.trigger(deliver);
         }
-        Kind::Interrupt => rpc.commands.trigger(Interrupt { entity: agent }),
+        Kind::Interrupt => rpc.commands.trigger(Interrupt::new(agent)),
         Kind::SetModel { model } => rpc.commands.trigger(SetModel {
             entity: agent,
             model,

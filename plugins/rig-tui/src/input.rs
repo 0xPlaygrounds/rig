@@ -207,7 +207,7 @@ fn input_key(key: KeyEvent, view: &mut TuiView, commands: &mut Commands, busy: b
         }
         KeyCode::Esc => {
             if let Some(entity) = view.agent {
-                commands.trigger(Interrupt { entity });
+                commands.trigger(Interrupt::new(entity));
             }
         }
         KeyCode::Up if shift => view.scroll.up(1),

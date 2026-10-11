@@ -184,14 +184,14 @@ fn no_changes(
 /// Keeps the answer that ended a planning turn as the plan, writes it to
 /// the [`PlanFile`], and asks the user what to do with it.
 fn capture(
-    ended: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
     mut planning: Query<&mut PlanMode>,
     file: Res<PlanFile>,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = ended.entity;
-    let TurnOutcome::Answered(answer) = &ended.outcome else {
+    let Ok((TurnOutcome::Answered(answer), &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
     let (Ok(mut mode), Some(plan)) = (planning.get_mut(agent), final_answer(answer)) else {
