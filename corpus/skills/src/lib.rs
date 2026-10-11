@@ -355,7 +355,7 @@ fn load_skill(
     calls: Query<&CallOf>,
     mut turns: Query<&mut LoadedInTurn>,
     mut session: Query<&mut LoadedSkills>,
-    mut commands: Commands,
+    mut decisions: Query<&mut Decision, ToolCalls>,
 ) {
     let name = called.args.name.trim();
     let mut turn = calls
@@ -384,9 +384,9 @@ fn load_skill(
         }
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(output));
+    if let Ok(mut decision) = decisions.get_mut(called.call) {
+        decision.decide(output);
+    }
 }
 
 /// `/skill <name> [text]`: sends the skill's body with the text, as the
