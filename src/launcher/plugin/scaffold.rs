@@ -2,9 +2,10 @@
 //!
 //! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
 //! has a short copy-ready example of each extension point: a tool and how
-//! its calls look, a slash command, state kept with the session, turn hooks,
-//! a timer, turning off or replacing what another plugin added, the status
-//! line, what agents do and say in a terminal panel, and a window. Every
+//! its calls look, a slash command, what the user types, state kept with the
+//! session, turn hooks, a timer, turning off or replacing what another
+//! plugin added, the status line, what agents do and say in a terminal
+//! panel, and a window. Every
 //! name they use comes from `rig_harness::prelude` or the plugin crate the
 //! example names, such as `rig_tui`; the optional `inspect` tool (crate
 //! `rig-inspect`) shows the rest.
@@ -40,7 +41,10 @@ impl Plugin for ScaffoldPlugin {
         //                       tools or options; a `Connection` on a turn or call picks
         //                       another model ("Turn hooks")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
-        // - the status line:    a `StatusItem` in the agent's `StatusItems` ("The status line")
+        // - what the user types: an observer of `On<Deliver>` may change it first
+        //                       ("What the user types")
+        // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
+        //                       agent's StatusItems ("The status line")
         // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
         //                       while an entity with KeepAwake(Duration::from_secs(1)) lives

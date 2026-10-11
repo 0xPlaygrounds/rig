@@ -5,7 +5,7 @@ the terminal view's panels from `rig_tui`.
 
 - [Making one](#making-one) and [finding names](#finding-names)
 - [A tool](#a-tool) and how its calls look
-- [A slash command](#a-slash-command)
+- [A slash command](#a-slash-command) and [what the user types](#what-the-user-types)
 - [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
 - [Turn hooks](#turn-hooks), [timers](#timers)
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
@@ -50,18 +50,22 @@ names. The agent is built from a rig checkout (`RIG_SOURCE`): a
 `[patch.crates-io]` table points the rig crates at it, so every plugin uses
 the agent's own crates.
 
-`/reload` in the agent, or the agent's `reload` tool, rebuilds and
-restarts in the same session once no turn runs. A build that fails leaves
-the running one, and one that crashes at startup is rolled back.
+`/reload` in the agent, or the agent's `reload` tool (both from the
+`rig-reload` plugin), rebuilds and restarts in the same session once no
+turn runs. A build that fails leaves the running one, and one that crashes
+at startup is rolled back.
 
 # Finding names
 
 The prelude holds Bevy's app, ECS, reflection and time preludes, and the
 agent runtime's components, events and registries (`rig_harness::rig_ecs`).
 rig-core is `rig_harness::rig_core`, and each default plugin's types are
-in its crate: the terminal view's panels and tool renderers in `rig_tui`
-(ratatui is `rig_tui::ratatui`), what agents do in `rig_activity`, and so
-on for each crate `plugins.toml` names.
+in its crate: the terminal view's panels, tool renderers, status line and
+pickers in `rig_tui` (ratatui is `rig_tui::ratatui`), what agents do in
+`rig_activity`, `/reload`'s state in `rig_reload`, and so on for each crate
+`plugins.toml` names. How the agent was started is the `Invoked` resource:
+its arguments (`args.print`, `args.model`) and whether someone sits at the
+terminal (`interactive()`).
 
 Every one of these types is reflected, so the running agent can list
 them with the `inspect` tool of the optional `rig-inspect` plugin (enable it
@@ -170,7 +174,8 @@ A command is a one-shot system, `app.add_command(name, help, system)`,
 taking `In<CommandArgs>`: the `agent` it was typed for and the `args`
 after its name. An error notice about the agent while the command runs,
 from it or from what it triggers, refuses it: the line goes back in the
-input with the error, and Enter then sends it to the model as it is.
+input with the error, and Enter then sends it to the model as it is (a
+`literal` `Deliver`).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -196,6 +201,37 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
     // needs no answer: it goes with the next call and starts no turn.
     let reminder = Deliver::new(args.agent, format!("Reminder: {}", args.args), DeliveryMode::Queue);
     commands.trigger(reminder.with_origin(Origin::plugin("remind")));
+}
+```
+
+# What the user types
+
+What the user types, in any front, is a `Deliver` from `Origin::user()`.
+An observer of it may change it before it is sent: rewrite its `text`,
+add `attachments` (the `rig-coding-tools` plugin reads `@path` files this
+way), or take it over by emptying `text`, and then nothing is sent. The
+kernel delivers it after every such observer, from an observer of its own
+on the agent's entity; then a user's text that starts with `/` runs as a
+command (`deliver.command()` is its line). Observers of one event run in no
+fixed order, so each does its own part and none depends on another's.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct ShortcutsPlugin;
+
+impl Plugin for ShortcutsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_observer(expand);
+    }
+}
+
+/// `lgtm` typed alone asks the model to commit.
+fn expand(mut typed: On<Deliver>) {
+    if typed.origin.kind == OriginKind::User && typed.text.trim() == "lgtm" {
+        typed.text = "Looks good to me: commit it with a short message.".to_owned();
+    }
 }
 ```
 
@@ -293,10 +329,9 @@ over sets `handled` and triggers `CallModel` once it is ready. Observers
 of one event run in no set order. The compaction plugin (the
 `rig-compaction` crate) is the full example: it summarizes on
 `PrepareRequest` with a `ModelRequest` call of its own, and on a
-`ModelFailed` overflow. Before any of it, `Input` is triggered on an
-agent with what the user typed, in any front: an observer may rewrite its
-`text`, such as expanding a template, or set `handled` and deal with it
-itself; a text that starts with `/` then runs as a command. A part of
+`ModelFailed` overflow. Before any of it, what the user typed can be
+changed as it is delivered ([What the user types](#what-the-user-types)).
+A part of
 the system prompt that does not change from request to request is a
 `PromptSection` entity, `PromptSection::new(order, tag, text)`, in every
 agent's prompt, or with a `SectionOf(agent)` in that agent's alone,
@@ -436,14 +471,19 @@ impl Plugin for NoShellPlugin {
 
 # The status line
 
-The row under the transcript shows the `StatusItems` of the agent shown
-and of its running turn, which every agent and turn has, and the app's
-`AppStatus`. A plugin shows an item there in a system in `StatusSystems`
-that runs when what it shows changed: `items.show(item)` puts the item at
-its place (its side and order) in place of the one there, and an empty
-item clears the place. The default plugins' places, and how long each
-item stays when the line is too narrow (`keep`: the lowest goes first,
-`u8::MAX` never):
+The terminal view's row under the transcript shows the `StatusItems` of
+the agent shown and of its running turn, which every agent and turn has,
+and the app's `AppStatus`, all `rig_tui`'s. A plugin shows an item there in
+a system in `StatusSystems` that runs when what it shows changed:
+`items.show(item)` puts the item at its place (its side and order) in
+place of the one there, and an empty item clears the place. A plugin that
+should also build without the terminal view puts this behind a default
+`tui` cargo feature, as the default plugins do, and one that writes
+`AppStatus` or a `PickRequest` (a picker over the transcript) registers it
+with `app.init_resource::<AppStatus>()` or
+`app.add_message::<PickRequest>()`, since the view may not be added. The
+default plugins' places, and how long each item stays when the line is too
+narrow (`keep`: the lowest goes first, `u8::MAX` never):
 
 | side | order | item | keep | plugin |
 |---|---|---|---|---|
@@ -455,7 +495,7 @@ item stays when the line is too narrow (`keep`: the lowest goes first,
 | left | 60 | the agent's subagents at work | 15 | rig-basics |
 | left | 70 | the other agents at work | 13 | rig-basics |
 | left | 80 | what the turn spent (on the turn) | 11 | rig-telemetry |
-| left | 90 | the rebuild of `/reload` (`AppStatus`) | 16 | rig-harness |
+| left | 90 | the rebuild of `/reload` (`AppStatus`) | 16 | rig-reload |
 | right | 10 | tokens in and out | 4 | rig-telemetry |
 | right | 20 | cached input | 1 | rig-telemetry |
 | right | 30 | cost | 3 | rig-telemetry |
@@ -463,6 +503,7 @@ item stays when the line is too narrow (`keep`: the lowest goes first,
 
 ```rust,no_run
 use rig_harness::prelude::*;
+use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 /// After the status; gone before the reasoning setting.
 const MESSAGES: StatusItem = StatusItem::at(Side::Left, 55, 10);
@@ -585,14 +626,15 @@ use bevy::prelude::*;
 use bevy::window::ExitCondition;
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
 use rig_activity::Activity;
-use rig_harness::prelude::{RunMode, Wake};
+use rig_harness::prelude::{Invoked, Wake};
 
 #[derive(Default)]
 pub struct DashboardPlugin;
 
 impl Plugin for DashboardPlugin {
     fn build(&self, app: &mut App) {
-        if app.world().get_resource::<RunMode>().is_some_and(RunMode::is_headless) {
+        // A window beside the terminal view only.
+        if !app.world().get_resource::<Invoked>().is_some_and(Invoked::interactive) {
             return;
         }
         // Closing the window leaves the agent running.

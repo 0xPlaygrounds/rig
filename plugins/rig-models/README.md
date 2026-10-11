@@ -1,7 +1,8 @@
 # rig-models
 
-Choosing a model: `/model`, `/effort`, the model picker and both in the status
-line (`ModelsPlugin`),
+Choosing a model: `-m`, `/model`, `/effort`, and with the default `tui`
+feature their pickers and both in the terminal view's status line
+(`ModelsPlugin`),
 and the model and reasoning setting a new session starts with, the last ones
 chosen (`DefaultsPlugin`).
 

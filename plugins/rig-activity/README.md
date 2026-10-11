@@ -1,7 +1,8 @@
 # rig-activity
 
 What each agent is doing, kept for views: every agent's `Activity` (its
-status and open tool calls), its status in the status line, and the
+status and open tool calls), its status in the terminal view's status line
+(the default `tui` feature), and the
 `MessageFeed` of recent deliveries. `ActivityPlugin` keeps them, and a window
 or panel plugin reads them.
 
