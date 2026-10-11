@@ -37,6 +37,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
+use rig_core::completion::Message;
 use rig_core::transcript::final_answer;
 use rig_ecs::prelude::*;
 
@@ -61,10 +62,12 @@ impl AppHeadlessExt for App {
             prompt: prompt.into(),
             model,
             step: Step::Start,
+            answer: None,
             failed: false,
             refused: false,
         })
         .add_systems(Update, drive)
+        .add_observer(keep_answer)
     }
 }
 
@@ -88,6 +91,9 @@ struct HeadlessRun {
     /// Whether `--model` named the model, which a models plugin chooses.
     model: bool,
     step: Step,
+    /// The message the last turn of the agent the prompt went to answered
+    /// with, if one did.
+    answer: Option<Message>,
     /// Whether an error notice about the agent came while it ran.
     failed: bool,
     /// Whether the prompt was a refused slash command.
@@ -100,9 +106,8 @@ enum Step {
     Start,
     /// A model was chosen for `agent`, which connects it at once.
     Connecting { agent: Entity },
-    /// The prompt went to `agent`, whose conversation had `before`
-    /// messages.
-    Sent { agent: Entity, before: usize },
+    /// The prompt went to `agent`.
+    Sent { agent: Entity },
     /// Exited.
     Done,
 }
@@ -112,7 +117,6 @@ enum Step {
 struct Agents<'w, 's> {
     primary: PrimaryQuery<'w, 's>,
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
-    conversations: Query<'w, 's, &'static Conversation>,
     /// Running turns.
     turns: Query<'w, 's, (), With<TurnOf>>,
     /// Work in progress, such as a sign-in; not a long-lived stream, such
@@ -204,16 +208,12 @@ fn drive(
                 let why = "no prompt: give one after --print, or pipe it in";
                 return end(&mut run, failed(Some(agent), Some(why), 2), commands, exits);
             }
-            let before = agents
-                .conversations
-                .get(agent)
-                .map_or(0, |conversation| conversation.messages().len());
             let text = run.prompt.clone();
             commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-            run.step = Step::Sent { agent, before };
+            run.step = Step::Sent { agent };
             return;
         }
-        Step::Sent { agent, before } => {
+        Step::Sent { agent } => {
             // The turn starts with the request once the agent accepted
             // it; a command may start none, or other work, such as a
             // sign-in. A subagent's answer starts another turn of the agent
@@ -221,13 +221,7 @@ fn drive(
             if !agents.idle() {
                 return;
             }
-            let answer = agents
-                .conversations
-                .get(agent)
-                .ok()
-                .filter(|conversation| conversation.messages().len() > before)
-                .and_then(|conversation| conversation.messages().last())
-                .and_then(final_answer);
+            let answer = run.answer.as_ref().and_then(final_answer);
             let exit = match (run.refused, run.failed && answer.is_none()) {
                 (true, _) => AppExit::from_code(2),
                 (false, false) => AppExit::Success,
@@ -243,6 +237,21 @@ fn drive(
         Step::Done => return,
     };
     end(&mut run, ended, commands, exits);
+}
+
+/// Keeps the answer of each turn of the agent the prompt went to that ended
+/// answered, whatever its conversation looks like now, such as after a
+/// compaction.
+fn keep_answer(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    mut run: ResMut<HeadlessRun>,
+) {
+    if let Ok((TurnOutcome::Answered(message), &ForAgent(agent))) = turns.get(settled.entity)
+        && run.step == (Step::Sent { agent })
+    {
+        run.answer = Some(message.clone());
+    }
 }
 
 /// Ends the run as `ended` says.

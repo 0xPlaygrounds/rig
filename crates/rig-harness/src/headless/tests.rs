@@ -93,6 +93,47 @@ fn the_prompt_is_answered_and_the_run_ends_beside_an_open_stream() {
 }
 
 #[test]
+fn a_turn_compacted_while_it_runs_still_prints_its_answer() {
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hello"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let ends = run("hi", true, |world, primary| {
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        let earlier =
+            |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
+                if let Ok(mut conversation) = agents.get_mut(agent) {
+                    for n in 1..=2 {
+                        let question = Message::user(format!("question {n}"));
+                        commit.message(agent, &mut conversation, question);
+                        let answer = Message::assistant(format!("answer {n}"));
+                        commit.message(agent, &mut conversation, answer);
+                    }
+                }
+            };
+        assert!(world.run_system_cached_with(earlier, primary).is_ok());
+        // A compaction as the turn starts: the conversation shrinks to a
+        // summary.
+        world.add_observer(
+            move |_: On<Add<TurnOf>>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
+                if let Ok(mut conversation) = agents.get_mut(primary) {
+                    let summary = Message::user("Summary: two questions, then hi.");
+                    let summary = Entry::from(summary, Origin::plugin("compaction"));
+                    commit.splice(primary, &mut conversation, .., [summary]);
+                }
+            },
+        );
+    });
+    let answers = ends
+        .iter()
+        .map(|ended| (ended.answer.as_deref(), &ended.exit));
+    let answers: Vec<_> = answers.collect();
+    assert_eq!(answers, [(Some("hello"), &AppExit::Success)]);
+}
+
+#[test]
 fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
     let exits = [NoticeLevel::Warn, NoticeLevel::Error].map(|level| {
         // A reply without text: nothing answers, so only the notice decides.

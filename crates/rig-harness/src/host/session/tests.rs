@@ -133,10 +133,10 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
     app.update();
     let world = app.world();
     let agent_id = world.get::<AgentId>(agent).cloned();
-    let seq = world
+    let message = world
         .get::<Conversation>(agent)
-        .and_then(|conversation| conversation.seq(2));
-    let before = agent_id.zip(seq);
+        .and_then(|conversation| conversation.id(2));
+    let before = agent_id.zip(message);
     assert!(before.is_some(), "the message was logged");
     app.world_mut().trigger(ForkSession {
         before: before.clone(),

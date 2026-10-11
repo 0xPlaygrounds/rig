@@ -27,7 +27,7 @@ use rig_cassette::journal::JsonlDirStore;
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::agent::{AgentId, Conversation, MessageId, Notice};
 use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::{SessionStore, fork_session};
 use rig_tools::Spill;
@@ -136,15 +136,14 @@ fn discard_sessionless(
 
 /// Copies this session into a new one: every agent's log, saved state and
 /// stored file, and the directory it works in. With `before`, an agent's
-/// id and a message's `seq` in its conversation, the copy stops at that
-/// message, and every other agent's log at what was logged before it (see
-/// [`fork_session`]). The new session's effect log starts empty.
+/// id and the id of a message in its conversation, the copy is the session
+/// as it was before that message was made (see [`fork_session`]). The new session's effect log starts empty.
 /// [`SessionForked`] names it; switching to it is
 /// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
 #[derive(Event, Clone, Debug, Default)]
 pub struct ForkSession {
-    /// Where the copy stops: an agent's id and a message's `seq`.
-    pub before: Option<(AgentId, u64)>,
+    /// Where the copy stops: an agent's id and a message's id.
+    pub before: Option<(AgentId, MessageId)>,
 }
 
 /// A session forked from this one, in the frame it was written.
@@ -155,7 +154,7 @@ pub struct SessionForked {
     /// The new session.
     pub to: SessionId,
     /// Where the copy stopped, as [`ForkSession`] asked.
-    pub before: Option<(AgentId, u64)>,
+    pub before: Option<(AgentId, MessageId)>,
 }
 
 /// The session a session was forked from, and where the copy stopped,
@@ -166,8 +165,8 @@ pub struct SessionForked {
 pub struct ForkedFrom {
     /// The session it was copied from.
     pub session: SessionId,
-    /// Where the copy stopped: an agent's id and a message's `seq`.
-    pub before: Option<(AgentId, u64)>,
+    /// Where the copy stopped: an agent's id and a message's id.
+    pub before: Option<(AgentId, MessageId)>,
     /// What the user wrote in the message the copy stopped before, its
     /// text without attached files; `None` without `before`, or for a
     /// message with no text of the user's.
@@ -178,7 +177,7 @@ pub struct ForkedFrom {
 #[derive(Serialize, Deserialize)]
 struct Parent {
     session: String,
-    before: Option<(AgentId, u64)>,
+    before: Option<(AgentId, MessageId)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     text: Option<String>,
 }
@@ -217,7 +216,7 @@ pub struct SessionDeleted(pub SessionId);
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]
-struct Forks(Vec<Option<(AgentId, u64)>>);
+struct Forks(Vec<Option<(AgentId, MessageId)>>);
 
 fn fork_sessions(
     mut forks: ResMut<Forks>,
@@ -247,14 +246,14 @@ fn fork_sessions(
     }
 }
 
-/// What the user wrote in the message of the agent and `seq` named, its
-/// text items of the user's own that are no attached file.
+/// What the user wrote in the message of the agent and message id named,
+/// its text items of the user's own that are no attached file.
 fn typed_at(
     agents: &Query<(&AgentId, &Conversation)>,
-    (agent, seq): &(AgentId, u64),
+    (agent, message): &(AgentId, MessageId),
 ) -> Option<String> {
     let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
-    let at = (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(*seq))?;
+    let at = conversation.index_of(*message)?;
     let Some(Message::User { content }) = conversation.messages().get(at) else {
         return None;
     };
@@ -283,7 +282,7 @@ fn fork_into(
     home: &Home,
     paths: &SessionPaths,
     store: Option<&SessionStore>,
-    (before, text): (Option<&(AgentId, u64)>, Option<String>),
+    (before, text): (Option<&(AgentId, MessageId)>, Option<String>),
 ) -> Result<(SessionId, SessionId), String> {
     let from = paths.id().ok_or("this session has no id")?;
     let store = store.ok_or("this session is not stored")?;
@@ -302,7 +301,7 @@ fn fork_into(
         before: before.cloned(),
         text,
     };
-    let before = before.map(|(agent, seq)| (agent, *seq));
+    let before = before.map(|(agent, message)| (agent, *message));
     let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
         .map_err(|failure| failure.to_string())
         .and_then(|()| parent.write(&target))
