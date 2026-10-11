@@ -15,6 +15,8 @@ bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# The list printed after a `--print` answer.
+rig-print = { path = "../../plugins/rig-print" }
 rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

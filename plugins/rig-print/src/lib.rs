@@ -12,6 +12,14 @@
 //! ([`Invoked::interactive`]): one with `--print`, or with stdin piped in,
 //! which answers what is piped in, unless another front's option chose
 //! that one.
+//!
+//! Nobody sits at a print run to answer questions, so by default it is no
+//! [`Answerer`]: a plugin applies its own policy for a run nobody answers,
+//! such as refusing, and a question asked anyway is refused, with why on
+//! stderr. `--answer=ID[,ID…]` ([`ANSWER`]) answers each question with the
+//! first of those choices it offers instead, and refuses one that offers
+//! none. After the answer, the run prints what other plugins add as
+//! [`PrintSection`]s, such as the agent's todo list.
 
 use std::io::{IsTerminal, Read as _};
 
@@ -21,6 +29,31 @@ use rig_harness::prelude::*;
 /// `--print`'s name as a front.
 pub const FRONT: &str = "print";
 
+/// The option that answers a print run's questions.
+pub const ANSWER: &str = "answer";
+
+/// What a print run writes to stdout after the answer, such as a todo
+/// list: spawn one and keep its `text` current. Sections follow the
+/// answer by `tag`, each after an empty line; an empty `text`, or Bevy's
+/// `Disabled` on the entity, leaves one out.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PrintSection {
+    /// What sorts it, such as `todo`.
+    pub tag: String,
+    /// What is printed.
+    pub text: String,
+}
+
+impl PrintSection {
+    /// `text` printed after the answer, sorted by `tag`.
+    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            text: text.into(),
+        }
+    }
+}
+
 /// Sends the prompt and exits when the turn ends, when it is the run's
 /// front.
 #[derive(Default)]
@@ -28,7 +61,13 @@ pub struct PrintPlugin;
 
 impl Plugin for PrintPlugin {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new(FRONT).headless());
+        app.add_front(Front::new(FRONT).headless()).add_flag(
+            Flag::new(
+                ANSWER,
+                "Answer the questions of a --print run with the first of these choices offered",
+            )
+            .value("ID[,ID…]"),
+        );
     }
 
     fn finish(&self, app: &mut App) {
@@ -36,15 +75,53 @@ impl Plugin for PrintPlugin {
             return;
         }
         let invoked = app.world().get_resource::<Invoked>().cloned();
+        let answers: Vec<String> = invoked
+            .as_ref()
+            .and_then(|invoked| invoked.flag_value(ANSWER))
+            .map(|ids| ids.split(',').map(|id| id.trim().to_owned()).collect())
+            .unwrap_or_default();
+        if !answers.is_empty() {
+            app.world_mut().spawn(Answerer::default());
+        }
         let args = invoked.map(|invoked| invoked.args).unwrap_or_default();
-        app.insert_resource(PrintRun {
-            prompt: args.print.unwrap_or_default(),
-            model: args.model.is_some(),
-            step: Step::Start,
-            failed: false,
-            refused: false,
-        })
-        .add_systems(Update, (print_notices, drive).chain());
+        app.insert_resource(Answers(answers))
+            .add_systems(AgentPass, answer.in_set(Stage::Gate))
+            .insert_resource(PrintRun {
+                prompt: args.print.unwrap_or_default(),
+                model: args.model.is_some(),
+                step: Step::Start,
+                failed: false,
+                refused: false,
+            })
+            .add_systems(Update, (print_notices, drive).chain());
+    }
+}
+
+/// The choices `--answer` gives, in order; none without it.
+#[derive(Resource)]
+struct Answers(Vec<String>);
+
+/// Answers each question with the first of the `--answer` choices it
+/// offers, or refuses it, saying why on stderr.
+fn answer(asks: Query<(Entity, &Ask), Undecided>, answers: Res<Answers>, mut commands: Commands) {
+    for (entity, ask) in &asks {
+        let offered = |id: &&String| ask.choices.iter().any(|choice| &choice.id == *id);
+        let outcome = match answers.0.iter().find(offered) {
+            Some(id) => Answer::Choice(id.clone()).outcome(),
+            None => {
+                let why = match answers.0.is_empty() {
+                    true => format!(
+                        "nobody answers questions in a --print run, such as “{}”: \
+                         --answer=ID answers them",
+                        ask.title
+                    ),
+                    false => format!("--answer offers none of the choices of “{}”", ask.title),
+                };
+                eprintln!("rig: {why}");
+                Outcome::refused(why)
+            }
+        };
+        commands.entity(entity).insert_if_new(outcome);
     }
 }
 
@@ -103,6 +180,8 @@ struct Agents<'w, 's> {
     running: Query<'w, 's, (), With<Running>>,
     /// Messages on their way to an agent, such as the prompt itself.
     messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
+    /// What other plugins print after the answer.
+    sections: Query<'w, 's, &'static PrintSection>,
 }
 
 /// Chooses the model, sends the prompt, and exits after the turn.
@@ -192,8 +271,8 @@ fn drive(
                 .and_then(|conversation| conversation.messages().last())
                 .and_then(final_answer);
             let ok = !run.failed || answer.is_some();
-            if let Some(answer) = &answer {
-                println!("{}", answer.trim_end());
+            if let Some(output) = output(answer.as_deref(), agents.sections) {
+                println!("{output}");
             }
             run.step = Step::Done;
             exits.write(match (run.refused, ok) {
@@ -204,6 +283,25 @@ fn drive(
         }
         Step::Done => {}
     }
+}
+
+/// What the run prints: the answer, then each [`PrintSection`] by tag,
+/// each after an empty line; `None` when there is nothing.
+fn output<'a>(
+    answer: Option<&str>,
+    sections: impl IntoIterator<Item = &'a PrintSection>,
+) -> Option<String> {
+    let mut sections: Vec<&PrintSection> = sections
+        .into_iter()
+        .filter(|section| !section.text.is_empty())
+        .collect();
+    sections.sort_by(|a, b| a.tag.cmp(&b.tag));
+    let parts: Vec<&str> = answer
+        .into_iter()
+        .chain(sections.iter().map(|section| section.text.as_str()))
+        .map(str::trim_end)
+        .collect();
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 /// Notes failures and writes them to stderr, with every notice of a

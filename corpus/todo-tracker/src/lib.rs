@@ -8,6 +8,7 @@
 //! clears it; a `--print` run prints the final list after the answer.
 
 use rig_harness::prelude::*;
+use rig_print::PrintSection;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
@@ -64,13 +65,9 @@ impl Plugin for TodoPlugin {
             .add_systems(PostUpdate, show_status.in_set(StatusSystems))
             .add_systems(PostUpdate, place_panel.in_set(TuiSystems::Prepare))
             .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw));
-        let printing = app
-            .world()
-            .get_resource::<Invoked>()
-            .is_some_and(|invoked| !invoked.interactive());
-        if printing {
-            app.add_systems(PostUpdate, print_list);
-        }
+        app.world_mut()
+            .spawn((PrintSection::new("todo", ""), PrintedList));
+        app.add_systems(PostUpdate, print_list);
     }
 }
 
@@ -354,16 +351,26 @@ fn draw_panel(
     }
 }
 
-/// After a `--print` answer, which the print plugin writes as it asks to
-/// exit, the primary agent's list.
-fn print_list(mut exits: MessageReader<AppExit>, agents: PrimaryQuery, lists: Query<&Todos>) {
-    if exits.read().count() == 0 {
+/// On the section a `--print` run prints after its answer.
+#[derive(Component)]
+struct PrintedList;
+
+/// Keeps the primary agent's list, when it has one, in the section a
+/// `--print` run prints after its answer.
+fn print_list(
+    agents: PrimaryQuery,
+    lists: Query<&Todos, Changed<Todos>>,
+    mut sections: Query<&mut PrintSection, With<PrintedList>>,
+) {
+    let Some(todos) = primary(&agents).and_then(|agent| lists.get(agent).ok()) else {
         return;
-    }
-    if let Some(todos) = primary(&agents).and_then(|agent| lists.get(agent).ok())
-        && !todos.0.is_empty()
-    {
-        println!("\n{}", todos.render());
+    };
+    let text = match todos.0.is_empty() {
+        true => String::new(),
+        false => todos.render(),
+    };
+    for mut section in &mut sections {
+        section.text.clone_from(&text);
     }
 }
 

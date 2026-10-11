@@ -3922,6 +3922,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-print",
  "rig-tui",
  "schemars 1.2.1",
  "serde",
