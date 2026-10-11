@@ -43,7 +43,7 @@ pub enum Start {
 pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let headless = invocation.is_headless() || !std::io::stdin().is_terminal();
-    let (mut claimed, mut notice, mut build_failure) = {
+    let (claimed, notice, build_failure) = {
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
@@ -60,6 +60,20 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             failure.map(|failure| failure.details()),
         )
     };
+    launch(home, invocation, headless, claimed, notice, build_failure)
+}
+
+/// Starts the agent of `claimed` with the build [`pick`] finds, again on
+/// the reload code, and returns its exit code. `notice` and
+/// `build_failure` go to the first start.
+fn launch(
+    home: &Home,
+    invocation: &Invocation,
+    headless: bool,
+    mut claimed: Claimed,
+    mut notice: Option<String>,
+    mut build_failure: Option<String>,
+) -> Result<ExitCode> {
     let launcher = std::env::current_exe()?;
     loop {
         let session = claimed.id.clone();
