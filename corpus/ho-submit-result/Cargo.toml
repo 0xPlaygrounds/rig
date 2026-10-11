@@ -12,8 +12,6 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# `PrintSection`: the result a `--print` run writes to stdout.
-rig-print = { path = "../../plugins/rig-print" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
@@ -22,3 +20,5 @@ rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The `--print` front the test runs.
+rig-print = { path = "../../plugins/rig-print" }

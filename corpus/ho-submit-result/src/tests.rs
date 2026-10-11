@@ -1,17 +1,22 @@
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
+use rig_harness::headless::HeadlessEnded;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
-    Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
-    run_until, scratch_home,
+    ToolOutputs, app_on, calls, connect, first_agent, log_tool_outputs, reply, run_until,
+    scratch_home,
 };
+use rig_print::PrintPlugin;
 
 use super::*;
+
+/// How the `--print` run ended, as it prints it.
+#[derive(Resource, Default)]
+struct Ends(Vec<HeadlessEnded>);
 
 /// A project named `name` with a schema of a required `verdict` string and
 /// `a.txt`.
@@ -30,14 +35,14 @@ fn project(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// `rig -p --schema=out.json …` in `dir`, answered by `model`, run until
-/// `done`.
-fn run(dir: &Path, model: &MockCompletionModel, done: impl Fn(&World) -> bool) -> Option<App> {
-    let (mut app, wakes): (App, Receiver<()>) = app_on(&MemoryStore::default());
+/// `rig -p --schema=out.json 'classify these failing tests'` in `dir`,
+/// answered by `model`, until it asked to exit.
+fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
     let args = Invocation {
         print: Some("classify these failing tests".to_owned()),
+        model: Some("deepseek/deepseek-flash".to_owned()),
         flags: vec![(SCHEMA.to_owned(), Some("out.json".to_owned()))],
-        ..Invocation::default()
     };
     app.insert_resource(Invoked {
         args,
@@ -48,11 +53,14 @@ fn run(dir: &Path, model: &MockCompletionModel, done: impl Fn(&World) -> bool) -
         AgentPlugin,
         JournalPlugin,
         ExitPlugin,
+        PrintPlugin,
         ReadTool,
         SubmitResultPlugin,
     ))
-    .init_resource::<Ended>()
-    .add_observer(log_ended)
+    .init_resource::<Ends>()
+    .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
+        ends.0.push(ended.event().clone());
+    })
     .init_resource::<ToolOutputs>()
     .add_observer(log_tool_outputs);
     app.finish();
@@ -60,15 +68,9 @@ fn run(dir: &Path, model: &MockCompletionModel, done: impl Fn(&World) -> bool) -
     let world = app.world_mut();
     let agent = first_agent(world)?;
     world.entity_mut(agent).insert(connect(model)?);
-    world.trigger(Deliver::new(
-        agent,
-        "Classify these failing tests.",
-        DeliveryMode::Steer,
-    ));
-    run_until(&mut app, &wakes, done);
-    for _ in 0..10 {
-        app.update();
-    }
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<ExitReason>()
+    });
     Some(app)
 }
 
@@ -88,28 +90,28 @@ fn a_valid_result_ends_the_turn_after_the_other_calls() {
         both,
         reply("never asked for"),
     ]);
-    let app = run(&dir, &model, |world| {
-        !world.resource::<Ended>().0.is_empty()
-    });
+    let app = run(&dir, &model);
     assert!(app.is_some(), "the app starts");
     let Some(app) = app else { return };
 
     assert_eq!(model.request_count(), 2, "no request after the result");
-    let ended = &app.world().resource::<Ended>().0;
-    assert!(
-        matches!(ended.as_slice(), [TurnOutcome::Stopped(Some(why))] if why == SUBMITTED),
-        "{ended:?}"
-    );
     let outputs = &app.world().resource::<ToolOutputs>().0;
     let output = |id: &str| outputs.get(id).cloned().unwrap_or_default();
-    assert!(
-        output("c1").contains("`verdict` is required"),
-        "{}",
-        output("c1")
-    );
+    let invalid = output("c1");
+    assert!(invalid.contains("`verdict` is required"), "{invalid}");
     assert!(output("c3").contains("the a file"), "{}", output("c3"));
-    let printed = app.world().resource::<SubmitResult>().printed();
-    assert_eq!(printed.as_deref(), Some(r#"{"verdict":"flaky"}"#));
+    let result = app.world().resource::<SubmitResult>();
+    assert_eq!(result.0, Some(serde_json::json!({ "verdict": "flaky" })));
+    let ends = &app.world().resource::<Ends>().0;
+    let printed: Vec<_> = ends
+        .iter()
+        .map(|end| (end.answer.as_deref(), &end.exit))
+        .collect();
+    assert_eq!(
+        printed,
+        [(Some(r#"{"verdict":"flaky"}"#), &ExitReason::Quit)],
+        "what --print prints, and its exit"
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -123,9 +125,7 @@ fn two_text_answers_get_one_reminder_then_fail_the_run() {
         reply("Still flaky."),
         reply("never asked for"),
     ]);
-    let app = run(&dir, &model, |world| {
-        world.contains_resource::<ExitReason>()
-    });
+    let app = run(&dir, &model);
     assert!(app.is_some(), "the app starts");
     let Some(app) = app else { return };
 
@@ -141,4 +141,9 @@ fn two_text_answers_get_one_reminder_then_fail_the_run() {
         .unwrap_or_default();
     assert_eq!(last.matches(REMINDER).count(), 1, "one reminder: {last}");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SubmitResultPlugin);
 }
