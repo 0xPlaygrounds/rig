@@ -94,3 +94,8 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     assert_eq!(own, Some(4));
     std::fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ReviewAgentPlugin);
+}

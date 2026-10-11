@@ -136,6 +136,17 @@ struct Tree(Option<String>);
 /// A review's diff, or why there is none.
 struct Diff(Result<String, String>);
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ReviewAgentSystems {
+    /// In [`Stage::Gate`]: holds a turn's first call that may change files
+    /// while the working tree is snapshot, and stops a restored reviewer.
+    Gate,
+    /// In [`Stage::Review`]: holds a reviewed turn's answered end with a
+    /// review.
+    Review,
+}
+
 /// Reviews by a second agent; see the [crate](self) docs.
 #[derive(Default)]
 pub struct ReviewAgentPlugin;
@@ -157,11 +168,14 @@ impl Plugin for ReviewAgentPlugin {
                 "Review the uncommitted changes now; `/review off` or `on` switches reviews after each turn",
                 review_command,
             )
+            .configure_sets(AgentPass, ReviewAgentSystems::Gate.in_set(Stage::Gate))
+            .configure_sets(AgentPass, ReviewAgentSystems::Review.in_set(Stage::Review))
             .add_systems(
                 AgentPass,
                 (
-                    (snapshot_before_changes, stop_restored_reviewers).in_set(Stage::Gate),
-                    review_proposed_end.in_set(Stage::Review),
+                    (snapshot_before_changes, stop_restored_reviewers)
+                        .in_set(ReviewAgentSystems::Gate),
+                    review_proposed_end.in_set(ReviewAgentSystems::Review),
                 ),
             )
             .add_observer(on_user_message)
@@ -196,12 +210,21 @@ fn review(agent: Entity, base: Option<String>, asked: bool, model: &str) -> impl
     )
 }
 
+/// The decisions of the reviews, which their observers answer.
+type Decisions<'w, 's> = Query<'w, 's, &'static mut Decision, With<Review>>;
+
 /// Answers `review` with `how`, and lets go of the turn end it held.
-fn finish(commands: &mut Commands, review: Entity, how: serde_json::Value) {
+fn finish(
+    decisions: &mut Decisions,
+    commands: &mut Commands,
+    review: Entity,
+    how: serde_json::Value,
+) {
+    if let Ok(mut decision) = decisions.get_mut(review) {
+        decision.decide(Outcome::custom(how));
+    }
     if let Ok(mut review) = commands.get_entity(review) {
-        review
-            .insert_if_new(Outcome::custom(how))
-            .remove::<HoldOf>();
+        review.remove::<HoldOf>();
     }
 }
 
@@ -235,7 +258,7 @@ fn on_user_message(
 /// Holds a turn's first call that may change files while the working tree
 /// is snapshot, when auto-review is on.
 fn snapshot_before_changes(
-    calls: Query<(Entity, &Footprint, &CallOf, &ForAgent), (With<ToolRequest>, Undecided)>,
+    calls: Query<(Entity, &Footprint, &Decision, &CallOf, &ForAgent), (Undecided, ToolCalls)>,
     turns: Query<(), (With<TurnOf>, Without<Baseline>)>,
     agents: Query<(), (With<Reviews>, Without<SpawnedBy>)>,
     (auto, root, processes, wake): (Res<AutoReview>, Res<ProjectRoot>, Res<Processes>, Res<Wake>),
@@ -244,9 +267,9 @@ fn snapshot_before_changes(
     if !auto.0 {
         return;
     }
-    for (call, footprint, &CallOf(turn), &ForAgent(agent)) in &calls {
+    for (call, footprint, decision, &CallOf(turn), &ForAgent(agent)) in &calls {
         let first = turns.contains(turn) && agents.contains(agent);
-        if !matches!(footprint.0, Touches::Writes(_)) || !first {
+        if !matches!(footprint.0, Touches::Writes(_)) || decision.is_decided() || !first {
             continue;
         }
         commands.entity(turn).insert(Baseline(None));
@@ -329,6 +352,7 @@ fn diff_taken(
     agents: Query<(&Reviews, &ToolAccess)>,
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<ReviewSettings>,
+    mut decisions: Decisions,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -346,12 +370,22 @@ fn diff_taken(
             if asked {
                 notices.write(Notice::info(agent, "No uncommitted changes to review."));
             }
-            finish(&mut commands, review, json!({ "skipped": "no changes" }));
+            finish(
+                &mut decisions,
+                &mut commands,
+                review,
+                json!({ "skipped": "no changes" }),
+            );
             return;
         }
         Err(why) => {
             notices.write(Notice::error(agent, format!("No review: {why}")));
-            finish(&mut commands, review, json!({ "skipped": why }));
+            finish(
+                &mut decisions,
+                &mut commands,
+                review,
+                json!({ "skipped": why }),
+            );
             return;
         }
     };
@@ -387,6 +421,7 @@ fn reviewer_spawned(
     requests: Query<(&ChildOf, &Outcome, Option<&SpawnedAgent>), With<SpawnSubagent>>,
     reviews: Query<&ForAgent, With<Review>>,
     settings: Res<ReviewSettings>,
+    mut decisions: Decisions,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -410,7 +445,12 @@ fn reviewer_spawned(
                 Ok(_) => "no reviewer was spawned".to_owned(),
             };
             notices.write(Notice::error(agent, format!("No review: {why}")));
-            finish(&mut commands, review, json!({ "skipped": why }));
+            finish(
+                &mut decisions,
+                &mut commands,
+                review,
+                json!({ "skipped": why }),
+            );
         }
     }
 }
@@ -422,6 +462,7 @@ fn reviewer_answered(
     turns: Query<(&TurnOutcome, &ForAgent)>,
     reviewers: Query<(&Reviewer, &AgentId, &Reviewing)>,
     reviews: Query<&ForAgent, With<Review>>,
+    mut decisions: Decisions,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -439,21 +480,41 @@ fn reviewer_answered(
         TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
         TurnOutcome::Failed(why) => {
             notices.write(Notice::error(agent, format!("The review failed: {why}")));
-            finish(&mut commands, review, json!({ "failed": why }));
+            finish(
+                &mut decisions,
+                &mut commands,
+                review,
+                json!({ "failed": why }),
+            );
             return;
         }
         TurnOutcome::Stopped(_) => {
-            finish(&mut commands, review, json!({ "stopped": true }));
+            finish(
+                &mut decisions,
+                &mut commands,
+                review,
+                json!({ "stopped": true }),
+            );
             return;
         }
     };
     let answer = answer.trim();
     if answer.is_empty() || is_lgtm(answer) {
         notices.write(Notice::info(agent, format!("Reviewer ({model}): LGTM.")));
-        finish(&mut commands, review, json!({ "lgtm": true }));
+        finish(
+            &mut decisions,
+            &mut commands,
+            review,
+            json!({ "lgtm": true }),
+        );
         return;
     }
-    finish(&mut commands, review, json!({ "findings": answer }));
+    finish(
+        &mut decisions,
+        &mut commands,
+        review,
+        json!({ "findings": answer }),
+    );
     let text = format!(
         "Reviewer ({model}) found:\n\n{answer}\n\nAddress these findings, or say why one does not apply."
     );
