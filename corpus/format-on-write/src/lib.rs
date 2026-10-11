@@ -13,13 +13,14 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
+use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
 use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_tools::fs::write_atomic;
+use rig_tools::fs::{resolve, write_atomic};
 use rig_tools::process::Launcher;
 use rig_tools::{Edit, Shell, ShellArgs, ShellRun, Write};
 use serde::Deserialize;
@@ -75,7 +76,8 @@ impl Default for FormatOnWrite {
     }
 }
 
-/// The Prepare system that wraps `write` and `edit` calls' handlers, for
+/// The Prepare system that wraps `write` and `edit` calls' handlers, after
+/// [`CodingToolsSystems`] gives an agent's calls its `WorkDir`, for
 /// another plugin that wraps them too to order against: a layer wrapped
 /// after this one is outside it, so it sees the text this one appends.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -89,24 +91,32 @@ impl Plugin for FormatOnWritePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FormatOnWrite>("format_on_write")
             .init_resource::<Processes>()
-            .configure_sets(AgentPass, FormatOnWriteSystems.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                FormatOnWriteSystems
+                    .in_set(Stage::Prepare)
+                    .after(CodingToolsSystems),
+            )
             .add_systems(AgentPass, format_after.in_set(FormatOnWriteSystems));
     }
 }
 
 /// Runs each `write` and `edit` call through [`Formatting`], with the
-/// settings and the launcher of the moment it is admitted.
+/// settings and the launcher of the moment it is admitted, and its agent's
+/// `WorkDir`.
 fn format_after(
-    mut calls: Query<(&ToolRequest, &mut CallHandler), Added<Admitted>>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
+    dirs: Query<&WorkDir>,
     config: Res<FormatOnWrite>,
     processes: Res<Processes>,
 ) {
-    for (request, mut handler) in &mut calls {
+    for (request, &ForAgent(agent), mut handler) in &mut calls {
         let name = request.call.function.name.as_str();
         if name == Write::NAME || name == Edit::NAME {
             let layer = Formatting {
                 config: config.clone(),
                 launcher: processes.launcher(),
+                base: dirs.get(agent).ok().map(|WorkDir(dir)| dir.clone()),
             };
             handler.0 = Handler(handler.0.0.clone().layered(layer));
         }
@@ -117,12 +127,15 @@ fn format_after(
 struct Formatting {
     config: FormatOnWrite,
     launcher: Launcher,
+    /// Where the tool resolved a relative path from: the agent's
+    /// `WorkDir`, else the process's directory.
+    base: Option<PathBuf>,
 }
 
 /// The file a `write` or `edit` call names.
 #[derive(Deserialize)]
 struct Target {
-    path: PathBuf,
+    path: String,
 }
 
 impl Intercept for Formatting {
@@ -151,7 +164,7 @@ impl Intercept for Formatting {
         if !result.is_success() {
             return Verdict::Keep;
         }
-        let notes = self.check(&path).await;
+        let notes = self.check(&resolve(self.base.as_deref(), &path)).await;
         if notes.is_empty() {
             return Verdict::Keep;
         }
@@ -167,14 +180,12 @@ impl Formatting {
         let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
             return String::new();
         };
-        // The launcher may start commands elsewhere than the tool wrote.
-        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
         let mut notes = String::new();
         if let Some(formatter) = self.config.formatters.get(ext) {
-            notes += &self.format(formatter, &path).await;
+            notes += &self.format(formatter, path).await;
         }
         if let Some(linter) = self.config.linters.get(ext) {
-            notes += &self.lint(linter, &path).await;
+            notes += &self.lint(linter, path).await;
         }
         notes
     }

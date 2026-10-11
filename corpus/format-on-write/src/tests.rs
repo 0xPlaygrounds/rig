@@ -19,11 +19,12 @@ txt = '''sh -c 'tr a-z A-Z < "$1" > "$1.up" && mv "$1.up" "$1"' sh'''
 txt = '''awk 'length > 10 { print "W: line too long" }' '''
 "#;
 
+/// The agent works in its own `WorkDir`, where its relative path goes.
 #[test]
 fn a_write_is_formatted_and_linted_before_the_next_read() {
     let dir = scratch_home("format-on-write").root().to_owned();
     std::fs::create_dir_all(&dir).ok();
-    let file = dir.join("a.txt").display().to_string();
+    let file = "a.txt";
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::from_toml(SETTINGS))
         .add_plugins((
@@ -49,7 +50,9 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     let world = app.world_mut();
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
     if let Some(connection) = connect(&model) {
-        world.entity_mut(agent).insert(connection);
+        world
+            .entity_mut(agent)
+            .insert((connection, WorkDir(dir.clone())));
     }
     world.trigger(Deliver::new(agent, "Write a.txt.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -63,4 +66,11 @@ fn a_write_is_formatted_and_linted_before_the_next_read() {
     assert!(written.contains("1\tHELLO WORLD WIDE"), "{written}");
     assert!(written.contains("W: line too long"), "{written}");
     assert!(read.contains("\tHELLO WORLD WIDE"), "{read}");
+    let formatted = std::fs::read_to_string(dir.join(file)).unwrap_or_default();
+    assert_eq!(formatted, "HELLO WORLD WIDE");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(FormatOnWritePlugin);
 }
