@@ -118,8 +118,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted, SessionForked,
-        SessionPaths,
+        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted,
+        SessionForked, SessionPaths, first_typed, typed,
     };
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};

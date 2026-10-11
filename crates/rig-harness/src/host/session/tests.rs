@@ -12,8 +12,8 @@ use rig_ecs::journal::{JournalPlugin, SessionStore};
 use rig_harness_test_support::{commit_message, first_agent};
 
 use super::{
-    DeleteSession, ForkSession, ForkedFrom, SessionDeleted, SessionForked, SessionPaths,
-    SessionPlugin,
+    DeleteSession, FirstStart, ForkSession, ForkedFrom, SessionDeleted, SessionForked,
+    SessionPaths, SessionPlugin, first_typed, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::LauncherRun;
@@ -189,4 +189,83 @@ fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     assert_eq!(log.as_deref(), Some("1-0"), "the launcher points at it");
     assert_eq!(ended(false, AppExit::from_code(1)), Some(true));
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
+    let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));
+    let home = Home::at(&root);
+    let id: SessionId = "1700000000-3"
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    std::fs::write(session.directory(), root.to_string_lossy().as_bytes()).ok();
+    let start = |session: &rig::harness_protocol::SessionDir| {
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .init_resource::<Seen>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin)
+            .add_systems(Last, watch.after(super::fork_sessions));
+        app.update();
+        app
+    };
+    let mut first = start(&session);
+    assert!(first.world().contains_resource::<FirstStart>());
+    assert!(!start(&session).world().contains_resource::<FirstStart>());
+    first.world_mut().trigger(ForkSession::default());
+    first.update();
+    let fork = first.world().resource::<Seen>().forked.first().cloned();
+    assert!(fork.is_some(), "the session was forked");
+    if let Some(fork) = fork {
+        let fork = start(&home.session(&fork.to));
+        assert!(fork.world().contains_resource::<FirstStart>());
+    }
+    drop(std::panic::take_hook());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
+    use rig_ecs::inbox::Origin;
+    use rig_ecs::journal::Commit;
+
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin));
+    app.update();
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "the app has an agent");
+    let Some(agent) = agent else { return };
+    let attached = "<file path=\"a.txt\">\nfile text\n</file>";
+    let messages = [
+        (Message::user("build failed"), Some(Origin::plugin("build"))),
+        (Message::assistant("ok"), None),
+        (Message::user(attached), None),
+        (Message::user("  fix it  "), None),
+        (Message::user("and test"), None),
+    ];
+    let commit = |In((agent, messages)): In<(Entity, Vec<(Message, Option<Origin>)>)>,
+                  mut agents: Query<&mut Conversation>,
+                  mut commit: Commit| {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            for (message, origin) in messages {
+                commit.message_from(agent, &mut conversation, message, origin);
+            }
+        }
+    };
+    let committed = app
+        .world_mut()
+        .run_system_cached_with(commit, (agent, messages.to_vec()));
+    assert!(committed.is_ok());
+    let conversation = app.world().get::<Conversation>(agent);
+    assert!(conversation.is_some(), "the agent has a conversation");
+    let Some(conversation) = conversation else {
+        return;
+    };
+    let both = Some("fix it\n\nand test".to_owned());
+    assert_eq!(typed(conversation, 0), None);
+    assert_eq!(typed(conversation, 2), both);
+    assert_eq!(first_typed(conversation), both);
 }

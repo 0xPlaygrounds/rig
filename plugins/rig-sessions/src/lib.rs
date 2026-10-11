@@ -20,8 +20,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::prelude::*;
-use rig_core::completion::Message;
-use rig_core::message::UserContent;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
@@ -30,13 +28,11 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
+use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths, first_typed};
 use rig_harness::primary::primary_order;
 use rig_telemetry::SessionSpending;
-use rig_tools::attach::attached_file;
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -302,33 +298,6 @@ fn write_meta(
     if let Err(failure) = write_json(&paths.meta(), &meta) {
         error!("could not write the session's meta.json: {failure}");
     }
-}
-
-/// The first text the user typed in `conversation`: never text an agent
-/// or a plugin delivered, such as a notice or a build failure, nor a
-/// file it attached.
-fn first_typed(conversation: &Conversation) -> Option<String> {
-    let mut messages = conversation.messages().iter().enumerate();
-    messages.find_map(|(at, message)| {
-        let Message::User { content } = message else {
-            return None;
-        };
-        content
-            .iter()
-            .enumerate()
-            .find_map(|(index, item)| match item {
-                UserContent::Text(text)
-                    if !text.text.trim().is_empty()
-                        && conversation
-                            .origin(at, index)
-                            .is_none_or(|origin| origin.kind == OriginKind::User)
-                        && attached_file(&text.text).is_none() =>
-                {
-                    Some(text.text.clone())
-                }
-                _ => None,
-            })
-    })
 }
 
 /// `text` on one line, cut to [`TITLE_CHARS`].

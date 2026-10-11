@@ -4,7 +4,9 @@
 //! session into a new one with [`ForkSession`] and removes another with
 //! [`DeleteSession`]; [`SessionForked`] and [`SessionDeleted`] tell every
 //! plugin, such as one keeping files of its own per session. A forked
-//! session names the session it came from ([`ForkedFrom`]).
+//! session names the session it came from ([`ForkedFrom`]). The first app
+//! a session runs, a fork's first included, has [`FirstStart`]; what the
+//! user typed in a message is [`typed`].
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -81,9 +83,21 @@ fn session_paths(world: &mut World) -> SessionPaths {
         .clone()
 }
 
+/// This app is its session's first start: no app of the session ran a
+/// whole frame before. A fork's first app has it, a `/reload` of a session
+/// started earlier does not; "a fork's first start" is [`ForkedFrom`]
+/// with it. Inserted when the session plugin is built.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FirstStart;
+
+/// The marker file of a session an app started in, beside its logs. A
+/// fork does not copy it.
+const STARTED: &str = "started";
+
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, and the [`SessionStore`] keeping the session there,
-/// routes panics to the log, and forks and deletes sessions.
+/// routes panics to the log, tells a first start ([`FirstStart`]), and
+/// forks and deletes sessions.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -94,6 +108,12 @@ impl Plugin for SessionPlugin {
         let paths = session_paths(app.world_mut());
         if !app.world().contains_resource::<SessionStore>() {
             app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
+        }
+        if !paths.path().join(STARTED).exists() {
+            app.insert_resource(FirstStart).add_systems(
+                Last,
+                mark_started.run_if(run_once).before(discard_sessionless),
+            );
         }
         app.init_resource::<Forks>()
             .add_message::<SessionForked>()
@@ -110,6 +130,13 @@ impl Plugin for SessionPlugin {
                     .after(OnAppExitSystems)
                     .run_if(on_message::<AppExit>),
             );
+    }
+}
+
+/// Marks the session started at the end of its first app's first frame.
+fn mark_started(paths: Res<SessionPaths>) {
+    if let Err(failure) = fs::write(paths.path().join(STARTED), b"") {
+        error!("could not mark the session started: {failure}");
     }
 }
 
@@ -231,7 +258,10 @@ fn fork_sessions(
         let home = home
             .as_ref()
             .map_or_else(Home::from_env, |home| home.0.clone());
-        let text = before.as_ref().and_then(|before| typed_at(&agents, before));
+        let text = before.as_ref().and_then(|(agent, message)| {
+            let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
+            typed(conversation, conversation.index_of(*message)?)
+        });
         match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
             Ok((from, to)) => {
                 forked.write(SessionForked { from, to, before });
@@ -246,14 +276,11 @@ fn fork_sessions(
     }
 }
 
-/// What the user wrote in the message of the agent and message id named,
-/// its text items of the user's own that are no attached file.
-fn typed_at(
-    agents: &Query<(&AgentId, &Conversation)>,
-    (agent, message): &(AgentId, MessageId),
-) -> Option<String> {
-    let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
-    let at = conversation.index_of(*message)?;
+/// What the user typed in message `at` of `conversation`: its text items
+/// of the user's own, never text an agent or a plugin delivered, such as a
+/// note, nor a file attached, each trimmed, joined by a blank line; `None`
+/// when it has none.
+pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
     let Some(Message::User { content }) = conversation.messages().get(at) else {
         return None;
     };
@@ -274,6 +301,11 @@ fn typed_at(
         .filter(|text| !text.is_empty())
         .collect();
     (!typed.is_empty()).then(|| typed.join("\n\n"))
+}
+
+/// What the user typed first in `conversation` ([`typed`]).
+pub fn first_typed(conversation: &Conversation) -> Option<String> {
+    (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
 }
 
 /// Copies the session at `paths` into a new session of `home`, as of
