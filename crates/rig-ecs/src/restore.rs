@@ -108,6 +108,7 @@ pub(crate) fn restore_session(world: &mut World) {
             )),
         }
     }
+    let next_n = folded.iter().map(|agent| agent.next_n).max();
     let retired = retired(&folded);
     folded.retain(|agent| !retired.contains(&agent.header.agent));
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
@@ -183,7 +184,11 @@ pub(crate) fn restore_session(world: &mut World) {
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     let logs = logs.into_iter().map(|(_, id, log)| (id, log));
-    log.resume(store, logs.chain(session).collect());
+    log.resume(
+        store,
+        logs.chain(session).collect(),
+        next_n.unwrap_or_default(),
+    );
     world.insert_resource(RestoredAgents(restored));
     world.insert_resource(SessionRestored);
     for notice in notices {

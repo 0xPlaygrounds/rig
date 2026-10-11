@@ -134,7 +134,8 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
-    let gone = r#"{"seq":99,"t":0,"type":"component","component":"a_plugin::Gone","value":1}"#;
+    let gone =
+        r#"{"seq":99,"n":99,"t":0,"type":"component","component":"a_plugin::Gone","value":1}"#;
     let id = id.unwrap_or_default().0;
     assert!(store.append(&id, format!("{gone}\n").as_bytes()).is_ok());
 

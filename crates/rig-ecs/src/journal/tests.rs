@@ -231,3 +231,48 @@ fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
     let nowhere = fork_session(&store, &MemoryStore::default(), Some((&id, 999)));
     assert!(nowhere.is_err());
 }
+
+/// The JSON line of a record, `seq` in its log and `n` in the session, all
+/// written in the same millisecond.
+fn line(seq: u64, n: u64, record: &serde_json::Value) -> String {
+    let mut line = serde_json::json!({ "seq": seq, "n": n, "t": 1_000 });
+    if let (Some(line), Some(record)) = (line.as_object_mut(), record.as_object()) {
+        line.extend(record.clone());
+    }
+    format!("{line}\n")
+}
+
+fn said(text: &str) -> serde_json::Value {
+    let message = serde_json::to_value(Message::user(text)).unwrap_or_default();
+    serde_json::json!({ "type": "message", "message": message })
+}
+
+#[test]
+fn a_fork_keeps_what_other_agents_logged_before_its_cut_in_the_same_millisecond() {
+    let header = |agent: &str| serde_json::json!({ "type": "header", "agent": agent });
+    let from = MemoryStore::default();
+    let a = [
+        line(0, 0, &header("a")),
+        line(1, 1, &said("a first")),
+        line(2, 4, &said("a second")),
+    ];
+    let b = [
+        line(0, 2, &header("b")),
+        line(1, 3, &said("b first")),
+        line(2, 5, &said("b second")),
+    ];
+    assert!(from.append("a", a.concat().as_bytes()).is_ok());
+    assert!(from.append("b", b.concat().as_bytes()).is_ok());
+    let to = MemoryStore::default();
+    let fork = fork_session(&from, &to, Some((&AgentId("a".to_owned()), 2)));
+    assert!(fork.is_ok(), "{fork:?}");
+    let session = read_session(&to);
+    let kept = |agent: &str| -> Vec<Message> {
+        let session = session.as_ref().ok();
+        let agent =
+            session.and_then(|session| session.agents.iter().find(|saved| saved.id.0 == agent));
+        agent.map_or_else(Vec::new, |agent| agent.conversation.messages().to_vec())
+    };
+    assert_eq!(kept("a"), [Message::user("a first")]);
+    assert_eq!(kept("b"), [Message::user("b first")]);
+}

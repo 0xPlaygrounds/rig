@@ -151,6 +151,9 @@ pub(crate) enum Record<'a> {
 pub(crate) struct Line<'a> {
     /// Dense from 0, the header's, in each log.
     pub(crate) seq: u64,
+    /// Its place among the records of every log of the session, in the
+    /// order they were made: what a fork cuts the other logs by.
+    pub(crate) n: u64,
     /// When it was written, in milliseconds since the Unix epoch.
     pub(crate) t: u64,
     #[serde(flatten)]
@@ -182,6 +185,8 @@ pub(crate) struct AgentLog {
 #[derive(Default)]
 struct Book {
     store: Option<Arc<dyn JournalStore>>,
+    /// The next record's [`Line::n`].
+    next_n: u64,
     /// Records are queued only once the session was restored.
     live: bool,
     /// Why the log stopped: every record after a failed write is dropped.
@@ -207,10 +212,11 @@ impl Book {
                 agent: agent.to_owned(),
                 parent: parent.map(str::to_owned),
             };
-            if let Err(failure) = enqueue(&mut log, Record::Header(header)) {
+            if let Err(failure) = enqueue(&mut log, self.next_n, Record::Header(header)) {
                 self.failure = Some(failure.to_string());
                 return None;
             }
+            self.next_n += 1;
             self.agents.insert(agent.to_owned(), log);
         }
         self.agents.get_mut(agent)
@@ -219,9 +225,14 @@ impl Book {
     /// Queues `record` for `agent`; its `seq`, or `None` when nothing is
     /// logged.
     fn record(&mut self, agent: &str, record: Record<'_>) -> Option<u64> {
-        let queued = enqueue(self.agent(agent, None)?, record);
+        self.agent(agent, None)?;
+        let n = self.next_n;
+        let queued = enqueue(self.agents.get_mut(agent)?, n, record);
         match queued {
-            Ok(seq) => Some(seq),
+            Ok(seq) => {
+                self.next_n += 1;
+                Some(seq)
+            }
             Err(failure) => {
                 self.failure = Some(failure.to_string());
                 None
@@ -230,11 +241,13 @@ impl Book {
     }
 }
 
-/// Queues `record` as the next line of `log`; its `seq`.
-fn enqueue(log: &mut AgentLog, record: Record<'_>) -> serde_json::Result<u64> {
+/// Queues `record` as the next line of `log`, the session's record `n`;
+/// its `seq`.
+fn enqueue(log: &mut AgentLog, n: u64, record: Record<'_>) -> serde_json::Result<u64> {
     let seq = log.next_seq;
     let line = Line {
         seq,
+        n,
         t: now_ms(),
         record,
     };
@@ -270,11 +283,17 @@ impl SessionLog {
     }
 
     /// Starts logging to `store`, after the logs restored from it as
-    /// `agents`, by agent id.
-    pub(crate) fn resume(&self, store: Arc<dyn JournalStore>, agents: Vec<(String, AgentLog)>) {
+    /// `agents`, by agent id, its next record the session's `next_n`.
+    pub(crate) fn resume(
+        &self,
+        store: Arc<dyn JournalStore>,
+        agents: Vec<(String, AgentLog)>,
+        next_n: u64,
+    ) {
         let mut book = self.book();
         book.store = Some(store);
         book.agents.extend(agents);
+        book.next_n = book.next_n.max(next_n);
         book.live = true;
     }
 
@@ -596,6 +615,7 @@ fn write_logs(log: Res<SessionLog>, mut reported: Local<bool>, mut notices: Mess
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
+    n: u64,
     t: u64,
     #[serde(rename = "type")]
     kind: String,
@@ -617,6 +637,8 @@ pub(crate) struct Folded {
     pub(crate) components: HashMap<String, Value>,
     /// The `seq` after the last line's.
     pub(crate) next_seq: u64,
+    /// The session's `n` after the log's last line's.
+    pub(crate) next_n: u64,
     /// Whether the agent was retired.
     pub(crate) retired: bool,
 }
@@ -656,6 +678,12 @@ pub(crate) fn fold(
         condensed: None,
         components: HashMap::new(),
         next_seq: next_seq.max().unwrap_or(1),
+        next_n: envelopes
+            .iter()
+            .flatten()
+            .map(|envelope| envelope.n + 1)
+            .max()
+            .unwrap_or_default(),
         retired: envelopes
             .iter()
             .flatten()
@@ -836,11 +864,11 @@ pub fn read_session(store: &dyn JournalStore) -> io::Result<SavedSession> {
     Ok(session)
 }
 
-/// The `seq` and time of a line.
+/// The `seq` and session-wide `n` of a line.
 #[derive(Deserialize)]
 struct Stamp {
     seq: u64,
-    t: u64,
+    n: u64,
     #[serde(rename = "type")]
     kind: String,
 }
@@ -849,7 +877,7 @@ struct Stamp {
 /// branch it: every blob, and every log as of `before`, the record `seq`
 /// of the log of the agent named there, such as [`Conversation::seq`] of a
 /// message: that log up to that record, and every other log up to the
-/// records written before it. Without `before`, all of it. An agent with
+/// records made before it in the session. Without `before`, all of it. An agent with
 /// no message left, such as one spawned later, is left out. A torn tail is
 /// never copied, and the effect log, which is not the store's, is not
 /// copied.
@@ -873,7 +901,7 @@ pub fn fork_session(
         if let Ok(stamp) = serde_json::from_slice::<Stamp>(line)
             && stamp.seq == seq
         {
-            cut = Some((start, stamp.t));
+            cut = Some((start, stamp.n));
             break;
         }
         start = end;
@@ -891,7 +919,7 @@ pub fn fork_session(
             };
             let kept = match id == agent.0 {
                 true => end <= offset,
-                false => stamp.t < at,
+                false => stamp.n < at,
             };
             if !kept {
                 break;

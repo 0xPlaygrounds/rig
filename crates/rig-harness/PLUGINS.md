@@ -986,7 +986,9 @@ good, so a restart brings back neither it nor the agents it spawned.
 session's too, without restoring or writing anything: each agent's whole
 conversation, summary and saved components. `fork_session(from, to,
 before)` copies a session as of a message, `before` being its agent's id
-and `conversation.seq(index)`.
+and `conversation.seq(index)`: that agent's log up to the message, and
+every other log up to what was logged before it, in the session's order
+of records, not by time.
 
 # Time
 
