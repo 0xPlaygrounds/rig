@@ -12,6 +12,8 @@
 //! plain data with public fields, to build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
+//! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
+//!   and [`ReadArgs::show`]: what `read` shows of it;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
@@ -31,7 +33,7 @@
 pub mod attach;
 mod blocking;
 pub mod context;
-mod edit;
+pub mod edit;
 pub mod fs;
 pub mod process;
 mod read;

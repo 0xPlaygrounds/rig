@@ -126,23 +126,75 @@ impl Tool for Edit {
 }
 
 fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
-    let path = args.path.as_str();
-    if args.edits.is_empty() {
+    let path = absolute(&args.path);
+    let raw = read_text(&args.path)?;
+    let applied = apply(&path, &raw, &args.edits)?;
+    write_atomic(Path::new(&args.path), applied.text.as_bytes())
+        .map_err(|error| io_error(&args.path, error))?;
+    let replaced = applied.replaced;
+    let mut out = format!(
+        "Edited {}: {replaced} replacement{}.",
+        args.path,
+        if replaced == 1 { "" } else { "s" }
+    );
+    for note in applied.notes {
+        out.push_str(&format!("\nNote: {note}"));
+    }
+    out.push('\n');
+    out.push_str(&shown(applied.change.diff.as_deref().unwrap_or_default()));
+    Ok((out, applied.change))
+}
+
+/// What [`apply`] makes of a file's text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Applied {
+    /// The edited text, with the byte-order mark and line endings the file
+    /// had: what [`Edit`] writes.
+    pub text: String,
+    /// What the edit does to the file, with its diff.
+    pub change: FileChange,
+    /// How many places were replaced.
+    pub replaced: usize,
+    /// How each edit that matched only loosely was matched, for the model.
+    pub notes: Vec<String>,
+}
+
+/// Makes `edits` to `text`, the whole text of the file at `path`, exactly
+/// as [`Edit`] does, without touching the file: every edit is matched
+/// against the text as it is, exactly or loosely, and all are applied or
+/// none. A byte-order mark and CRLF line endings are kept. `path` names the
+/// file in the errors and the [`FileChange`].
+///
+/// ```
+/// use rig_tools::{Replacement, edit::apply};
+///
+/// let applied = apply("a.txt", "one\r\ntwo\r\n", &[Replacement::new("two", "2")])?;
+/// assert_eq!(applied.text, "one\r\n2\r\n");
+/// assert_eq!((applied.change.added, applied.change.removed), (1, 1));
+/// assert!(apply("a.txt", "one\n", &[Replacement::new("three", "3")]).is_err());
+/// # Ok::<(), rig_core::tool::ToolExecutionError>(())
+/// ```
+///
+/// # Errors
+///
+/// When an edit matches nowhere or more than once, edits overlap, or they
+/// change nothing: the error says what to send instead.
+pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
+    if edits.is_empty() {
         return Err(ToolExecutionError::invalid_args(format!(
             "`edits` is empty, so {path} was not changed; give at least one \
              {{\"old_text\", \"new_text\"}}"
         )));
     }
-    let raw = read_text(path)?;
-    let file = Decoded::new(&raw);
+    let file = Decoded::new(text);
     let text = file.text.as_str();
-    let count = args.edits.len();
+    let count = edits.len();
     let many = count > 1;
     let mut splices = Vec::new();
     let mut notes = Vec::new();
     // Every edit is checked, so one reply names all that need fixing.
     let mut failed: Vec<String> = Vec::new();
-    for (index, replacement) in args.edits.iter().enumerate() {
+    for (index, replacement) in edits.iter().enumerate() {
         let label = if many {
             format!("edits[{index}]: ")
         } else {
@@ -203,21 +255,12 @@ fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
-    write_atomic(Path::new(path), file.encode(&edited).as_bytes())
-        .map_err(|error| io_error(path, error))?;
-
-    let replaced = splices.len();
-    let mut out = format!(
-        "Edited {path}: {replaced} replacement{}.",
-        if replaced == 1 { "" } else { "s" }
-    );
-    for note in notes {
-        out.push_str(&format!("\nNote: {note}"));
-    }
-    out.push('\n');
-    let change = file_change(&absolute(path), Some(text), &edited);
-    out.push_str(&shown(change.diff.as_deref().unwrap_or_default()));
-    Ok((out, change))
+    Ok(Applied {
+        text: file.encode(&edited),
+        change: file_change(path, Some(text), &edited),
+        replaced: splices.len(),
+        notes,
+    })
 }
 
 /// The file's text with LF line endings and no byte-order mark, and how to

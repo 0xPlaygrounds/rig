@@ -42,6 +42,22 @@ impl ReadArgs {
         self.limit = Some(limit);
         self
     }
+
+    /// What [`Read`] shows of `text`, the file's whole text, for this read:
+    /// its lines from `offset` (default 1), at most `limit` of them (default
+    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], [numbered](numbered).
+    ///
+    /// ```
+    /// use rig_tools::ReadArgs;
+    ///
+    /// let shown = ReadArgs::new("a.txt").lines(2, 1).show("one\ntwo\nthree\n");
+    /// assert_eq!(shown, "     2\ttwo\n[1 more lines; read on with offset 3]\n");
+    /// ```
+    pub fn show(&self, text: &str) -> String {
+        let first = self.offset.unwrap_or(1);
+        let limit = self.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
+        numbered(text, first, limit, MAX_BYTES)
+    }
 }
 
 impl Read {
@@ -90,10 +106,7 @@ impl Tool for Read {
 }
 
 fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
-    let text = read_text(&args.path)?;
-    let first = args.offset.unwrap_or(1);
-    let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
-    Ok(numbered(&text, first, limit, MAX_BYTES))
+    Ok(args.show(&read_text(&args.path)?))
 }
 
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows
