@@ -610,7 +610,9 @@ fn fall_back(
 # How a turn ends
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among
-the agent's turns and its `first_message` in the conversation. A turn's
+the agent's turns and its `first_message` in the conversation. The kernel
+makes it `ForAgent` its agent when it is spawned, so it goes with the
+agent. A turn's
 end is a proposal: when the model answers without calling tools, or the
 turn fails, the kernel proposes a `TurnOutcome` on the turn in `Commit`
 (`Answered(message)`, `Failed(reason)`), and a `Review` system sees it in
@@ -625,9 +627,10 @@ plugin may insert `TurnOutcome::Failed(reason)` or `Stopped(Some(reason))`
 at any time, such as a budget: the turn's calls that have not started
 never start, the others are answered as stopped, and the turn ends. Once
 nothing holds the outcome and every call of the turn settled, the turn
-ends: the agent is idle, and the turn entity is `Settled`, `ForAgent` its
-agent, until the next frame. `Interrupt` stops a turn at once; it cannot
-be held.
+ends: the agent is idle, and the turn entity is `Settled` until the next
+frame. An `On<Add<Settled>>` observer may retire the agent
+(`Commit::retire`), such as one that did its one job; the turn goes with
+it. `Interrupt` stops a turn at once; it cannot be held.
 
 ```rust,no_run
 use rig_harness::prelude::*;

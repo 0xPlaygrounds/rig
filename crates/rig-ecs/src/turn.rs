@@ -234,11 +234,17 @@ pub(crate) fn on_retry(
 }
 
 /// Fills in a new turn's [`Turn`]: its index from its agent's count, which
-/// it bumps, and where it begins in the agent's conversation.
-pub(crate) fn number_turn(mut world: DeferredWorld, context: HookContext) {
+/// it bumps, and where it begins in the agent's conversation. The turn is
+/// [`ForAgent`] its agent from the start, so it is part of the agent's work
+/// and its end inserts nothing but [`Settled`].
+pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     let Some(&TurnOf(agent)) = world.get::<TurnOf>(context.entity) else {
         return;
     };
+    world
+        .commands()
+        .entity(context.entity)
+        .try_insert(ForAgent(agent));
     let first_message = world.get::<Conversation>(agent).map_or(0, |conversation| {
         let messages = conversation.messages();
         let asks = matches!(messages.last(), Some(Message::User { .. }));
@@ -329,11 +335,8 @@ pub(crate) fn on_interrupt(
             world.try_despawn(hold).ok();
         }
         if let Ok(mut turn) = world.get_entity_mut(turn) {
-            turn.remove::<(TurnOf, Ending)>().insert((
-                TurnOutcome::Stopped(reason),
-                ForAgent(agent),
-                Settled,
-            ));
+            turn.remove::<(TurnOf, Ending)>()
+                .insert((TurnOutcome::Stopped(reason), Settled));
         }
     });
     notices.write(Notice::info(agent, "Interrupted."));
@@ -1194,7 +1197,7 @@ pub(crate) fn commit_replies(
 /// settled, in [`Stage::Commit`], before this pass's proposals are made, so
 /// Review sees each proposal first: what the kernel proposed shows its
 /// error and may take the user's unanswered message out, the turn is no
-/// longer [`TurnOf`] its agent, and it is [`ForAgent`] it and [`Settled`].
+/// longer [`TurnOf`] its agent, and it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
 /// its way to its agent. Not when a Review system failed.
 pub(crate) fn end_turns(
@@ -1245,7 +1248,7 @@ pub(crate) fn end_turns(
         commands
             .entity(turn)
             .try_remove::<(TurnOf, Ending)>()
-            .try_insert((ForAgent(agent), Settled));
+            .try_insert(Settled);
     }
 }
 

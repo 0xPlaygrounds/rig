@@ -1696,3 +1696,38 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
         .collect();
     assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
 }
+
+/// Retires the agent of each turn that ends, as a plugin whose agents do
+/// one job each does.
+fn retire_when_done(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<TurnOutcome>>,
+    mut commit: Commit,
+) {
+    if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
+        commit.retire(agent);
+    }
+}
+
+#[test]
+fn an_agent_retired_as_its_turn_ends_goes_with_the_turn() {
+    let mut app = app();
+    // The app's own error handler, which panics on a failed command.
+    app.world_mut().remove_resource::<FallbackErrorHandler>();
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_observer(retire_when_done);
+    let model = MockCompletionModel::from_stream_turns([answer("done")]);
+    let agent = agent_on(&mut app, &model);
+    let gone = |world: &mut World| world.get_entity(agent).is_err();
+    assert!(run_until(&mut app, gone), "{:?}", notices(&app));
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Answered(_)]),
+        "{:?}",
+        ended(&app)
+    );
+    app.update();
+    let world = app.world_mut();
+    let turns = world.query_filtered::<(), With<Turn>>().iter(world).count();
+    assert_eq!(turns, 0, "the turn went with its agent");
+}

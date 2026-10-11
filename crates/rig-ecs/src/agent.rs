@@ -12,7 +12,7 @@ use super::inbox::Origin;
 use super::journal::ReflectSaved;
 use super::model::Effort;
 use super::stage::moved;
-use super::turn::{NO_MODEL, Recovery, number_turn};
+use super::turn::{NO_MODEL, Recovery, start_turn};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no
@@ -343,10 +343,11 @@ impl ToolAccess {
 /// the turn on, and a plugin may insert `Failed` or `Stopped` at any
 /// time. Once nothing holds the outcome and every call of the turn
 /// settled, Commit ends the turn: it removes this, so the agent is idle,
-/// and marks the turn [`ForAgent`] its agent and
-/// [`Settled`](super::stage::Settled) for the readers of how it ended.
-/// The turn counts its retries in a [`Recovery`]. Its `Name` is `turn`
-/// unless it is spawned with another.
+/// and marks the turn [`Settled`](super::stage::Settled) for the readers
+/// of how it ended. The kernel makes a turn [`ForAgent`] its agent when it
+/// is spawned, so it is the agent's work, and goes when the agent goes,
+/// even after it ended. The turn counts its retries in a [`Recovery`].
+/// Its `Name` is `turn` unless it is spawned with another.
 ///
 /// [`HoldOf`]: super::stage::HoldOf
 /// [`ForAgent`]: super::stage::ForAgent
@@ -359,7 +360,7 @@ pub struct TurnOf(pub Entity);
 /// Where a turn stands, on the turn. The kernel fills it in when the turn
 /// is spawned and keeps it.
 #[derive(Component, Reflect, Clone, Debug, Default)]
-#[component(on_add = number_turn)]
+#[component(on_add = start_turn)]
 #[reflect(Component, Default)]
 pub struct Turn {
     /// How many turns its agent started before this one, over the whole
