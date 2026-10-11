@@ -28,8 +28,8 @@ pub trait SignIn: Send + Sync + 'static {
 /// ([`ProviderId::declare`]) on a gateway of its own, a built-in vendor at
 /// another address, or a scripted model in a test.
 ///
-/// [`ConnectOptions`] is one: the vendor's models connect with those
-/// options (a base URL, a key, an HTTP client, a protocol family). A
+/// [`ConnectOptions`] is one, natively: the vendor's models connect with
+/// those options (a base URL, a key, an HTTP client, a protocol family). A
 /// closure from the spec and the catalog to a handler is another.
 pub trait Provide: Send + Sync + 'static {
     /// The handler serving `spec`, a model of `catalog`.
@@ -46,7 +46,9 @@ where
 }
 
 /// The vendor's models connect as [`Catalog::connect_with`] connects them
-/// with these options.
+/// with these options. Native only: on the web an HTTP client is not
+/// `Send`, so a connector there takes a closure.
+#[cfg(not(target_family = "wasm"))]
 impl Provide for ConnectOptions {
     fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
         catalog
