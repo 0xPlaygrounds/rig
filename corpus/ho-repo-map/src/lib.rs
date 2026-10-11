@@ -424,7 +424,7 @@ fn note_work(
         .filter_map(|path| relative(&root, path))
         .collect();
     if let Ok(mut worked) = agents.get_mut(agent) {
-        let read = read.iter().flat_map(|read| read.0.iter());
+        let read = read.iter().flat_map(FilesRead::paths);
         for path in read.filter_map(|path| relative(&root, path)) {
             worked.touch(path);
         }

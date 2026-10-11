@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use rig_core::tool::{FilesRead, Tool, ToolContext};
+use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, content_hash};
 
 use super::{Search, SearchArgs, SearchHits, find, is_hidden, render};
 
@@ -76,7 +76,9 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
         .ok()
         .flatten()
         .unwrap_or_default();
-    assert_eq!(read.0, [dir.join("a.rs").to_string_lossy()]);
+    let a = crate::fs::resolve(Some(&dir), "a.rs");
+    let a = FileRead::new(a.to_string_lossy(), content_hash(b"todo one\ntodo two\n"));
+    assert_eq!(read.0, [a]);
 
     let mut context = ToolContext::new();
     let none = SearchArgs::new("nowhere").in_path(dir.to_string_lossy());

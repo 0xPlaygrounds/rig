@@ -267,8 +267,8 @@ fn track(
     };
     let by = subagents.get(agent).map(Name::as_str).unwrap_or_default();
     let read = published.get::<FilesRead>().ok().flatten();
-    for path in read.unwrap_or_default().0 {
-        let (file, at) = files.touch(&path, by);
+    for read in read.unwrap_or_default().0 {
+        let (file, at) = files.touch(&read.path, by);
         file.read_at = Some(at);
         file.gone = false;
     }

@@ -12,7 +12,7 @@ use std::path::PathBuf;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema,
+    FileChange, FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -160,7 +160,8 @@ pub struct Applied {
     /// The edited text, with the byte-order mark and line endings the file
     /// had: what [`Edit`] writes.
     pub text: String,
-    /// What the edit does to the file, with its diff.
+    /// What the edit does to the file, with its diff and the hash of
+    /// [`text`](Self::text).
     pub change: FileChange,
     /// How many places were replaced.
     pub replaced: usize,
@@ -264,9 +265,10 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
+    let encoded = file.encode(&edited);
     Ok(Applied {
-        text: file.encode(&edited),
-        change: file_change(path, Some(text), &edited),
+        change: file_change(path, Some(text), &edited).with_after(content_hash(encoded.as_bytes())),
+        text: encoded,
         replaced: splices.len(),
         notes,
     })

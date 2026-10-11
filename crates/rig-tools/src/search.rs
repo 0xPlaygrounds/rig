@@ -7,7 +7,10 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use regex::Regex;
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{ContextValue, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    ContextValue, FileRead, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema,
+    content_hash,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -101,23 +104,11 @@ pub struct Found {
     /// Whether it stopped at its [`MAX_MATCHES`] matches, so there may be
     /// more.
     pub stopped: bool,
-}
-
-impl Found {
     /// The files with hits, each once, in walk order, by their
-    /// [resolved](crate::fs::resolve) paths.
-    pub fn files(&self) -> Vec<String> {
-        let mut files: Vec<String> = Vec::new();
-        for hit in &self.hits {
-            let file = resolve(None, &hit.path.to_string_lossy())
-                .to_string_lossy()
-                .into_owned();
-            if files.last() != Some(&file) {
-                files.push(file);
-            }
-        }
-        files
-    }
+    /// [resolved](crate::fs::resolve) paths, with the hash of the bytes
+    /// searched.
+    #[serde(default)]
+    pub files: Vec<FileRead>,
 }
 
 /// What a [`Search`] call found, as it published it beside the text.
@@ -170,9 +161,8 @@ impl Tool for Search {
             args.path = Some(base.join(path).to_string_lossy().into_owned());
         }
         let found = blocking(move || find(&args, is_hidden)).await?;
-        let files = found.files();
-        if !files.is_empty() {
-            context.insert_result(FilesRead(files))?;
+        if !found.files.is_empty() {
+            context.insert_result(FilesRead(found.files.clone()))?;
         }
         let text = render(&found);
         context.insert_result(SearchHits(found))?;
@@ -245,6 +235,13 @@ pub fn find(
         let path = walked(entry.path());
         for (number, line) in text.lines().enumerate() {
             if pattern.is_match(line) {
+                if found.hits.last().is_none_or(|last| last.path != path) {
+                    let file = resolve(None, &path.to_string_lossy());
+                    found.files.push(FileRead::new(
+                        file.to_string_lossy(),
+                        content_hash(text.as_bytes()),
+                    ));
+                }
                 found.hits.push(Hit {
                     path: path.to_path_buf(),
                     line: number + 1,

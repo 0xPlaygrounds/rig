@@ -1,4 +1,4 @@
-use rig_core::tool::{ChangeKind, FileChange, FilesChanged, Tool, ToolContext};
+use rig_core::tool::{ChangeKind, FileChange, FilesChanged, Tool, ToolContext, content_hash};
 
 use super::{Write, WriteArgs};
 use crate::{Edit, EditArgs, Replacement};
@@ -31,9 +31,11 @@ fn writes_and_edits_publish_the_files_they_changed() {
     assert!(futures::executor::block_on(written).is_ok());
     assert_eq!(
         changed(&context).0,
-        [FileChange::created(&path, 2).with_diff(format!(
-            "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
-        ))]
+        [FileChange::created(&path, 2)
+            .with_diff(format!(
+                "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
+            ))
+            .with_after(content_hash(b"one\ntwo\n"))]
     );
 
     let mut context = ToolContext::new();
@@ -62,6 +64,10 @@ fn writes_and_edits_publish_the_files_they_changed() {
             .as_ref()
             .map(|change| (change.path.as_str(), change.added, change.removed)),
         Some((path.as_str(), 2, 2))
+    );
+    assert_eq!(
+        change.as_ref().and_then(|change| change.after.clone()),
+        Some(content_hash(b"1\n2\n3\n"))
     );
     assert_eq!(
         change.and_then(|change| change.diff),

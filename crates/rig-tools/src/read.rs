@@ -2,7 +2,9 @@
 
 use std::path::PathBuf;
 
-use rig_core::tool::{FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    FileRead, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -13,7 +15,8 @@ use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines. Publishes the file it read
-/// ([`FilesRead`]), by its [resolved](crate::fs::resolve) path.
+/// ([`FilesRead`]), by its [resolved](crate::fs::resolve) path, with the
+/// hash of the bytes it read.
 #[derive(Clone, Debug, Default)]
 pub struct Read {
     /// The directory a relative path is read from; `None` is this
@@ -111,12 +114,15 @@ impl Tool for Read {
         let path = place(self.base.as_deref(), self.confine, &args.path)?
             .to_string_lossy()
             .into_owned();
-        let output = blocking({
+        let (output, hash) = blocking({
             let path = path.clone();
-            move || Ok::<_, ToolExecutionError>(args.show(&read_text(&path)?))
+            move || {
+                let text = read_text(&path)?;
+                Ok::<_, ToolExecutionError>((args.show(&text), content_hash(text.as_bytes())))
+            }
         })
         .await?;
-        context.insert_result(FilesRead(vec![path]))?;
+        context.insert_result(FilesRead(vec![FileRead::new(path, hash)]))?;
         Ok(output)
     }
 }

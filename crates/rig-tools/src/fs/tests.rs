@@ -54,7 +54,7 @@ fn a_confined_tool_stays_in_its_base() {
     assert_eq!(shown.ok().as_deref(), Some("     1\tone\n"));
     let published = context.result::<FilesRead>().ok().flatten();
     assert_eq!(
-        published.map(|read| read.0),
+        published.map(|read| read.paths().map(str::to_owned).collect::<Vec<_>>()),
         Some(vec![base.join("a.txt").to_string_lossy().into_owned()])
     );
 

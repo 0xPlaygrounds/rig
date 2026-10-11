@@ -293,7 +293,7 @@ fn track_files(
         return;
     };
     if let Ok(Some(FilesRead(read))) = published.0.get::<FilesRead>() {
-        read.into_iter().for_each(|path| touched.note(path));
+        read.into_iter().for_each(|file| touched.note(file.path));
     }
     if let Ok(Some(changed)) = published.0.get::<FilesChanged>() {
         changed

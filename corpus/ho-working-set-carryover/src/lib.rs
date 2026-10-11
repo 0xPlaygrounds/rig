@@ -123,8 +123,8 @@ fn track(
         .map_or(0, |since| {
             u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
         });
-    if let Ok(Some(FilesRead(paths))) = published.0.get::<FilesRead>() {
-        for path in paths {
+    if let Ok(Some(FilesRead(files))) = published.0.get::<FilesRead>() {
+        for path in files.into_iter().map(|file| file.path) {
             set.read.retain(|read| read.path != path);
             set.read.push(ReadFile { path, at_ms });
         }

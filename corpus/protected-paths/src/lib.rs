@@ -343,8 +343,8 @@ fn filter_searches(
         }
         let mut hidden = Vec::new();
         let mut kept = Found {
-            hits: Vec::new(),
             stopped: found.stopped,
+            ..Found::default()
         };
         for hit in found.hits {
             match policy.check(Access::Read, &hit.path.to_string_lossy()) {

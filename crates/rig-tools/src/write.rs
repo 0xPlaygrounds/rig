@@ -4,7 +4,9 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -84,7 +86,8 @@ impl Tool for Write {
             let before = previous(&resolved);
             write_atomic(&resolved, args.content.as_bytes())
                 .map_err(|error| io_error(&path, error))?;
-            let change = file_change(&path, before.as_deref(), &args.content);
+            let change = file_change(&path, before.as_deref(), &args.content)
+                .with_after(content_hash(args.content.as_bytes()));
             let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
             Ok::<_, ToolExecutionError>((output, change))
         })

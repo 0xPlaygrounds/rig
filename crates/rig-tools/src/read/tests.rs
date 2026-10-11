@@ -1,10 +1,10 @@
-use rig_core::tool::{FilesRead, Tool, ToolContext};
+use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, content_hash};
 
 use super::{Read, ReadArgs};
 use crate::fs::resolve;
 
-/// Reading a file publishes it by its absolute path; a failed read
-/// publishes nothing.
+/// Reading a file publishes it by its resolved path, with the hash of the
+/// bytes read; a failed read publishes nothing.
 #[test]
 fn a_read_publishes_the_file_it_read() {
     let read_tool = Read::default();
@@ -19,9 +19,10 @@ fn a_read_publishes_the_file_it_read() {
     let published = context.result::<FilesRead>().ok().flatten();
     assert_eq!(
         published,
-        Some(FilesRead(vec![
-            resolve(None, &path).to_string_lossy().into_owned()
-        ]))
+        Some(FilesRead(vec![FileRead::new(
+            resolve(None, &path).to_string_lossy(),
+            content_hash(b"one\ntwo\n")
+        )]))
     );
 
     let mut context = ToolContext::new();

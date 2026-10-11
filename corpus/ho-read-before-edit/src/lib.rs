@@ -107,16 +107,16 @@ fn remember(
     if !outcome.tool_result().is_success() {
         return;
     }
-    let paths = match request.call.function.name.as_str() {
-        Read::NAME => {
-            published
-                .0
-                .get::<FilesRead>()
-                .ok()
-                .flatten()
-                .unwrap_or_default()
-                .0
-        }
+    let paths: Vec<String> = match request.call.function.name.as_str() {
+        Read::NAME => published
+            .0
+            .get::<FilesRead>()
+            .ok()
+            .flatten()
+            .unwrap_or_default()
+            .paths()
+            .map(str::to_owned)
+            .collect(),
         Edit::NAME | Write::NAME => {
             let changed = published.0.get::<FilesChanged>().ok().flatten();
             changed
