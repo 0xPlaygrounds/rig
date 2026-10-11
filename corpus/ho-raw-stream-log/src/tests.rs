@@ -127,8 +127,10 @@ fn a_call_is_recorded_raw_and_redacted_and_off_records_nothing() {
     let Some((name, text)) = files.first() else {
         return;
     };
+    // Named on the handler the call was served by, `model:<reference>`.
+    let model = rig_core::effect::model_key(&reference);
     assert!(
-        name.ends_with(&format!("-1-{}.jsonl", file_safe(&reference))),
+        name.ends_with(&format!("-1-{}.jsonl", file_safe(model.as_str()))),
         "{name}"
     );
     assert!(!text.contains(KEY), "{text}");

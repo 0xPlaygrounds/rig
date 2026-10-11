@@ -4968,7 +4968,6 @@ dependencies = [
  "bevy_reflect",
  "bevy_tasks",
  "futures",
- "regex",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",

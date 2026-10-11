@@ -11,50 +11,44 @@
 //!
 //! - Every model is reached through a [`Tee`]: the plugin wraps the
 //!   [`Models`] transport once, at build. The tee passes everything on
-//!   unchanged and hands a copy to a writer thread.
-//! - Prepare: each model call admitted while the log is on gets an
-//!   outermost adapter that names the call's file and marks the call's
-//!   handler while it is polled (a thread-local set around each poll), so
-//!   the tee knows which call a send belongs to.
+//!   unchanged and hands a copy of each send of a recorded call (its
+//!   [`Serving`] names the call's effect) to a writer thread.
+//! - Prepare: each model call admitted while the log is on is recorded by
+//!   its effect id, until its entity is gone; a call that supersedes a
+//!   recorded one, such as a retry, shares its file.
 //! - The writer thread redacts secrets ([`rig_core::redact`]), writes the
 //!   lines, keeps the folder under 50 MB (oldest files first) and reports
 //!   back as a stream on an entity: one notice when it first trims, and one
 //!   warning when a write fails, which turns the log off.
 //! - Whether the log is on is a saved resource.
 
-use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
 use std::fs::{File, OpenOptions};
-use std::future::{Future, poll_fn};
+use std::future::Future;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, PoisonError};
 use std::time::Instant;
 
 use async_channel::{Receiver, Sender};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use futures::{FutureExt as _, StreamExt as _, TryStream};
+use futures::StreamExt as _;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, family};
+use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::http_client::{
-    self, BoxedStream, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request, Response,
-    StreamingResponse,
+    self, BoxedStream, Bytes, DynHttpClient, HttpClientExt, LazyBody, MultipartForm, Request,
+    Response, StreamingResponse,
 };
 use rig_harness::rig_core::redact;
-use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_harness::rig_core::serve::Serving;
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
-use rig_harness::rig_ecs::effects::Handler;
 use serde_json::{Value, json};
 
 #[cfg(test)]
 mod tests;
 
-/// `bytes::Bytes`, which `HttpClientExt` is written in but no rig crate
-/// re-exports: named through the streaming body's chunk type.
-type Bytes = <BoxedStream as TryStream>::Ok;
-
-/// The command, the flag and the adapter's name.
+/// The command's and the flag's name.
 const NAME: &str = "rawlog";
 
 /// The most the session's raw folder holds.
@@ -64,8 +58,8 @@ const CAP: u64 = 50 * 1024 * 1024;
 #[derive(Default)]
 pub struct RawStreamLogPlugin;
 
-/// The plugin's stage system, for others to order against: it adapts each
-/// admitted model call.
+/// The plugin's stage system, for others to order against: it records
+/// each admitted model call.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RawLogSystems;
 
@@ -87,31 +81,34 @@ impl Plugin for RawStreamLogPlugin {
             "Record each model call's HTTP traffic in the session's raw/ folder",
         ));
         let flagged = flagged(app.world());
+        let recorded = Recorded::default();
+        let tee = recorded.clone();
         app.world_mut()
             .get_resource_or_init::<Models>()
             .0
-            .wrap_http(|inner| DynHttpClient::new(Tee(inner)));
-        app.insert_resource(RawLog {
-            on: flagged,
-            calls: 0,
-        })
-        .register_type::<RawLog>()
-        .configure_sets(AgentPass, RawLogSystems.in_set(Stage::Prepare))
-        .add_systems(Startup, start_writer)
-        .add_systems(Update, keep_flag.run_if(resource_added::<SessionRestored>))
-        // Its adapter changes no spec, so its place among compaction's
-        // reads of `Adapters` does not matter; `CompactionSystems` would
-        // say so, but rig-compaction is not a dependency of this crate.
-        .add_systems(
-            AgentPass,
-            adapt_model_calls.in_set(RawLogSystems).ambiguous_with_all(),
-        )
-        .add_observer(writer_reported)
-        .add_command(
-            NAME,
-            "Record each model call's HTTP traffic: /rawlog on, off or last",
-            rawlog,
-        );
+            .wrap_http(move |inner| {
+                DynHttpClient::new(Tee {
+                    inner,
+                    recorded: tee.clone(),
+                })
+            });
+        app.insert_resource(recorded)
+            .insert_resource(RawLog {
+                on: flagged,
+                calls: 0,
+            })
+            .register_type::<RawLog>()
+            .configure_sets(AgentPass, RawLogSystems.in_set(Stage::Prepare))
+            .add_systems(Startup, start_writer)
+            .add_systems(Update, keep_flag.run_if(resource_added::<SessionRestored>))
+            .add_systems(AgentPass, record_model_calls.in_set(RawLogSystems))
+            .add_observer(forget_call)
+            .add_observer(writer_reported)
+            .add_command(
+                NAME,
+                "Record each model call's HTTP traffic: /rawlog on, off or last",
+                rawlog,
+            );
     }
 }
 
@@ -233,7 +230,7 @@ fn writer_reported(
 }
 
 /// A recorded model call and the calls that retry it: their file, named
-/// on the first attempt's model, and how many sends went into it.
+/// on the first send's model, and how many sends went into it.
 struct Record {
     stem: String,
     name: OnceLock<String>,
@@ -241,29 +238,41 @@ struct Record {
     lines: Sender<Line>,
 }
 
-/// The record a model call's sends go to.
+/// The recorded model calls, by effect id: the tee looks each send's
+/// [`Serving`] up here.
+#[derive(Resource, Clone, Default)]
+struct Recorded(Arc<Mutex<HashMap<EffectId, Arc<Record>>>>);
+
+impl Recorded {
+    fn lock(&self) -> MutexGuard<'_, HashMap<EffectId, Arc<Record>>> {
+        self.0.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+}
+
+/// The record of a model call, kept while the call's entity lives.
 #[derive(Component, Clone)]
 struct RawFile(Arc<Record>);
 
-/// Adapts each model call admitted while the log is on; a call that
+/// Records each model call admitted while the log is on; a call that
 /// supersedes a recorded one keeps its record.
-fn adapt_model_calls(
-    mut calls: Query<
-        (Entity, &mut Adapters, Option<&CallOf>, Option<&Supersedes>),
-        Added<Admitted>,
+fn record_model_calls(
+    calls: Query<
+        (Entity, &Effect, Option<&CallOf>, Option<&Supersedes>),
+        (Added<Admitted>, ModelCalls),
     >,
-    recorded: Query<&RawFile>,
+    files: Query<&RawFile>,
     turns: Query<&Turn>,
     writer: Option<Res<Writer>>,
+    recorded: Res<Recorded>,
     mut log: ResMut<RawLog>,
     mut commands: Commands,
 ) {
     let Some(writer) = writer.filter(|_| log.on) else {
         return;
     };
-    for (call, mut adapters, of, supersedes) in &mut calls {
-        let earlier = supersedes.and_then(|&Supersedes(earlier)| recorded.get(earlier).ok());
-        let raw = match earlier {
+    for (call, effect, of, supersedes) in &calls {
+        let earlier = supersedes.and_then(|&Supersedes(earlier)| files.get(earlier).ok());
+        let file = match earlier {
             Some(earlier) => earlier.clone(),
             None => {
                 log.calls += 1;
@@ -276,27 +285,16 @@ fn adapt_model_calls(
                 }))
             }
         };
-        adapters.0.push(scope(raw.0.clone()).outermost());
-        commands.entity(call).insert(raw);
+        recorded.lock().insert(effect.id(), file.0.clone());
+        commands.entity(call).insert(file);
     }
 }
 
-/// The adapter that names the call's file on the model it finally goes to
-/// and marks its handler with the record: outermost, so the sends of every
-/// other adapter happen inside the mark.
-fn scope(record: Arc<Record>) -> Adapter {
-    Adapter::new(NAME, move |mut connection: Connection| {
-        let model = file_safe(&connection.spec.reference());
-        record
-            .name
-            .get_or_init(|| format!("{}-{model}.jsonl", record.stem));
-        let scoped = Scoped {
-            inner: connection.handler.0.clone(),
-            record: record.clone(),
-        };
-        connection.handler = Handler(ErasedHandler::new(scoped));
-        connection
-    })
+/// A recorded call's entity is gone: its sends are over.
+fn forget_call(gone: On<Remove<RawFile>>, effects: Query<&Effect>, recorded: Res<Recorded>) {
+    if let Ok(effect) = effects.get(gone.entity) {
+        recorded.lock().remove(&effect.id());
+    }
 }
 
 /// `text` as a part of a file name.
@@ -305,47 +303,6 @@ fn file_safe(text: &str) -> String {
     text.chars()
         .map(|c| if safe(c) { c } else { '_' })
         .collect()
-}
-
-thread_local! {
-    /// The record of the call whose handler this thread is polling.
-    static POLLING: RefCell<Option<Arc<Record>>> = const { RefCell::new(None) };
-}
-
-/// `poll`, run with `record` as the call being polled.
-fn polling<R>(record: &Arc<Record>, poll: impl FnOnce() -> R) -> R {
-    let outer = POLLING.replace(Some(record.clone()));
-    let polled = poll();
-    POLLING.set(outer);
-    polled
-}
-
-/// A model's handler whose future and stream are polled with its call's
-/// record marked: the HTTP sends made inside are that call's.
-struct Scoped {
-    inner: ErasedHandler,
-    record: Arc<Record>,
-}
-
-impl Serve for Scoped {
-    type Family = family::Dynamic;
-
-    /// The model's own: the mark changes nothing a replay would check.
-    fn descriptor(&self) -> HandlerDescriptor {
-        self.inner.descriptor()
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        let record = self.record.clone();
-        let mut handled = self.inner.handle(kind, dispatch);
-        match poll_fn(|cx| polling(&record, || handled.poll_unpin(cx))).await {
-            Reply::Stream(mut events) => Reply::Stream(
-                futures::stream::poll_fn(move |cx| polling(&record, || events.poll_next_unpin(cx)))
-                    .boxed(),
-            ),
-            outcome @ Reply::Outcome(_) => outcome,
-        }
-    }
 }
 
 /// One send's lines, when it belongs to a recorded call.
@@ -361,17 +318,28 @@ struct Sending {
 }
 
 impl Tap {
-    /// Starts recording `request` when the call being polled is recorded.
-    fn begin(request: &Request<Bytes>) -> Self {
-        let Some(record) = POLLING.with_borrow(Clone::clone) else {
+    /// Starts recording `request` when the call it serves is recorded,
+    /// naming the call's file on the first send's model.
+    fn begin(recorded: &Recorded, request: &Request<Bytes>) -> Self {
+        let Some(serving) = request.extensions().get::<Serving>() else {
             return Self(None);
         };
+        let Some(record) = recorded.lock().get(&serving.effect).cloned() else {
+            return Self(None);
+        };
+        let name = record.name.get_or_init(|| {
+            format!(
+                "{}-{}.jsonl",
+                record.stem,
+                file_safe(serving.handler.as_str())
+            )
+        });
         let attempt = record
             .sends
             .fetch_add(1, Ordering::Relaxed)
             .saturating_add(1);
         let sending = Sending {
-            file: record.name.get().unwrap_or(&record.stem).clone(),
+            file: name.clone(),
             attempt,
             started: Instant::now(),
             lines: record.lines.clone(),
@@ -450,7 +418,10 @@ impl Tap {
 }
 
 /// An HTTP client whose sends for recorded calls are copied to the log.
-struct Tee(DynHttpClient);
+struct Tee {
+    inner: DynHttpClient,
+    recorded: Recorded,
+}
 
 impl HttpClientExt for Tee {
     fn send<T, U>(
@@ -462,8 +433,8 @@ impl HttpClientExt for Tee {
         U: From<Bytes> + WasmCompatSend + 'static,
     {
         let req = req.map(Into::into);
-        let tap = Tap::begin(&req);
-        let sent = self.0.send::<Bytes, Bytes>(req);
+        let tap = Tap::begin(&self.recorded, &req);
+        let sent = self.inner.send::<Bytes, Bytes>(req);
         async move {
             let sent = sent.await;
             tap.sent(&sent);
@@ -486,7 +457,7 @@ impl HttpClientExt for Tee {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        self.0.send_multipart(req)
+        self.inner.send_multipart(req)
     }
 
     fn send_streaming<T>(
@@ -497,8 +468,8 @@ impl HttpClientExt for Tee {
         T: Into<Bytes> + WasmCompatSend,
     {
         let req = req.map(Into::into);
-        let tap = Tap::begin(&req);
-        let sent = self.0.send_streaming(req);
+        let tap = Tap::begin(&self.recorded, &req);
+        let sent = self.inner.send_streaming(req);
         async move {
             let sent = sent.await;
             tap.sent(&sent);
