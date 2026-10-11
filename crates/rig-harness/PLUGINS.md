@@ -796,12 +796,12 @@ prompt cache.
   keys, or to send a request that got a 429 again on another key
   (`http_client::Error::non_success_status` and `non_success_headers`
   read the status and `Retry-After`), which no effect then sees fail.
-- **What the model is sent in place of old messages.** An agent's
-  `Condensed { upto, summary }` (a compaction inserts it) makes requests
-  send `summary` in place of the conversation's first `upto` messages,
-  which stay in the `Conversation`. It is immutable: inserting another
-  logs it, so `On<Insert<Condensed>>` sees every condensation, and a
-  restore inserts it before the saved components.
+- **What the model is sent in place of old messages.** A compaction
+  splices its summary into the conversation in place of the messages it
+  summarized (`Commit::splice`), as one user item whose origin is
+  `rig_compaction::summary_origin()`; requests send the conversation as
+  it is. A `Committed::Splice` whose changed messages hold such an item
+  is a compaction.
 - `rig_ecs::prompt::system_prompt` and `tool_rules` put a prompt together
   exactly as the kernel does, such as for a view of what an agent is told.
   `rig_memory::HeuristicTokenCounter` estimates tokens as rig-compaction
@@ -1019,7 +1019,9 @@ fn time_to_first(
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among
 the agent's turns over the whole session (saved with the agent) and its
-`first_message` in the conversation. The kernel makes it `ForAgent` its
+`first_message`, the `MessageId` of the message it begins at
+(`conversation.start_of(turn.first_message)` is its index now, as splices
+move messages). The kernel makes it `ForAgent` its
 agent when it is spawned, so it goes with the agent. It is spawned before
 its first request is built, so an `On<Add<TurnOf>>` observer's edit, such
 as a prompt section's new text, is in that request; once the turn ends it
@@ -1554,16 +1556,20 @@ fn count(
 A generic type is saved only once registered (`app.register_type::<T>()`).
 
 A conversation changes only through `Commit`, so the log records every
-change: `commit.truncate(agent, &mut conversation, len)` cuts it back,
-such as to rewind it, and `commit.retire(agent)` despawns an agent for
-good, so a restart brings back neither it nor the agents it spawned.
+change: `commit.splice(agent, &mut conversation, range, entries)`
+replaces messages after the fact, such as `len - 1..` with nothing to
+rewind, or `conversation.entry(i)` passed back changed to edit one in
+place, and `commit.retire(agent)` despawns an agent for good, so a
+restart brings back neither it nor the agents it spawned. Every message
+has a `MessageId` (`conversation.id(i)`, `index_of(id)`) that a splice
+keeps, so remember messages by id, not by index.
 `rig_ecs::journal::read_session(store)` reads a session's logs, another
-session's too, without restoring or writing anything: each agent's whole
-conversation, summary and saved components. `fork_session(from, to,
-before)` copies a session as of a message, `before` being its agent's id
-and `conversation.seq(index)`: that agent's log up to the message, and
-every other log up to what was logged before it, in the session's order
-of records, not by time.
+session's too, without restoring or writing anything: each agent's
+conversation as it is and its saved components. `fork_session(from, to,
+before)` copies a session as it was when a message was made, `before`
+being its agent's id and the message's id: every log up to the records
+made before that message's first record, in the session's order of
+records, not by time.
 
 # Time
 
@@ -2069,9 +2075,9 @@ by side (a web server beside the terminal view); only the one that takes
 the run owns stdin and stdout.
 
 When the user stops a turn before it answered, `Committed::Halt { agent,
-reason }` says so with `Halt::Stopped` (`rig_ecs::agent::Halt`; `Kept`
-when the message was left for the next turn, such as after its turn
-failed): a front shows a stopped request from that, never by reading
+reason }` says so with `Some(Halt::Stopped)` (`rig_ecs::agent::Halt`;
+`Kept` when the message was left for the next turn, such as after its
+turn failed, and `None` when it was asked for again): a front shows a stopped request from that, never by reading
 text. For the model, the kernel puts the `STOPPED` text between the
 stopped request and the next message that joins it; a view that draws a
 whole conversation, such as a restored one, recognizes that item by the
@@ -2103,7 +2109,10 @@ fn print_messages(mut committed: MessageReader<Committed>) {
             Committed::Message { message, .. } => {
                 println!("{}", serde_json::to_string(message).unwrap_or_default());
             }
-            Committed::Halt { reason: Halt::Stopped, .. } => println!(r#"{{"stopped":true}}"#),
+            Committed::Halt {
+                reason: Some(Halt::Stopped),
+                ..
+            } => println!(r#"{{"stopped":true}}"#),
             _ => {}
         }
     }
