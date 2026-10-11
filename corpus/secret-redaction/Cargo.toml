@@ -16,13 +16,18 @@ bevy_reflect = { workspace = true }
 bevy_log = { workspace = true }
 # The secret patterns.
 regex = { workspace = true }
-# `AttachSystems`, to redact the files a message names once attached.
+# `AttachSystems`, to redact the files a message names once attached, and
+# `CodingToolsSystems`, which sets up the calls whose arguments are revealed.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+# Compaction measures a request once the plugin adapted it.
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

@@ -178,3 +178,8 @@ fn a_secret_read_goes_out_as_a_placeholder_and_is_written_back_for_real() {
     assert!(!seen.session.contains("ghp_"), "{}", seen.session);
     assert!(!seen.session.contains("hunter2"), "{}", seen.session);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SecretRedactionPlugin);
+}

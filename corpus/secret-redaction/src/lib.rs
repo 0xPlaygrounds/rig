@@ -21,11 +21,12 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use bevy_log::warn;
 use regex::{Captures, Regex};
-use rig_coding_tools::AttachSystems;
+use rig_coding_tools::{AttachSystems, CodingToolsSystems};
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
-use rig_harness::rig_core::serve::{Decision, Intercept, Verdict as Answer};
+use rig_harness::rig_core::serve::{self, Intercept, Verdict as Answer};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::{StopTurns, WriteJournal};
@@ -49,7 +50,9 @@ pub struct SecretRedactionPlugin;
 /// The plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RedactionSystems {
-    /// Redacts messages, adapts model calls, reveals tool arguments.
+    /// Redacts messages, adapts model calls, reveals tool arguments; after
+    /// [`AttachSystems`] and [`CodingToolsSystems`], before
+    /// [`CompactionSystems::Prepare`].
     Prepare,
     /// Refuses a tool call naming an unknown placeholder.
     Gate,
@@ -75,7 +78,14 @@ impl Plugin for SecretRedactionPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    Set::Prepare.in_set(Stage::Prepare),
+                    // After the files a message names are attached and the
+                    // coding tools' calls are set up, before compaction
+                    // measures the adapted request.
+                    Set::Prepare
+                        .in_set(Stage::Prepare)
+                        .after(AttachSystems)
+                        .after(CodingToolsSystems)
+                        .before(CompactionSystems::Prepare),
                     Set::Gate.in_set(Stage::Gate),
                     Set::Review.in_set(Stage::Review),
                 ),
@@ -86,12 +96,7 @@ impl Plugin for SecretRedactionPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (
-                        redact_messages.after(AttachSystems),
-                        adapt_model_calls,
-                        reveal_placeholders,
-                    )
-                        .in_set(Set::Prepare),
+                    (redact_messages, adapt_model_calls, reveal_placeholders).in_set(Set::Prepare),
                     refuse_forgotten.in_set(Set::Gate),
                     redact_results.in_set(Set::Review),
                 ),
@@ -304,7 +309,10 @@ fn learn_env_vars(settings: Res<RedactionSettings>, secrets: Res<Secrets>) {
 
 /// Every message goes to its agent with placeholders, text and attached
 /// files, but a slash command, which never reaches the model.
-fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>, secrets: Res<Secrets>) {
+fn redact_messages(
+    mut messages: Query<&mut Incoming, (Added<Admitted>, IncomingMessages)>,
+    secrets: Res<Secrets>,
+) {
     for mut message in &mut messages {
         if message.command().is_some() {
             continue;
@@ -321,26 +329,33 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>, secrets:
 }
 
 /// Every model call, whichever model it goes to, is sent with placeholders
-/// and streams its reply with them.
-fn adapt_model_calls(mut calls: Query<&mut Adapters, Added<Admitted>>, secrets: Res<Secrets>) {
+/// and streams its reply with them. The adapter is outermost, so every
+/// other adapter sees the request with placeholders, and what any of them
+/// streams is redacted.
+fn adapt_model_calls(
+    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    secrets: Res<Secrets>,
+) {
     for mut adapters in &mut calls {
         let secrets = secrets.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                let secrets = secrets.clone();
-                let sent = connection.handler.0.layered(RedactRequest(secrets.clone()));
-                let streamed = sent.map_stream(NAME, move |_| redact_stream(secrets.clone()));
-                connection.handler = Handler(streamed);
-                connection
-            }));
+        let adapter = Adapter::new(NAME, move |mut connection: Connection| {
+            let secrets = secrets.clone();
+            let sent = connection.handler.0.layered(RedactRequest(secrets.clone()));
+            let streamed = sent.map_stream(NAME, move |_| redact_stream(secrets.clone()));
+            connection.handler = Handler(streamed);
+            connection
+        });
+        adapters.0.push(adapter.outermost());
     }
 }
 
 /// Every tool call runs with the secrets its placeholders name. The
 /// conversation keeps the call as the model sent it, and its record is
 /// redacted again before it is written.
-fn reveal_placeholders(mut calls: Query<&mut ToolRequest, Added<Admitted>>, secrets: Res<Secrets>) {
+fn reveal_placeholders(
+    mut calls: Query<&mut ToolRequest, (Added<Admitted>, ToolCalls)>,
+    secrets: Res<Secrets>,
+) {
     for mut call in &mut calls {
         let mut args = Value::Object(call.call.function.arguments.clone());
         let vault = secrets.vault();
@@ -354,8 +369,8 @@ fn reveal_placeholders(mut calls: Query<&mut ToolRequest, Added<Admitted>>, secr
 
 /// A tool call that still names a placeholder names one this run does not
 /// know, such as one from before a restart: it is refused.
-fn refuse_forgotten(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
-    for (call, request) in &calls {
+fn refuse_forgotten(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+    for (request, mut decision) in &mut calls {
         let args = Value::Object(request.call.function.arguments.clone()).to_string();
         let unknown = PLACEHOLDER.as_ref().and_then(|pattern| pattern.find(&args));
         if let Some(unknown) = unknown {
@@ -364,7 +379,7 @@ fn refuse_forgotten(calls: Query<(Entity, &ToolRequest), Undecided>, mut command
                  forgotten when the agent restarts. Nothing ran; ask the user for the value again.",
                 unknown.as_str()
             );
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
         }
     }
 }
@@ -377,18 +392,21 @@ struct Redacted;
 /// Every tool result reaches the conversation, the session log and the
 /// views with placeholders.
 fn redact_results(
-    answered: Query<(Entity, &Outcome, &ToolRequest), (Unreviewed, Without<Redacted>)>,
+    mut answered: Query<
+        (Entity, &mut Outcome, &ToolRequest),
+        (Unreviewed, ToolCalls, Without<Redacted>),
+    >,
     secrets: Res<Secrets>,
     mut commands: Commands,
 ) {
-    for (call, outcome, request) in &answered {
+    for (call, mut outcome, request) in &mut answered {
         let source = format!("the result of `{}`", request.call.function.name.as_str());
         let mut redacted = outcome.0.clone();
-        let mut done = commands.entity(call);
         if secrets.redact_data(&mut redacted, &source) {
-            done.insert(Outcome(redacted));
+            outcome.0 = redacted;
         }
-        done.insert(Redacted);
+        // Once: Review sees the outcome each pass until it settles.
+        commands.entity(call).insert(Redacted);
     }
 }
 
@@ -423,11 +441,15 @@ impl Intercept for RedactRequest {
         NAME.to_owned()
     }
 
-    fn before(&self, _: EffectId, kind: &EffectKind) -> impl Future<Output = Decision> + Send {
+    fn before(
+        &self,
+        _: EffectId,
+        kind: &EffectKind,
+    ) -> impl Future<Output = serve::Decision> + Send {
         let mut kind = kind.clone();
         ready(match self.0.redact_data(&mut kind, "a model request") {
-            true => Decision::Patch(kind),
-            false => Decision::Proceed,
+            true => serve::Decision::Patch(kind),
+            false => serve::Decision::Proceed,
         })
     }
 
