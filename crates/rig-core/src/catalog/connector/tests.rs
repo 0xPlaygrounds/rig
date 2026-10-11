@@ -314,3 +314,23 @@ async fn a_request_says_which_effect_it_serves() {
         Some("ollama")
     );
 }
+
+/// A provider with no key for a model falls back to the sign-ins, as the
+/// environment does; a provider can wrap the one registered before it.
+#[test]
+fn a_provider_without_a_key_falls_back_to_a_sign_in() {
+    let mut connector = Connector::default();
+    connector.add_sign_in(Signed);
+    let vendor = ProviderId::catalog(SIGNED_IN).expect("a known vendor");
+    // No key passed, and none in the environment.
+    connector.provide(vendor, ConnectOptions::new());
+    let first = connector.provider(vendor).expect("registered");
+    connector.provide(
+        vendor,
+        move |spec: &ModelSpec, catalog: &Catalog, transport: &Transport| {
+            first.handler(spec, catalog, transport)
+        },
+    );
+    let reference = model_of(&connector, SIGNED_IN);
+    assert!(connector.connect(&reference).is_ok());
+}

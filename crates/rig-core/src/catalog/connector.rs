@@ -15,9 +15,10 @@ use crate::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
 
-/// A way to reach catalog models the environment has no key for, such as
-/// a subscription plan signed in to. A [`Connector`] asks it for a model
-/// only when the environment has no key for the model's provider.
+/// A way to reach catalog models no key is set for, such as a
+/// subscription plan signed in to. A [`Connector`] asks it for a model only
+/// when the provider registered for the model's vendor, else the
+/// environment, has no key for it.
 pub trait SignIn: Send + Sync + 'static {
     /// The handler serving `spec` with the signed-in credential, or `None`
     /// when this sign-in does not serve `spec` now. A handler that sends
@@ -227,8 +228,11 @@ impl Connector {
     }
 
     /// Reaches every model of `vendor` (any of its protocol families)
-    /// through `provider`, before the environment and the sign-ins. A later
-    /// provider for the same vendor replaces this one.
+    /// through `provider`, before the environment. A model the provider
+    /// has no key for ([`ConnectError::MissingKey`]) falls back to the
+    /// sign-ins, as one the environment has no key for does. A later
+    /// provider for the same vendor replaces this one: to wrap it instead,
+    /// take it first with [`Self::provider`].
     ///
     /// ```
     /// use rig_core::catalog::{Catalog, Connector, ModelSpec};
@@ -252,6 +256,13 @@ impl Connector {
         self.providers.contains_key(vendor.vendor())
     }
 
+    /// The provider registered for `vendor`'s models, if any: what a
+    /// provider that wraps it, such as one that changes the key, delegates
+    /// to.
+    pub fn provider(&self, vendor: ProviderId) -> Option<Arc<dyn Provide>> {
+        self.providers.get(vendor.vendor()).cloned()
+    }
+
     /// The catalog.
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
@@ -270,17 +281,11 @@ impl Connector {
             .find_map(|sign_in| sign_in.handler(spec, &self.transport))
     }
 
-    /// The provider registered for `spec`'s vendor, if any.
-    fn provider(&self, spec: &ModelSpec) -> Option<&Arc<dyn Provide>> {
-        self.providers.get(spec.provider.vendor())
-    }
-
     /// The catalog model `reference` names, as [`Catalog::resolve`] finds
     /// it, and that model as an effect handler: from the provider
     /// registered for its vendor, else its provider's client built from the
     /// environment, on the shared HTTP client of the `reqwest` feature, or,
-    /// without a key in the environment, the handler of a sign-in that
-    /// serves it. The HTTP client is wrapped by [`Self::wrap_http`]'s
+    /// without a key in either, the handler of a sign-in that serves it. The HTTP client is wrapped by [`Self::wrap_http`]'s
     /// wrappers.
     ///
     /// # Errors
@@ -288,7 +293,7 @@ impl Connector {
     /// [`ConnectError::NotFound`] for a model the catalog does not list,
     /// what the registered provider reports, else what
     /// [`Catalog::connect_with`] reports, when no sign-in serves a model
-    /// the environment has no key for.
+    /// the provider or the environment has no key for.
     pub fn connect(
         &self,
         reference: &str,
@@ -300,19 +305,23 @@ impl Connector {
 
     /// The handler serving `spec`, as [`Self::connect`] finds it.
     fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
-        if let Some(provider) = self.provider(spec) {
-            return provider.handler(spec, &self.catalog, &self.transport);
-        }
-        let options = match self.transport.shared() {
-            Some(http) => ConnectOptions::new().http(http),
-            None => ConnectOptions::new(),
+        let connected = match self.providers.get(spec.provider.vendor()) {
+            Some(provider) => provider.handler(spec, &self.catalog, &self.transport),
+            None => {
+                let options = match self.transport.shared() {
+                    Some(http) => ConnectOptions::new().http(http),
+                    None => ConnectOptions::new(),
+                };
+                self.catalog
+                    .connect_with(spec, options)
+                    .map(|model| adapted(spec, model))
+            }
         };
-        match self.catalog.connect_with(spec, options) {
-            Ok(model) => Ok(adapted(spec, model)),
+        match connected {
             Err(error @ ConnectError::MissingKey { .. }) => {
                 self.signed_in(spec).unwrap_or(Err(error))
             }
-            Err(error) => Err(error),
+            other => other,
         }
     }
 
@@ -367,7 +376,7 @@ impl Connector {
             .collect();
         // Stable: catalog order within each group.
         models.sort_by_key(|spec| {
-            self.provider(spec).is_none() && !spec.provider.requires_credential()
+            !self.is_provided(spec.provider) && !spec.provider.requires_credential()
         });
         models
     }
