@@ -1129,6 +1129,10 @@ fn assemble(
     };
     record.reviewed = reviewed;
     record.disposition = disposition;
+    record.turn = world
+        .get::<CallOf>(entity)
+        .and_then(|call| world.get::<Turn>(call.0))
+        .map(|turn| turn.index);
     Some(record)
 }
 

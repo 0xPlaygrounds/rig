@@ -2173,3 +2173,38 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
         })
     );
 }
+
+#[test]
+fn a_turns_calls_are_recorded_with_its_index() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("look", "first")]),
+        answer("one"),
+        reply(&[("look", "second")]),
+        answer("two"),
+    ]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let agent = agent_on(&mut app, &model);
+    let ended_n = |n: usize| move |world: &mut World| world.resource::<Ended>().0.len() == n;
+    assert!(run_until(&mut app, ended_n(1)), "{:?}", notices(&app));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "again", DeliveryMode::Steer));
+    assert!(run_until(&mut app, ended_n(2)), "{:?}", notices(&app));
+    let turns = |completions: bool| {
+        let records = records(&app).into_iter().filter(|record| {
+            completions == matches!(record.kind, EffectKind::Completion { .. })
+                && matches!(
+                    record.kind,
+                    EffectKind::Completion { .. } | EffectKind::ToolCall { .. }
+                )
+        });
+        records.map(|record| record.turn).collect::<Vec<_>>()
+    };
+    assert_eq!(turns(false), [Some(0), Some(1)]);
+    assert_eq!(turns(true), [Some(0), Some(0), Some(1), Some(1)]);
+    // A message is not a turn's call.
+    assert_eq!(
+        message_record(&app, "go").map(|record| record.turn),
+        Some(None)
+    );
+}
