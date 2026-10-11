@@ -14709,6 +14709,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_time",
  "rig-activity",
  "rig-basics",
  "rig-cassette",

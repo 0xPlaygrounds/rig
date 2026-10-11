@@ -14,6 +14,8 @@ doctest = false
 [dependencies]
 # Named by the derive of `Ended`.
 bevy_ecs = { workspace = true }
+# The clock `advance` moves on.
+bevy_time = { workspace = true }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }

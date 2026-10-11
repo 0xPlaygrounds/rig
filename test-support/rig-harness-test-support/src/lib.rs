@@ -1,16 +1,23 @@
-//! What the rig agent's plugin tests build: an app on a session store, a
-//! model answering as the catalog's DeepSeek model, its replies, and a
-//! front that answers questions from a script ([`AnswerAsks`]).
+//! What the rig agent's plugin tests build: an app on a session store or
+//! in a session directory, scripted models as the catalog's DeepSeek model
+//! or under references of their own, their replies, collectors of what the
+//! app wrote, a front that answers questions from a script
+//! ([`AnswerAsks`]) or one at a time ([`answer_open`]), and the clocks
+//! moved on.
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
-use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::Catalog;
+use bevy_time::TimeUpdateStrategy;
+use rig_cassette::journal::{JsonlDirStore, MemoryStore};
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
 use rig_core::effect::EffectId;
 use rig_core::message::{ToolFunction, ToolName};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
@@ -18,6 +25,10 @@ use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_harness::ask::{Answer, Answerer, Ask};
+use rig_harness::clock::WakeAt;
+use rig_harness::harness_protocol::{Home, SessionId};
+use rig_harness::host::session::{SessionPaths, SessionPlugin};
+use rig_harness::services::RigHome;
 use rig_harness::settings::Settings;
 
 /// How long a test waits for its agents.
@@ -35,6 +46,36 @@ pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
         .insert_resource(SessionStore::new(store.clone()))
         .insert_resource(Settings::default());
     (app, wakes)
+}
+
+/// A `RIG_HOME` of the test's own named `name`, beside its binary, emptied.
+pub fn scratch_home(name: &str) -> Home {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let root: PathBuf = exe.with_file_name(name);
+    fs::remove_dir_all(&root).ok();
+    Home::at(root)
+}
+
+/// An app with a task pool on the session `id` of `home`, kept in its
+/// directory by the harness's session service, and its loop's wakes. The
+/// service sends panics to the session's log; a test shows them, so its
+/// failed assertions print.
+pub fn app_in(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
+    let dir = home.session(id);
+    fs::create_dir_all(dir.path()).ok();
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
+        .insert_resource(SessionPaths(dir))
+        .insert_resource(RigHome(home.clone()))
+        .add_plugins(SessionPlugin);
+    drop(std::panic::take_hook());
+    (app, wakes)
+}
+
+/// The app's first agent.
+pub fn first_agent(world: &mut World) -> Option<Entity> {
+    let mut agents = world.query_filtered::<Entity, With<Agent>>();
+    agents.iter(world).next()
 }
 
 /// How each turn ended, in the order they ended, kept by [`log_ended`].
@@ -58,6 +99,113 @@ pub fn connect(model: &MockCompletionModel) -> Option<Connection> {
         spec,
         handler: Handler(ErasedHandler::new(handler)),
     })
+}
+
+/// The catalog with each of `served` as the model its reference names,
+/// `vendor/name`, which calls tools, answered by its scripted model. A
+/// vendor the catalog does not know is declared.
+pub fn scripted_models<'a>(
+    served: impl IntoIterator<Item = (&'a str, &'a MockCompletionModel)>,
+) -> Models {
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    let mut vendors: HashMap<&str, (ProviderId, Vec<(String, MockCompletionModel)>)> =
+        HashMap::new();
+    for (reference, model) in served {
+        let Some((vendor, name)) = reference.split_once('/') else {
+            continue;
+        };
+        let Ok(id) = ProviderId::declare(vendor) else {
+            continue;
+        };
+        connector
+            .catalog_mut()
+            .insert(ModelSpec::new(id, name).with_tools(true));
+        let entry = vendors.entry(vendor).or_insert((id, Vec::new()));
+        entry.1.push((name.to_owned(), model.clone()));
+    }
+    for (id, models) in vendors.into_values() {
+        connector.provide(id, move |spec: &ModelSpec, _: &Catalog| {
+            let model = models.iter().find(|(name, _)| *name == spec.id);
+            let Some((_, model)) = model else {
+                return Err(ConnectError::Provider(format!(
+                    "{} is not scripted",
+                    spec.id
+                )));
+            };
+            let model = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+            Ok(ErasedHandler::new(model))
+        });
+    }
+    Models(connector)
+}
+
+/// Every message `M` the app wrote, in order, kept by [`collect`].
+#[derive(Resource)]
+pub struct Collected<M>(pub Vec<M>);
+
+/// Keeps every message `M` the app writes, such as [`Notice`] or
+/// [`Recorded`], in [`Collected<M>`], read in `Last`.
+pub fn collect<M: Message + Clone>(app: &mut App) -> &mut App {
+    let keep = |mut read: MessageReader<M>, mut kept: ResMut<Collected<M>>| {
+        kept.0.extend(read.read().cloned());
+    };
+    app.insert_resource(Collected::<M>(Vec::new()))
+        .add_systems(Last, keep)
+}
+
+/// The output of each settled tool call by its call id, as the model reads
+/// it, kept by [`log_tool_outputs`].
+#[derive(Resource, Default)]
+pub struct ToolOutputs(pub HashMap<String, String>);
+
+/// Keeps each tool call's output in [`ToolOutputs`]:
+/// `app.init_resource::<ToolOutputs>()` and
+/// `.add_observer(log_tool_outputs)`.
+pub fn log_tool_outputs(
+    settled: On<Add<Settled>>,
+    calls: Query<(&ToolRequest, &Outcome)>,
+    mut outputs: ResMut<ToolOutputs>,
+) {
+    if let Ok((request, outcome)) = calls.get(settled.entity) {
+        let output = outcome.tool_result().output().render();
+        outputs.0.insert(request.call.id.to_string(), output);
+    }
+}
+
+/// Answers the open question titled `title` with `answer`, as a front
+/// would; `false` when no such question is open.
+pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
+    let mut open = world.query_filtered::<(Entity, &Ask), (Without<Outcome>, Without<Settled>)>();
+    let ask = open.iter(world).find(|(_, ask)| ask.title == title);
+    let Some((ask, _)) = ask else {
+        return false;
+    };
+    world.entity_mut(ask).insert(answer.outcome());
+    true
+}
+
+/// Runs one frame of `app` `by` later on Bevy's clock, which timers and
+/// delayed commands run on; frames after it take no time.
+pub fn advance(app: &mut App, by: Duration) {
+    let mut time = app.world_mut().resource_mut::<Time<Virtual>>();
+    let max = time.max_delta().max(by);
+    time.set_max_delta(max);
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
+    app.update();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+}
+
+/// Moves every [`WakeAt`] `by` earlier, as if that much wall-clock time
+/// passed: one that passes is `Due` from the next frame.
+pub fn pass_wall_clock(world: &mut World, by: Duration) {
+    let mut waits = world.query::<(Entity, &WakeAt)>();
+    let earlier: Vec<(Entity, WakeAt)> = waits
+        .iter(world)
+        .map(|(entity, wake)| (entity, WakeAt(wake.0.checked_sub(by).unwrap_or(wake.0))))
+        .collect();
+    for (entity, wake) in earlier {
+        world.entity_mut(entity).insert(wake);
+    }
 }
 
 /// Runs frames of `app`, sleeping until one of its `wakes` between them,
