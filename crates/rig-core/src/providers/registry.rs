@@ -16,6 +16,7 @@
 //! # Ok::<(), rig_core::providers::registry::RefError>(())
 //! ```
 
+use std::borrow::Cow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -257,7 +258,7 @@ fn key_from_env(
     if required {
         return Err(ConnectError::MissingKey {
             vendor: vendor.to_owned(),
-            tried,
+            tried: tried.into_iter().map(Cow::Borrowed).collect(),
         });
     }
     Ok((String::new(), None))
@@ -500,6 +501,11 @@ impl ProviderId {
     /// by whoever declared it.
     pub fn is_registered(&self) -> bool {
         matches!(self.0, Kind::Registered(_))
+    }
+
+    /// Whether this is a vendor declared at run time ([`Self::declare`]).
+    pub fn is_declared(&self) -> bool {
+        matches!(self.0, Kind::Declared(_))
     }
 
     /// Every selection registered for `vendor`, in registration order.
@@ -1280,9 +1286,14 @@ pub enum ConnectError {
     MissingKey {
         /// The vendor.
         vendor: String,
-        /// The variables read, in order.
-        tried: Vec<&'static str>,
+        /// The variables read, in order: built-in names, or names a
+        /// provider reads at run time.
+        tried: Vec<Cow<'static, str>>,
     },
+    /// The provider serving the model failed, in its own words, such as a
+    /// [`Provide`](crate::catalog::Provide) whose gateway is not configured.
+    #[error("{0}")]
+    Provider(String),
     /// A variable the dialect reads is set but unusable.
     #[error(transparent)]
     Env(#[from] EnvError),

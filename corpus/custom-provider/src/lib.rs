@@ -359,7 +359,7 @@ impl Gateway {
         {
             return Err(ConnectError::MissingKey {
                 vendor: self.provider.id.vendor().to_owned(),
-                tried: vec![name],
+                tried: vec![name.into()],
             });
         }
         let http = rig_reqwest::shared().with_middleware(self.clone());

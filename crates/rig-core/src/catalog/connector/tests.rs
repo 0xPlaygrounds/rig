@@ -98,3 +98,36 @@ async fn options_reach_a_builtin_vendor_at_another_address() {
         "{sent:?}"
     );
 }
+
+/// A picker's note: a model that calls no tools, one whose provider has no
+/// key (named at run time), one whose provider fails in its own words, and
+/// one that connects.
+#[test]
+fn status_says_why_a_model_cannot_serve_an_agent() {
+    let corp = ProviderId::declare("connector-status-corp").expect("a valid name");
+    let mut connector = Connector::new(Catalog::default());
+    connector.provide(corp, |spec: &ModelSpec, _catalog: &Catalog| {
+        match spec.id.as_str() {
+            "locked" => Err(ConnectError::MissingKey {
+                vendor: "connector-status-corp".to_owned(),
+                tried: vec![Cow::Owned(format!("{}_KEY", "CORP"))],
+            }),
+            "down" => Err(ConnectError::Provider("the gateway is down".to_owned())),
+            _ => Ok(adapted(spec, MockCompletionModel::text("ok").into())),
+        }
+    });
+    let model = |id: &str| ModelSpec::new(corp, id).with_tools(true);
+    assert_eq!(
+        connector.status(&ModelSpec::new(corp, "open")),
+        ModelStatus::NoTools
+    );
+    assert_eq!(connector.status(&model("open")), ModelStatus::Usable);
+    assert_eq!(
+        connector.status(&model("locked")),
+        ModelStatus::NoKey(vec![Cow::Borrowed("CORP_KEY")])
+    );
+    assert_eq!(
+        connector.status(&model("down")),
+        ModelStatus::Unavailable("the gateway is down".to_owned())
+    );
+}

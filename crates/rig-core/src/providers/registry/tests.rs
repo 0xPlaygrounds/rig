@@ -1125,10 +1125,17 @@ fn a_declared_vendor_is_filed_and_read_back_but_never_configured() {
         (
             corp.format(),
             corp.is_registered(),
+            corp.is_declared(),
             corp.requires_credential()
         ),
-        (None, false, false)
+        (None, false, true, false)
     );
+    for known in ["openai", "candle"] {
+        assert!(
+            !ProviderId::catalog(known).is_some_and(|id| id.is_declared()),
+            "{known}"
+        );
+    }
     assert!(corp.config("key").is_none() && corp.api_key_envs().is_empty());
     assert!(ProviderId::catalog_vendors().any(|vendor| vendor == "registry-test-corp"));
 

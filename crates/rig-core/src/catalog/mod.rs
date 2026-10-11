@@ -40,7 +40,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use crate::providers::registry::{Format, ProviderId};
 use row::Row;
 
-pub use connector::{Connector, SignIn};
+pub use connector::{Connector, ModelStatus, Provide, SignIn};
 pub use facts::ModelFacts;
 pub use lookup::{Matched, NotFound, Resolved};
 pub use read::{OverrideError, OverrideErrorKind, OverrideErrors, SkipReason, Skipped};

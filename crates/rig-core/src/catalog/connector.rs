@@ -2,6 +2,7 @@
 //! their vendor, else with the environment's keys, else through a sign-in,
 //! such as a subscription plan's.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -61,6 +62,20 @@ impl Provide for ConnectOptions {
 /// spec's reference.
 fn adapted(spec: &ModelSpec, model: crate::driver::DynModel<Completion>) -> ErasedHandler {
     ErasedHandler::new(ModelAdapter::<Completion>::new(spec.reference(), model))
+}
+
+/// Whether a [`Connector`] can reach a catalog model for an agent, and why
+/// not, for a picker's note.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ModelStatus {
+    /// It calls tools and connects.
+    Usable,
+    /// It calls tools, but no key is set: the variables read, in order.
+    NoKey(Vec<Cow<'static, str>>),
+    /// It does not call tools, so an agent cannot use it.
+    NoTools,
+    /// It calls tools but does not connect, for this reason.
+    Unavailable(String),
 }
 
 /// The models an application can use and how each is reached: a catalog,
@@ -188,6 +203,32 @@ impl Connector {
         self.sign_ins.iter().find_map(|sign_in| sign_in.plan(spec))
     }
 
+    /// Whether `spec` can serve an agent now, and why not: it must call
+    /// tools and connect as [`Self::connect`] would connect it.
+    ///
+    /// ```
+    /// use rig_core::catalog::{Connector, ModelSpec, ModelStatus};
+    /// use rig_core::providers::registry::ProviderId;
+    ///
+    /// let corp = ProviderId::declare("status-doc-corp")?;
+    /// let connector = Connector::default();
+    /// let chat = ModelSpec::new(corp, "chat");
+    /// assert_eq!(connector.status(&chat), ModelStatus::NoTools);
+    /// let agent = chat.with_tools(true);
+    /// assert!(matches!(connector.status(&agent), ModelStatus::Unavailable(_)));
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    pub fn status(&self, spec: &ModelSpec) -> ModelStatus {
+        if !spec.tools {
+            return ModelStatus::NoTools;
+        }
+        match self.handler(spec) {
+            Ok(_) => ModelStatus::Usable,
+            Err(ConnectError::MissingKey { tried, .. }) => ModelStatus::NoKey(tried),
+            Err(error) => ModelStatus::Unavailable(error.to_string()),
+        }
+    }
+
     /// Catalog models that call tools and can be reached through a
     /// registered provider, the environment or a sign-in: first those of
     /// providers registered, with a key set or signed in, then those of
@@ -203,15 +244,7 @@ impl Connector {
             .filter(|spec| {
                 *usable
                     .entry(spec.provider)
-                    .or_insert_with(|| match self.provider(spec) {
-                        Some(provider) => provider.handler(spec, &self.catalog).is_ok(),
-                        None => {
-                            self.catalog
-                                .connect_with(*spec, ConnectOptions::new())
-                                .is_ok()
-                                || self.signed_in(spec).is_some_and(|handler| handler.is_ok())
-                        }
-                    })
+                    .or_insert_with(|| self.handler(spec).is_ok())
             })
             .collect();
         // Stable: catalog order within each group.
