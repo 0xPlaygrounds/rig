@@ -10,7 +10,11 @@
 //! recorded one at the same place of the same agent; the first difference
 //! stops the replay, or with `--continue-live` is reported and the run goes
 //! on live. With `--speed` each answer settles after its recorded duration
-//! and each user message after its recorded gap.
+//! and each user message after its recorded gap. A model the replay cannot
+//! connect to, such as one whose credentials are gone, is answered from the
+//! record all the same; a replay that ends with recorded model calls not
+//! replayed (a turn failed before its call reached the replay) stops with
+//! why, as at a divergence, and `--replay` then exits with 1.
 //!
 //! `rig --replay=DIR` gives the run to the replay's own front, which keeps
 //! no session: it replays the session kept in `DIR`, prints the report and
@@ -29,9 +33,10 @@ use rig_cassette::effect_log::{
 };
 use rig_cassette::journal::EFFECT_LOG;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::CompletionRequest;
+use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
 use rig_harness::rig_core::effect::{
-    self, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, family,
+    self, EffectId, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
+    family, model_key,
 };
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
@@ -139,7 +144,8 @@ pub enum ReplayStatus {
     Running,
     /// Every user message was replayed.
     Finished,
-    /// Stopped at the first divergence.
+    /// Stopped at the first divergence, or finished with recorded model
+    /// calls not replayed.
     Stopped,
 }
 
@@ -258,6 +264,10 @@ pub struct Replay {
     primary: Option<Entity>,
     /// When the last message was sent: originally, and now.
     last_sent: Option<(u64, Duration)>,
+    /// The model calls the record holds.
+    recorded_models: usize,
+    /// Why the primary agent's last failed turn failed.
+    failed: Option<String>,
     status: ReplayStatus,
 }
 
@@ -285,6 +295,11 @@ impl Replay {
         effects
             .records
             .retain(|record| MessageRecord::read(&record.kind).is_none());
+        let recorded_models = effects
+            .records
+            .iter()
+            .filter(|record| matches!(record.kind, EffectKind::Completion { .. }))
+            .count();
         let answers = Answers {
             record: RecordedAnswers::new(&effects),
             ..Answers::default()
@@ -298,8 +313,40 @@ impl Replay {
             messages,
             primary: None,
             last_sent: None,
+            recorded_models,
+            failed: None,
             status: ReplayStatus::Waiting,
         }
+    }
+
+    /// Why the replay, which found no divergence, is not complete: some
+    /// recorded model calls were never made.
+    fn missed(&self) -> Option<Divergence> {
+        let answers = lock(&self.answers);
+        let made = answers.answered.0;
+        if !answers.divergences.is_empty() || made >= self.recorded_models {
+            return None;
+        }
+        let recorded = self.recorded_models;
+        let mut differences = vec![format!(
+            "{} of the {recorded} recorded model calls were not replayed",
+            recorded - made
+        )];
+        differences.extend(
+            self.failed
+                .iter()
+                .map(|why| format!("a turn failed: {why}")),
+        );
+        let first = self.first.as_deref();
+        Some(Divergence {
+            agent: first.unwrap_or_default().to_owned(),
+            position: answers
+                .positions
+                .get(&self.first)
+                .copied()
+                .unwrap_or_default(),
+            differences,
+        })
     }
 
     /// Where the replay is.
@@ -528,6 +575,7 @@ impl Plugin for SessionReplayPlugin {
             .add_systems(
                 AgentPass,
                 (
+                    stand_in_models.in_set(Stage::Commit),
                     models_from_record.in_set(Stage::Prepare),
                     answer_from_record.in_set(Stage::Gate),
                     keep_recorded_timing
@@ -540,7 +588,8 @@ impl Plugin for SessionReplayPlugin {
     }
 }
 
-/// The replay front: prints the report once the replay is over, and exits.
+/// The replay front: prints the report once the replay is over, and exits,
+/// with 1 when it found a divergence.
 fn report_and_exit(replay: Res<Replay>, mut commands: Commands) {
     if !matches!(
         replay.status,
@@ -557,7 +606,11 @@ fn report_and_exit(replay: Res<Replay>, mut commands: Commands) {
         _ => "finished",
     };
     println!("Replay {how}: {models} model calls and {others} other effects replayed.");
-    commands.trigger(Exit(ExitReason::Quit));
+    let exit = match replay.divergences().is_empty() {
+        true => ExitReason::Quit,
+        false => ExitReason::Failed(1),
+    };
+    commands.trigger(Exit(exit));
 }
 
 /// Pairs the primary agent with the recorded first, and sends the first
@@ -617,7 +670,8 @@ fn pair_spawned(
 }
 
 /// Sends the next user message to `agent`, with its original gap after the
-/// last one when timing is kept; or finishes.
+/// last one when timing is kept; or finishes, stopped when recorded model
+/// calls were not replayed.
 fn send_next(
     replay: &mut Replay,
     agent: Entity,
@@ -626,8 +680,14 @@ fn send_next(
     notices: &mut MessageWriter<Notice>,
 ) {
     let Some(said) = replay.messages.pop_front() else {
-        replay.status = ReplayStatus::Finished;
         let (models, others) = replay.answered();
+        if let Some(missed) = replay.missed() {
+            notices.write(Notice::error(agent, missed.to_string()));
+            lock(&replay.answers).divergences.push(missed);
+            replay.status = ReplayStatus::Stopped;
+            return;
+        }
+        replay.status = ReplayStatus::Finished;
         notices.write(Notice::info(
             agent,
             format!("Replay finished: {models} model calls and {others} other effects replayed."),
@@ -647,6 +707,22 @@ fn send_next(
         commands.trigger(deliver);
     } else {
         commands.delayed().duration(wait).trigger(deliver);
+    }
+}
+
+/// Connects each agent with a turn whose chosen model did not connect, such
+/// as one whose credentials are gone, to that model as one the replay
+/// cannot reach, before Admit builds its call: the request is built as
+/// live, and the record answers it.
+fn stand_in_models(
+    agents: Query<(Entity, &ModelChoice), (With<ActiveTurn>, Without<Connection>)>,
+    models: Res<Models>,
+    mut commands: Commands,
+) {
+    for (agent, choice) in &agents {
+        if let Some(connection) = unreachable(&models, &choice.0) {
+            commands.entity(agent).insert(connection);
+        }
     }
 }
 
@@ -674,6 +750,49 @@ fn models_from_record(
             connection
         });
         call.adapters.insert(0, adapter);
+    }
+}
+
+/// The catalog model `reference` as a model the replay cannot reach: it has
+/// the key a connection to it would have, so the record answers it, and
+/// refuses what goes on live.
+fn unreachable(models: &Models, reference: &str) -> Option<Connection> {
+    let spec = models.0.catalog().resolve(reference).ok()?.shared();
+    let label = spec.reference();
+    let why = format!("{label} is not connected: the replay answers it from the record only");
+    let descriptor = HandlerDescriptor {
+        key: model_key(&label),
+        family: FamilyDescriptor::Completion {
+            model: ModelRef::from(label),
+            capabilities: ProviderCapabilities::default(),
+        },
+        layers: Vec::new(),
+    };
+    let handler = Unreachable { descriptor, why };
+    Some(Connection {
+        spec,
+        handler: Handler(ErasedHandler::new(handler)),
+    })
+}
+
+/// A model the replay cannot reach, and why.
+struct Unreachable {
+    descriptor: HandlerDescriptor,
+    why: String,
+}
+
+impl Serve for Unreachable {
+    type Family = family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.descriptor.clone()
+    }
+
+    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
+        Reply::Outcome(Err(ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            self.why.clone(),
+        )))
     }
 }
 
@@ -763,17 +882,20 @@ fn keep_recorded_timing(
 /// the next user message.
 fn next_message(
     settled: On<Add<Settled>>,
-    turns: Query<&ForAgent, With<TurnOutcome>>,
+    turns: Query<(&ForAgent, &TurnOutcome)>,
     mut replay: ResMut<Replay>,
     time: Res<Time<Real>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(&ForAgent(agent)) = turns.get(settled.entity) else {
+    let Ok((&ForAgent(agent), outcome)) = turns.get(settled.entity) else {
         return;
     };
     if replay.primary != Some(agent) || replay.status != ReplayStatus::Running {
         return;
+    }
+    if let TurnOutcome::Failed(why) = outcome {
+        replay.failed = Some(why.clone());
     }
     if let Some(first) = replay.divergences().first() {
         notices.write(Notice::error(agent, first.to_string()));
