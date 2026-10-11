@@ -13,6 +13,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# Each agent's meter in the terminal view's status line. An app without the
+# terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
@@ -24,4 +30,5 @@ rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }

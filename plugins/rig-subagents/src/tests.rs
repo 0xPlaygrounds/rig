@@ -1,17 +1,14 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_ecs::system::RunSystemOnce;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
-use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::journal::commit_message;
-use rig_ecs::turn::ToolStarter;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, calls, connect, reply, run_until, start_call};
 
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode and its text.
@@ -56,21 +53,8 @@ impl Session {
     /// `agent` calls `tool` with `args` in call `id`, as the model call 1
     /// asked, and gets its output once it has one.
     fn call(&mut self, agent: Entity, tool: &str, id: &str, args: serde_json::Value) -> String {
-        let Ok(name) = ToolName::new(tool) else {
-            return String::new();
-        };
-        let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
-        let started = self.app.world_mut().run_system_once(
-            move |starter: ToolStarter, mut commands: Commands| {
-                let run = starter.run(call.clone(), Some(EffectId::from_raw(1)));
-                let entity = commands.spawn(run.clone()).id();
-                starter.start(&mut commands, entity, agent, &run);
-                entity
-            },
-        );
-        let output = started
-            .ok()
-            .and_then(|call| self.app.world().get::<ToolOutput>(call));
+        let started = start_call(self.app.world_mut(), agent, (tool, id), args);
+        let output = started.and_then(|call| self.app.world().get::<ToolOutput>(call));
         output
             .map(|output| output.0.output().render())
             .unwrap_or_default()
@@ -149,6 +133,16 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
     let asked = format!("{:?}", proposer.requests().first());
     assert!(asked.contains(&session.short(b)), "{asked}");
     assert!(asked.contains("One-word names."), "{asked}");
+    // Its role is a section of its own, not its saved system prompt.
+    assert!(asked.contains("<peer_role>"), "{asked}");
+    let prompts = |agent| {
+        session
+            .app
+            .world()
+            .get::<SystemPrompt>(agent)
+            .map(|p| p.0.clone())
+    };
+    assert_eq!(prompts(a), prompts(session.parent));
     let read = format!("{:?}", parent.requests());
     let header = format!("Output of agent {} \\\"Critique\\\"", session.short(b));
     assert!(read.contains(&header), "{read}");
@@ -209,4 +203,17 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     let mut requests: Vec<&str> = interrupted.map(|(request, ..)| *request).collect();
     requests.sort_unstable();
     assert_eq!(requests, ["ta", "tb", "tc"], "{reports:?}");
+    // The restored subagents have their roles again.
+    let world = session.app.world();
+    let spawned = world.get::<Spawned>(session.parent);
+    let children: Vec<Entity> = spawned
+        .map(|spawned| spawned.iter().collect())
+        .unwrap_or_default();
+    let sections = |child| {
+        world
+            .get::<AgentSections>(child)
+            .map_or(0, |of| of.iter().count())
+    };
+    let roles: Vec<usize> = children.into_iter().map(sections).collect();
+    assert_eq!(roles, [2, 2, 2]);
 }

@@ -17,6 +17,7 @@ workspace = true
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
 crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 # Path completion in the input, as git ignores it.
@@ -30,18 +31,8 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
-# What the agents do, which the view adds unless it is there.
-rig-activity = { path = "../rig-activity" }
-# The session's title and cost in the status line.
-rig-sessions = { path = "../rig-sessions" }
-rig-telemetry = { path = "../rig-telemetry" }
 serde_json = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.
 libc = { workspace = true }
-
-[dev-dependencies]
-# The commands the input tests run.
-rig-basics = { path = "../rig-basics" }
-rig-models = { path = "../rig-models" }

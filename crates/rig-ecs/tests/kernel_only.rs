@@ -16,12 +16,12 @@ use rig_cassette::effect_log::EffectLogRecorder;
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
-use rig_core::completion::{Message, Reasoning};
+use rig_core::completion::{Message, Reasoning, ToolDefinition};
 use rig_core::effect::{EffectId, HandlerKey, tool_key};
-use rig_core::message::UserContent;
+use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
+use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::{Effects, Handler};
@@ -104,8 +104,8 @@ fn a_turn_ended(world: &mut World) -> bool {
     !world.resource::<Ended>().0.is_empty()
 }
 
-/// An agent of `app` on `model`, as the built-in catalog's DeepSeek model.
-fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
+/// `model` as the built-in catalog's DeepSeek model.
+fn connection(model: &MockCompletionModel) -> Option<Connection> {
     let spec = Catalog::builtin()
         .resolve("deepseek/deepseek-flash")
         .ok()?
@@ -114,22 +114,23 @@ fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
         spec.reference(),
         model.clone(),
     ));
-    let connection = Connection {
+    Some(Connection {
         spec,
         handler: Handler(handler),
-    };
+    })
+}
+
+/// An agent of `app` on `model`.
+fn connected(app: &mut App, model: &MockCompletionModel) -> Option<Entity> {
+    let connection = connection(model)?;
     Some(app.world_mut().spawn((Agent, connection)).id())
 }
 
 fn ask(app: &mut App, agent: Entity) {
     // The first frame restores the (empty) session and starts the journal.
     app.update();
-    app.world_mut().trigger(Deliver::user(
-        agent,
-        "What is 2 + 3?",
-        DeliveryMode::Steer,
-        Vec::new(),
-    ));
+    app.world_mut()
+        .trigger(Deliver::new(agent, "What is 2 + 3?", DeliveryMode::Steer));
 }
 
 fn messages(app: &App, agent: Entity) -> Vec<Message> {
@@ -353,4 +354,222 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
         app.world().resource::<Ended>().0
     );
     assert_eq!(model.request_count(), 1, "the call was not sent again");
+}
+
+/// A plugin's task of its own output type ends as a `Done` with no system
+/// of the plugin's; one still running when the app exits is cancelled.
+#[test]
+fn a_plugin_task_ends_as_done_and_the_exit_cancels_it() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let pool = bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let wake = app.world().resource::<Wake>().clone();
+    let world = app.world_mut();
+    let done = world
+        .spawn(Running::spawn(pool, &wake, async { 7_u8 }))
+        .id();
+    let stuck = world
+        .spawn(Running::spawn(pool, &wake, std::future::pending::<u8>()))
+        .id();
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Done<u8>>(done).is_some()
+    });
+    assert_eq!(
+        app.world().get::<Done<u8>>(done).map(|done| done.0),
+        Some(7)
+    );
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    assert!(app.world().get::<Running>(stuck).is_none());
+}
+
+/// The entity of the registered tool, command or prompt section that
+/// `is` picks.
+fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> {
+    let mut found = app.world_mut().query::<(Entity, &D)>();
+    let found = found.iter(app.world()).find(|(_, data)| is(data));
+    found.map(|(entity, _)| entity)
+}
+
+/// What another plugin added is turned off by inserting Bevy's
+/// `Disabled` on its entity, which frees its name: a tool, a command and
+/// a prompt section give way to their replacements, the tool one
+/// registered while the app runs, as an MCP plugin would.
+#[test]
+fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let (old, new) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
+    let say = |text: &'static str| {
+        move |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+            notices.write(Notice::info(args.agent, text));
+        }
+    };
+    app.add_tool(Add(old.clone()))
+        .add_command("hi", "Says hi", say("old"));
+    app.world_mut()
+        .spawn(PromptSection::new(200, "rules", "the old rules"));
+    let picked = [
+        find::<ToolDef>(&mut app, |def| def.0.name.as_str() == "add"),
+        find::<Name>(&mut app, |name| name.as_str() == "/hi"),
+        find::<PromptSection>(&mut app, |section| section.tag == "rules"),
+    ];
+    for entity in picked.into_iter().flatten() {
+        app.world_mut().entity_mut(entity).insert(Disabled);
+    }
+    let (tool, name) = (Add(new.clone()), ToolName::new(<Add as PortableTool>::NAME));
+    assert!(name.is_ok());
+    let Ok(name) = name else { return };
+    let schema = PortableTool::parameters(&tool);
+    let definition = ToolDefinition::new(name, PortableTool::description(&tool), schema);
+    let handler = ErasedHandler::new(ToolAdapter::new(tool));
+    // From a system: `commands.queue(move |world: &mut World| { .. })`.
+    let world = app.world_mut();
+    world.spawn_tool(definition, handler, ToolOptions::default());
+    app.add_command("hi", "Says hi", say("new"));
+    app.world_mut()
+        .spawn(PromptSection::new(200, "rules", "the new rules"));
+    let add = MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 }));
+    let end = MockStreamEvent::final_response_with_default_usage;
+    let model = MockCompletionModel::from_stream_turns([
+        vec![add, end()],
+        vec![MockStreamEvent::text("5"), end()],
+    ]);
+    let agent = connected(&mut app, &model);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    let calls = (old.load(Ordering::Relaxed), new.load(Ordering::Relaxed));
+    assert_eq!(calls, (0, 1));
+    let prompt = model
+        .requests()
+        .first()
+        .and_then(|request| request.system_instructions().map(str::to_owned));
+    let prompt = prompt.unwrap_or_default();
+    assert!(
+        prompt.contains("the new rules") && !prompt.contains("the old rules"),
+        "{prompt}"
+    );
+    app.world_mut().trigger(RunCommand {
+        entity: agent,
+        line: "hi".to_owned(),
+    });
+    app.world_mut().flush();
+    let notices = app.world().resource::<Messages<Notice>>();
+    let said: Vec<&str> = notices
+        .iter_current_update_messages()
+        .map(|n| n.text.as_str())
+        .collect();
+    assert_eq!(said, ["new"]);
+}
+
+/// A `PrepareRequest` observer changes the system prompt, the tools and
+/// the options, the rules of a tool it drops leave the prompt, and a
+/// `Connection` on the turn sends the request to another model than the
+/// agent's.
+#[test]
+fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
+    let (mut app, wakes) = kernel(&MemoryStore::default());
+    let rules = ToolOptions {
+        rules: &["Use `add` for sums."],
+        ..ToolOptions::default()
+    };
+    app.add_tool_with(Add(Arc::default()), rules);
+    let answer = || {
+        vec![
+            MockStreamEvent::text("5"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]
+    };
+    let (own, routed) = (
+        MockCompletionModel::from_stream_turns([answer()]),
+        MockCompletionModel::from_stream_turns([answer()]),
+    );
+    let route = connection(&routed);
+    app.add_observer(
+        move |turn: On<bevy_ecs::lifecycle::Add<TurnOf>>, mut commands: Commands| {
+            if let Some(route) = route.clone() {
+                commands.entity(turn.entity).insert(route);
+            }
+        },
+    )
+    .add_observer(|mut prepare: On<PrepareRequest>| {
+        prepare.preamble.push_str("\n\nPlan only.");
+        prepare.tools.clear();
+        prepare.options.seed = Some(7);
+    });
+    let agent = connected(&mut app, &own);
+    assert!(agent.is_some(), "the built-in catalog lists the model");
+    let Some(agent) = agent else { return };
+    ask(&mut app, agent);
+    run_until(&mut app, &wakes, a_turn_ended);
+    assert_eq!((own.request_count(), routed.request_count()), (0, 1));
+    let sent = routed.requests();
+    let sent = sent.first();
+    let prompt = sent.and_then(|request| request.system_instructions());
+    assert!(
+        prompt.is_some_and(|prompt| prompt.ends_with("Plan only.") && !prompt.contains("`add`")),
+        "{prompt:?}"
+    );
+    assert!(
+        sent.is_some_and(|request| request.tools.is_empty() && request.options.seed == Some(7))
+    );
+}
+
+/// The command lines `/echo` ran with.
+#[derive(Resource, Default)]
+struct Echoed(Vec<String>);
+
+#[test]
+fn observers_edit_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
+    let (mut app, _) = kernel(&MemoryStore::default());
+    app.init_resource::<Echoed>()
+        .add_command(
+            "echo",
+            "Echoes",
+            |In(args): In<CommandArgs>, mut echoed: ResMut<Echoed>| echoed.0.push(args.args),
+        )
+        .add_observer(|mut typed: On<Deliver>| {
+            if typed.origin.kind != OriginKind::User {
+                return;
+            }
+            if typed.text == "hi" {
+                typed.text = "/echo hello".to_owned();
+            }
+            // Taken over: nothing is sent.
+            if typed.text.starts_with('!') {
+                typed.text.clear();
+            }
+        });
+    let agent = app.world_mut().spawn(Agent).id();
+    app.update();
+    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
+    for typed in [
+        note("hi"),
+        note("!ls"),
+        note("/echo typed"),
+        note("/echo sent").literal(),
+        note("/echo reported").with_origin(Origin::plugin("p")),
+    ] {
+        app.world_mut().trigger(typed);
+    }
+    app.update();
+    assert_eq!(app.world().resource::<Echoed>().0, ["hello", "typed"]);
+    let sent: Vec<String> = messages(&app, agent)
+        .iter()
+        .flat_map(|message| match message {
+            Message::User { content } => content.to_vec(),
+            _ => Vec::new(),
+        })
+        .filter_map(|content| match content {
+            UserContent::Text(text) => Some(text.text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        sent,
+        [
+            "/echo sent",
+            "[Output of plugin p, not the user's words]\n/echo reported"
+        ]
+    );
 }

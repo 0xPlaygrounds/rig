@@ -26,7 +26,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
 use bevy_reflect::serde::TypedReflectDeserializer;
-use bevy_reflect::{ReflectFromReflect, TypeRegistry};
+use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
 use rig_cassette::journal::{JournalStore, load_images};
 use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::Deserialize;
@@ -35,7 +35,8 @@ use serde_json::Value;
 
 use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
 use super::journal::{
-    AgentLog, Commit, Header, Line, Record, ReflectSaved, SessionLog, SessionStore,
+    AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
+    SessionStore,
 };
 use super::turn::{CallModel, ToolStarter};
 
@@ -85,7 +86,7 @@ pub struct Restored {
 
 /// Spawns the agents of the session's logs, with their conversations,
 /// condensed summaries and saved components, links each agent to the agent that
-/// spawned it, and starts logging. Anything that does not load is skipped
+/// spawned it, restores the saved resources, and starts logging. Anything that does not load is skipped
 /// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
     let (Some(log), Some(SessionStore(store))) = (
@@ -114,6 +115,7 @@ pub(crate) fn restore_session(world: &mut World) {
     let mut entities = HashMap::new();
     let mut links = Vec::new();
     let mut logs = Vec::new();
+    let mut session = None;
     for agent in folded {
         let Folded {
             header,
@@ -121,13 +123,30 @@ pub(crate) fn restore_session(world: &mut World) {
             condensed,
             log,
         } = agent;
+        if header.agent == SESSION {
+            for (path, value) in &log.components {
+                let restored = saved(path, value, &registry).and_then(|(component, value)| {
+                    let mut resource = resource_entity(world, component)?;
+                    component.insert(&mut resource, value.as_partial_reflect(), &registry);
+                    Ok(())
+                });
+                if let Err(failure) = restored {
+                    notices.push(format!("Skipped saved resource `{path}`: {failure}."));
+                }
+            }
+            session = Some((header.agent, log));
+            continue;
+        }
         let id = AgentId(header.agent.clone());
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
         if let Some(condensed) = condensed {
             spawned.insert(condensed);
         }
         for (path, value) in &log.components {
-            if let Err(failure) = insert_saved(&mut spawned, path, value, &registry) {
+            let restored = saved(path, value, &registry).map(|(component, value)| {
+                component.insert(&mut spawned, value.as_partial_reflect(), &registry);
+            });
+            if let Err(failure) = restored {
                 notices.push(format!("Skipped saved component `{path}`: {failure}."));
             }
         }
@@ -156,21 +175,22 @@ pub(crate) fn restore_session(world: &mut World) {
         .collect();
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
-    log.resume(logs.into_iter().map(|(_, id, log)| (id, log)).collect());
+    let logs = logs.into_iter().map(|(_, id, log)| (id, log));
+    log.resume(store, logs.chain(session).collect());
     world.insert_resource(RestoredAgents(restored));
+    world.insert_resource(SessionRestored);
     for notice in notices {
         world.write_message(Notice::error(None, notice));
     }
 }
 
-/// Inserts on `agent` the saved component of the type path `path` from its
-/// logged `value`, in place of an immutable one too.
-fn insert_saved(
-    agent: &mut EntityWorldMut,
+/// The saved component of the type path `path` from its logged `value`,
+/// with the reflection that inserts it, in place of an immutable one too.
+fn saved<'r>(
     path: &str,
     value: &Value,
-    registry: &TypeRegistry,
-) -> Result<(), String> {
+    registry: &'r TypeRegistry,
+) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
     let registration = registry
         .get_with_type_path(path)
         .filter(|registration| registration.data::<ReflectSaved>().is_some())
@@ -184,8 +204,23 @@ fn insert_saved(
         .data::<ReflectFromReflect>()
         .and_then(|from| from.from_reflect(&*reflected))
         .ok_or("its saved value no longer fits")?;
-    component.insert(agent, value.as_partial_reflect(), registry);
-    Ok(())
+    Ok((component, value))
+}
+
+/// The entity of the resource `component` reflects: the one its plugin
+/// inserted, else a new one, which the resource's insert makes its own.
+fn resource_entity<'w>(
+    world: &'w mut World,
+    component: &ReflectComponent,
+) -> Result<EntityWorldMut<'w>, String> {
+    let id = component.register_component(world);
+    let entity = match world.resource_entities().get(id) {
+        Some(entity) => entity,
+        None => world.spawn_empty().id(),
+    };
+    world
+        .get_entity_mut(entity)
+        .map_err(|failure| failure.to_string())
 }
 
 /// Reads and folds the log of `agent` in `store`, cutting off a torn last
@@ -376,10 +411,10 @@ fn settle(
         return;
     }
     if !reruns.is_empty() {
-        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        let turn = commands.spawn(TurnOf(agent)).id();
         starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
     } else if conversation.awaits_model() {
-        let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+        let turn = commands.spawn(TurnOf(agent)).id();
         commands.trigger(CallModel { entity: turn });
     }
 }

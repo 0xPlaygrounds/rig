@@ -12,6 +12,7 @@ use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
 use super::model::Effort;
 use super::tools::Footprint;
+use super::turn::NO_MODEL;
 use super::turn::Recovery;
 
 /// Marks an agent. Spawning it adds every per-agent component with its
@@ -50,6 +51,17 @@ impl AgentId {
     pub fn short(&self) -> &str {
         self.0.get(..8).unwrap_or(&self.0)
     }
+
+    /// The agent among `agents` whose id this is, such as in a
+    /// `Query<(Entity, &AgentId)>`: ids name agents across a restart, where
+    /// entities do not, as in an [`Origin`]'s `from`.
+    pub fn find_in<'a>(
+        &self,
+        agents: impl IntoIterator<Item = (Entity, &'a Self)>,
+    ) -> Option<Entity> {
+        let mut agents = agents.into_iter();
+        agents.find_map(|(agent, id)| (id == self).then_some(agent))
+    }
 }
 
 /// The agent that spawned this one, such as the agent whose tool call
@@ -71,7 +83,9 @@ pub struct Spawned(Vec<Entity>);
 /// tool call that asked it for the work it does now, so the effect log
 /// nests that work under the call. An agent without one records its model
 /// calls at the top level. Not saved: effect ids do not outlive a run.
-#[derive(Component, Clone, Copy, Debug)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct EffectParent(pub EffectId);
 
 /// The conversation: every message sent to and received from the model,
@@ -281,7 +295,7 @@ pub struct SystemPrompt(pub String);
 
 impl From<SystemPrompt> for Option<String> {
     fn from(prompt: SystemPrompt) -> Self {
-        (prompt.0 != SystemPrompt::default().0).then_some(prompt.0)
+        (prompt.0 != DEFAULT_SYSTEM_PROMPT).then_some(prompt.0)
     }
 }
 
@@ -291,28 +305,29 @@ impl From<Option<String>> for SystemPrompt {
     }
 }
 
+/// An agent's [`SystemPrompt`] unless it is given another.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
+    user's project from their terminal: \
+    you read and search code, edit files and run commands with the tools you are \
+    given, and answer questions about the code.\n\
+    \n\
+    - Work in the working directory named below, unless the user says otherwise.\n\
+    - Read a file before you edit it. Change what was asked, in the style of the \
+    code around it, and nothing else.\n\
+    - After a change, check it when you can: build it, run the tests, or run the \
+    code.\n\
+    - When something fails, read the error and fix the cause. Ask the user when the \
+    request is unclear or you are blocked, rather than guess.\n\
+    - Do not undo changes you did not make, and do not run commands that delete \
+    work, rewrite history or reach outside the project unless the user asked.\n\
+    - Keep answers short. Say what you changed and what is left, and name files by \
+    their path.\n\
+    - Give that answer once, at the end of the turn: no running commentary or \
+    interim summaries between tool calls.";
+
 impl Default for SystemPrompt {
     fn default() -> Self {
-        Self(
-            "You are rig, a coding agent. You work in the user's project from their terminal: \
-             you read and search code, edit files and run commands with the tools you are \
-             given, and answer questions about the code.\n\
-             \n\
-             - Work in the working directory named below, unless the user says otherwise.\n\
-             - Read a file before you edit it. Change what was asked, in the style of the \
-             code around it, and nothing else.\n\
-             - After a change, check it when you can: build it, run the tests, or run the \
-             code.\n\
-             - When something fails, read the error and fix the cause. Ask the user when the \
-             request is unclear or you are blocked, rather than guess.\n\
-             - Do not undo changes you did not make, and do not run commands that delete \
-             work, rewrite history or reach outside the project unless the user asked.\n\
-             - Keep answers short. Say what you changed and what is left, and name files by \
-             their path.\n\
-             - Give that answer once, at the end of the turn: no running commentary or \
-             interim summaries between tool calls."
-                .to_owned(),
-        )
+        Self(DEFAULT_SYSTEM_PROMPT.to_owned())
     }
 }
 
@@ -340,11 +355,12 @@ impl ToolAccess {
 /// A running turn of the agent it names: from a user message to the reply
 /// that ends it. At most one per agent. Despawning the turn stops it and
 /// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// counts its retries in a [`Recovery`].
+/// counts its retries in a [`Recovery`]. Its `Name` is `turn` unless it
+/// is spawned with another.
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(Recovery)]
+#[require(Recovery, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
 /// On a turn about to be despawned: how it ended. A turn despawned without
@@ -380,7 +396,8 @@ pub struct CallOf(pub Entity);
 pub struct Calls(Vec<Entity>);
 
 /// Text streamed so far by an in-flight model call, for views.
-#[derive(Component, Default)]
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Default)]
 pub struct Partial {
     /// Answer text.
     pub text: String,
@@ -390,11 +407,12 @@ pub struct Partial {
 
 /// A tool call of the model's last reply. It is [`Queued`] while an
 /// earlier call of the reply holds it back (see
-/// [`Footprint`]), then runs as a
-/// [`Running<ToolResult>`](super::calls::Running), or stays open for an
-/// open tool, and ends with a [`ToolOutput`](super::tools::ToolOutput).
+/// [`Footprint`]), then runs as a [`Running`](super::calls::Running) task,
+/// or stays open for an open tool, and ends with a
+/// [`ToolOutput`](super::tools::ToolOutput).
 /// Read-only calls run side by side; every other call runs alone, in order.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 pub struct ToolCallRun {
     /// The call.
     pub call: ToolCall,
@@ -406,8 +424,9 @@ pub struct ToolCallRun {
 }
 
 /// A tool call waiting for earlier calls of its reply to finish.
-#[derive(Component, Default)]
+#[derive(Component, Reflect, Default)]
 #[component(storage = "SparseSet")]
+#[reflect(Component, Default)]
 pub struct Queued;
 
 /// Send the agent's conversation to its model again as it stands: after a
@@ -463,6 +482,18 @@ impl Notice {
     /// `None`.
     pub fn error(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
         Self::new(agent.into(), text.into(), NoticeLevel::Error)
+    }
+
+    /// The refusal of what would change `agent`, or the whole app with
+    /// `None`, while a turn runs: the rest of the turn would go on with
+    /// something it did not start with.
+    pub fn turn_running(agent: impl Into<Option<Entity>>) -> Self {
+        Self::info(agent, "A turn is running; stop it first.")
+    }
+
+    /// The refusal of what needs a model when `agent` has none.
+    pub fn no_model(agent: Entity) -> Self {
+        Self::info(agent, NO_MODEL)
     }
 }
 

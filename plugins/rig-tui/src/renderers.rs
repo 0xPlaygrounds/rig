@@ -1,12 +1,15 @@
 //! How tool calls look in the transcript. A plugin that adds a tool can
 //! add its look with [`AppToolRenderersExt::add_tool_renderer`]: like a
-//! tool or a command, a renderer is a component on an entity of its own.
-//! A call whose tool has none is drawn by [`ToolCallView::default_lines`].
+//! tool or a command, a renderer is a component on an entity of its own,
+//! named `renderer:<tool>`, and the first one of a tool stays; Bevy's
+//! `Disabled` on it frees the tool for another. A call whose tool has none
+//! is drawn by [`ToolCallView::default_lines`].
 
 use std::sync::Arc;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
+use bevy_log::warn;
 use ratatui::style::{Style, Stylize};
 use ratatui::text::{Line, Span};
 use rig_core::message::{ToolCall, ToolResult};
@@ -81,6 +84,28 @@ impl ToolCallView<'_> {
             return lines;
         }
         excerpt(&text, limit, result_style(self.failed()))
+    }
+
+    /// The last `limit` lines of the result, where a command's errors and
+    /// summary are, after a count of the earlier ones; a cut marker before
+    /// them names the file with all of it.
+    pub fn tail_lines(&self, limit: usize) -> Vec<Line<'static>> {
+        let Some(text) = self.result_text() else {
+            return Vec::new();
+        };
+        let mut output = text.lines().peekable();
+        let marker = output.next_if(|first| is_cut_marker(first));
+        let output: Vec<&str> = output.collect();
+        let skipped = output.len().saturating_sub(limit);
+        let earlier = format!("… {skipped} earlier lines");
+        let earlier = (skipped > 0).then_some(earlier.as_str());
+        let shown = marker.into_iter().chain(earlier);
+        let shown = shown.chain(output.into_iter().skip(skipped));
+        let style = result_style(self.failed());
+        shown
+            .enumerate()
+            .map(|(index, line)| result_line(index == 0, line, style))
+            .collect()
     }
 
     /// The look of a tool with no renderer: the name and arguments, then
@@ -161,8 +186,10 @@ pub struct ToolRenderer {
 
 /// Registers tool renderers on an [`App`].
 pub trait AppToolRenderersExt {
-    /// Draw the calls of `tool` with `render`. It replaces the renderer the
-    /// tool had, so a plugin can restyle a built-in tool.
+    /// Draw the calls of `tool` with `render`, unless the tool has a
+    /// renderer already: that one stays, with a warning. To restyle
+    /// another plugin's tool, insert `Disabled` on its renderer first (in
+    /// `Plugin::finish`, once every plugin's `build` ran).
     fn add_tool_renderer(
         &mut self,
         tool: &str,
@@ -177,14 +204,11 @@ impl AppToolRenderersExt for App {
         render: impl Fn(&ToolCallView<'_>) -> Vec<Line<'static>> + Send + Sync + 'static,
     ) -> &mut Self {
         let world = self.world_mut();
-        let old: Vec<Entity> = world
-            .query::<(Entity, &ToolRenderer)>()
-            .iter(world)
-            .filter(|(_, renderer)| renderer.tool == tool)
-            .map(|(entity, _)| entity)
-            .collect();
-        for entity in old {
-            world.despawn(entity);
+        // A query skips a disabled renderer.
+        let mut renderers = world.query::<&ToolRenderer>();
+        if renderers.iter(world).any(|renderer| renderer.tool == tool) {
+            warn!("renderer not added: `{tool}` has one; insert `Disabled` on it to replace it");
+            return self;
         }
         world.spawn((
             Name::new(format!("renderer:{tool}")),
@@ -195,105 +219,6 @@ impl AppToolRenderersExt for App {
         ));
         self
     }
-}
-
-/// The looks of the built-in tools: `read` and `search` summarize what
-/// they found, `edit` shows its change as a diff, `write` the start of the
-/// new file, and `shell` the command and the end of its output.
-pub(crate) fn add_builtin_renderers(app: &mut App) {
-    app.add_tool_renderer("read", read)
-        .add_tool_renderer("edit", edit)
-        .add_tool_renderer("write", write)
-        .add_tool_renderer("shell", shell)
-        .add_tool_renderer("search", search);
-}
-
-fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or_default().to_owned();
-    let number = |key: &str| view.call.function.arguments.get(key)?.as_u64();
-    let range = match (number("offset"), number("limit")) {
-        (Some(offset), Some(limit)) => format!("lines {offset}..{}", offset + limit),
-        (Some(offset), None) => format!("from line {offset}"),
-        (None, Some(limit)) => format!("first {limit} lines"),
-        (None, None) => String::new(),
-    };
-    let mut lines = vec![view.header(format!("read {path}"), range)];
-    match view.result_text() {
-        Some(_) if view.failed() => lines.extend(view.result_lines(RESULT_LINES)),
-        Some(text) => lines.push(Line::from(format!("  ⎿ {} lines", text.lines().count())).dim()),
-        None => {}
-    }
-    lines
-}
-
-fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or_default().to_owned();
-    let mut lines = vec![view.header(format!("edit {path}"), "")];
-    lines.extend(view.result_lines(RESULT_LINES));
-    lines
-}
-
-fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let path = view.argument("path").unwrap_or_default().to_owned();
-    let content = view.argument("content").unwrap_or_default();
-    let mut lines = vec![view.header(
-        format!("write {path}"),
-        format!("{} lines", content.lines().count()),
-    )];
-    if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
-    } else {
-        lines.extend(excerpt(content, RESULT_LINES, Style::new().dim()));
-    }
-    lines
-}
-
-fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let command = view.argument("command").unwrap_or_default();
-    let mut lines = Vec::new();
-    for (index, line) in command.lines().enumerate() {
-        if index == 0 {
-            lines.push(view.header(format!("$ {line}"), ""));
-        } else {
-            lines.push(Line::from(format!("    {line}")).bold());
-        }
-    }
-    if lines.is_empty() {
-        lines.push(view.header("$", ""));
-    }
-    // The end of a command's output is where its errors and summary are;
-    // a cut marker before it names the file with all of it.
-    if let Some(text) = view.result_text() {
-        let mut output = text.lines().peekable();
-        let marker = output.next_if(|first| is_cut_marker(first));
-        let output: Vec<&str> = output.collect();
-        let skipped = output.len().saturating_sub(RESULT_LINES + 2);
-        let earlier = format!("… {skipped} earlier lines");
-        let earlier = (skipped > 0).then_some(earlier.as_str());
-        let shown = marker.into_iter().chain(earlier);
-        let shown = shown.chain(output.into_iter().skip(skipped));
-        let style = result_style(view.failed());
-        lines.extend(
-            shown
-                .enumerate()
-                .map(|(index, line)| result_line(index == 0, line, style)),
-        );
-    }
-    lines
-}
-
-fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
-    let pattern = view.argument("pattern").unwrap_or_default();
-    let mut detail = String::new();
-    if let Some(path) = view.argument("path") {
-        detail.push_str(&format!("in {path}"));
-    }
-    if let Some(glob) = view.argument("glob") {
-        detail.push_str(&format!(" ({glob})"));
-    }
-    let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
-    lines.extend(view.result_lines(RESULT_LINES));
-    lines
 }
 
 #[cfg(test)]

@@ -5,9 +5,11 @@ the terminal view's panels from `rig_tui`.
 
 - [Making one](#making-one) and [finding names](#finding-names)
 - [A tool](#a-tool) and how its calls look
-- [A slash command](#a-slash-command)
+- [A slash command](#a-slash-command) and [what the user types](#what-the-user-types)
 - [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
 - [Turn hooks](#turn-hooks), [timers](#timers)
+- [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
+- [The status line](#the-status-line)
 - [What agents do and say, in a terminal panel](#what-agents-do-and-say-in-a-terminal-panel)
 - [A window](#a-window)
 
@@ -48,18 +50,22 @@ names. The agent is built from a rig checkout (`RIG_SOURCE`): a
 `[patch.crates-io]` table points the rig crates at it, so every plugin uses
 the agent's own crates.
 
-`/reload` in the agent, or the agent's `reload` tool, rebuilds and
-restarts in the same session once no turn runs. A build that fails leaves
-the running one, and one that crashes at startup is rolled back.
+`/reload` in the agent, or the agent's `reload` tool (both from the
+`rig-reload` plugin), rebuilds and restarts in the same session once no
+turn runs. A build that fails leaves the running one, and one that crashes
+at startup is rolled back.
 
 # Finding names
 
 The prelude holds Bevy's app, ECS, reflection and time preludes, and the
 agent runtime's components, events and registries (`rig_harness::rig_ecs`).
 rig-core is `rig_harness::rig_core`, and each default plugin's types are
-in its crate: the terminal view's panels and tool renderers in `rig_tui`
-(ratatui is `rig_tui::ratatui`), what agents do in `rig_activity`, and so
-on for each crate `plugins.toml` names.
+in its crate: the terminal view's panels, tool renderers, status line and
+pickers in `rig_tui` (ratatui is `rig_tui::ratatui`), what agents do in
+`rig_activity`, `/reload`'s state in `rig_reload`, and so on for each crate
+`plugins.toml` names. How the agent was started is the `Invoked` resource:
+its arguments (`args.print`, `args.model`) and whether someone sits at the
+terminal (`interactive()`).
 
 Every one of these types is reflected, so the running agent can list
 them with the `inspect` tool of the optional `rig-inspect` plugin (enable it
@@ -138,8 +144,16 @@ A tool the plugin answers itself, later, is an open tool:
 call's arguments into the type the observer takes and triggers
 `ToolCalled<Args>` with the call's entity (`call`), the calling `agent`
 and the `args`. The call ends when the plugin inserts a `ToolOutput` on
-it, such as `ToolOutput(ToolResult::success("Done.".into()))`. How the
-terminal view (`rig-tui`) draws a tool's calls:
+it, such as `ToolOutput(ToolResult::success("Done.".into()))`. A tool
+found while the agent runs, such as one an MCP server lists, is
+registered from a system with
+`commands.queue(move |world: &mut World| { world.spawn_tool(definition, handler, options); })`:
+its `ToolDefinition`, and a rig-core `ErasedHandler` that answers its
+calls; despawning the entity it returns removes it. How the
+terminal view (`rig-tui`) draws a tool's calls is a renderer the tool's
+plugin adds; the first one of a tool stays. A crate that should also
+build without the terminal view puts it behind a default cargo feature,
+as `rig-coding-tools` does with `tui = ["dep:rig-tui"]`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -156,13 +170,12 @@ fn build(app: &mut App) {
 
 # A slash command
 
-A command that is one event is added as that event: the agent fills its
-`Entity` field and the text after the name its `String` field. An error
-notice about the agent while the command runs refuses it: the line goes
-back in the input with the error, and Enter then sends it to the model as
-it is. A command that needs more is a one-shot system,
-`app.add_command(name, help, system)`, taking `In<CommandArgs>` (`agent`,
-`args`).
+A command is a one-shot system, `app.add_command(name, help, system)`,
+taking `In<CommandArgs>`: the `agent` it was typed for and the `args`
+after its name. An error notice about the agent while the command runs,
+from it or from what it triggers, refuses it: the line goes back in the
+input with the error, and Enter then sends it to the model as it is (a
+`literal` `Deliver`).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -172,39 +185,53 @@ pub struct RemindPlugin;
 
 impl Plugin for RemindPlugin {
     fn build(&self, app: &mut App) {
-        app.add_command_event::<Remind>("remind", "Remind the agent of something after its turn")
-            .add_observer(remind);
+        app.add_command("remind", "Remind the agent of something after its turn", remind);
     }
 }
 
 /// `/remind <text>`.
-#[derive(EntityEvent, Reflect)]
-struct Remind {
-    /// The agent it was typed for.
-    entity: Entity,
-    /// The text after `/remind`.
-    text: String,
-}
-
-fn remind(remind: On<Remind>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
-    if remind.text.is_empty() {
-        notices.write(Notice::error(remind.entity, "/remind needs a text"));
+fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
+    if args.args.is_empty() {
+        notices.write(Notice::error(args.agent, "/remind needs a text"));
         return;
     }
     // A message in the agent's conversation: `Steer` goes with the running
     // turn's next model call, `Queue` once that turn would end, together
     // with everything else queued; an idle agent starts a turn. A `Note`
     // needs no answer: it goes with the next call and starts no turn.
-    commands.trigger(Deliver {
-        entity: remind.entity,
-        text: format!("Reminder: {}", remind.text),
-        origin: Origin {
-            kind: OriginKind::Plugin("remind".to_owned()),
-            ..Origin::default()
-        },
-        mode: DeliveryMode::Queue,
-        attachments: Vec::new(),
-    });
+    let reminder = Deliver::new(args.agent, format!("Reminder: {}", args.args), DeliveryMode::Queue);
+    commands.trigger(reminder.with_origin(Origin::plugin("remind")));
+}
+```
+
+# What the user types
+
+What the user types, in any front, is a `Deliver` from `Origin::user()`.
+An observer of it may change it before it is sent: rewrite its `text`,
+add `attachments` (the `rig-coding-tools` plugin reads `@path` files this
+way), or take it over by emptying `text`, and then nothing is sent. The
+kernel delivers it after every such observer, from an observer of its own
+on the agent's entity; then a user's text that starts with `/` runs as a
+command (`deliver.command()` is its line). Observers of one event run in no
+fixed order, so each does its own part and none depends on another's.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct ShortcutsPlugin;
+
+impl Plugin for ShortcutsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_observer(expand);
+    }
+}
+
+/// `lgtm` typed alone asks the model to commit.
+fn expand(mut typed: On<Deliver>) {
+    if typed.origin.kind == OriginKind::User && typed.text.trim() == "lgtm" {
+        typed.text = "Looks good to me: commit it with a short message.".to_owned();
+    }
 }
 ```
 
@@ -213,7 +240,10 @@ fn remind(remind: On<Remind>, mut commands: Commands, mut notices: MessageWriter
 An agent component that derives `Reflect` and says
 `#[reflect(Component, Saved)]` is kept with the session: each change is
 logged, and a restart, `/reload` or `/resume` brings the newest value
-back, before `Restored` is triggered on the agent. `On<Add<CallOf>>` sees
+back, before `Restored` is triggered on the agent. A resource that says
+`#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
+the whole session; the plugin inserts it in `build`, and the saved value
+replaces it. `On<Add<CallOf>>` sees
 every model and tool call of every turn as it starts; a tool call also
 has a `ToolCallRun`. The calls made before the plugin was added are in
 the conversation, which `Restored` lets it count once: an assistant
@@ -284,48 +314,85 @@ A generic type is saved only once registered (`app.register_type::<T>()`).
 # Turn hooks
 
 `PrepareRequest` is triggered on a turn right before its model request,
-with the messages it sends, which an observer may change. `ModelFailed` is
-triggered on a turn whose model call failed for good; an observer that
-takes the turn over sets `handled` and triggers `CallModel` once it is
-ready. Observers of one event run in no set order. The compaction plugin
-(the `rig-compaction` crate) is the full example: it summarizes on
+with everything it sends, which an observer may change: the system prompt
+(`preamble`), the `messages`, the `tools` offered and the generation
+`options`. The request is checked against the model afterwards. Changing
+the preamble or the tools misses the provider's prompt cache, and a tool
+left out is not offered but still runs if called: `ToolAccess` on the
+agent is the hard limit. Once the observers ran, the tool rules in the
+preamble follow the tools the request carries (a dropped tool's rules
+leave it), and the rest of the preamble is sent as they left it. A `Connection` on a turn sends its requests to
+that model instead of the agent's, and one on a plugin's `ModelRequest`
+call that call; `Models::connect` makes one. `ModelFailed` is triggered on
+a turn whose model call failed for good; an observer that takes the turn
+over sets `handled` and triggers `CallModel` once it is ready. Observers
+of one event run in no set order. The compaction plugin (the
+`rig-compaction` crate) is the full example: it summarizes on
 `PrepareRequest` with a `ModelRequest` call of its own, and on a
-`ModelFailed` overflow.
+`ModelFailed` overflow. Before any of it, what the user typed can be
+changed as it is delivered ([What the user types](#what-the-user-types)).
+A part of
+the system prompt that does not change from request to request is a
+`PromptSection` entity, `PromptSection::new(order, tag, text)`, in every
+agent's prompt, or with a `SectionOf(agent)` in that agent's alone,
+despawned with it.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{Message, UserContent};
 
 /// The model a turn falls back to when its own fails for good.
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
-#[derive(Default)]
-pub struct FallbackPlugin;
+/// On an agent that only plans.
+#[derive(Component)]
+pub struct PlanMode;
 
-impl Plugin for FallbackPlugin {
+#[derive(Default)]
+pub struct TurnHooksPlugin;
+
+impl Plugin for TurnHooksPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(add_the_time).add_observer(fall_back);
+        app.add_observer(add_the_time)
+            .add_observer(plan_only)
+            .add_observer(fall_back);
     }
 }
 
-/// Every request tells the model how long the agent has run.
+/// Every request tells the model how long the agent has run, at its end,
+/// where the prompt cache is not disturbed.
 fn add_the_time(mut prepare: On<PrepareRequest>, time: Res<Time<Real>>) {
     let note = format!("(The agent has run for {} s.)", time.elapsed().as_secs());
-    if let Some(Message::User { content }) = prepare.messages.last_mut() {
+    if let Some(message::Message::User { content }) = prepare.messages.last_mut() {
         content.push(UserContent::text(note));
     }
 }
 
+/// An agent in plan mode is offered only the tools that read, and told so.
+fn plan_only(mut prepare: On<PrepareRequest>, planning: Query<(), With<PlanMode>>) {
+    if planning.contains(prepare.agent) {
+        prepare.tools.retain(|tool| matches!(tool.name.as_str(), "read" | "search"));
+        prepare.preamble.push_str("\n\nPlan only: change nothing yet.");
+    }
+}
+
 /// A model call that failed for good, other than on a conversation too
-/// long, is sent again once, on the fallback model.
-fn fall_back(mut failed: On<ModelFailed>, choices: Query<&ModelChoice>, mut commands: Commands) {
-    let on_fallback = choices.get(failed.agent).is_ok_and(|choice| choice.0 == FALLBACK);
-    if failed.handled || failed.report.is_context_overflow() || on_fallback {
+/// long, is sent again once, on the fallback model, for this turn only.
+fn fall_back(
+    mut failed: On<ModelFailed>,
+    routed: Query<(), With<Connection>>,
+    models: Res<Models>,
+    mut commands: Commands,
+) {
+    let turn = failed.entity;
+    if failed.handled || failed.report.is_context_overflow() || routed.contains(turn) {
         return;
     }
+    let Ok(fallback) = models.connect(FALLBACK) else {
+        return;
+    };
     failed.handled = true;
-    commands.entity(failed.agent).insert(ModelChoice(FALLBACK.to_owned()));
-    commands.trigger(CallModel { entity: failed.entity });
+    commands.entity(turn).insert(fallback);
+    commands.trigger(CallModel { entity: turn });
 }
 ```
 
@@ -367,12 +434,103 @@ fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
 }
 ```
 
+# Turning off or replacing what another plugin added
+
+Tools, slash commands, tool renderers and prompt sections are entities.
+Bevy's `Disabled` on one turns it off: no query finds it, so agents are
+not offered the tool, the command is unknown, the section is left out and
+the tool's calls are drawn plainly, and its name is free for a
+replacement (a second tool, command or renderer of a taken name is
+refused). Do it in `Plugin::finish`, which runs once every plugin's
+`build` did, so what they added exists whatever their order. What a
+plugin spawns in `finish` is not marked `ProvidedBy` it.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct NoShellPlugin;
+
+impl Plugin for NoShellPlugin {
+    fn build(&self, _app: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        let mut tools = world.query::<(Entity, &ToolDef)>();
+        let shell = tools.iter(world).find(|(_, def)| def.0.name.as_str() == "shell");
+        if let Some((shell, _)) = shell {
+            world.entity_mut(shell).insert(Disabled);
+        }
+        // `shell` is free again: `app.add_tool(MyShell)` would replace it.
+        // A command is found by its `Name`, such as "/help", with
+        // `SlashCommand`; a renderer by its `Name`, such as
+        // "renderer:shell"; a section by its `PromptSection`'s `tag`.
+    }
+}
+```
+
+# The status line
+
+The terminal view's row under the transcript shows the `StatusItems` of
+the agent shown and of its running turn, which every agent and turn has,
+and the app's `AppStatus`, all `rig_tui`'s. A plugin shows an item there in
+a system in `StatusSystems` that runs when what it shows changed:
+`items.show(item)` puts the item at its place (its side and order) in
+place of the one there, and an empty item clears the place. A plugin that
+should also build without the terminal view puts this behind a default
+`tui` cargo feature, as the default plugins do, and one that writes
+`AppStatus` or a `PickRequest` (a picker over the transcript) registers it
+with `app.init_resource::<AppStatus>()` or
+`app.add_message::<PickRequest>()`, since the view may not be added. The
+default plugins' places, and how long each item stays when the line is too
+narrow (`keep`: the lowest goes first, `u8::MAX` never):
+
+| side | order | item | keep | plugin |
+|---|---|---|---|---|
+| left | 10 | the session's name (`AppStatus`) | 2 | rig-sessions |
+| left | 20 | `⤷` a spawned agent's name | 14 | rig-basics |
+| left | 30 | the model | always | rig-models |
+| left | 40 | the reasoning setting | 12 | rig-models |
+| left | 50 | the status: idle, thinking, … | always | rig-activity |
+| left | 60 | the agent's subagents at work | 15 | rig-basics |
+| left | 70 | the other agents at work | 13 | rig-basics |
+| left | 80 | what the turn spent (on the turn) | 11 | rig-telemetry |
+| left | 90 | the rebuild of `/reload` (`AppStatus`) | 16 | rig-reload |
+| right | 10 | tokens in and out | 4 | rig-telemetry |
+| right | 20 | cached input | 1 | rig-telemetry |
+| right | 30 | cost | 3 | rig-telemetry |
+| right | 40 | the context in use | 5 | rig-telemetry |
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+
+/// After the status; gone before the reasoning setting.
+const MESSAGES: StatusItem = StatusItem::at(Side::Left, 55, 10);
+
+#[derive(Default)]
+pub struct MessagesItemPlugin;
+
+impl Plugin for MessagesItemPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostUpdate, show.in_set(StatusSystems));
+    }
+}
+
+fn show(mut agents: Query<(&Conversation, &mut StatusItems), Changed<Conversation>>) {
+    for (conversation, mut items) in &mut agents {
+        let text = format!("{} messages", conversation.messages().len());
+        items.show(MESSAGES.says(text, Tone::Dim));
+    }
+}
+```
+
 # What agents do and say, in a terminal panel
 
 Each agent is an entity with an `Agent`, a `Name`, an `AgentId` and a
 `Conversation`; a subagent is `SpawnedBy` its parent, which lists it in
 `Spawned`. The activity plugin's `rig_activity::Activity` says what an
-agent does now (status, running tools, streamed preview), and its
+agent does now (its status and running tools), and its
 `MessageFeed` resource holds the latest deliveries. `MessageReader<Committed>` sees every change
 of every conversation as the session log records it, and `On<TurnEnded>`
 each turn's end.
@@ -384,7 +542,8 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 drawn when agents or panels change; a plugin whose own state changed
 writes a `RequestRedraw`. `TuiScreen` is the terminal's size and `Focused`
 marks the agent shown. These are `rig_tui`'s, so the crate depends on
-`rig-tui` and `rig-activity` beside `rig-harness`.
+`rig-tui` and `rig-activity` beside `rig-harness`. They are there in any
+run, `--print` too, which draws no frame.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -407,10 +566,6 @@ struct Written(HashMap<Entity, usize>);
 
 impl Plugin for AgentsPanelPlugin {
     fn build(&self, app: &mut App) {
-        // A print run has no terminal view.
-        if app.world().get_resource::<RunMode>().is_some_and(RunMode::is_headless) {
-            return;
-        }
         app.init_resource::<Written>()
             .add_systems(Startup, spawn)
             .add_systems(Update, tally)
@@ -471,14 +626,15 @@ use bevy::prelude::*;
 use bevy::window::ExitCondition;
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
 use rig_activity::Activity;
-use rig_harness::prelude::{RunMode, Wake};
+use rig_harness::prelude::{Invoked, Wake};
 
 #[derive(Default)]
 pub struct DashboardPlugin;
 
 impl Plugin for DashboardPlugin {
     fn build(&self, app: &mut App) {
-        if app.world().get_resource::<RunMode>().is_some_and(RunMode::is_headless) {
+        // A window beside the terminal view only.
+        if !app.world().get_resource::<Invoked>().is_some_and(Invoked::interactive) {
             return;
         }
         // Closing the window leaves the agent running.

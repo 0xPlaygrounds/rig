@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "The core of the rig coding agent on rig-ecs: the session, the launcher protocol and /reload; every other part is a Bevy plugin crate."
+description = "The core of the rig coding agent on rig-ecs: the session and the launcher protocol; every other part is a Bevy plugin crate."
 repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
 publish = false
@@ -14,7 +14,6 @@ publish = false
 workspace = true
 
 [dependencies]
-base64 = { workspace = true }
 # `MinimalPlugins`, the base of `HeadlessPlugins`, and its clock.
 bevy = { workspace = true }
 bevy_app = { workspace = true }

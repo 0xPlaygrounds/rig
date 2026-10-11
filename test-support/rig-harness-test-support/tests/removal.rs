@@ -1,9 +1,10 @@
 //! Every default plugin can be left out: the app the generated `main.rs`
 //! builds from the default `plugins.toml`, less any one of its plugins,
-//! answers a turn with a tool call on a scripted model, and so does the
-//! app with the optional `rig-inspect` plugin on top. The plugin `rig
-//! plugin new` writes comes last, listed twice and added once. Each case
-//! is a child process of this test with its own `RIG_HOME`, as a run is.
+//! answers a `--print` prompt with a tool call on a scripted model, and so
+//! does the app with the optional `rig-inspect` plugin on top. `/reload`
+//! is there exactly when `rig-reload` is. The plugin `rig plugin new`
+//! writes comes last, listed twice and added once. Each case is a child
+//! process of this test with its own `RIG_HOME`, as a run is.
 
 #[path = "../../../src/launcher/plugin/scaffold.rs"]
 mod scaffold;
@@ -12,7 +13,7 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::journal::SessionLog;
+use rig_ecs::journal::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
 use rig_harness::prelude::*;
@@ -32,7 +33,7 @@ macro_rules! defaults {
     };
 }
 
-const DEFAULTS: [(&str, fn(&mut App)); 20] = defaults![
+const DEFAULTS: [(&str, fn(&mut App)); 21] = defaults![
     rig_basics::ProjectContextPlugin,
     rig_models::ModelsPlugin,
     rig_login_chatgpt::ChatgptLoginPlugin,
@@ -47,7 +48,8 @@ const DEFAULTS: [(&str, fn(&mut App)); 20] = defaults![
     rig_coding_tools::WriteTool,
     rig_coding_tools::SearchTool,
     rig_coding_tools::ShellTool,
-    rig_coding_tools::ReloadTool,
+    rig_coding_tools::AttachPlugin,
+    rig_reload::ReloadPlugin,
     rig_basics::BasicCommandsPlugin,
     rig_subagents::SubagentsPlugin,
     rig_telemetry::DiagnosticsPlugin,
@@ -63,13 +65,12 @@ fn give_up(mut exits: MessageWriter<AppExit>) {
     exits.write(AppExit::from_code(2));
 }
 
-/// As a front does: connects the user's agent to a scripted model that
-/// reads this crate's manifest and then answers, and sends the prompt.
-fn ask(log: Res<SessionLog>, agents: PrimaryQuery, mut asked: Local<bool>, mut commands: Commands) {
-    let Some(agent) = primary(&agents).filter(|_| log.is_live() && !*asked) else {
-        return;
-    };
-    *asked = true;
+/// The `--print` prompt.
+const PROMPT: &str = "Read it.";
+
+/// Connects the first agent to a scripted model that reads this crate's
+/// manifest and then answers.
+fn connect_first(added: On<Add<Agent>>, mut commands: Commands) {
     let read = serde_json::json!({ "path": format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR")) });
     let end = MockStreamEvent::final_response_with_default_usage;
     let model = MockCompletionModel::from_stream_turns([
@@ -77,16 +78,33 @@ fn ask(log: Res<SessionLog>, agents: PrimaryQuery, mut asked: Local<bool>, mut c
         vec![MockStreamEvent::text("read"), end()],
     ]);
     if let Some(connection) = connect(&model) {
-        commands.entity(agent).insert(connection);
+        let choice = ModelChoice(connection.spec.reference());
+        commands.entity(added.entity).insert((connection, choice));
     }
-    let prompt = "Read it.".to_owned();
-    send_input(&mut commands, agent, prompt, DeliveryMode::Steer);
+}
+
+/// Sends the prompt as `--print` does, when it is left out.
+fn ask(
+    restored: Option<Res<SessionRestored>>,
+    agents: PrimaryQuery,
+    plugins: Query<&PluginSource>,
+    mut asked: Local<bool>,
+    mut commands: Commands,
+) {
+    let Some(agent) = primary(&agents).filter(|_| restored.is_some() && !*asked) else {
+        return;
+    };
+    *asked = true;
+    if !plugins.iter().any(|plugin| plugin.krate == "rig-print") {
+        commands.trigger(Deliver::new(agent, PROMPT, DeliveryMode::Steer));
+    }
 }
 
 fn answered(
     ended: On<TurnEnded>,
     provided: Query<(&Name, &ProvidedBy)>,
     plugins: Query<&PluginSource>,
+    slash_commands: Query<&Name, With<SlashCommand>>,
     mut exits: MessageWriter<AppExit>,
 ) {
     let answered = matches!(&ended.outcome,
@@ -96,7 +114,9 @@ fn answered(
     let command = |(name, by): (&Name, &ProvidedBy)| {
         name.as_str() == "/__name__" && plugins.get(by.0).is_ok_and(scaffold)
     };
-    let ok = answered && added_once && provided.iter().any(command);
+    let reload = plugins.iter().any(|plugin| plugin.krate == "rig-reload");
+    let reloads = slash_commands.iter().any(|name| name.as_str() == "/reload");
+    let ok = answered && added_once && provided.iter().any(command) && reload == reloads;
     exits.write(AppExit::from_code(u8::from(!ok)));
 }
 
@@ -105,12 +125,15 @@ fn every_default_plugin_can_be_left_out() {
     if let Ok(left_out) = std::env::var(LEAVE_OUT) {
         let mut app = App::new();
         // Any failing system or observer fails the run; `--print` keeps
-        // the terminal view away, and this test is the front.
+        // the terminal view away.
         app.set_error_handler(rig_harness::error::panic)
-            .insert_resource(RunMode(Invocation {
-                print: Some(String::new()),
-                model: None,
-            }))
+            .insert_resource(Invoked {
+                args: Invocation {
+                    print: Some(PROMPT.to_owned()),
+                    model: None,
+                },
+                terminal: false,
+            })
             .add_plugins((HeadlessPlugins, RigHarnessPlugins));
         for (_, add) in DEFAULTS.iter().filter(|(name, _)| *name != left_out) {
             add(&mut app);
@@ -121,12 +144,12 @@ fn every_default_plugin_can_be_left_out() {
         for _ in 0..2 {
             load::<scaffold::ScaffoldPlugin>(&mut app, "rig-hello", "path plugins/hello");
         }
-        app.insert_resource(Front("test".to_owned()))
-            .add_systems(
-                Update,
-                (ask, give_up.run_if(on_real_timer(Duration::from_secs(30)))),
-            )
-            .add_observer(answered);
+        app.add_systems(
+            Update,
+            (ask, give_up.run_if(on_real_timer(Duration::from_secs(30)))),
+        )
+        .add_observer(connect_first)
+        .add_observer(answered);
         assert_eq!(app.run(), AppExit::Success, "without {left_out}");
         return;
     }

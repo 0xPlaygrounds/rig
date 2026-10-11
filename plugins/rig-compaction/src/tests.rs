@@ -81,11 +81,10 @@ fn too_long() -> Vec<MockStreamEvent> {
 
 /// Asks `agent` a question, then runs frames until a turn ended.
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity) {
-    app.world_mut().trigger(Deliver::user(
+    app.world_mut().trigger(Deliver::new(
         agent,
         "And the next question?",
         DeliveryMode::Steer,
-        Vec::new(),
     ));
     run_until(app, wakes, |world| !world.resource::<Ended>().0.is_empty());
 }

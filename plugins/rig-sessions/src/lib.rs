@@ -1,7 +1,9 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
 //! [`SessionTitle`], cost and when it was updated), which `/resume` lists
-//! and a resumed session reads its title back from. Running another
+//! and a resumed session reads its title back from. With the default
+//! `tui` feature, `/resume` without arguments is a picker and the terminal
+//! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
 //! process: it names the next session in [`SessionDir::switch`] and exits
 //! with the reload code, as `/reload` does, and the launcher starts it in
@@ -12,7 +14,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
@@ -25,15 +26,18 @@ use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
 use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
-use rig_ecs::StopTurns;
+use rig_ecs::WriteJournal;
 use rig_ecs::agent::{
     ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf, primary_order,
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_harness::front::{PickItem, PickRequest, attached_file};
 use rig_harness::prelude::{SessionPaths, launcher};
 use rig_telemetry::Spending;
+use rig_tools::attach::attached_file;
+
+#[cfg(feature = "tui")]
+mod tui;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
@@ -63,12 +67,14 @@ impl Plugin for SessionsPlugin {
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
-                write_meta.in_set(OnAppExitSystems).after(StopTurns).run_if(
+                write_meta.in_set(WriteJournal).run_if(
                     any_component_removed::<ActiveTurn>
                         .or_eager(on_message::<AppExit>)
                         .or_eager(resource_changed::<SessionTitle>),
                 ),
             );
+        #[cfg(feature = "tui")]
+        tui::add(app);
     }
 }
 
@@ -301,39 +307,23 @@ fn new(
     commands.trigger(SwitchSession { session: None });
 }
 
+/// `/resume <id>` runs that session; without arguments, the terminal view
+/// lets the user pick one.
 fn resume(
     In(args): In<CommandArgs>,
-    paths: Option<Res<SessionPaths>>,
+    #[cfg(feature = "tui")] paths: Option<Res<SessionPaths>>,
+    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
+    #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
 ) {
     if args.args.is_empty() {
-        let Some(paths) = paths else {
-            return;
-        };
-        let items: Vec<PickItem> = list(&Home::from_env(), paths.path())
-            .into_iter()
-            .map(|session| PickItem {
-                label: session.label(),
-                command: format!("resume {}", session.id),
-            })
-            .collect();
-        if items.is_empty() {
-            notices.write(Notice::info(args.agent, "No earlier session to resume."));
-            return;
-        }
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: "Resume a session".to_owned(),
-            items,
-            selected: 0,
-        });
-    } else {
-        commands.trigger(SwitchSession {
-            session: Some(args.args),
-        });
+        #[cfg(feature = "tui")]
+        tui::pick_session(args.agent, paths.as_deref(), &mut picks, &mut notices);
+        return;
     }
+    commands.trigger(SwitchSession {
+        session: Some(args.args),
+    });
 }
 
 fn name(

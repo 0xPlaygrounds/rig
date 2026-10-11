@@ -12,7 +12,8 @@
 //! without a message, by a clean quit or a switch, leaves no directory.
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
-//! headless run (`--print`) is not restarted on the reload code.
+//! headless run (`--print`, or stdin piped in, which the agent answers as
+//! `--print` does) is not restarted on the reload code.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
@@ -41,7 +42,7 @@ pub enum Start {
 /// returns its exit code.
 pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
-    let headless = invocation.is_headless();
+    let headless = invocation.is_headless() || !std::io::stdin().is_terminal();
     let (mut claimed, mut notice, mut build_failure) = {
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its

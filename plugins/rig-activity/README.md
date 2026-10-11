@@ -1,9 +1,10 @@
 # rig-activity
 
 What each agent is doing, kept for views: every agent's `Activity` (its
-status, open tool calls and a preview of what it writes) and the `MessageFeed`
-of recent deliveries. `ActivityPlugin` keeps them; the terminal view adds it
-unless it is there, and a window or panel plugin reads them.
+status and open tool calls), its status in the terminal view's status line
+(the default `tui` feature), and the
+`MessageFeed` of recent deliveries. `ActivityPlugin` keeps them, and a window
+or panel plugin reads them.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
 on the public API of the crates it depends on. Its plugin is in the default
