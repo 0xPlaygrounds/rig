@@ -377,8 +377,16 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
     }
 }
 
+/// The origin of rig-compaction's summary, which stands in the conversation
+/// for the messages it replaced.
+const SUMMARY_ORIGIN: &str = "compaction";
+
+/// Lines of a compaction's summary shown in the transcript.
+const SUMMARY_LINES: usize = 12;
+
 /// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads.
+/// without the header the model reads; a compaction's summary as a block
+/// that says it stands for the earlier messages.
 /// `/agents` shows an agent's whole transcript.
 fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
     let body = origin
@@ -387,6 +395,15 @@ fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) 
         .map_or(text, |body| body.trim_start_matches('\n'));
     // A failed build's note, which the model reads: told apart by its
     // origin.
+    if matches!(&origin.kind, OriginKind::Plugin(name) if name == SUMMARY_ORIGIN) {
+        let style = Style::new().magenta();
+        lines.push(Line::styled(
+            "── the earlier messages were compacted into this summary ──",
+            style.bold(),
+        ));
+        lines.extend(excerpt(body, SUMMARY_LINES, style.dim()));
+        return;
+    }
     if matches!(&origin.kind, OriginKind::Plugin(name) if name == BUILD_ORIGIN) {
         lines.push(Line::styled(
             "✗ build failed (noted for the agent)",

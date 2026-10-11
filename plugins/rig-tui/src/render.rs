@@ -20,13 +20,13 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{ToolRenderer, excerpt};
+use super::renderers::ToolRenderer;
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{ShownNotice, TuiView};
 use super::wrap::wrap_all;
-use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
+use rig_ecs::agent::{ActiveTurn, Calls, Conversation, NoticeLevel, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
 use rig_harness::primary::Shown;
@@ -35,8 +35,6 @@ use rig_harness::primary::Shown;
 const INPUT_LINES: usize = 10;
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
-/// Lines of a condensed conversation's summary shown in the transcript.
-const SUMMARY_LINES: usize = 12;
 
 /// The shortest time between two frames drawn only for a streaming
 /// reply's new text: the loop's own limit of 60 frames a second would lay
@@ -68,7 +66,6 @@ pub(crate) fn needs_redraw(
         Or<(
             Changed<Conversation>,
             Changed<ActiveTurn>,
-            Changed<Condensed>,
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
@@ -162,19 +159,19 @@ pub(crate) fn layout(
 }
 
 /// The transcript's parts after the shown agent's messages are laid out:
-/// each message, after the notices that came before it and the summary
-/// sent in place of the messages above; then the notices after the last message, the
+/// each message, after the notices that came before it; then the notices
+/// after the last message, the
 /// reply streaming in and the messages the agent accepted and has not
 /// sent yet. Without an agent, the app's notices.
 fn transcript_parts(
     view: &TuiView,
     agent: Option<Entity>,
-    shown: Option<(&Conversation, Option<&Condensed>, &[&Incoming])>,
+    shown: Option<(&Conversation, &[&Incoming])>,
     partial: Option<&Partial>,
     width: usize,
 ) -> Vec<Part> {
     let mut parts = Vec::new();
-    let Some((conversation, condensed, inbox)) = shown else {
+    let Some((conversation, inbox)) = shown else {
         let mut extra = Vec::new();
         for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
             notice_lines(notice, &mut extra);
@@ -191,9 +188,6 @@ fn transcript_parts(
         let mut extra = Vec::new();
         while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
             notice_lines(notice, &mut extra);
-        }
-        if let Some(condensed) = condensed.filter(|condensed| condensed.upto == index) {
-            summary_lines(condensed, &mut extra);
         }
         if !extra.is_empty() {
             parts.push(Part::Rows(wrap_all(&extra, width)));
@@ -237,7 +231,7 @@ pub(crate) fn render(
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<(&Conversation, Option<&Condensed>)>,
+    agents: Query<&Conversation>,
     changed: Query<(), Changed<Conversation>>,
     (turns, partials, active, accepted): (
         Query<&Calls>,
@@ -303,7 +297,7 @@ pub(crate) fn render(
             let layout = input_rows;
             // The input box scrolls to keep the cursor in sight.
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            if let Some((agent, (conversation, _))) = shown {
+            if let Some((agent, conversation)) = shown {
                 transcript.update(
                     agent,
                     conversation,
@@ -315,7 +309,7 @@ pub(crate) fn render(
             let parts = transcript_parts(
                 view,
                 shown_agent,
-                shown.map(|(_, (conversation, condensed))| (conversation, condensed, &inbox[..])),
+                shown.map(|(_, conversation)| (conversation, &inbox[..])),
                 partial,
                 usize::from(transcript_area.width.max(1)),
             );
@@ -647,21 +641,6 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
         list,
         &mut state,
     );
-}
-
-/// Draws where the conversation was condensed: the messages above are sent
-/// to the model as the summary under the line.
-fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
-    let style = Style::new().fg(Color::Magenta);
-    lines.push(Line::default());
-    lines.push(Line::styled(
-        format!(
-            "── {} earlier messages are sent as this summary ──",
-            condensed.upto
-        ),
-        style.bold(),
-    ));
-    lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
 /// The messages the agent accepted and has not sent yet, under the
