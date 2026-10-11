@@ -400,8 +400,10 @@ its tool's `Footprint` and the `CallHandler` that will run it, all on the
 call's entity. A Prepare system edits them as the call is admitted: the
 arguments, the footprint, or the handler, wrapped with
 `ErasedHandler::layered` so the call runs through it (to give it a secret
-the model never sees, say). A Gate system sees each call when it is about
-to run: a call that conflicts with an earlier one of the same reply
+the model never sees, say). Replacing a call's `CallHandler` runs that one call another way, such
+as one agent's `shell` calls in their own directory or sandbox (below),
+while `Processes` stays the way every other call starts. A Gate system
+sees each call when it is about to run: a call that conflicts with an earlier one of the same reply
 (`Footprint::waits_for`) is `Waiting` until that one settles, so a gate
 judges it with the earlier calls' effects done. It refuses it with
 `Outcome::refused(why)`, which the model reads as the tool's refusal, or
@@ -413,6 +415,38 @@ tool published beside its text, such as rig-tools' `FilesChanged` or
 `ExitStatus`, is the call's `Published` component. A call of a tool the
 agent's `ToolAccess` leaves out is refused at Start (a `Denied` refusal
 in its record), and the model reads it as a tool it does not have.
+
+```rust,no_run
+use std::path::PathBuf;
+
+use rig_harness::prelude::*;
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::serve::adapters::ToolAdapter;
+use rig_harness::rig_ecs::effects::Handler;
+use rig_tools::Shell;
+
+/// On an agent whose `shell` calls run in its own directory, sandboxed.
+#[derive(Component)]
+pub struct Sandboxed(pub PathBuf);
+
+/// A sandboxed agent's `shell` calls get a handler of their own.
+fn sandbox(
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), Added<Admitted>>,
+    agents: Query<&Sandboxed>,
+    processes: Res<Processes>,
+) {
+    for (request, &ForAgent(agent), mut handler) in &mut calls {
+        let Ok(Sandboxed(dir)) = agents.get(agent) else {
+            continue;
+        };
+        if request.call.function.name.as_str() == "shell" {
+            let launcher = processes.launcher().in_dir(dir).wrapped(["firejail", "--quiet"]);
+            let shell = Shell { launcher, ..Shell::default() };
+            handler.0 = Handler(ErasedHandler::new(ToolAdapter::new(shell)));
+        }
+    }
+}
+```
 
 ## A held call holds back the later calls of its reply
 
@@ -562,7 +596,8 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
     // A message in the agent's conversation: `Steer` goes with the running
     // turn's next model call, `Queue` once that turn would end, together
     // with everything else queued; an idle agent starts a turn. A `Note`
-    // needs no answer: it goes with the next call and starts no turn.
+    // needs no answer and starts no turn: it goes with the next call
+    // built after it is accepted (at Start, after Admit built that pass's).
     let reminder = Deliver::new(args.agent, format!("Reminder: {}", args.args), DeliveryMode::Queue);
     commands.trigger(reminder.with_origin(Origin::plugin("remind")));
 }
@@ -587,6 +622,14 @@ and has not sent yet are its inbox,
 `On<Add<Started>>` sees each message as it is accepted. A message's record
 in the effect log is the custom kind `message`, and
 `MessageRecord::read(&record.kind)` reads its text, origin and mode back.
+
+**With the user's next message.** What a plugin wants the agent to read
+the next time the user writes, such as a background check's failure, is
+a Prepare edit of that message: the plugin keeps it in its own state and
+adds it to the next `Incoming` from `OriginKind::User` as an
+`Attachment { label, content }` (`Added<Admitted>`). It then starts no
+turn of its own, needs no hold, and is taken back by clearing that state.
+To have the agent act on it at once, `Deliver` it instead.
 
 A plugin that needs a mark on its own message spawns it:
 `(Incoming::new(text, mode), ForAgent(agent), MyMark)` is all `Deliver`
@@ -680,7 +723,8 @@ A model call is an effect entity with a `ModelRequest`: the rig-core
 messages, the tools offered, the options), the `connection` it goes to,
 else its agent's model (`Models::connect` makes one), and its `adapters`.
 A turn's own call is a `TurnCall`, whose request the kernel builds from
-its agent when it is admitted; a call built from an agent outside its
+its agent when it is admitted (an `On<Add<Admitted>>` observer runs
+before that; a Prepare system sees it built); a call built from an agent outside its
 turns, such as a preview, is `BuildFrom(agent)`. A plugin changes a
 request with a system in the `Prepare` stage, which sees each call once
 (`Added<Admitted>`), ordered against
@@ -720,8 +764,26 @@ prompt cache.
   tool left out of a request is not offered but still runs if called: a
   `Gate` system refuses a call (`Outcome::refused`), and `ToolAccess` on
   the agent is the hard limit.
+- **Below every adapter: the HTTP client.** A provider plugin may send a
+  vendor's requests through its own client:
+  `connector.provide(vendor, ConnectOptions::new().http(client))`, with
+  any rig-core `http_client::HttpClientExt` ([Adding to another plugin's
+  lists](#adding-to-another-plugins-lists) says how a provider plugin
+  provides). Every call to that vendor's models goes through it, a turn's
+  and a plugin's own alike, under every adapter: the place to rotate API
+  keys, or to send a request that got a 429 again on another key
+  (`http_client::Error::non_success_status` and `non_success_headers`
+  read the status and `Retry-After`), which no effect then sees fail.
+- **What the model is sent in place of old messages.** An agent's
+  `Condensed { upto, summary }` (a compaction inserts it) makes requests
+  send `summary` in place of the conversation's first `upto` messages,
+  which stay in the `Conversation`. It is immutable: inserting another
+  logs it, so `On<Insert<Condensed>>` sees every condensation, and a
+  restore inserts it before the saved components.
 - `rig_ecs::prompt::system_prompt` and `tool_rules` put a prompt together
   exactly as the kernel does, such as for a view of what an agent is told.
+  `rig_memory::HeuristicTokenCounter` estimates tokens as rig-compaction
+  does.
 
 A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
 `Overflow`, `Final`) in `Review`. A plugin that takes the failure over
@@ -932,9 +994,12 @@ fn time_to_first(
 # How a turn ends
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among
-the agent's turns and its `first_message` in the conversation. The kernel
-makes it `ForAgent` its agent when it is spawned, so it goes with the
-agent. A turn's
+the agent's turns over the whole session (saved with the agent) and its
+`first_message` in the conversation. The kernel makes it `ForAgent` its
+agent when it is spawned, so it goes with the agent. It is spawned before
+its first request is built, so an `On<Add<TurnOf>>` observer's edit, such
+as a prompt section's new text, is in that request; once the turn ends it
+loses `TurnOf` and keeps `ForAgent`. A turn's
 end is a proposal: when the model answers without calling tools, or the
 turn fails, the kernel proposes a `TurnOutcome` on the turn in `Commit`
 (`Answered(message)`, `Failed(reason)`), and a `Review` system sees it in
@@ -953,6 +1018,38 @@ ends: the agent is idle, and the turn entity is `Settled` until the next
 frame. An `On<Add<Settled>>` observer may retire the agent
 (`Commit::retire`), such as one that did its one job; the turn goes with
 it. `Interrupt` stops a turn at once; it cannot be held.
+
+**Ending a turn with an answer already known**, such as the JSON a
+`submit` tool was called with: a Gate system answers the turn's next
+model call itself, with a completion of that text. Nothing is sent, the
+turn ends `Answered` with it, and `--print` prints it as the answer.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+use rig_harness::rig_core::effect;
+use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
+
+/// On a turn whose answer is known: the text it ends with.
+#[derive(Component)]
+pub struct EndWith(pub String);
+
+/// Answers the turn's next model call with the known text.
+fn end_with(
+    calls: Query<(Entity, &CallOf), (With<TurnCall>, Undecided)>,
+    turns: Query<&EndWith>,
+    mut commands: Commands,
+) {
+    for (call, &CallOf(turn)) in &calls {
+        if let Ok(EndWith(text)) = turns.get(turn) {
+            let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
+            let made = Made::new("plugin", "submit", "submit");
+            let reply = CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
+            commands.entity(call).insert_if_new(Outcome(Ok(effect::Outcome::Completion(reply))));
+        }
+    }
+}
+```
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1013,6 +1110,18 @@ and a replayer may answer it from the effect log; `CallOf(turn)` keeps a turn
 open until it settles. Work off the main thread is a `Running` task on the
 effect's entity, `Running::answering(pool, wake, future)`, whose output
 becomes its outcome.
+
+**An owner follows its effect's successor.** Another plugin may take the
+effect over ([Taking over and trying
+again](#how-a-plugin-steps-in-effects-and-stages)), such as a watchdog
+that sends a stalled model call again: the effect then settles with no
+outcome applied, recorded as superseded, and its `SupersededBy` names
+the successor that carries the work on (`successor()`, which may itself
+be superseded later). A plugin waiting for its own effect's outcome, on
+`Add<Settled>`, checks for `SupersededBy` and moves its markers and any
+hold it keeps with the effect to the successor. Commit runs before Admit,
+so they are there when the successor is prepared. The kernel follows its
+own turn and tool calls this way.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1442,7 +1551,10 @@ entity with a `KeepAwake(Duration)` keeps it running at that pace while it
 lives. None needs a thread. Bevy's clock stops while the machine sleeps; a
 time of day is a `WakeAt(SystemTime)` on an entity, which gets `Due` in
 `First` once that time passed (the loop wakes for it), and is armed again
-by inserting a new `WakeAt`.
+by inserting a new `WakeAt`. A delayed command cannot be taken back, so
+a wait that may be put off or called off, such as a debounce, is a
+`WakeAt::after(wait)` on an entity of the plugin's: inserting a new one
+puts it off, and removing it or despawning the entity calls it off.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2142,7 +2254,9 @@ reads and changes, as it does for panels:
 - **A panel's keys.** `KeyFocus(Some(panel))` gives a `TuiPanel` the keys:
   its bindings in `KeyScope::Panel(panel)` and the global ones apply, not
   the input's, and Esc it does not bind, or the panel going, gives the
-  keys back.
+  keys back. While it has them, a key it does not bind edits nothing, so
+  a panel with a text field of its own, such as a palette's filter, reads
+  the typed keys in order from `TerminalEvent` (below).
 - **Completion.** An `ArgCompletion::new("/model").candidate(text,
   detail)` entity offers candidates for a command's argument, which the
   input completes as it does commands and `@` paths.
