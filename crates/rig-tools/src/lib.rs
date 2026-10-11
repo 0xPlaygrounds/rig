@@ -19,8 +19,10 @@
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
 //! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
 //!   much of a long output is kept;
-//! - [`process`]: child processes in a process group of their own, and the
-//!   [`Launcher`](process::Launcher) that says how tools start them;
+//! - [`process`]: child processes in a process group of their own, the
+//!   [`Launcher`](process::Launcher) that says how tools start them, and
+//!   the [`Process`](process::Process) it spawns: input in, output line by
+//!   line, stopped gently or killed with its group;
 //! - [`blocking`]: blocking work on a thread of its own, so no async
 //!   executor thread blocks.
 //!
