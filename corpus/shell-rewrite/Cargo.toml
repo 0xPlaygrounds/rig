@@ -12,6 +12,8 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
+# `CodingToolsSystems`, which sets up the calls the plugin rewrites.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
@@ -21,6 +23,7 @@ toml = "1"
 [dev-dependencies]
 # Spec 01's guard, which must judge the rewritten command.
 corpus-confirm-destructive = { path = "../confirm-destructive" }
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

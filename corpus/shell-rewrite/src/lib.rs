@@ -34,6 +34,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use bevy_log::warn;
+use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::message::ToolResultContent;
@@ -269,7 +270,8 @@ pub struct RanAs(pub String);
 /// rewritten one.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShellRewriteSystems {
-    /// Rewrites the command of each `shell` call as it is admitted.
+    /// Rewrites the command of each `shell` call as it is admitted, after
+    /// [`CodingToolsSystems`].
     Prepare,
     /// Puts "(ran as: …)" first in each rewritten call's result.
     Review,
@@ -293,7 +295,9 @@ impl Plugin for ShellRewritePlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ShellRewriteSystems::Prepare.in_set(Stage::Prepare),
+                    ShellRewriteSystems::Prepare
+                        .in_set(Stage::Prepare)
+                        .after(CodingToolsSystems),
                     ShellRewriteSystems::Review.in_set(Stage::Review),
                 ),
             )
@@ -311,7 +315,8 @@ impl Plugin for ShellRewritePlugin {
 /// conversation keeps the model's call; the call's request is what runs,
 /// what gates judge and what the effect log records.
 fn rewrite(
-    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
+    mut calls: Query<(Entity, &mut ToolRequest, &ForAgent), (Added<Admitted>, ToolCalls)>,
+    dirs: Query<&WorkDir>,
     rules: Res<ShellRewrites>,
     processes: Res<Processes>,
     root: Res<ProjectRoot>,
@@ -329,7 +334,7 @@ fn rewrite(
         .find(|(name, _)| name == "PATH")
         .map(|(_, value)| value.clone())
         .or_else(|| std::env::var_os("PATH"));
-    for (call, mut request) in &mut calls {
+    for (call, mut request, &ForAgent(agent)) in &mut calls {
         let arguments = &request.call.function.arguments;
         if request.call.function.name.as_str() != SHELL {
             continue;
@@ -338,6 +343,8 @@ fn rewrite(
             continue;
         };
         let dir = arguments.get("cwd").and_then(|dir| dir.as_str());
+        // An agent's own working directory is where its commands run.
+        let base = dirs.get(agent).map_or(&base, |WorkDir(dir)| dir);
         let place = Place {
             dir: dir.map_or_else(|| base.clone(), |dir| base.join(dir)),
             path: path.clone(),
@@ -354,12 +361,12 @@ fn rewrite(
 
 /// Puts "(ran as: `<rewritten>`)" first in each rewritten call's result.
 fn say_what_ran(
-    calls: Query<(Entity, &RanAs, &Outcome, Has<Started>), Unreviewed>,
+    mut calls: Query<(Entity, &RanAs, &mut Outcome, Has<Started>), (Unreviewed, ToolCalls)>,
     mut commands: Commands,
 ) {
-    for (call, RanAs(ran_as), outcome, started) in &calls {
-        let mut call = commands.entity(call);
-        call.remove::<RanAs>();
+    for (call, RanAs(ran_as), mut outcome, started) in &mut calls {
+        // Once: Review sees the outcome each pass until it settles.
+        commands.entity(call).remove::<RanAs>();
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
         };
@@ -379,7 +386,7 @@ fn say_what_ran(
                 output
             }
         };
-        call.insert(Outcome::from(result.clone().with_output(output)));
+        *outcome = Outcome::from(result.clone().with_output(output));
     }
 }
 

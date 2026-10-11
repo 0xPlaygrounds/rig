@@ -135,3 +135,8 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
     }
     std::fs::remove_dir_all(home.root()).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ShellRewritePlugin);
+}
