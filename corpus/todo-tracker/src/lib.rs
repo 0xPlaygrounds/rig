@@ -42,6 +42,11 @@ const PANEL_WIDTH: u16 = 32;
 #[derive(Default)]
 pub struct TodoPlugin;
 
+/// The plugin's stage system, in [`Stage::Review`]: it nudges an agent
+/// whose turn would end with items open.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TodoSystems;
+
 impl Plugin for TodoPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
@@ -58,7 +63,8 @@ impl Plugin for TodoPlugin {
                 "Show the todo list; `/todo clear` clears it, `/todo panel` toggles its panel",
                 todo_command,
             )
-            .add_systems(AgentPass, nudge.in_set(Stage::Review))
+            .configure_sets(AgentPass, TodoSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, nudge.in_set(TodoSystems))
             .add_observer(reset_nudge)
             .add_systems(Startup, spawn_panel)
             .add_systems(Update, redraw)
@@ -188,7 +194,7 @@ struct TodoArgs {
 fn on_todo(
     called: On<ToolCalled<TodoArgs>>,
     mut agents: Query<&mut Todos>,
-    mut commands: Commands,
+    mut decisions: Query<&mut Decision, ToolCalls>,
 ) {
     let result = match agents.get_mut(called.agent) {
         Ok(mut todos) => todos.applied(&called.args).map(|list| {
@@ -201,9 +207,9 @@ fn on_todo(
         Ok(list) => ToolResult::success(list.into()),
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(output));
+    if let Ok(mut decision) = decisions.get_mut(called.call) {
+        decision.decide(output);
+    }
 }
 
 /// A turn the model would end with an answer while items are open carries

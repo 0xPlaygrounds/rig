@@ -100,3 +100,8 @@ fn an_answer_with_open_items_is_nudged_once_and_the_list_is_restored() {
         Some("[x] 1. a\n[x] 2. b")
     );
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(TodoPlugin);
+}
