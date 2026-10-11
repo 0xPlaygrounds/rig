@@ -123,6 +123,10 @@ impl<I: Intercept> Serve for Layer<I> {
         descriptor
     }
 
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        self.inner.footprint(kind)
+    }
+
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
         let name = self.intercept.name();

@@ -274,6 +274,16 @@ where
         }
     }
 
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        match kind {
+            EffectKind::ToolCall { name, args } if name == T::NAME => {
+                let args = crate::tool::contextual::parse_tool_args::<T::Args>(args).ok()?;
+                Some(self.tool.footprint(&args))
+            }
+            _ => None,
+        }
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::ToolCall { name, .. } if name != T::NAME => {

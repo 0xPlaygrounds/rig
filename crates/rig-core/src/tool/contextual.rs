@@ -24,6 +24,7 @@ use crate::{
 
 use super::{
     IntoToolOutput, PublishedContext, ToolContext, ToolExecutionError, ToolOutput, ToolResult,
+    Touches,
 };
 
 /// A typed LLM tool.
@@ -67,6 +68,15 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
         ToolAnnotations::default()
     }
 
+    /// What a call with `args` may read and change, so a host runs the
+    /// calls of one reply that touch different things side by side. The
+    /// default reads it from the [annotations](Self::annotations): a
+    /// read-only tool reads anything, any other writes anything.
+    fn footprint(&self, args: &Self::Args) -> Touches {
+        let _ = args;
+        Touches::from_annotations(&self.annotations())
+    }
+
     /// Normalize a typed author-facing error for runtime policy and telemetry.
     ///
     /// The default preserves concrete sources for operators and exposes safe
@@ -103,6 +113,10 @@ where
 
     fn annotations(&self) -> ToolAnnotations {
         super::PortableTool::annotations(self)
+    }
+
+    fn footprint(&self, args: &Self::Args) -> Touches {
+        super::PortableTool::footprint(self, args)
     }
 
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
@@ -156,7 +170,7 @@ where
     }
 }
 
-fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
+pub(crate) fn parse_tool_args<A>(args: &str) -> Result<A, ToolExecutionError>
 where
     A: serde::de::DeserializeOwned,
 {

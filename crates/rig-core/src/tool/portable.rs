@@ -60,6 +60,13 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
         crate::completion::ToolAnnotations::default()
     }
 
+    /// What a call with `arguments` may read and change; by default, from
+    /// the annotations ([`Tool::footprint`](super::Tool::footprint)).
+    fn footprint(&self, arguments: &Self::Args) -> super::Touches {
+        let _ = arguments;
+        super::Touches::from_annotations(&self.annotations())
+    }
+
     /// Normalize a concrete failure at the runtime effect boundary.
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
         ToolExecutionError::from_error(error)

@@ -18,6 +18,7 @@ use crate::{
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
+    tool::Touches,
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 
@@ -84,12 +85,21 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
         kind: EffectKind,
         dispatch: Dispatch,
     ) -> impl Future<Output = Reply> + WasmCompatSend + use<'_, Self>;
+
+    /// What dispatching `kind` may read and change, for a tool's handler
+    /// ([`Tool::footprint`](crate::tool::Tool::footprint)); `None` when it
+    /// cannot say, such as for arguments that do not parse.
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        let _ = kind;
+        None
+    }
 }
 
 /// Object-safe handler interface implemented for every [`Serve`].
 pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches>;
 }
 
 // A type that is not a `Serve` should be told to implement `Serve`, never
@@ -110,6 +120,10 @@ impl<T: Serve> Handler for T {
             reply.observed(streaming, seen, folded)
         })
     }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        Serve::footprint(self, kind)
+    }
 }
 
 /// A shared handler is a handler: `Arc<H>` forwards, so one handler can be
@@ -123,6 +137,10 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         (**self).serve(kind, dispatch).await
+    }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        (**self).footprint(kind)
     }
 }
 
@@ -184,6 +202,12 @@ impl ErasedHandler {
         self.0.handle(kind, dispatch)
     }
 
+    /// What dispatching `kind` to this handler may read and change
+    /// ([`Serve::footprint`]).
+    pub fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        self.0.footprint(kind)
+    }
+
     /// Whether two erased handlers are the same allocation.
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -208,6 +232,10 @@ impl Serve for ErasedHandler {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         self.handle(kind, dispatch).await
+    }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
+        self.0.footprint(kind)
     }
 }
 
