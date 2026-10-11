@@ -116,7 +116,7 @@ impl Plugin for LoopBreakerPlugin {
 /// reply's order; refuses the repeated ones, and stops a turn that loops.
 fn judge(
     mut turns: Query<(Entity, &TurnOf, &Calls, &mut TurnCalls), Without<TurnOutcome>>,
-    calls: Query<&ToolRequest, (Undecided, Without<Counted>)>,
+    mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls, Without<Counted>)>,
     limits: Res<LoopLimits>,
     breaking: Res<LoopBreaking>,
     mut commands: Commands,
@@ -126,10 +126,10 @@ fn judge(
         return;
     }
     for (turn, &TurnOf(agent), of, mut counts) in &mut turns {
-        for (call, request) in of
-            .iter()
-            .filter_map(|call| Some((call, calls.get(call).ok()?)))
-        {
+        for call in of.iter() {
+            let Ok((request, mut decision)) = calls.get_mut(call) else {
+                continue;
+            };
             commands.entity(call).insert(Counted);
             let function = &request.call.function;
             let (name, arguments) = (function.name.as_str(), &function.arguments);
@@ -165,7 +165,7 @@ fn judge(
                     "You already called `{name}` with these arguments {before} with the same \
                      result; change approach."
                 );
-                commands.entity(call).insert_if_new(Outcome::refused(why));
+                decision.decide(Outcome::refused(why));
             }
         }
     }
