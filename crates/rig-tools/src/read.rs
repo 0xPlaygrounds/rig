@@ -14,15 +14,33 @@ const MAX_LINE_CHARS: usize = 2000;
 pub struct Read;
 
 /// Arguments of [`Read`].
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ReadArgs {
     /// The file to read.
-    path: String,
+    pub path: String,
     /// The first line to read, from 1.
-    offset: Option<usize>,
+    pub offset: Option<usize>,
     /// How many lines to read.
-    limit: Option<usize>,
+    pub limit: Option<usize>,
+}
+
+impl ReadArgs {
+    /// Read `path` from its start.
+    pub fn new(path: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            offset: None,
+            limit: None,
+        }
+    }
+
+    /// The same read, of at most `limit` lines from line `offset` (from 1).
+    pub fn lines(mut self, offset: usize, limit: usize) -> Self {
+        self.offset = Some(offset);
+        self.limit = Some(limit);
+        self
+    }
 }
 
 impl Read {
@@ -50,6 +68,12 @@ impl PortableTool for Read {
 
     fn parameters(&self) -> serde_json::Value {
         args_schema::<ReadArgs>()
+    }
+
+    fn annotations(&self) -> rig_core::completion::ToolAnnotations {
+        rig_core::completion::ToolAnnotations::default()
+            .with_read_only(true)
+            .with_open_world(false)
     }
 
     async fn call(&self, args: ReadArgs) -> Result<String, ToolExecutionError> {

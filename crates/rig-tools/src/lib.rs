@@ -1,7 +1,14 @@
-//! Coding tools for Rig agents, as [`PortableTool`](rig_core::tool::PortableTool)s:
-//! [`Read`], [`Write`], [`Edit`], [`Search`] and [`Shell`]. Each has a
-//! description of what it does and its usage `RULES`, the lines a system
-//! prompt carries on when to pick it, such as "use `read`, not `cat`".
+//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`]
+//! and [`Shell`]. Each has a description of what it does, its usage
+//! `RULES`, the lines a system prompt carries on when to pick it, such as
+//! "use `read`, not `cat`", and annotations saying what it does to the
+//! world (read-only or destructive). `read` and `search` are
+//! [`PortableTool`](rig_core::tool::PortableTool)s; `write`, `edit` and
+//! `shell` are [`Tool`](rig_core::tool::Tool)s that publish what they did
+//! beside their text: the files they changed
+//! ([`FilesChanged`](rig_core::tool::FilesChanged)) and how the command
+//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Their arguments are
+//! plain data with public fields, to build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
@@ -9,8 +16,10 @@
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
-//! - [`Spill`]: where output a tool cut is kept whole;
-//! - [`process`]: child processes in a process group of their own;
+//! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
+//!   much of a long output is kept;
+//! - [`process`]: child processes in a process group of their own, and the
+//!   [`Launcher`](process::Launcher) that says how tools start them;
 //! - [`blocking`]: blocking work on a thread of its own, so no async
 //!   executor thread blocks.
 //!
@@ -29,10 +38,10 @@ mod spill;
 mod write;
 
 pub use blocking::blocking;
-pub use edit::{Edit, EditArgs};
+pub use edit::{Edit, EditArgs, Replacement};
 pub use read::{Read, ReadArgs, numbered};
-pub use search::{Search, SearchArgs};
-pub use shell::{Shell, ShellArgs};
+pub use search::{Found, Hit, Search, SearchArgs, find};
+pub use shell::{Shell, ShellArgs, ShellRun};
 pub use spill::Spill;
 pub use write::{Write, WriteArgs};
 
@@ -42,6 +51,57 @@ pub const MAX_LINES: usize = 2000;
 pub const MAX_BYTES: usize = 50 * 1024;
 /// The largest file `read` and `edit` load whole, and `search` scans.
 pub const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+
+/// How much of a long output a tool keeps: its last lines, at most
+/// `lines` of them and `bytes` bytes, starting at a line.
+///
+/// ```
+/// use rig_tools::Cut;
+///
+/// let cut = Cut { lines: 2, bytes: 1024 };
+/// assert_eq!(cut.tail("one\ntwo\nthree\n"), ("two\nthree\n", 1));
+/// let narrow = Cut { lines: 10, bytes: 7 };
+/// assert_eq!(narrow.tail("one\ntwo\nthree\n"), ("three\n", 2));
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Cut {
+    /// Most lines kept.
+    pub lines: usize,
+    /// Most bytes kept.
+    pub bytes: usize,
+}
+
+impl Default for Cut {
+    /// [`MAX_LINES`] lines or [`MAX_BYTES`] bytes.
+    fn default() -> Self {
+        Self {
+            lines: MAX_LINES,
+            bytes: MAX_BYTES,
+        }
+    }
+}
+
+impl Cut {
+    /// The end of `text` this keeps, starting at a line, and how many lines
+    /// before it were left out. When even the last line is longer than
+    /// [`bytes`](Self::bytes), nothing is kept.
+    pub fn tail<'t>(&self, text: &'t str) -> (&'t str, usize) {
+        let starts: Vec<usize> = std::iter::once(0)
+            .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+            .filter(|start| *start < text.len())
+            .collect();
+        let first = starts.len().saturating_sub(self.lines);
+        let kept = starts
+            .iter()
+            .enumerate()
+            .skip(first)
+            .find(|(_, start)| text.len() - **start <= self.bytes);
+        match kept {
+            Some((dropped, start)) => (text.get(*start..).unwrap_or_default(), dropped),
+            None => ("", starts.len()),
+        }
+    }
+}
 
 /// `line` cut to its first `limit` characters.
 pub fn clip(line: &str, limit: usize) -> &str {
@@ -60,3 +120,6 @@ pub fn shorten(text: &str, limit: usize) -> String {
         text.to_owned()
     }
 }
+
+#[cfg(test)]
+mod tests;

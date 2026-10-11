@@ -1,12 +1,12 @@
-//! File helpers the tools share: an atomic write, capped text reads and
-//! JSON files.
+//! File helpers the tools share: an atomic write, capped text reads, JSON
+//! files, and the [`FileChange`] a tool that writes publishes.
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rig_core::tool::ToolExecutionError;
+use rig_core::tool::{FileChange, ToolExecutionError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -168,4 +168,31 @@ pub fn io_error(path: &str, error: io::Error) -> ToolExecutionError {
         ErrorKind::PermissionDenied => ToolExecutionError::permission_denied(message),
         _ => ToolExecutionError::other(message),
     }
+}
+
+/// What turning `before` (`None`: there was no file) into `after` did to the
+/// file at `path`, its lines added and removed counted by a line diff: the
+/// fact a tool that writes files publishes ([`FilesChanged`](rig_core::tool::FilesChanged)).
+///
+/// ```
+/// use rig_core::tool::{ChangeKind, FileChange};
+/// use rig_tools::fs::file_change;
+///
+/// assert_eq!(file_change("a.rs", None, "one\ntwo\n"), FileChange::created("a.rs", 2));
+/// let changed = file_change("a.rs", Some("one\ntwo\n"), "one\n2\nthree\n");
+/// assert_eq!((changed.kind, changed.added, changed.removed), (ChangeKind::Modified, 2, 1));
+/// ```
+pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange {
+    let Some(before) = before else {
+        return FileChange::created(path, after.lines().count());
+    };
+    let (mut added, mut removed) = (0, 0);
+    for change in similar::TextDiff::from_lines(before, after).iter_all_changes() {
+        match change.tag() {
+            similar::ChangeTag::Insert => added += 1,
+            similar::ChangeTag::Delete => removed += 1,
+            similar::ChangeTag::Equal => {}
+        }
+    }
+    FileChange::modified(path, added, removed)
 }

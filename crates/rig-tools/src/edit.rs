@@ -10,12 +10,15 @@ use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::Path;
 
-use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use rig_core::completion::ToolAnnotations;
+use rig_core::tool::{
+    FileChange, FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use similar::TextDiff;
 
-use crate::fs::{io_error, read_text, write_atomic};
+use crate::fs::{file_change, io_error, read_text, write_atomic};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Lines of unchanged context around each hunk of the returned diff.
@@ -23,31 +26,59 @@ const CONTEXT: usize = 3;
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
 
-/// Replaces text in a file.
+/// Replaces text in a file. Publishes the file it changed
+/// ([`FilesChanged`]).
 pub struct Edit;
 
 /// Arguments of [`Edit`].
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct EditArgs {
     /// The file to edit.
-    path: String,
+    pub path: String,
     /// The replacements, matched against the original file.
     #[schemars(length(min = 1))]
-    edits: Vec<Replacement>,
+    pub edits: Vec<Replacement>,
+}
+
+impl EditArgs {
+    /// Make `edits` to `path`.
+    pub fn new(path: impl Into<String>, edits: impl IntoIterator<Item = Replacement>) -> Self {
+        Self {
+            path: path.into(),
+            edits: edits.into_iter().collect(),
+        }
+    }
 }
 
 // One replacement of an `edit` call; not a doc comment, which the model would see.
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct Replacement {
+pub struct Replacement {
     /// The exact text to replace, copied from the file without line numbers.
-    old_text: String,
+    pub old_text: String,
     /// The replacement.
-    new_text: String,
+    pub new_text: String,
     /// Replace every match instead of exactly one.
     #[serde(default)]
-    replace_all: bool,
+    pub replace_all: bool,
+}
+
+impl Replacement {
+    /// Replace the one match of `old_text` with `new_text`.
+    pub fn new(old_text: impl Into<String>, new_text: impl Into<String>) -> Self {
+        Self {
+            old_text: old_text.into(),
+            new_text: new_text.into(),
+            replace_all: false,
+        }
+    }
+
+    /// The same replacement, of every match.
+    pub fn all(mut self) -> Self {
+        self.replace_all = true;
+        self
+    }
 }
 
 impl Edit {
@@ -61,7 +92,7 @@ impl Edit {
     ];
 }
 
-impl PortableTool for Edit {
+impl Tool for Edit {
     const NAME: &'static str = "edit";
     type Args = EditArgs;
     type Output = String;
@@ -79,12 +110,25 @@ impl PortableTool for Edit {
         args_schema::<EditArgs>()
     }
 
-    async fn call(&self, args: EditArgs) -> Result<String, ToolExecutionError> {
-        blocking(move || edit(args)).await
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default()
+            .with_destructive(true)
+            .with_idempotent(false)
+            .with_open_world(false)
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: EditArgs,
+    ) -> Result<String, ToolExecutionError> {
+        let (output, change) = blocking(move || edit(args)).await?;
+        context.insert_result(FilesChanged(vec![change]))?;
+        Ok(output)
     }
 }
 
-fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
+fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
     let path = args.path.as_str();
     if args.edits.is_empty() {
         return Err(ToolExecutionError::invalid_args(format!(
@@ -175,7 +219,7 @@ fn edit(args: EditArgs) -> Result<String, ToolExecutionError> {
     }
     out.push('\n');
     out.push_str(&diff(path, text, &edited));
-    Ok(out)
+    Ok((out, file_change(path, Some(text), &edited)))
 }
 
 /// The file's text with LF line endings and no byte-order mark, and how to

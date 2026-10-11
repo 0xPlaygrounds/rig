@@ -3,20 +3,21 @@
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Write as _};
-use std::path::PathBuf;
-use std::process::{Command, ExitStatus, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use rig_core::completion::ToolAnnotations;
+use rig_core::tool::{ExitStatus, Tool, ToolContext, ToolExecutionError, args_schema};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::process::{detach, kill_group};
-use crate::{MAX_BYTES, MAX_LINES, Spill, blocking};
+use crate::process::{Launcher, kill_group};
+use crate::{Cut, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
@@ -26,28 +27,81 @@ const MAX_TIMEOUT: u64 = 600;
 const PIPE_GRACE: Duration = Duration::from_millis(100);
 /// How often the command's state is checked while no output arrives.
 const POLL: Duration = Duration::from_millis(20);
-/// Output past which the command is killed. Only the last `MAX_BYTES` are
-/// kept in memory while it runs.
+/// Output past which the command is killed. While it runs, only what the
+/// [`Cut`] keeps is held in memory.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
-/// Runs a command with `sh -c` in its own session and process group.
-#[derive(Clone, Debug, Default)]
+/// Runs a command with `sh -c` in its own session and process group, as its
+/// [`Launcher`] starts processes. Publishes how the command ended
+/// ([`ExitStatus`]) beside its output.
+#[derive(Clone, Debug)]
 pub struct Shell {
-    /// Environment variables the command does not inherit, such as those
-    /// that make a program act as the agent running it.
-    pub unset_env: &'static [&'static str],
+    /// How the command is started: a wrapper, a directory, its variables.
+    pub launcher: Launcher,
     /// Where output that is cut is kept whole, named in the cut output.
     pub spill: Option<Spill>,
+    /// How much of the output the result keeps; `None` keeps all of it, up
+    /// to the 10 MB the command is killed at, for a host that cuts output
+    /// itself.
+    pub cut: Option<Cut>,
+}
+
+impl Default for Shell {
+    /// Started as this process starts it, nothing spilled, output cut as
+    /// [`Cut::default`] cuts it.
+    fn default() -> Self {
+        Self {
+            launcher: Launcher::default(),
+            spill: None,
+            cut: Some(Cut::default()),
+        }
+    }
 }
 
 /// Arguments of [`Shell`].
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ShellArgs {
     /// The command line.
-    command: String,
+    pub command: String,
     /// Seconds before the command is killed.
-    timeout_secs: Option<u64>,
+    pub timeout_secs: Option<u64>,
+    /// The directory to run it in, relative to the working directory;
+    /// default the working directory.
+    pub cwd: Option<String>,
+}
+
+impl ShellArgs {
+    /// Run `command`, with the default timeout, in the working directory.
+    pub fn new(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            timeout_secs: None,
+            cwd: None,
+        }
+    }
+
+    /// The same arguments, killing the command after `secs` seconds.
+    pub fn timeout_secs(mut self, secs: u64) -> Self {
+        self.timeout_secs = Some(secs);
+        self
+    }
+
+    /// The same arguments, running the command in `dir`.
+    pub fn in_dir(mut self, dir: impl Into<String>) -> Self {
+        self.cwd = Some(dir.into());
+        self
+    }
+}
+
+/// What a command printed and how it ended.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ShellRun {
+    /// Its output, stdout and stderr interleaved, as the [`Cut`] keeps it,
+    /// ending in a line saying how it ended.
+    pub output: String,
+    /// How it ended.
+    pub status: ExitStatus,
 }
 
 impl Shell {
@@ -59,21 +113,38 @@ impl Shell {
         "Do not start programs that wait for input or never end, such as editors, \
          pagers or servers in the foreground.",
     ];
+
+    /// Runs `args` as the tool does, on a thread of its own, and returns
+    /// the output and how the command ended. Dropping the future kills the
+    /// command.
+    pub async fn run(&self, args: ShellArgs) -> Result<ShellRun, ToolExecutionError> {
+        let stop = StopOnDrop(Arc::default());
+        let running = Arc::clone(&stop.0);
+        let shell = self.clone();
+        blocking(move || run(&shell, args, &running)).await
+    }
 }
 
-impl PortableTool for Shell {
+impl Tool for Shell {
     const NAME: &'static str = "shell";
     type Args = ShellArgs;
     type Output = String;
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
+        let kept = match self.cut {
+            Some(cut) => format!(
+                "keeping the last {} lines or {} KB",
+                cut.lines,
+                cut.bytes / 1024
+            ),
+            None => "all of it".to_owned(),
+        };
         format!(
-            "Run a shell command with `sh -c` in the current directory. stdin is empty. \
-             Returns the exit code and stdout and stderr interleaved, keeping the last {MAX_LINES} lines \
-             or {} KB. The command is killed after timeout_secs (default {DEFAULT_TIMEOUT}, \
-             at most {MAX_TIMEOUT}), or once it printed more than {} MB.",
-            MAX_BYTES / 1024,
+            "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
+             empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
+             command is killed after timeout_secs (default {DEFAULT_TIMEOUT}, at most \
+             {MAX_TIMEOUT}), or once it printed more than {} MB.",
             OUTPUT_LIMIT / 1024 / 1024
         )
     }
@@ -82,11 +153,18 @@ impl PortableTool for Shell {
         args_schema::<ShellArgs>()
     }
 
-    async fn call(&self, args: ShellArgs) -> Result<String, ToolExecutionError> {
-        let stop = StopOnDrop(Arc::default());
-        let running = Arc::clone(&stop.0);
-        let (unset, spill) = (self.unset_env, self.spill.clone());
-        blocking(move || run(args, unset, spill, &running)).await
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default().with_title("Shell")
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: ShellArgs,
+    ) -> Result<String, ToolExecutionError> {
+        let ran = self.run(args).await?;
+        context.insert_result(ran.status)?;
+        Ok(ran.output)
     }
 }
 
@@ -118,12 +196,7 @@ impl Drop for StopOnDrop {
     }
 }
 
-fn run(
-    args: ShellArgs,
-    unset_env: &[&str],
-    spill: Option<Spill>,
-    stop: &Stop,
-) -> Result<String, ToolExecutionError> {
+fn run(shell: &Shell, args: ShellArgs, stop: &Stop) -> Result<ShellRun, ToolExecutionError> {
     let timeout = Duration::from_secs(
         args.timeout_secs
             .unwrap_or(DEFAULT_TIMEOUT)
@@ -135,17 +208,20 @@ fn run(
     let error_writer = writer
         .try_clone()
         .map_err(|error| ToolExecutionError::other(format!("could not open a pipe: {error}")))?;
-    let mut command = Command::new("sh");
+    let launcher = match &args.cwd {
+        Some(dir) => {
+            let base = shell.launcher.cwd.as_deref().unwrap_or(Path::new(""));
+            shell.launcher.clone().in_dir(base.join(dir))
+        }
+        None => shell.launcher.clone(),
+    };
+    let mut command = launcher.command("sh");
     command
         .arg("-c")
         .arg(&args.command)
         .stdin(Stdio::null())
         .stdout(writer)
         .stderr(error_writer);
-    for name in unset_env {
-        command.env_remove(name);
-    }
-    detach(&mut command);
     let spawned = command.spawn();
     // The parent's copies of the pipe's write end must close, or reading
     // never ends.
@@ -155,7 +231,8 @@ fn run(
     stop.leader.store(child.id(), Ordering::SeqCst);
     let chunks = drain(reader);
     let mut tail = Tail {
-        spill,
+        spill: shell.spill.clone(),
+        cut: shell.cut,
         ..Tail::default()
     };
     let deadline = Instant::now() + timeout;
@@ -199,28 +276,43 @@ fn run(
     }
     child.wait().ok();
     let mut output = tail.text();
-    match end {
+    let status = match end {
         End::Exited(status) => match status.code() {
-            Some(code) => output.push_str(&format!("[exit code {code}]")),
-            None => output.push_str("[killed by a signal]"),
+            Some(code) => {
+                output.push_str(&format!("[exit code {code}]"));
+                ExitStatus::Exited(code)
+            }
+            None => {
+                output.push_str("[killed by a signal]");
+                ExitStatus::Signaled
+            }
         },
-        End::Stopped => output.push_str("[stopped]"),
-        End::TimedOut => output.push_str(&format!(
-            "[timed out after {}s and killed]",
-            timeout.as_secs()
-        )),
-        End::TooLong => output.push_str(&format!(
-            "[killed after printing more than {} MB]",
-            OUTPUT_LIMIT / 1024 / 1024
-        )),
-    }
-    Ok(output)
+        End::Stopped => {
+            output.push_str("[stopped]");
+            ExitStatus::Killed
+        }
+        End::TimedOut => {
+            output.push_str(&format!(
+                "[timed out after {}s and killed]",
+                timeout.as_secs()
+            ));
+            ExitStatus::TimedOut
+        }
+        End::TooLong => {
+            output.push_str(&format!(
+                "[killed after printing more than {} MB]",
+                OUTPUT_LIMIT / 1024 / 1024
+            ));
+            ExitStatus::Killed
+        }
+    };
+    Ok(ShellRun { output, status })
 }
 
 /// How the wait for the command ended.
 enum End {
     /// It exited.
-    Exited(ExitStatus),
+    Exited(std::process::ExitStatus),
     /// The call was dropped.
     Stopped,
     /// It ran past its timeout.
@@ -264,8 +356,10 @@ struct Tail {
     written: u64,
     /// The last bytes.
     bytes: VecDeque<u8>,
+    /// How much is kept; `None` keeps everything.
+    cut: Option<Cut>,
     /// Whether earlier bytes were dropped.
-    cut: bool,
+    dropped: bool,
     /// Whole lines dropped before `bytes`.
     cut_lines: usize,
     /// Where the whole output goes once some is cut.
@@ -275,7 +369,7 @@ struct Tail {
 }
 
 impl Tail {
-    /// Appends `chunk`, keeping only the last `MAX_BYTES` bytes.
+    /// Appends `chunk`, keeping only the last bytes the cut keeps.
     fn push(&mut self, chunk: &[u8]) {
         self.written += chunk.len() as u64;
         if let Some((_, file)) = &mut self.spilled
@@ -284,11 +378,12 @@ impl Tail {
             self.spilled = None;
         }
         self.bytes.extend(chunk);
-        let excess = self.bytes.len().saturating_sub(MAX_BYTES);
+        let kept = self.cut.map_or(usize::MAX, |cut| cut.bytes);
+        let excess = self.bytes.len().saturating_sub(kept);
         if excess > 0 {
             self.spill();
             self.cut_lines += self.bytes.drain(..excess).filter(|&b| b == b'\n').count();
-            self.cut = true;
+            self.dropped = true;
         }
     }
 
@@ -321,23 +416,25 @@ impl Tail {
         });
     }
 
-    /// The kept output, at most `MAX_LINES` lines, after a line saying how
-    /// many earlier ones were cut and which file has them all.
+    /// The kept output, as the cut keeps it, after a line saying how many
+    /// earlier lines were cut and which file has them all.
     fn text(mut self) -> String {
         let (front, back) = self.bytes.as_slices();
         let output = String::from_utf8_lossy(&[front, back].concat()).into_owned();
         let mut cut = self.cut_lines;
         // After a cut, the first line kept is only the end of a line.
         let output = match output.split_once('\n') {
-            Some((_, rest)) if self.cut => {
+            Some((_, rest)) if self.dropped => {
                 cut += 1;
                 rest
             }
             _ => output.as_str(),
         };
-        let lines: Vec<&str> = output.lines().collect();
-        let kept = lines.len().min(MAX_LINES);
-        cut += lines.len() - kept;
+        let (kept, dropped) = match self.cut {
+            Some(limits) => limits.tail(output),
+            None => (output, 0),
+        };
+        cut += dropped;
         let mut text = String::new();
         if cut > 0 {
             self.spill();
@@ -349,7 +446,7 @@ impl Tail {
                 None => text.push_str(&format!("[{cut} earlier lines cut]\n")),
             }
         }
-        for line in lines.iter().skip(lines.len() - kept) {
+        for line in kept.lines() {
             text.push_str(line);
             text.push('\n');
         }
