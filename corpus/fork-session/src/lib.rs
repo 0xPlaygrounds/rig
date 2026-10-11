@@ -187,7 +187,10 @@ fn branch(
                 name: None,
                 files,
             });
-            commands.trigger(ForkSession { before });
+            commands.trigger(ForkSession {
+                before,
+                ..ForkSession::default()
+            });
         },
     );
 }

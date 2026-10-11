@@ -102,7 +102,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
 /// A branch before a message keeps what the user wrote in it with its
 /// parent, so a view of the family reads no other log.
 #[test]
-fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
+fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() {
     let root = std::env::temp_dir().join(format!("rig-fork-text-{}", std::process::id()));
     let home = Home::at(&root);
     let id: SessionId = "1700000000-2"
@@ -138,11 +138,14 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
         .and_then(|conversation| conversation.id(2));
     let before = agent_id.zip(message);
     assert!(before.is_some(), "the message was logged");
+    let asker = app.world_mut().spawn_empty().id();
     app.world_mut().trigger(ForkSession {
         before: before.clone(),
+        asker: Some(asker),
     });
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
+    assert_eq!(forked.as_ref().and_then(|forked| forked.asker), Some(asker));
     let parent = forked.and_then(|forked| ForkedFrom::of(&home.session(&forked.to)));
     let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
     assert_eq!(text, Some("two"), "{parent:?}");

@@ -119,7 +119,7 @@ impl Plugin for SessionPlugin {
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
-                forks.0.push(fork.before.clone());
+                forks.0.push(fork.event().clone());
             })
             .add_observer(delete_session)
             // A fork copies what the session logged up to this frame.
@@ -171,6 +171,9 @@ fn discard_sessionless(
 pub struct ForkSession {
     /// Where the copy stops: an agent's id and a message's id.
     pub before: Option<(AgentId, MessageId)>,
+    /// Who asked, such as an entity of the plugin's own: [`SessionForked`]
+    /// says so, so an asker knows its fork from another's.
+    pub asker: Option<Entity>,
 }
 
 /// A session forked from this one, in the frame it was written.
@@ -182,6 +185,8 @@ pub struct SessionForked {
     pub to: SessionId,
     /// Where the copy stopped, as [`ForkSession`] asked.
     pub before: Option<(AgentId, MessageId)>,
+    /// Who asked, as [`ForkSession`] said.
+    pub asker: Option<Entity>,
 }
 
 /// The session a session was forked from, and where the copy stopped,
@@ -243,7 +248,7 @@ pub struct SessionDeleted(pub SessionId);
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]
-struct Forks(Vec<Option<(AgentId, MessageId)>>);
+struct Forks(Vec<ForkSession>);
 
 fn fork_sessions(
     mut forks: ResMut<Forks>,
@@ -254,7 +259,7 @@ fn fork_sessions(
     mut forked: MessageWriter<SessionForked>,
     mut notices: MessageWriter<Notice>,
 ) {
-    for before in forks.0.drain(..) {
+    for ForkSession { before, asker } in forks.0.drain(..) {
         let home = home
             .as_ref()
             .map_or_else(Home::from_env, |home| home.0.clone());
@@ -264,7 +269,12 @@ fn fork_sessions(
         });
         match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
             Ok((from, to)) => {
-                forked.write(SessionForked { from, to, before });
+                forked.write(SessionForked {
+                    from,
+                    to,
+                    before,
+                    asker,
+                });
             }
             Err(why) => {
                 notices.write(Notice::error(
