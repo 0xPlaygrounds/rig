@@ -1,10 +1,8 @@
-use std::borrow::Cow;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
+use rig_core::catalog::{Connector, ModelSpec};
 use rig_core::operation::Completion;
-use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Home, Invocation, SessionId};
@@ -198,29 +196,26 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert!(!file.exists());
 }
 
-/// The catalog model `replay-corp/big`, whose provider has no key.
-fn keyless() -> Option<Models> {
-    let corp = ProviderId::declare("replay-corp").ok()?;
-    let mut catalog = Catalog::default();
-    catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
-    let mut connector = Connector::new(catalog);
-    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
-        Err(ConnectError::MissingKey {
-            vendor: "replay-corp".to_owned(),
-            tried: vec![Cow::Borrowed("REPLAY_CORP_KEY")],
-        })
-    });
-    Some(Models(connector))
+/// A vendor whose key the environment lacks.
+const KEYLESS: &str = "xiaomimimo";
+
+/// The built-in catalog, and its first model of [`KEYLESS`] that calls
+/// tools.
+fn keyless() -> (Models, String) {
+    let connector = Connector::default();
+    let model = connector
+        .catalog()
+        .iter()
+        .find(|spec| spec.provider.vendor() == KEYLESS && spec.tools)
+        .map(ModelSpec::reference)
+        .unwrap_or_default();
+    (Models(connector), model)
 }
 
-/// `model` as `replay-corp/big`, as if its key were there.
+/// `model` as the [`keyless`] model, as if its key were there.
 fn keyed(model: &MockCompletionModel) -> Option<Connection> {
-    let spec = keyless()?
-        .0
-        .catalog()
-        .resolve("replay-corp/big")
-        .ok()?
-        .shared();
+    let (models, reference) = keyless();
+    let spec = models.0.catalog().resolve(&reference).ok()?.shared();
     let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
     Some(Connection {
         spec,
@@ -239,7 +234,7 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     std::fs::remove_file(&file).ok();
     let recorded_dir = home.session(&recorded_id).path().to_owned();
     // `--replay=DIR` with the key gone; the agent chooses `choice`.
-    let replay = |id: &SessionId, choice: Option<&'static str>| {
+    let replay = |id: &SessionId, choice: Option<String>| {
         let (mut app, wakes) = app_in(&home, id);
         app.insert_resource(Invoked {
             args: Invocation {
@@ -253,12 +248,10 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
         })
         .add_plugins((ExitPlugin, SessionReplayPlugin));
         with_agents(&mut app, None);
-        if let Some(models) = keyless() {
-            app.insert_resource(models);
-        }
+        app.insert_resource(keyless().0);
         if let Some(choice) = choice {
             app.add_observer(move |agent: On<Add<Agent>>, mut commands: Commands| {
-                let choice = ModelChoice(choice.to_owned());
+                let choice = ModelChoice(choice.clone());
                 commands.entity(agent.entity).insert(choice);
             });
         }
@@ -267,11 +260,18 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
             world.contains_resource::<ExitReason>()
         });
         let exit = app.world().get_resource::<ExitReason>().cloned();
-        (outcome, exit, conversation(&mut app))
+        let replayed = conversation(&mut app);
+        app.update();
+        // Whatever the exit, the replay's own session is gone.
+        assert!(
+            !home.session(id).path().exists(),
+            "the replay kept its session"
+        );
+        (outcome, exit, replayed)
     };
 
     // The chosen model does not connect: the record answers it all the same.
-    let (outcome, exit, replayed) = replay(&id("2-2"), Some("replay-corp/big"));
+    let (outcome, exit, replayed) = replay(&id("2-2"), Some(keyless().1));
     assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
     assert_eq!(exit, Some(ExitReason::Quit));
     assert_eq!(replayed, recorded);
@@ -292,4 +292,15 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     );
     assert!(report.contains("No model is connected"), "{report}");
     assert_eq!(exit, Some(ExitReason::Failed(1)));
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(|app: &mut App| {
+        app.insert_resource(ReplaySource {
+            effects: EffectLog::default(),
+            flags: ReplayFlags::default(),
+        })
+        .add_plugins(SessionReplayPlugin);
+    });
 }
