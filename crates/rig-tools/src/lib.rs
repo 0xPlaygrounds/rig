@@ -31,6 +31,8 @@
 //!
 //! Native only: the tools use the file system and processes.
 
+use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
+
 pub mod attach;
 mod blocking;
 pub mod context;
@@ -119,13 +121,32 @@ pub fn clip(line: &str, limit: usize) -> &str {
     }
 }
 
-/// `text` cut to its first `limit` characters, ending in `…` when cut.
-pub fn shorten(text: &str, limit: usize) -> String {
-    let clipped = clip(text, limit);
-    if clipped.len() < text.len() {
-        format!("{clipped}…")
-    } else {
-        text.to_owned()
+/// `text` cut to fit in `width` terminal columns, ending in `…` when cut:
+/// a wide character, such as most CJK ones, takes two columns.
+///
+/// ```
+/// use rig_tools::shorten;
+///
+/// assert_eq!(shorten("a short label", 20), "a short label");
+/// assert_eq!(shorten("a longer label", 9), "a longer…");
+/// assert_eq!(shorten("日本語のラベル", 7), "日本語…");
+/// ```
+pub fn shorten(text: &str, width: usize) -> String {
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    let room = width.saturating_sub(1);
+    let mut used = 0;
+    let end = text
+        .char_indices()
+        .find(|(_, character)| {
+            used += character.width().unwrap_or(0);
+            used > room
+        })
+        .map_or(text.len(), |(at, _)| at);
+    match width {
+        0 => String::new(),
+        _ => format!("{}…", text.get(..end).unwrap_or_default()),
     }
 }
 

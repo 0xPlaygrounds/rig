@@ -28,6 +28,8 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # The unified diff `edit` returns.
 similar = { workspace = true }
+# `shorten` cuts by the columns a terminal draws.
+unicode-width = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = { workspace = true }
