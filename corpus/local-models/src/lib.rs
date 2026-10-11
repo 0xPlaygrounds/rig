@@ -30,7 +30,7 @@ use std::collections::BTreeMap;
 use bevy_log::{debug, warn};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing};
+use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -408,19 +408,21 @@ fn found(
         catalog.insert(model.spec(vendor));
     }
     let servers = local.0.clone();
-    models
-        .0
-        .provide(vendor, move |spec: &ModelSpec, catalog: &Catalog| {
-            serve(&servers, spec, catalog)
-        });
+    models.0.provide(
+        vendor,
+        move |spec: &ModelSpec, catalog: &Catalog, transport: &Transport| {
+            serve(&servers, spec, catalog, transport)
+        },
+    );
 }
 
-/// The local model `spec` on its server's OpenAI-compatible `/v1`, or why
-/// it cannot be reached.
+/// The local model `spec` on its server's OpenAI-compatible `/v1`, through
+/// `transport`, or why it cannot be reached.
 fn serve(
     servers: &BTreeMap<String, LocalModel>,
     spec: &ModelSpec,
     catalog: &Catalog,
+    transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
     let model = servers
         .get(&spec.id)
@@ -431,6 +433,10 @@ fn serve(
     }
     let served = format!("{}/{}", endpoint.server.dialect(), spec.id);
     let options = ConnectOptions::new().base_url(format!("{}/v1", endpoint.base()));
+    let options = match transport.shared() {
+        Some(http) => options.http(http),
+        None => options,
+    };
     let model = catalog.connect_with(served.as_str(), options)?;
     let adapter = ModelAdapter::<Completion>::new(spec.reference(), model);
     Ok(ErasedHandler::new(adapter))

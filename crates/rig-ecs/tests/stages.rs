@@ -34,7 +34,7 @@ use bevy_ecs::error::{FallbackErrorHandler, warn};
 use bevy_time::TimeUpdateStrategy;
 use futures::StreamExt;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::completion::{FinishReason, ToolAnnotations};
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{
@@ -1854,11 +1854,13 @@ fn a_chosen_model_the_catalog_lists_only_later_connects_then() {
     let mut models = app.world_mut().resource_mut::<Models>();
     let catalog = models.0.catalog_mut();
     catalog.insert(ModelSpec::new(vendor, "big").with_tools(true));
-    models.0.provide(vendor, |spec: &ModelSpec, _: &Catalog| {
-        let model = MockCompletionModel::from_stream_turns([answer("hi")]);
-        let model = ModelAdapter::<Completion>::new(spec.reference(), model);
-        Ok(ErasedHandler::new(model))
-    });
+    models
+        .0
+        .provide(vendor, |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+            let model = MockCompletionModel::from_stream_turns([answer("hi")]);
+            let model = ModelAdapter::<Completion>::new(spec.reference(), model);
+            Ok(ErasedHandler::new(model))
+        });
     app.update();
     let connected = app.world().get::<Connection>(agent);
     let connected = connected.map(|connection| connection.spec.reference());

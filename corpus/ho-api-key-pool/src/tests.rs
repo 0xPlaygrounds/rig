@@ -69,7 +69,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     let (mut app, wakes) = app_in(&home, &id);
     let models = [personal.clone(), team.clone(), spare.clone()];
     app.insert_resource(scripted_models([("standin/model", &spare)]))
-        .insert_resource(KeyConnect(Arc::new(move |spec, _, key, _| {
+        .insert_resource(KeyConnect(Arc::new(move |spec, _, _, key, _| {
             let index = SECRETS.iter().position(|secret| *secret == key.expose());
             let model = index.and_then(|index| models.get(index)).cloned();
             let model = model.ok_or_else(|| ConnectError::Provider("unknown key".into()))?;

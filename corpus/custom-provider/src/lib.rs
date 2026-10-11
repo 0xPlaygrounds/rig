@@ -21,7 +21,7 @@ use std::time::{Duration, Instant};
 use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{
-    Catalog, ModelFacts, ModelSpec, Pricing, Provide, ReasoningSupport,
+    Catalog, ModelFacts, ModelSpec, Pricing, Provide, ReasoningSupport, Transport,
 };
 use rig_harness::rig_core::http_client::{self, HttpMiddleware};
 use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
@@ -333,7 +333,12 @@ impl Provide for Gateway {
     /// A model of the provider, priced and windowed by its spec. A missing
     /// `key_env` refuses it, so `/model` marks it and choosing it says what
     /// to set.
-    fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        catalog: &Catalog,
+        transport: &Transport,
+    ) -> Result<ErasedHandler, ConnectError> {
         if let KeySource::Env(name) = &self.provider.key
             && env_key(name).is_none()
         {
@@ -342,7 +347,7 @@ impl Provide for Gateway {
                 tried: vec![name.clone().into()],
             });
         }
-        let http = rig_reqwest::shared().with_middleware(self.clone());
+        let http = transport.wrap(rig_reqwest::shared().with_middleware(self.clone()));
         let facts = ModelFacts::new(spec.clone()).with_catalog(catalog);
         Ok(self
             .provider

@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
@@ -204,7 +204,7 @@ fn keyless() -> Option<Models> {
     let mut catalog = Catalog::default();
     catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
     let mut connector = Connector::new(catalog);
-    connector.provide(corp, |_: &ModelSpec, _: &Catalog| {
+    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
         Err(ConnectError::MissingKey {
             vendor: "replay-corp".to_owned(),
             tried: vec![Cow::Borrowed("REPLAY_CORP_KEY")],

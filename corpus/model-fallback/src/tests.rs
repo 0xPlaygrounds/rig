@@ -4,7 +4,7 @@ use bevy_time::{TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
@@ -25,7 +25,10 @@ struct Notices(Vec<String>);
 /// The vendor's models answer as `model` scripts.
 fn scripted(models: &mut Models, vendor: &str, model: &MockCompletionModel) {
     let model = model.clone();
-    let provider = move |spec: &ModelSpec, _: &Catalog| -> Result<ErasedHandler, ConnectError> {
+    let provider = move |spec: &ModelSpec,
+                         _: &Catalog,
+                         _: &Transport|
+          -> Result<ErasedHandler, ConnectError> {
         let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
         Ok(ErasedHandler::new(handler))
     };

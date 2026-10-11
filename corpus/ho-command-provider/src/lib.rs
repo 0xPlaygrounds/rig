@@ -53,7 +53,9 @@ use futures::StreamExt;
 use futures::channel::{mpsc, oneshot};
 use futures::future::{Either, select};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Provide, ReasoningSupport};
+use rig_harness::rig_core::catalog::{
+    Catalog, ModelSpec, Pricing, Provide, ReasoningSupport, Transport,
+};
 use rig_harness::rig_core::completion::{CompletionRequest, Cost, ProviderCapabilities, Usage};
 use rig_harness::rig_core::effect::{
     EffectKind, FamilyDescriptor, HandlerDescriptor, family, model_key,
@@ -314,7 +316,12 @@ enum Served {
 struct Programs(Vec<(String, Arc<Served>)>);
 
 impl Provide for Programs {
-    fn handler(&self, spec: &ModelSpec, _: &Catalog) -> Result<ErasedHandler, ConnectError> {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        _: &Catalog,
+        _: &Transport,
+    ) -> Result<ErasedHandler, ConnectError> {
         let served = self.0.iter().find(|(name, _)| *name == spec.id);
         let Some((_, served)) = served else {
             let why = format!("{} is not in {FILE}", spec.reference());

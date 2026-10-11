@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::{JsonlDirStore, MemoryStore};
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
 use rig_core::operation::Completion;
@@ -147,7 +147,7 @@ pub fn scripted_models<'a>(
         entry.1.push((name.to_owned(), model.clone()));
     }
     for (id, models) in vendors.into_values() {
-        connector.provide(id, move |spec: &ModelSpec, _: &Catalog| {
+        connector.provide(id, move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
             let model = models.iter().find(|(name, _)| *name == spec.id);
             let Some((_, model)) = model else {
                 return Err(ConnectError::Provider(format!(

@@ -1183,7 +1183,7 @@ impl<'a> From<&'a String> for ModelSelector<'a> {
 pub struct ConnectOptions {
     api_key: Option<Secret>,
     account_id: Option<String>,
-    http: Option<DynHttpClient>,
+    pub(crate) http: Option<DynHttpClient>,
     format: Option<Format>,
     base_url: Option<String>,
 }

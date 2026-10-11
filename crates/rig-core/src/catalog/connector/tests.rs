@@ -1,6 +1,7 @@
 //! What a connector promises beyond the catalog: a provider registered for a
-//! vendor comes first, a vendor declared at run time is reachable, and the
-//! catalog changes in place without losing anything added to it.
+//! vendor comes first, a vendor declared at run time is reachable, the
+//! catalog changes in place without losing anything added to it, and every
+//! HTTP client its models are reached through is wrapped.
 
 use super::*;
 use crate::catalog::Pricing;
@@ -13,7 +14,11 @@ use crate::test_utils::{MockCompletionModel, RecordingHttpClient};
 struct Plan;
 
 impl SignIn for Plan {
-    fn handler(&self, _spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>> {
+    fn handler(
+        &self,
+        _spec: &ModelSpec,
+        _transport: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
         None
     }
 
@@ -53,7 +58,8 @@ async fn a_declared_vendor_is_reached_through_its_provider_and_listed_first() {
         Err(ConnectError::CatalogOnly { .. })
     ));
 
-    connector.provide(corp, |spec: &ModelSpec, _catalog: &Catalog| {
+    // A provider that sends no HTTP ignores the transport.
+    connector.provide(corp, |spec: &ModelSpec, _: &Catalog, _: &Transport| {
         Ok(adapted(spec, MockCompletionModel::text("from corp").into()))
     });
     assert!(connector.is_provided(corp));
@@ -99,6 +105,82 @@ async fn options_reach_a_builtin_vendor_at_another_address() {
     );
 }
 
+/// A sign-in to every model of [`SIGNED_IN`], at its own address, on the
+/// transport's shared client.
+struct Signed;
+
+/// The vendor [`Signed`] serves: one whose key the environment lacks.
+const SIGNED_IN: &str = "xiaomimimo";
+
+impl SignIn for Signed {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        transport: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
+        let http = transport.shared()?;
+        let options = ConnectOptions::new()
+            .api_key("signed-in")
+            .base_url("http://signed-in.test/v1")
+            .http(http);
+        (spec.provider.vendor() == SIGNED_IN).then(|| {
+            Catalog::builtin()
+                .connect_with(spec, options)
+                .map(|model| adapted(spec, model))
+        })
+    }
+
+    fn plan(&self, _spec: &ModelSpec) -> Option<&'static str> {
+        None
+    }
+}
+
+/// The reference of a catalog model of `vendor`.
+fn model_of(connector: &Connector, vendor: &str) -> String {
+    connector
+        .catalog()
+        .iter()
+        .find(|spec| spec.provider.vendor() == vendor && spec.tools)
+        .map(ModelSpec::reference)
+        .unwrap_or_default()
+}
+
+/// A wrapper sees the requests of a model reached through the environment,
+/// through options with a client of their own, and through a sign-in.
+#[tokio::test]
+async fn a_wrapper_sees_every_path_a_model_is_reached_by() {
+    let seen = RecordingHttpClient::new("{}");
+    let mut connector = Connector::default();
+    let wire = seen.clone();
+    // Answers in place of the network, as a replayer or a tap would.
+    connector.wrap_http(move |_inner: DynHttpClient| DynHttpClient::new(wire.clone()));
+    connector.add_sign_in(Signed);
+    let own = RecordingHttpClient::new("{}");
+    let groq = ProviderId::catalog("groq").expect("a known vendor");
+    connector.provide(
+        groq,
+        ConnectOptions::new()
+            .api_key("key")
+            .http(own.clone())
+            .base_url("http://own.test/v1"),
+    );
+
+    for vendor in ["ollama", "groq", SIGNED_IN] {
+        let reference = model_of(&connector, vendor);
+        let (_, handler) = connector.connect(&reference).expect("connected");
+        // The empty reply does not decode; the request went out all the same.
+        answer(&handler).await;
+    }
+    let uris: Vec<String> = seen.requests().into_iter().map(|sent| sent.uri).collect();
+    let reached = |host: &str| uris.iter().any(|uri| uri.starts_with(host));
+    // The environment's request goes wherever it says Ollama is.
+    assert!(
+        uris.len() == 3 && reached("http://own.test/") && reached("http://signed-in.test/"),
+        "{uris:?}"
+    );
+    assert!(own.requests().is_empty());
+}
+
 /// A picker's note: a model that calls no tools, one whose provider has no
 /// key (named at run time), one whose provider fails in its own words, and
 /// one that connects.
@@ -106,16 +188,17 @@ async fn options_reach_a_builtin_vendor_at_another_address() {
 fn status_says_why_a_model_cannot_serve_an_agent() {
     let corp = ProviderId::declare("connector-status-corp").expect("a valid name");
     let mut connector = Connector::new(Catalog::default());
-    connector.provide(corp, |spec: &ModelSpec, _catalog: &Catalog| {
-        match spec.id.as_str() {
+    connector.provide(
+        corp,
+        |spec: &ModelSpec, _: &Catalog, _: &Transport| match spec.id.as_str() {
             "locked" => Err(ConnectError::MissingKey {
                 vendor: "connector-status-corp".to_owned(),
                 tried: vec![Cow::Owned(format!("{}_KEY", "CORP"))],
             }),
             "down" => Err(ConnectError::Provider("the gateway is down".to_owned())),
             _ => Ok(adapted(spec, MockCompletionModel::text("ok").into())),
-        }
-    });
+        },
+    );
     let model = |id: &str| ModelSpec::new(corp, id).with_tools(true);
     assert_eq!(
         connector.status(&ModelSpec::new(corp, "open")),

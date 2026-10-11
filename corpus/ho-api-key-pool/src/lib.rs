@@ -28,7 +28,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Provide};
+use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Provide, Transport};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, Format};
 use rig_harness::rig_core::serve::ErasedHandler;
@@ -87,12 +87,16 @@ impl KeyRef {
 }
 
 /// How a model of a pooled provider is reached with one key: the model's
-/// spec, the catalog, the key, and the provider's address and protocol
-/// family from `key-pool.toml`. By default, as the registry connects it
+/// spec, the catalog, the transport, the key, and the provider's address
+/// and protocol family from `key-pool.toml`. By default, as the registry connects it
 /// with [`ConnectOptions`]; a test inserts its own before adding the plugin.
 #[derive(Resource, Clone)]
 pub struct KeyConnect(
-    pub Arc<dyn Fn(&ModelSpec, &Catalog, &Secret, ConnectOptions) -> ConnectResult + Send + Sync>,
+    pub  Arc<
+        dyn Fn(&ModelSpec, &Catalog, &Transport, &Secret, ConnectOptions) -> ConnectResult
+            + Send
+            + Sync,
+    >,
 );
 
 /// A handler, or why the model does not connect.
@@ -100,8 +104,10 @@ pub type ConnectResult = Result<ErasedHandler, ConnectError>;
 
 impl Default for KeyConnect {
     fn default() -> Self {
-        Self(Arc::new(|spec, catalog, key, options| {
-            options.api_key(key.clone()).handler(spec, catalog)
+        Self(Arc::new(|spec, catalog, transport, key, options| {
+            options
+                .api_key(key.clone())
+                .handler(spec, catalog, transport)
         }))
     }
 }
@@ -117,7 +123,13 @@ struct Keyring {
 
 impl Keyring {
     /// `spec`'s model on the key `index` of its provider's pool.
-    fn handler(&self, spec: &ModelSpec, catalog: &Catalog, index: usize) -> ConnectResult {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        catalog: &Catalog,
+        transport: &Transport,
+        index: usize,
+    ) -> ConnectResult {
         let vendor = spec.provider.vendor();
         let key = self
             .vendors
@@ -128,7 +140,7 @@ impl Keyring {
                 "key {index} of the {vendor} pool is not set"
             )));
         };
-        (self.connect.0)(spec, catalog, key, options.clone())
+        (self.connect.0)(spec, catalog, transport, key, options.clone())
     }
 }
 
@@ -396,10 +408,10 @@ fn provide(
             continue;
         };
         let keyring = keys.0.clone();
-        let first = move |spec: &ModelSpec, catalog: &Catalog| {
+        let first = move |spec: &ModelSpec, catalog: &Catalog, transport: &Transport| {
             let set = keyring.vendors.get(spec.provider.vendor());
             let first = set.and_then(|(_, keys)| keys.iter().position(Option::is_some));
-            keyring.handler(spec, catalog, first.unwrap_or(usize::MAX))
+            keyring.handler(spec, catalog, transport, first.unwrap_or(usize::MAX))
         };
         models.0.provide(provider, first);
     }
@@ -431,8 +443,10 @@ fn route(
         let adapter = Adapter::new(ADAPTER, move |connection: Connection| {
             let vendor = connection.spec.provider.vendor();
             let index = on.iter().find(|(pooled, _)| pooled == vendor);
-            let keyed = index
-                .map(|&(_, index)| keyring.handler(&connection.spec, connector.catalog(), index));
+            let keyed = index.map(|&(_, index)| {
+                let (catalog, transport) = (connector.catalog(), connector.transport());
+                keyring.handler(&connection.spec, catalog, transport, index)
+            });
             match keyed {
                 Some(Ok(handler)) => Connection {
                     handler: Handler(handler),

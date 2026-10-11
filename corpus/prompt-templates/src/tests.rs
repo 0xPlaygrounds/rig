@@ -1,6 +1,6 @@
 use rig_basics::BasicCommandsPlugin;
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::completion::Message;
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
@@ -37,10 +37,13 @@ fn models_with(big: &MockCompletionModel) -> Option<Models> {
         .catalog_mut()
         .insert(ModelSpec::new(vendor, "big").with_tools(true));
     let big = big.clone();
-    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-        let model = ModelAdapter::<Completion>::new(spec.reference(), big.clone());
-        Ok(ErasedHandler::new(model))
-    });
+    connector.provide(
+        vendor,
+        move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+            let model = ModelAdapter::<Completion>::new(spec.reference(), big.clone());
+            Ok(ErasedHandler::new(model))
+        },
+    );
     Some(Models(connector))
 }
 
