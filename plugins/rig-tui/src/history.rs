@@ -16,12 +16,12 @@
 //! }
 //! ```
 
-use std::fs;
-use std::io::Write as _;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+
+use super::jsonl;
 
 /// Prompts kept in the history.
 const KEPT: usize = 500;
@@ -47,7 +47,7 @@ impl PromptHistory {
     /// The newest prompts kept in `file`, which new ones are saved to.
     pub fn load(file: PathBuf) -> Self {
         Self {
-            entries: load(&file),
+            entries: jsonl::tail(&file, KEPT),
             file: Some(file),
             unsaved: Vec::new(),
         }
@@ -88,58 +88,13 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     }
     let unsaved = std::mem::take(&mut history.unsaved);
     let kept = unsaved.iter().filter(|text| history.entries.contains(text));
-    let lines: String = kept
-        .filter_map(|text| serde_json::to_string(text).ok())
-        .map(|line| line + "\n")
-        .collect();
     if let Some(file) = &history.file
-        && !lines.is_empty()
-        && let Err(failure) = append(file, &lines)
+        && let Err(failure) = jsonl::append(file, kept)
     {
         warn!("could not save the prompt history: {failure}");
     }
     let excess = history.entries.len().saturating_sub(KEPT);
     history.entries.drain(..excess);
-}
-
-/// Appends `lines` to `file`, making its directory.
-fn append(file: &Path, lines: &str) -> std::io::Result<()> {
-    if let Some(parent) = file.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let mut out = fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(file)?;
-    out.write_all(lines.as_bytes())
-}
-
-/// The last [`KEPT`] prompts of `file`, rewriting it when it grew past
-/// twice that.
-fn load(file: &Path) -> Vec<String> {
-    let Ok(text) = fs::read_to_string(file) else {
-        return Vec::new();
-    };
-    let mut history: Vec<String> = text
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
-    let total = history.len();
-    history.drain(..total.saturating_sub(KEPT));
-    if total > 2 * KEPT {
-        let kept: String = history
-            .iter()
-            .filter_map(|prompt| serde_json::to_string(prompt).ok())
-            .map(|line| line + "\n")
-            .collect();
-        let temporary = file.with_extension("jsonl.new");
-        if let Err(failure) =
-            fs::write(&temporary, kept).and_then(|()| fs::rename(&temporary, file))
-        {
-            warn!("could not trim the prompt history: {failure}");
-        }
-    }
-    history
 }
 
 #[cfg(test)]

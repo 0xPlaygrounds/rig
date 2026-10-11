@@ -41,6 +41,7 @@ pub mod diff;
 mod editor;
 mod history;
 mod input;
+mod jsonl;
 pub mod keys;
 pub mod markdown;
 pub mod panel;
@@ -152,6 +153,7 @@ fn add_view(app: &mut App) {
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
+        .add_systems(Startup, view::load_notices)
         .add_systems(
             PreUpdate,
             (

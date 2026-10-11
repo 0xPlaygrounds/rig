@@ -1,23 +1,33 @@
 //! View state, kept apart from the agent core: the agent shown (the
 //! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
-//! shown, and recent notices.
+//! shown, and recent notices, which are kept in the session's directory
+//! for the next build.
+
+use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
+use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
+use serde::{Deserialize, Serialize};
 
 use super::complete::Completion;
 use super::editor::TuiInput;
+use super::jsonl;
 use super::keys::KeyPress;
 use super::panel::Focused;
 use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, MessageId, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
+use rig_harness::prelude::SessionPaths;
 use rig_harness::primary::Shown;
 
-/// Notices kept for display.
-const KEPT_NOTICES: usize = 50;
+/// Notices kept for display, and read back by the next build.
+const KEPT_NOTICES: usize = 200;
+
+/// The file in the session's directory that keeps the notices shown.
+const NOTICES_FILE: &str = "notices.jsonl";
 
 /// Ask the view to show the agent and send what is typed to it, such as
 /// a subagent picked with `/agents`.
@@ -46,13 +56,15 @@ pub(crate) struct TuiView {
     pub(crate) pending: Vec<KeyPress>,
     /// Recent notices, oldest first.
     pub(crate) notices: Vec<ShownNotice>,
+    /// Where they are kept for the next build of the session.
+    notices_file: Option<PathBuf>,
     /// A refused command put back in the input: sent again unchanged, it
     /// goes to the model as a message.
     pub(crate) refused: Option<String>,
 }
 
 /// A notice placed in a transcript.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct ShownNotice {
     /// The agent it is about, or `None` for every agent.
     agent: Option<AgentId>,
@@ -61,6 +73,7 @@ pub(crate) struct ShownNotice {
     /// message, or with no agent shown.
     at: Option<Anchor>,
     /// Whether it informs, warns or reports a failure.
+    #[serde(with = "level")]
     pub(crate) level: NoticeLevel,
     /// The text.
     pub(crate) text: String,
@@ -69,7 +82,7 @@ pub(crate) struct ShownNotice {
 /// Where a notice was written: after the first `items` content items of
 /// message `message` of `agent`'s conversation, which it stays after as
 /// messages are added, merged or spliced.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 struct Anchor {
     agent: AgentId,
     message: MessageId,
@@ -137,14 +150,54 @@ fn anchor(id: &AgentId, conversation: &Conversation) -> Option<Anchor> {
     })
 }
 
+/// A [`NoticeLevel`] as a word.
+mod level {
+    use rig_ecs::agent::NoticeLevel;
+    use serde::{Deserialize, Deserializer, Serializer};
+
+    pub(super) fn serialize<S: Serializer>(level: &NoticeLevel, out: S) -> Result<S::Ok, S::Error> {
+        out.serialize_str(match level {
+            NoticeLevel::Info => "info",
+            NoticeLevel::Warn => "warn",
+            NoticeLevel::Error => "error",
+        })
+    }
+
+    pub(super) fn deserialize<'de, D: Deserializer<'de>>(
+        input: D,
+    ) -> Result<NoticeLevel, D::Error> {
+        Ok(match String::deserialize(input)?.as_str() {
+            "warn" => NoticeLevel::Warn,
+            "error" => NoticeLevel::Error,
+            _ => NoticeLevel::Info,
+        })
+    }
+}
+
 impl TuiView {
-    /// Keeps `notice` for display, dropping the oldest past
-    /// [`KEPT_NOTICES`].
+    /// Keeps `notice` for display and for the next build, dropping the
+    /// oldest past [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
+        if let Some(file) = &self.notices_file
+            && let Err(failure) = jsonl::append(file, [&notice])
+        {
+            warn!("could not keep a notice for the next build: {failure}");
+        }
         self.notices.push(notice);
         let excess = self.notices.len().saturating_sub(KEPT_NOTICES);
         self.notices.drain(..excess);
     }
+}
+
+/// Reads back the notices an earlier build of the session showed, and
+/// keeps the next ones in the session's directory.
+pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<TuiView>) {
+    let Some(paths) = paths else {
+        return;
+    };
+    let file = paths.path().join(NOTICES_FILE);
+    view.notices = jsonl::tail(&file, KEPT_NOTICES);
+    view.notices_file = Some(file);
 }
 
 /// Keeps [`Focused`] on the agent shown, and on no other.

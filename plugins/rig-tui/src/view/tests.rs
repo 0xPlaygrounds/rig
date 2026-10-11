@@ -1,8 +1,10 @@
+use bevy_ecs::system::RunSystemOnce;
+use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::*;
 
 use super::*;
 use crate::render::{ShownAgent, lay_out_transcript};
-use crate::tests::view_app;
+use crate::tests::{scratch, view_app};
 use crate::transcript::{Scroll, Transcript};
 
 /// The shown agent's transcript, as text, a line per row.
@@ -55,4 +57,32 @@ fn a_notice_stays_before_a_prompt_that_joins_the_message_it_followed() {
     let order = ["first", "Interrupted.", "second"].map(|text| line_of(&lines, text));
     assert!(order.iter().all(Option::is_some), "{lines:#?}");
     assert!(order.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn notices_are_kept_for_the_next_build_of_the_session() {
+    let home = Home::at(scratch("notices"));
+    let Ok(id) = "1-1".parse() else { return };
+    let session = home.session(&id);
+    let build = |session: &SessionDir| {
+        let (mut app, agent) = view_app();
+        app.world_mut()
+            .entity_mut(agent)
+            .insert(AgentId("a1".to_owned()));
+        app.insert_resource(SessionPaths(session.clone()));
+        let loaded = app.world_mut().run_system_once(load_notices);
+        assert!(loaded.is_ok());
+        (app, agent)
+    };
+    let (mut app, agent) = build(&session);
+    app.world_mut()
+        .write_message(Notice::warn(agent, "Kept across a reload."));
+    app.update();
+    drop(app);
+    let (mut app, agent) = build(&session);
+    let lines = transcript(&mut app, agent);
+    assert!(
+        line_of(&lines, "Kept across a reload.").is_some(),
+        "{lines:#?}"
+    );
 }
