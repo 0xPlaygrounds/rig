@@ -34,7 +34,7 @@ fn scratch(name: &str) -> PathBuf {
     let dir = exe.with_file_name(format!("dry-run-{name}"));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).ok();
-    dir
+    std::fs::canonicalize(&dir).unwrap_or(dir)
 }
 
 /// What the model read as call `id`'s result.
@@ -48,17 +48,20 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     let dir = scratch("preview");
     let file = dir.join("a.txt");
     std::fs::write(&file, "one").ok();
-    let (path, cwd) = (file.display().to_string(), dir.display().to_string());
-    let edit = json!({ "path": path, "edits": [{ "old_text": "one", "new_text": "two" }] });
+    let path = file.display().to_string();
+    let edit = json!({ "path": "a.txt", "edits": [{ "old_text": "one", "new_text": "two" }] });
     let model = MockCompletionModel::from_stream_turns([
         calls("e1", "edit", edit),
-        calls("r1", "read", json!({ "path": path })),
-        calls("s1", "shell", json!({ "command": "touch b", "cwd": cwd })),
-        calls("s2", "shell", json!({ "command": "ls", "cwd": cwd })),
+        calls("r1", "read", json!({ "path": "a.txt" })),
+        calls("s1", "shell", json!({ "command": "touch b" })),
+        calls("s2", "shell", json!({ "command": "ls" })),
         reply("Previewed."),
     ]);
     let store = MemoryStore::default();
     let (mut app, wakes, agent) = start(&store);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(WorkDir(dir.clone()));
     if let Some(connection) = connect(&model) {
         app.world_mut().entity_mut(agent).insert(connection);
     }
@@ -100,4 +103,9 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     assert_eq!(std::fs::read_to_string(&file).unwrap_or_default(), "two");
     assert!(app.world().resource::<Overlay>().0.is_empty());
     std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(DryRunPlugin);
 }
