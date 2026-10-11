@@ -1,6 +1,6 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_time::TimeUpdateStrategy;
+use bevy_time::{TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
@@ -91,6 +91,11 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     let cooldown = app.world().resource::<FallbackChain>().cooldown;
     assert_eq!(cooldown, Duration::from_secs(300), "read from the settings");
     app.finish();
+    // Bevy's clock moves a whole frame at a time, or the retries' waits
+    // take hundreds of frames.
+    app.world_mut()
+        .resource_mut::<Time<Virtual>>()
+        .set_max_delta(FRAME);
     app.update();
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
