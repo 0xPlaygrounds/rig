@@ -34,7 +34,7 @@ use bevy_ecs::error::{FallbackErrorHandler, warn};
 use bevy_time::TimeUpdateStrategy;
 use futures::StreamExt;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::Catalog;
+use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::completion::{FinishReason, ToolAnnotations};
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{
@@ -43,6 +43,7 @@ use rig_core::effect::{
 use rig_core::error::ErrorKind;
 use rig_core::message::Message;
 use rig_core::operation::{Completion, Finish};
+use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
@@ -1833,4 +1834,35 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
     assert!(seen.deltas.iter().all(|(call, ..)| Some(call) == text));
     let said = conversation(&app, agent);
     assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
+}
+
+#[test]
+fn a_chosen_model_the_catalog_lists_only_later_connects_then() {
+    let mut app = app();
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    world
+        .entity_mut(agent)
+        .insert(ModelChoice("later/big".to_owned()));
+    app.update();
+    assert!(!has::<Connection>(&app, agent), "not in the catalog yet");
+    let Ok(vendor) = ProviderId::declare("later") else {
+        return;
+    };
+    let mut models = app.world_mut().resource_mut::<Models>();
+    let catalog = models.0.catalog_mut();
+    catalog.insert(ModelSpec::new(vendor, "big").with_tools(true));
+    models.0.provide(vendor, |spec: &ModelSpec, _: &Catalog| {
+        let model = MockCompletionModel::from_stream_turns([answer("hi")]);
+        let model = ModelAdapter::<Completion>::new(spec.reference(), model);
+        Ok(ErasedHandler::new(model))
+    });
+    app.update();
+    let connected = app.world().get::<Connection>(agent);
+    let connected = connected.map(|connection| connection.spec.reference());
+    assert_eq!(connected.as_deref(), Some("later/big"));
 }

@@ -32,10 +32,14 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         .spawn((Agent, ModelChoice("nobody/nothing".to_owned())));
     app.finish();
     app.cleanup();
+    // Read the exit in the frame that wrote it: Bevy drops a message once
+    // two fixed steps passed, which a slow machine takes in a few frames.
+    let mut exit = None;
     for _ in 0..10 {
         app.update();
+        exit = exit.or(app.should_exit());
     }
-    assert_eq!(app.should_exit(), Some(AppExit::from_code(1)));
+    assert_eq!(exit, Some(AppExit::from_code(1)));
     let errors = &app.world().resource::<Errors>().0;
     assert_eq!(errors.len(), 1, "{errors:?}");
 }

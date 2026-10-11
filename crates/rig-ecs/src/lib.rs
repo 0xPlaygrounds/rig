@@ -148,6 +148,10 @@ impl Plugin for AgentPlugin {
             .configure_sets(Update, PollCalls.before(stage::AgentLoop))
             .add_systems(Update, poll_calls.in_set(PollCalls))
             .add_systems(
+                PreUpdate,
+                model::reconnect.run_if(resource_changed::<model::Models>),
+            )
+            .add_systems(
                 Last,
                 (
                     settle,

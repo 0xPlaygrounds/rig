@@ -1054,7 +1054,10 @@ Models a provider plugin connects are catalog models: it declares its
 vendor and adds its models to the catalog in `Models` (rig-core's
 `ProviderId::declare`, `Connector::provide` and `catalog_mut`), so
 `--model`, `/model`, its picker, the remembered default and subagents
-take them like any other.
+take them like any other. A plugin may add them at any time, such as once
+it found a local server: the frame after `Models` changed, every agent
+whose chosen model was not usable, such as a restored choice, connects to
+it, with no need to choose it again.
 
 Spending is data too. rig-telemetry adds each settled model call's
 reported usage to its agent's `Spending`, to the session's
