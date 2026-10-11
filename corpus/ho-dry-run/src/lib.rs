@@ -24,7 +24,7 @@ use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tools::edit::apply;
-use rig_tools::fs::{file_change, read_text, resolve, write_atomic};
+use rig_tools::fs::{self, file_change, read_text, write_atomic};
 use rig_tools::{EditArgs, ReadArgs, ShellArgs, WriteArgs};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::de::DeserializeOwned;
@@ -247,19 +247,11 @@ fn parse<A: DeserializeOwned>(arguments: &Map<String, Value>) -> Result<A, ToolE
 }
 
 /// The absolute path the file tools of an agent working in `dir` open for
-/// `path`, refused outside `dir` as they refuse it.
+/// `path`: confined to `dir`, as they are for an agent with a [`WorkDir`].
 fn place(dir: Option<&WorkDir>, path: &str) -> Result<String, ToolExecutionError> {
     let base = dir.map(|WorkDir(dir)| dir.as_path());
-    let resolved = resolve(base, path);
-    if let Some(base) = base
-        && !resolved.starts_with(resolve(Some(base), "."))
-    {
-        return Err(ToolExecutionError::permission_denied(format!(
-            "{path} is outside {}, the only directory this agent works in",
-            base.display()
-        )));
-    }
-    Ok(resolved.to_string_lossy().into_owned())
+    let path = fs::place(base, base.is_some(), path)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 /// What a `write` would leave, and its diff against the overlay.

@@ -55,6 +55,11 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
         calls("r1", "read", json!({ "path": "a.txt" })),
         calls("s1", "shell", json!({ "command": "touch b" })),
         calls("s2", "shell", json!({ "command": "ls" })),
+        calls(
+            "w1",
+            "write",
+            json!({ "path": "../out.txt", "content": "x" }),
+        ),
         reply("Previewed."),
     ]);
     let store = MemoryStore::default();
@@ -88,6 +93,9 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     assert!(!dir.join("b").exists());
     let listed = output(&app, "s2");
     assert!(listed.contains("a.txt"), "{listed}");
+    // Confined to the agent's directory, as the real `write` is.
+    let outside = output(&app, "w1");
+    assert!(outside.contains("outside"), "{outside}");
     drop(app);
 
     // A new app on the same session still previews the change, in dry run.
@@ -102,6 +110,7 @@ fn dry_run_previews_changes_keeps_them_with_the_session_and_applies_them() {
     app.update();
     assert_eq!(std::fs::read_to_string(&file).unwrap_or_default(), "two");
     assert!(app.world().resource::<Overlay>().0.is_empty());
+    assert!(!dir.with_file_name("out.txt").exists());
     std::fs::remove_dir_all(&dir).ok();
 }
 
