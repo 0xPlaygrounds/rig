@@ -9,9 +9,20 @@ description = "Plugin corpus: 40. Handoff to a fresh agent"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# The request that reads a conversation as text, and the reply's text.
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
+# Showing the new agent.
+rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }
+# Usage the brief's call adds.
+rig-telemetry = { path = "../../plugins/rig-telemetry" }

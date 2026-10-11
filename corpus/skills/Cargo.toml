@@ -9,9 +9,15 @@ description = "Plugin corpus: 28. Skills loaded on demand"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_yaml = { workspace = true }
 
 [dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

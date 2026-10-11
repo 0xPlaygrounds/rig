@@ -9,9 +9,16 @@ description = "Plugin corpus: 56. Replay a recorded session"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+futures = { workspace = true }
+# The recorded effect log and session journal.
+rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-tools = { path = "../../crates/rig-tools" }

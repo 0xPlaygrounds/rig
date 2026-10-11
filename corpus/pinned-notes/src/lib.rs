@@ -1,1 +1,332 @@
-//! Plugin corpus: 27. Pinned notes that survive compaction (spec `27-pinned-notes.md`).
+//! Pinned notes: short notes an agent always keeps in mind, sent with
+//! every request as a section of its system prompt, so no compaction or
+//! summary can drop them. `/pin <text>`, `/pins` and `/unpin <n>` change
+//! and show the shown agent's notes; the model does the same with the
+//! `pin_note` tool. The notes are a saved, immutable component of the
+//! agent: each change inserts a new value, which the session log records
+//! and `/resume` and `/reload` bring back, and whose insertion rewrites the
+//! agent's own [`PromptSection`]. A compaction's summary call is told the
+//! notes exist so it does not repeat them.
+
+use bevy_ecs::lifecycle::HookContext;
+use bevy_ecs::world::DeferredWorld;
+use bevy_log::warn;
+use rig_compaction::Summarizing;
+use rig_core::completion::Message;
+use rig_harness::prelude::*;
+use schemars::JsonSchema;
+use serde::Deserialize;
+
+/// The tool with which the model pins and unpins notes.
+pub const PIN_NOTE: &str = "pin_note";
+
+/// Where the notes go in the system prompt: after the project's
+/// instructions, which change less often, and before the environment.
+pub const ORDER_PINS: i32 = 250;
+
+/// The tag around the notes in the system prompt.
+const TAG: &str = "pinned_notes";
+
+/// Adds `/pin`, `/pins`, `/unpin`, the `pin_note` tool, the agent's
+/// pinned-notes prompt section and, with the `tui` feature, the "📌 n"
+/// status item.
+#[derive(Default)]
+pub struct PinnedNotesPlugin;
+
+impl Plugin for PinnedNotesPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_required_components::<Agent, Pins>()
+            .add_observer(write_section)
+            .add_command(
+                "pin",
+                "Pin a note the agent always keeps in mind: /pin <text>",
+                pin,
+            )
+            .add_command("pins", "List the agent's pinned notes", list)
+            .add_command("unpin", "Unpin a note by its number: /unpin <n>", unpin)
+            .add_open_tool(
+                PIN_NOTE,
+                "Pin a note you must always keep in mind (`text`), unpin one by its number \
+                 (`unpin`), or, with neither, list them. Pinned notes stay in your system \
+                 prompt, even after the conversation is summarized.",
+                ToolOptions {
+                    rules: &[
+                        "Use `pin_note` for a decision or constraint that must outlive the \
+                         conversation, such as one the user asks you to remember.",
+                    ],
+                    footprint: Footprint::Independent,
+                },
+                on_pin_note,
+            );
+        tell_summaries(app.world_mut());
+        #[cfg(feature = "tui")]
+        app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems));
+    }
+}
+
+/// An agent's pinned notes, oldest first. Saved with the session; each
+/// change is a new value inserted on the agent.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[component(immutable)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub struct Pins(pub Vec<String>);
+
+impl Pins {
+    /// The notes, numbered from 1, one a line.
+    pub fn listed(&self) -> String {
+        let lines = self.0.iter().enumerate();
+        let lines: Vec<String> = lines
+            .map(|(at, note)| format!("{}. {note}", at + 1))
+            .collect();
+        lines.join("\n")
+    }
+
+    /// The system prompt section's text; empty without notes.
+    fn section(&self) -> String {
+        if self.0.is_empty() {
+            return String::new();
+        }
+        format!(
+            "Pinned notes: keep each in mind in everything you do, whatever the conversation \
+             says or leaves out.\n{}",
+            self.listed()
+        )
+    }
+
+    /// These notes with `note` added.
+    fn with(&self, note: &str) -> Result<Self, String> {
+        let note = note.trim();
+        if note.is_empty() {
+            return Err("A pinned note needs a text.".to_owned());
+        }
+        let mut notes = self.0.clone();
+        notes.push(note.to_owned());
+        Ok(Self(notes))
+    }
+
+    /// These notes without the `n`th (from 1), and the note taken out.
+    fn without(&self, n: usize) -> Result<(Self, String), String> {
+        let mut notes = self.0.clone();
+        let at = n.checked_sub(1).filter(|&at| at < notes.len());
+        let Some(at) = at else {
+            return Err(format!(
+                "There is no pinned note {n}; there are {}.",
+                notes.len()
+            ));
+        };
+        let note = notes.remove(at);
+        Ok((Self(notes), note))
+    }
+
+    /// What `/pins` and a listing `pin_note` say.
+    fn report(&self) -> String {
+        match self.0.len() {
+            0 => "No pinned notes.".to_owned(),
+            n => format!("Pinned notes ({n}):\n{}", self.listed()),
+        }
+    }
+}
+
+/// On the [`PromptSection`] of an agent's pinned notes.
+#[derive(Component)]
+struct PinsSection;
+
+/// Keeps the agent's pinned-notes section the text of its [`Pins`], each
+/// time a value is inserted: a change, a new agent, or a restored one.
+fn write_section(
+    insert: On<Insert<Pins>>,
+    pins: Query<&Pins>,
+    mut sections: Query<(&SectionOf, &mut PromptSection), With<PinsSection>>,
+    mut commands: Commands,
+) {
+    let agent = insert.entity;
+    let Ok(pins) = pins.get(agent) else {
+        return;
+    };
+    let text = pins.section();
+    let mine = sections.iter_mut().find(|(of, _)| of.0 == agent);
+    match mine {
+        Some((_, mut section)) => {
+            let changed = PromptSection::new(ORDER_PINS, TAG, text);
+            section.set_if_neq(changed);
+        }
+        None if !text.is_empty() => {
+            let section = PromptSection::new(ORDER_PINS, TAG, text);
+            commands.spawn((
+                Name::new("pinned notes"),
+                PinsSection,
+                SectionOf(agent),
+                section,
+            ));
+        }
+        None => {}
+    }
+}
+
+/// `/pin <text>`.
+fn pin(
+    In(args): In<CommandArgs>,
+    pins: Query<&Pins>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = args.agent;
+    let current = pins.get(agent).cloned().unwrap_or_default();
+    match current.with(&args.args) {
+        Ok(pins) => {
+            let said = format!("Pinned note {}.", pins.0.len());
+            commands.entity(agent).insert(pins);
+            notices.write(Notice::info(agent, said));
+        }
+        Err(why) => {
+            notices.write(Notice::error(agent, why));
+        }
+    }
+}
+
+/// `/pins`.
+fn list(In(args): In<CommandArgs>, pins: Query<&Pins>, mut notices: MessageWriter<Notice>) {
+    let current = pins.get(args.agent).cloned().unwrap_or_default();
+    notices.write(Notice::info(args.agent, current.report()));
+}
+
+/// `/unpin <n>`.
+fn unpin(
+    In(args): In<CommandArgs>,
+    pins: Query<&Pins>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let agent = args.agent;
+    let current = pins.get(agent).cloned().unwrap_or_default();
+    let n = args
+        .args
+        .parse::<usize>()
+        .map_err(|_| "/unpin needs a note's number.".to_owned());
+    match n.and_then(|n| current.without(n)) {
+        Ok((pins, note)) => {
+            commands.entity(agent).insert(pins);
+            notices.write(Notice::info(agent, format!("Unpinned \"{note}\".")));
+        }
+        Err(why) => {
+            notices.write(Notice::error(agent, why));
+        }
+    }
+}
+
+/// The arguments of a `pin_note` call.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct PinArgs {
+    /// A note to pin: a decision or constraint to keep in mind, in one
+    /// sentence.
+    text: Option<String>,
+    /// The number of a pinned note to unpin, as the listing numbers them.
+    unpin: Option<usize>,
+}
+
+/// Pins, unpins or lists the calling agent's notes, and answers with
+/// them.
+fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands: Commands) {
+    let (agent, args) = (called.agent, &called.args);
+    let mut current = pins.get(agent).cloned().unwrap_or_default();
+    let mut changed = Ok(());
+    if let Some(n) = args.unpin {
+        changed = current.without(n).map(|(pins, _)| current = pins);
+    }
+    if let (Ok(()), Some(text)) = (&changed, &args.text) {
+        changed = current.with(text).map(|pins| current = pins);
+    }
+    let output = match changed {
+        Ok(()) => {
+            let report = current.report();
+            if args.text.is_some() || args.unpin.is_some() {
+                commands.entity(agent).insert(current);
+            }
+            ToolResult::success(report.into())
+        }
+        Err(why) => {
+            ToolResult::failed(ToolExecutionError::other(format!("{why} Nothing changed.")))
+        }
+    };
+    commands
+        .entity(called.call)
+        .insert_if_new(ToolOutput(output));
+}
+
+/// Tells each compaction's summary call the agent's pinned notes, so the
+/// summary leaves them out: an `on_add` hook of [`ModelRequest`], which runs
+/// before the kernel's observer dispatches the request.
+fn tell_summaries(world: &mut World) {
+    let id = world.register_component::<ModelRequest>();
+    if world
+        .archetypes()
+        .iter()
+        .any(|archetype| archetype.contains(id))
+    {
+        warn!("pinned notes: model requests exist already; summaries will not be told the pins");
+        return;
+    }
+    let hooks = world.register_component_hooks::<ModelRequest>();
+    if hooks.try_on_add(tell_summary).is_none() {
+        warn!(
+            "pinned notes: model requests have a hook already; summaries will not be told the pins"
+        );
+    }
+}
+
+/// Adds the agent's notes to the system message of a compaction's summary
+/// request, as it is added.
+fn tell_summary(mut world: DeferredWorld, context: HookContext) {
+    let call = context.entity;
+    if world.get::<Summarizing>(call).is_none() {
+        return;
+    }
+    let Some(&CallOf(turn)) = world.get::<CallOf>(call) else {
+        return;
+    };
+    let Some(&TurnOf(agent)) = world.get::<TurnOf>(turn) else {
+        return;
+    };
+    let Some(pins) = world.get::<Pins>(agent).filter(|pins| !pins.0.is_empty()) else {
+        return;
+    };
+    let note = format!(
+        "\n\nThe agent keeps these pinned notes in its system prompt, apart from the \
+         conversation; they survive this compaction, so do not repeat them in the summary:\n{}",
+        pins.listed()
+    );
+    let Some(mut request) = world.get_mut::<ModelRequest>(call) else {
+        return;
+    };
+    let history = &mut request.request.chat_history;
+    match history.first_mut() {
+        Some(Message::System { content }) => content.push_str(&note),
+        _ => history.insert(0, Message::system(note.trim_start())),
+    }
+}
+
+#[cfg(feature = "tui")]
+mod tui {
+    use rig_harness::prelude::*;
+    use rig_tui::{Side, StatusItem, StatusItems, Tone};
+
+    use super::Pins;
+
+    /// After the agent's subagents at work; gone before them.
+    const PINNED: StatusItem = StatusItem::at(Side::Left, 65, 9);
+
+    /// "📌 n" while the agent has pinned notes.
+    pub(super) fn show(mut agents: Query<(&Pins, &mut StatusItems), Changed<Pins>>) {
+        for (pins, mut items) in &mut agents {
+            let text = match pins.0.len() {
+                0 => String::new(),
+                n => format!("📌 {n}"),
+            };
+            items.show(PINNED.says(text, Tone::Dim));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests;

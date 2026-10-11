@@ -8,10 +8,32 @@ description = "Plugin corpus: 37. Map-reduce over files"
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The "map 6/10" status line item. Without the terminal view, leave it out
+# with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# Which files a `map_files` call names (already in the lock through rig-core).
+glob = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# `edit` and `write`, run for every agent, refused for a map worker outside
+# its file.
+rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

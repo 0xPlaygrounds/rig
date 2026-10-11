@@ -9,9 +9,21 @@ description = "Plugin corpus: 55. Effect log query tool"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+# The pool an open tool call's work runs on.
+bevy_tasks = { workspace = true }
+# The session's effect log, read back from its JSON lines.
+rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

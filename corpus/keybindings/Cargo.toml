@@ -9,9 +9,10 @@ description = "Plugin corpus: 53. Custom key bindings"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+bevy_ecs = { workspace = true }
+# The terminal view's key types, so a binding matches the events it reads.
+crossterm = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-
-[dev-dependencies]
-rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde = { workspace = true, features = ["derive"] }
+# `RIG_HOME/keys.toml`; already in the lock through other crates.
+toml = "1"

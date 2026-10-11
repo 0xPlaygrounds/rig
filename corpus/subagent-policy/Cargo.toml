@@ -9,9 +9,25 @@ description = "Plugin corpus: 39. Subagent policy"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# The subagents' lifecycle and reports, whose `task` tool this replaces.
+rig-subagents = { path = "../../plugins/rig-subagents" }
+# Each agent's spend.
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+# `/agents`' picker.
+rig-tui = { path = "../../plugins/rig-tui" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+# `RIG_HOME/subagents.toml`; already in Cargo.lock (1.x), no new package.
+toml = "1"
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

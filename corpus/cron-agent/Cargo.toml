@@ -9,9 +9,20 @@ description = "Plugin corpus: 23. Scheduled prompts (cron agent)"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# Cron fields are read in the local time zone, as a user writes them.
+chrono = { workspace = true, features = ["clock"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# The `schedule` tool's parameters, derived from its arguments type.
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+# The test's manual clock.
+bevy_time = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }

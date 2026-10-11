@@ -9,9 +9,32 @@ description = "Plugin corpus: 19. MCP client"
 workspace = true
 
 [dependencies]
+# Each server's events reach the app through it.
+async-channel = { workspace = true }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+# An HTTP server's headers.
+http = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# An MCP tool's call and its result as a tool output.
+rig-rmcp = { workspace = true }
+# The MCP client: stdio over a child's pipes, and streamable HTTP.
+rmcp = { workspace = true, features = [
+  "client",
+  "transport-async-rw",
+  "transport-streamable-http-client-reqwest",
+  "reqwest",
+] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# rmcp runs on tokio; the agent's loop does not.
+tokio = { workspace = true, features = ["rt-multi-thread", "process", "time", "macros"] }
 
 [dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

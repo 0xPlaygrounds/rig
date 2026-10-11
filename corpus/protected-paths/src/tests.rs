@@ -1,0 +1,101 @@
+use std::path::PathBuf;
+
+use rig_cassette::journal::MemoryStore;
+use rig_coding_tools::{ReadTool, SearchTool, WriteTool};
+use rig_core::test_utils::MockCompletionModel;
+use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use serde_json::json;
+
+use super::*;
+
+/// Whether the one turn ended.
+#[derive(Resource, Default)]
+struct Ended(bool);
+
+/// A project in the system's temporary directory with a secret `.env`, a
+/// key file and an ordinary file, each holding `KEY`.
+fn project() -> std::io::Result<PathBuf> {
+    let dir = std::env::temp_dir().join(format!("corpus-protected-paths-{}", std::process::id()));
+    let project = dir.join("project");
+    std::fs::create_dir_all(project.join("sub"))?;
+    std::fs::write(project.join(".env"), "KEY=secret\n")?;
+    std::fs::write(project.join("cert.pem"), "KEY=private\n")?;
+    std::fs::write(project.join("notes.txt"), "KEY=public\n")?;
+    Ok(project)
+}
+
+#[test]
+fn protected_files_are_neither_read_nor_written_nor_found() {
+    let project = project();
+    assert!(project.is_ok(), "{project:?}");
+    let Ok(project) = project else {
+        return;
+    };
+    // The built-in tools resolve paths against the working directory.
+    assert!(std::env::set_current_dir(&project).is_ok());
+    let store = MemoryStore::default();
+    let (mut app, wakes) = app_on(&store);
+    app.set_error_handler(rig_harness::error::warn)
+        .insert_resource(PathPolicy::load(&project, &[]))
+        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool, SearchTool))
+        .add_plugins(ProtectedPathsPlugin)
+        .init_resource::<Ended>()
+        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 = true);
+    app.finish();
+    app.update();
+    let model = MockCompletionModel::from_stream_turns([
+        calls("1", "read", json!({ "path": "./sub/../.env" })),
+        calls(
+            "2",
+            "write",
+            json!({ "path": "../outside.txt", "content": "x" }),
+        ),
+        calls("3", "search", json!({ "pattern": "KEY" })),
+        reply("done"),
+    ]);
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next();
+    let connection = connect(&model);
+    assert!(
+        agent.is_some() && connection.is_some(),
+        "an agent and the catalog's model"
+    );
+    let (Some(agent), Some(connection)) = (agent, connection) else {
+        return;
+    };
+    world.entity_mut(agent).insert(connection);
+    world.trigger(Deliver::new(agent, "Look around.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0);
+
+    let sent: Vec<String> = model
+        .requests()
+        .iter()
+        .map(|request| serde_json::to_string(request).unwrap_or_default())
+        .collect();
+    let outside = project.parent().map(|dir| dir.join("outside.txt"));
+    std::fs::remove_dir_all(project.parent().unwrap_or(&project)).ok();
+    assert_eq!(sent.len(), 4, "{sent:?}");
+    let [_, after_read, after_write, after_search] = sent.as_slice() else {
+        return;
+    };
+    assert!(after_read.contains("read-protected"), "{after_read}");
+    assert!(sent.iter().all(|request| !request.contains("secret")));
+    assert!(after_write.contains("write-protected"), "{after_write}");
+    assert!(outside.is_some_and(|outside| !outside.exists()));
+    assert!(
+        after_search.contains("notes.txt:1: KEY=public"),
+        "{after_search}"
+    );
+    assert!(!after_search.contains(".env:") && !after_search.contains("cert.pem:"));
+    assert!(after_search.contains("1 match in protected files hidden"));
+    let counts = app.world().resource::<PathGuardCounts>();
+    assert_eq!(counts.blocked.get("deny_read .env*"), Some(&1));
+    assert_eq!(
+        counts.blocked.get("deny_write outside the project"),
+        Some(&1)
+    );
+    assert_eq!(counts.hidden.get("deny_read **/*.pem"), Some(&1));
+}

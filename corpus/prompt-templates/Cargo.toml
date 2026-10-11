@@ -9,9 +9,18 @@ description = "Plugin corpus: 11. Prompt templates"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+# The templates' frontmatter.
+serde_yaml = { workspace = true }
 
 [dev-dependencies]
+# The app on a session store and the scripted model the test runs on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+# `/help`.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }

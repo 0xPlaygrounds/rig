@@ -9,9 +9,17 @@ description = "Plugin corpus: 18. Cheap summarizer for big tool outputs"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+schemars = { workspace = true }
+serde_json = { workspace = true }

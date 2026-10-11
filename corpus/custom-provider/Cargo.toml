@@ -8,10 +8,30 @@ description = "Plugin corpus: 16. Custom provider registration"
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The `/model` picker with the configured models.
+tui = ["dep:rig-tui"]
+
 [dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# Custom header names read from the file.
+http = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
+# The shared HTTP client every configured model sends through.
+rig-reqwest = { workspace = true }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# `providers.toml` (already in the lock file through other crates).
+toml = "1"
 
 [dev-dependencies]
+rig-cassette = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The cost a reply adds, at the configured prices.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
