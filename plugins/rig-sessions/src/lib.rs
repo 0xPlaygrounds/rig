@@ -20,7 +20,7 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
-use rig_harness::harness_protocol::{Home, RELOAD_EXIT_CODE, SessionDir, SessionId};
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
@@ -30,7 +30,7 @@ use rig_ecs::WriteJournal;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_harness::prelude::{SessionPaths, launcher};
+use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
 use rig_harness::primary::primary_order;
 use rig_telemetry::Spending;
 use rig_tools::attach::attached_file;
@@ -51,6 +51,7 @@ pub struct SessionsPlugin;
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionTitle>()
+            .init_resource::<RigHome>()
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
@@ -346,56 +347,43 @@ fn name(
     title.name = Some(name);
 }
 
-/// Names the next session for the launcher and exits for it.
+/// Exits to run the session asked for next.
 fn on_switch_session(
     switch: On<SwitchSession>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
-    mut exit: MessageWriter<AppExit>,
+    home: Res<RigHome>,
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    let refusal = if !turns.is_empty() {
-        Some("A turn is running. Press Esc to stop it first.".to_owned())
-    } else if launcher::executable().is_none() {
-        Some("Switching sessions needs the rig launcher: start the agent with `rig`.".to_owned())
-    } else {
-        None
-    };
-    if let Some(refusal) = refusal {
-        notices.write(Notice::info(None, refusal));
+    if !turns.is_empty() {
+        notices.write(Notice::info(
+            None,
+            "A turn is running. Press Esc to stop it first.",
+        ));
         return;
     }
     let Some(paths) = paths else {
         return;
     };
     let target = match &switch.session {
-        None => String::new(),
-        Some(id) => match checked(id, &paths.0) {
-            Ok(id) => id.to_string(),
+        None => None,
+        Some(id) => match checked(id, &home.0, &paths.0) {
+            Ok(id) => Some(id),
             Err(why) => {
                 notices.write(Notice::error(None, why));
                 return;
             }
         },
     };
-    match fs::write(paths.switch(), target) {
-        Ok(()) => {
-            exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
-        }
-        Err(failure) => {
-            notices.write(Notice::error(
-                None,
-                format!("Could not switch sessions: {failure}"),
-            ));
-        }
-    }
+    commands.trigger(Exit(ExitReason::Switch(target)));
 }
 
 /// `id` when it names a session with an agent log other than the running
 /// one.
-fn checked(id: &str, current: &SessionDir) -> Result<SessionId, String> {
+fn checked(id: &str, home: &Home, current: &SessionDir) -> Result<SessionId, String> {
     let id: SessionId = id.trim().parse().map_err(|failure| format!("{failure}."))?;
-    let dir = Home::from_env().session(&id);
+    let dir = home.session(&id);
     if dir.path() == current.path() {
         return Err("That is this session.".to_owned());
     }

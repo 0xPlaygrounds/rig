@@ -8,25 +8,34 @@
 //! The agent uses `--model`, else the model its restored session chose,
 //! else the first model the environment has a key for.
 //!
-//! It is the front of every run that is not interactive
+//! It is the front ([`FRONT`]) of a run that is not interactive
 //! ([`Invoked::interactive`]): one with `--print`, or with stdin piped in,
-//! which answers what is piped in.
+//! which answers what is piped in, unless another front's option chose
+//! that one.
 
 use std::io::{IsTerminal, Read as _};
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
 
-/// Sends the prompt and exits when the turn ends.
+/// `--print`'s name as a front.
+pub const FRONT: &str = "print";
+
+/// Sends the prompt and exits when the turn ends, when it is the run's
+/// front.
 #[derive(Default)]
 pub struct PrintPlugin;
 
 impl Plugin for PrintPlugin {
     fn build(&self, app: &mut App) {
-        let invoked = app.world().get_resource::<Invoked>().cloned();
-        if invoked.as_ref().is_some_and(Invoked::interactive) {
+        app.add_front(Front::new(FRONT).headless());
+    }
+
+    fn finish(&self, app: &mut App) {
+        if !app.runs_front(FRONT) {
             return;
         }
+        let invoked = app.world().get_resource::<Invoked>().cloned();
         let args = invoked.map(|invoked| invoked.args).unwrap_or_default();
         app.insert_resource(PrintRun {
             prompt: args.print.unwrap_or_default(),

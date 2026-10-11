@@ -53,3 +53,28 @@ fn a_wait_across_idle_frames_ends_on_time() {
         "{ran:?}"
     );
 }
+
+#[test]
+fn the_loop_wakes_at_a_wall_clock_time() {
+    let delay = Duration::from_millis(300);
+    let (sender, ran) = mpsc::channel();
+    let started = Instant::now();
+    let mut app = App::new();
+    app.add_plugins((TimePlugin, RunnerPlugin, crate::clock::ClockPlugin))
+        .add_systems(Startup, move |mut commands: Commands| {
+            commands.spawn(crate::clock::WakeAt::after(delay));
+        })
+        .add_observer(
+            move |_: On<Add<crate::clock::Due>>, mut exit: MessageWriter<AppExit>| {
+                sender.send(Instant::now()).ok();
+                exit.write(AppExit::Success);
+            },
+        );
+    app.run();
+    let ran = ran.try_recv().ok().map(|at| at.duration_since(started));
+    // Without the alarm the loop would sleep a whole `IDLE` first.
+    assert!(
+        ran.is_some_and(|ran| ran >= delay && ran < delay + Duration::from_millis(200)),
+        "{ran:?}"
+    );
+}

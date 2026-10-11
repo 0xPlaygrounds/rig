@@ -13,6 +13,7 @@ fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
         args: Invocation {
             print: Some("hi".to_owned()),
             model: None,
+            ..Invocation::default()
         },
         terminal: false,
     })

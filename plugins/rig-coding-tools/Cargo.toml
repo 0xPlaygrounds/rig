@@ -24,3 +24,7 @@ tui = ["dep:rig-tui"]
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# Runs a tool's future in its test.
+bevy_tasks = { workspace = true }

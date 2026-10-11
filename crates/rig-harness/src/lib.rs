@@ -52,11 +52,16 @@
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
+pub mod ask;
+pub mod clock;
 pub mod host;
 mod load;
 pub mod primary;
+pub mod services;
+pub mod settings;
+pub mod watch;
 
-pub use load::{PluginSource, ProvidedBy, Provides, load};
+pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
 /// that reads it.
@@ -95,17 +100,32 @@ pub mod prelude {
 
     pub use std::time::Duration;
 
+    pub use crate::ask::{Answer, Answerer, Answerers, Ask, Choice};
+    pub use crate::clock::{Due, WakeAt};
     pub use crate::harness_protocol::Home;
+    pub use crate::host::cli::{AppCliExt, Flag, Front};
+    pub use crate::host::exit::{Exit, ExitReason};
     pub use crate::host::launcher::{self, Invoked};
-    pub use crate::host::session::{LogEvents, Logged, SessionPaths};
+    pub use crate::host::session::{
+        DeleteSession, ForkSession, LogEvents, Logged, SessionDeleted, SessionForked, SessionPaths,
+    };
     pub use crate::primary::{PrimaryQuery, primary};
-    pub use crate::{HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins};
+    pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime};
+    pub use crate::settings::{AppSettingsExt, Settings};
+    pub use crate::watch::{FileChanges, FileWatch};
+    pub use crate::{
+        HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
+    };
     pub use rig_core::transcript::final_answer;
     pub use rig_tools::{Spill, blocking};
 }
 
-/// What the binary needs to run and be relaunched: the session and its
-/// log, the agent core and the session logs, and the launcher protocol.
+/// What the binary needs to run and be relaunched, and the services every
+/// plugin shares: the process's home, project, child processes and tokio
+/// runtime ([`services`]), the session and its log, the agent core and the
+/// session logs, the launcher protocol with the plugins' options and
+/// fronts ([`host`]), why the app exits, wall-clock wakes ([`clock`]),
+/// file watches ([`watch`]) and questions for the user ([`ask`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
 /// out.
 pub struct RigHarnessPlugins;
@@ -113,10 +133,15 @@ pub struct RigHarnessPlugins;
 impl PluginGroup for RigHarnessPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
+            .add(services::ServicesPlugin)
             .add(host::session::SessionPlugin)
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
             .add(host::launcher::LauncherPlugin)
+            .add(host::exit::ExitPlugin)
+            .add(clock::ClockPlugin)
+            .add(watch::WatchPlugin)
+            .add(ask::AskPlugin)
     }
 }
 

@@ -3779,10 +3779,8 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tui",
  "serde",
  "serde_json",
- "toml",
 ]
 
 [[package]]
@@ -12683,6 +12681,7 @@ dependencies = [
 name = "rig-coding-tools"
 version = "0.44.0"
 dependencies = [
+ "bevy_tasks",
  "rig-harness",
  "rig-tools",
  "rig-tui",
@@ -12846,11 +12845,14 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-ecs",
+ "rig-reqwest",
  "rig-tools",
  "rig-tui",
  "schemars 1.2.1",
  "serde",
  "serde_json",
+ "tokio",
+ "toml",
 ]
 
 [[package]]

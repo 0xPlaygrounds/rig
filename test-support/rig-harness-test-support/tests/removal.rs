@@ -135,6 +135,7 @@ fn every_default_plugin_can_be_left_out() {
                 args: Invocation {
                     print: Some(PROMPT.to_owned()),
                     model: None,
+                    ..Invocation::default()
                 },
                 terminal: false,
             })

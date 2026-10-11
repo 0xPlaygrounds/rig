@@ -4,10 +4,11 @@
 //! failed build it started after, and the ready file that tells it this
 //! build started.
 //!
-//! How rig was started picks its front: the terminal view (`rig-tui`) runs
-//! on an interactive terminal, `--print` (`rig-print`) with `-p` or with
-//! stdin piped in. A build without `rig-tui` started on an interactive
-//! terminal says so and exits.
+//! The fronts plugins offer and the options they take
+//! ([`cli`]) are checked against how rig was started once
+//! every plugin is built: an option no plugin takes, or an interactive
+//! terminal no front takes, is refused with exit code 2 once the launcher
+//! knows the build started, so it is not rolled back.
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
@@ -23,8 +24,10 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use rig::harness_protocol::{Home, Invocation, env};
 
+use super::cli::{self, Cli};
 use super::session::SessionPaths;
-use crate::PluginSource;
+use crate::services::RigHome;
+use crate::settings::Settings;
 use rig_ecs::agent::Notice;
 
 use crate::primary::{PrimaryQuery, primary};
@@ -34,12 +37,10 @@ use rig_ecs::journal::SessionRestored;
 /// The plugin name in the [`Origin`] of a failed build's note.
 pub const BUILD_ORIGIN: &str = "build";
 
-/// The terminal view's package, the front of an interactive run.
-const TERMINAL_VIEW: &str = "rig-tui";
-
 /// How this process was started, for the plugins that read their part of
 /// it: the agent's arguments (`--print` for `rig-print`, `--model` for
-/// `rig-models`) and whether stdin is a terminal. [`LauncherPlugin`]
+/// `rig-models`, the plugins' own options with [`Invoked::flag`]) and
+/// whether stdin is a terminal. [`LauncherPlugin`]
 /// inserts it from the process unless the app inserted one before.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct Invoked {
@@ -90,31 +91,23 @@ impl Plugin for LauncherPlugin {
             .add_systems(Last, signal_ready);
     }
 
-    /// Ends an interactive run of a build without the terminal view.
+    /// Refuses a run the build cannot take: see [`cli`].
     fn cleanup(&self, app: &mut App) {
-        let world = app.world_mut();
-        let interactive = world
-            .get_resource::<Invoked>()
-            .is_some_and(Invoked::interactive);
-        let mut plugins = world.query::<&PluginSource>();
-        if interactive
-            && !plugins
-                .iter(world)
-                .any(|plugin| plugin.krate == TERMINAL_VIEW)
-        {
-            app.add_systems(Last, exit_without_front.after(signal_ready));
+        if let Some(refusal) = cli::refusal(app) {
+            app.insert_resource(Refused(refusal))
+                .add_systems(Last, exit_refused.after(signal_ready));
         }
     }
 }
 
-/// Says that nothing shows an interactive run, and exits once the launcher
-/// knows that the build started: it is not rolled back.
-fn exit_without_front(mut exit: MessageWriter<AppExit>) {
-    eprintln!(
-        "rig: this build has no front for an interactive terminal: enable {TERMINAL_VIEW} \
-         (`rig plugin add rig_tui::TuiPlugin --crate {TERMINAL_VIEW}`), or run with -p or \
-         with stdin piped in."
-    );
+/// Why this run cannot go on.
+#[derive(Resource)]
+struct Refused(String);
+
+/// Says why the run cannot go on, and exits once the launcher knows that
+/// the build started: it is not rolled back.
+fn exit_refused(refused: Res<Refused>, mut exit: MessageWriter<AppExit>) {
+    eprintln!("rig: {}.", refused.0);
     exit.write(AppExit::from_code(2));
 }
 
@@ -168,12 +161,20 @@ pub fn executable() -> Option<OsString> {
     std::env::var_os(env::LAUNCHER).filter(|launcher| !launcher.is_empty())
 }
 
-/// Shows the launcher's notice, such as a rollback, at startup.
-fn launcher_notice(mut notices: MessageWriter<Notice>, mut commands: Commands) {
+/// Shows the launcher's notice, such as a rollback, and what is wrong with
+/// the user's settings, at startup.
+fn launcher_notice(
+    settings: Option<Res<Settings>>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
     if let Ok(notice) = std::env::var(env::NOTICE)
         && !notice.is_empty()
     {
         notices.write(Notice::info(None, notice));
+    }
+    for problem in settings.iter().flat_map(|settings| settings.problems()) {
+        notices.write(Notice::error(None, problem.clone()));
     }
     if let Ok(failure) = std::env::var(env::BUILD_FAILURE)
         && !failure.trim().is_empty()
@@ -202,19 +203,33 @@ fn deliver_build_failure(
 
 /// Tells the launcher, if one started this agent, that this build started:
 /// every plugin built, the session restored and the first frame drawn
-/// without an exit request.
+/// without an exit request. It also leaves the plugins' options for the
+/// launcher's `rig help`.
 fn signal_ready(
     mut signalled: Local<bool>,
     exits: MessageReader<AppExit>,
     paths: Option<Res<SessionPaths>>,
+    cli: Option<Res<Cli>>,
+    home: Option<Res<RigHome>>,
 ) {
     if *signalled || !exits.is_empty() {
         return;
     }
     *signalled = true;
-    if let Some(paths) = paths.filter(|_| executable().is_some())
-        && let Err(failure) = std::fs::write(paths.ready(), b"")
-    {
+    let Some(paths) = paths.filter(|_| executable().is_some()) else {
+        return;
+    };
+    if let Err(failure) = std::fs::write(paths.ready(), b"") {
         error!("could not write the ready file: {failure}");
     }
+    let flags = home
+        .map_or_else(Home::from_env, |home| home.0.clone())
+        .flags();
+    let usage = cli.map(|cli| cli.usage()).unwrap_or_default();
+    if std::fs::read_to_string(&flags).ok().as_deref() != Some(usage.as_str()) {
+        std::fs::write(&flags, usage).ok();
+    }
 }
+
+#[cfg(test)]
+mod tests;

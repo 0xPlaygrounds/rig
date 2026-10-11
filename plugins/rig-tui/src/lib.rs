@@ -9,9 +9,10 @@
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 //!
-//! It runs when someone sits at the terminal
-//! ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
-//! no `--print` and stdin a terminal.
+//! It is the front ([`FRONT`]) of a run where someone sits at the
+//! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
+//! no `--print` and stdin a terminal, unless another front's option
+//! chose that one.
 //!
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
@@ -41,7 +42,7 @@ mod wrap;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_ecs::stage::AgentLoop;
-use rig_harness::prelude::Invoked;
+use rig_harness::prelude::{AppCliExt, Front, RigHome};
 
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
@@ -51,7 +52,12 @@ pub use renderers::{
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use view::{Focus, PickItem, PickRequest};
 
-/// Owns the terminal and draws the focused agent.
+/// The terminal view's name as a front.
+pub const FRONT: &str = "tui";
+
+/// Owns the terminal and draws the focused agent, when it is the run's
+/// front: on an interactive terminal, unless another front's option was
+/// given.
 #[derive(Default)]
 pub struct TuiPlugin;
 
@@ -75,16 +81,17 @@ impl Plugin for TuiPlugin {
                     .chain()
                     .after(StatusSystems),
             );
-        // Anything else, such as a print run, has stdout for its own
-        // output.
-        if !app
-            .world()
-            .get_resource::<Invoked>()
-            .is_some_and(Invoked::interactive)
-        {
+        app.add_front(Front::new(FRONT).on_terminal());
+    }
+
+    /// Owns the terminal when the run is the terminal view's: any other
+    /// front, such as a print run, has stdout for its own output.
+    fn finish(&self, app: &mut App) {
+        if !app.runs_front(FRONT) {
             return;
         }
-        app.init_resource::<view::TuiView>()
+        app.init_resource::<RigHome>()
+            .init_resource::<view::TuiView>()
             .init_resource::<complete::FileIndex>()
             .init_resource::<clipboard::Clipboard>()
             .add_systems(Startup, terminal::open_terminal)
@@ -121,7 +128,10 @@ impl Plugin for TuiPlugin {
                         .run_if(resource_exists::<terminal::Tui>),
                 ),
             )
-            .add_systems(Last, terminal::keep_screen_on_reload)
+            .add_systems(
+                Last,
+                terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),
+            )
             .add_observer(view::on_focus);
     }
 }

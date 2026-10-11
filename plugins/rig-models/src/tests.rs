@@ -7,8 +7,8 @@ fn the_agent_starts_on_the_model_named_with_model() {
     let mut app = App::new();
     app.insert_resource(Invoked {
         args: Invocation {
-            print: None,
             model: Some("deepseek/deepseek-flash".to_owned()),
+            ..Invocation::default()
         },
         terminal: false,
     })

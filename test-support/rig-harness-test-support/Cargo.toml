@@ -17,6 +17,8 @@ bevy_ecs = { workspace = true }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
+# The questions `AnswerAsks` answers.
+rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
@@ -26,7 +28,6 @@ rig-activity = { path = "../../plugins/rig-activity" }
 rig-basics = { path = "../../plugins/rig-basics" }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-compaction = { path = "../../plugins/rig-compaction" }
-rig-harness = { path = "../../crates/rig-harness" }
 rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-login-chatgpt = { path = "../../plugins/rig-login-chatgpt" }
 rig-models = { path = "../../plugins/rig-models" }

@@ -34,6 +34,13 @@ rig-core = { workspace = true, features = ["reqwest"] }
 rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The file and process helpers, and spill files.
 rig-tools = { path = "../rig-tools", version = "0.44.0" }
+# The tokio runtime rig's HTTP requests run on, shared with plugins.
+rig-reqwest = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+# Questions' answers, and the user's settings for plugins.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = "1"
 
 [dev-dependencies]
 # The terminal panel of the plugin guide's examples.
@@ -42,5 +49,3 @@ rig-tui = { path = "../../plugins/rig-tui" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }

@@ -130,6 +130,13 @@ impl Home {
             .map(PathBuf::from)
             .or_else(|| std::env::home_dir().map(|home| home.join(".rig")))
             .unwrap_or_else(|| PathBuf::from(".rig"));
+        Self::at(root)
+    }
+
+    /// The layout under `root`, made absolute: a home of its own, such as
+    /// a test's.
+    pub fn at(root: impl Into<PathBuf>) -> Self {
+        let root = root.into();
         let root = std::path::absolute(&root).unwrap_or(root);
         Self { root }
     }
@@ -149,6 +156,12 @@ impl Home {
     /// `path = "plugins/<name>"`.
     pub fn plugins(&self) -> PathBuf {
         self.root.join("plugins")
+    }
+
+    /// `settings.toml`, the user's settings for plugins: one table per
+    /// plugin, which the agent hands to the plugin that reads it.
+    pub fn settings(&self) -> PathBuf {
+        self.root.join("settings.toml")
     }
 
     /// `defaults.json`, the model and reasoning setting a new session
@@ -193,6 +206,13 @@ impl Home {
     /// The build `rig build` staged for whichever launcher starts next.
     pub fn staged(&self) -> PathBuf {
         self.bin().join("staged")
+    }
+
+    /// The options the plugins of the last build that started take, one per
+    /// line as `--name[=VALUE]  what it does`, for the launcher's usage
+    /// text.
+    pub fn flags(&self) -> PathBuf {
+        self.bin().join("flags")
     }
 
     /// The stamp of the last build that stopped before it was ready.
@@ -252,6 +272,11 @@ impl SessionDir {
     /// The directory itself.
     pub fn path(&self) -> &Path {
         &self.0
+    }
+
+    /// The session's id: the directory's name, when it is one.
+    pub fn id(&self) -> Option<SessionId> {
+        self.0.file_name()?.to_str()?.parse().ok()
     }
 
     /// Whether any agent of the session wrote its log, so it can be
@@ -333,6 +358,10 @@ pub struct Invocation {
     pub print: Option<String>,
     /// A catalog model (`vendor/model`) for the session's first agent.
     pub model: Option<String>,
+    /// The options of the agent's plugins, in the order given: each
+    /// `--name` with the text after `=`, if any. The agent refuses one no
+    /// plugin of its build takes.
+    pub flags: Vec<(String, Option<String>)>,
 }
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
@@ -340,6 +369,7 @@ pub const INVOCATION_USAGE: &str =
     "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
                          Text piped in on stdin follows the prompt.
   -m, --model <model>    The catalog model (vendor/model) to use.
+  --<option>[=<value>]   An option of one of the agent's plugins.
 ";
 
 impl Invocation {
@@ -347,6 +377,7 @@ impl Invocation {
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
         let mut print = false;
         let mut model = None;
+        let mut flags = Vec::new();
         let mut words: Vec<&str> = Vec::new();
         let mut args = args.iter().map(AsRef::as_ref);
         while let Some(arg) = args.next() {
@@ -357,6 +388,10 @@ impl Invocation {
                     model = Some(name.to_owned());
                 }
                 "--" => words.extend(args.by_ref()),
+                flag if flag.starts_with("--model=") => {
+                    model = flag.strip_prefix("--model=").map(str::to_owned);
+                }
+                flag if flag.starts_with("--") => flags.push(plugin_flag(flag)?),
                 flag if flag.starts_with('-') && flag.len() > 1 => {
                     return Err(format!("unknown option `{flag}`"));
                 }
@@ -367,7 +402,11 @@ impl Invocation {
             return Err("a prompt needs --print (-p)".to_owned());
         }
         let print = print.then(|| words.join(" "));
-        Ok(Self { print, model })
+        Ok(Self {
+            print,
+            model,
+            flags,
+        })
     }
 
     /// The agent's own arguments, from the process's.
@@ -387,6 +426,12 @@ impl Invocation {
         if let Some(model) = &self.model {
             args.extend(["--model".into(), model.into()]);
         }
+        for (name, value) in &self.flags {
+            args.push(match value {
+                Some(value) => format!("--{name}={value}").into(),
+                None => format!("--{name}").into(),
+            });
+        }
         if let Some(prompt) = &self.print {
             args.push("--print".into());
             if !prompt.is_empty() {
@@ -396,3 +441,24 @@ impl Invocation {
         args
     }
 }
+
+/// A plugin's option, `--name` or `--name=value`: the name is lowercase
+/// ASCII letters, digits and dashes, starting with a letter.
+fn plugin_flag(flag: &str) -> Result<(String, Option<String>), String> {
+    let option = flag.strip_prefix("--").unwrap_or(flag);
+    let (name, value) = match option.split_once('=') {
+        Some((name, value)) => (name, Some(value.to_owned())),
+        None => (option, None),
+    };
+    let valid = name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if !valid {
+        return Err(format!("unknown option `{flag}`"));
+    }
+    Ok((name.to_owned(), value))
+}
+
+#[cfg(test)]
+mod tests;

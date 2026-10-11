@@ -1,6 +1,8 @@
 //! What the rig agent's plugin tests build: an app on a session store, a
-//! model answering as the catalog's DeepSeek model, and its replies.
+//! model answering as the catalog's DeepSeek model, its replies, and a
+//! front that answers questions from a script ([`AnswerAsks`]).
 
+use std::collections::{HashSet, VecDeque};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
@@ -15,11 +17,14 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_harness::ask::{Answer, Answerer, Ask};
+use rig_harness::settings::Settings;
 
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(10);
 
-/// An app with a task pool on the session in `store`, and its loop's wakes.
+/// An app with a task pool on the session in `store`, no user settings,
+/// and its loop's wakes.
 pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
     let mut app = App::new();
@@ -27,7 +32,8 @@ pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
         .insert_resource(Wake::new(move || {
             sender.send(()).ok();
         }))
-        .insert_resource(SessionStore::new(store.clone()));
+        .insert_resource(SessionStore::new(store.clone()))
+        .insert_resource(Settings::default());
     (app, wakes)
 }
 
@@ -97,4 +103,54 @@ pub fn start_call(
             .spawn((ToolRequest { call }, parent, ForAgent(agent)))
             .id(),
     )
+}
+
+/// The answers [`AnswerAsks`] gives, in order, and the title of every
+/// question it saw, in the order they were asked.
+#[derive(Resource, Default, Debug)]
+pub struct Answers {
+    /// What the next questions are answered; a question asked when none
+    /// is left stays open.
+    pub script: VecDeque<Answer>,
+    /// Each question's title.
+    pub asked: Vec<String>,
+}
+
+impl Answers {
+    /// Answers the next questions with `script`, in order.
+    pub fn new(script: impl IntoIterator<Item = Answer>) -> Self {
+        Self {
+            script: script.into_iter().collect(),
+            asked: Vec::new(),
+        }
+    }
+}
+
+/// A front someone sits at who answers every question at once from the
+/// [`Answers`] script: an [`Answerer`] for every agent, answering in Gate.
+pub struct AnswerAsks;
+
+impl Plugin for AnswerAsks {
+    fn build(&self, app: &mut App) {
+        app.world_mut().spawn(Answerer::default());
+        app.init_resource::<Answers>()
+            .add_systems(AgentPass, answer_asks.in_set(Stage::Gate));
+    }
+}
+
+fn answer_asks(
+    asks: Query<(Entity, &Ask), (Without<Outcome>, Without<Settled>)>,
+    mut seen: Local<HashSet<Entity>>,
+    mut answers: ResMut<Answers>,
+    mut commands: Commands,
+) {
+    for (entity, ask) in &asks {
+        if !seen.insert(entity) {
+            continue;
+        }
+        answers.asked.push(ask.title.clone());
+        if let Some(answer) = answers.script.pop_front() {
+            commands.entity(entity).insert_if_new(answer.outcome());
+        }
+    }
 }

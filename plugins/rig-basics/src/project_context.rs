@@ -12,7 +12,6 @@ use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_harness::harness_protocol::Home;
 use rig_tools::context::Instructions;
 
 use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
@@ -20,6 +19,7 @@ use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::prompt::PromptSection;
 use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_harness::services::{ProjectRoot, RigHome};
 
 /// What an agent with no [`SystemPrompt`] of its own is told it is.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
@@ -49,7 +49,10 @@ pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
-        let context = Context::read();
+        app.init_resource::<RigHome>()
+            .init_resource::<ProjectRoot>();
+        let world = app.world();
+        let context = Context::read(world.resource(), world.resource());
         for (name, which) in [
             ("prompt:project", Section::Project),
             ("prompt:environment", Section::Environment),
@@ -108,13 +111,12 @@ struct Context {
 }
 
 impl Context {
-    /// Reads the instruction files and the environment now.
-    fn read() -> Self {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let home = Home::from_env().root().to_path_buf();
+    /// Reads the instruction files of `home` and of `root` and above, and
+    /// the environment, now.
+    fn read(home: &RigHome, root: &ProjectRoot) -> Self {
         Self {
-            instructions: Instructions::discover([home], &cwd),
-            cwd,
+            instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0),
+            cwd: root.0.clone(),
         }
     }
 
@@ -161,9 +163,11 @@ fn refresh_on_turn(
     started: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
     mut sections: Query<(&Section, &mut PromptSection)>,
+    home: Res<RigHome>,
+    root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let context = Context::read();
+    let context = Context::read(&home, &root);
     if !context.apply(&mut sections) {
         return;
     }
@@ -186,9 +190,11 @@ fn show_context(
     In(args): In<CommandArgs>,
     mut sections: Query<(&Section, &mut PromptSection)>,
     others: Query<&PromptSection, Without<Section>>,
+    home: Res<RigHome>,
+    root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let context = Context::read();
+    let context = Context::read(&home, &root);
     context.apply(&mut sections);
     let mut listed: Vec<&PromptSection> = sections.iter().map(|(_, section)| section).collect();
     listed.extend(&others);

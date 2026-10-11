@@ -22,7 +22,7 @@ use super::input::TerminalInput;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_harness::harness_protocol::{Home, RELOAD_EXIT_CODE};
+use rig_harness::prelude::{ExitReason, RigHome};
 
 use rig_harness::prelude::SessionPaths;
 
@@ -83,6 +83,7 @@ impl Drop for Tui {
 /// 1 when there is none. The input editor gets the prompt history.
 pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
+    home: Res<RigHome>,
     wake: Res<Wake>,
     mut view: ResMut<TuiView>,
     mut screen: ResMut<TuiScreen>,
@@ -96,7 +97,7 @@ pub(crate) fn open_terminal(
             if let Ok(size) = tui.terminal.size() {
                 screen.0 = Rect::new(0, 0, size.width, size.height);
             }
-            view.editor = Editor::with_history(Home::from_env().history());
+            view.editor = Editor::with_history(home.0.history());
             commands.insert_resource(tui);
             commands.insert_resource(input);
         }
@@ -107,12 +108,11 @@ pub(crate) fn open_terminal(
     }
 }
 
-/// Keeps the alternate screen when the app exits to reload.
-pub(crate) fn keep_screen_on_reload(mut exits: MessageReader<AppExit>, tui: Option<ResMut<Tui>>) {
-    if let Some(mut tui) = tui
-        && exits
-            .read()
-            .any(|exit| *exit == AppExit::from_code(RELOAD_EXIT_CODE))
+/// Keeps the alternate screen when the app exits for the launcher to start
+/// it again: to reload, or to run another session.
+pub(crate) fn keep_screen_on_reload(reason: Option<Res<ExitReason>>, tui: Option<ResMut<Tui>>) {
+    if let (Some(mut tui), Some(reason)) = (tui, reason)
+        && matches!(*reason, ExitReason::Reload | ExitReason::Switch(_))
     {
         tui.keep_screen = true;
     }

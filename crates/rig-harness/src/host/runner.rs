@@ -1,13 +1,13 @@
 //! The app's loop without a window. It runs a frame, then sleeps until the
 //! first of: a [`Wake`], the deadline of the next delayed command on Bevy's
-//! clock (a retried model call waits on one), the shortest [`KeepAwake`]
-//! interval, or a second. Frames never come faster than every 16 ms,
+//! clock (a retried model call waits on one), the next [`WakeAt`] on the
+//! wall clock, the shortest [`KeepAwake`] interval, or a second. Frames never come faster than every 16 ms,
 //! however often a streaming reply wakes the loop; the frames after a wake
 //! come from [`settle`](rig_ecs::calls::settle), which works the same under
 //! any loop. It runs every schedule on the main thread, one system after
 //! another.
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use bevy::time::{DelayedCommandQueue, Time};
 use bevy_app::PluginsState;
@@ -15,6 +15,8 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
 use rig_ecs::calls::{KeepAwake, Wake};
+
+use crate::clock::{Due, WakeAt};
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);
@@ -72,6 +74,7 @@ impl Plugin for RunnerPlugin {
 struct NextFrame {
     delayed: QueryState<&'static DelayedCommandQueue>,
     awake: QueryState<&'static KeepAwake>,
+    alarms: QueryState<&'static WakeAt, Without<Due>>,
 }
 
 impl NextFrame {
@@ -79,6 +82,7 @@ impl NextFrame {
         Self {
             delayed: world.query(),
             awake: world.query(),
+            alarms: world.query_filtered(),
         }
     }
 
@@ -93,10 +97,13 @@ impl NextFrame {
                 .map(|queue| queue.submit_at.saturating_sub(time.elapsed()))
                 .min()
         });
+        let now = SystemTime::now();
+        let alarms = self.alarms.iter(world).map(|alarm| alarm.left(now));
         self.awake
             .iter(world)
             .map(|awake| awake.0)
             .chain(delayed)
+            .chain(alarms)
             .fold(IDLE, Duration::min)
     }
 }

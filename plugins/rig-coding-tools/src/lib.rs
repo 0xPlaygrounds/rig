@@ -5,14 +5,13 @@
 //! [`AttachPlugin`] sends the files the user names as `@path` with the
 //! message.
 
-#[cfg(feature = "tui")]
-use rig_harness::prelude::Tool;
 use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppToolsExt, Attachment, ForAgent, Incoming,
-    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Query, SessionPaths, Stage,
-    ToolOptions,
+    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Processes, Query, SessionPaths,
+    Stage, Tool, ToolOptions,
 };
-use rig_tools::process::Launcher;
+use rig_harness::rig_core::completion::ToolAnnotations;
+use rig_harness::rig_core::tool::ToolContext;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
@@ -77,27 +76,65 @@ impl Plugin for WriteTool {
     }
 }
 
-/// The `shell` tool. Output it cuts is kept whole in the session's
+/// The `shell` tool. Each call starts its process as the app's
+/// [`Processes`] say when it runs, so a sandbox plugin's policy applies;
+/// output it cuts is kept whole in the session's
 /// [`spill`](SessionPaths::spill) directory.
 #[derive(Default)]
 pub struct ShellTool;
 
 impl Plugin for ShellTool {
     fn build(&self, app: &mut App) {
-        let shell = Shell {
-            // A command, such as a nested agent run while working on
-            // rig-harness itself, must not act as this agent.
-            launcher: Launcher::default()
-                .without_env(rig_harness::harness_protocol::env::AGENT_ONLY),
-            spill: app
-                .world()
-                .get_resource::<SessionPaths>()
-                .map(SessionPaths::spill),
-            ..Shell::default()
+        let shell = SharedShell {
+            shell: Shell {
+                spill: app
+                    .world()
+                    .get_resource::<SessionPaths>()
+                    .map(SessionPaths::spill),
+                ..Shell::default()
+            },
+            processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
         };
         app.add_tool_with(shell, options(Shell::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);
+    }
+}
+
+/// [`Shell`], starting each command as [`Processes`] say at the time.
+struct SharedShell {
+    shell: Shell,
+    processes: Processes,
+}
+
+impl Tool for SharedShell {
+    const NAME: &'static str = Shell::NAME;
+    type Args = <Shell as Tool>::Args;
+    type Output = <Shell as Tool>::Output;
+    type Error = <Shell as Tool>::Error;
+
+    fn description(&self) -> String {
+        self.shell.description()
+    }
+
+    fn parameters(&self) -> rig_harness::rig_core::serde_json::Value {
+        self.shell.parameters()
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        self.shell.annotations()
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let shell = Shell {
+            launcher: self.processes.launcher(),
+            ..self.shell.clone()
+        };
+        shell.call(context, args).await
     }
 }
 
@@ -135,3 +172,6 @@ fn attach(
         typed.attachments.extend(attachments);
     }
 }
+
+#[cfg(test)]
+mod tests;
