@@ -9,6 +9,7 @@ description = "Plugin corpus: 33. Format and lint on every write"
 workspace = true
 
 [dependencies]
+rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-tools = { path = "../../crates/rig-tools" }
 serde_json = { workspace = true }

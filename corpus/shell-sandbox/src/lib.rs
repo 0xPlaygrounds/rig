@@ -78,7 +78,7 @@ impl Plugin for ShellSandboxPlugin {
         let description = format!(
             "{} It runs in a sandbox: writes outside the project directory and $TMPDIR fail, \
              the home directory is hidden, and the network is off unless the user allowed it.",
-            PortableTool::description(&Shell::default())
+            Tool::description(&Shell::default())
         );
         let rules: Vec<&str> = Shell::RULES.iter().copied().chain([SANDBOX_RULE]).collect();
         let options = ToolOptions {
@@ -300,8 +300,9 @@ fn run_shell(
     let argv = backend.argv(&config, network.allowed, &called.args.command);
     let line = command_line(&config.project, &argv);
     let shell = Shell {
-        unset_env: &AGENT_ONLY,
+        launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
         spill: paths.map(|paths| paths.spill()),
+        ..Shell::default()
     };
     let work = run(shell, line, called.args.timeout_secs, network.allowed);
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
@@ -313,12 +314,11 @@ fn run_shell(
 /// Runs the wrapped command `line` through `shell`, with a hint when the
 /// sandbox blocked it.
 async fn run(shell: Shell, line: String, timeout_secs: Option<u64>, network: bool) -> ToolResult {
-    let args = serde_json::json!({ "command": line, "timeout_secs": timeout_secs });
-    let args = match serde_json::from_value::<ShellArgs>(args) {
-        Ok(args) => args,
-        Err(error) => return ToolResult::failed(ToolExecutionError::from_error(error)),
+    let args = ShellArgs {
+        timeout_secs,
+        ..ShellArgs::new(line)
     };
-    match PortableTool::call(&shell, args).await {
+    match shell.run(args).await.map(|ran| ran.output) {
         Ok(mut output) => {
             if let Some(hint) = hint(&output, network) {
                 output.push_str(&format!("\n{hint}"));

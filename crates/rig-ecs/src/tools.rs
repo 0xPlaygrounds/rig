@@ -318,6 +318,7 @@ impl WorldToolsExt for World {
             name,
             description,
             parameters,
+            ..
         } = definition;
         let serves = Serves::Handler(Handler(handler));
         register_tool(self, &name, description, parameters, serves, options)

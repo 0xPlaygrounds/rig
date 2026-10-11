@@ -383,10 +383,11 @@ impl Plugin for ShellRewritePlugin {
         };
         world.entity_mut(tool).insert(Disabled);
         let shell = Shell {
-            unset_env: &AGENT_ONLY,
+            launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
             spill: world
                 .get_resource::<SessionPaths>()
                 .map(SessionPaths::spill),
+            ..Shell::default()
         };
         let rewrite = Rewrite {
             rules,

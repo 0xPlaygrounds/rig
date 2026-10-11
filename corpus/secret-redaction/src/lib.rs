@@ -94,8 +94,9 @@ impl Plugin for SecretRedactionPlugin {
         wrap(world, &secrets, Edit);
         wrap(world, &secrets, Search);
         let shell = Shell {
-            unset_env: &AGENT_ONLY,
+            launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
             spill,
+            ..Shell::default()
         };
         wrap(world, &secrets, shell);
         let hooks = world.register_component_hooks::<Done<ModelReply>>();

@@ -6,11 +6,12 @@
 //! message.
 
 #[cfg(feature = "tui")]
-use rig_harness::prelude::PortableTool;
+use rig_harness::prelude::Tool;
 use rig_harness::prelude::{
     App, AppToolsExt, Attachment, Deliver, Footprint, MessageWriter, Notice, On, OriginKind,
     Plugin, SessionPaths, ToolOptions,
 };
+use rig_tools::process::Launcher;
 use rig_tools::{Edit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
@@ -92,11 +93,13 @@ impl Plugin for ShellTool {
         let shell = Shell {
             // A command, such as a nested agent run while working on
             // rig-harness itself, must not act as this agent.
-            unset_env: &rig_harness::harness_protocol::env::AGENT_ONLY,
+            launcher: Launcher::default()
+                .without_env(rig_harness::harness_protocol::env::AGENT_ONLY),
             spill: app
                 .world()
                 .get_resource::<SessionPaths>()
                 .map(SessionPaths::spill),
+            ..Shell::default()
         };
         app.add_tool_with(shell, alone(Shell::RULES));
         #[cfg(feature = "tui")]

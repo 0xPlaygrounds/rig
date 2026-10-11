@@ -18,6 +18,7 @@ use std::process::{Command, Stdio};
 use std::sync::{Arc, mpsc};
 use std::time::Duration;
 
+use rig_core::tool::ToolContext;
 use rig_ecs::prelude::*;
 use rig_tools::fs::write_atomic;
 use rig_tools::process::detach;
@@ -105,7 +106,7 @@ impl Plugin for FormatOnWritePlugin {
 /// footprint. Nothing changes when no such tool is registered.
 fn wrap<T>(app: &mut App, inner: T, config: &Arc<FormatOnWrite>)
 where
-    T: PortableTool<Output = String, Error = ToolExecutionError> + 'static,
+    T: Tool<Output = String, Error = ToolExecutionError> + 'static,
 {
     let world = app.world_mut();
     let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
@@ -138,9 +139,9 @@ struct Formatted<T> {
     config: Arc<FormatOnWrite>,
 }
 
-impl<T> PortableTool for Formatted<T>
+impl<T> Tool for Formatted<T>
 where
-    T: PortableTool<Output = String, Error = ToolExecutionError>,
+    T: Tool<Output = String, Error = ToolExecutionError>,
 {
     const NAME: &'static str = T::NAME;
     // The inner tool's arguments, whose fields are private: the path is read
@@ -157,11 +158,15 @@ where
         self.inner.parameters()
     }
 
-    async fn call(&self, args: Value) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: Value,
+    ) -> Result<String, ToolExecutionError> {
         let path = args.get("path").and_then(Value::as_str).map(str::to_owned);
         let typed = serde_json::from_value(args)
             .map_err(|error| ToolExecutionError::invalid_args(error.to_string()))?;
-        let result = self.inner.call(typed).await?;
+        let result = self.inner.call(context, typed).await?;
         let Some(path) = path else {
             return Ok(result);
         };

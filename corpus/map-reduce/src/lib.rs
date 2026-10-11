@@ -229,11 +229,7 @@ fn on_map(
             return;
         }
     };
-    let tools = [
-        READ,
-        <Edit as PortableTool>::NAME,
-        <Write as PortableTool>::NAME,
-    ];
+    let tools = [READ, <Edit as Tool>::NAME, <Write as Tool>::NAME];
     let tools = tools.into_iter().filter(|name| access.allows(name));
     let mut job = MapJob {
         instruction: args.instruction.trim().to_owned(),
@@ -475,9 +471,7 @@ fn drop_restored(
 }
 
 /// A file tool that a map worker may call only on its own file.
-trait Scoped:
-    PortableTool<Output = String, Error = ToolExecutionError> + Send + Sync + 'static
-{
+trait Scoped: Tool<Output = String, Error = ToolExecutionError> + Send + Sync + 'static {
     /// The tool.
     fn tool() -> Self;
 }
@@ -505,7 +499,7 @@ where
     let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
     let found = tools
         .iter(world)
-        .find(|(_, def, ..)| def.0.name.as_str() == <T as PortableTool>::NAME)
+        .find(|(_, def, ..)| def.0.name.as_str() == <T as Tool>::NAME)
         .map(|(tool, def, rules, footprint)| {
             (tool, def.0.description.clone(), rules.0.clone(), *footprint)
         });
@@ -518,12 +512,7 @@ where
         rules: &rules,
         footprint,
     };
-    app.add_open_tool(
-        <T as PortableTool>::NAME,
-        &description,
-        options,
-        run_scoped::<T>,
-    );
+    app.add_open_tool(<T as Tool>::NAME, &description, options, run_scoped::<T>);
 }
 
 /// Runs a call of `T`, unless a map worker names a file not its own.
@@ -560,7 +549,8 @@ fn run_scoped<T: Scoped>(
         }
     };
     let work = async move {
-        match T::tool().call(args).await {
+        let mut context = rig_harness::rig_core::tool::ToolContext::new();
+        match T::tool().call(&mut context, args).await {
             Ok(output) => ToolResult::success(output.into()),
             Err(error) => ToolResult::failed(error),
         }
