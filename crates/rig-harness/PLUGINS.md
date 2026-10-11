@@ -131,10 +131,16 @@ answer wins: a gate filters `Without<Outcome>` and answers with
 `insert_if_new`, so a later gate can never overturn a refusal. A reviewer
 replaces an outcome with `insert`, ordered against other reviewers, and
 the record keeps both the first and the reviewed outcome. Edits nobody
-ordered must commute; debug builds warn about two unordered stage systems
-writing the same request or outcome. Two unordered gates in one pass may
-hold and answer the same call: that is harmless, the hold goes when the
-call settles.
+ordered must commute. Debug builds warn about two unordered stage systems
+that write the same component through their queries, such as two
+`Query<&mut ModelRequest>` in Prepare; they cannot see writes made through
+`Commands`, which is how most answers and replacements are made (`insert`,
+`insert_if_new`), so two unordered reviewers that replace the same outcome
+are not reported: the last one wins, silently. So a stage system that
+edits or answers data another plugin may also edit goes in a public
+`SystemSet` of its plugin, and others order against that set. Two
+unordered gates in one pass may hold and answer the same call: that is
+harmless, the hold goes when the call settles.
 
 **Deciding once.** A gate that only reads (a path rule) decides afresh
 each time it sees a call. One whose decision asks someone or has side
@@ -1302,6 +1308,68 @@ impl Plugin for NoShellPlugin {
         // `SlashCommand`; a renderer by its `Name`, such as
         // "renderer:shell"; a section by its `PromptSection`'s `tag`.
     }
+}
+```
+
+What a tool tells the model is data on its entity too, and another plugin
+may change it: its `ToolDef` (the rig-core `ToolDefinition`: name,
+description, the JSON schema of its `parameters`) and its `ToolRules`
+(lines of the system prompt of every agent it is offered to). Change them
+in `finish`, or at any time: each request is built from them when it is
+admitted, so the next one has the change. A property added to another
+tool's `parameters` is one the model may send, since the kernel refuses
+only arguments the schema does not declare; the tool still parses its
+arguments its own way, so the plugin that added the property reads it,
+and takes it out if the tool would refuse it, from the call's
+`ToolRequest` in Prepare. Edit lines of `ToolRules` you added, found by
+their text, and leave the others' alone: two plugins editing the same
+schema or rules must order their systems, as for any shared data.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// On a call whose model asked for it to be quick.
+#[derive(Component)]
+struct Quick;
+
+/// Lets the model ask any `shell` call to be quick, read in Prepare.
+fn add_quick(world: &mut World) {
+    let mut tools = world.query::<(&mut ToolDef, &mut ToolRules)>();
+    for (mut def, mut rules) in tools.iter_mut(world) {
+        if def.0.name.as_str() != "shell" {
+            continue;
+        }
+        if let Some(properties) = def.0.parameters.get_mut("properties")
+            && let Some(properties) = properties.as_object_mut()
+        {
+            let quick = serde_json::json!({ "type": "boolean", "description": "Stop after 10 s." });
+            properties.insert("quick".to_owned(), quick);
+        }
+        rules.0.push("Ask `shell` to be quick when a command may hang.".to_owned());
+    }
+}
+
+/// Takes `quick` out of each `shell` call, which would refuse it, and
+/// marks the call.
+fn take_quick(
+    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
+    mut commands: Commands,
+) {
+    for (call, mut request) in &mut calls {
+        if request.call.function.name.as_str() != "shell" {
+            continue;
+        }
+        let quick = request.call.function.arguments.remove("quick");
+        if quick.and_then(|quick| quick.as_bool()) == Some(true) {
+            commands.entity(call).insert(Quick);
+        }
+    }
+}
+
+fn build(app: &mut App) {
+    // In `finish`, so `shell` exists whatever the plugins' order.
+    add_quick(app.world_mut());
+    app.add_systems(AgentPass, take_quick.in_set(Stage::Prepare));
 }
 ```
 

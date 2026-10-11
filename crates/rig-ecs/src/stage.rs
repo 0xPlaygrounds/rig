@@ -428,7 +428,9 @@ pub(crate) fn build(app: &mut App) {
             pass.set_executor(SingleThreadedExecutor::new());
             if cfg!(debug_assertions) {
                 // Unordered systems writing the same data in one stage are
-                // reported, as their order is meaningless.
+                // reported, as their order is meaningless. Only access
+                // through their queries is seen: a write through Commands,
+                // such as a reviewer's replaced outcome, is not.
                 pass.set_build_settings(ScheduleBuildSettings {
                     ambiguity_detection: LogLevel::Warn,
                     ..Default::default()
