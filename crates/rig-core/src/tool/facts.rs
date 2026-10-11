@@ -1,6 +1,6 @@
 //! Facts a tool call publishes about what it did, beside the text the model
-//! reads: the files it changed ([`FilesChanged`]) and how a process it ran
-//! ended ([`ExitStatus`]). They are [`ContextValue`]s a tool publishes with
+//! reads: the files it read ([`FilesRead`]), the files it changed
+//! ([`FilesChanged`]) and how a process it ran ended ([`ExitStatus`]). They are [`ContextValue`]s a tool publishes with
 //! [`ToolContext::insert_result`](super::ToolContext::insert_result), so
 //! they reach the host in the call's [`ToolResultContext`](super::ToolResultContext)
 //! and the effect log, whatever the tool: a built-in one, a plugin's, or an
@@ -8,21 +8,35 @@
 //! [`ToolResultContext::get`](super::ToolResultContext::get).
 //!
 //! ```
-//! use rig_core::tool::{ExitStatus, FileChange, FilesChanged, ToolContext};
+//! use rig_core::tool::{ExitStatus, FileChange, FilesChanged, FilesRead, ToolContext};
 //!
 //! let mut context = ToolContext::new();
-//! context.insert_result(FilesChanged(vec![FileChange::modified("src/lib.rs", 3, 1)]))?;
+//! context.insert_result(FilesRead(vec!["/work/README.md".into()]))?;
+//! context.insert_result(FilesChanged(vec![FileChange::modified("/work/src/lib.rs", 3, 1)]))?;
 //! context.insert_result(ExitStatus::Exited(0))?;
 //! let published = context.result_context();
 //! assert_eq!(published.get::<ExitStatus>()?.map(|status| status.success()), Some(true));
 //! let changed = published.get::<FilesChanged>()?.unwrap_or_default();
-//! assert_eq!(changed.paths().collect::<Vec<_>>(), ["src/lib.rs"]);
+//! assert_eq!(changed.paths().collect::<Vec<_>>(), ["/work/src/lib.rs"]);
+//! let read = published.get::<FilesRead>()?.unwrap_or_default();
+//! assert_eq!(read.0, ["/work/README.md"]);
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
 use serde::{Deserialize, Serialize};
 
 use super::ContextValue;
+
+/// The files a tool call read, in the order it read them, each once: a
+/// file it showed the model, or one it found matches in. Paths are as
+/// [`FileChange::path`] spells them.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct FilesRead(pub Vec<String>);
+
+impl ContextValue for FilesRead {
+    const KEY: &'static str = "files_read";
+}
 
 /// The files a tool call changed, in the order it changed them.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -43,8 +57,8 @@ impl FilesChanged {
 /// One file a tool call changed.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FileChange {
-    /// The file, as the call named it: relative paths are relative to the
-    /// directory the tool ran in.
+    /// The file: an absolute path when the tool knows the directory it ran
+    /// in, as rig-tools' file tools do, else as the call named it.
     pub path: String,
     /// What happened to it.
     pub kind: ChangeKind,
@@ -52,6 +66,9 @@ pub struct FileChange {
     pub added: usize,
     /// Lines removed.
     pub removed: usize,
+    /// The change as a unified diff, when the tool made one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub diff: Option<String>,
 }
 
 impl FileChange {
@@ -62,6 +79,7 @@ impl FileChange {
             kind: ChangeKind::Created,
             added: lines,
             removed: 0,
+            diff: None,
         }
     }
 
@@ -72,6 +90,7 @@ impl FileChange {
             kind: ChangeKind::Modified,
             added,
             removed,
+            diff: None,
         }
     }
 
@@ -82,7 +101,15 @@ impl FileChange {
             kind: ChangeKind::Deleted,
             added: 0,
             removed: lines,
+            diff: None,
         }
+    }
+
+    /// This change with `diff`, its unified diff.
+    #[must_use]
+    pub fn with_diff(mut self, diff: impl Into<String>) -> Self {
+        self.diff = Some(diff.into());
+        self
     }
 }
 

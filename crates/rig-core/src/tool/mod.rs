@@ -24,7 +24,7 @@ pub use context::{
 pub use contextual::{
     DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
 };
-pub use facts::{ChangeKind, ExitStatus, FileChange, FilesChanged};
+pub use facts::{ChangeKind, ExitStatus, FileChange, FilesChanged, FilesRead};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};
