@@ -1,36 +1,47 @@
-//! The basic slash commands: `/help`, `/retry`, `/agents` and `/quit`
-//! ([`BasicCommandsPlugin`]), and the project context in the system prompt
-//! ([`ProjectContextPlugin`]): `AGENTS.md`, the environment and `/context`.
+//! The basic slash commands: `/help`, `/retry` and `/quit`, with the
+//! default `tui` feature `/agents` and the agent tree in each agent's
+//! status line ([`BasicCommandsPlugin`]), and the project context in the
+//! system prompt ([`ProjectContextPlugin`]): `AGENTS.md`, the environment
+//! and `/context`.
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 
-use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Retry, Spawned, SpawnedBy};
+use rig_ecs::agent::{Notice, Retry};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
-use rig_ecs::model::ModelChoice;
-use rig_harness::front::{Focus, PickItem, PickRequest};
 
 pub mod project_context;
+#[cfg(feature = "tui")]
+mod tui;
 
 pub use project_context::ProjectContextPlugin;
 
-/// Registers the basic commands.
+/// Registers the basic commands; with the `tui` feature, `/agents` and the
+/// agent tree it picks from in each agent's status line.
 #[derive(Default)]
 pub struct BasicCommandsPlugin;
 
 impl Plugin for BasicCommandsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_command_event::<Retry>(
+        app.add_command(
             "retry",
             "Send the conversation again after a failed model call",
-        )
-        .add_command(
-            "agents",
-            "Pick an agent or subagent to show; /agents <id> shows it",
-            agents,
+            retry,
         )
         .add_command("help", "List the commands", help)
         .add_command("quit", "Quit; the session stays for /resume", quit);
+        #[cfg(feature = "tui")]
+        tui::add(app);
+    }
+}
+
+/// `/retry`: sends the conversation again; it takes no arguments.
+fn retry(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
+    if args.args.is_empty() {
+        commands.trigger(Retry { entity: args.agent });
+    } else {
+        let why = format!("/retry takes no arguments, not `{}`.", args.args);
+        notices.write(Notice::error(args.agent, why));
     }
 }
 
@@ -50,66 +61,4 @@ fn help(
 
 fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {
     exit.write(AppExit::Success);
-}
-
-/// `/agents`: picks an agent to show, each listed under the agent that
-/// spawned it, or shows the one whose id starts with the argument.
-fn agents(
-    In(args): In<CommandArgs>,
-    agents: Query<
-        (
-            Entity,
-            &AgentId,
-            &Name,
-            Option<&ModelChoice>,
-            Has<ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    (spawned, parents): (Query<&Spawned>, Query<&SpawnedBy>),
-    mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
-) {
-    if !args.args.is_empty() {
-        match agents
-            .iter()
-            .find(|(_, id, ..)| id.0.starts_with(&args.args))
-        {
-            Some((entity, ..)) => commands.trigger(Focus { entity }),
-            None => {
-                let why = format!("No agent's id starts with `{}`.", args.args);
-                notices.write(Notice::error(args.agent, why));
-            }
-        }
-        return;
-    }
-    let mut roots: Vec<(&AgentId, Entity)> = agents
-        .iter()
-        .filter(|(agent, ..)| !parents.contains(*agent))
-        .map(|(agent, id, ..)| (id, agent))
-        .collect();
-    roots.sort_by(|a, b| a.0.0.cmp(&b.0.0));
-    let listed = roots.iter().flat_map(|&(_, root)| {
-        std::iter::once(root).chain(spawned.iter_descendants_depth_first(root))
-    });
-    let (mut items, mut selected) = (Vec::new(), 0);
-    for (agent, id, name, model, busy) in listed.filter_map(|agent| agents.get(agent).ok()) {
-        if agent == args.agent {
-            selected = items.len();
-        }
-        let depth = parents.iter_ancestors(agent).count();
-        let model = model.map_or("no model", |model| model.0.as_str());
-        let state = if busy { "working" } else { "idle" };
-        items.push(PickItem {
-            label: format!("{}{name} · {model} · {state}", "  ".repeat(depth)),
-            command: format!("agents {}", id.0),
-        });
-    }
-    picks.write(PickRequest {
-        agent: args.agent,
-        title: "Show an agent".to_owned(),
-        items,
-        selected,
-    });
 }

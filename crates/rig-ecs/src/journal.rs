@@ -12,10 +12,10 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
+use bevy_ecs::resource::IsResource;
 use bevy_ecs::system::SystemParam;
 use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
@@ -30,10 +30,16 @@ use super::agent::{Agent, AgentId, Condensed, Conversation, Halt, Notice, Spawne
 use super::inbox::Origin;
 use super::{StopTurns, WriteJournal};
 
-/// Saves an agent component with the session: derive `Reflect` and add
-/// `Saved` to its `#[reflect(..)]`. Each change and removal of it on an
-/// agent is logged at the end of the frame by its type path and restored
-/// by reflection; a value that serializes to `null` is saved as absent.
+/// Saves an agent component or a resource with the session: derive
+/// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
+/// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
+/// change of it is logged at the end of the frame by its type path (an
+/// agent's in its log, a resource in the session's [`SESSION`] log, written
+/// once an agent's log is) and restored by reflection, before the agents'
+/// [`Restored`](super::restore::Restored); a value that serializes to
+/// `null` is saved as absent, and so is an agent component removed. A
+/// resource is restored in place of the one its plugin inserted while the
+/// app was built.
 /// Registration is a runtime fact: a generic type is saved only once
 /// registered (`app.register_type::<T>()`), and a logged type no build
 /// registers any more is reported on restore and kept in the log.
@@ -47,17 +53,21 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
-            let log = log_changed::<T>.in_set(OnAppExitSystems).after(StopTurns);
-            app.add_systems(Last, log.before(WriteJournal));
+            let log = log_changed::<T>.after(StopTurns).before(WriteJournal);
+            app.add_systems(Last, log);
         };
         Self { watch }
     }
 }
 
-/// Logs each change and removal of the saved component `T` on the agents;
-/// reflection runs only for a change.
+/// The log of the session's saved resources, beside the agents' logs.
+pub const SESSION: &str = "session";
+
+/// Logs each change of the saved component `T` on the agents or as a
+/// resource, and its removal from an agent; reflection runs only for a
+/// change.
 fn log_changed<T: Component + Reflect + TypePath>(
-    changed: Query<(&AgentId, &T), (With<Agent>, Changed<T>)>,
+    changed: Query<(Option<&AgentId>, &T), (Or<(With<Agent>, With<IsResource>)>, Changed<T>)>,
     mut removed: RemovedComponents<T>,
     agents: Query<&AgentId, With<Agent>>,
     log: Res<SessionLog>,
@@ -70,8 +80,9 @@ fn log_changed<T: Component + Reflect + TypePath>(
     let registry = registry.read();
     for (id, component) in &changed {
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
+        let key = id.map_or(SESSION, |id| id.0.as_str());
         match serde_json::to_value(value) {
-            Ok(value) => log.component(id, name, Some(value)),
+            Ok(value) => log.component(key, name, Some(value)),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -79,7 +90,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         if let Ok(id) = agents.get(entity)
             && !changed.contains(entity)
         {
-            log.component(id, name, None);
+            log.component(&id.0, name, None);
         }
     }
 }
@@ -225,8 +236,8 @@ fn enqueue(log: &mut AgentLog, record: Record<'_>) -> serde_json::Result<u64> {
 }
 
 /// Where the session is kept, such as a rig-cassette `MemoryStore` or
-/// `JsonlDirStore`: inserted before the agent plugins are built. Without
-/// one nothing is kept.
+/// `JsonlDirStore`: inserted while the app is built, before it runs, by
+/// any plugin. Without one nothing is kept.
 #[derive(Resource, Clone)]
 pub struct SessionStore(pub Arc<dyn JournalStore>);
 
@@ -241,32 +252,26 @@ impl SessionStore {
 /// and each agent's latest-wins state. Every method takes `&self`, so any
 /// system can log; nothing is logged before the session was restored, or
 /// without a [`SessionStore`].
-#[derive(Resource, Clone)]
+#[derive(Resource, Clone, Default)]
 pub struct SessionLog(Arc<Mutex<Book>>);
 
 impl SessionLog {
-    /// The logs of the session kept in `store`, idle until [`Self::resume`].
-    pub(crate) fn new(store: Option<Arc<dyn JournalStore>>) -> Self {
-        Self(Arc::new(Mutex::new(Book {
-            store,
-            ..Book::default()
-        })))
-    }
-
     fn book(&self) -> MutexGuard<'_, Book> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Starts logging, after the logs restored as `agents`, by agent id.
-    pub(crate) fn resume(&self, agents: Vec<(String, AgentLog)>) {
+    /// Starts logging to `store`, after the logs restored from it as
+    /// `agents`, by agent id.
+    pub(crate) fn resume(&self, store: Arc<dyn JournalStore>, agents: Vec<(String, AgentLog)>) {
         let mut book = self.book();
+        book.store = Some(store);
         book.agents.extend(agents);
         book.live = true;
     }
 
     /// Whether records are logged: the session was restored, and no write
     /// failed.
-    pub fn is_live(&self) -> bool {
+    pub(crate) fn is_live(&self) -> bool {
         let book = self.book();
         book.live && book.failure.is_none()
     }
@@ -296,14 +301,15 @@ impl SessionLog {
         }
     }
 
-    /// Logs the saved component `component` of `agent` when its value
-    /// changed; `None` or `null` when it was removed.
-    pub(crate) fn component(&self, agent: &AgentId, component: &str, value: Option<Value>) {
+    /// Logs the saved component `component` in the log `agent`, an agent's
+    /// id or [`SESSION`], when its value changed; `None` or `null` when it
+    /// was removed.
+    pub(crate) fn component(&self, agent: &str, component: &str, value: Option<Value>) {
         let mut book = self.book();
         let value = value.filter(|value| !value.is_null());
         let known = book
             .agents
-            .get(&agent.0)
+            .get(agent)
             .and_then(|log| log.components.get(component));
         if known == value.as_ref() {
             return;
@@ -312,8 +318,8 @@ impl SessionLog {
             component: component.to_owned(),
             value: value.clone(),
         };
-        if book.record(&agent.0, record).is_some()
-            && let Some(log) = book.agents.get_mut(&agent.0)
+        if book.record(agent, record).is_some()
+            && let Some(log) = book.agents.get_mut(agent)
         {
             match value {
                 Some(value) => log.components.insert(component.to_owned(), value),
@@ -324,8 +330,9 @@ impl SessionLog {
 
     /// Writes every queued record: each started log's records with one
     /// write, a subagent's log before its parent's, so a parent never
-    /// refers to a subagent message that is not on disk. No fsync. A failed
-    /// write stops the logging.
+    /// refers to a subagent message that is not on disk, and the
+    /// [`SESSION`] log once any is started. No fsync. A failed write stops
+    /// the logging.
     pub(crate) fn flush(&self) {
         let mut guard = self.book();
         let book = &mut *guard;
@@ -335,10 +342,12 @@ impl SessionLog {
         let Some(store) = book.store.clone() else {
             return;
         };
+        let any = book.agents.values().any(|log| log.started);
         let mut due: Vec<(usize, String)> = book
             .agents
             .iter()
-            .filter(|(_, log)| log.started && !log.pending.is_empty())
+            .filter(|(agent, log)| log.started || any && agent.as_str() == SESSION)
+            .filter(|(_, log)| !log.pending.is_empty())
             .map(|(agent, log)| (log.depth, agent.clone()))
             .collect();
         due.sort_by(|a, b| b.cmp(a));
@@ -359,6 +368,14 @@ impl SessionLog {
         self.book().failure.clone()
     }
 }
+
+/// Inserted once the session was restored from its [`SessionStore`] and is
+/// logged: a choice made afterwards is the user's, such as a model to
+/// remember (`run_if(resource_exists::<SessionRestored>)`). It stays when
+/// a log write fails later, which stops only the logging. An app without
+/// a store never gets one.
+#[derive(Resource, Clone, Copy, Debug, Default)]
+pub struct SessionRestored;
 
 /// Changes agents' conversations, the one way they change: each change is
 /// logged, with a message's images stored as blobs, and announced as a
@@ -465,13 +482,7 @@ impl Plugin for JournalPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PreStartup, super::restore::restore_session)
             .add_systems(Startup, super::restore::reconcile)
-            .add_systems(
-                Last,
-                write_logs
-                    .in_set(OnAppExitSystems)
-                    .in_set(WriteJournal)
-                    .after(StopTurns),
-            )
+            .add_systems(Last, write_logs.in_set(WriteJournal))
             .add_observer(open_child_log)
             .add_observer(log_condensed);
     }

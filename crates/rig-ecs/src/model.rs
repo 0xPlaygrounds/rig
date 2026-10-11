@@ -14,13 +14,27 @@ use serde::{Deserialize, Serialize};
 use super::agent::{ActiveTurn, Agent, Notice};
 use super::effects::Handler;
 use super::journal::ReflectSaved;
-use super::turn::NO_MODEL;
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
 /// [`Connector::add_sign_in`], or replaces the catalog.
 #[derive(Resource, Clone, Default)]
 pub struct Models(pub Connector);
+
+impl Models {
+    /// A connection to the catalog model `reference` (`vendor/model`), such
+    /// as for a turn or a call a plugin sends to another model than its
+    /// agent's; or why it cannot be used.
+    pub fn connect(&self, reference: &str) -> Result<Connection, String> {
+        match self.0.connect(reference) {
+            Ok((spec, handler)) => Ok(Connection {
+                spec,
+                handler: Handler(handler),
+            }),
+            Err(why) => Err(format!("Cannot use {reference}: {why}.")),
+        }
+    }
+}
 
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, which rebuilds the agent's
@@ -77,7 +91,8 @@ impl ModelChoice {
 /// entry and the effect handler every model call is dispatched to. Built
 /// from the environment once per choice, and not saved: restoring the
 /// choice rebuilds it.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone)]
+#[reflect(opaque, Component, Clone)]
 pub struct Connection {
     /// The model's catalog entry.
     pub spec: Arc<ModelSpec>,
@@ -139,7 +154,8 @@ pub(crate) fn on_set_model(
     let Ok(busy) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
+    if busy {
+        notices.write(Notice::turn_running(set.entity));
         return;
     }
     match models.0.catalog().resolve(&set.model) {
@@ -174,18 +190,16 @@ pub(crate) fn connect(
     if connected.is_some_and(|connection| connection.spec.reference() == choice.0) {
         return;
     }
-    match models.0.connect(&choice.0) {
-        Ok((spec, handler)) => {
+    match models.connect(&choice.0) {
+        Ok(connection) => {
             if connected.is_some() {
-                let model = format!("Model: {} ({}).", spec.display_name, choice.0);
+                let model = format!("Model: {} ({}).", connection.spec.display_name, choice.0);
                 notices.write(Notice::info(agent, model));
             }
-            let handler = Handler(handler);
-            commands.entity(agent).insert(Connection { spec, handler });
+            commands.entity(agent).insert(connection);
         }
         Err(why) => {
             commands.entity(agent).remove::<Connection>();
-            let why = format!("Cannot use {}: {why}.", choice.0);
             notices.write(Notice::error(agent, why));
         }
     }
@@ -222,11 +236,12 @@ pub(crate) fn on_set_effort(
     let Ok((connection, busy)) = agents.get(set.entity) else {
         return;
     };
-    if refused_mid_turn(set.entity, busy, &mut notices) {
+    if busy {
+        notices.write(Notice::turn_running(set.entity));
         return;
     }
     let Some(connection) = connection else {
-        notices.write(Notice::info(set.entity, NO_MODEL));
+        notices.write(Notice::no_model(set.entity));
         return;
     };
     let spec = &connection.spec;
@@ -242,15 +257,4 @@ pub(crate) fn on_set_effort(
             notices.write(Notice::error(set.entity, format!("{refusal}.")));
         }
     }
-}
-
-/// Refuses a model or reasoning change while the agent's turn runs: the
-/// rest of the turn would go to a model, or use a setting, it did not start
-/// with. Every sender of [`SetModel`] and [`SetEffort`] gets the same
-/// refusal.
-fn refused_mid_turn(agent: Entity, busy: bool, notices: &mut MessageWriter<Notice>) -> bool {
-    if busy {
-        notices.write(Notice::info(agent, "A turn is running; stop it first."));
-    }
-    busy
 }

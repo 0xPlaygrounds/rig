@@ -22,6 +22,7 @@
 
 use std::io::Write as _;
 
+use bevy_ecs::system::SystemParam;
 use bevy_remote::builtin_methods::{
     BRP_GET_COMPONENTS_METHOD, BRP_GET_RESOURCE_METHOD, BRP_LIST_COMPONENTS_METHOD,
     BRP_LIST_RESOURCES_METHOD, BRP_QUERY_METHOD, BRP_REGISTRY_SCHEMA_METHOD, BRP_SCHEDULE_GRAPH,
@@ -151,24 +152,28 @@ fn system(method: &RemoteMethodSystemId) -> Entity {
     }
 }
 
+/// Bevy Remote as an `inspect` call uses it: its methods, the read-only
+/// ones, where requests go, the types answers name, and where a long
+/// answer is kept.
+#[derive(SystemParam)]
+struct Remote<'w, 's> {
+    methods: Option<Res<'w, RemoteMethods>>,
+    read_only: Query<'w, 's, (), With<ReadOnlyMethod>>,
+    sender: Option<Res<'w, BrpSender>>,
+    registry: Res<'w, AppTypeRegistry>,
+    answers: Res<'w, Answers>,
+    wake: Res<'w, Wake>,
+}
+
 /// Sends a read-only call's request to Bevy and answers the call with the
 /// reply, off the main thread; refuses any other at once.
-fn on_inspect(
-    called: On<ToolCalled<InspectArgs>>,
-    (methods, read_only): (Option<Res<RemoteMethods>>, Query<(), With<ReadOnlyMethod>>),
-    (sender, registry, answers, wake): (
-        Option<Res<BrpSender>>,
-        Res<AppTypeRegistry>,
-        Res<Answers>,
-        Res<Wake>,
-    ),
-    mut commands: Commands,
-) {
+fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands: Commands) {
+    let methods = remote.methods.as_ref();
     let allowed = |name: &str| {
-        let method = methods.as_ref().and_then(|methods| methods.get(name));
-        method.is_some_and(|method| read_only.contains(system(method)))
+        let method = methods.and_then(|methods| methods.get(name));
+        method.is_some_and(|method| remote.read_only.contains(system(method)))
     };
-    let mut names = methods.as_ref().map(|m| m.methods()).unwrap_or_default();
+    let mut names = methods.map(|m| m.methods()).unwrap_or_default();
     names.retain(|name| allowed(name));
     names.sort();
     let method = called.args.method.trim();
@@ -188,7 +193,7 @@ fn on_inspect(
         .filter(|params| !params.is_empty());
     let mut params = params.map(Value::Object);
     if let Some(params) = &mut params {
-        let registry = registry.read();
+        let registry = remote.registry.read();
         rename(params, &|name| {
             let registration = registry.get_with_short_type_path(name)?;
             Some(registration.type_info().type_path().to_owned())
@@ -200,20 +205,26 @@ fn on_inspect(
         params,
         sender: reply,
     };
+    let sender = remote.sender.as_ref();
     if sender.is_none_or(|sender| sender.try_send(message).is_err()) {
         call.insert(failed("Bevy Remote is not taking requests now.".to_owned()));
         return;
     }
+    let wake = &remote.wake;
     wake.wake();
     let listed = (method == RPC_DISCOVER_METHOD).then_some(names);
-    let (registry, spill) = (registry.clone(), answers.0.clone());
+    let (registry, spill) = (remote.registry.clone(), remote.answers.0.clone());
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    call.insert(Running::spawn(pool, &wake, async move {
-        let reply = replied.recv().await.ok();
-        blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
-            .await
-            .unwrap_or_else(ToolResult::failed)
-    }));
+    call.insert(Running::spawn_into::<ToolOutput, _>(
+        pool,
+        wake,
+        async move {
+            let reply = replied.recv().await.ok();
+            blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
+                .await
+                .unwrap_or_else(ToolResult::failed)
+        },
+    ));
 }
 
 /// The tool's output for Bevy's `reply`: the methods `listed`, for

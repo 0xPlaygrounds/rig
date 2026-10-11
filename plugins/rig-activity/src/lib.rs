@@ -1,6 +1,7 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
-//! (its status, its open tool calls and a preview of what it writes) and
-//! the [`MessageFeed`] of recent deliveries. A view reads them instead of
+//! (its status and its open tool calls), with the default `tui` feature its
+//! status in the terminal view's status line, and the [`MessageFeed`] of
+//! recent deliveries. A view reads them instead of
 //! deriving them from turns and calls; the agent tree is the agents'
 //! [`SpawnedBy`] and [`Spawned`] relationship.
 //!
@@ -11,14 +12,9 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_core::completion::Message;
-use rig_core::transcript::assistant_text_from_choice;
-use rig_ecs::agent::{Calls, Partial, Queued};
-use rig_ecs::prelude::*;
 use rig_ecs::turn::ModelCall;
+use rig_harness::prelude::*;
 
-/// The most characters a [`Preview`] keeps, from the end of the text.
-pub const PREVIEW_CHARS: usize = 2000;
 /// The most deliveries the [`MessageFeed`] keeps.
 pub const FEED_LEN: usize = 64;
 /// The most characters a [`FedMessage`] keeps, from the start of the text.
@@ -34,11 +30,15 @@ impl Plugin for ActivityPlugin {
             .init_resource::<MessageFeed>()
             .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
             .add_observer(feed_deliveries);
+        #[cfg(feature = "tui")]
+        app.configure_sets(PostUpdate, ActivitySystems.before(rig_tui::StatusSystems))
+            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems));
     }
 }
 
-/// The system in `PostUpdate` that updates each agent's [`Activity`]. A
-/// view that reads it in `PostUpdate` runs after it.
+/// The system in `PostUpdate` that updates each agent's [`Activity`],
+/// before the terminal view's status line. A view that reads it in
+/// `PostUpdate` runs after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActivitySystems;
 
@@ -50,8 +50,6 @@ pub struct Activity {
     pub status: Status,
     /// Its turn's tool calls without an output yet, in order.
     pub tools: Vec<ToolActivity>,
-    /// The end of what it streams now, or of its last reply when idle.
-    pub preview: Option<Preview>,
 }
 
 impl Activity {
@@ -104,42 +102,9 @@ pub struct ToolActivity {
     pub queued: bool,
 }
 
-/// What a [`Preview`] shows.
-#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum PreviewKind {
-    /// The answer streaming in.
-    Text,
-    /// The reasoning streaming in, before any answer text.
-    Reasoning,
-    /// The text of the idle agent's last reply.
-    LastReply,
-}
-
-/// The last [`PREVIEW_CHARS`] characters of an agent's text.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
-pub struct Preview {
-    /// Whose text it is.
-    pub kind: PreviewKind,
-    /// The text.
-    pub text: String,
-}
-
-impl Preview {
-    fn new(kind: PreviewKind, text: &str) -> Self {
-        let start = text
-            .char_indices()
-            .rev()
-            .nth(PREVIEW_CHARS - 1)
-            .map_or(0, |(index, _)| index);
-        Self {
-            kind,
-            text: text.get(start..).unwrap_or_default().to_owned(),
-        }
-    }
-}
-
-/// Recent deliveries to agents, oldest first: the user's messages,
-/// messages between agents and plugins' messages, at most [`FEED_LEN`].
+/// Recent deliveries to agents, oldest first: the user's messages (not
+/// their slash commands), messages between agents and plugins' messages,
+/// at most [`FEED_LEN`].
 /// A delivery is recorded when it is sent, whether the agent reads it now
 /// or after its turn.
 #[derive(Resource, Reflect, Default, Debug)]
@@ -173,6 +138,9 @@ fn feed_deliveries(
     agents: Query<(Entity, &AgentId), With<Agent>>,
     mut feed: ResMut<MessageFeed>,
 ) {
+    if delivery.command().is_some() {
+        return;
+    }
     let from = delivery.origin.from.as_ref().and_then(|from| {
         agents
             .iter()
@@ -189,37 +157,17 @@ fn feed_deliveries(
     });
 }
 
-/// The agents and their turns.
-type Agents<'w, 's> = Query<
-    'w,
-    's,
-    (
-        &'static mut Activity,
-        Option<&'static ActiveTurn>,
-        Ref<'static, Conversation>,
-    ),
-    With<Agent>,
->;
-
-/// Each agent's activity, from its turn's calls. An idle agent's preview
-/// is read again only when its conversation changed.
+/// Each agent's activity, from its turn's calls.
 fn update_activity(
-    mut agents: Agents,
+    mut agents: Query<(&mut Activity, Option<&ActiveTurn>), With<Agent>>,
     turns: Query<&Calls>,
-    partials: Query<&Partial>,
     tools: Query<(&ToolCallRun, Has<Queued>, Has<ToolOutput>)>,
     waits: Query<&Backoff>,
     others: Query<&Name, (Without<ModelCall>, Without<ToolCallRun>, Without<Backoff>)>,
 ) {
-    for (mut activity, turn, conversation) in &mut agents {
+    for (mut activity, turn) in &mut agents {
         let Some(turn) = turn else {
-            if activity.is_busy() || conversation.is_changed() {
-                activity.set_if_neq(Activity {
-                    status: Status::Idle,
-                    tools: Vec::new(),
-                    preview: last_reply(conversation.messages()),
-                });
-            }
+            activity.set_if_neq(Activity::default());
             continue;
         };
         let calls: Vec<Entity> = turns
@@ -247,31 +195,34 @@ fn update_activity(
                 queued,
             })
             .collect();
-        let partial = calls.iter().find_map(|call| partials.get(*call).ok());
-        let preview = partial.and_then(|partial| {
-            if !partial.text.is_empty() {
-                Some(Preview::new(PreviewKind::Text, &partial.text))
-            } else if !partial.reasoning.is_empty() {
-                Some(Preview::new(PreviewKind::Reasoning, &partial.reasoning))
-            } else {
-                None
-            }
-        });
         activity.set_if_neq(Activity {
             status,
             tools: open_tools,
-            preview,
         });
     }
 }
 
-/// The text of the last assistant message that has some.
-fn last_reply(messages: &[Message]) -> Option<Preview> {
-    messages.iter().rev().find_map(|message| {
-        let Message::Assistant(assistant) = message else {
-            return None;
+/// Where an agent's status is in the status line.
+#[cfg(feature = "tui")]
+const STATUS: rig_tui::StatusItem = rig_tui::StatusItem::at(rig_tui::Side::Left, 50, u8::MAX);
+
+/// Each agent's status, in its status line: green when idle, yellow at
+/// work, red waiting to retry.
+#[cfg(feature = "tui")]
+fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>) {
+    use rig_tui::Tone;
+    for (activity, mut items) in &mut agents {
+        let shown = match &activity.status {
+            Status::Idle => STATUS.says("idle", Tone::Green),
+            Status::Retrying { attempt, seconds } => STATUS.says(
+                format!(
+                    "retry {attempt}/{} in {seconds}s… (Esc stops)",
+                    rig_ecs::turn::RETRY.max_retries
+                ),
+                Tone::Red,
+            ),
+            status => STATUS.says(format!("{status}… (Esc stops)"), Tone::Yellow),
         };
-        let text = assistant_text_from_choice(&assistant.content);
-        (!text.is_empty()).then(|| Preview::new(PreviewKind::LastReply, &text))
-    })
+        items.show(shown);
+    }
 }

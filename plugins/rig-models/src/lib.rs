@@ -1,20 +1,21 @@
-//! Choosing a model and its reasoning setting: `/model`, `/effort` and the
-//! picker ([`ModelsPlugin`]), and the ones a new session starts with, the
-//! last ones chosen ([`DefaultsPlugin`]).
+//! Choosing a model and its reasoning setting: `--model`, `/model`,
+//! `/effort` ([`ModelsPlugin`]), with the terminal view's pickers and both
+//! in each agent's status line under the default `tui` feature, and the
+//! ones a new session starts with, the last ones chosen
+//! ([`DefaultsPlugin`]).
 
-use bevy_app::prelude::*;
-use bevy_ecs::prelude::*;
-
-use rig_ecs::agent::Notice;
-use rig_ecs::commands::{AppCommandsExt, CommandArgs};
-use rig_ecs::model::{Connection, Effort, Models, SetEffort, SetModel};
-use rig_harness::front::{PickItem, PickRequest};
+use rig_harness::prelude::*;
 
 pub mod defaults;
+#[cfg(feature = "tui")]
+mod tui;
 
 pub use defaults::DefaultsPlugin;
 
-/// Adds `/model` and `/effort`, each a picker without arguments.
+/// Gives the agent the user talks to the model `--model` names, and adds
+/// `/model` and `/effort`; with the `tui` feature, each is a picker
+/// without arguments, and each agent's status line shows its model and
+/// reasoning setting.
 #[derive(Default)]
 pub struct ModelsPlugin;
 
@@ -29,86 +30,65 @@ impl Plugin for ModelsPlugin {
             "effort",
             "Pick the reasoning setting, or set it with /effort <level>",
             effort,
-        );
+        )
+        .add_systems(First, choose_invoked_model.run_if(run_once));
+        #[cfg(feature = "tui")]
+        tui::add(app);
     }
 }
 
+/// Gives the agent the user talks to the model `--model` names, once the
+/// session is restored and a remembered model given, so `--model` wins.
+fn choose_invoked_model(
+    invoked: Option<Res<Invoked>>,
+    agents: PrimaryQuery,
+    mut commands: Commands,
+) {
+    let model = invoked.and_then(|invoked| invoked.args.model.clone());
+    if let (Some(model), Some(agent)) = (model, primary(&agents)) {
+        commands.trigger(SetModel {
+            entity: agent,
+            model,
+        });
+    }
+}
+
+/// `/model vendor/model` sets the agent's model; without arguments, the
+/// terminal view lets the user pick one.
 fn model(
     In(args): In<CommandArgs>,
-    models: Res<Models>,
+    #[cfg(feature = "tui")] models: Res<Models>,
+    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
+    #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
 ) {
     if args.args.is_empty() {
-        let items: Vec<PickItem> = models
-            .0
-            .reachable()
-            .into_iter()
-            .map(|spec| {
-                let reference = spec.reference();
-                let note = match models.0.plan(spec) {
-                    Some(plan) => format!("  ({plan} plan)"),
-                    None if spec.provider.requires_credential() => String::new(),
-                    None => "  (no key needed)".to_owned(),
-                };
-                PickItem {
-                    label: format!("{reference}  {}{note}", spec.display_name),
-                    command: format!("model {reference}"),
-                }
-            })
-            .collect();
-        if items.is_empty() {
-            notices.write(Notice::error(
-                args.agent,
-                "No provider with tool-calling models can be reached: set a key such as \
-                 OPENAI_API_KEY, or sign in with /login chatgpt.",
-            ));
-            return;
-        }
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: "Model".to_owned(),
-            items,
-            selected: 0,
-        });
-    } else {
-        commands.trigger(SetModel {
-            entity: args.agent,
-            model: args.args,
-        });
+        #[cfg(feature = "tui")]
+        tui::pick_model(args.agent, &models, &mut picks, &mut notices);
+        return;
     }
+    commands.trigger(SetModel {
+        entity: args.agent,
+        model: args.args,
+    });
 }
 
+/// `/effort <level>` sets the agent's reasoning setting; without
+/// arguments, the terminal view lets the user pick one.
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
+    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok(Connection { spec, .. }) = agents.get(args.agent) else {
-        notices.write(Notice::info(
-            args.agent,
-            "Pick a model with /model first.".to_owned(),
-        ));
+        notices.write(Notice::info(args.agent, "Pick a model with /model first."));
         return;
     };
     if args.args.is_empty() {
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: format!("Reasoning for {}", spec.display_name),
-            items: spec
-                .reasoning
-                .choices()
-                .into_iter()
-                .map(|choice| PickItem {
-                    label: choice.label(),
-                    command: format!("effort {}", choice.name),
-                })
-                .collect(),
-            selected: 0,
-        });
+        #[cfg(feature = "tui")]
+        tui::pick_effort(args.agent, spec, &mut picks);
         return;
     }
     match spec.reasoning.named(&args.args) {
@@ -124,3 +104,6 @@ fn effort(
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -2,14 +2,16 @@
 //! typed, its [`SlashCommand`] says what it does, and it is the one-shot
 //! system that runs it, so despawning it unregisters both. A plugin adds
 //! one with [`AppCommandsExt::add_command`], a system that reads the
-//! [`CommandArgs`], or with [`AppCommandsExt::add_command_event`], an event
-//! filled from the line by its reflected fields.
+//! [`CommandArgs`], such as one that triggers an event.
 //!
+//! What the user types that starts with `/` runs as a command: the
+//! kernel's delivery of a user's [`Deliver`](super::inbox::Deliver) turns
+//! it into a [`RunCommand`] ([`Deliver::command`](super::inbox::Deliver::command)).
 //! [`RunCommand`] runs a line at once, with everything it triggers. The
-//! notices written meanwhile are its reply. An unknown command, arguments
-//! its event cannot take, or an error notice about the agent refuse the
-//! line: it comes back whole as [`Recalled`] with the reason, in place of
-//! that notice, so nothing typed is lost.
+//! notices written meanwhile are its reply. An unknown command, or an
+//! error notice about the agent, such as one refusing arguments, refuses
+//! the line: it comes back whole as [`Recalled`] with the reason, in place
+//! of that notice, so nothing typed is lost.
 
 use std::mem;
 
@@ -19,8 +21,6 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
-use bevy_reflect::structs::DynamicStruct;
-use bevy_reflect::{TypeInfo, Typed};
 
 use super::agent::{Notice, NoticeLevel};
 use super::inbox::Recalled;
@@ -42,13 +42,11 @@ pub struct CommandArgs {
 pub struct SlashCommand {
     /// One line of help.
     pub help: String,
-    /// The type path of the event it triggers, for one added with
-    /// [`AppCommandsExt::add_command_event`].
-    pub event: Option<String>,
 }
 
 /// Registers slash commands on an [`App`]. A name already registered is
-/// refused with a warning.
+/// refused with a warning: to replace another plugin's command, insert
+/// Bevy's `Disabled` on its entity first, which frees its name.
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
     /// [`CommandArgs`] of each use.
@@ -58,16 +56,6 @@ pub trait AppCommandsExt {
         help: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self;
-
-    /// Register `/name`, described by `help`, that triggers the event `E`,
-    /// its fields filled by reflection: an [`Entity`] with the agent, a
-    /// `String` with the arguments. Arguments an event without a `String`
-    /// does not take refuse the line. An event with a field of another
-    /// type is refused with a warning.
-    fn add_command_event<E>(&mut self, name: &str, help: &str) -> &mut Self
-    where
-        E: Event + FromReflect + Typed,
-        for<'a> E::Trigger<'a>: Default;
 }
 
 impl AppCommandsExt for App {
@@ -77,72 +65,17 @@ impl AppCommandsExt for App {
         help: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self {
-        register(self, name, help, None, system)
-    }
-
-    fn add_command_event<E>(&mut self, name: &str, help: &str) -> &mut Self
-    where
-        E: Event + FromReflect + Typed,
-        for<'a> E::Trigger<'a>: Default,
-    {
-        let TypeInfo::Struct(info) = E::type_info() else {
-            warn!(
-                "command not registered: /{name}: {} is not a struct",
-                E::type_path()
-            );
-            return self;
-        };
-        if let Some(field) = info.iter().find(|f| !f.is::<Entity>() && !f.is::<String>()) {
-            let (event, field) = (E::type_path(), field.name());
-            warn!("command not registered: /{name}: commands cannot fill {event}'s {field}");
+        let name = format!("/{name}");
+        if find(self.world_mut(), &name).is_some() {
+            warn!("command not registered: {name} exists; insert `Disabled` on it to replace it");
             return self;
         }
-        let takes_text = info.iter().any(|field| field.is::<String>());
-        let command = format!("/{name}");
-        let trigger = move |In(args): In<CommandArgs>,
-                            mut commands: Commands,
-                            mut notices: MessageWriter<Notice>| {
-            if !takes_text && !args.args.is_empty() {
-                let why = format!("{command} takes no arguments, not `{}`.", args.args);
-                notices.write(Notice::error(args.agent, why));
-                return;
-            }
-            let mut fields = DynamicStruct::default();
-            for field in info.iter() {
-                match field.is::<Entity>() {
-                    true => fields.insert(field.name(), args.agent),
-                    false => fields.insert(field.name(), args.args.clone()),
-                }
-            }
-            if let Some(event) = E::from_reflect(&fields) {
-                commands.trigger(event);
-            }
-        };
-        register(self, name, help, Some(E::type_path()), trigger)
+        let system = self.register_system(system);
+        let help = help.to_owned();
+        let command = (Name::new(name), SlashCommand { help });
+        self.world_mut().entity_mut(system.entity()).insert(command);
+        self
     }
-}
-
-fn register<'a, M>(
-    app: &'a mut App,
-    name: &str,
-    help: &str,
-    event: Option<&str>,
-    system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
-) -> &'a mut App {
-    let name = format!("/{name}");
-    if find(app.world_mut(), &name).is_some() {
-        warn!("command not registered: {name} already exists");
-        return app;
-    }
-    let system = app.register_system(system);
-    app.world_mut().entity_mut(system.entity()).insert((
-        Name::new(name),
-        SlashCommand {
-            help: help.to_owned(),
-            event: event.map(str::to_owned),
-        },
-    ));
-    app
 }
 
 /// The command named `name`, with its `/`.

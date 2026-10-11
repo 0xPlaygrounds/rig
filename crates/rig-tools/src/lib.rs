@@ -4,6 +4,7 @@
 //! prompt carries on when to pick it, such as "use `read`, not `cat`".
 //!
 //! Also the pieces they are made of, for tools of your own:
+//! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads;
@@ -15,6 +16,7 @@
 //!
 //! Native only: the tools use the file system and processes.
 
+pub mod attach;
 mod blocking;
 pub mod context;
 mod edit;

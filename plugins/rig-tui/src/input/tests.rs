@@ -3,11 +3,8 @@ use rig_ecs::prelude::*;
 
 use super::super::view::{self, TuiView};
 use super::send;
-use rig_basics::BasicCommandsPlugin;
-use rig_harness::front::PickRequest;
-use rig_models::ModelsPlugin;
 
-/// The texts delivered to agents.
+/// The texts sent to agents' models.
 #[derive(Resource, Default)]
 struct Delivered(Vec<String>);
 
@@ -27,12 +24,23 @@ fn enter(app: &mut App, text: &str) {
 #[test]
 fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
     let mut app = App::new();
-    app.add_plugins((AgentPlugin, ModelsPlugin, BasicCommandsPlugin))
-        .add_message::<PickRequest>()
+    app.add_plugins(AgentPlugin)
+        .add_command(
+            "retry",
+            "Refuses arguments",
+            |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
+                if !args.args.is_empty() {
+                    let why = format!("/retry takes no arguments, not `{}`.", args.args);
+                    notices.write(Notice::error(args.agent, why));
+                }
+            },
+        )
         .init_resource::<TuiView>()
         .init_resource::<Delivered>()
         .add_observer(|deliver: On<Deliver>, mut delivered: ResMut<Delivered>| {
-            delivered.0.push(deliver.text.clone());
+            if deliver.command().is_none() {
+                delivered.0.push(deliver.text.clone());
+            }
         })
         .add_systems(Update, (view::collect_notices, view::recall_messages));
     app.update();
@@ -43,7 +51,6 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         .ok();
     world.resource_mut::<TuiView>().agent = agent;
     let refused = [
-        ("/model nope", "Not picked"),
         ("/retry now", "/retry takes no arguments, not `now`."),
         ("/gui still doesnt do anything", "Unknown command /gui."),
     ];
@@ -66,10 +73,8 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         refused.len()
     );
     enter(&mut app, "/gui still doesnt do anything");
-    let world = app.world_mut();
     assert_eq!(
-        world.resource::<Delivered>().0,
+        app.world().resource::<Delivered>().0,
         ["/gui still doesnt do anything"]
     );
-    assert_eq!(world.query::<&ModelChoice>().iter(world).count(), 0);
 }

@@ -3,8 +3,7 @@ use std::time::{Duration, Instant};
 use bevy_remote::BrpReceiver;
 use rig_basics::BasicCommandsPlugin;
 use rig_harness::load;
-use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
-use rig_harness::rig_ecs::turn::ToolStarter;
+use rig_harness_test_support::start_call;
 use serde_json::json;
 
 use super::*;
@@ -12,16 +11,7 @@ use super::*;
 /// Starts an `inspect` call of `method` with `params` by `agent`.
 fn start(app: &mut App, agent: Entity, method: &str, params: Value) -> Option<Entity> {
     let args = json!({ "method": method, "params": params });
-    let name = ToolName::new(INSPECT_TOOL).ok()?;
-    let call = ToolCall::from_wire("call", ToolFunction::new(name, args));
-    let world = app.world_mut();
-    let start = world.register_system(move |starter: ToolStarter, mut commands: Commands| {
-        let run = starter.run(call.clone(), None);
-        let entity = commands.spawn(run.clone()).id();
-        starter.start(&mut commands, entity, agent, &run);
-        entity
-    });
-    world.run_system(start).ok()
+    start_call(app.world_mut(), agent, (INSPECT_TOOL, "call"), args)
 }
 
 /// The output of `call`, once it has one.

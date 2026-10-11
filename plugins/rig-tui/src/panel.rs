@@ -9,7 +9,6 @@
 //! changed asks with a [`RequestRedraw`] message.
 //!
 //! ```no_run
-//! use rig_activity::Activity;
 //! use rig_harness::prelude::*;
 //! use rig_tui::ratatui::layout::Constraint;
 //! use rig_tui::ratatui::widgets::{Block, Paragraph};
@@ -22,8 +21,8 @@
 //!     commands.spawn((Working, TuiPanel::new(Placement::Right(Constraint::Length(30)))));
 //! }
 //!
-//! fn draw(mut panels: Query<&mut PanelCanvas, With<Working>>, agents: Query<&Activity>) {
-//!     let busy = agents.iter().filter(|activity| activity.is_busy()).count();
+//! fn draw(mut panels: Query<&mut PanelCanvas, With<Working>>, turns: Query<&TurnOf>) {
+//!     let busy = turns.iter().count();
 //!     for mut canvas in &mut panels {
 //!         canvas.render(Paragraph::new(format!("{busy} working")).block(Block::bordered()));
 //!     }
@@ -33,12 +32,13 @@
 //! ```
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 use ratatui::buffer::Buffer;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Widget;
 
-/// The terminal view's steps in `PostUpdate`, in order, after the agents'
-/// [`ActivitySystems`](rig_activity::ActivitySystems).
+/// The terminal view's steps in `PostUpdate`, in order, after the
+/// [`StatusSystems`](crate::StatusSystems).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and
@@ -66,8 +66,9 @@ pub struct RequestRedraw;
 pub struct TuiScreen(pub Rect);
 
 /// Marks the agent the terminal view shows and sends what is typed to.
-#[derive(Component, Clone, Copy, Debug, Default)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[component(storage = "SparseSet")]
+#[reflect(Component, Clone, Debug, Default)]
 pub struct Focused;
 
 /// A panel of a plugin in the terminal view. Panels are laid out one after
@@ -75,8 +76,9 @@ pub struct Focused;
 /// status line; a panel that would leave the transcript less than 20
 /// columns or 3 rows gets no area this frame. Despawn the entity, or
 /// remove the component, to remove the panel.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[require(PanelCanvas)]
+#[reflect(opaque, Component, Clone, Debug, PartialEq)]
 pub struct TuiPanel {
     /// Where it goes.
     pub placement: Placement,

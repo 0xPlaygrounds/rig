@@ -7,16 +7,15 @@
 
 use std::sync::Arc;
 
-use bevy_app::OnAppExitSystems;
 use bevy_log::error;
 use rig_cassette::effect_log::{EffectLogRecorder, jsonl};
 use rig_cassette::journal::EFFECT_LOG;
 use rig_core::effect::HandlerDescriptor;
 use rig_core::serve::Recorder;
+use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
 use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
-use rig_ecs::{StopTurns, WriteJournal};
 
 use rig_harness::prelude::SessionPaths;
 
@@ -36,13 +35,7 @@ impl Plugin for EffectLogPlugin {
         app.insert_resource(Effects::recorded_by(Arc::new(recorder.clone()), last))
             .insert_resource(EffectLog { recorder, writer })
             .add_systems(Startup, describe_tools)
-            .add_systems(
-                Last,
-                write_effects
-                    .in_set(OnAppExitSystems)
-                    .in_set(WriteJournal)
-                    .after(StopTurns),
-            )
+            .add_systems(Last, write_effects.in_set(WriteJournal))
             .add_observer(describe_model);
     }
 }

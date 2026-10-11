@@ -3,6 +3,7 @@
 //! notices.
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 
 use super::complete::Completion;
 use super::editor::Editor;
@@ -10,10 +11,47 @@ use super::panel::Focused;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
 use rig_ecs::inbox::Recalled;
-use rig_harness::front::{Focus, PickItem, PickRequest};
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
+
+/// Ask the view to show the agent and send what is typed to it, such as
+/// a subagent picked with `/agents`.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Focus {
+    /// The agent.
+    pub entity: Entity,
+}
+
+/// One choice of a [`PickRequest`]: what it shows, and the command line,
+/// without its `/`, that choosing it runs for the agent, such as
+/// `model openai/gpt-5`.
+#[derive(Clone, Debug)]
+pub struct PickItem {
+    /// What it shows.
+    pub label: String,
+    /// The command line it runs.
+    pub command: String,
+}
+
+/// Asks the view to let the user pick one of `items` for the agent; the
+/// view runs the chosen item's command with
+/// [`RunCommand`](rig_ecs::commands::RunCommand). A plugin that also
+/// builds without the terminal view writes it behind a default `tui`
+/// cargo feature, and registers it with `app.add_message::<PickRequest>()`
+/// in case the terminal view is not added.
+#[derive(Message, Clone, Debug)]
+pub struct PickRequest {
+    /// The agent.
+    pub agent: Entity,
+    /// What is picked.
+    pub title: String,
+    /// The choices.
+    pub items: Vec<PickItem>,
+    /// The position of the choice selected at first.
+    pub selected: usize,
+}
 
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]

@@ -13,6 +13,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# How the terminal view draws the tools' calls. An app without the terminal
+# view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
@@ -21,6 +27,7 @@ rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../rig-tui", optional = true }
 # The tools' parameters, derived from their arguments types.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

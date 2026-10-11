@@ -17,17 +17,20 @@ use std::pin::Pin;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info, info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
+use bevy_tasks::{AsyncComputeTaskPool, ConditionalSendFuture, IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_core::completion::message::turn_failure;
-use rig_core::completion::{CompletionRequest, CompletionResponse, Message};
+use rig_core::completion::{
+    CompletionRequest, CompletionResponse, GenerationOptions, Message, ToolDefinition,
+};
 use rig_core::effect::Outcome;
 use rig_core::effect::family::Completion;
 use rig_core::effect::{EffectId, EffectKind, Family};
@@ -38,6 +41,7 @@ use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
 use rig_core::transcript::{arguments_refusal, close_pending_with};
+use serde::{Deserialize, Serialize};
 use web_time::Instant;
 
 use super::agent::{
@@ -50,7 +54,9 @@ use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
 use super::journal::{Commit, SessionLog, commit_message};
 use super::model::{Connection, Effort};
-use super::prompt::{PromptSection, ToolRules, system_prompt};
+use super::prompt::{
+    PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
+};
 use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
 
 /// The notice when the agent has no model to call.
@@ -61,7 +67,8 @@ pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
 pub const RETRY: RetryPolicy = RetryPolicy::DEFAULT;
 
 /// A turn's recovery so far: the failed calls retried since its last reply.
-#[derive(Component, Clone, Copy, Debug, Default)]
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Default)]
 pub struct Recovery {
     /// Retries since the last reply.
     pub retries: u32,
@@ -71,11 +78,13 @@ pub struct Recovery {
 /// so interrupting the turn cancels it like any other call. The call is
 /// sent again by a delayed command on Bevy's clock, which despawns this
 /// entity first.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, from_reflect = false)]
 pub struct Backoff {
     /// Which retry this wait is for, from 1 to [`RETRY`]'s `max_retries`.
     pub attempt: u32,
     /// When the call is sent again.
+    #[reflect(ignore)]
     pub until: Instant,
 }
 
@@ -87,15 +96,11 @@ impl Backoff {
     }
 }
 
-/// The systems polling running calls, in `Update`.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PollCalls;
-
 /// What a model call's task returns.
 pub type ModelReply = Result<CompletionResponse, ErrorReport>;
 
-/// A streaming model call of the turn it is a [`CallOf`]; its task is a
-/// [`Running<ModelReply>`](Running).
+/// A streaming model call of the turn it is a [`CallOf`]; its [`Running`]
+/// task ends as a [`Done<ModelReply>`](Done).
 #[derive(Component)]
 pub struct ModelCall {
     effect: EffectId,
@@ -116,21 +121,41 @@ pub struct CallModel {
     pub entity: Entity,
 }
 
-/// Triggered on a turn right before its model request is built, with the
-/// messages it sends: the agent's conversation, after its [`Condensed`]
-/// summary if any, with what was delivered meanwhile. Observers may
-/// rewrite `messages`, or spawn calls [`CallOf`] the turn, such as a
-/// [`ModelRequest`]: while the turn has calls afterwards, nothing is sent,
-/// and the plugin that spawned them triggers [`CallModel`] again once they
-/// are done. Observers run in no set order, so each does its own part only.
+/// Triggered on a turn right before its model request is sent, with
+/// everything it sends, which observers may change: the system prompt, the
+/// messages (the agent's conversation, after its [`Condensed`] summary if
+/// any, with what was delivered meanwhile), the tools offered and the
+/// generation options. A changed system prompt or tool list misses the
+/// provider's prompt cache. The request is checked against the model only
+/// afterwards, and a tool left out is still refused only if the agent's
+/// [`ToolAccess`] does not allow it. Observers may also spawn calls
+/// [`CallOf`] the turn, such as a [`ModelRequest`]: while the turn has
+/// calls afterwards, nothing is sent, and the plugin that spawned them
+/// triggers [`CallModel`] again once they are done. Observers run in no
+/// set order, so each does its own part only.
+///
+/// The request goes to the turn's model: a [`Connection`] on the turn,
+/// such as one a plugin inserts on `On<Add<TurnOf>>`, else the agent's. The
+/// options are made for that model, with the agent's reasoning setting
+/// when the model takes it; the agent's model still decides its
+/// [`LastUsage`] and context window.
 #[derive(EntityEvent, Clone, Debug)]
 pub struct PrepareRequest {
     /// The turn.
     pub entity: Entity,
     /// The turn's agent.
     pub agent: Entity,
+    /// The system prompt: the agent's [`SystemPrompt`], the rules of the
+    /// tools offered and the prompt sections. Once the observers ran, its
+    /// tool rules follow `tools`, so a tool left out takes its rules
+    /// along; the rest is sent as the observers left it.
+    pub preamble: String,
     /// The messages the request sends, oldest first.
     pub messages: Vec<Message>,
+    /// The tools offered, by name.
+    pub tools: Vec<ToolDefinition>,
+    /// The generation options, such as `temperature` or `max_tokens`.
+    pub options: GenerationOptions,
 }
 
 /// Triggered on a turn whose model call failed in a way sending the same
@@ -156,7 +181,8 @@ pub struct ModelFailed {
 /// like the turn's own calls, with the agent's connection, and ends with a
 /// [`Done<ModelReply>`](Done) on its entity, which is the plugin's to take.
 /// Interrupting the turn cancels it.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
 pub struct ModelRequest {
     /// The request.
     pub request: CompletionRequest,
@@ -186,7 +212,7 @@ pub(crate) fn on_retry(
         return;
     };
     if busy {
-        notices.write(Notice::info(agent, "A turn is running."));
+        notices.write(Notice::turn_running(agent));
         return;
     }
     if !conversation.resume() {
@@ -196,7 +222,7 @@ pub(crate) fn on_retry(
         ));
         return;
     }
-    let turn = commands.spawn((Name::new("turn"), TurnOf(agent))).id();
+    let turn = commands.spawn(TurnOf(agent)).id();
     commands.trigger(CallModel { entity: turn });
 }
 
@@ -316,13 +342,12 @@ pub struct Exiting;
 
 /// On exit (`/quit` or a signal; `/reload` and switching sessions wait for
 /// idle agents) leaves the running turns for the restart to carry on, as
-/// after a crash: every running call is cancelled, the tool results that
-/// came in are logged, and the restart answers the rest.
+/// after a crash: every [`Running`] task, a plugin's too, is cancelled, the
+/// tool results that came in are logged, and the restart answers the rest.
 pub(crate) fn stop_turns_on_exit(world: &mut World) {
     world.insert_resource(Exiting);
     let mut cancelling = Cancelling::new();
-    take_running::<ModelReply>(world, &mut cancelling);
-    take_running::<ToolResult>(world, &mut cancelling);
+    take_running(world, &mut cancelling);
     let deadline = Instant::now() + EXIT_GRACE;
     loop {
         cancelling.retain_mut(|cancel| check_ready(cancel).is_none());
@@ -357,16 +382,18 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
     world.flush();
 }
 
-/// Takes every [`Running<T>`] task off its call, to be cancelled.
-fn take_running<T: Send + Sync + 'static>(world: &mut World, cancelling: &mut Cancelling) {
+/// Takes every [`Running`] task off its entity, a plugin's too, to be
+/// cancelled.
+fn take_running(world: &mut World, cancelling: &mut Cancelling) {
     let calls: Vec<Entity> = world
-        .query_filtered::<Entity, With<Running<T>>>()
+        .query_filtered::<Entity, With<Running>>()
         .iter(world)
         .collect();
     for call in calls {
         if let Ok(mut call) = world.get_entity_mut(call)
-            && let Some(Running(task)) = call.take::<Running<T>>()
+            && let Some(running) = call.take::<Running>()
         {
+            let task = running.into_task();
             cancelling.push(Box::pin(async move {
                 task.cancel().await;
             }));
@@ -406,89 +433,153 @@ pub(crate) fn on_call_model(
         None => conversation.messages().to_vec(),
     };
     commands.queue(move |world: &mut World| {
-        let mut prepare = PrepareRequest {
-            entity: turn,
-            agent,
-            messages,
-        };
-        world.trigger_ref(&mut prepare);
-        // The observers' calls exist once their commands are applied.
-        world.flush();
-        if world.get::<Calls>(turn).is_some() {
-            return;
-        }
-        if let Err(error) = world.run_system_cached_with(send_request, (turn, prepare.messages)) {
-            warn!("could not send a model request: {error}");
+        if let Err(why) = request(world, turn, messages)
+            && let Err(error) = world.run_system_cached_with(fail_turn, (turn, why))
+        {
+            warn!("could not end a failed turn: {error}");
         }
     });
 }
 
-/// Sends `messages` for the turn to its agent's model. When that cannot be
-/// done the turn ends.
-fn send_request(
+/// Prepares the turn's request with `messages`, lets [`PrepareRequest`]
+/// observers change it, and sends it unless they gave the turn calls to
+/// wait for; or why the turn fails.
+fn request(world: &mut World, turn: Entity, messages: Vec<Message>) -> Result<(), String> {
+    let prepared = world.run_system_cached_with(prepare_request, (turn, messages));
+    let Some((mut prepare, rules)) = prepared.map_err(|error| error.to_string())?? else {
+        return Ok(());
+    };
+    world.trigger_ref(&mut prepare);
+    // The observers' calls exist once their commands are applied.
+    world.flush();
+    if world.get::<Calls>(turn).is_some() {
+        return Ok(());
+    }
+    let sent = world.run_system_cached_with(send_request, (prepare, rules));
+    sent.map_err(|error| error.to_string())?
+}
+
+/// What the turn's request sends with `messages`, on the turn's model: its
+/// system prompt, the tools offered and the options, with the tool rules
+/// written in that prompt; `None` for a turn that is gone. It asks for the provider's prompt cache where the model
+/// has one; the preamble and tools come first and do not change between
+/// calls, so each call reads the prefix the last one wrote.
+fn prepare_request(
     In((turn, messages)): In<(Entity, Vec<Message>)>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<(
-        (&AgentId, &mut Conversation, Option<&EffectParent>),
+    turns: Query<(&TurnOf, Option<&Connection>)>,
+    agents: Query<(
+        &AgentId,
         Option<&Connection>,
         &Effort,
         &SystemPrompt,
         &ToolAccess,
     )>,
     tools: Query<(&ToolDef, &ToolRules)>,
-    sections: Query<&PromptSection>,
+    sections: Query<(&PromptSection, Option<&SectionOf>)>,
+) -> Result<Option<(PrepareRequest, String)>, String> {
+    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
+        return Ok(None);
+    };
+    let Ok((id, own, effort, prompt, access)) = agents.get(agent) else {
+        return Ok(None);
+    };
+    let spec = &routed.or(own).ok_or(NO_MODEL)?.spec;
+    // Sorted by name, so the tools, and the prompt with their rules, are
+    // the same on every call and stay cached.
+    let mut offered: Vec<(&ToolDef, &ToolRules)> = tools
+        .iter()
+        .filter(|(def, _)| spec.tools && access.allows(def.0.name.as_str()))
+        .collect();
+    offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+    let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
+    let sections = sections
+        .iter()
+        .filter(|(_, of)| of.is_none_or(|of| of.0 == agent));
+    let sections = sections.map(|(section, _)| section);
+    // A model the turn is routed to may not take the agent's setting.
+    let options = Some(spec.default_options(effort.0))
+        .filter(|options| spec.validate(options).is_ok())
+        .unwrap_or_else(|| spec.default_options(None));
+    let prepare = PrepareRequest {
+        entity: turn,
+        agent,
+        preamble: system_prompt(&prompt.0, &rules, sections),
+        messages,
+        tools: offered.iter().map(|(def, _)| def.0.clone()).collect(),
+        options: options.cache_key(&id.0),
+    };
+    Ok(Some((prepare, rules)))
+}
+
+/// An agent as its model calls are dispatched for it.
+#[derive(QueryData)]
+pub(crate) struct Caller {
+    id: &'static AgentId,
+    connection: Option<&'static Connection>,
+    parent: Option<&'static EffectParent>,
+}
+
+impl CallerItem<'_, '_> {
+    /// Dispatches a streamed completion of `request` to `connection` on
+    /// the one dispatch path, recorded for this agent.
+    fn complete(
+        &self,
+        effects: &Effects,
+        connection: &Connection,
+        request: CompletionRequest,
+    ) -> (
+        EffectId,
+        impl ConditionalSendFuture<Output = Reply> + 'static,
+    ) {
+        let parent = self.parent.map(|parent| parent.0);
+        let (handler, stream) = (connection.handler.0.clone(), true);
+        let kind = EffectKind::Completion { request, stream };
+        effects.dispatch(&self.id.0, parent, handler, kind)
+    }
+}
+
+/// Sends what `prepare` says to the turn's model, once the options are
+/// checked against it, with the tool rules `written` in its system prompt
+/// swapped for those of the tools it carries; or why it cannot be sent.
+fn send_request(
+    In((prepare, written)): In<(PrepareRequest, String)>,
+    rules: Query<(&ToolDef, &ToolRules)>,
+    turns: Query<Option<&Connection>, With<TurnOf>>,
+    agents: Query<Caller>,
     effects: Res<Effects>,
-    mut commit: Commit,
     wake: Res<Wake>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(&TurnOf(agent)) = turns.get(turn) else {
-        return;
+) -> Result<(), String> {
+    let PrepareRequest {
+        entity: turn,
+        agent,
+        preamble,
+        mut messages,
+        tools,
+        options,
+    } = prepare;
+    let (Ok(routed), Ok(caller)) = (turns.get(turn), agents.get(agent)) else {
+        return Ok(());
     };
-    let Ok(((id, mut conversation, effect_parent), connection, effort, prompt, access)) =
-        agents.get_mut(agent)
-    else {
-        return;
-    };
-    let request = connection
-        .ok_or_else(|| NO_MODEL.to_owned())
-        .and_then(|connection| {
-            // Sorted by name, so the tools, and the prompt with their
-            // rules, are the same on every call and stay cached.
-            let mut offered: Vec<(&ToolDef, &ToolRules)> = tools
-                .iter()
-                .filter(|(def, _)| connection.spec.tools && access.allows(def.0.name.as_str()))
-                .collect();
-            offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
-            let preamble =
-                system_prompt(&prompt.0, offered.iter().map(|(_, rules)| *rules), sections);
-            let definitions = offered.iter().map(|(def, _)| def.0.clone()).collect();
-            prepare(messages, connection, effort, &id.0, preamble, definitions)
-                .map(|request| (connection, request))
-        });
-    let (connection, request) = match request {
-        Ok(request) => request,
-        Err(why) => {
-            notices.write(Notice::error(agent, why.clone()));
-            drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
-            end_turn(&mut commands, turn, TurnOutcome::Failed(why));
-            return;
-        }
-    };
-    let (effect, reply) = effects.dispatch(
-        &id.0,
-        effect_parent.map(|parent| parent.0),
-        connection.handler.0.clone(),
-        EffectKind::Completion {
-            request,
-            stream: true,
-        },
-    );
+    let connection = routed.or(caller.connection).ok_or(NO_MODEL)?;
+    let validated = connection.spec.validate(&options);
+    validated.map_err(|refusal| refusal.to_string())?;
+    let carried = tools.iter().filter_map(|tool| {
+        let rules = rules.iter().find(|(def, _)| def.0.name == tool.name);
+        rules.map(|(_, rules)| rules)
+    });
+    let preamble = swap_tool_rules(preamble, &written, &tool_rules(carried));
+    let prompt = messages.pop().ok_or("The conversation is empty.")?;
+    let request = CompletionRequest::new(prompt)
+        .messages(messages)
+        .preamble(preamble)
+        .tools(tools)
+        .options(options);
+    let (effect, reply) = caller.complete(&effects, connection, request);
     let (sender, feed) = crossbeam_channel::unbounded();
     let span = info_span!(
         "model_call",
-        agent = %id.0,
+        agent = %caller.id.0,
         effect = %effect,
         model = %connection.spec.reference()
     );
@@ -502,47 +593,40 @@ fn send_request(
         Partial::default(),
         CallOf(turn),
     ));
+    Ok(())
 }
 
-/// Dispatches a plugin's [`ModelRequest`] with its turn's agent's model,
-/// on the one dispatch path. Without a model it is done at once, failed.
+/// Dispatches a plugin's [`ModelRequest`] on the one dispatch path, to the
+/// model of a [`Connection`] on the call, else on its turn, else its
+/// turn's agent's. Without a model it is done at once, failed.
 pub(crate) fn on_model_request(
     add: On<Add<ModelRequest>>,
-    calls: Query<(&CallOf, &ModelRequest)>,
-    turns: Query<&TurnOf>,
-    agents: Query<(&AgentId, Option<&Connection>, Option<&EffectParent>)>,
+    calls: Query<(&CallOf, &ModelRequest, Option<&Connection>)>,
+    turns: Query<(&TurnOf, Option<&Connection>)>,
+    agents: Query<Caller>,
     effects: Res<Effects>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let call = add.entity;
-    let Ok((&CallOf(turn), ModelRequest { request })) = calls.get(call) else {
+    let Ok((&CallOf(turn), ModelRequest { request }, own)) = calls.get(call) else {
         return;
     };
-    let Some((id, connection, effect_parent)) = turns
-        .get(turn)
-        .ok()
-        .and_then(|&TurnOf(agent)| agents.get(agent).ok())
-    else {
+    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
         return;
     };
-    let Some(connection) = connection else {
+    let Ok(caller) = agents.get(agent) else {
+        return;
+    };
+    let Some(connection) = own.or(routed).or(caller.connection) else {
         let failed = ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL);
         commands
             .entity(call)
             .insert(Done::<ModelReply>(Err(failed)));
         return;
     };
-    let (effect, reply) = effects.dispatch(
-        &id.0,
-        effect_parent.map(|parent| parent.0),
-        connection.handler.0.clone(),
-        EffectKind::Completion {
-            request: request.clone(),
-            stream: true,
-        },
-    );
-    let span = info_span!("model_request", agent = %id.0, effect = %effect);
+    let (effect, reply) = caller.complete(&effects, connection, request.clone());
+    let span = info_span!("model_request", agent = %caller.id.0, effect = %effect);
     let work = async move {
         reply
             .await
@@ -576,35 +660,6 @@ fn drop_unanswered(
             "Your last message was taken out of the conversation; send it again.",
         ));
     }
-}
-
-/// The request for the agent's next model call, checked against the
-/// model's spec, or what the user must fix first. It asks for the
-/// provider's prompt cache where the model has one; the preamble and tools
-/// come first and do not change between calls, so each call reads the
-/// prefix the last one wrote.
-fn prepare(
-    mut messages: Vec<Message>,
-    connection: &Connection,
-    effort: &Effort,
-    cache_key: &str,
-    preamble: String,
-    tools: Vec<rig_core::completion::ToolDefinition>,
-) -> Result<CompletionRequest, String> {
-    let options = connection
-        .spec
-        .default_options(effort.0)
-        .cache_key(cache_key);
-    connection
-        .spec
-        .validate(&options)
-        .map_err(|refusal| refusal.to_string())?;
-    let prompt_message = messages.pop().ok_or("The conversation is empty.")?;
-    Ok(CompletionRequest::new(prompt_message)
-        .messages(messages)
-        .preamble(preamble)
-        .tools(tools)
-        .options(options))
 }
 
 /// Streams the reply, feeding text and reasoning to the view and waking
@@ -644,6 +699,16 @@ pub(crate) fn stream_partials(mut calls: Query<(&ModelCall, &mut Partial)>) {
     }
 }
 
+/// An agent as its model's reply finds it.
+#[derive(QueryData)]
+#[query_data(mutable)]
+pub(crate) struct Answered {
+    conversation: &'static mut Conversation,
+    inbox: &'static mut Inbox,
+    connection: Option<&'static Connection>,
+    last: &'static mut LastUsage,
+}
+
 /// Takes a finished reply: appends it, then lets rig-core's turn-failure
 /// rule decide. A failed reply runs none of its tool calls and ends the
 /// turn; a reply without tool calls ends it too; otherwise each of its
@@ -653,11 +718,7 @@ pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
     mut turns: Query<(&TurnOf, &mut Recovery)>,
-    mut agents: Query<(
-        (&mut Conversation, &mut Inbox),
-        Option<&Connection>,
-        &mut LastUsage,
-    )>,
+    mut agents: Query<Answered>,
     starter: ToolStarter,
     mut commit: Commit,
     mut commands: Commands,
@@ -671,14 +732,14 @@ pub(crate) fn on_model_done(
     let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
         return;
     };
-    let Ok(((mut conversation, mut inbox), connection, mut last)) = agents.get_mut(agent) else {
+    let Ok(mut answered) = agents.get_mut(agent) else {
         return;
     };
-    let spec = connection.map(|connection| &*connection.spec);
+    let spec = answered.connection.map(|connection| &*connection.spec);
     let response = match reply {
         Ok(response) => {
             if response.usage.context_tokens().is_some() {
-                *last = LastUsage(Some(response.usage));
+                *answered.last = LastUsage(Some(response.usage));
             }
             recovery.retries = 0;
             response
@@ -695,7 +756,7 @@ pub(crate) fn on_model_done(
         }
     };
     if let Some(message) = response.message() {
-        commit.message(agent, &mut conversation, message);
+        commit.message(agent, &mut answered.conversation, message);
     }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
     let failure = turn_failure(
@@ -707,10 +768,10 @@ pub(crate) fn on_model_done(
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
-            commit.message(agent, &mut conversation, results);
+            commit.message(agent, &mut answered.conversation, results);
         }
         notices.write(Notice::error(agent, format!("The turn failed: {failure}.")));
-        drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
+        drop_unanswered(agent, &mut answered.conversation, &mut commit, &mut notices);
         end_turn(
             &mut commands,
             turn,
@@ -722,18 +783,24 @@ pub(crate) fn on_model_done(
         // What was sent meanwhile carries the turn on: steering first,
         // else everything queued, as one step. Notes go along but carry
         // nothing on.
-        let inbox = &mut *inbox;
+        let inbox = &mut *answered.inbox;
         let next: Vec<Pending> = match inbox.steering.is_empty() {
             true => inbox.queued.drain(..).collect(),
             false => inbox.steering.drain(..).collect(),
         };
         if !next.is_empty() {
             let waiting = inbox.notes.drain(..).chain(next);
-            commit.pending(agent, spec, waiting, &mut conversation, &mut notices);
+            commit.pending(
+                agent,
+                spec,
+                waiting,
+                &mut answered.conversation,
+                &mut notices,
+            );
             commands.trigger(CallModel { entity: turn });
             return;
         }
-        let outcome = match conversation.messages().last() {
+        let outcome = match answered.conversation.messages().last() {
             Some(answer @ Message::Assistant(_)) => TurnOutcome::Answered(answer.clone()),
             _ => TurnOutcome::Failed("the model ended the turn without a message".to_owned()),
         };
@@ -859,7 +926,7 @@ pub(crate) fn on_tool_done(
     }
     commands
         .entity(done.entity)
-        .try_remove::<(OpenCall, Running<ToolResult>)>();
+        .try_remove::<(OpenCall, Running)>();
     let Ok(&CallOf(turn)) = of.get(done.entity) else {
         return;
     };
@@ -1015,7 +1082,8 @@ impl ToolStarter<'_, '_> {
                         .or_else(|why| refused(ToolErrorKind::InvalidArgs, why)),
                     (None, Serves::Handler(handler)) => {
                         let work = run_tool_call(&self.effects, &id.0, run, handler.0.clone());
-                        let running = Running::spawn(tool_pool(), &self.wake, work);
+                        let running =
+                            Running::spawn_into::<ToolOutput, _>(tool_pool(), &self.wake, work);
                         commands.entity(call).insert(running);
                         return;
                     }

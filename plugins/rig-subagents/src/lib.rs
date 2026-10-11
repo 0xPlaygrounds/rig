@@ -10,7 +10,9 @@
 //! keeps the caller's turn open until an agent sends it a message. Each
 //! request stays one of the owing agent's [`OpenRequests`], saved with it,
 //! until it reports to the asker; a restart answers each as interrupted.
-//! Subagents see the app's [`PromptSection`]s like every agent.
+//! Subagents see the app's [`PromptSection`]s like every agent, and are
+//! told their role in sections of their own ([`SectionOf`]), not in their
+//! saved system prompt, which is their parent's.
 //!
 //! A subagent's [`Lifecycle`] is [`Working`] while a turn runs,
 //! [`WaitingOn`] an agent that owes it a report when its turn ended, and
@@ -31,12 +33,15 @@ use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 
 mod lifecycle;
+#[cfg(feature = "tui")]
+mod looks;
 mod tools;
 
 pub use tools::{MAX_DEPTH, MESSAGE, TASK, WAIT};
 
 /// Adds the `task`, `message` and `wait` tools, the subagents' lifecycle
-/// and the reports that answer their requests.
+/// and the reports that answer their requests; with the `tui` feature (on
+/// by default), also how the terminal view draws the tools' calls.
 #[derive(Default)]
 pub struct SubagentsPlugin;
 
@@ -44,6 +49,8 @@ impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
         tools::add(app);
         lifecycle::add(app);
+        #[cfg(feature = "tui")]
+        looks::add(app);
     }
 }
 

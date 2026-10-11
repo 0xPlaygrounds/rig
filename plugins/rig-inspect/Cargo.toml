@@ -32,3 +32,5 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # A plugin whose commands the tests find attributed to it.
 rig-basics = { path = "../rig-basics" }
+# The tool call the tests start as a model would.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

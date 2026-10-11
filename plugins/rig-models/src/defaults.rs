@@ -11,7 +11,7 @@ use rig_tools::fs::{read_json, write_json};
 use serde::{Deserialize, Serialize};
 
 use rig_ecs::agent::{Agent, SpawnedBy};
-use rig_ecs::journal::SessionLog;
+use rig_ecs::journal::SessionRestored;
 use rig_ecs::model::{Effort, ModelChoice};
 
 /// Remembers the last chosen model and reasoning setting and gives them to
@@ -22,7 +22,7 @@ pub struct DefaultsPlugin;
 impl Plugin for DefaultsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(PostStartup, apply_defaults)
-            .add_observer(remember);
+            .add_observer(remember.run_if(resource_exists::<SessionRestored>));
     }
 }
 
@@ -72,13 +72,12 @@ fn apply_defaults(
 }
 
 /// Remembers the model and reasoning of an agent the user talks to when
-/// either changes, such as by `/model` or `/effort`. Restoring a session
-/// inserts them before the session is logged, which is not a choice, and
-/// subagents are not remembered.
+/// either changes, such as by `/model` or `/effort`, once the session is
+/// restored: restoring inserts them, which is not a choice. A failed log
+/// write does not stop it. Subagents are not remembered.
 fn remember(
     chosen: On<Insert<(ModelChoice, Effort)>>,
     agents: Query<(&ModelChoice, &Effort), Without<SpawnedBy>>,
-    log: Res<SessionLog>,
 ) {
     let Ok((model, effort)) = agents.get(chosen.entity) else {
         return;
@@ -87,7 +86,7 @@ fn remember(
         model: Some(model.clone()),
         effort: *effort,
     };
-    if log.is_live() && Defaults::read() != defaults {
+    if Defaults::read() != defaults {
         defaults.write();
     }
 }

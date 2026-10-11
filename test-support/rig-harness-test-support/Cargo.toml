@@ -29,6 +29,7 @@ rig-inspect = { path = "../../plugins/rig-inspect" }
 rig-login-chatgpt = { path = "../../plugins/rig-login-chatgpt" }
 rig-models = { path = "../../plugins/rig-models" }
 rig-print = { path = "../../plugins/rig-print" }
+rig-reload = { path = "../../plugins/rig-reload" }
 rig-sessions = { path = "../../plugins/rig-sessions" }
 rig-subagents = { path = "../../plugins/rig-subagents" }
 rig-telemetry = { path = "../../plugins/rig-telemetry" }

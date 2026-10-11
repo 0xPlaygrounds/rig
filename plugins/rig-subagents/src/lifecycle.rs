@@ -3,6 +3,7 @@
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
 
+use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered};
 use rig_harness::prelude::*;
 
@@ -14,6 +15,8 @@ const NO_ANSWER: &str = "No answer will come for this request; send a `message` 
 
 pub(super) fn add(app: &mut App) {
     app.add_observer(name_subagent)
+        .add_observer(brief_subagent)
+        .add_observer(brief_peer)
         .add_observer(work_on_turn_start)
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
@@ -41,6 +44,7 @@ pub(super) struct Agents<'w, 's> {
     pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
     pub(super) inboxes: Query<'w, 's, &'static mut Inbox>,
     waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
+    awaited_by: Query<'w, 's, &'static AwaitedBy>,
     turns: Query<'w, 's, &'static TurnOf>,
     pub(super) commands: Commands<'w, 's>,
 }
@@ -48,10 +52,7 @@ pub(super) struct Agents<'w, 's> {
 impl Agents<'_, '_> {
     /// The agent with the id `id`.
     pub(super) fn find(&self, id: &AgentId) -> Option<Entity> {
-        let mut agents = self.agents.iter();
-        agents
-            .find(|agent| agent.id == id)
-            .map(|agent| agent.entity)
+        id.find_in(self.agents.iter().map(|agent| (agent.entity, agent.id)))
     }
 
     /// Output of `agent`, titled with its task when it has one.
@@ -73,11 +74,13 @@ impl Agents<'_, '_> {
     /// The open `wait` calls of `waiter` for a message from `awaited`.
     pub(super) fn wait_calls(&self, waiter: Entity, awaited: Entity) -> Vec<Entity> {
         let calls = self
-            .waits
-            .iter()
-            .filter(|(_, awaits, _)| awaits.0 == awaited);
-        let calls = calls.filter(|&(call, ..)| self.waiter(call) == Some(waiter));
-        calls.map(|(call, ..)| call).collect()
+            .awaited_by
+            .get(awaited)
+            .into_iter()
+            .flat_map(|by| by.iter());
+        calls
+            .filter(|&call| self.waiter(call) == Some(waiter))
+            .collect()
     }
 
     /// The agents `agent` waits on: those that owe it a report, then those
@@ -146,13 +149,8 @@ impl Agents<'_, '_> {
             };
             let mut origin = from.clone();
             origin.request = Some(last.id.clone());
-            self.commands.trigger(Deliver {
-                entity: asker,
-                text: text.to_owned(),
-                origin,
-                mode,
-                attachments: Vec::new(),
-            });
+            self.commands
+                .trigger(Deliver::new(asker, text, mode).with_origin(origin));
             reported.push(asker);
         }
         reported
@@ -165,6 +163,23 @@ fn name_subagent(inserted: On<Insert<Subtask>>, subtasks: Query<&Subtask>, mut c
         let name = Name::new(subtask.0.clone());
         commands.entity(inserted.entity).insert(name);
     }
+}
+
+/// Gives a subagent its role as a prompt section of its own when it is
+/// spawned or restored, so the text follows the build: it is not saved.
+fn brief_subagent(added: On<Add<Subtask>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 0, "subagent_role", SUBAGENT_ROLE));
+}
+
+/// Tells a subagent with [`Peers`] about them, as [`brief_subagent`] does.
+fn brief_peer(added: On<Add<Peers>>, mut commands: Commands) {
+    commands.spawn(role(added.entity, 1, "peer_role", PEER_ROLE));
+}
+
+/// The prompt section of `agent`'s role `tag`, `after` other roles.
+fn role(agent: Entity, after: i32, tag: &'static str, text: &str) -> impl Bundle {
+    let section = PromptSection::new(PromptSection::ORDER_ROLE + after, tag, text);
+    (Name::new(tag), section, SectionOf(agent))
 }
 
 /// A spawned agent whose turn starts is [`Lifecycle::Working`].

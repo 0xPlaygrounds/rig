@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::io;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
@@ -17,18 +18,20 @@ use crate::agent::{
 };
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::{
-    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionStore, commit_message,
+    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
+    commit_message,
 };
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::Restored;
 
 /// An app on `store`, after its first frame restored the session. Like
-/// the harness, it only warns about a command on a despawned entity.
+/// the harness, it only warns about a command on a despawned entity. The
+/// store comes after the plugins: any plugin may insert it.
 fn app(store: &MemoryStore) -> App {
     let mut app = App::new();
     app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(SessionStore::new(store.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin));
+        .add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(store.clone()));
     app.finish();
     app.update();
     app
@@ -47,6 +50,11 @@ fn say(app: &mut App, agent: Entity, message: Message) {
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Saved)]
 struct ToolCounts(HashMap<String, u32>);
+
+/// A plugin's count across the session, saved with it.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Saved)]
+struct Compactions(u32);
 
 /// Every saved component of the first agent, by type path, as reflection
 /// writes it.
@@ -67,9 +75,16 @@ fn saved(app: &mut App) -> HashMap<String, Value> {
 }
 
 #[test]
-fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept() {
+fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_its_summary_kept() {
     let store = MemoryStore::default();
     let mut first = app(&store);
+    first.world_mut().insert_resource(Compactions(1));
+    first.update();
+    assert_eq!(
+        store.agents().ok(),
+        Some(Vec::new()),
+        "nothing said, nothing kept"
+    );
     let agent = first_agent(&mut first);
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
@@ -88,6 +103,7 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
         say(&mut first, agent, Message::assistant(format!("answer {n}")));
         // The newest value wins.
         first.world_mut().entity_mut(agent).insert(counts(n + 1));
+        first.world_mut().insert_resource(Compactions(n + 2));
         first.update();
     }
     let summary = "The user asked three questions.".to_owned();
@@ -108,8 +124,11 @@ fn a_restored_agent_has_its_saved_components_and_the_messages_its_summary_kept()
     assert!(store.append(&id, format!("{gone}\n").as_bytes()).is_ok());
 
     let mut second = app(&store);
-    // What was saved before the summary still comes back.
+    // What was saved before the summary still comes back; the resource,
+    // which this app had not inserted, too.
     assert_eq!(saved(&mut second), before);
+    let compactions = second.world().get_resource::<Compactions>();
+    assert_eq!(compactions.map(|count| count.0), Some(5));
     let agent = first_agent(&mut second);
     let world = second.world();
     let notices = world.resource::<Messages<Notice>>();
@@ -170,10 +189,10 @@ fn every_change_the_log_records_is_committed() {
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
     // No model answers it, so it is taken out; a note is left halted.
-    let hello = Deliver::user(agent, "hello", DeliveryMode::Steer, Vec::new());
+    let hello = Deliver::new(agent, "hello", DeliveryMode::Steer);
     app.world_mut().trigger(hello);
     app.update();
-    let note = Deliver::user(agent, "a note", DeliveryMode::Note, Vec::new());
+    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
     app.world_mut().trigger(note);
     let committed = app.world().resource::<Messages<Committed>>();
     let mut cursor = committed.get_cursor();
@@ -224,7 +243,7 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
     };
     let live = session(&store, |world, agent| {
         for (at, text) in texts.into_iter().enumerate() {
-            world.trigger(Deliver::user(agent, text, DeliveryMode::Steer, Vec::new()));
+            world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             // The observers' commands start the turn, and end it.
             world.flush();
             world.trigger(Interrupt { entity: agent });
@@ -243,4 +262,51 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
         }]
     );
     assert_eq!(session(&store, |_, _| {}), live);
+}
+
+/// A store on a full disk: it reads, but every log write fails.
+struct Full;
+
+impl JournalStore for Full {
+    fn agents(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn read(&self, _: &str) -> io::Result<Vec<u8>> {
+        Ok(Vec::new())
+    }
+    fn truncate(&self, _: &str, _: u64) -> io::Result<()> {
+        Ok(())
+    }
+    fn append(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Ok(())
+    }
+    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
+        Ok(Vec::new())
+    }
+}
+
+/// A failed log write stops the logging, with a notice, but the session
+/// stays restored: what waits for that, such as remembering a model the
+/// user picks, still runs.
+#[test]
+fn a_failed_log_write_leaves_the_session_restored() {
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, JournalPlugin))
+        .insert_resource(SessionStore::new(Full));
+    app.finish();
+    app.update();
+    let agent = first_agent(&mut app);
+    assert!(agent.is_some());
+    let Some(agent) = agent else { return };
+    say(&mut app, agent, Message::user("hello"));
+    app.update();
+    let notices = app.world().resource::<Messages<Notice>>();
+    let stopped = notices
+        .iter_current_update_messages()
+        .any(|notice| notice.text.starts_with("The session is no longer saved"));
+    assert!(stopped);
+    assert!(app.world().contains_resource::<SessionRestored>());
 }

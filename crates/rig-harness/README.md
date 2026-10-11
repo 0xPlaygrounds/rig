@@ -13,11 +13,15 @@ changed plugins and restarts in the same session. The
 - **The kernel** is rig-ecs: agents, turns and calls as entities, message
   delivery, tools and slash commands as entities, the session log and its
   restore.
-- **The core** is this crate: what the binary needs to run and be
+- **The core** is this crate: only what the binary needs to run and be
   relaunched. `HeadlessPlugins` is Bevy's `MinimalPlugins` with the log, a
   clean exit on signals and a loop that sleeps until there is work;
-  `RigHarnessPlugins` adds the session directory, the run mode and what
-  fronts share (`front`), the kernel, the launcher protocol and `/reload`.
+  `RigHarnessPlugins` adds the session directory, the kernel and the
+  launcher protocol, with how the agent was started (`Invoked`: its
+  arguments, and whether stdin is a terminal). How it was started picks
+  the front: `rig-tui` runs on an interactive terminal, `rig-print` with
+  `-p` or with stdin piped in; a build without `rig-tui` started on a
+  terminal says so and exits.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
@@ -39,17 +43,20 @@ The default `plugins.toml`, in order:
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
 | `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
 | `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each |
-| `rig-coding-tools` | `ReloadTool` | the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
-| `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/agents`, `/quit` |
+| `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path` go with the message |
+| `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
+| `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit`, `/agents` |
 | `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools |
 | `rig-telemetry` | `DiagnosticsPlugin` | the process's warnings and errors, Bevy's included, as the `Diagnostics` resource |
-| `rig-print` | `PrintPlugin` | `--print`, and the front of a run no other front took |
-| `rig-tui` | `TuiPlugin` | the terminal view |
+| `rig-print` | `PrintPlugin` | `--print`: the front of a run with `-p` or with stdin piped in |
+| `rig-tui` | `TuiPlugin` | the terminal view: the front of a run on an interactive terminal, with the status line and pickers other plugins add to |
 
 An entry names its crate, `crate = "rig-tui"`, and no source: the agent
 builds rig's own crates from the rig checkout it is built from
 (`RIG_SOURCE`). None of rig-harness, rig-ecs, rig-tools and the plugin
-crates is published yet.
+crates is published yet. A plugin crate that adds to the terminal view (status
+line items, pickers, tool renderers) does so behind a default `tui` cargo
+feature, so it also builds without `rig-tui`.
 
 Optional plugins are not in the default list: [`rig-inspect`](../../plugins/rig-inspect)'s
 `InspectPlugin` adds the `inspect` tool, with which the agent reads its own

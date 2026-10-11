@@ -7,11 +7,16 @@
 //! [`Pricing`](rig_core::catalog::Pricing), so the cost here is the
 //! provider's figure or the catalog's list price. The context in use is the
 //! agent's [`LastUsage`], which the kernel keeps: the next request sends
-//! all of it again.
+//! all of it again. With the default `tui` feature, each agent's status
+//! line in the terminal view shows its meter (tokens in and out, cached
+//! input, cost, context) and what its turn spent so far.
 
 use rig_core::completion::{ContextUse, UsageTotals};
-use rig_ecs::prelude::*;
+use rig_harness::prelude::*;
 use serde::{Deserialize, Serialize};
+
+#[cfg(feature = "tui")]
+mod status;
 
 /// Sums every agent's and turn's model calls, and adds `/usage`.
 #[derive(Default)]
@@ -27,6 +32,8 @@ impl Plugin for UsagePlugin {
                 usage,
             )
             .add_observer(record_spending);
+        #[cfg(feature = "tui")]
+        status::add(app);
     }
 }
 

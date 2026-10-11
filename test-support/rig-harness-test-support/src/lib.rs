@@ -6,6 +6,8 @@ use std::time::{Duration, Instant};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::Catalog;
+use rig_core::effect::EffectId;
+use rig_core::message::{ToolFunction, ToolName};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
@@ -13,6 +15,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_ecs::turn::ToolStarter;
 
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -66,4 +69,25 @@ pub fn calls(id: &str, tool: &str, args: serde_json::Value) -> Vec<MockStreamEve
         MockStreamEvent::tool_call(id, tool, args),
         MockStreamEvent::final_response_with_default_usage(),
     ]
+}
+
+/// Starts `agent`'s call `id` of `tool` with `args`, as its model call 1
+/// asked, and returns the call's entity, which gets the call's
+/// `ToolOutput`.
+pub fn start_call(
+    world: &mut World,
+    agent: Entity,
+    (tool, id): (&str, &str),
+    args: serde_json::Value,
+) -> Option<Entity> {
+    let name = ToolName::new(tool).ok()?;
+    let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
+    let start = move |starter: ToolStarter, mut commands: Commands| {
+        let run = starter.run(call.clone(), Some(EffectId::from_raw(1)));
+        let entity = commands.spawn(run.clone()).id();
+        starter.start(&mut commands, entity, agent, &run);
+        entity
+    };
+    let start = world.register_system(start);
+    world.run_system(start).ok()
 }

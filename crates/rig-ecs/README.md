@@ -16,15 +16,18 @@ What it holds, by module:
 - `turn`: the turn loop (model request, tool calls, results, the next
   request or the end), steering, interrupts, and retries that wait on
   Bevy's clock. Plugins extend a turn with `PrepareRequest` (before each
-  request), `ModelFailed` (after a call a retry does not fix) and
-  `ModelRequest` calls of their own on the agent's model; `Condensed` sends
-  a summary in place of older messages.
+  request: its system prompt, messages, tools and options), `ModelFailed`
+  (after a call a retry does not fix) and `ModelRequest` calls of their
+  own; a `Connection` on a turn or call sends it to another model than the
+  agent's. `Condensed` sends a summary in place of older messages.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens; `KeepAwake` keeps it running for a
   timer.
 - `tools`, `commands`, `prompt`: tools, slash commands and system prompt
   sections are entities that plugins register (`AppToolsExt`,
-  `AppCommandsExt`, `PromptSection`); a command can be a reflected event.
+  `AppCommandsExt`, `PromptSection`, for every agent or, `SectionOf` one,
+  that agent alone); tools can also come and go while the app runs
+  (`WorldToolsExt`).
 - `inbox`: `Deliver`, the one way a message reaches an agent.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
@@ -32,8 +35,9 @@ What it holds, by module:
   plugin may record.
 - `journal`, `restore`: the append-only session log and its restore. Every
   conversation change goes through `Commit` and is seen as a `Committed`
-  message; a component that says `#[reflect(Component, Saved)]` is logged
-  and restored by reflection. The store is one of rig-cassette's `journal`
+  message; a component that says `#[reflect(Component, Saved)]`, or a
+  resource that says `#[reflect(Resource, Saved)]`, is logged and restored
+  by reflection. The store is one of rig-cassette's `journal`
   stores (`MemoryStore`, or `JsonlDirStore` with its feature `jsonl`).
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has

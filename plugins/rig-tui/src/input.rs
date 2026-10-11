@@ -20,9 +20,8 @@ use super::view::{Picker, TuiView};
 use rig_ecs::agent::{ActiveTurn, Interrupt};
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::{RunCommand, SlashCommand};
-use rig_ecs::inbox::DeliveryMode;
-use rig_harness::front::{send_input, send_message};
-use rig_harness::prelude::{CancelReload, ReloadStatus, SessionPaths};
+use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_harness::prelude::SessionPaths;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -84,7 +83,6 @@ pub(crate) fn read_input(
     input: Res<TerminalInput>,
     mut view: ResMut<TuiView>,
     agents: Query<Has<ActiveTurn>>,
-    reload: Option<Res<ReloadStatus>>,
     slash: Query<(&Name, &SlashCommand)>,
     mut index: ResMut<FileIndex>,
     clipboard: Res<Clipboard>,
@@ -97,10 +95,6 @@ pub(crate) fn read_input(
         .agent
         .and_then(|agent| agents.get(agent).ok())
         .unwrap_or(false);
-    // Esc stops a running turn first, and a running rebuild only when the
-    // agent is idle.
-    let esc_cancels_reload =
-        reload.is_some_and(|reload| matches!(*reload, ReloadStatus::Building { .. })) && !busy;
     let mut edited = false;
     for event in input.events.try_iter() {
         match event {
@@ -121,7 +115,7 @@ pub(crate) fn read_input(
                 }
                 None => {
                     edited = true;
-                    input_key(key, &mut view, &mut commands, busy, esc_cancels_reload);
+                    input_key(key, &mut view, &mut commands, busy);
                 }
             },
             // A paste arrives whole, newlines included, so it is not sent
@@ -155,15 +149,10 @@ pub(crate) fn read_input(
 }
 
 /// Handles a key in the input. With `busy`, the focused agent runs a turn:
-/// Enter steers it and Tab queues a follow-up; with `esc_cancels_reload`,
-/// Esc cancels the running rebuild.
-fn input_key(
-    key: KeyEvent,
-    view: &mut TuiView,
-    commands: &mut Commands,
-    busy: bool,
-    esc_cancels_reload: bool,
-) {
+/// Enter steers it and Tab queues a follow-up. Esc interrupts the agent:
+/// it stops its turn, or, idle, what a plugin stops on it, such as a
+/// rebuild.
+fn input_key(key: KeyEvent, view: &mut TuiView, commands: &mut Commands, busy: bool) {
     let control = key.modifiers.contains(KeyModifiers::CONTROL);
     let alt = key.modifiers.contains(KeyModifiers::ALT);
     let shift = key.modifiers.contains(KeyModifiers::SHIFT);
@@ -216,7 +205,6 @@ fn input_key(
         KeyCode::Esc if view.completion.is_some() => {
             view.dismissed = view.completion.take().map(|completion| completion.start);
         }
-        KeyCode::Esc if esc_cancels_reload => commands.trigger(CancelReload),
         KeyCode::Esc => {
             if let Some(entity) = view.agent {
                 commands.trigger(Interrupt { entity });
@@ -238,9 +226,10 @@ fn input_key(
     }
 }
 
-/// Sends the input to the focused agent: a slash command, or a message
-/// that starts a turn, or steers the running one, or is queued for after
-/// it with `queue`. A refused command sent again unchanged is a message.
+/// Sends the input to the focused agent as the user's [`Deliver`]: a slash
+/// command, or a message that starts a turn, or steers the running one, or
+/// is queued for after it with `queue`. A refused command sent again
+/// unchanged is a message.
 fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     let Some(entity) = view.agent else {
         return;
@@ -256,11 +245,9 @@ fn send(view: &mut TuiView, commands: &mut Commands, queue: bool) {
     } else {
         DeliveryMode::Steer
     };
-    if view.refused.take().as_ref() == Some(&text) {
-        send_message(commands, entity, text, mode);
-    } else {
-        send_input(commands, entity, text, mode);
-    }
+    let refused = view.refused.take().as_ref() == Some(&text);
+    let typed = Deliver::new(entity, text, mode);
+    commands.trigger(if refused { typed.literal() } else { typed });
 }
 
 /// Puts the selected completion in place of the token being completed.

@@ -19,6 +19,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info_span, warn};
+use bevy_reflect::prelude::*;
 use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
@@ -28,6 +29,7 @@ use rig_core::serve::{ErasedHandler, OpenRecord};
 use rig_core::tool::{Tool, ToolExecutionError, ToolResult, args_schema};
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 use super::agent::{AgentId, ToolCallRun};
 use super::effects::{Effects, Handler};
@@ -35,8 +37,10 @@ use super::prompt::ToolRules;
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
-#[derive(Component, Clone)]
+#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
 #[require(ToolRules, Footprint)]
+#[serde(transparent)]
 pub struct ToolDef(pub ToolDefinition);
 
 /// How a tool's calls run, on the tool's entity.
@@ -75,10 +79,14 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<
 /// What a tool call did, inserted on the call entity: the one way a call
 /// ends, such as `ToolOutput(ToolResult::success("Done.".into()))`. Insert
 /// it once, with [`EntityCommands::insert_if_new`] when another system may
-/// answer the same call; the first one counts. The turn then starts the
+/// answer the same call; the first one counts. Work off the main thread
+/// ends with one as a `Running::spawn_into::<ToolOutput, _>` task
+/// ([`Running`](super::calls::Running)). The turn then starts the
 /// calls that waited for this one and, once every call of the reply has
 /// one, sends their results to the model.
-#[derive(Component, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct ToolOutput(pub ToolResult);
 
 impl From<ToolResult> for ToolOutput {
@@ -119,7 +127,11 @@ pub(crate) struct OpenCall(pub(crate) OpenRecord);
 
 /// Whether a tool's calls may run beside the other calls of one reply, on
 /// the tool's entity.
-#[derive(Component, Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(
+    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
+)]
+#[reflect(Component, Clone, Debug, Default, PartialEq)]
+#[serde(rename_all = "snake_case")]
 pub enum Footprint {
     /// May change anything: a call waits for every earlier call of its
     /// reply and holds back every later one. The default, right for
@@ -160,7 +172,10 @@ pub struct ToolOptions<'a> {
 pub trait AppToolsExt {
     /// Make `tool` available to every agent whose
     /// [`ToolAccess`](crate::agent::ToolAccess) allows its name. A
-    /// name already registered is refused with a warning.
+    /// name already registered is refused with a warning: to replace
+    /// another plugin's tool, insert Bevy's `Disabled` on its entity first,
+    /// which frees its name (in `Plugin::finish`, once every plugin's
+    /// `build` ran).
     ///
     /// Tool futures run on Bevy's async compute pool, a few threads that
     /// every agent's tool calls share. A tool that blocks, such as one
@@ -248,6 +263,43 @@ impl AppToolsExt for App {
     }
 }
 
+/// Registers tools while the app runs, such as those an MCP server lists
+/// once it answers, from a system:
+/// `commands.queue(move |world: &mut World| { world.spawn_tool(..); })`.
+/// Each request reads the registered tools again, so the next one offers
+/// it; despawning its entity removes it. A tool list that changes misses
+/// the provider's prompt cache once.
+pub trait WorldToolsExt {
+    /// Make the tool `definition` describes available as
+    /// [`AppToolsExt::add_tool_with`] does, its calls answered by `handler`
+    /// on the one dispatch path (a rig-core `Serve` of the tool family,
+    /// such as a `ToolAdapter`). Its entity, or `None`, with a warning,
+    /// when its name is taken.
+    fn spawn_tool(
+        &mut self,
+        definition: ToolDefinition,
+        handler: ErasedHandler,
+        options: ToolOptions<'_>,
+    ) -> Option<Entity>;
+}
+
+impl WorldToolsExt for World {
+    fn spawn_tool(
+        &mut self,
+        definition: ToolDefinition,
+        handler: ErasedHandler,
+        options: ToolOptions<'_>,
+    ) -> Option<Entity> {
+        let ToolDefinition {
+            name,
+            description,
+            parameters,
+        } = definition;
+        let serves = Serves::Handler(Handler(handler));
+        register_tool(self, &name, description, parameters, serves, options)
+    }
+}
+
 /// Spawns the entity of the tool `name`, whose calls run as `serves` says,
 /// and returns it; `None`, with a warning, when the name is invalid or
 /// taken.
@@ -271,7 +323,7 @@ fn register_tool(
         .iter(world)
         .any(|def| def.0.name == tool_name)
     {
-        warn!("tool not registered: a tool named `{name}` already exists");
+        warn!("tool not registered: `{name}` exists; insert `Disabled` on it to replace it");
         return None;
     }
     let definition = ToolDefinition::new(tool_name, description, parameters);

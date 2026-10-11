@@ -13,6 +13,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The terminal view's pickers and status line items. An app without the
+# terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
@@ -22,4 +28,5 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The defaults file, written whole.
 rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -62,6 +62,6 @@ fn a_path_plugin_gets_the_rig_crates_it_depends_on() {
         },
     };
     let used = rig_crates(&Config { plugins: vec![viz] }, &RigSource::Local(checkout));
-    assert!(used.contains("rig-activity") && used.contains("rig-telemetry"));
+    assert!(used.contains("rig-harness") && used.contains("rig-ecs"));
     assert!(!used.contains("rig-tui") && !used.contains("viz"));
 }

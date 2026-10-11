@@ -4,8 +4,8 @@
 # Each [[plugin]] names a type implementing Bevy's Plugin + Default and the
 # crate it is in. An entry without a source is one of rig's own plugin
 # crates, built from the rig checkout the agent is (RIG_SOURCE). The core
-# (the session, the launcher protocol and /reload) is always there; every
-# entry below can go.
+# (the session and the launcher protocol) is always there; every entry
+# below can go.
 
 # AGENTS.md and the environment in the system prompt, and /context.
 [[plugin]]
@@ -52,8 +52,7 @@ plugin = "rig_activity::ActivityPlugin"
 crate = "rig-telemetry"
 plugin = "rig_telemetry::EffectLogPlugin"
 
-# The tools: read, edit, write, search, shell, and reload, which the agent
-# uses to rebuild itself.
+# The tools: read, edit, write, search and shell.
 [[plugin]]
 crate = "rig-coding-tools"
 plugin = "rig_coding_tools::ReadTool"
@@ -74,11 +73,19 @@ plugin = "rig_coding_tools::SearchTool"
 crate = "rig-coding-tools"
 plugin = "rig_coding_tools::ShellTool"
 
+# Files named as @path in what the user types go with the message.
 [[plugin]]
 crate = "rig-coding-tools"
-plugin = "rig_coding_tools::ReloadTool"
+plugin = "rig_coding_tools::AttachPlugin"
 
-# /help, /retry, /agents and /quit.
+# /reload and the reload tool, with which the agent rebuilds itself, and the
+# system prompt's section on what the agent is and how it writes plugins.
+# Without it the agent runs the build it started with.
+[[plugin]]
+crate = "rig-reload"
+plugin = "rig_reload::ReloadPlugin"
+
+# /help, /retry, /quit and /agents.
 [[plugin]]
 crate = "rig-basics"
 plugin = "rig_basics::BasicCommandsPlugin"
@@ -98,12 +105,15 @@ plugin = "rig_telemetry::DiagnosticsPlugin"
 # crate = "rig-inspect"
 # plugin = "rig_inspect::InspectPlugin"
 
-# --print: answers one prompt; also the front of a run no other front took.
+# --print: answers one prompt, or what is piped in; the front of every run
+# that is not on an interactive terminal.
 [[plugin]]
 crate = "rig-print"
 plugin = "rig_print::PrintPlugin"
 
-# The terminal view. Without it the agent answers what is piped in.
+# The terminal view, the front of a run on an interactive terminal. Without
+# it the agent answers -p or what is piped in, and says so when started on
+# a terminal.
 [[plugin]]
 crate = "rig-tui"
 plugin = "rig_tui::TuiPlugin"

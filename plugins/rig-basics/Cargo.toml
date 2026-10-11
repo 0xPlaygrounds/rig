@@ -5,13 +5,19 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: /help, /retry, /agents and /quit, and the project context (AGENTS.md, the environment, /context) in the system prompt."
+description = "rig-harness plugins: /help, /retry, /quit and /agents, and the project context (AGENTS.md, the environment, /context) in the system prompt."
 repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
 publish = false
 
 [lints]
 workspace = true
+
+[features]
+default = ["tui"]
+# `/agents` and the agent tree in the terminal view's status line. An app
+# without the terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
 
 [dependencies]
 bevy_app = { workspace = true }
@@ -23,3 +29,4 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The instruction files.
 rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../rig-tui", optional = true }
