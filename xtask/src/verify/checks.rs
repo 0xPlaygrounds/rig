@@ -55,10 +55,17 @@ pub(crate) const HARNESS_PACKAGES: [&str; 18] = [
     "rig-tui",
     "rig-harness-test-support",
 ];
-/// cargo with `head`, then `-p` for each of [`HARNESS_PACKAGES`], then `tail`.
+/// The plugin corpus (`corpus/*`), as one cargo package glob: plugins
+/// written against the harness's public API to shape and prove the kernel,
+/// each a `publish = false` package named `corpus-<directory>`. None is a
+/// default member; CI builds, lints and tests every one beside
+/// [`HARNESS_PACKAGES`], so a kernel change that breaks one fails CI.
+pub(crate) const CORPUS_PACKAGES: &str = "corpus-*";
+/// cargo with `head`, then `-p` for each of [`HARNESS_PACKAGES`] and
+/// [`CORPUS_PACKAGES`], then `tail`.
 fn harness(head: &[&str], tail: &[&str]) -> Step {
     let mut args = head.to_vec();
-    for package in HARNESS_PACKAGES {
+    for package in HARNESS_PACKAGES.into_iter().chain([CORPUS_PACKAGES]) {
         args.extend(["-p", package]);
     }
     args.extend(tail);
@@ -138,7 +145,8 @@ pub(super) fn all() -> Vec<Check> {
                     "-D",
                     "warnings",
                 ]),
-                // The rig agent's packages are not default members.
+                // The rig agent's packages and the plugin corpus are not
+                // default members.
                 harness(
                     &["clippy", "--locked"],
                     &["--all-targets", "--", "-D", "warnings"],
@@ -190,8 +198,9 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or test(/(^|::)corpus_/))) and not (package(rig) and test(golden_pairing))",
                 ]),
-                // The rig agent's packages are not default members, so the
-                // run above never reaches their tests.
+                // The rig agent's packages and the plugin corpus are not
+                // default members, so the run above never reaches their
+                // tests.
                 harness(&["nextest", "run", "--locked"], &[]),
             ],
         ),
@@ -579,10 +588,10 @@ pub(super) fn full_lane(path: &str) -> bool {
         || path.starts_with("tests/integrations/")
         || path.starts_with("test-support/")
         || path.starts_with(".github/actions/")
-        // `crates/*/Cargo.toml` and `plugins/*/Cargo.toml`: the workspace
-        // members' manifests, not the nested compile fixtures beneath them
-        // (those have their own owners).
-        || ["crates/", "plugins/"].iter().any(|folder| {
+        // `crates/*/Cargo.toml`, `plugins/*/Cargo.toml` and
+        // `corpus/*/Cargo.toml`: the workspace members' manifests, not the
+        // nested compile fixtures beneath them (those have their own owners).
+        || ["crates/", "plugins/", "corpus/"].iter().any(|folder| {
             path.strip_prefix(folder)
                 .and_then(|rest| rest.strip_suffix("/Cargo.toml"))
                 .is_some_and(|name| !name.contains('/'))
