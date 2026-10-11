@@ -56,6 +56,8 @@ fn edits_need_a_read_of_the_file_as_it_is() {
         .with_file_name("ho-read-before-edit-files");
     std::fs::remove_dir_all(&dir).ok();
     assert!(std::fs::create_dir_all(&dir).is_ok());
+    // The refusals name the file as the tools resolve it.
+    let dir = std::fs::canonicalize(&dir).unwrap_or(dir);
     let file = dir.join("a.txt");
     let new = dir.join("new.txt");
     assert!(std::fs::write(&file, "one").is_ok());
@@ -131,4 +133,9 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     assert!(second.world_mut().run_system_once(compact).is_ok());
     second.update();
     assert_eq!(remembered(second.world()), Some(0));
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ReadBeforeEditPlugin);
 }

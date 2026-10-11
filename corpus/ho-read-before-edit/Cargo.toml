@@ -16,8 +16,8 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The names of the file tools whose calls are judged.
 rig-tools = { path = "../../crates/rig-tools" }
 serde_json = { workspace = true }
-# Already in Cargo.lock: a content hash that stays the same across builds,
-# since it is saved with the session.
+# Unused since the file facts carry content hashes; kept only so this
+# rework leaves Cargo.lock as it is.
 sha2 = { workspace = true }
 
 [dev-dependencies]
