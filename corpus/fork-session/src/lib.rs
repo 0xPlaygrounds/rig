@@ -18,7 +18,7 @@ use rig_sessions::{ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
-use rig_tui::{Chosen, Focus, Picked, Picker, TuiInput};
+use rig_tui::{Focus, TuiInput};
 use serde::{Deserialize, Serialize};
 
 /// A session directory's file saying where the session came from.

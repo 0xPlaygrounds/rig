@@ -3,7 +3,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
-use rig_tui::{PickItem, Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{ModelItem, ModelLabel};
 

@@ -22,6 +22,8 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
+# The clock a file watch waits on between looks.
+futures-timer = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
@@ -54,3 +56,5 @@ rig-tui = { path = "../../plugins/rig-tui" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
+# The scripted model of the headless run's tests.
+rig-core = { workspace = true, features = ["test-utils"] }

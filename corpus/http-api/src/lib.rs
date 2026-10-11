@@ -22,7 +22,7 @@
 use crossbeam_channel::Sender;
 use rig_activity::Activity;
 use rig_harness::prelude::*;
-use rig_tui::{Chosen, Focused, Picked, Picker};
+use rig_tui::Focused;
 use serde::Deserialize;
 use serde_json::{Value, json};
 

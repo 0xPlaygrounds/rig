@@ -1892,6 +1892,11 @@ fn a_streams_items_arrive_in_order_and_wake_the_loop() {
         .world_mut()
         .spawn(Running::stream(pool, &wake, items))
         .id();
+    assert!(
+        app.world()
+            .get::<Running>(source)
+            .is_some_and(Running::is_stream)
+    );
     let ended = |world: &mut World| world.get::<Running>(source).is_none();
     assert!(run_until(&mut app, ended));
     assert_eq!(app.world().resource::<Items>().0, [1, 2, 3]);

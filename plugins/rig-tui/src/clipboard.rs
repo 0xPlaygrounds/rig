@@ -14,10 +14,10 @@ use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 
 use super::editor::TuiInput;
-use super::view::TuiView;
 use rig_core::message::ImageMediaType;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
+use rig_harness::primary::Shown;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
 /// there is none.
@@ -55,7 +55,7 @@ impl Clipboard {
 /// Types `@path` for each image read from the clipboard.
 pub(crate) fn receive_images(
     clipboard: Res<Clipboard>,
-    view: Res<TuiView>,
+    shown: Res<Shown>,
     mut input: ResMut<TuiInput>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -63,7 +63,7 @@ pub(crate) fn receive_images(
         match result {
             Ok(path) => type_path(&mut input, &path),
             Err(why) => {
-                notices.write(Notice::info(view.agent, why));
+                notices.write(Notice::info(shown.0, why));
             }
         }
     }

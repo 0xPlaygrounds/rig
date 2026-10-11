@@ -83,7 +83,7 @@ fn resume_picks_from_the_sessions_of_the_apps_home() {
         "resume".to_owned(),
     ));
     world.flush();
-    let mut pickers = world.query::<&rig_tui::Picker>();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
     let items: Vec<_> = pickers
         .iter(world)
         .flat_map(|picker| picker.items.clone())

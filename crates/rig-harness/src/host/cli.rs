@@ -14,7 +14,10 @@
 //! else the first offered (in `plugins.toml` order) for the kind of run.
 //! Each front asks `app.runs_front(name)` in its `finish`, once every
 //! plugin offered what it has, and sets itself up only then. An
-//! interactive run that no front takes says so and exits.
+//! interactive run that no front takes says so and exits. A front whose
+//! runs leave nothing to resume, such as one replaying a recording, is
+//! [`Front::sessionless`]: a run it takes that ends well removes its
+//! session's directory.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -91,6 +94,9 @@ pub struct Front {
     pub headless: bool,
     /// The option that gives it the run, whatever the terminal.
     pub flag: Option<Flag>,
+    /// Whether its runs keep no session: a run it takes that ends well
+    /// removes its session's directory.
+    pub sessionless: bool,
 }
 
 impl Front {
@@ -101,6 +107,7 @@ impl Front {
             terminal: false,
             headless: false,
             flag: None,
+            sessionless: false,
         }
     }
 
@@ -113,6 +120,12 @@ impl Front {
     /// It takes a run without an interactive terminal.
     pub fn headless(mut self) -> Self {
         self.headless = true;
+        self
+    }
+
+    /// Its runs keep no session.
+    pub fn sessionless(mut self) -> Self {
+        self.sessionless = true;
         self
     }
 
@@ -144,6 +157,16 @@ impl Cli {
     /// The front of this run, once chosen.
     pub fn front(&self) -> Option<&'static str> {
         self.chosen.clone().and_then(Result::ok).flatten()
+    }
+
+    /// Whether the front of this run keeps no session.
+    pub fn sessionless(&self) -> bool {
+        let front = self.front();
+        let chosen = self
+            .fronts
+            .iter()
+            .find(|offered| Some(offered.name) == front);
+        chosen.is_some_and(|front| front.sessionless)
     }
 
     /// The options as `rig help` lists them, one per line.

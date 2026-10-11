@@ -18,7 +18,7 @@ use super::editor::{Layout as InputLayout, TuiInput};
 use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
-use super::pick::{Choices, Choosing, Row, Shown};
+use super::pick::{Choices, Choosing, Listing, Row};
 use super::renderers::{ToolRenderer, excerpt};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
@@ -28,6 +28,7 @@ use super::wrap::wrap_all;
 use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
+use rig_harness::primary::Shown;
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -60,7 +61,7 @@ pub(crate) struct Paced {
 /// brought it, 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
-    (input, focus): (Res<TuiInput>, Res<KeyFocus>),
+    (input, focus, shown): (Res<TuiInput>, Res<KeyFocus>, Res<Shown>),
     changed: Query<
         (),
         Or<(
@@ -85,6 +86,7 @@ pub(crate) fn needs_redraw(
     let changed = requested
         || removed
         || view.is_changed()
+        || shown.is_changed()
         || input.is_changed()
         || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
@@ -165,6 +167,7 @@ pub(crate) fn layout(
 /// sent yet. Without an agent, the app's notices.
 fn transcript_parts(
     view: &TuiView,
+    agent: Option<Entity>,
     shown: Option<(&Conversation, Option<&Condensed>, &[&Incoming])>,
     partial: Option<&Partial>,
     width: usize,
@@ -181,7 +184,7 @@ fn transcript_parts(
     let mut notices = view
         .notices
         .iter()
-        .filter(|notice| notice.is_for(view.agent))
+        .filter(|notice| notice.is_for(agent))
         .peekable();
     for index in 0..conversation.messages().len() {
         let mut extra = Vec::new();
@@ -230,7 +233,7 @@ fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
-    (typed, focus, choices): (Res<TuiInput>, Res<KeyFocus>, Choices),
+    (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
     agents: Query<(&Conversation, Option<&Condensed>)>,
@@ -253,15 +256,14 @@ pub(crate) fn render(
     // Placing the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
     let view = view.bypass_change_detection();
-    let shown = view
-        .agent
-        .and_then(|agent| Some((agent, agents.get(agent).ok()?)));
-    let turn = view.agent.and_then(|agent| active.get(agent).ok());
+    let shown_agent = shown_agent.0;
+    let shown = shown_agent.and_then(|agent| Some((agent, agents.get(agent).ok()?)));
+    let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
     let mut inbox: Vec<(&Effect, &Incoming)> = accepted
         .iter()
-        .filter(|(.., to)| Some(to.0) == view.agent)
+        .filter(|(.., to)| Some(to.0) == shown_agent)
         .map(|(effect, message, _)| (effect, message))
         .collect();
     inbox.sort_by_key(|(effect, _)| effect.id());
@@ -311,6 +313,7 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
+                shown_agent,
                 shown.map(|(_, (conversation, condensed))| (conversation, condensed, &inbox[..])),
                 partial,
                 usize::from(transcript_area.width.max(1)),
@@ -322,10 +325,10 @@ pub(crate) fn render(
             );
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, below, transcript_area);
-            let agent = view.agent.and_then(|agent| status.0.get(agent).ok());
+            let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
             let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
             let app = status.1.as_deref().map(|app| &app.0);
-            let (mut left, mut right) = status_pieces(view.agent.is_some(), [app, agent, turn]);
+            let (mut left, mut right) = status_pieces(shown_agent.is_some(), [app, agent, turn]);
             fit(&mut left, &mut right, usize::from(status_area.width));
             let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
             let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
@@ -544,7 +547,7 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
 /// The picker or question in a centred box over the transcript: its body,
 /// what is typed, then the rows it leaves, and for free text, the typed
 /// answer.
-fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Shown<'_>) {
+fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
     let body = wrap_all(

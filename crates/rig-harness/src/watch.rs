@@ -1,13 +1,15 @@
 //! Watching files. An entity with a [`FileWatch`] on a file or a
-//! directory gets a [`FileChanges`] message naming what was created,
-//! changed or removed under it, within about a second, and the loop is
-//! woken for it; despawning it, or removing the `FileWatch`, stops the
-//! watch. A plugin that reloads templates or skills from a directory
-//! watches it instead of reading it again before every use.
+//! directory gets a [`FileChanges`] message naming the files there when it
+//! was armed, then one naming what was created, changed or removed under
+//! it, within about a second, and the loop is woken for each; despawning
+//! it, or removing the `FileWatch`, stops the watch. A plugin that reloads
+//! templates or skills from a directory watches it, and reads them on its
+//! first `FileChanges`, so no file made in between is missed.
 //!
-//! One thread looks at every watched path's files (their size and change
-//! time) each second, off the app's thread, and at most
-//! [`MAX_FILES`] files per watch.
+//! The watch is a [`Running::stream`] on its entity, so put a `FileWatch`
+//! on an entity of its own. It looks at the watched path's files (their
+//! size and change time) each second, off the app's thread, and at most
+//! [`MAX_FILES`] files.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -25,26 +27,31 @@
 //! }
 //! ```
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, Weak};
 use std::time::{Duration, SystemTime};
 
 use bevy_app::prelude::*;
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
-use crossbeam_channel::{Receiver, Sender};
-use rig_ecs::calls::Wake;
+use bevy_ecs::world::DeferredWorld;
+use bevy_tasks::futures_lite::{Stream, stream};
+use bevy_tasks::{IoTaskPool, TaskPool};
+use futures_timer::Delay;
+use rig_ecs::calls::{Done, Running, Wake};
 
-/// How often the watcher looks.
+/// How often a watch looks.
 const EVERY: Duration = Duration::from_secs(1);
 
 /// The most files one watch looks at; what is beyond goes unseen.
 pub const MAX_FILES: usize = 10_000;
 
 /// Watches `path`: the file, or the directory's files (with `recursive`,
-/// the files of every directory under it).
+/// the files of every directory under it). Inserting another arms it
+/// again.
 #[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[component(immutable, on_insert = arm, on_discard = disarm)]
 pub struct FileWatch {
     /// The file or directory.
     pub path: PathBuf,
@@ -70,124 +77,84 @@ impl FileWatch {
     }
 }
 
-/// What changed under a [`FileWatch`] since it was last looked at.
+/// What changed under a [`FileWatch`]: first the files there when it was
+/// armed, then what changed since it last looked.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct FileChanges {
     /// The entity with the watch.
     pub watch: Entity,
-    /// The files created, changed or removed, in path order.
+    /// The files there at first, then the files created, changed or
+    /// removed, in path order.
     pub paths: Vec<PathBuf>,
 }
 
-/// Runs the watcher.
+/// Passes on what the watches see.
 pub struct WatchPlugin;
 
 impl Plugin for WatchPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<FileChanges>()
-            .add_systems(PreUpdate, watch_files);
+        app.add_message::<FileChanges>().add_observer(changed);
     }
 }
 
-/// The watches the thread looks at, by entity.
-type Watches = HashMap<Entity, FileWatch>;
+/// What a watch saw in one look.
+struct Looked(Vec<PathBuf>);
 
-/// The watcher thread's side in the app: what it watches, and what it saw.
-#[derive(Resource)]
-struct Watcher {
-    watches: Arc<Mutex<Watches>>,
-    changes: Receiver<FileChanges>,
-}
-
-impl Watcher {
-    /// Starts the thread, which runs while the watcher lives.
-    fn start(wake: Option<Wake>) -> Self {
-        let watches = Arc::new(Mutex::new(Watches::new()));
-        let (sender, changes) = crossbeam_channel::unbounded();
-        let shared = Arc::downgrade(&watches);
-        std::thread::Builder::new()
-            .name("rig-watch".to_owned())
-            .spawn(move || look(&shared, &sender, wake.as_ref()))
-            .ok();
-        Self { watches, changes }
-    }
-}
-
-impl Watcher {
-    /// Tells the thread about `watches` and that `gone` went.
-    fn update(&self, watches: &Query<(Entity, Ref<FileWatch>)>, gone: Vec<Entity>) {
-        let mut shared = self
-            .watches
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
-        for entity in gone {
-            shared.remove(&entity);
-        }
-        for (entity, watch) in watches {
-            shared.insert(entity, FileWatch::clone(&watch));
-        }
-    }
-}
-
-/// Tells the thread which watches exist, and passes on what it saw.
-fn watch_files(
-    watches: Query<(Entity, Ref<FileWatch>)>,
-    mut gone: RemovedComponents<FileWatch>,
-    watcher: Option<Res<Watcher>>,
-    wake: Option<Res<Wake>>,
-    mut changes: MessageWriter<FileChanges>,
-    mut commands: Commands,
-) {
-    let gone: Vec<Entity> = gone.read().collect();
-    let Some(watcher) = watcher else {
-        if !watches.is_empty() {
-            let watcher = Watcher::start(wake.map(|wake| wake.clone()));
-            watcher.update(&watches, gone);
-            commands.insert_resource(watcher);
-        }
+/// Starts the watch's looks.
+fn arm(mut world: DeferredWorld, context: HookContext) {
+    let Some(watch) = world.get::<FileWatch>(context.entity).cloned() else {
         return;
     };
-    if !gone.is_empty() || watches.iter().any(|(_, watch)| watch.is_changed()) {
-        watcher.update(&watches, gone);
-    }
-    changes.write_batch(watcher.changes.try_iter());
+    let wake = world.get_resource::<Wake>().cloned().unwrap_or_default();
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let running = Running::stream(pool, &wake, looks(watch));
+    world.commands().entity(context.entity).insert(running);
 }
 
-/// The watcher thread: looks at every watch each [`EVERY`] until the app
-/// drops the watches.
-fn look(watches: &Weak<Mutex<Watches>>, changes: &Sender<FileChanges>, wake: Option<&Wake>) {
-    let mut seen: HashMap<Entity, (FileWatch, Files)> = HashMap::new();
-    while let Some(watches) = watches.upgrade() {
-        let now: Watches = watches
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner())
-            .clone();
-        drop(watches);
-        seen.retain(|entity, (watch, _)| now.get(entity) == Some(watch));
-        let mut woke = false;
-        for (entity, watch) in now {
-            let files = files(&watch);
-            let Some((_, before)) = seen.get(&entity) else {
-                seen.insert(entity, (watch, files));
-                continue;
+/// Stops the watch's looks.
+fn disarm(mut world: DeferredWorld, context: HookContext) {
+    world
+        .commands()
+        .entity(context.entity)
+        .try_remove::<(Running, Done<Looked>)>();
+}
+
+/// Writes what a watch saw.
+fn changed(
+    looked: On<Insert<Done<Looked>>>,
+    seen: Query<&Done<Looked>, With<FileWatch>>,
+    mut changes: MessageWriter<FileChanges>,
+) {
+    if let Ok(Done(Looked(paths))) = seen.get(looked.entity) {
+        changes.write(FileChanges {
+            watch: looked.entity,
+            paths: paths.clone(),
+        });
+    }
+}
+
+/// The files `watch` covers at first, then each [`EVERY`] what changed,
+/// when something did.
+fn looks(watch: FileWatch) -> impl Stream<Item = Looked> {
+    stream::unfold(None, move |before: Option<Files>| {
+        let watch = watch.clone();
+        async move {
+            let Some(before) = before else {
+                let files = files(&watch);
+                return Some((Looked(files.keys().cloned().collect()), Some(files)));
             };
-            let paths = differences(before, &files);
-            seen.insert(entity, (watch, files));
-            if !paths.is_empty() {
-                changes
-                    .send(FileChanges {
-                        watch: entity,
-                        paths,
-                    })
-                    .ok();
-                woke = true;
+            let mut before = before;
+            loop {
+                Delay::new(EVERY).await;
+                let files = files(&watch);
+                let paths = differences(&before, &files);
+                before = files;
+                if !paths.is_empty() {
+                    return Some((Looked(paths), Some(before)));
+                }
             }
         }
-        if let Some(wake) = wake.filter(|_| woke) {
-            wake.wake();
-        }
-        std::thread::sleep(EVERY);
-    }
+    })
 }
 
 /// Each file's size and change time.

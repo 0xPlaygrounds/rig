@@ -19,7 +19,6 @@ use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_tools::process::Launcher;
-use rig_tui::Picker;
 
 /// Where the checkpoints are kept, below the session's id.
 const REFS: &str = "refs/rig/checkpoints";

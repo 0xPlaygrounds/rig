@@ -1,5 +1,6 @@
 use crossterm::event::{Event, KeyEvent, KeyEventKind};
 use rig_harness::ask::AskPlugin;
+use rig_harness::pick::PickPlugin;
 use rig_harness::prelude::*;
 
 use super::*;
@@ -19,7 +20,7 @@ pub(crate) fn view_app() -> (App, Entity) {
     let mut app = App::new();
     app.set_error_handler(rig_harness::error::panic)
         .insert_resource(Invoked::default())
-        .add_plugins((AgentPlugin, AskPlugin, TuiPlugin))
+        .add_plugins((AgentPlugin, AskPlugin, PickPlugin, TuiPlugin))
         .init_resource::<Delivered>()
         .add_observer(
             |accepted: On<Add<Started>>,

@@ -14,7 +14,7 @@ fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
     world.spawn((AgentColumn::new("queued", "2 queued"), ColumnOf(agent)));
     world.trigger(RunCommand::new(agent, "agents".to_owned()));
     world.flush();
-    let mut pickers = world.query::<&rig_tui::Picker>();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
     let labels: Vec<&str> = pickers
         .iter(world)
         .flat_map(|picker| &picker.items)

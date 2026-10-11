@@ -26,7 +26,9 @@ use super::view::TuiView;
 use rig_ecs::agent::{ActiveTurn, Interrupt};
 use rig_ecs::calls::Wake;
 use rig_ecs::inbox::{Deliver, DeliveryMode};
+use rig_harness::pick::Pick;
 use rig_harness::prelude::SessionPaths;
+use rig_harness::primary::Shown;
 
 /// Lines a page key scrolls.
 const PAGE: usize = 10;
@@ -132,6 +134,8 @@ impl Keymap<'_, '_> {
 
 /// What a built-in key needs besides the view and the input.
 pub(crate) struct Context<'a> {
+    /// The agent shown.
+    agent: Option<Entity>,
     busy: bool,
     clipboard: &'a Clipboard,
     paths: Option<&'a SessionPaths>,
@@ -141,7 +145,7 @@ pub(crate) struct Context<'a> {
 /// Handles every terminal event written since the last frame.
 pub(crate) fn read_input(
     mut events: MessageReader<TerminalEvent>,
-    mut view: ResMut<TuiView>,
+    (mut view, shown): (ResMut<TuiView>, Res<Shown>),
     mut input: ResMut<TuiInput>,
     mut keymap: Keymap,
     choices: Choices,
@@ -150,11 +154,12 @@ pub(crate) fn read_input(
     mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
 ) {
-    let busy = view
-        .agent
+    let busy = shown
+        .0
         .and_then(|agent| agents.get(agent).ok())
         .unwrap_or(false);
     let context = Context {
+        agent: shown.0,
         busy,
         clipboard: &clipboard,
         paths: paths.as_deref(),
@@ -163,7 +168,7 @@ pub(crate) fn read_input(
     for TerminalEvent(event) in events.read() {
         match event {
             Event::Key(key) if key.kind == KeyEventKind::Release => {
-                released(*key, &view, &mut keymap, &mut commands);
+                released(*key, shown.0, &mut keymap, &mut commands);
             }
             Event::Key(key) => {
                 if let Some(choosing) = &mut view.choosing {
@@ -172,7 +177,7 @@ pub(crate) fn read_input(
                     };
                     if let Some(chosen) = pick::choice_key(*key, choosing, &shown) {
                         let entity = choosing.entity;
-                        choices.close(entity, chosen, view.agent, &mut commands);
+                        commands.trigger(Pick { entity, chosen });
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
                         view.choosing = pick::first(&view.queue, &choices);
@@ -263,14 +268,14 @@ fn pressed(
         Some(action) => act(*action, view, input, context, commands),
         None => commands.trigger(KeyPressed {
             entity,
-            agent: view.agent,
+            agent: context.agent,
             released: false,
         }),
     }
 }
 
 /// Tells a binding that asked for releases that its key was let go.
-fn released(key: KeyEvent, view: &TuiView, keymap: &mut Keymap, commands: &mut Commands) {
+fn released(key: KeyEvent, agent: Option<Entity>, keymap: &mut Keymap, commands: &mut Commands) {
     let press = KeyPress::of(&key);
     let scope = keymap.scope();
     let released = keymap.bindings.iter().find(|(_, binding, _)| {
@@ -281,7 +286,7 @@ fn released(key: KeyEvent, view: &TuiView, keymap: &mut Keymap, commands: &mut C
     if let Some((entity, ..)) = released {
         commands.trigger(KeyPressed {
             entity,
-            agent: view.agent,
+            agent,
             released: true,
         });
     }
@@ -327,7 +332,9 @@ fn act(
         Do::ScrollDown => view.scroll.down(1),
         Do::PageUp => view.scroll.up(PAGE),
         Do::PageDown => view.scroll.down(PAGE),
-        Do::Tab if view.completion.is_none() && context.busy => send(view, input, commands, true),
+        Do::Tab if view.completion.is_none() && context.busy => {
+            send(view, input, context.agent, commands, true);
+        }
         Do::Tab => accept_completion(view, input),
         Do::Send => {
             // Enter completes a partly typed command or path first.
@@ -342,12 +349,12 @@ fn act(
             if input.continue_line() {
                 return;
             }
-            send(view, input, commands, false);
+            send(view, input, context.agent, commands, false);
         }
         Do::Stop => match view.completion.take() {
             Some(completion) => view.dismissed = Some(completion.start),
             None => {
-                if let Some(entity) = view.agent {
+                if let Some(entity) = context.agent {
                     commands.trigger(Interrupt::new(entity));
                 }
             }
@@ -362,12 +369,18 @@ fn act(
     }
 }
 
-/// Sends the input to the focused agent as the user's [`Deliver`]: a slash
-/// command, or a message that starts a turn, or steers the running one, or
-/// is queued for after it with `queue`. A refused command sent again
-/// unchanged is a message.
-pub(crate) fn send(view: &mut TuiView, input: &mut TuiInput, commands: &mut Commands, queue: bool) {
-    let Some(entity) = view.agent else {
+/// Sends the input to `agent`, the one shown, as the user's [`Deliver`]: a
+/// slash command, or a message that starts a turn, or steers the running
+/// one, or is queued for after it with `queue`. A refused command sent
+/// again unchanged is a message.
+pub(crate) fn send(
+    view: &mut TuiView,
+    input: &mut TuiInput,
+    agent: Option<Entity>,
+    commands: &mut Commands,
+    queue: bool,
+) {
+    let Some(entity) = agent else {
         return;
     };
     if input.text().trim().is_empty() {

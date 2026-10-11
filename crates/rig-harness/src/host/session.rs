@@ -3,13 +3,15 @@
 //! the log's warnings and errors as [`Logged`] data. A plugin copies the
 //! session into a new one with [`ForkSession`] and removes another with
 //! [`DeleteSession`]; [`SessionForked`] and [`SessionDeleted`] tell every
-//! plugin, such as one keeping files of its own per session.
+//! plugin, such as one keeping files of its own per session. A forked
+//! session names the session it came from ([`ForkedFrom`]).
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions, TryLockError};
 use std::ops::Deref;
 use std::sync::Mutex;
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::tracing::field::{Field, Visit};
@@ -26,7 +28,9 @@ use rig_ecs::WriteJournal;
 use rig_ecs::agent::{AgentId, Notice};
 use rig_ecs::journal::{SessionStore, fork_session};
 use rig_tools::Spill;
+use serde::{Deserialize, Serialize};
 
+use super::cli::Cli;
 use crate::services::RigHome;
 
 /// The session's directory: the agent logs the core keeps there through
@@ -94,7 +98,26 @@ impl Plugin for SessionPlugin {
             })
             .add_observer(delete_session)
             // A fork copies what the session logged up to this frame.
-            .add_systems(Last, fork_sessions.after(WriteJournal));
+            .add_systems(Last, fork_sessions.after(WriteJournal))
+            .add_systems(
+                Last,
+                discard_sessionless
+                    .after(OnAppExitSystems)
+                    .run_if(on_message::<AppExit>),
+            );
+    }
+}
+
+/// Removes the session's directory when a sessionless front's run ends
+/// well, once everything was written there.
+fn discard_sessionless(
+    mut exits: MessageReader<AppExit>,
+    cli: Option<Res<Cli>>,
+    paths: Res<SessionPaths>,
+) {
+    let ended_well = exits.read().all(AppExit::is_success);
+    if ended_well && cli.is_some_and(|cli| cli.sessionless()) {
+        fs::remove_dir_all(paths.path()).ok();
     }
 }
 
@@ -120,6 +143,45 @@ pub struct SessionForked {
     pub to: SessionId,
     /// Where the copy stopped, as [`ForkSession`] asked.
     pub before: Option<(AgentId, u64)>,
+}
+
+/// The session a session was forked from, and where the copy stopped,
+/// as [`ForkSession`] asked: kept in the forked session's
+/// [`SessionDir::parent`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForkedFrom {
+    /// The session it was copied from.
+    pub session: SessionId,
+    /// Where the copy stopped: an agent's id and a message's `seq`.
+    pub before: Option<(AgentId, u64)>,
+}
+
+/// How [`ForkedFrom`] is written.
+#[derive(Serialize, Deserialize)]
+struct Parent {
+    session: String,
+    before: Option<(AgentId, u64)>,
+}
+
+impl ForkedFrom {
+    /// The session `session` was forked from, if it was.
+    pub fn of(session: &SessionDir) -> Option<Self> {
+        let parent: Parent = serde_json::from_slice(&fs::read(session.parent()).ok()?).ok()?;
+        Some(Self {
+            session: parent.session.parse().ok()?,
+            before: parent.before,
+        })
+    }
+
+    /// Writes it into `session`.
+    fn write(&self, session: &SessionDir) -> Result<(), String> {
+        let parent = Parent {
+            session: self.session.to_string(),
+            before: self.before.clone(),
+        };
+        let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
+        fs::write(session.parent(), text).map_err(|failure| failure.to_string())
+    }
 }
 
 /// Removes a saved session's directory: not this one, and not one another
@@ -180,9 +242,14 @@ fn fork_into(
     }
     let target = home.session(&to);
     fs::create_dir_all(target.path()).map_err(|failure| failure.to_string())?;
+    let parent = ForkedFrom {
+        session: from.clone(),
+        before: before.cloned(),
+    };
     let before = before.map(|(agent, seq)| (agent, *seq));
     let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
         .map_err(|failure| failure.to_string())
+        .and_then(|()| parent.write(&target))
         .and_then(|()| match paths.working_directory() {
             Some(directory) => {
                 fs::write(target.directory(), directory.to_string_lossy().as_bytes())

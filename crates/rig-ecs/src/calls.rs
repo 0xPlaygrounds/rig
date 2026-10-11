@@ -221,6 +221,12 @@ impl Running {
         })))
     }
 
+    /// Whether it is a [`Running::stream`], a source that may never end,
+    /// rather than work that finishes.
+    pub fn is_stream(&self) -> bool {
+        matches!(self.0, Work::Stream { .. })
+    }
+
     /// Cancels the task, once awaited.
     pub(crate) async fn cancel(self) {
         match self.0 {

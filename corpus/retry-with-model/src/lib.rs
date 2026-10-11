@@ -11,7 +11,6 @@
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
-use rig_tui::Picker;
 use serde::{Deserialize, Serialize};
 
 /// How long an answer's excerpt in `/alternatives` is, in characters.

@@ -1058,8 +1058,9 @@ command, a directory, environment): the shell tool reads it for each
 command, so a sandbox plugin that sets it (`processes.set(..)`) wraps
 every process from then on, and a plugin that starts processes builds
 them with `processes.launcher().command(program)`. An entity with a
-`FileWatch` gets `FileChanges` messages about the files changed under its
-path. `TokioRuntime` is rig's own tokio runtime, for a library that needs
+`FileWatch` gets `FileChanges` messages: first one listing the files
+under its path when it was armed (read them then, so none made in between
+is missed), then one about the files changed under it. `TokioRuntime` is rig's own tokio runtime, for a library that needs
 tokio. A plugin that should also run in an app without the harness's
 plugins inits the ones it reads (`app.init_resource::<ProjectRoot>()`).
 A long-lived source, such as a socket, a server's notifications or a
@@ -1126,7 +1127,8 @@ or a new one). The harness writes the exit code and tells the launcher
 what to run; any exit's reason is the `ExitReason` resource from then on,
 for code on the way out in Bevy's `OnAppExitSystems` (a background job
 kept across a reload, stopped on a quit). `ForkSession { before }` copies
-this session into a new one (`SessionForked` names it), and
+this session into a new one (`SessionForked` names it; the copy names
+its parent, `ForkedFrom::of(&dir)`), and
 `DeleteSession(id)` removes another (`SessionDeleted`), for plugins that
 keep files of their own per session.
 
@@ -1385,8 +1387,12 @@ kind of run. It asks `app.runs_front(name)` in `finish` and sets itself
 up only then. It sends what the user types as `Deliver` from
 `Origin::user()`, shows `Notice`s and each agent's `Conversation` and
 `Partial` reply, and, if it can show questions, spawns an `Answerer` and
-answers `Ask`s. Several fronts may run side by side (a web server beside
-the terminal view); only the one that takes the run owns stdin and stdout.
+answers `Ask`s; it shows `Picker`s and answers both with `Pick`, and sets
+`Shown` to the agent the user looks at. A front nobody sits at drives its
+run with `app.run_headless(prompt)` and writes out `HeadlessEnded`; one
+whose runs leave nothing to resume is `sessionless()`. Several fronts may
+run side by side (a web server beside the terminal view); only the one
+that takes the run owns stdin and stdout.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1587,12 +1593,14 @@ reads and changes, as it does for panels:
   reported, keys and pastes; a plugin may read them, and write some. A
   `RunInTerminal(command)` entity runs a program with the terminal (the
   view steps aside and draws again after), and gets its `TerminalExit`.
-- **Pickers and questions.** A `Picker` entity is a filterable list the
-  view shows over the transcript, one at a time in the order they came,
-  with every agent's open [`Ask`](#asking-the-user); the view answers those
-  too. Inserting a new `Picker` replaces what it shows; despawning it
-  closes it. When the user picks, the view runs the item's command, if it
-  has one, triggers `Picked` on the entity (`Chosen::Item(index)`, or
+- **Pickers and questions.** A `Picker` entity (rig-harness's `pick`,
+  in the prelude) is a filterable list any front shows; the view shows it
+  over the transcript, one at a time in the order they came, with every
+  agent's open [`Ask`](#asking-the-user), and answers those too. Inserting
+  a new `Picker` replaces what it shows; despawning it closes it. A front
+  answers with a `Pick { entity, chosen }`: the harness runs the item's
+  command, if it has one, for the picker's agent or else the one shown
+  (`Shown`), triggers `Picked` on the entity (`Chosen::Item(index)`, or
   `Chosen::Text` for a `free_text` picker; `None` when closed), and
   despawns it.
 
@@ -1606,8 +1614,8 @@ use std::process::Command;
 
 use rig_harness::prelude::*;
 use rig_tui::{
-    AppKeyBindingsExt, Chosen, KeyBinding, KeyPress, KeyPressed, Keys, Picked, Picker,
-    RunInTerminal, TerminalExit, TuiInput,
+    AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, Keys, RunInTerminal, TerminalExit,
+    TuiInput,
 };
 
 #[derive(Default)]

@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
+use rig_tui::TerminalEvent;
 use rig_tui::crossterm::event::Event;
-use rig_tui::{Picker, TerminalEvent};
 use serde::Deserialize;
 
 /// How long a picker or question waits on the user before it notifies.

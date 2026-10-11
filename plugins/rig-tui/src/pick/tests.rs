@@ -3,6 +3,7 @@ use rig_harness::prelude::*;
 use super::*;
 use crate::TuiInput;
 use crate::tests::{press, type_text, view_app};
+use rig_harness::pick::{Chosen, Picked, Picker};
 
 /// What the pickers reported, in order.
 #[derive(Resource, Default)]

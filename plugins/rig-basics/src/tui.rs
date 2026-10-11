@@ -10,7 +10,8 @@ use bevy_ecs::query::QueryData;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::ModelChoice;
-use rig_tui::{Focus, PickItem, Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_harness::pick::{PickItem, Picker};
+use rig_tui::{Focus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{AgentColumn, AgentColumns};
 

@@ -5,8 +5,9 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_ecs::agent::Notice;
 use rig_harness::harness_protocol::Home;
+use rig_harness::pick::{PickItem, Picker};
 use rig_harness::prelude::SessionPaths;
-use rig_tui::{AppStatus, PickItem, Picker, Side, StatusItem, StatusSystems, Tone};
+use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
 use super::{SessionTitle, list};
 

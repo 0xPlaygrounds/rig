@@ -4,6 +4,7 @@ use rig_ecs::prelude::*;
 use super::super::editor::TuiInput;
 use super::super::view::{self, TuiView};
 use super::send;
+use rig_harness::primary::Shown;
 
 /// The texts agents accepted.
 #[derive(Resource, Default)]
@@ -13,9 +14,12 @@ struct Delivered(Vec<String>);
 fn enter(app: &mut App, text: &str) {
     let text = text.to_owned();
     let sent = app.world_mut().run_system_once(
-        move |mut view: ResMut<TuiView>, mut input: ResMut<TuiInput>, mut commands: Commands| {
+        move |mut view: ResMut<TuiView>,
+              mut input: ResMut<TuiInput>,
+              shown: Res<Shown>,
+              mut commands: Commands| {
             input.set(text.clone());
-            send(&mut view, &mut input, &mut commands, false);
+            send(&mut view, &mut input, shown.0, &mut commands, false);
         },
     );
     assert!(sent.is_ok());
@@ -37,6 +41,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
             },
         )
         .init_resource::<TuiView>()
+        .init_resource::<Shown>()
         .init_resource::<TuiInput>()
         .init_resource::<Delivered>()
         .add_observer(
@@ -58,7 +63,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         .query_filtered::<Entity, With<Agent>>()
         .single(world)
         .ok();
-    world.resource_mut::<TuiView>().agent = agent;
+    world.insert_resource(Shown(agent));
     let refused = [
         ("/retry now", "/retry takes no arguments, not `now`."),
         ("/gui still doesnt do anything", "Unknown command /gui."),

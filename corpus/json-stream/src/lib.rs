@@ -5,7 +5,6 @@ use std::io::{BufRead as _, Write};
 use bevy_ecs::system::SystemParam;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::prelude::*;
-use rig_tui::{Chosen, Picked, Picker};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 

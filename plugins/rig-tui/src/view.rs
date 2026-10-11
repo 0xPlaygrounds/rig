@@ -1,5 +1,5 @@
-//! View state, kept apart from the agent core: the focused agent, the
-//! input's completion, scrolling, the pickers and questions waiting to be
+//! View state, kept apart from the agent core: the agent shown (the
+//! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
 //! shown, and recent notices.
 
 use bevy_ecs::prelude::*;
@@ -13,7 +13,7 @@ use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
-use rig_harness::primary::{PrimaryQuery, primary};
+use rig_harness::primary::Shown;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
@@ -30,8 +30,6 @@ pub struct Focus {
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]
 pub(crate) struct TuiView {
-    /// The agent shown and typed to.
-    pub(crate) agent: Option<Entity>,
     /// The open `/` or `@` completion list.
     pub(crate) completion: Option<Completion>,
     /// Where the token starts whose completion was closed with Esc.
@@ -72,30 +70,21 @@ impl ShownNotice {
     }
 }
 
-/// Focuses the first agent by id when the focused one is gone, one the
-/// user started before any subagent.
-pub(crate) fn focus_agent(mut view: ResMut<TuiView>, agents: PrimaryQuery) {
-    if view.agent.is_some_and(|agent| agents.contains(agent)) {
-        return;
-    }
-    view.agent = primary(&agents);
-}
-
 /// Keeps [`Focused`] on the agent shown, and on no other.
 pub(crate) fn mark_focused(
-    view: Res<TuiView>,
+    shown: Res<Shown>,
     marked: Query<Entity, With<Focused>>,
     mut commands: Commands,
 ) {
-    if !view.is_changed() {
+    if !shown.is_changed() {
         return;
     }
     for agent in &marked {
-        if Some(agent) != view.agent {
+        if Some(agent) != shown.0 {
             commands.entity(agent).try_remove::<Focused>();
         }
     }
-    if let Some(agent) = view.agent
+    if let Some(agent) = shown.0
         && !marked.contains(agent)
     {
         commands.entity(agent).try_insert(Focused);
@@ -106,12 +95,13 @@ pub(crate) fn mark_focused(
 pub(crate) fn on_focus(
     focus: On<Focus>,
     agents: Query<(), With<Agent>>,
+    mut shown: ResMut<Shown>,
     mut view: ResMut<TuiView>,
 ) {
-    if !agents.contains(focus.entity) || view.agent == Some(focus.entity) {
+    if !agents.contains(focus.entity) || shown.0 == Some(focus.entity) {
         return;
     }
-    view.agent = Some(focus.entity);
+    shown.0 = Some(focus.entity);
     view.scroll.follow();
     view.completion = None;
 }
@@ -121,6 +111,7 @@ pub(crate) fn on_focus(
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     conversations: Query<&Conversation>,
+    shown: Res<Shown>,
     mut view: ResMut<TuiView>,
 ) {
     if notices.is_empty() {
@@ -129,7 +120,7 @@ pub(crate) fn collect_notices(
     for notice in notices.read() {
         let after = notice
             .agent
-            .or(view.agent)
+            .or(shown.0)
             .and_then(|agent| conversations.get(agent).ok())
             .map_or(0, |conversation| conversation.messages().len());
         view.notices.push(ShownNotice {
@@ -148,11 +139,12 @@ pub(crate) fn collect_notices(
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     conversations: Query<&Conversation>,
+    shown: Res<Shown>,
     mut view: ResMut<TuiView>,
     mut input: ResMut<TuiInput>,
 ) {
     for recalled in recalled.read() {
-        if view.agent != Some(recalled.agent) {
+        if shown.0 != Some(recalled.agent) {
             continue;
         }
         if let Some(why) = &recalled.why {

@@ -11,7 +11,8 @@ screen, drawn by their own system, and a renderer for their tools' calls
 bindings (`KeyBinding`, `AppKeyBindingsExt`; the view's own keys are
 bindings too), the keys for a panel (`KeyFocus`), the draft (`TuiInput`),
 the terminal's events (`TerminalEvent`), a program run with the terminal
-(`RunInTerminal`, such as `$EDITOR`), and their own `Picker`s. A crate
+(`RunInTerminal`, such as `$EDITOR`), and their own pickers
+(rig-harness's `Picker`), which the view shows. A crate
 that also builds without the view does so behind a default `tui` feature.
 ratatui and crossterm are re-exported as `rig_tui::ratatui` and
 `rig_tui::crossterm`.

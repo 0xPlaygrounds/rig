@@ -58,8 +58,10 @@
 pub mod plugin_guide {}
 pub mod ask;
 pub mod clock;
+pub mod headless;
 pub mod host;
 mod load;
+pub mod pick;
 pub mod primary;
 pub mod services;
 pub mod settings;
@@ -107,13 +109,16 @@ pub mod prelude {
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, Choice};
     pub use crate::clock::{Due, WakeAt};
     pub use crate::harness_protocol::Home;
+    pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, ForkSession, LogEvents, Logged, SessionDeleted, SessionForked, SessionPaths,
+        DeleteSession, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted, SessionForked,
+        SessionPaths,
     };
-    pub use crate::primary::{PrimaryQuery, primary};
+    pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
+    pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::watch::{FileChanges, FileWatch};
@@ -129,7 +134,8 @@ pub mod prelude {
 /// runtime ([`services`]), the session and its log, the agent core and the
 /// session logs, the launcher protocol with the plugins' options and
 /// fronts ([`host`]), why the app exits, wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]) and questions for the user ([`ask`]).
+/// file watches ([`watch`]), questions for the user ([`ask`]) and pickers
+/// with the agent the user looks at ([`pick`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
 /// out.
 pub struct RigHarnessPlugins;
@@ -146,6 +152,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(clock::ClockPlugin)
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
+            .add(pick::PickPlugin)
     }
 }
 

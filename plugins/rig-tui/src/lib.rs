@@ -17,15 +17,17 @@
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, [`Focused`], and showing another, [`Focus`]; the
+//! the agent shown, [`Focused`] (the harness's
+//! [`Shown`]), and showing another, [`Focus`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
 //! terminal's events ([`TerminalEvent`]), a program run with the terminal
-//! ([`RunInTerminal`]), and a choice for the user, its own [`Picker`]
-//! ([`pick`]). The view answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
-//! one picker or question at a time. These are there in every run, also
+//! ([`RunInTerminal`]), and a choice for the user, a
+//! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
+//! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
+//! one at a time. These are there in every run, also
 //! one with another front such as `--print`, which never draws a frame.
 //! [`ratatui`] and [`crossterm`] are re-exported so a plugin uses the same
 //! versions.
@@ -38,7 +40,7 @@ mod input;
 pub mod keys;
 pub mod markdown;
 pub mod panel;
-pub mod pick;
+mod pick;
 mod render;
 mod renderers;
 mod status;
@@ -51,7 +53,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
-use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome};
+use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
 pub use crossterm;
 pub use editor::TuiInput;
@@ -60,7 +62,6 @@ pub use keys::{
     AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, run_command,
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
-pub use pick::{Chosen, PickItem, Picked, Picker};
 pub use ratatui;
 pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
@@ -126,6 +127,7 @@ fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
     app.init_resource::<RigHome>()
+        .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
@@ -142,7 +144,7 @@ fn add_view(app: &mut App) {
         .add_systems(
             Update,
             (
-                (view::focus_agent, view::mark_focused).chain(),
+                view::mark_focused,
                 // A command typed this frame runs in the agent loop, so
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.

@@ -323,6 +323,13 @@ impl SessionDir {
         self.0.join("meta.json")
     }
 
+    /// The session this one was forked from and where the copy stopped,
+    /// as JSON the agent writes when it forks a session; absent for a
+    /// session started afresh.
+    pub fn parent(&self) -> PathBuf {
+        self.0.join("parent.json")
+    }
+
     /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
     /// run another session: the [`SessionId`] to resume, or nothing for a
     /// new session. The launcher reads and removes it.

@@ -70,7 +70,7 @@ fn the_picker_lists_contributed_choices_first_and_the_status_line_their_label() 
     let (mut app, agent) = routed();
     run(&mut app, agent, "model");
     let world = app.world_mut();
-    let mut pickers = world.query::<&rig_tui::Picker>();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
     let items: Vec<_> = pickers
         .iter(world)
         .flat_map(|picker| picker.items.clone())
