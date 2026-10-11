@@ -3,7 +3,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::ModelSpec;
-use rig_tui::{PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{PickItem, Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{ModelItem, ModelLabel};
 
@@ -13,8 +13,7 @@ const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
 const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
-    app.add_message::<PickRequest>()
-        .add_systems(PostUpdate, show.in_set(StatusSystems));
+    app.add_systems(PostUpdate, show.in_set(StatusSystems));
 }
 
 /// Lets the user pick one of the [`ModelItem`]s, then of the models that
@@ -22,8 +21,8 @@ pub(super) fn add(app: &mut App) {
 pub(super) fn pick_model(
     agent: Entity,
     (models, contributed): (&Models, &Query<&ModelItem>),
-    picks: &mut MessageWriter<PickRequest>,
     notices: &mut MessageWriter<Notice>,
+    commands: &mut Commands,
 ) {
     let mut contributed: Vec<&ModelItem> = contributed.iter().collect();
     contributed.sort_by(|a, b| a.name.cmp(&b.name));
@@ -52,19 +51,16 @@ pub(super) fn pick_model(
         ));
         return;
     }
-    picks.write(PickRequest {
-        agent,
-        title: "Model".to_owned(),
+    commands.spawn(Picker {
         items,
-        selected: 0,
+        ..Picker::new("Model").for_agent(agent)
     });
 }
 
 /// Lets the user pick one of the reasoning settings of `spec`.
-pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, picks: &mut MessageWriter<PickRequest>) {
-    picks.write(PickRequest {
-        agent,
-        title: format!("Reasoning for {}", spec.display_name),
+pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Commands) {
+    let title = format!("Reasoning for {}", spec.display_name);
+    commands.spawn(Picker {
         items: spec
             .reasoning
             .choices()
@@ -74,7 +70,7 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, picks: &mut MessageWr
                 command: format!("effort {}", choice.name),
             })
             .collect(),
-        selected: 0,
+        ..Picker::new(title).for_agent(agent)
     });
 }
 

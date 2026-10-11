@@ -17,11 +17,11 @@ fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
         line: "agents".to_owned(),
     });
     world.flush();
-    let mut picks = world.resource_mut::<Messages<rig_tui::PickRequest>>();
-    let labels: Vec<String> = picks
-        .drain()
-        .flat_map(|pick| pick.items)
-        .map(|item| item.label)
+    let mut pickers = world.query::<&rig_tui::Picker>();
+    let labels: Vec<&str> = pickers
+        .iter(world)
+        .flat_map(|picker| &picker.items)
+        .map(|item| item.label.as_str())
         .collect();
     assert_eq!(labels, ["main · no model · idle · 2 queued · $0.10"]);
 }

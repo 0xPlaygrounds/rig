@@ -23,7 +23,7 @@ use std::path::PathBuf;
 use crossbeam_channel::Sender;
 use rig_activity::Activity;
 use rig_harness::prelude::*;
-use rig_tui::{PickItem, PickRequest};
+use rig_tui::{Chosen, Picked, Picker};
 use serde_json::{Value, json};
 
 mod server;
@@ -94,8 +94,7 @@ impl Plugin for HttpApiPlugin {
         let Some(serve) = self.serve.clone().or_else(from_invocation) else {
             return;
         };
-        app.add_message::<PickRequest>()
-            .init_resource::<Subscribers>()
+        app.init_resource::<Subscribers>()
             .init_resource::<Streamed>()
             .init_resource::<Pickers>()
             .add_systems(
@@ -153,16 +152,11 @@ impl Subscribers {
 #[derive(Resource, Default)]
 struct Streamed(HashMap<Entity, usize>);
 
-/// A picker another plugin opened, waiting for an answer.
-struct Picker {
-    agent: Entity,
-    items: Vec<PickItem>,
-}
-
-/// The pickers open, by id, oldest first, and the next id.
+/// The [`Picker`]s other plugins opened, by id, oldest first, and the
+/// next id.
 #[derive(Resource, Default)]
 struct Pickers {
-    open: VecDeque<(u64, Picker)>,
+    open: VecDeque<(u64, Entity)>,
     next: u64,
 }
 
@@ -183,14 +177,15 @@ fn answer_requests(
     agents: Query<AgentRow>,
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
-    mut pickers: ResMut<Pickers>,
+    mut pickers: (ResMut<Pickers>, Query<&Picker>),
     mut commands: Commands,
 ) {
     for request in server.requests.try_iter() {
         match request {
             Request::Subscribe(sender) => subscribers.0.push(sender),
             Request::Call(call, reply) => {
-                let answer = answer(call, &agents, &ids, &mut pickers, &mut commands);
+                let pickers = (&mut *pickers.0, &pickers.1);
+                let answer = answer(call, &agents, &ids, pickers, &mut commands);
                 reply.send(answer).ok();
             }
         }
@@ -202,7 +197,7 @@ fn answer(
     call: Call,
     agents: &Query<AgentRow>,
     ids: &Query<&AgentId>,
-    pickers: &mut Pickers,
+    (pickers, open): (&mut Pickers, &Query<&Picker>),
     commands: &mut Commands,
 ) -> Reply {
     let find = |wanted: &str| {
@@ -255,31 +250,47 @@ fn answer(
             None => missing(&agent),
         },
         Call::Answer { id, choice } => {
-            let Some(at) = pickers.open.iter().position(|(open, _)| *open == id) else {
+            pickers.open.retain(|&(_, entity)| open.contains(entity));
+            let entity = pickers.open.iter().find(|&&(open, _)| open == id);
+            let Some((entity, picker)) =
+                entity.and_then(|&(_, entity)| Some((entity, open.get(entity).ok()?)))
+            else {
                 return Reply::error(404, format!("no open picker {id}"));
             };
-            let chosen = pickers.open.get(at).and_then(|(_, picker)| {
-                let item = match &choice {
-                    Value::Number(index) => index
-                        .as_u64()
-                        .and_then(|index| usize::try_from(index).ok())
-                        .and_then(|index| picker.items.get(index)),
-                    Value::String(wanted) => picker
-                        .items
-                        .iter()
-                        .find(|item| &item.label == wanted || &item.command == wanted),
-                    _ => None,
-                };
-                item.map(|item| RunCommand {
-                    entity: picker.agent,
-                    line: item.command.clone(),
-                })
-            });
-            let Some(run) = chosen else {
-                return Reply::error(400, "no such choice");
+            let index = match &choice {
+                Value::Number(index) => index
+                    .as_u64()
+                    .and_then(|index| usize::try_from(index).ok())
+                    .filter(|&index| index < picker.items.len()),
+                Value::String(wanted) => picker
+                    .items
+                    .iter()
+                    .position(|item| &item.label == wanted || &item.command == wanted),
+                _ => None,
             };
-            pickers.open.remove(at);
-            commands.trigger(run);
+            let chosen = match (index, &choice) {
+                (Some(index), _) => Chosen::Item(index),
+                (None, Value::String(text)) if picker.free_text => Chosen::Text(text.clone()),
+                _ => return Reply::error(400, "no such choice"),
+            };
+            pickers.open.retain(|&(open, _)| open != id);
+            let command = match chosen {
+                Chosen::Item(index) => picker.items.get(index),
+                Chosen::Text(_) => None,
+            };
+            if let (Some(item), Some(agent)) = (command, picker.agent)
+                && !item.command.is_empty()
+            {
+                commands.trigger(RunCommand {
+                    entity: agent,
+                    line: item.command.clone(),
+                });
+            }
+            commands.trigger(Picked {
+                entity,
+                chosen: Some(chosen),
+            });
+            commands.entity(entity).try_despawn();
             Reply::new(202, json!({ "accepted": true }))
         }
     }
@@ -433,39 +444,35 @@ fn relay_notices(
     }
 }
 
-/// Offers each picker a plugin opens as an approval request with an id.
+/// Offers each [`Picker`] a plugin opens as an approval request with an
+/// id.
 fn offer_pickers(
-    mut requests: MessageReader<PickRequest>,
+    opened: Query<(Entity, &Picker), Added<Picker>>,
     ids: Query<&AgentId>,
     mut pickers: ResMut<Pickers>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    for request in requests.read() {
+    for (entity, picker) in &opened {
         let id = pickers.next;
         pickers.next += 1;
-        let choices: Vec<&str> = request
+        let choices: Vec<&str> = picker
             .items
             .iter()
             .map(|item| item.label.as_str())
             .collect();
+        let agent = picker.agent.and_then(|agent| ids.get(agent).ok());
         let data = json!({
             "id": id,
-            "agent": ids.get(request.agent).ok().map(|id| id.0.clone()),
-            "title": request.title,
+            "agent": agent.map(|id| id.0.clone()),
+            "title": picker.title,
             "choices": choices,
-            "selected": request.selected,
+            "selected": picker.selected,
         });
         subscribers.send("approval_request", &data);
         if pickers.open.len() == PENDING_PICKERS {
             pickers.open.pop_front();
         }
-        pickers.open.push_back((
-            id,
-            Picker {
-                agent: request.agent,
-                items: request.items.clone(),
-            },
-        ));
+        pickers.open.push_back((id, entity));
     }
 }
 

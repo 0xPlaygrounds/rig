@@ -1202,10 +1202,8 @@ a system in `StatusSystems` that runs when what it shows changed:
 place of the one there, and an empty item clears the place. A plugin that
 should also build without the terminal view puts this behind a default
 `tui` cargo feature, as the default plugins do, and one that writes
-`AppStatus` or a `PickRequest` (the short form of a
-[picker](#keys-the-input-and-pickers-in-the-terminal-view)) registers it
-with `app.init_resource::<AppStatus>()` or
-`app.add_message::<PickRequest>()`, since the view may not be added. The
+`AppStatus` registers it with `app.init_resource::<AppStatus>()`, since the
+view may not be added. The
 default plugins' places, and how long each item stays when the line is too
 narrow (`keep`: the lowest goes first, `u8::MAX` never):
 

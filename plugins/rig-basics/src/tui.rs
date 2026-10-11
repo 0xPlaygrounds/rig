@@ -10,7 +10,7 @@ use bevy_ecs::query::QueryData;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Notice, Spawned, SpawnedBy};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::ModelChoice;
-use rig_tui::{Focus, PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{Focus, PickItem, Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{AgentColumn, AgentColumns};
 
@@ -27,7 +27,6 @@ pub(super) fn add(app: &mut App) {
         "Pick an agent or subagent to show; /agents <id> shows it",
         agents,
     )
-    .add_message::<PickRequest>()
     .add_systems(
         PostUpdate,
         show.in_set(StatusSystems)
@@ -105,7 +104,6 @@ fn agents(
     spawned: Query<&Spawned>,
     parents: Query<&SpawnedBy>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
     if !args.args.is_empty() {
@@ -160,11 +158,10 @@ fn agents(
             command: format!("agents {}", agent.id.0),
         });
     }
-    picks.write(PickRequest {
-        agent: args.agent,
-        title: "Show an agent".to_owned(),
+    commands.spawn(Picker {
         items,
         selected,
+        ..Picker::new("Show an agent").for_agent(args.agent)
     });
 }
 

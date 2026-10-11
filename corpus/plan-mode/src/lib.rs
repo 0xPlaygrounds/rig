@@ -11,7 +11,7 @@
 use std::path::PathBuf;
 
 use rig_harness::prelude::*;
-use rig_tui::{PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -59,7 +59,6 @@ impl Plugin for PlanModePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<PlanMode>()
             .init_resource::<PlanFile>()
-            .add_message::<PickRequest>()
             .add_command(
                 "plan",
                 "Plan before changing anything: /plan, /plan off",
@@ -188,7 +187,7 @@ fn capture(
     turns: Query<(&TurnOutcome, &ForAgent)>,
     mut planning: Query<&mut PlanMode>,
     file: Res<PlanFile>,
-    mut picks: MessageWriter<PickRequest>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((TurnOutcome::Answered(answer), &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -204,20 +203,13 @@ fn capture(
         ));
     }
     mode.plan = Some(plan);
-    let item = |label: &str, command: &str| PickItem {
-        label: label.to_owned(),
-        command: format!("plan {command}"),
-    };
-    picks.write(PickRequest {
-        agent,
-        title: "The plan".to_owned(),
-        items: vec![
-            item("Execute", "execute"),
-            item("Keep planning", "keep"),
-            item("Discard", "discard"),
-        ],
-        selected: 0,
-    });
+    commands.spawn(
+        Picker::new("The plan")
+            .for_agent(agent)
+            .item("Execute", "plan execute")
+            .item("Keep planning", "plan keep")
+            .item("Discard", "plan discard"),
+    );
 }
 
 /// Writes `plan` to `path`, with its directory.

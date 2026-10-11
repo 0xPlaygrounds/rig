@@ -83,8 +83,11 @@ fn resume_picks_from_the_sessions_of_the_apps_home() {
         line: "resume".to_owned(),
     });
     world.flush();
-    let mut picks = world.resource_mut::<Messages<rig_tui::PickRequest>>();
-    let items: Vec<_> = picks.drain().flat_map(|pick| pick.items).collect();
+    let mut pickers = world.query::<&rig_tui::Picker>();
+    let items: Vec<_> = pickers
+        .iter(world)
+        .flat_map(|picker| picker.items.clone())
+        .collect();
     let commands: Vec<&str> = items.iter().map(|item| item.command.as_str()).collect();
     assert_eq!(commands, ["resume 1-1"]);
     assert!(

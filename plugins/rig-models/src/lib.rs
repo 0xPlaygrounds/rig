@@ -108,13 +108,12 @@ fn model(
     In(args): In<CommandArgs>,
     items: Query<&ModelItem>,
     #[cfg(feature = "tui")] models: Res<Models>,
-    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
     #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     if args.args.is_empty() {
         #[cfg(feature = "tui")]
-        tui::pick_model(args.agent, (&models, &items), &mut picks, &mut notices);
+        tui::pick_model(args.agent, (&models, &items), &mut notices, &mut commands);
         return;
     }
     if let Some(item) = items.iter().find(|item| item.name == args.args.trim()) {
@@ -135,7 +134,6 @@ fn model(
 fn effort(
     In(args): In<CommandArgs>,
     agents: Query<&Connection>,
-    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -145,7 +143,7 @@ fn effort(
     };
     if args.args.is_empty() {
         #[cfg(feature = "tui")]
-        tui::pick_effort(args.agent, spec, &mut picks);
+        tui::pick_effort(args.agent, spec, &mut commands);
         return;
     }
     match spec.reasoning.named(&args.args) {

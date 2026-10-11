@@ -14,10 +14,10 @@ use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
 #[derive(Resource, Default)]
 struct Picks(Vec<Vec<String>>);
 
-fn record_picks(mut picks: MessageReader<PickRequest>, mut seen: ResMut<Picks>) {
-    for pick in picks.read() {
+fn record_picks(pickers: Query<&Picker, Added<Picker>>, mut seen: ResMut<Picks>) {
+    for picker in &pickers {
         seen.0
-            .push(pick.items.iter().map(|item| item.label.clone()).collect());
+            .push(picker.items.iter().map(|item| item.label.clone()).collect());
     }
 }
 

@@ -73,8 +73,11 @@ fn the_picker_lists_contributed_choices_first_and_the_status_line_their_label() 
     let (mut app, agent) = routed();
     run(&mut app, agent, "model");
     let world = app.world_mut();
-    let mut picks = world.resource_mut::<Messages<rig_tui::PickRequest>>();
-    let items: Vec<_> = picks.drain().flat_map(|pick| pick.items).collect();
+    let mut pickers = world.query::<&rig_tui::Picker>();
+    let items: Vec<_> = pickers
+        .iter(world)
+        .flat_map(|picker| picker.items.clone())
+        .collect();
     let first = items.first().map(|item| item.command.as_str());
     assert_eq!(first, Some("route on"), "{items:?}");
 

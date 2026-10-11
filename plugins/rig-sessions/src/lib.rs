@@ -358,7 +358,6 @@ fn resume(
     In(args): In<CommandArgs>,
     #[cfg(feature = "tui")] home: Res<RigHome>,
     #[cfg(feature = "tui")] paths: Option<Res<SessionPaths>>,
-    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
     #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
@@ -367,8 +366,8 @@ fn resume(
         tui::pick_session(
             args.agent,
             (&home.0, paths.as_deref()),
-            &mut picks,
             &mut notices,
+            &mut commands,
         );
         return;
     }

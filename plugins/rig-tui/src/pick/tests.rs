@@ -48,15 +48,11 @@ fn pickers_wait_their_turn_and_say_what_was_picked() {
         )
         .id();
     world.spawn(Picker::new("Branch").item("main", "").free_text());
-    world.write_message(PickRequest {
-        agent,
-        title: "Model".to_owned(),
-        items: vec![PickItem {
-            label: "fast".to_owned(),
-            command: "note fast".to_owned(),
-        }],
-        selected: 0,
-    });
+    world.spawn(
+        Picker::new("Model")
+            .for_agent(agent)
+            .item("fast", "note fast"),
+    );
     app.update();
     assert_eq!(shown(&mut app).as_deref(), Some("Size"));
     // Keys go to the picker, not the input.

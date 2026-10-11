@@ -60,7 +60,7 @@ pub use keys::{
     AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, run_command,
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
-pub use pick::{Chosen, PickItem, PickRequest, Picked, Picker};
+pub use pick::{Chosen, PickItem, Picked, Picker};
 pub use ratatui;
 pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
@@ -89,7 +89,6 @@ impl Plugin for TuiPlugin {
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
             .add_message::<RequestRedraw>()
-            .add_message::<PickRequest>()
             .add_message::<TerminalEvent>()
             .configure_sets(
                 PostUpdate,
@@ -147,11 +146,7 @@ fn add_view(app: &mut App) {
                 // A command typed this frame runs in the agent loop, so
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.
-                (
-                    pick::open_requests,
-                    pick::queue_choices,
-                    view::collect_notices,
-                )
+                (pick::queue_choices, view::collect_notices)
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),

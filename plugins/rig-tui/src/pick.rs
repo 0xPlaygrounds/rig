@@ -129,26 +129,6 @@ pub struct Picked {
     pub chosen: Option<Chosen>,
 }
 
-/// Asks the view to let the user pick one of `items` for the agent; the
-/// view runs the chosen item's command with
-/// [`RunCommand`]. The short form of
-/// spawning a [`Picker`] for a plugin that needs no answer back. A plugin
-/// that also builds without the terminal view writes it behind a default
-/// `tui` cargo feature, and registers it with
-/// `app.add_message::<PickRequest>()` in case the terminal view is not
-/// added.
-#[derive(Message, Clone, Debug)]
-pub struct PickRequest {
-    /// The agent.
-    pub agent: Entity,
-    /// What is picked.
-    pub title: String,
-    /// The choices.
-    pub items: Vec<PickItem>,
-    /// The position of the choice selected at first.
-    pub selected: usize,
-}
-
 /// The choice shown: a [`Picker`] or an [`Ask`], what is typed to filter
 /// or answer it, and the selected row.
 pub(crate) struct Choosing {
@@ -277,20 +257,6 @@ impl Choices<'_, '_> {
         if let Some(answer) = answer {
             commands.entity(entity).insert_if_new(answer);
         }
-    }
-}
-
-/// Turns each [`PickRequest`] into a [`Picker`].
-pub(crate) fn open_requests(mut requests: MessageReader<PickRequest>, mut commands: Commands) {
-    for request in requests.read() {
-        commands.spawn(Picker {
-            agent: Some(request.agent),
-            title: request.title.clone(),
-            body: String::new(),
-            items: request.items.clone(),
-            selected: request.selected,
-            free_text: false,
-        });
     }
 }
 
