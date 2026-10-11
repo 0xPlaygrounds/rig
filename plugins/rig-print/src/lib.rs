@@ -89,12 +89,21 @@ impl Plugin for PrintPlugin {
         // A command's answers are its notices.
         let command = prompt.trim_start().starts_with('/');
         app.insert_resource(Answers(answers))
-            .add_systems(AgentPass, answer.in_set(Stage::Gate))
+            .configure_sets(
+                AgentPass,
+                PrintSystems.in_set(Stage::Gate).after(AskSystems),
+            )
+            .add_systems(AgentPass, answer.in_set(PrintSystems))
             .add_systems(Update, print_notices(command))
             .add_observer(print_output)
             .run_headless(full_prompt(&prompt));
     }
 }
+
+/// The Gate system that answers each question of a `--print` run, after
+/// [`AskSystems`], so a line the user typed wins.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PrintSystems;
 
 /// The choices `--answer` gives, in order; none without it.
 #[derive(Resource)]
@@ -102,8 +111,14 @@ struct Answers(Vec<String>);
 
 /// Answers each question with the first of the `--answer` choices it
 /// offers, or refuses it, saying why on stderr.
-fn answer(asks: Query<(Entity, &Ask), Undecided>, answers: Res<Answers>, mut commands: Commands) {
-    for (entity, ask) in &asks {
+fn answer(
+    mut asks: Query<(&Ask, &mut Decision), (Undecided, PluginEffects)>,
+    answers: Res<Answers>,
+) {
+    for (ask, mut decision) in &mut asks {
+        if decision.is_decided() {
+            continue;
+        }
         let offered = |id: &&String| ask.choices.iter().any(|choice| &choice.id == *id);
         let outcome = match answers.0.iter().find(offered) {
             Some(id) => Answer::Choice(id.clone()).outcome(),
@@ -120,7 +135,7 @@ fn answer(asks: Query<(Entity, &Ask), Undecided>, answers: Res<Answers>, mut com
                 Outcome::refused(why)
             }
         };
-        commands.entity(entity).insert_if_new(outcome);
+        decision.decide(outcome);
     }
 }
 

@@ -167,7 +167,12 @@ struct Remote<'w, 's> {
 
 /// Sends a read-only call's request to Bevy and answers the call with the
 /// reply, off the main thread; refuses any other at once.
-fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands: Commands) {
+fn on_inspect(
+    called: On<ToolCalled<InspectArgs>>,
+    remote: Remote,
+    mut calls: Query<&mut Decision, ToolCalls>,
+    mut commands: Commands,
+) {
     let methods = remote.methods.as_ref();
     let allowed = |name: &str| {
         let method = methods.and_then(|methods| methods.get(name));
@@ -177,13 +182,16 @@ fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands:
     names.retain(|name| allowed(name));
     names.sort();
     let method = called.args.method.trim();
-    let failed = |why: String| Outcome::from(ToolResult::failed(ToolExecutionError::refused(why)));
-    let mut call = commands.entity(called.call);
+    let mut fail = |why: String| {
+        if let Ok(mut call) = calls.get_mut(called.call) {
+            call.decide(ToolResult::failed(ToolExecutionError::refused(why)));
+        }
+    };
     if !allowed(method) {
-        call.insert(failed(format!(
+        fail(format!(
             "`{method}` is not a read-only method here, so nothing was sent. inspect sends: {}.",
             names.join(", ")
-        )));
+        ));
         return;
     }
     let params = called
@@ -207,7 +215,7 @@ fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands:
     };
     let sender = remote.sender.as_ref();
     if sender.is_none_or(|sender| sender.try_send(message).is_err()) {
-        call.insert(failed("Bevy Remote is not taking requests now.".to_owned()));
+        fail("Bevy Remote is not taking requests now.".to_owned());
         return;
     }
     let wake = &remote.wake;
@@ -215,12 +223,13 @@ fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands:
     let listed = (method == RPC_DISCOVER_METHOD).then_some(names);
     let (registry, spill) = (remote.registry.clone(), remote.answers.0.clone());
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    call.insert(Running::answering(pool, wake, async move {
+    let running = Running::answering(pool, wake, async move {
         let reply = replied.recv().await.ok();
         blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
             .await
             .unwrap_or_else(ToolResult::failed)
-    }));
+    });
+    commands.entity(called.call).insert(running);
 }
 
 /// The tool's output for Bevy's `reply`: the methods `listed`, for

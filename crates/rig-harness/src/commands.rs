@@ -25,7 +25,9 @@ use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use rig_ecs::agent::{Notice, NoticeLevel};
 use rig_ecs::inbox::{DeliveryMode, Incoming, Recalled};
-use rig_ecs::stage::{AgentPass, Effect, ForAgent, Outcome, Stage, Undecided};
+use rig_ecs::stage::{
+    AgentPass, Decision, Effect, ForAgent, IncomingMessages, Outcome, Stage, Undecided,
+};
 
 /// What a command system receives: the agent the command was typed for,
 /// the text after the command name, and how its line was sent.
@@ -81,30 +83,29 @@ fn runner(app: &mut App) {
 /// Takes each user's `/` line about to start over, in the order they were
 /// sent, and runs it for its agent, sent as it was.
 fn run_typed(
-    typed: Query<(Entity, &Effect, &Incoming, &ForAgent), Undecided>,
+    mut typed: Query<(&Effect, &Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
     mut commands: Commands,
 ) {
     let mut lines: Vec<_> = typed
-        .iter()
-        .filter_map(|(entity, effect, message, agent)| {
+        .iter_mut()
+        .filter_map(|(effect, message, agent, decision)| {
             Some((
                 effect.id(),
-                entity,
                 message.command()?,
                 message.mode,
                 agent.0,
+                decision,
             ))
         })
         .collect();
     lines.sort_unstable_by_key(|(id, ..)| *id);
-    for (_, message, line, mode, agent) in lines {
-        commands.trigger(RunCommand {
-            mode,
-            ..RunCommand::new(agent, line)
-        });
-        commands
-            .entity(message)
-            .insert_if_new(Outcome::custom("command"));
+    for (_, line, mode, agent, mut decision) in lines {
+        if decision.decide(Outcome::custom("command")) {
+            commands.trigger(RunCommand {
+                mode,
+                ..RunCommand::new(agent, line)
+            });
+        }
     }
 }
 

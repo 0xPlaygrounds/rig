@@ -78,7 +78,11 @@ fn a_question_is_answered_later_and_the_clocks_move_on() {
         "Run it?",
         &Answer::Choice("yes".to_owned())
     ));
-    let answer = world.get::<Outcome>(ask).and_then(Answer::of);
+    // Decided; the agent loop applies it as the question's outcome.
+    let answer = world
+        .get::<Decision>(ask)
+        .and_then(Decision::get)
+        .and_then(Answer::of);
     assert_eq!(answer, Some(Answer::Choice("yes".to_owned())));
 
     let hour = Duration::from_secs(3_600);

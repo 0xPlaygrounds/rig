@@ -6,7 +6,7 @@
 //! item's command, for the picker's agent or else the agent the user is
 //! looking at ([`Shown`]), triggers [`Picked`] on
 //! it, and despawns it. A front answers an open [`Ask`] the same way: a
-//! `Pick` on it inserts the answer.
+//! `Pick` on it decides the answer.
 //!
 //! ```no_run
 //! use rig_harness::pick::{Chosen, Picked, Picker};
@@ -30,7 +30,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_ecs::stage::{Outcome, Settled};
+use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
 use crate::commands::RunCommand;
@@ -157,7 +157,7 @@ impl Plugin for PickPlugin {
 fn pick(
     pick: On<Pick>,
     pickers: Query<&Picker>,
-    asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
+    mut asks: Query<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>,
     shown: Res<Shown>,
     mut commands: Commands,
 ) {
@@ -176,7 +176,7 @@ fn pick(
         commands.entity(entity).try_despawn();
         return;
     }
-    let Ok(ask) = asks.get(entity) else {
+    let Ok((ask, mut decision)) = asks.get_mut(entity) else {
         return;
     };
     let answer = match chosen {
@@ -188,7 +188,7 @@ fn pick(
         None => Some(Outcome::refused("The user closed the question.")),
     };
     if let Some(answer) = answer {
-        commands.entity(entity).insert_if_new(answer);
+        decision.decide(answer);
     }
 }
 

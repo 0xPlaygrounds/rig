@@ -9,7 +9,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, TASK, WAIT};
-use super::{Helper, Lifecycle, OpenRequests, Peers, Request, Subtask, answered, refused};
+use super::{
+    Helper, Lifecycle, OpenRequests, Peers, Request, SubagentSystems, Subtask, answered, refused,
+};
 use rig_harness::prelude::*;
 
 /// The kind of a [`SpawnSubagent`] effect in the record.
@@ -19,7 +21,8 @@ pub const SUBAGENT: &str = "subagent";
 /// parent. It is an open effect of the kind [`SUBAGENT`], recorded with the
 /// request as it started and the new agent's id: Prepare systems edit it
 /// (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate systems refuse it
-/// (`Outcome::refused`) or hold it (`HoldOf`), and when it starts,
+/// (`Decision::decide(Outcome::refused(..))`) or hold it (`HoldOf`), and
+/// when it starts,
 /// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers it
 /// with the agent's id and puts the agent on it as [`SpawnedAgent`].
 /// A `task` call makes one, a child of the call (`ChildOf`), and answers
@@ -181,7 +184,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(answer_task)
         .add_observer(end_with_call)
         .add_observer(retire_once)
-        .add_systems(AgentPass, refuse_too_deep.in_set(Stage::Gate));
+        .add_systems(AgentPass, refuse_too_deep.in_set(SubagentSystems::Gate));
 }
 
 /// Makes the request an open effect the kernel records.
@@ -209,12 +212,14 @@ fn open_effect(request: &SpawnSubagent) -> EffectRequest {
 
 /// Refuses a request for an agent deeper than [`SubagentPolicy`] allows.
 fn refuse_too_deep(
-    requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, Undecided)>,
+    mut requests: Query<
+        (&ForAgent, &mut Decision),
+        (Undecided, PluginEffects, With<SpawnSubagent>, Without<Ask>),
+    >,
     lineage: Query<&SpawnedBy>,
     policy: Res<SubagentPolicy>,
-    mut commands: Commands,
 ) {
-    for (request, &ForAgent(parent)) in &requests {
+    for (&ForAgent(parent), mut decision) in &mut requests {
         let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
         if depth > policy.max_depth {
             let why = format!(
@@ -222,9 +227,7 @@ fn refuse_too_deep(
                  yourself",
                 policy.max_depth
             );
-            commands
-                .entity(request)
-                .insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
         }
     }
 }
@@ -301,7 +304,13 @@ fn settle(
 /// model shares the parent's connection.
 fn spawn_requested(
     started: On<Add<Started>>,
-    requests: Query<(&SpawnSubagent, &ForAgent, &Effect, Option<&TaskCall>)>,
+    mut requests: Query<(
+        &SpawnSubagent,
+        &ForAgent,
+        &Effect,
+        Option<&TaskCall>,
+        &mut Decision,
+    )>,
     parents: Query<Parent>,
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
@@ -309,13 +318,13 @@ fn spawn_requested(
     mut commands: Commands,
 ) {
     let entity = started.entity;
-    let Ok((request, &ForAgent(parent), effect, task)) = requests.get(entity) else {
+    let Ok((request, &ForAgent(parent), effect, task, mut decision)) = requests.get_mut(entity)
+    else {
         return;
     };
-    let mut answer = commands.entity(entity);
-    answer.insert(open_effect(request));
+    commands.entity(entity).insert(open_effect(request));
     let Ok((caller, access, model, &effort, prompt, connection)) = parents.get(parent) else {
-        answer.insert_if_new(Outcome::refused("its parent is not an agent"));
+        decision.decide(Outcome::refused("its parent is not an agent"));
         return;
     };
     let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
@@ -325,7 +334,7 @@ fn spawn_requested(
     let (choice, effort, allowed) = match settle(request, settings, &mine, (&models, &policy)) {
         Ok(settled) => settled,
         Err(why) => {
-            answer.insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
             return;
         }
     };
@@ -382,10 +391,8 @@ fn spawn_requested(
     }
     let child = child.id();
     wake.wake();
-    let outcome = Outcome::custom(serde_json::json!({ "agent": id.0 }));
-    commands
-        .entity(entity)
-        .insert((SpawnedAgent(child), outcome));
+    commands.entity(entity).insert(SpawnedAgent(child));
+    decision.decide(Outcome::custom(serde_json::json!({ "agent": id.0 })));
 }
 
 /// Answers the `task` call whose request settled: with the subagent it
@@ -395,7 +402,7 @@ fn answer_task(
     requests: Query<(&SpawnSubagent, &Outcome, &ChildOf, &TaskCall)>,
     agents: Query<&AgentId>,
     spawned: Query<&SpawnedAgent>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let Ok((request, outcome, of, task)) = requests.get(settled.entity) else {
         return;
@@ -424,7 +431,9 @@ fn answer_task(
         )),
         (Ok(_), None) => refused("No subagent was started.".to_owned()),
     };
-    commands.entity(of.parent()).insert_if_new(output);
+    if let Ok(mut call) = calls.get_mut(of.parent()) {
+        call.decide(output);
+    }
 }
 
 /// Ends the request of a `task` call that settles first, as when an

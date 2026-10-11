@@ -24,7 +24,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
-use rig_harness::ask::{Answer, Answerer, Ask};
+use rig_harness::ask::{Answer, Answerer, Ask, AskSystems};
 use rig_harness::clock::WakeAt;
 use rig_harness::harness_protocol::{Home, SessionId};
 use rig_harness::host::session::{SessionPaths, SessionPlugin};
@@ -198,13 +198,11 @@ pub fn log_tool_outputs(
 /// Answers the open question titled `title` with `answer`, as a front
 /// would; `false` when no such question is open.
 pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
-    let mut open = world.query_filtered::<(Entity, &Ask), (Without<Outcome>, Without<Settled>)>();
-    let ask = open.iter(world).find(|(_, ask)| ask.title == title);
-    let Some((ask, _)) = ask else {
-        return false;
-    };
-    world.entity_mut(ask).insert(answer.outcome());
-    true
+    let mut open =
+        world.query_filtered::<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>();
+    open.iter_mut(world)
+        .find(|(ask, decision)| ask.title == title && !decision.is_decided())
+        .is_some_and(|(_, mut decision)| decision.decide(answer.outcome()))
 }
 
 /// Runs one frame of `app` `by` later on Bevy's clock, which timers and
@@ -305,23 +303,28 @@ impl Plugin for AnswerAsks {
     fn build(&self, app: &mut App) {
         app.world_mut().spawn(Answerer::default());
         app.init_resource::<Answers>()
-            .add_systems(AgentPass, answer_asks.in_set(Stage::Gate));
+            .add_systems(AgentPass, answer_asks.in_set(Stage::Gate).after(AskSystems));
     }
 }
 
 fn answer_asks(
-    asks: Query<(Entity, &Ask), (Without<Outcome>, Without<Settled>)>,
+    mut asks: Query<
+        (Entity, &Ask, &mut Decision),
+        (PluginEffects, Without<Outcome>, Without<Settled>),
+    >,
     mut seen: Local<HashSet<Entity>>,
     mut answers: ResMut<Answers>,
-    mut commands: Commands,
 ) {
-    for (entity, ask) in &asks {
+    for (entity, ask, mut decision) in &mut asks {
         if !seen.insert(entity) {
             continue;
         }
         answers.asked.push(ask.title.clone());
+        if decision.is_decided() {
+            continue;
+        }
         if let Some(answer) = answers.script.pop_front() {
-            commands.entity(entity).insert_if_new(answer.outcome());
+            decision.decide(answer.outcome());
         }
     }
 }

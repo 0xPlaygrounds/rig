@@ -35,7 +35,7 @@
 //!
 //! ```
 //! use rig_harness::prelude::*;
-//! use rig_subagents::{Role, SpawnSubagent, SpawnedAgent};
+//! use rig_subagents::{Role, SpawnSubagent, SpawnedAgent, SubagentSystems};
 //!
 //! /// Subagents (not helpers) get only the read-only tools.
 //! fn read_only(
@@ -51,13 +51,15 @@
 //!
 //! /// An agent nothing spawned starts one subagent, no more.
 //! fn one_at_a_time(
-//!     requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, Undecided)>,
+//!     mut requests: Query<
+//!         (&ForAgent, &mut Decision),
+//!         (Undecided, PluginEffects, With<SpawnSubagent>, Without<Ask>),
+//!     >,
 //!     roots: Query<&Spawned, Without<SpawnedBy>>,
-//!     mut commands: Commands,
 //! ) {
-//!     for (request, ForAgent(parent)) in &requests {
+//!     for (ForAgent(parent), mut decision) in &mut requests {
 //!         if roots.get(*parent).is_ok_and(|spawned| spawned.iter().next().is_some()) {
-//!             commands.entity(request).insert_if_new(Outcome::refused("one at a time"));
+//!             decision.decide(Outcome::refused("one at a time"));
 //!         }
 //!     }
 //! }
@@ -73,7 +75,7 @@
 //! let mut app = App::new();
 //! app.add_systems(AgentPass, (
 //!     read_only.in_set(Stage::Prepare),
-//!     one_at_a_time.in_set(Stage::Gate),
+//!     one_at_a_time.in_set(Stage::Gate).after(SubagentSystems::Gate),
 //!     with_notes.in_set(Stage::Review),
 //! ));
 //! ```
@@ -89,6 +91,14 @@ mod spawn;
 mod tools;
 
 pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+
+/// The plugin's stage systems, by stage.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum SubagentSystems {
+    /// Refuses a request deeper than [`SubagentPolicy`] allows, and stops
+    /// the restored turn of an agent that owed reports.
+    Gate,
+}
 pub use tools::{MESSAGE, TASK, WAIT};
 
 /// Adds the `task`, `message` and `wait` tools, spawning the agents
@@ -100,6 +110,7 @@ pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
+        app.configure_sets(AgentPass, SubagentSystems::Gate.in_set(Stage::Gate));
         spawn::add(app);
         tools::add(app);
         lifecycle::add(app);

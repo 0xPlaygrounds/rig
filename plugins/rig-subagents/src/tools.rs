@@ -367,7 +367,7 @@ fn on_message(called: On<ToolCalled<MessageArgs>>, mut agents: Agents) {
         }
         Ok(target) => agents.send(&called, target),
     };
-    agents.commands.entity(called.call).insert_if_new(output);
+    agents.answer(called.call, output);
 }
 
 /// Waits for a message from an agent the caller can reach: ends at once
@@ -379,7 +379,7 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
     let target = match agents.reachable(caller, &called.args.agent) {
         Ok(target) => target,
         Err(why) => {
-            agents.commands.entity(call).insert_if_new(refused(why));
+            agents.answer(call, refused(why));
             return;
         }
     };
@@ -405,5 +405,5 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
             return;
         }
     };
-    agents.commands.entity(call).insert_if_new(output);
+    agents.answer(call, output);
 }

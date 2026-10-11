@@ -321,7 +321,7 @@ fn tell_summaries(
 /// Gives the subagent of a `task` call with `inherit_pins: true` a copy
 /// of its parent's pinned notes, as it is spawned.
 fn inherit(
-    spawned: Query<(&SpawnSubagent, &SpawnedAgent, &ForAgent), (Unreviewed, Added<SpawnedAgent>)>,
+    spawned: Query<(&SpawnSubagent, &SpawnedAgent, &ForAgent), (Unreviewed, Added<Outcome>)>,
     pins: Query<&Pins>,
     mut commands: Commands,
 ) {
