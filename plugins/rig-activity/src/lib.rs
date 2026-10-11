@@ -111,6 +111,9 @@ pub struct ToolActivity {
     /// empty when nothing holds it. A hold without a [`Name`] is
     /// [`UNNAMED_HOLD`].
     pub held_by: Vec<String>,
+    /// Its [`ToolProgress`] line, which its owner keeps current while it
+    /// runs, such as `12 of 40 files`.
+    pub progress: Option<String>,
 }
 
 /// What [`ToolActivity::held_by`] calls a hold without a [`Name`].
@@ -189,7 +192,16 @@ type Named = (
 fn update_activity(
     mut agents: Query<(&mut Activity, Option<&ActiveTurn>, Option<&AgentWork>), With<Agent>>,
     turns: Query<&Calls>,
-    tools: Query<(&ToolRequest, Has<Waiting>, Option<&Holds>, Has<Outcome>), Without<Settled>>,
+    tools: Query<
+        (
+            &ToolRequest,
+            Has<Waiting>,
+            Option<&Holds>,
+            Option<&ToolProgress>,
+            Has<Outcome>,
+        ),
+        Without<Settled>,
+    >,
     (holds, names): (Query<&Holds>, Query<&Name>),
     waits: Query<&Backoff>,
     others: Query<&Name, Named>,
@@ -237,7 +249,7 @@ fn update_activity(
             .iter()
             .filter_map(|call| tools.get(*call).ok())
             .filter(|(.., done)| !done)
-            .map(|(request, waiting, held, _)| ToolActivity {
+            .map(|(request, waiting, held, progress, _)| ToolActivity {
                 name: request.call.function.name.as_str().to_owned(),
                 waiting,
                 held_by: held
@@ -250,6 +262,7 @@ fn update_activity(
                             .to_owned()
                     })
                     .collect(),
+                progress: progress.map(|ToolProgress(line)| line.clone()),
             })
             .collect();
         activity.set_if_neq(Activity {

@@ -44,7 +44,7 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
 }
 
 #[test]
-fn a_held_tool_call_names_its_holds() {
+fn a_tool_calls_activity_names_its_holds_and_its_progress() {
     let mut app = App::new();
     app.add_plugins(ActivityPlugin);
     let world = app.world_mut();
@@ -64,4 +64,13 @@ fn a_held_tool_call_names_its_holds() {
         .map(|tool| &tool.held_by);
     let names = ["waiting for lease on src/a.rs", UNNAMED_HOLD].map(str::to_owned);
     assert_eq!(held_by, Some(&names.to_vec()));
+
+    let progress = ToolProgress("12 of 40 files".to_owned());
+    app.world_mut().entity_mut(call).insert(progress);
+    app.update();
+    let activity = app.world().get::<Activity>(agent);
+    let progress = activity
+        .and_then(|activity| activity.tools.first())
+        .and_then(|tool| tool.progress.as_deref());
+    assert_eq!(progress, Some("12 of 40 files"));
 }
