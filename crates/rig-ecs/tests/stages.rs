@@ -352,6 +352,37 @@ fn holds_add_up() {
     );
 }
 
+/// A mark that moves an effect to another table.
+#[derive(Component)]
+struct Moved;
+
+#[test]
+fn effects_start_in_the_order_they_were_spawned() {
+    let mut app = app();
+    let order =
+        |started: On<Add<Started>>, effects: Query<&EffectRequest>, mut seen: ResMut<Seen>| {
+            if let Ok(request) = effects.get(started.entity) {
+                seen.0.push(request.kind.name().to_owned());
+            }
+        };
+    // Marking the first effect after it was spawned puts it after the
+    // second in Bevy's query order.
+    let mark = |new: Query<(Entity, &EffectRequest), Added<Admitted>>, mut commands: Commands| {
+        for (effect, request) in &new {
+            if request.kind.name() == "first" {
+                commands.entity(effect).insert(Moved);
+            }
+        }
+    };
+    app.add_observer(order)
+        .add_systems(AgentPass, mark.in_set(Stage::Prepare));
+    let world = app.world_mut();
+    world.spawn(open("first"));
+    world.spawn(open("second"));
+    app.update();
+    assert_eq!(seen(&app), ["first", "second"]);
+}
+
 /// Whether the Gate system spawned the late effect.
 #[derive(Resource, Default)]
 struct SpawnedLate(bool);

@@ -821,7 +821,10 @@ fn start(
     if changes {
         log.flush();
     }
-    for item in &mut ready {
+    // In the order they were spawned, such as a reply's calls in call order.
+    let mut ready: Vec<_> = ready.iter_mut().collect();
+    ready.sort_unstable_by_key(|item| item.effect.id());
+    for item in ready {
         // Messages are accepted before.
         if item.message {
             continue;
