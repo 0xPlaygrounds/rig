@@ -1358,6 +1358,70 @@ fn a_held_proposal_keeps_the_turn_until_a_reviewer_replaces_it() {
     assert!(!has::<ActiveTurn>(&app, agent));
 }
 
+#[test]
+fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Judging>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, hold_answers.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([
+        answer("first"),
+        answer("second"),
+        answer("third"),
+    ]);
+    let agent = agent_on(&mut app, &model);
+    let judged = |app: &App| app.world().resource::<Judging>().0;
+    let held = |world: &mut World| world.resource::<Judging>().0.is_some();
+    assert!(run_until(&mut app, held));
+    let Some((turn, first)) = judged(&app) else {
+        return;
+    };
+    // A message the agent accepts carries the turn on: the hold on the
+    // answer it took away goes with it.
+    let more = Deliver::new(agent, "more", DeliveryMode::Steer);
+    app.world_mut().trigger(more);
+    let asked = |count| {
+        let model = model.clone();
+        move |_: &mut World| model.request_count() == count
+    };
+    assert!(run_until(&mut app, asked(2)));
+    assert!(app.world().get_entity(first).is_err(), "the first hold");
+    let held_again = |world: &mut World| {
+        world
+            .resource::<Judging>()
+            .0
+            .is_some_and(|(_, hold)| hold != first)
+    };
+    assert!(run_until(&mut app, held_again));
+    let Some((_, second)) = judged(&app) else {
+        return;
+    };
+    // So does a new turn call.
+    let call = (TurnCall, CallOf(turn), ForAgent(agent));
+    app.world_mut().spawn(call);
+    assert!(run_until(&mut app, asked(3)));
+    assert!(app.world().get_entity(second).is_err(), "the second hold");
+    let held_last = |world: &mut World| {
+        world
+            .resource::<Judging>()
+            .0
+            .is_some_and(|(_, hold)| hold != second)
+    };
+    assert!(run_until(&mut app, held_last));
+    // Releasing the one hold left on the last answer ends the turn.
+    if let Some((_, last)) = judged(&app) {
+        app.world_mut().despawn(last);
+    }
+    let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended_once));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("third"), "{:?}", ended(&app));
+}
+
 /// Takes over the user's messages that start with `!`, as a shell would.
 fn run_in_shell(typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands) {
     for (message, typed) in &typed {
@@ -1428,11 +1492,7 @@ fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_
     let held_again =
         |world: &mut World| world.resource::<Judging>().0.map(|(_, hold)| hold) != first_hold;
     assert!(run_until(&mut app, held_again));
-    let holds = [
-        first_hold,
-        app.world().resource::<Judging>().0.map(|(_, hold)| hold),
-    ];
-    for hold in holds.into_iter().flatten() {
+    if let Some((_, hold)) = app.world().resource::<Judging>().0 {
         app.world_mut().despawn(hold);
     }
     let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();

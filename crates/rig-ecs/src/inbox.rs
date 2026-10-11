@@ -59,9 +59,9 @@ use super::commands::RunCommand;
 use super::journal::Commit;
 use super::model::Connection;
 use super::stage::{
-    AgentWork, Effect, ForAgent, Outcome, Settled, Stage, Started, Undecided, failed_in,
+    AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
 };
-use super::turn::{Ending, Exiting, spawn_turn_call};
+use super::turn::{Exiting, spawn_turn_call, take_outcome};
 
 /// The id of a request to an agent, which the reply to it names, such as
 /// the tool call that asked. Unique per sender, so it doubles as an
@@ -417,7 +417,7 @@ pub(crate) fn accept(
 pub(crate) fn carry_on_accepted(
     accepted: Query<(&Incoming, &ForAgent), (Added<Started>, Without<Outcome>)>,
     mut agents: Query<(&mut Conversation, Option<&Connection>, &ActiveTurn)>,
-    turns: Query<&TurnOutcome>,
+    turns: Query<(&TurnOutcome, Option<&Holds>)>,
     inboxes: Inboxes,
     mut commit: Commit,
     mut commands: Commands,
@@ -432,16 +432,16 @@ pub(crate) fn carry_on_accepted(
             continue;
         };
         let turn = active.turn();
-        if !matches!(turns.get(turn), Ok(TurnOutcome::Answered(_))) {
+        let Ok((TurnOutcome::Answered(_), holds)) = turns.get(turn) else {
             continue;
-        }
+        };
         let Some(next) = carry_on(inboxes.of(agent)) else {
             continue;
         };
         let spec = connection.map(|connection| &*connection.spec);
         let conversation = &mut *conversation;
         commit.deliver(agent, spec, next, conversation, &mut notices, &mut commands);
-        commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+        take_outcome(&mut commands, turn, holds);
         spawn_turn_call(&mut commands, turn, agent);
     }
 }

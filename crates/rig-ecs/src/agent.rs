@@ -537,7 +537,8 @@ impl Notice {
 /// sending it a `Queue` or `Steer` message, which takes an `Answered`
 /// proposal away, or by spawning its next
 /// [`TurnCall`](super::turn::TurnCall), which takes any away once
-/// admitted. A plugin may insert `Failed` or `Stopped` at any time: the
+/// admitted; the holds on a proposal taken away are despawned with it. A
+/// plugin may insert `Failed` or `Stopped` at any time: the
 /// turn's calls that have not started then never start, the others are
 /// answered as stopped, and the turn ends once they settled. A turn that
 /// ended is [`Settled`](super::stage::Settled) with it, until the next

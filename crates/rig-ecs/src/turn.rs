@@ -1253,13 +1253,22 @@ pub(crate) fn end_turns(
 /// on, whatever was proposed or decided.
 pub(crate) fn carry_on_called(
     called: Query<&CallOf, (With<TurnCall>, Added<Admitted>)>,
-    ending: Query<(), With<TurnOutcome>>,
+    ending: Query<Option<&Holds>, With<TurnOutcome>>,
     mut commands: Commands,
 ) {
     for &CallOf(turn) in &called {
-        if ending.contains(turn) {
-            commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+        if let Ok(holds) = ending.get(turn) {
+            take_outcome(&mut commands, turn, holds);
         }
+    }
+}
+
+/// Takes the outcome off `turn`, which carries on, and with it the `holds`
+/// on that outcome: they were about an end that no longer comes.
+pub(crate) fn take_outcome(commands: &mut Commands, turn: Entity, holds: Option<&Holds>) {
+    commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+    for hold in holds.into_iter().flat_map(Holds::iter) {
+        commands.entity(hold).try_despawn();
     }
 }
 

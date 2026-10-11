@@ -462,7 +462,8 @@ when done), or carry the turn on: a `Queue` or `Steer` message the agent
 accepts takes an `Answered` proposal away, one on its way keeps the turn
 from ending meanwhile, and a new
 `(TurnCall, CallOf(turn), ForAgent(agent))` takes any away once it is
-admitted. A plugin may insert `TurnOutcome::Failed(reason)` or
+admitted; a proposal taken away takes its holds with it (they are
+despawned), and the next proposal is reviewed afresh. A plugin may insert `TurnOutcome::Failed(reason)` or
 `Stopped(Some(reason))` at any time, such as a budget: the turn's calls
 that have not started never start, the others are answered as stopped,
 and the turn ends. Once nothing holds the outcome and every call of the
