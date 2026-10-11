@@ -20,7 +20,8 @@
 //! stderr. `--answer=ID[,ID…]` ([`ANSWER`]) answers each question with the
 //! first of those choices it offers instead, and refuses one that offers
 //! none. After the answer, the run prints what other plugins add as
-//! [`PrintSection`]s, such as the agent's todo list.
+//! [`PrintSection`]s, such as the agent's todo list. While it runs, each
+//! change of a running call's [`ToolProgress`] goes to stderr.
 
 use std::io::{IsTerminal, Read as _};
 
@@ -94,7 +95,7 @@ impl Plugin for PrintPlugin {
                 PrintSystems.in_set(Stage::Gate).after(AskSystems),
             )
             .add_systems(AgentPass, answer.in_set(PrintSystems))
-            .add_systems(Update, print_notices(command))
+            .add_systems(Update, (print_notices(command), print_progress))
             .add_observer(print_output)
             .run_headless(full_prompt(&prompt));
     }
@@ -184,6 +185,21 @@ fn output<'a>(
         .map(str::trim_end)
         .collect();
     (!parts.is_empty()).then(|| parts.join("\n\n"))
+}
+
+/// Writes each new line of a running call's [`ToolProgress`] to stderr,
+/// after the tool's name.
+fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed<ToolProgress>>) {
+    for (ToolProgress(line), tool) in &progress {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match tool {
+            Some(tool) => eprintln!("rig: {}: {line}", tool.call.function.name),
+            None => eprintln!("rig: {line}"),
+        }
+    }
 }
 
 /// Writes error notices and why a command was refused to stderr, with
