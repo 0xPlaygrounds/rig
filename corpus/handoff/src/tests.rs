@@ -3,8 +3,9 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_ecs::journal::commit_message;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, commit_message, connect, log_ended, reply, run_until,
+};
 use rig_telemetry::{Spending, UsagePlugin};
 
 use super::*;
@@ -56,7 +57,8 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
             0 => Message::user(text),
             _ => Message::assistant(text),
         };
-        commit_message(world, a, message);
+        let added = commit_message(world, a, message);
+        assert!(added.is_ok(), "{added:?}");
     }
 
     let handoff = Deliver::new(a, "/handoff --now implement API", DeliveryMode::Steer);

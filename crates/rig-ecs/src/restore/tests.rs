@@ -18,9 +18,9 @@ use crate::agent::{
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode};
+use crate::journal::tests::commit_message;
 use crate::journal::{
     Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
-    commit_message,
 };
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::{INTERRUPTED, Restored};

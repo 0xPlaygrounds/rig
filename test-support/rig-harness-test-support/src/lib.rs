@@ -15,7 +15,7 @@ use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::{JsonlDirStore, MemoryStore};
 use rig_core::catalog::{Catalog, Connector, ModelSpec};
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolFunction, ToolName};
+use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
@@ -76,6 +76,29 @@ pub fn app_in(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
 pub fn first_agent(world: &mut World) -> Option<Entity> {
     let mut agents = world.query_filtered::<Entity, With<Agent>>();
     agents.iter(world).next()
+}
+
+/// Adds `message` to the conversation of `agent` as `Commit::message`
+/// does, such as an earlier exchange a test starts from.
+///
+/// # Errors
+///
+/// When the system that commits it cannot run.
+pub fn commit_message(
+    world: &mut World,
+    agent: Entity,
+    message: ChatMessage,
+) -> Result<(), String> {
+    let add = |In((agent, message)): In<(Entity, ChatMessage)>,
+               mut agents: Query<&mut Conversation>,
+               mut commit: Commit| {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            commit.message(agent, &mut conversation, message);
+        }
+    };
+    world
+        .run_system_cached_with(add, (agent, message))
+        .map_err(|error| error.to_string())
 }
 
 /// How each turn ended, in the order they ended, kept by [`log_ended`].

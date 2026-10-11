@@ -28,9 +28,7 @@ impl Recording {
 
 /// Runs one frame `by` later on the app's clock, then a few with it still.
 fn advance(app: &mut App, by: Duration) {
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
-    app.update();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    rig_harness_test_support::advance(app, by);
     for _ in 0..3 {
         app.update();
     }

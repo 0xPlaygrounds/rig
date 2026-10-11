@@ -107,7 +107,7 @@ pub mod prelude {
     pub use std::time::Duration;
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, Choice};
-    pub use crate::clock::{Due, WakeAt};
+    pub use crate::clock::{Due, KeepAwake, WakeAt};
     pub use crate::harness_protocol::Home;
     pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
     pub use crate::host::cli::{AppCliExt, Flag, Front};

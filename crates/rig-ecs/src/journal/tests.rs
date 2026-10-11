@@ -5,12 +5,24 @@ use bevy_reflect::Reflect;
 use rig_cassette::journal::{JournalStore, MemoryStore};
 use rig_core::completion::Message;
 
-use super::{
-    Commit, Committed, JournalPlugin, ReflectSaved, SessionStore, commit_message, fork_session,
-};
+use super::{Commit, Committed, JournalPlugin, ReflectSaved, SessionStore, fork_session};
 use super::{SavedSession, read_session};
 use crate::AgentPlugin;
 use crate::agent::{Agent, AgentId, Condensed, Conversation, SpawnedBy};
+
+/// Adds `message` to the conversation of `agent` as [`Commit::message`]
+/// does.
+pub(crate) fn commit_message(world: &mut World, agent: Entity, message: Message) {
+    let add = |In((agent, message)): In<(Entity, Message)>,
+               mut agents: Query<&mut Conversation>,
+               mut commit: Commit| {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            commit.message(agent, &mut conversation, message);
+        }
+    };
+    let added = world.run_system_cached_with(add, (agent, message));
+    assert!(added.is_ok(), "{added:?}");
+}
 
 /// An app on `store`, after its first frame restored the session.
 fn app(store: &MemoryStore) -> App {

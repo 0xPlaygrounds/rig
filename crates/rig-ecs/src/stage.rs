@@ -61,14 +61,14 @@ use rig_core::effect::{
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Origin, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult};
-use web_time::{SystemTime, UNIX_EPOCH};
+use web_time::SystemTime;
 
 use super::agent::Notice;
 use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
-use super::journal::SessionLog;
+use super::journal::{SessionLog, millis, now_ms};
 use super::tools::{
     CallHandler, Footprint, Published, ToolRequest, ToolStart, ToolStarts, complete_calls,
     tool_kind,
@@ -91,45 +91,34 @@ pub struct AgentPass;
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AgentLoop;
 
-/// The stages of a pass, run in this order.
+/// The stages of a pass, run in this order. The kernel's own work in each
+/// is in the [module](self) doc and the plugin guide.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
-    /// The kernel: finished tasks become their effects' [`Outcome`]s,
-    /// what model calls streamed is read ([`StreamDelta`],
-    /// [`FirstChunk`](super::turn::FirstChunk)), and a model call whose
-    /// handler failed gets its [`RetryVerdict`](super::turn::RetryVerdict).
+    /// Finished tasks become their effects' [`Outcome`]s, streamed text is
+    /// read ([`StreamDelta`]), and failed model calls get their
+    /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
-    /// Plugins read, replace (`insert`) or hold an [`Outcome`]
-    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`].
+    /// Plugins read, replace or hold an [`Outcome`] ([`Unreviewed`]), and a
+    /// turn's proposed [`TurnOutcome`].
     Review,
-    /// The kernel answers the calls of a failed or stopped turn, waits out
-    /// a failed turn call's retry, settles the answered effects nothing
-    /// holds, and the superseded ones, and writes their [`Recorded`]; once
-    /// every call of a reply settled, it commits their results and calls
-    /// the model again; it ends the turns whose outcome nothing holds and
-    /// whose calls settled; and it commits a turn call's reply, then calls
-    /// tools or proposes how the turn ends.
+    /// The kernel settles what is answered and unheld, writes its
+    /// [`Recorded`], commits replies and their tool results, and ends the
+    /// turns nothing holds.
     Commit,
-    /// The kernel admits the effects spawned since the last pass, gives
-    /// each tool call its tool's [`Footprint`] and [`CallHandler`], builds
-    /// the request of a [`TurnCall`] or
-    /// [`BuildFrom`](super::turn::BuildFrom), takes the outcome off a turn
-    /// whose next [`TurnCall`] it admitted, and marks the calls of a reply
-    /// that must wait for an earlier one [`Waiting`].
+    /// The kernel admits what was spawned since the last pass, builds the
+    /// requests of [`TurnCall`]s and [`BuildFrom`](super::turn::BuildFrom)s,
+    /// and marks the calls that wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`).
     Prepare,
     /// Plugins hold ([`HoldOf`]) or answer ([`Outcome`]) what is about to
     /// start ([`Undecided`]).
     Gate,
-    /// The kernel starts what is admitted, unheld and unanswered, but the
-    /// calls of a failed or stopped turn: it accepts messages
-    /// ([`Incoming`]), runs a user's slash command, and starts an idle
-    /// agent's turn or carries on one that would end answered; it runs
-    /// handlers, applies a model call's adapters to the model it goes to,
-    /// fits the call to the result and sends it, refuses a
-    /// tool call its agent cannot make, and opens an open tool's call. An
-    /// effect it does not run stays open, [`Started`], until answered.
+    /// The kernel starts what is admitted, unheld and unanswered: it
+    /// accepts messages ([`Incoming`]), and runs handlers, a model call on
+    /// its adapted, fitted request. What it does not run stays open,
+    /// [`Started`], until answered.
     Start,
 }
 
@@ -285,9 +274,7 @@ impl Outcome {
             Err(report) => ToolResult::failed(report.clone().into()),
         }
     }
-}
 
-impl Outcome {
     /// An answer of a kind of its own, rig-core's custom outcome with
     /// `payload`, such as a plugin's taking over a message.
     pub fn custom(payload: impl Into<serde_json::Value>) -> Self {
@@ -384,13 +371,6 @@ pub type Undecided = (
 
 /// Answered effects nothing holds, not settled yet. A reviewer's filter.
 pub type Unreviewed = (With<Outcome>, Without<Holds>, Without<Settled>);
-
-/// The record `effect` leaves when it settles, for an effect in flight:
-/// as it stands, or as cancelled when it has no answer yet. `None` when it
-/// is not an effect, or the kernel does not know its kind.
-pub fn record_of(world: &World, effect: Entity) -> Option<EffectRecord> {
-    assemble(world, effect, None, false)
-}
 
 /// How many passes a frame runs at most.
 const MAX_PASSES: usize = 16;
@@ -717,7 +697,7 @@ fn record_unsettled(mut world: DeferredWorld, context: HookContext) {
     if world.get::<Settled>(context.entity).is_some() {
         return;
     }
-    if let Some(record) = assemble(&world, context.entity, Some(Disposition::Cancelled), true) {
+    if let Some(record) = assemble(&world, context.entity, Some(Disposition::Cancelled)) {
         world.write_message(Recorded(record));
     }
 }
@@ -981,20 +961,40 @@ fn settle(
     settling.sort_unstable();
     for (_, entity) in settling {
         let superseded = world.get::<SupersededBy>(entity).is_some();
-        let record = assemble(
-            world,
-            entity,
-            superseded.then_some(Disposition::Superseded),
-            true,
-        );
-        if let Ok(mut effect) = world.get_entity_mut(entity) {
-            effect.remove::<Running>().insert(Settled);
-        }
-        if let Some(record) = record {
-            world.write_message(Recorded(record));
-        }
+        settle_now(world, entity, superseded.then_some(Disposition::Superseded));
     }
     record_nested(world, live);
+}
+
+/// Settles `entity` now, its record's disposition overridden by
+/// `disposition`: a task still running is dropped, which cancels it, it is
+/// [`Settled`], and its record is written.
+fn settle_now(world: &mut World, entity: Entity, disposition: Option<Disposition>) {
+    let record = assemble(world, entity, disposition);
+    if let Ok(mut effect) = world.get_entity_mut(entity) {
+        effect.remove::<Running>().insert(Settled);
+    }
+    if let Some(record) = record {
+        world.write_message(Recorded(record));
+    }
+}
+
+/// Despawns whatever holds `effect`.
+pub(crate) fn despawn_holds(world: &mut World, effect: Entity) {
+    let holds: Vec<Entity> = world
+        .get::<Holds>(effect)
+        .map(|holds| holds.iter().collect())
+        .unwrap_or_default();
+    for hold in holds {
+        world.try_despawn(hold).ok();
+    }
+}
+
+/// Despawns `holds`, the holds on an effect or a turn's outcome.
+pub(crate) fn release(commands: &mut Commands, holds: Option<&Holds>) {
+    for hold in holds.into_iter().flat_map(Holds::iter) {
+        commands.entity(hold).try_despawn();
+    }
 }
 
 /// Settles `entity` at once, cancelled, if it is an unsettled effect, such
@@ -1008,13 +1008,7 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
     if !unsettled {
         return;
     }
-    let holds: Vec<Entity> = world
-        .get::<Holds>(entity)
-        .map(|holds| holds.iter().collect())
-        .unwrap_or_default();
-    for hold in holds {
-        world.try_despawn(hold).ok();
-    }
+    despawn_holds(world, entity);
     let Ok(mut effect) = world.get_entity_mut(entity) else {
         return;
     };
@@ -1022,13 +1016,7 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
         let why = ErrorReport::new(ErrorKind::Cancelled, why);
         effect.insert(Outcome(Err(why)));
     }
-    let record = assemble(world, entity, Some(Disposition::Cancelled), true);
-    if let Ok(mut effect) = world.get_entity_mut(entity) {
-        effect.remove::<Running>().insert(Settled);
-    }
-    if let Some(record) = record {
-        world.write_message(Recorded(record));
-    }
+    settle_now(world, entity, Some(Disposition::Cancelled));
 }
 
 /// Writes the resolved records that belong to no unsettled effect: the
@@ -1052,14 +1040,13 @@ fn record_nested(world: &mut World, live: &mut QueryState<&Effect, Without<Settl
     }
 }
 
-/// The record of `entity`: the handler's record from the kernel's buffer
-/// when there is one (taken out of it with `take`), else one made from the
-/// entity. `disposition` overrides how its answer came.
+/// The record of `entity`: the handler's record, taken out of the kernel's
+/// buffer, when there is one, else one made from the entity.
+/// `disposition` overrides how its answer came.
 fn assemble(
     world: &World,
     entity: Entity,
     disposition: Option<Disposition>,
-    take: bool,
 ) -> Option<EffectRecord> {
     let buffer = world.get_resource::<Effects>()?.buffer();
     let effect = world.get::<Effect>(entity)?;
@@ -1081,20 +1068,13 @@ fn assemble(
         _ => Err(cancelled()),
     });
     let id = effect.id;
-    let handled = match take {
-        true => buffer.take(id).or_else(|| {
-            // Still in flight: its answer came from elsewhere, or none did.
-            buffer.contains(id).then(|| {
-                buffer.resolve(id, outcome.clone());
-                buffer.take(id)
-            })?
-        }),
-        false => buffer
-            .records()
-            .into_iter()
-            .rev()
-            .find(|record| record.id == id),
-    };
+    let handled = buffer.take(id).or_else(|| {
+        // Still in flight: its answer came from elsewhere, or none did.
+        buffer.contains(id).then(|| {
+            buffer.resolve(id, outcome.clone());
+            buffer.take(id)
+        })?
+    });
     let mut record = match handled {
         Some(mut record) => {
             if disposition != Disposition::Ran {
@@ -1120,8 +1100,8 @@ fn assemble(
                 turn: None,
                 started_ms: world
                     .get::<Started>(entity)
-                    .and_then(|started| millis(started.at)),
-                finished_ms: millis(SystemTime::now()),
+                    .map(|started| millis(started.at)),
+                finished_ms: Some(now_ms()),
                 reviewed: None,
                 disposition: Disposition::Ran,
             }
@@ -1176,10 +1156,4 @@ fn scope_of(world: &World, entity: Entity) -> Option<Arc<str>> {
     world
         .get::<AgentId>(agent)
         .map(|id| Arc::from(id.0.as_str()))
-}
-
-/// Milliseconds since the Unix epoch.
-fn millis(at: SystemTime) -> Option<u64> {
-    let since = at.duration_since(UNIX_EPOCH).ok()?;
-    Some(u64::try_from(since.as_millis()).unwrap_or(u64::MAX))
 }

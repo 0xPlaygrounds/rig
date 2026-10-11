@@ -9,10 +9,11 @@ use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, Us
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
 use rig_ecs::commands::RunCommand;
-use rig_ecs::journal::commit_message;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, commit_message, connect, log_ended, reply, run_until,
+};
 use rig_telemetry::{Spending, UsagePlugin};
 
 /// What a second Prepare system adds to every turn's request.
@@ -49,7 +50,7 @@ fn agent(
         .next()?;
     world.entity_mut(agent).insert(connection);
     for message in messages {
-        commit_message(world, agent, message);
+        commit_message(world, agent, message).ok()?;
     }
     Some(agent)
 }

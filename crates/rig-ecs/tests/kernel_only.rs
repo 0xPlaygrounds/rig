@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
-use bevy_time::TimeUpdateStrategy;
+use bevy_time::{Time, TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
@@ -100,6 +100,11 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
             },
         );
     app.finish();
+    // A loop that sleeps for seconds counts its frames in full, as
+    // rig-harness's does; Bevy's default stops at 250 ms.
+    if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
+        time.set_max_delta(Duration::from_secs(60));
+    }
     (app, wakes)
 }
 

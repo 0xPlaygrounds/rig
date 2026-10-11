@@ -1,22 +1,16 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
-//! pass that settles what a crash or a restart left half done. Each log is
-//! read as [`read_session`](super::journal::read_session) reads it, but
-//! from the first message its newest summary that still stands kept, and
-//! with a torn last line cut off; a retired agent and the agents it spawned
-//! are not restored. Each fix the reconcile pass makes is an ordinary record, so
-//! the next restore finds nothing left to fix; the request-build repair
-//! that answers any call still without a result stays as the backstop.
+//! pass that settles what a crash or a restart left half done, with
+//! ordinary records, so the next restore finds nothing left to fix. Each
+//! log is read as [`read_session`](super::journal::read_session) reads it,
+//! from its newest standing summary, a torn last line cut off; a retired
+//! agent and the agents it spawned are not restored.
 //!
 //! A call left without a result whose tool may change something is
-//! answered as interrupted at once; the work an agent carries on is spawned
-//! as ordinary stage entities marked [`Restored`]: a turn, the read-only
-//! calls it runs again and the model call after them, or its model call
-//! when the model owes an answer. They are admitted, prepared and gated
-//! like any work, as nothing held or approved before the restart is kept.
-//! A Gate system keeps an agent idle by stopping its restored turn, and a
-//! plugin re-arms its own obligations from observers of the saved
-//! components the restore inserts (`On<Insert<MyWait>>`, before
-//! [`SessionRestored`] exists):
+//! answered as interrupted; the work an agent carries on is spawned as
+//! ordinary stage entities marked [`Restored`] and gated like any, as
+//! nothing held or approved before the restart is kept. A plugin re-arms
+//! its own obligations from observers of the saved components the restore
+//! inserts (`On<Insert<MyWait>>`, before [`SessionRestored`] exists):
 //!
 //! ```
 //! use rig_ecs::prelude::*;

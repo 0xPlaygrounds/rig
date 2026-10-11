@@ -6,13 +6,14 @@ use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::journal::commit_message;
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until, start_call};
+use rig_harness_test_support::{
+    app_on, calls, commit_message, connect, reply, run_until, start_call,
+};
 
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode and its text.
@@ -222,7 +223,8 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     };
     session.app.add_systems(AgentPass, hold.in_set(Stage::Gate));
     let asked = Message::user("Find a name.");
-    commit_message(session.app.world_mut(), session.parent, asked);
+    let added = commit_message(session.app.world_mut(), session.parent, asked);
+    assert!(added.is_ok(), "{added:?}");
     let (a, b, c) = (session.task("ta"), session.task("tb"), session.task("tc"));
     // `a` waits on `c` through `b`, so `c` can neither ask nor wait for it;
     // the parent is idle, so nothing would come from it.

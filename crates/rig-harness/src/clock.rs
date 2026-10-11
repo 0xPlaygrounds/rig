@@ -1,9 +1,10 @@
-//! Waking at a time of day. Bevy's clock, which timers and delayed commands
-//! run on, stops while the machine sleeps; a [`WakeAt`] is a wall-clock
-//! instant instead. Once it passes, the entity gets [`Due`] in `First`, and
-//! the headless loop sleeps no longer than until the earliest one. A plugin
-//! reacts to `Add<Due>`, and arms the next time by inserting a new
-//! `WakeAt`, which takes `Due` away.
+//! Waking the loop that sleeps while nothing happens. Bevy's clock, which
+//! timers and delayed commands run on, stops while the machine sleeps; a
+//! [`WakeAt`] is a wall-clock instant instead. Once it passes, the entity
+//! gets [`Due`] in `First`, and the headless loop sleeps no longer than
+//! until the earliest one. A plugin reacts to `Add<Due>`, and arms the next
+//! time by inserting a new `WakeAt`, which takes `Due` away. A
+//! [`KeepAwake`] keeps the loop running at its pace while it lives.
 //!
 //! ```
 //! use std::time::SystemTime;
@@ -23,6 +24,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::world::DeferredWorld;
+use bevy_reflect::prelude::*;
 
 /// When this entity is due, on the wall clock.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,6 +48,31 @@ impl WakeAt {
 #[derive(Component, Clone, Copy, Debug, Default)]
 #[component(storage = "SparseSet")]
 pub struct Due;
+
+/// Keeps the loop that sleeps between frames running a frame at least
+/// this often while the entity exists: a spinner, or a panel that polls.
+/// Time itself is Bevy's: a system paced with
+/// `.run_if(on_real_timer(interval))` runs on time while a `KeepAwake` of
+/// that interval lives, and a one-off wait is a delayed command
+/// (`commands.delayed().duration(wait)`), whose deadline the loop wakes for
+/// on its own.
+///
+/// ```
+/// use rig_harness::prelude::*;
+///
+/// const STEP: Duration = Duration::from_millis(200);
+///
+/// fn tick() {}
+///
+/// let mut app = App::new();
+/// // `tick` runs every step while this entity lives; once it is despawned
+/// // the loop sleeps until there is work.
+/// app.world_mut().spawn((Name::new("spinner"), KeepAwake(STEP)));
+/// app.add_systems(Update, tick.run_if(on_real_timer(STEP)));
+/// ```
+#[derive(Component, Reflect, Clone, Copy, Debug)]
+#[reflect(Component, Clone, Debug)]
+pub struct KeepAwake(pub Duration);
 
 /// Marks what is [`Due`].
 pub struct ClockPlugin;

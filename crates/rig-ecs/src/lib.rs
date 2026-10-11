@@ -7,8 +7,7 @@
 //! plugins, and the session journal is kept in the
 //! [`journal::SessionStore`] the app inserts. Time is Bevy's: a retried
 //! model call waits on a delayed command, and plugins that animate or poll
-//! run on `on_real_timer` with a [`calls::KeepAwake`], instead of threads
-//! of their own.
+//! run on `on_real_timer`, instead of threads of their own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store (one of rig-cassette's
@@ -56,7 +55,7 @@ pub mod prelude {
         Interrupt, LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
         SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
-    pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
+    pub use crate::calls::{Done, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessageRecord, Origin,
@@ -69,7 +68,7 @@ pub mod prelude {
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
         Outcome, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
-        Unreviewed, Waiting, record_of,
+        Unreviewed, Waiting,
     };
     pub use crate::tools::{
         AppToolsExt, CallHandler, Footprint, Published, ToolCalled, ToolDef, ToolOptions,
@@ -87,7 +86,7 @@ pub mod prelude {
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use bevy_time::{Time, TimePlugin, Virtual};
+use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
@@ -112,9 +111,8 @@ pub struct WriteJournal;
 /// [`SessionLog`] logs to the app's [`journal::SessionStore`], if any, once
 /// [`journal::JournalPlugin`] restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
 /// clock a retried model call waits on, and then runs `First` and
-/// `PreUpdate` on Bevy's single-threaded executor. It lets that clock count
-/// frames up to [`calls::MAX_FRAME_GAP`] apart in full under any loop. It
-/// sets no error handler: that is the application's choice.
+/// `PreUpdate` on Bevy's single-threaded executor. It sets no error
+/// handler: that is the application's choice.
 pub struct AgentPlugin;
 
 impl Plugin for AgentPlugin {
@@ -171,12 +169,6 @@ impl Plugin for AgentPlugin {
             .add_observer(model::check_effort)
             .add_observer(model::on_set_effort);
         stage::build(app);
-    }
-
-    fn finish(&self, app: &mut App) {
-        if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
-            time.set_max_delta(calls::MAX_FRAME_GAP);
-        }
     }
 }
 

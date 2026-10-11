@@ -616,16 +616,6 @@ fn every_way_an_effect_ends_is_recorded() {
         .get::<Effect>(nested)
         .and_then(|effect| effect.parent);
     assert_eq!(child, parent, "a child effect's parent");
-    // An effect in flight has the record it would leave if cancelled now.
-    let now = record_of(app.world(), running);
-    assert!(
-        now.is_some_and(|now| now.disposition == Disposition::Cancelled
-            && now.started_ms.is_some()
-            && Some(now.id) == parent),
-        "{:?}",
-        record_of(app.world(), running)
-    );
-
     // Answered from outside while it runs: its task is cancelled.
     let answer = rig_core::tool::ToolResult::skipped("answered");
     let answer = rig_core::effect::Outcome::ToolResult { result: answer };
@@ -640,6 +630,14 @@ fn every_way_an_effect_ends_is_recorded() {
     assert!(has::<Settled>(&app, replaced) && !has::<Started>(&app, replaced));
     assert!(has::<Started>(&app, successor));
     let records = records(&app);
+    // The handler's record, with when it started.
+    let stalled = records
+        .iter()
+        .find(|record| record.key.as_str() == "tool:stall");
+    assert!(
+        stalled.is_some_and(|record| record.started_ms.is_some() && Some(record.id) == parent),
+        "{stalled:?}"
+    );
     let disposition = |key: &str| {
         records
             .iter()

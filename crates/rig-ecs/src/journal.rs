@@ -162,8 +162,12 @@ pub(crate) struct Line<'a> {
 
 /// Milliseconds since the Unix epoch.
 pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    millis(SystemTime::now())
+}
+
+/// Milliseconds since the Unix epoch at `at`; 0 before it.
+pub(crate) fn millis(at: SystemTime) -> u64 {
+    at.duration_since(UNIX_EPOCH)
         .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or_default()
 }
@@ -492,21 +496,6 @@ impl Commit<'_, '_> {
     }
 }
 
-/// Adds `message` to the conversation of `agent` as [`Commit::message`]
-/// does, from an exclusive system or a test.
-pub fn commit_message(world: &mut World, agent: Entity, message: Message) {
-    let add = |In((agent, message)): In<(Entity, Message)>,
-               mut agents: Query<&mut Conversation>,
-               mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            commit.message(agent, &mut conversation, message);
-        }
-    };
-    if let Err(error) = world.run_system_cached_with(add, (agent, message)) {
-        error!("could not add a message: {error}");
-    }
-}
-
 /// A change a [`Commit`] made to an agent's conversation, in the order
 /// made; a restore makes none.
 #[derive(Message, Clone, Debug)]
@@ -611,7 +600,7 @@ fn write_logs(log: Res<SessionLog>, mut reported: Local<bool>, mut notices: Mess
 
 /// The first fields of a line, read from every line to find the newest
 /// condensed record, the cuts and the newest record of each saved
-/// component.
+/// component, and where a fork cuts.
 #[derive(Deserialize)]
 struct Envelope {
     seq: u64,
@@ -864,15 +853,6 @@ pub fn read_session(store: &dyn JournalStore) -> io::Result<SavedSession> {
     Ok(session)
 }
 
-/// The `seq` and session-wide `n` of a line.
-#[derive(Deserialize)]
-struct Stamp {
-    seq: u64,
-    n: u64,
-    #[serde(rename = "type")]
-    kind: String,
-}
-
 /// Copies the session in `from` into `to`, an empty store, such as to
 /// branch it: every blob, and every log as of `before`, the record `seq`
 /// of the log of the agent named there, such as [`Conversation::seq`] of a
@@ -898,7 +878,7 @@ pub fn fork_session(
     let mut start = 0;
     let mut cut = None;
     for (end, line) in log.iter() {
-        if let Ok(stamp) = serde_json::from_slice::<Stamp>(line)
+        if let Ok(stamp) = serde_json::from_slice::<Envelope>(line)
             && stamp.seq == seq
         {
             cut = Some((start, stamp.n));
@@ -914,7 +894,7 @@ pub fn fork_session(
         let mut keep = None;
         let mut message = false;
         for (end, line) in log.iter() {
-            let Ok(stamp) = serde_json::from_slice::<Stamp>(line) else {
+            let Ok(stamp) = serde_json::from_slice::<Envelope>(line) else {
                 continue;
             };
             let kept = match id == agent.0 {
@@ -932,4 +912,4 @@ pub fn fork_session(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

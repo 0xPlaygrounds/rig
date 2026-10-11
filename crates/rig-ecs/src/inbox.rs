@@ -1,44 +1,22 @@
 //! Messages to agents. A message, whoever sends it (the user typing, an
 //! agent reporting, a plugin), is an effect entity: an [`Incoming`]
-//! [`ForAgent`] the agent, which moves through the stages like any other
-//! effect. [`Deliver`] spawns one. Plugins edit it in Prepare
-//! (`Added<Admitted>`), such as adding the files its text names as
-//! [`Attachment`]s, and take it over in Gate by answering it with an
-//! [`Outcome`]: it never reaches the agent then. At Start the kernel
-//! accepts what is left and marks it [`Started`]:
-//! - a user's text that starts with `/` runs as a slash command
-//!   ([`Incoming::command`]) instead of being sent;
-//! - an idle agent takes it into its conversation at once and starts a
-//!   turn with it, and every message accepted with it goes to the model
-//!   in that turn's first call; a [`DeliveryMode::Note`] starts no turn
-//!   and is kept in the conversation, logged as halted, for the next one;
-//! - a busy agent keeps it: a [`DeliveryMode::Steer`] message goes to the
-//!   model with the turn's next call, after the tool results it waits
-//!   for; the [`DeliveryMode::Queue`] ones carry the turn on together, as
-//!   one step, once it would end; a note goes with whatever call comes
-//!   next and never starts or carries on a turn by itself. A Steer or
-//!   Queue message accepted while the turn's proposed outcome is
-//!   [`TurnOutcome::Answered`] carries the turn on at once, and one still
-//!   on its way keeps such a turn from ending until it is accepted or
-//!   taken over.
+//! [`ForAgent`] the agent, spawned by [`Deliver`] or by hand, which plugins
+//! edit in Prepare and take over in Gate by answering it. Each carries its
+//! [`Origin`], kept with the conversation and its log; text that is not
+//! the user's own goes to the model headed by a line naming its sender.
 //!
-//! A message delivered into a turn gets [`DeliveredIn`] that turn, and a
-//! turn's first model call is recorded under the message that started it.
+//! At Start the kernel accepts what is left, in the order it was sent: a
+//! user's `/` line runs as a slash command; an idle agent takes a message
+//! into its conversation and starts a turn with it, unless it is a
+//! [`DeliveryMode::Note`]; a busy agent keeps it until the turn's next
+//! call ([`DeliveryMode::Steer`]) or its end ([`DeliveryMode::Queue`]).
+//! A message delivered into a turn gets [`DeliveredIn`] that turn. An
+//! agent's inbox is the messages it accepted that are not answered yet.
 //!
-//! An agent's inbox is the messages it accepted that are not answered
-//! yet: `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`.
-//! The kernel answers a message once it delivered it, ran it as a
-//! command, or handed it back, and it settles. A turn that ends some other
-//! way (stopped, failed) hands what the user typed and was not sent back
-//! to the views as [`Recalled`], so nothing typed is lost or sent unasked,
-//! and puts what agents and plugins sent in the conversation for the next
-//! turn.
-//!
-//! Each message carries its [`Origin`], kept with the conversation and its
-//! log. Text that is not the user's own goes to the model as a user
-//! message headed by a line naming where it came from. A message may carry
-//! [`Attachment`]s its sender read, such as images, which go before its
-//! text when the agent's model reads them.
+//! A turn that ends some other way hands what the user typed and was not
+//! sent back to the views as [`Recalled`], and keeps what agents and
+//! plugins sent for the next turn. The plugin guide (rig-harness's
+//! `PLUGINS.md`, "What the user types") has the full rules.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -423,29 +401,38 @@ pub(crate) fn accept(
             continue;
         }
         let spec = connection.map(|connection| &*connection.spec);
+        // A note to an idle agent waits for the next turn.
+        let turn = match joins {
+            None if message.mode == DeliveryMode::Note => None,
+            None => Some(commands.spawn(TurnOf(agent)).id()),
+            joins => joins,
+        };
+        commands.entity(entity).try_insert(Started { at });
         // After a failure that kept the user's message, the new text joins it.
         let conversation = &mut *conversation;
-        commit.pending(agent, spec, [message], conversation, &mut notices);
-        let mut accepted = commands.entity(entity);
-        accepted.try_insert((Started { at }, handled("delivered")));
-        if let Some(turn) = joins {
-            accepted.try_insert(DeliveredIn(turn));
-            continue;
+        let into = (turn, &mut commands);
+        commit.deliver(
+            agent,
+            spec,
+            [(entity, message)],
+            conversation,
+            &mut notices,
+            into,
+        );
+        match (turn, joins) {
+            (None, _) => commit.halt(agent, conversation, Halt::Kept),
+            (Some(turn), None) => {
+                starting.insert(agent, turn);
+                // The turn's first call is the message's work.
+                commands.spawn((
+                    TurnCall,
+                    CallOf(turn),
+                    ForAgent(agent),
+                    Effect::child_of(Some(effect.id())),
+                ));
+            }
+            (Some(_), Some(_)) => {}
         }
-        if message.mode == DeliveryMode::Note {
-            commit.halt(agent, conversation, Halt::Kept);
-            continue;
-        }
-        let turn = commands.spawn(TurnOf(agent)).id();
-        commands.entity(entity).try_insert(DeliveredIn(turn));
-        starting.insert(agent, turn);
-        // The turn's first call is the message's work.
-        commands.spawn((
-            TurnCall,
-            CallOf(turn),
-            ForAgent(agent),
-            Effect::child_of(Some(effect.id())),
-        ));
     }
 }
 

@@ -23,7 +23,7 @@ use std::borrow::Cow;
 use std::fmt;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, UNIX_EPOCH};
 
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
@@ -57,14 +57,14 @@ use super::agent::{
 use super::calls::{Running, Wake};
 use super::effects::Handler;
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
-use super::journal::{Commit, SessionLog};
+use super::journal::{Commit, SessionLog, now_ms};
 use super::model::{Connection, Effort};
 use super::prompt::{
     PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
 };
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, Outcome, Settled, Stage, Started, SupersededBy,
-    Supersedes, Waiting, cancel, failed_in,
+    Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -399,7 +399,8 @@ pub(crate) fn on_interrupt(
     let reply = reply
         .zip(calls)
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));
-    if let Some(results) = stopped_results(reply.unwrap_or_default(), &why) {
+    let stopped = ToolResult::failed(ToolExecutionError::other(why.clone()));
+    if let Some(results) = reply_results(reply.unwrap_or_default(), Some(&stopped)) {
         commit.message(agent, &mut conversation, results);
     }
     commit.halt(agent, &mut conversation, Halt::Stopped);
@@ -409,13 +410,7 @@ pub(crate) fn on_interrupt(
         for call in calls {
             cancel(world, call, &why);
         }
-        let holds: Vec<Entity> = world
-            .get::<Holds>(turn)
-            .map(|holds| holds.iter().collect())
-            .unwrap_or_default();
-        for hold in holds {
-            world.try_despawn(hold).ok();
-        }
+        despawn_holds(world, turn);
         if let Ok(mut turn) = world.get_entity_mut(turn) {
             turn.remove::<(TurnOf, Ending)>()
                 .insert((TurnOutcome::Stopped(reason), Settled));
@@ -424,18 +419,19 @@ pub(crate) fn on_interrupt(
     notices.write(Notice::info(agent, "Interrupted."));
 }
 
-/// The results of a stopped reply's tool calls, in call order: each
-/// answered call's result, and an error saying `why` for the others. `None`
-/// when the reply made no calls.
-fn stopped_results(calls: Vec<ReplyCallItem>, why: &str) -> Option<Message> {
-    let why = ToolResult::failed(ToolExecutionError::other(why));
+/// The results of a reply's tool calls, in call order: each answered
+/// call's result, and `missing` for the others, else nothing for them.
+/// `None` when that leaves no result.
+fn reply_results(calls: Vec<ReplyCallItem>, missing: Option<&ToolResult>) -> Option<Message> {
     let results: Vec<_> = calls
         .into_iter()
-        .map(|call| {
-            let result = call
-                .outcome
-                .map_or_else(|| why.clone(), Outcome::tool_result);
-            call.request.call.answer(&result)
+        .filter_map(|call| {
+            let result = call.outcome.map(Outcome::tool_result);
+            Some(
+                call.request
+                    .call
+                    .answer(&result.or_else(|| missing.cloned())?),
+            )
         })
         .collect();
     (!results.is_empty()).then(|| Message::tool_results(results))
@@ -498,14 +494,11 @@ fn log_answered_results(
         let Some(reply) = state.reply else {
             continue;
         };
-        let results: Vec<_> = reply_calls(reply, calls, &replies)
-            .into_iter()
-            .filter_map(|call| Some(call.request.call.answer(&call.outcome?.tool_result())))
-            .collect();
+        let results = reply_results(reply_calls(reply, calls, &replies), None);
         if let Ok(mut conversation) = agents.get_mut(agent)
-            && !results.is_empty()
+            && let Some(results) = results
         {
-            commit.message(agent, &mut conversation, Message::tool_results(results));
+            commit.message(agent, &mut conversation, results);
         }
     }
 }
@@ -833,7 +826,10 @@ pub(crate) fn judge_failures(
         let retries = of
             .and_then(|of| turns.get(of.0).ok())
             .map_or(0, |recovery| recovery.retries);
-        let verdict = RETRY.verdict(report, retries, now());
+        // std's clock, which a `Retry-After` date is read against, read
+        // through `web_time` so it works on the web too.
+        let now = UNIX_EPOCH + Duration::from_millis(now_ms());
+        let verdict = RETRY.verdict(report, retries, now);
         commands.entity(call).try_insert(RetryVerdict(verdict));
     }
 }
@@ -927,9 +923,7 @@ pub(crate) fn stop_calls(
             .iter()
             .filter_map(|call| Some((call, calls.get(call).ok()?)))
         {
-            for hold in holds.into_iter().flat_map(Holds::iter) {
-                commands.entity(hold).try_despawn();
-            }
+            release(&mut commands, holds);
             if !answered {
                 let stopped = ErrorReport::new(ErrorKind::Cancelled, why.clone());
                 commands
@@ -1284,16 +1278,9 @@ pub(crate) fn commit_replies(
             continue;
         };
         state.reply = None;
-        let unanswered = || ToolResult::failed(ToolExecutionError::other("the call had no result"));
-        let results: Vec<_> = calls
-            .into_iter()
-            .map(|call| {
-                let result = call.outcome.map_or_else(unanswered, Outcome::tool_result);
-                call.request.call.answer(&result)
-            })
-            .collect();
-        if !results.is_empty() {
-            commit.message(agent, &mut conversation, Message::tool_results(results));
+        let unanswered = ToolResult::failed(ToolExecutionError::other("the call had no result"));
+        if let Some(results) = reply_results(calls, Some(&unanswered)) {
+            commit.message(agent, &mut conversation, results);
         }
         if ending.and_then(TurnOutcome::stops).is_none() {
             spawn_turn_call(&mut commands, turn, agent);
@@ -1379,9 +1366,7 @@ pub(crate) fn carry_on_called(
 /// on that outcome: they were about an end that no longer comes.
 pub(crate) fn take_outcome(commands: &mut Commands, turn: Entity, holds: Option<&Holds>) {
     commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
-    for hold in holds.into_iter().flat_map(Holds::iter) {
-        commands.entity(hold).try_despawn();
-    }
+    release(commands, holds);
 }
 
 /// Whether the settled effect `entity` stays past its frame: a call of a
@@ -1393,11 +1378,4 @@ pub(crate) fn keeps_settled(world: &World, entity: Entity) -> bool {
         .and_then(|turn| turn.reply);
     let parent = world.get::<Effect>(entity).and_then(|effect| effect.parent);
     reply.is_some() && parent == reply && world.get::<ToolRequest>(entity).is_some()
-}
-
-/// The wall clock as std's `SystemTime`, which rig-core's retry policy
-/// reads a `Retry-After` date against; read through `web_time` so it also
-/// works on the web.
-fn now() -> SystemTime {
-    UNIX_EPOCH + Duration::from_millis(super::journal::now_ms())
 }

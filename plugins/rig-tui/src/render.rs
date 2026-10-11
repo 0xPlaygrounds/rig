@@ -58,8 +58,8 @@ pub(crate) struct Paced {
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
 /// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
-/// frames that [`settle`](rig_ecs::calls::settle) runs after the wake that
-/// brought it, 16 ms apart, under any loop.
+/// frames the kernel runs after the wake that brought it (see
+/// [`Wake`](rig_ecs::calls::Wake)), 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
     (input, focus, shown): (Res<TuiInput>, Res<KeyFocus>, Res<Shown>),

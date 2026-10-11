@@ -36,8 +36,7 @@ What it holds, by module:
   settled effect is `Recorded`, with its raw and reviewed outcome. A
   failing Prepare, Gate or Review system closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
-  loop that sleeps while nothing happens; `KeepAwake` keeps it running for a
-  timer.
+  loop that sleeps while nothing happens.
 - `tools`, `commands`, `prompt`: tools, slash commands and system prompt
   sections are entities that plugins register (`AppToolsExt`,
   `AppCommandsExt`, `PromptSection`, for every agent or, `SectionOf` one,
