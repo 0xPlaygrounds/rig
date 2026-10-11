@@ -280,7 +280,7 @@ fn track_reads(
         return;
     };
     let function = &request.call.function;
-    if function.name.as_str() != <Read as PortableTool>::NAME {
+    if function.name.as_str() != <Read as Tool>::NAME {
         return;
     }
     if let Ok(args) = serde_json::from_value::<ReadArgs>(function.arguments.clone().into())

@@ -2,12 +2,13 @@
 //! and [`Shell`]. Each has a description of what it does, its usage
 //! `RULES`, the lines a system prompt carries on when to pick it, such as
 //! "use `read`, not `cat`", and annotations saying what it does to the
-//! world (read-only or destructive). `read` and `search` are
-//! [`PortableTool`](rig_core::tool::PortableTool)s; `write`, `edit` and
-//! `shell` are [`Tool`](rig_core::tool::Tool)s that publish what they did
-//! beside their text: the files they changed
-//! ([`FilesChanged`](rig_core::tool::FilesChanged)) and how the command
-//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Their arguments are
+//! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
+//! that publish what they did beside their text: the files they read
+//! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
+//! ([`SearchHits`]), the files they changed, with their diffs
+//! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
+//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). The file tools name
+//! files by their absolute paths ([`fs::absolute`]). Their arguments are
 //! plain data with public fields, to build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
@@ -40,7 +41,9 @@ mod write;
 pub use blocking::blocking;
 pub use edit::{Edit, EditArgs, Replacement};
 pub use read::{Read, ReadArgs, numbered};
-pub use search::{Found, Hit, Search, SearchArgs, find};
+pub use search::{
+    Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, is_hidden, render,
+};
 pub use shell::{Shell, ShellArgs, ShellRun};
 pub use spill::Spill;
 pub use write::{Write, WriteArgs};

@@ -1,16 +1,17 @@
 //! The `read` tool.
 
-use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use rig_core::tool::{FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::read_text;
+use crate::fs::{absolute, read_text};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
 
-/// Reads a text file as numbered lines.
+/// Reads a text file as numbered lines. Publishes the file it read
+/// ([`FilesRead`]), by its absolute path.
 pub struct Read;
 
 /// Arguments of [`Read`].
@@ -51,7 +52,7 @@ impl Read {
     ];
 }
 
-impl PortableTool for Read {
+impl Tool for Read {
     const NAME: &'static str = "read";
     type Args = ReadArgs;
     type Output = String;
@@ -76,8 +77,15 @@ impl PortableTool for Read {
             .with_open_world(false)
     }
 
-    async fn call(&self, args: ReadArgs) -> Result<String, ToolExecutionError> {
-        blocking(move || read(args)).await
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: ReadArgs,
+    ) -> Result<String, ToolExecutionError> {
+        let path = absolute(&args.path);
+        let output = blocking(move || read(args)).await?;
+        context.insert_result(FilesRead(vec![path]))?;
+        Ok(output)
     }
 }
 
@@ -123,3 +131,6 @@ pub fn numbered(text: &str, first: usize, limit: usize, max_bytes: usize) -> Str
     }
     out
 }
+
+#[cfg(test)]
+mod tests;

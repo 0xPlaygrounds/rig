@@ -16,18 +16,15 @@ use rig_core::tool::{
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
-use similar::TextDiff;
 
-use crate::fs::{file_change, io_error, read_text, write_atomic};
+use crate::fs::{absolute, file_change, io_error, read_text, write_atomic};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
-/// Lines of unchanged context around each hunk of the returned diff.
-const CONTEXT: usize = 3;
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
 
 /// Replaces text in a file. Publishes the file it changed
-/// ([`FilesChanged`]).
+/// ([`FilesChanged`]): its absolute path, and the whole diff.
 pub struct Edit;
 
 /// Arguments of [`Edit`].
@@ -218,8 +215,9 @@ fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
         out.push_str(&format!("\nNote: {note}"));
     }
     out.push('\n');
-    out.push_str(&diff(path, text, &edited));
-    Ok((out, file_change(path, Some(text), &edited)))
+    let change = file_change(&absolute(path), Some(text), &edited);
+    out.push_str(&shown(change.diff.as_deref().unwrap_or_default()));
+    Ok((out, change))
 }
 
 /// The file's text with LF line endings and no byte-order mark, and how to
@@ -525,13 +523,8 @@ impl<'a> Lines<'a> {
     }
 }
 
-/// The unified diff from `old` to `new`, cut to what a tool may return.
-fn diff(path: &str, old: &str, new: &str) -> String {
-    let diff = TextDiff::from_lines(old, new)
-        .unified_diff()
-        .context_radius(CONTEXT)
-        .header(path, path)
-        .to_string();
+/// `diff`, a unified diff, cut to what a tool may return.
+fn shown(diff: &str) -> String {
     let lines: Vec<&str> = diff.lines().collect();
     let mut out = String::new();
     for (count, line) in lines.iter().enumerate() {

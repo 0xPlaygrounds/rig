@@ -350,7 +350,7 @@ impl Tool for GuardedSearch {
     type Error = ToolExecutionError;
 
     fn description(&self) -> String {
-        PortableTool::description(&Search)
+        Tool::description(&Search)
     }
 
     fn parameters(&self) -> serde_json::Value {
@@ -364,7 +364,7 @@ impl Tool for GuardedSearch {
     ) -> Result<String, ToolExecutionError> {
         let policy = self.0.clone();
         let (text, hidden) = blocking(move || {
-            let found = find(&args, true)?;
+            let found = find(&args, |_| false)?;
             Ok::<_, ToolExecutionError>(policy.filter(&args, found))
         })
         .await?;

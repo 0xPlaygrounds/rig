@@ -3,8 +3,9 @@ use rig_core::tool::{ChangeKind, FileChange, FilesChanged, Tool, ToolContext};
 use super::{Write, WriteArgs};
 use crate::{Edit, EditArgs, Replacement};
 
-/// Writing and editing a file publish what they did to it: created with its
-/// lines, then modified with the lines added and removed.
+/// Writing and editing a file publish what they did to it, by its absolute
+/// path: created with its lines, then modified with the lines added and
+/// removed, each with its diff.
 #[test]
 fn writes_and_edits_publish_the_files_they_changed() {
     let dir = std::env::temp_dir().join(format!("rig-tools-changes-{}", std::process::id()));
@@ -20,7 +21,12 @@ fn writes_and_edits_publish_the_files_they_changed() {
     let mut context = ToolContext::new();
     let written = Tool::call(&Write, &mut context, WriteArgs::new(&path, "one\ntwo\n"));
     assert!(futures::executor::block_on(written).is_ok());
-    assert_eq!(changed(&context).0, [FileChange::created(&path, 2)]);
+    assert_eq!(
+        changed(&context).0,
+        [FileChange::created(&path, 2).with_diff(format!(
+            "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
+        ))]
+    );
 
     let mut context = ToolContext::new();
     let rewritten = Tool::call(
@@ -42,7 +48,19 @@ fn writes_and_edits_publish_the_files_they_changed() {
     ];
     let edited = Tool::call(&Edit, &mut context, EditArgs::new(&path, edits));
     assert!(futures::executor::block_on(edited).is_ok());
-    assert_eq!(changed(&context).0, [FileChange::modified(&path, 2, 2)]);
+    let change = changed(&context).0.into_iter().next();
+    assert_eq!(
+        change
+            .as_ref()
+            .map(|change| (change.path.as_str(), change.added, change.removed)),
+        Some((path.as_str(), 2, 2))
+    );
+    assert_eq!(
+        change.and_then(|change| change.diff),
+        Some(format!(
+            "--- {path}\n+++ {path}\n@@ -1,3 +1,3 @@\n-one\n+1\n 2\n-three\n+3\n"
+        ))
+    );
     assert_eq!(
         std::fs::read_to_string(&path).ok().as_deref(),
         Some("1\n2\n3\n")

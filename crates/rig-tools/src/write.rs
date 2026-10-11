@@ -8,11 +8,11 @@ use rig_core::tool::{FilesChanged, Tool, ToolContext, ToolExecutionError, args_s
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error, write_atomic};
+use crate::fs::{absolute, file_change, io_error, write_atomic};
 use crate::{MAX_FILE_BYTES, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
-/// it changed ([`FilesChanged`]).
+/// it changed ([`FilesChanged`]): its absolute path, and the diff.
 pub struct Write;
 
 /// Arguments of [`Write`].
@@ -74,7 +74,7 @@ impl Tool for Write {
             let before = previous(Path::new(path));
             write_atomic(Path::new(path), args.content.as_bytes())
                 .map_err(|error| io_error(path, error))?;
-            let change = file_change(path, before.as_deref(), &args.content);
+            let change = file_change(&absolute(path), before.as_deref(), &args.content);
             let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
             Ok::<_, ToolExecutionError>((output, change))
         })

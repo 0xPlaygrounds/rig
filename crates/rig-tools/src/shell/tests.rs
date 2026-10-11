@@ -78,8 +78,6 @@ fn returns_when_a_process_outside_the_group_holds_the_pipe() {
 #[cfg(unix)]
 #[test]
 fn cut_output_is_read_back_by_its_handle() {
-    use rig_core::tool::PortableTool;
-
     let dir = std::env::temp_dir().join(format!("rig-tools-spill-{}", std::process::id()));
     let spill = Some(crate::Spill(dir.clone()));
     for (command, lines) in [("seq 1 3000", 3000), ("seq 1 300000", 300000)] {
@@ -92,7 +90,8 @@ fn cut_output_is_read_back_by_its_handle() {
             .map(|(path, _)| path.to_owned())
             .unwrap_or_default();
         let args = crate::ReadArgs::new(handle).lines(lines / 2, 1);
-        let read = futures::executor::block_on(PortableTool::call(&crate::Read, args));
+        let read =
+            futures::executor::block_on(Tool::call(&crate::Read, &mut ToolContext::new(), args));
         let wanted = format!("{}\t{}\n[", lines / 2, lines / 2);
         assert!(
             matches!(&read, Ok(text) if text.contains(&wanted)),
