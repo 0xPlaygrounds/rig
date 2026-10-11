@@ -20,6 +20,8 @@
 
 use std::collections::HashMap;
 
+use rig_basics::ProjectContextSystems;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::{
@@ -184,7 +186,8 @@ struct Approved;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PermissionSystems {
     /// Prepare: takes the tools that change something out of a read-only
-    /// agent's requests.
+    /// agent's requests, after the default prompt went in and before
+    /// compaction measures them.
     Offer,
     /// Gate: refuses, holds and lets go of calls by their agent's mode.
     Gate,
@@ -207,7 +210,10 @@ impl Plugin for PermissionModesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PermissionSystems::Offer.in_set(Stage::Prepare),
+                    PermissionSystems::Offer
+                        .in_set(Stage::Prepare)
+                        .after(ProjectContextSystems)
+                        .before(CompactionSystems::Prepare),
                     PermissionSystems::Gate.in_set(Stage::Gate),
                 ),
             )
@@ -229,7 +235,7 @@ impl Plugin for PermissionModesPlugin {
 
 /// An agent in `read-only` is offered only the tools that read.
 fn offer(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     agents: Query<Option<&PermissionMode>>,
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<Permissions>,
@@ -249,9 +255,12 @@ fn offer(
 
 /// Decides each call about to run by its agent's mode: lets it run,
 /// refuses it, or holds it with a question, refused when nobody can
-/// answer.
+/// answer. A call another gate decided is left alone.
 fn ask(
-    calls: Query<(Entity, &ToolRequest, &Footprint, &ForAgent), (Undecided, Without<Approved>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &Footprint, &ForAgent, &mut Decision),
+        (Undecided, ToolCalls, Without<Approved>),
+    >,
     agents: Query<(
         Option<&Name>,
         Option<&PermissionMode>,
@@ -262,10 +271,13 @@ fn ask(
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, request, footprint, &ForAgent(agent)) in &calls {
+    for (call, request, footprint, &ForAgent(agent), mut decision) in &mut calls {
         let Ok((name, mode, always, sub)) = agents.get(agent) else {
             continue;
         };
+        if decision.is_decided() {
+            continue;
+        }
         let mode = settings.mode(mode);
         let tool = request.call.function.name.as_str();
         let allowed = always.is_some_and(|always| always.0.iter().any(|name| name == tool));
@@ -296,7 +308,7 @@ fn ask(
                 continue;
             }
         };
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        decision.decide(Outcome::refused(why));
     }
 }
 
@@ -304,7 +316,8 @@ fn ask(
 /// remembers "Always" for the agent; the question lets go of the call
 /// either way. A question closed unanswered denies.
 fn answered(
-    asks: Query<(Entity, &Approval, &Outcome, &HoldOf, &ForAgent), Added<Outcome>>,
+    asks: Query<(Entity, &Approval, &Outcome, &HoldOf, &ForAgent), (Added<Outcome>, PluginEffects)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut always: Query<&mut AlwaysAllowed>,
     mut commands: Commands,
 ) {
@@ -328,7 +341,9 @@ fn answered(
                 "Denied: the user did not allow this `{tool}` call. Nothing was changed; ask the \
                  user or do something else."
             );
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            if let Ok(mut decision) = calls.get_mut(call) {
+                decision.decide(Outcome::refused(why));
+            }
         }
         commands.entity(ask).remove::<HoldOf>();
     }
