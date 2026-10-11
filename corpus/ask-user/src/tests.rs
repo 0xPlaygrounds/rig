@@ -102,3 +102,8 @@ fn without_anyone_to_answer_the_tool_answers_at_once() {
     assert!(open_asks(app.world_mut()).is_empty());
     assert_eq!(answered(app.world()), Some(NO_USER));
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(AskUserPlugin);
+}

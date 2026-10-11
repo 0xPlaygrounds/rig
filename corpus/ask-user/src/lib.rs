@@ -58,6 +58,11 @@ struct Args {
 #[derive(Component)]
 struct AskedByTool;
 
+/// The Review system that gives an answered question's call its answer,
+/// to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AskUserSystems;
+
 #[derive(Default)]
 pub struct AskUserPlugin;
 
@@ -69,7 +74,8 @@ impl Plugin for AskUserPlugin {
         };
         app.add_setting::<AskUserSettings>("ask_user")
             .add_open_tool("ask_user", DESCRIPTION, options, ask)
-            .add_systems(AgentPass, answered.in_set(Stage::Review));
+            .configure_sets(AgentPass, AskUserSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, answered.in_set(AskUserSystems));
         #[cfg(feature = "tui")]
         {
             use rig_tui::{AppToolRenderersExt, RESULT_LINES};
@@ -91,12 +97,14 @@ fn ask(
     answerers: Answerers,
     settings: Res<AskUserSettings>,
     subagents: Query<&Name, With<SpawnedBy>>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let call = called.call;
     if !answerers.can_answer(Some(called.agent)) {
-        let result = ToolResult::success(NO_USER.to_owned().into());
-        commands.entity(call).insert_if_new(Outcome::from(result));
+        if let Ok(mut decision) = calls.get_mut(call) {
+            decision.decide(ToolResult::success(NO_USER.to_owned().into()));
+        }
         return;
     }
     let args = &called.args;
@@ -125,8 +133,8 @@ fn ask(
             .delayed()
             .duration(Duration::from_secs(seconds))
             .queue(move |world: &mut World| {
-                if let Ok(mut asked) = world.get_entity_mut(asked) {
-                    asked.insert_if_new(Outcome::refused(NO_ANSWER));
+                if let Some(mut decision) = world.get_mut::<Decision>(asked) {
+                    decision.decide(Outcome::refused(NO_ANSWER));
                 }
             });
     }
@@ -135,7 +143,8 @@ fn ask(
 /// Gives each answered question's call its answer, the choice or the text,
 /// or why it was not answered (closed, timed out), and lets go of the call.
 fn answered(
-    asks: Query<(Entity, &Outcome, &HoldOf), (With<AskedByTool>, Added<Outcome>)>,
+    asks: Query<(Entity, &Outcome, &HoldOf), (PluginEffects, With<AskedByTool>, Added<Outcome>)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     for (asked, outcome, &HoldOf(call)) in &asks {
@@ -144,8 +153,9 @@ fn answered(
             (None, Err(report)) => report.message.clone(),
             (None, Ok(_)) => NO_ANSWER.to_owned(),
         };
-        let result = ToolResult::success(text.into());
-        commands.entity(call).insert_if_new(Outcome::from(result));
+        if let Ok(mut decision) = calls.get_mut(call) {
+            decision.decide(ToolResult::success(text.into()));
+        }
         commands.entity(asked).remove::<HoldOf>();
     }
 }
