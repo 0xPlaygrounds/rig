@@ -1,33 +1,79 @@
 //! Subagents: agents that start, message and wait on other agents, built
-//! only on the kernel's public API: open tools, spawned agents
-//! ([`SpawnedBy`]), [`Deliver`] with an [`Origin`], [`TurnOutcome`],
-//! [`Restored`] work and saved components. Leave [`SubagentsPlugin`] out of the
-//! app, or replace it, and there are no subagents.
+//! only on the kernel's public API: open tools, an effect of its own
+//! ([`SpawnSubagent`]), spawned agents ([`SpawnedBy`]), messages
+//! ([`Incoming`]) with an [`Origin`], [`TurnOutcome`], [`Restored`] work and
+//! saved components. Leave [`SubagentsPlugin`] out of the app, or replace
+//! it, and there are no subagents.
 //!
-//! `task` spawns a child agent with its own model, reasoning setting and
-//! tools, and answers at once with its id; `message` sends a child or a
-//! peer a request, or an agent that asked the caller its report; `wait`
-//! keeps the caller's turn open until an agent sends it a message. Each
-//! request stays one of the owing agent's [`OpenRequests`], saved with it,
-//! until it reports to the asker; a restart stops the work it was doing
-//! for them, which reports each as interrupted.
-//! Subagents see the app's [`PromptSection`]s like every agent, and are
-//! told their role in sections of their own ([`SectionOf`]), not in their
-//! saved system prompt, which is their parent's.
+//! `task` asks for a child agent with its own model, reasoning setting and
+//! tools, and answers with its id once it is spawned; `message` sends a
+//! child or a peer a request, or an agent that asked the caller its report;
+//! `wait` keeps the caller's turn open until an agent sends it a message.
+//! Each request stays one of the owing agent's [`OpenRequests`], saved with
+//! it, until it reports to the asker (a message marked [`Report`]); a
+//! restart stops the work it was doing for them, which reports each as
+//! interrupted. A subagent's [`Lifecycle`] says whether it works, waits on
+//! an agent that owes it a report, or finished with its answer, which is
+//! its report; the reports of the `task` calls of one reply are notes but
+//! the last, which carries the parent on. Subagents are told their role in
+//! prompt sections of their own ([`SectionOf`]), and a request or `wait`
+//! that would make agents wait on each other is refused.
 //!
-//! A subagent's [`Lifecycle`] is [`Working`] while a turn runs,
-//! [`WaitingOn`] an agent that owes it a report when its turn ended, and
-//! [`Finished`] with its answer when nothing it asked is open; inserting
-//! [`Finished`] reports the answer on every open request. So a subagent
-//! waiting on a peer never reports its "waiting" text, and its later answer
-//! reaches its asker. The reports of the `task` calls of one reply are
-//! notes ([`DeliveryMode::Note`]) but the last, which carries the parent
-//! on. A request or `wait` that would make agents wait on each other is
-//! refused.
+//! Other plugins decide how agents are spawned with ordinary stage systems,
+//! since every agent is spawned through a [`SpawnSubagent`] request, an
+//! effect: a Prepare system edits it (a `task` call's own arguments are the
+//! call's, the request's parent), a Gate system refuses it or holds it until,
+//! say, a slot frees, and a Review system reads the agent spawned
+//! ([`SpawnedAgent`]) to add components of its own. [`SubagentPolicy`] says
+//! how deep agents nest. A plugin spawns a [`Role::Helper`] of its own the
+//! same way, which reports to no one and `message` cannot reach. Reports
+//! are messages like any to edit or take over, and a subagent whose turn a
+//! plugin stops reports the reason and what it had said.
 //!
-//! [`Working`]: Lifecycle::Working
-//! [`WaitingOn`]: Lifecycle::WaitingOn
-//! [`Finished`]: Lifecycle::Finished
+//! ```
+//! use rig_harness::prelude::*;
+//! use rig_subagents::{Role, SpawnSubagent, SpawnedAgent};
+//!
+//! /// Subagents (not helpers) get only the read-only tools.
+//! fn read_only(
+//!     mut requests: Query<&mut SpawnSubagent, Added<Admitted>>,
+//!     tools: Query<(&ToolDef, &Footprint)>,
+//! ) {
+//!     let reading = tools.iter().filter(|(_, footprint)| **footprint == Footprint::ReadOnly);
+//!     let reading: Vec<String> = reading.map(|(def, _)| def.0.name.to_string()).collect();
+//!     for mut request in requests.iter_mut().filter(|request| request.role == Role::Task) {
+//!         request.tools = Some(reading.clone());
+//!     }
+//! }
+//!
+//! /// An agent nothing spawned starts one subagent, no more.
+//! fn one_at_a_time(
+//!     requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, Undecided)>,
+//!     roots: Query<&Spawned, Without<SpawnedBy>>,
+//!     mut commands: Commands,
+//! ) {
+//!     for (request, ForAgent(parent)) in &requests {
+//!         if roots.get(*parent).is_ok_and(|spawned| spawned.iter().next().is_some()) {
+//!             commands.entity(request).insert_if_new(Outcome::refused("one at a time"));
+//!         }
+//!     }
+//! }
+//!
+//! /// Tells each new agent where the project's notes are.
+//! fn with_notes(spawned: Query<&SpawnedAgent, Unreviewed>, mut commands: Commands) {
+//!     for agent in &spawned {
+//!         let notes = PromptSection::new(PromptSection::ORDER_PROJECT, "notes", "See NOTES.md.");
+//!         commands.spawn((notes, SectionOf(agent.0)));
+//!     }
+//! }
+//!
+//! let mut app = App::new();
+//! app.add_systems(AgentPass, (
+//!     read_only.in_set(Stage::Prepare),
+//!     one_at_a_time.in_set(Stage::Gate),
+//!     with_notes.in_set(Stage::Review),
+//! ));
+//! ```
 
 use rig_core::effect::EffectId;
 
@@ -36,18 +82,22 @@ use rig_harness::prelude::*;
 mod lifecycle;
 #[cfg(feature = "tui")]
 mod looks;
+mod spawn;
 mod tools;
 
-pub use tools::{MAX_DEPTH, MESSAGE, TASK, WAIT};
+pub use spawn::{Role, SUBAGENT, SpawnSubagent, SpawnedAgent, SubagentPolicy};
+pub use tools::{MESSAGE, TASK, WAIT};
 
-/// Adds the `task`, `message` and `wait` tools, the subagents' lifecycle
-/// and the reports that answer their requests; with the `tui` feature (on
-/// by default), also how the terminal view draws the tools' calls.
+/// Adds the `task`, `message` and `wait` tools, spawning the agents
+/// [`SpawnSubagent`] asks for, the subagents' lifecycle and the reports
+/// that answer their requests; with the `tui` feature (on by default),
+/// also how the terminal view draws the tools' calls.
 #[derive(Default)]
 pub struct SubagentsPlugin;
 
 impl Plugin for SubagentsPlugin {
     fn build(&self, app: &mut App) {
+        spawn::add(app);
         tools::add(app);
         lifecycle::add(app);
         #[cfg(feature = "tui")]
@@ -59,6 +109,17 @@ impl Plugin for SubagentsPlugin {
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct Subtask(pub String);
+
+/// On a helper a plugin spawned ([`Role::Helper`]): its title, which names
+/// it.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub struct Helper(pub String);
+
+/// On a message: it is an agent's report on requests it was sent; its
+/// origin names the agent and the last request.
+#[derive(Component, Clone, Copy, Debug, Default)]
+pub struct Report;
 
 /// On a subagent: it may `message` and `wait` for its siblings that have
 /// [`Peers`] too, and they for it. A `task` with `peers` set inserts it.

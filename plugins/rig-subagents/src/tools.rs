@@ -1,10 +1,10 @@
 //! The `task`, `message` and `wait` tools.
 
-use rig_ecs::tools::ToolDef;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
+use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
 use super::{Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered, refused};
 use rig_harness::prelude::*;
 
@@ -17,10 +17,6 @@ pub const MESSAGE: &str = "message";
 
 /// The tool that waits for an agent's message without ending the turn.
 pub const WAIT: &str = "wait";
-
-/// How deep subagents nest: an agent nothing spawned is at depth 0, and an
-/// agent at this depth cannot start subagents of its own.
-pub const MAX_DEPTH: usize = 2;
 
 const TASK_DESCRIPTION: &str = "Start a new subagent on a self-contained task: a new agent with \
     a conversation of its own, which sees only `prompt` and works with its tools until it can \
@@ -129,143 +125,30 @@ struct WaitArgs {
     agent: String,
 }
 
-/// On a subagent `task` just started: its task, sent once the reply's other
-/// tasks started too, so that it names its peers.
-#[derive(Component)]
-struct Brief(Deliver);
-
-/// The subagent's model, reasoning setting and tools of a `task` call,
-/// checked against its parent's model and reasoning setting, its depth
-/// (how many agents above it spawned it) and its tools by name.
-fn settle(
-    args: &TaskArgs,
-    (parent, depth): ((Option<&ModelChoice>, Effort), usize),
-    tools: &[&str],
-    models: &Models,
-) -> Result<(ModelChoice, Effort, Vec<String>), String> {
-    if args.description.trim().is_empty() || args.prompt.trim().is_empty() {
-        return Err("`description` and `prompt` must not be empty".to_owned());
-    }
-    let (model, effort) = ModelChoice::inherit(
-        &models.0,
-        parent,
-        args.model.as_deref(),
-        args.effort.as_deref(),
-    )?;
-    let model = model.ok_or("You have no model to give the subagent; name one in `model`")?;
-    let may_delegate = depth + 1 < MAX_DEPTH;
-    // A peer keeps `message` and `wait` for its siblings even where it
-    // cannot delegate.
-    let delegates = |name: &str| name == TASK || (!args.peers && (name == MESSAGE || name == WAIT));
-    let mut tools: Vec<String> = match &args.tools {
-        None => tools
-            .iter()
-            .filter(|name| may_delegate || !delegates(name))
-            .map(|name| (*name).to_owned())
-            .collect(),
-        Some(asked) => {
-            for name in asked {
-                if !tools.contains(&name.as_str()) {
-                    return Err(format!(
-                        "`{name}` is not one of your tools ({})",
-                        tools.join(", ")
-                    ));
-                }
-                if !may_delegate && delegates(name) {
-                    return Err(format!(
-                        "A subagent at depth {} cannot start subagents of its own; leave \
-                         `{name}` out",
-                        depth + 1
-                    ));
-                }
-            }
-            asked.clone()
-        }
+/// Asks for the subagent of a `task` call: a [`SpawnSubagent`], a child of
+/// the call, which answers the call once it settled.
+fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
+    let args = &called.args;
+    let request = SpawnSubagent {
+        title: args.description.clone(),
+        brief: args.prompt.clone(),
+        role: Role::Task,
+        model: args.model.clone(),
+        effort: args.effort.clone(),
+        tools: args.tools.clone(),
+        system_prompt: None,
+        peers: args.peers,
     };
-    for peer_tool in [MESSAGE, WAIT].into_iter().filter(|_| args.peers) {
-        if !tools.iter().any(|name| name == peer_tool) {
-            tools.push(peer_tool.to_owned());
-        }
-    }
-    Ok((model, effort, tools))
-}
-
-/// Starts the subagent of a `task` call and answers the call with its id,
-/// or with why none started. A subagent on its parent's model shares the
-/// parent's connection.
-fn on_task(
-    called: On<ToolCalled<TaskArgs>>,
-    agents: Query<(
-        &ToolAccess,
-        Option<&ModelChoice>,
-        &Effort,
-        &SystemPrompt,
-        Option<&Connection>,
-    )>,
-    lineage: Query<&SpawnedBy>,
-    tools: Query<&ToolDef>,
-    models: Res<Models>,
-    wake: Res<Wake>,
-    mut commands: Commands,
-) {
-    let (call, caller, args) = (called.call, called.agent, &called.args);
-    let Ok((access, model, &effort, prompt, connection)) = agents.get(caller) else {
-        return;
-    };
-    let depth = lineage.iter_ancestors::<SpawnedBy>(caller).count();
-    let names = tools.iter().map(|def| def.0.name.as_str());
-    let mine: Vec<&str> = names.filter(|name| access.allows(name)).collect();
-    let (choice, effort, allowed) = match settle(args, ((model, effort), depth), &mine, &models) {
-        Ok(settled) => settled,
-        Err(why) => {
-            let why = format!("{why}. No subagent was started; fix the call and send it again.");
-            commands.entity(call).insert_if_new(refused(why));
-            return;
-        }
-    };
-    let (task, id) = (args.description.trim().to_owned(), AgentId::default());
-    let request = RequestId(called.tool_call.id.to_string());
-    // A call a restart runs again has no reply to batch with.
-    let batch = called.parent;
-    let mut child = commands.spawn_empty();
-    // Before the model choice, so connecting it keeps this connection.
-    if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
-        child.insert(connection.clone());
-    }
-    let origin = Origin::agent(called.caller.clone(), Some(request.clone())).titled(task.clone());
-    let brief = Deliver::new(child.id(), args.prompt.trim(), DeliveryMode::Queue);
-    let brief = brief.with_origin(origin);
-    child.insert((
-        Agent,
-        id.clone(),
-        SpawnedBy(caller),
-        Subtask(task.clone()),
-        OpenRequests(vec![Request {
-            id: request.clone(),
-            asker: called.caller.clone(),
-            batch,
-        }]),
-        Lifecycle::Working,
-        choice,
-        effort,
-        ToolAccess::Only(allowed),
-        prompt.clone(),
-        EffectParent(called.effect),
-        Brief(brief),
+    commands.spawn((
+        request,
+        ForAgent(called.agent),
+        ChildOf(called.call),
+        TaskCall {
+            request: RequestId(called.tool_call.id.to_string()),
+            // A call a restart runs again has no reply to batch with.
+            batch: called.parent,
+        },
     ));
-    child.insert_if(Peers, || args.peers);
-    wake.wake();
-    let together = match batch {
-        Some(_) => " together with the reports of the other tasks of this reply, once all are done",
-        None => "",
-    };
-    let said = format!(
-        "Started subagent `{}` on \"{}\". It works in the background; its report will arrive as \
-         a message{together}. Continue it with `message`; /agents shows it.",
-        id.short(),
-        task,
-    );
-    commands.entity(call).insert_if_new(answered(said));
 }
 
 /// Sends each subagent started since it last ran its task, naming its
@@ -353,7 +236,10 @@ impl Agents<'_, '_> {
             .flat_map(|open| open.0.iter().filter(read))
             .filter_map(|request| Some((self.find(&request.asker)?, Some(request.id.clone()))));
         let (spawned, parent) = me.family;
+        // Its subagents, not the helpers plugins spawned for it.
         let children = spawned.into_iter().flat_map(|spawned| spawned.iter());
+        let children =
+            children.filter(|&child| self.agents.get(child).is_ok_and(|a| a.subtask.is_some()));
         let peer = |agent: &AgentDataItem| {
             agent.peers && agent.family.1.map(|of| of.0) == parent.map(|of| of.0)
         };
