@@ -1,33 +1,27 @@
 //! Plugin corpus (held-out): H28: Stall watchdog (spec `H28-stall-watchdog.md`).
 //!
 //! Watches every model call and tool call while it runs, of any agent or
-//! plugin. Each model call carries a pass-through stream tap (an
-//! [`Adapter`]) that notes when its stream last sent an item; a call that
-//! sent nothing for the model timeout is reported, and a turn's call is
-//! sent again once (a successor that `Supersedes` it), a second stall in
-//! the turn failing it. A tool call past its soft limit is reported, shown
-//! on the status line while it runs, and stopped only past its
-//! `kill_after`. Each stall is a line of `<session dir>/stalls.jsonl`,
-//! which `/stalls` lists. A running call is woken for by a [`WakeAt`] at
-//! its next deadline, so nothing runs while no call does.
+//! plugin, with a timer of its own per call ([`WakeAt`] at the call's next
+//! deadline), so nothing runs while no call does. A model call whose
+//! stream ([`Streamed`]) sent nothing for the model timeout is reported
+//! and sent again once ([`resend`]); a second stall fails it. A tool call
+//! past its soft limit is reported, shown on the status line while it
+//! runs, and stopped only past its `kill_after`. Each stall is a line of
+//! `<session dir>/stalls.jsonl`, which `/stalls` lists.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use rig_harness::clock::ClockPlugin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::streaming::Relayed;
-use rig_harness::rig_ecs::effects::Handler;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::{Deserialize, Serialize};
 
-/// The adapter's name, and the settings table's.
+/// The settings table's name.
 const NAME: &str = "stall_watchdog";
 
 /// The file of a session's stalls.
@@ -101,53 +95,28 @@ impl Plugin for StallWatchdogPlugin {
             app.add_plugins(ClockPlugin);
         }
         app.add_setting::<StallSettings>(NAME)
-            .register_required_components::<TurnOf, TurnStalls>()
-            .add_systems(AgentPass, tap.in_set(Stage::Prepare))
-            .add_systems(Update, (model_due, tool_due).before(AgentLoop))
             .add_systems(PostUpdate, show_overdue.in_set(StatusSystems))
             .add_observer(arm)
+            .add_observer(model_due)
+            .add_observer(tool_due)
             .add_observer(settled)
+            .add_observer(follow_successor::<Resent>)
             .add_command("stalls", "List this session's stalled calls", list);
     }
 }
 
-/// On each model call: when its stream last sent an item (ms since the
-/// epoch, 0 before one) and how many it sent.
-#[derive(Component, Clone, Default)]
-struct Pulse(Arc<Beats>);
-
-#[derive(Default)]
-struct Beats {
-    last_ms: AtomicU64,
-    items: AtomicU64,
-}
-
-impl Pulse {
-    fn beat(&self) {
-        self.0
-            .last_ms
-            .store(millis(SystemTime::now()), Ordering::Relaxed);
-        self.0.items.fetch_add(1, Ordering::Relaxed);
-    }
-
-    fn last(&self) -> Option<SystemTime> {
-        let ms = self.0.last_ms.load(Ordering::Relaxed);
-        (ms > 0).then(|| UNIX_EPOCH + Duration::from_millis(ms))
-    }
-
-    fn items(&self) -> u64 {
-        self.0.items.load(Ordering::Relaxed)
-    }
-}
-
-/// On a running call the watchdog watches: when it started.
+/// The watchdog's timer of a running call, despawned with it.
 #[derive(Component)]
-struct Watched {
-    started: SystemTime,
-}
+#[relationship(relationship_target = WatchedBy)]
+struct Watch(Entity);
 
-/// A call that stalled or ran past its soft limit, written to the file
-/// once it settles.
+/// On a watched call: its timer.
+#[derive(Component)]
+#[relationship_target(relationship = Watch, linked_spawn)]
+struct WatchedBy(Entity);
+
+/// On a timer whose call stalled or ran past its soft limit: its line of
+/// the file, written once the call settles.
 #[derive(Component)]
 struct Stall {
     what: &'static str,
@@ -160,48 +129,24 @@ struct Stall {
     ended: Option<&'static str>,
 }
 
-/// A tool call past its soft limit: what the status line of `target` says.
+/// On a timer whose tool call is past its soft limit: what the status
+/// line of `target` says.
 #[derive(Component)]
 struct Overdue {
     target: Entity,
     text: String,
 }
 
-/// On a turn: how many of its model calls stalled.
-#[derive(Component, Default)]
-struct TurnStalls(u32);
-
-/// Gives each model call, as it is admitted, a tap that notes each item
-/// its stream sends, whichever model it goes to.
-fn tap(mut calls: Query<(Entity, &mut Adapters), Added<Admitted>>, mut commands: Commands) {
-    for (call, mut adapters) in &mut calls {
-        let pulse = Pulse::default();
-        let beats = pulse.clone();
-        adapters
-            .0
-            .push(Adapter::new(NAME, move |mut connection: Connection| {
-                let beats = beats.clone();
-                let tapped = connection.handler.0.map_stream(NAME, move |_| {
-                    let beats = beats.clone();
-                    move |item: Relayed| {
-                        if matches!(item, Relayed::Item(_)) {
-                            beats.beat();
-                        }
-                        vec![item]
-                    }
-                });
-                connection.handler = Handler(tapped);
-                connection
-            }));
-        commands.entity(call).insert(pulse);
-    }
-}
+/// On a model call sent again after a stall, and on its successors: its
+/// next stall fails it.
+#[derive(Component)]
+struct Resent;
 
 /// Watches each model call and tool call as it starts, woken at its first
 /// deadline.
 fn arm(
     started: On<Add<Started>>,
-    calls: Query<(&Started, Option<&ToolRequest>), Or<(With<ModelRequest>, With<ToolRequest>)>>,
+    calls: Query<(&Started, Option<&ToolRequest>), Or<(ModelCalls, ToolCalls)>>,
     settings: Res<StallSettings>,
     mut commands: Commands,
 ) {
@@ -209,205 +154,190 @@ fn arm(
         return;
     };
     let first = match tool {
-        Some(tool) => settings.limits(tool.call.function.name.as_str()).0,
+        Some(tool) => match settings.limits(tool.call.function.name.as_str()) {
+            (soft, Some(kill)) => soft.min(kill),
+            (soft, None) => soft,
+        },
         None => settings.model_timeout(),
     };
-    let watched = Watched { started: at.at };
-    commands
-        .entity(started.entity)
-        .try_insert((watched, WakeAt(at.at + first)));
+    commands.spawn((Watch(started.entity), WakeAt(at.at + first)));
 }
 
-/// A running model call due: one quiet for the timeout stalled. A turn's
-/// call is sent again on its first stall; any other stall fails the call.
+/// A running model call due: one quiet for the timeout stalled. It is
+/// sent again on its first stall and failed on its second.
 fn model_due(
-    calls: Query<
+    due: On<Add<Due>>,
+    timers: Query<&Watch>,
+    mut calls: Query<
         (
-            Entity,
-            &Watched,
-            &Pulse,
-            &Effect,
+            &Started,
+            Option<&Streamed>,
             Option<&SentTo>,
-            Option<&CallOf>,
             Option<&ForAgent>,
+            Has<Resent>,
+            &mut Decision,
         ),
         (
-            Added<Due>,
-            With<ModelRequest>,
+            ModelCalls,
             Without<Outcome>,
             Without<Settled>,
             Without<SupersededBy>,
         ),
     >,
-    mut turns: Query<&mut TurnStalls>,
     settings: Res<StallSettings>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let now = SystemTime::now();
+    let Ok(&Watch(call)) = timers.get(due.entity) else {
+        return;
+    };
+    let Ok((started, streamed, sent, agent, resent, mut decision)) = calls.get_mut(call) else {
+        return;
+    };
     let timeout = settings.model_timeout();
-    for (call, watched, pulse, effect, sent, of, agent) in &calls {
-        let last = pulse
-            .last()
-            .map_or(watched.started, |last| last.max(watched.started));
-        let quiet = now.duration_since(last).unwrap_or_default();
-        if quiet < timeout {
-            commands.entity(call).try_insert(WakeAt(last + timeout));
-            continue;
-        }
-        let model = sent.map_or_else(|| "model".to_owned(), |sent| sent.0.spec.id.clone());
-        let tokens = pulse.items();
-        let agent = agent.map(|agent| agent.0);
-        let retry = match (of, agent) {
-            (Some(&CallOf(turn)), Some(agent)) => turns
-                .get_mut(turn)
-                .ok()
-                .filter(|stalls| stalls.0 == 0)
-                .map(|mut stalls| {
-                    stalls.0 += 1;
-                    (turn, agent)
-                }),
-            _ => None,
-        };
-        let what = if retry.is_some() {
-            "sending it again"
-        } else {
-            "giving up"
-        };
-        let text = format!(
-            "Model stalled {}, {model}, after {tokens} tokens: {what}.",
-            human(quiet)
-        );
-        notices.write(Notice::info(agent, text));
-        let mut stall = Stall {
-            what: "model",
-            name: model,
-            seconds: Some(quiet.as_secs_f64()),
-            tokens: Some(tokens),
-            ended: None,
-        };
-        if let Some((turn, agent)) = retry {
-            commands.spawn((
-                TurnCall,
-                Supersedes(call),
-                CallOf(turn),
-                ForAgent(agent),
-                Effect::child_of(effect.parent),
-            ));
-        } else {
-            stall.ended = Some("failed");
-            let why = format!("the model sent nothing for {}", human(quiet));
-            let failed = Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why)));
-            commands.entity(call).try_insert_if_new(failed);
-        }
-        commands.entity(call).try_insert(stall);
+    let last = streamed.map_or(started.at, |streamed| streamed.last.max(started.at));
+    let quiet = SystemTime::now().duration_since(last).unwrap_or_default();
+    if quiet < timeout {
+        commands.entity(due.entity).insert(WakeAt(last + timeout));
+        return;
     }
+    let model = sent.map_or_else(|| "model".to_owned(), |sent| sent.0.spec.id.clone());
+    let tokens = streamed.map_or(0, |streamed| streamed.items);
+    let mut stall = Stall {
+        what: "model",
+        name: model.clone(),
+        seconds: Some(quiet.as_secs_f64()),
+        tokens: Some(tokens),
+        ended: None,
+    };
+    let what = if resent {
+        let why = format!("the model sent nothing for {}", human(quiet));
+        if decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why)))) {
+            stall.ended = Some("failed");
+        }
+        "giving up"
+    } else {
+        commands.entity(call).insert(Resent);
+        commands.queue(resend(call));
+        "sending it again"
+    };
+    let text = format!(
+        "Model stalled {}, {model}, after {tokens} tokens: {what}.",
+        human(quiet)
+    );
+    notices.write(Notice::warn(agent.map(|agent| agent.0), text));
+    commands.entity(due.entity).insert(stall);
 }
 
 /// A running tool call due: past its soft limit it is reported and shown,
 /// past its `kill_after` stopped; woken again at its next deadline.
 fn tool_due(
-    calls: Query<
+    due: On<Add<Due>>,
+    timers: Query<(&Watch, Has<Stall>)>,
+    mut calls: Query<
         (
-            Entity,
-            &Watched,
+            &Started,
             &ToolRequest,
             Option<&CallOf>,
             Option<&ForAgent>,
-            Has<Stall>,
+            &mut Decision,
         ),
-        (Added<Due>, Without<Outcome>, Without<Settled>),
+        (ToolCalls, Without<Outcome>, Without<Settled>),
     >,
     settings: Res<StallSettings>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
+    let Ok((&Watch(call), reported)) = timers.get(due.entity) else {
+        return;
+    };
+    let Ok((started, request, of, agent, mut decision)) = calls.get_mut(call) else {
+        return;
+    };
+    let name = request.call.function.name.as_str();
+    let (soft, kill) = settings.limits(name);
     let now = SystemTime::now();
-    for (call, watched, request, of, agent, reported) in &calls {
-        let name = request.call.function.name.as_str();
-        let (soft, kill) = settings.limits(name);
-        let ran = now.duration_since(watched.started).unwrap_or_default();
-        let agent = agent.map(|agent| agent.0);
-        let mut entity = commands.entity(call);
-        if let Some(kill) = kill.filter(|kill| ran >= *kill) {
-            notices.write(Notice::error(
-                agent,
-                format!("{name} stopped after {}.", human(ran)),
-            ));
-            let why = format!("stopped by the stall watchdog after {}", human(kill));
-            entity.try_insert_if_new(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))));
-            entity.try_insert(Stall {
+    let ran = now.duration_since(started.at).unwrap_or_default();
+    let agent = agent.map(|agent| agent.0);
+    let mut timer = commands.entity(due.entity);
+    if let Some(kill) = kill.filter(|kill| ran >= *kill) {
+        let why = format!("stopped by the stall watchdog after {}", human(kill));
+        if decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why)))) {
+            let text = format!("{name} stopped after {}.", human(ran));
+            notices.write(Notice::warn(agent, text));
+            timer.insert(Stall {
                 what: "tool",
                 name: name.to_owned(),
                 seconds: Some(ran.as_secs_f64()),
                 tokens: None,
                 ended: Some("killed"),
             });
-            continue;
         }
-        if ran < soft {
-            entity.try_insert(WakeAt(watched.started + soft));
-            continue;
-        }
-        if !reported {
-            let text = format!("{name} running {}, past its soft limit.", human(ran));
-            notices.write(Notice::info(agent, text));
-            entity.try_insert(Stall {
-                what: "tool",
-                name: name.to_owned(),
-                seconds: None,
-                tokens: None,
-                ended: None,
-            });
-        }
-        let target = of.map(|of| of.0).or(agent).unwrap_or(call);
-        let text = format!("{name} running {}", human(ran));
-        entity.try_insert(Overdue { target, text });
-        // The status shows whole seconds, then whole minutes.
-        let tick = if ran < Duration::from_secs(60) { 1 } else { 60 };
-        let mut next = now + Duration::from_secs(tick);
-        if let Some(kill) = kill {
-            next = next.min(watched.started + kill);
-        }
-        entity.try_insert(WakeAt(next));
+        return;
     }
+    if ran < soft {
+        timer.insert(WakeAt(started.at + soft));
+        return;
+    }
+    if !reported {
+        let text = format!("{name} running {}, past its soft limit.", human(ran));
+        notices.write(Notice::info(agent, text));
+        timer.insert(Stall {
+            what: "tool",
+            name: name.to_owned(),
+            seconds: None,
+            tokens: None,
+            ended: None,
+        });
+    }
+    if let Some(target) = of.map(|of| of.0).or(agent) {
+        let text = format!("{name} running {}", human(ran));
+        timer.insert(Overdue { target, text });
+    }
+    // The status shows tenths of a second, then whole seconds, then minutes.
+    let tick = if ran < Duration::from_secs(60) { 1 } else { 60 };
+    let next = now + Duration::from_secs(tick);
+    let next = kill.map_or(next, |kill| next.min(started.at + kill));
+    timer.insert(WakeAt(next));
 }
 
-/// Writes each stalled call's line once it settles, and stops watching
-/// every watched call.
+/// Writes the line of each stalled call once it settles, and stops
+/// watching it.
 fn settled(
     settled: On<Add<Settled>>,
     calls: Query<(
-        &Watched,
-        Option<&Stall>,
+        &Started,
+        &WatchedBy,
         Option<&Outcome>,
         Has<SupersededBy>,
         Option<&ForAgent>,
     )>,
+    stalls: Query<&Stall>,
     ids: Query<&AgentId>,
     paths: Option<Res<SessionPaths>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((watched, stall, outcome, superseded, agent)) = calls.get(settled.entity) else {
+    let Ok((started, &WatchedBy(timer), outcome, superseded, agent)) = calls.get(settled.entity)
+    else {
         return;
     };
-    commands
-        .entity(settled.entity)
-        .try_remove::<(WakeAt, Due, Overdue)>();
-    let (Some(stall), Some(paths)) = (stall, paths) else {
+    commands.entity(timer).despawn();
+    let (Ok(stall), Some(paths)) = (stalls.get(timer), paths) else {
         return;
     };
-    let cancelled =
-        matches!(outcome, Some(Outcome(Err(report))) if report.kind == ErrorKind::Cancelled);
-    let ended = match stall.ended {
+    let failed = match outcome {
+        Some(Outcome(Err(report))) => Some(report.kind),
+        _ => None,
+    };
+    let ended = match (stall.ended, failed) {
         _ if superseded => "retried",
-        Some(ended) => ended,
-        None if cancelled => "interrupted",
-        None => "finished",
+        (Some(ended), Some(ErrorKind::Timeout)) => ended,
+        (_, Some(ErrorKind::Cancelled)) => "interrupted",
+        _ => "finished",
     };
     let ran = SystemTime::now()
-        .duration_since(watched.started)
+        .duration_since(started.at)
         .unwrap_or_default();
     let entry = Entry {
         at_ms: millis(SystemTime::now()),
@@ -430,7 +360,7 @@ fn settled(
             writeln!(file, "{line}")
         });
     if let Err(failure) = written {
-        notices.write(Notice::error(
+        notices.write(Notice::warn(
             None,
             format!("Could not write {FILE}: {failure}."),
         ));
@@ -498,16 +428,15 @@ fn list(
     notices.write(Notice::info(args.agent, text));
 }
 
-/// Shows the tool calls past their soft limit on their turn's (or agent's)
-/// status line, and clears the item once none is.
+/// Shows the tool calls past their soft limit on their turn's (or
+/// agent's) status line, and clears the item once none is.
 fn show_overdue(
-    calls: Query<&Overdue>,
+    overdue: Query<&Overdue>,
     mut items: Query<&mut StatusItems>,
     mut shown: Local<HashSet<Entity>>,
-    mut commands: Commands,
 ) {
     let mut texts: BTreeMap<Entity, Vec<&str>> = BTreeMap::new();
-    for overdue in &calls {
+    for overdue in &overdue {
         texts.entry(overdue.target).or_default().push(&overdue.text);
     }
     for gone in shown.iter().filter(|target| !texts.contains_key(target)) {
@@ -519,20 +448,10 @@ fn show_overdue(
     for (target, texts) in texts {
         shown.insert(target);
         let item = PLACE.says(texts.join(", "), Tone::Yellow);
-        match items.get_mut(target) {
-            Ok(mut items) => {
-                let current = items
-                    .iter()
-                    .find(|old| (old.side, old.order) == (PLACE.side, PLACE.order));
-                if current != Some(&item) {
-                    items.show(item);
-                }
-            }
-            Err(_) => {
-                let mut items = StatusItems::default();
-                items.show(item);
-                commands.entity(target).try_insert(items);
-            }
+        if let Ok(mut items) = items.get_mut(target)
+            && !items.iter().any(|old| *old == item)
+        {
+            items.show(item);
         }
     }
 }

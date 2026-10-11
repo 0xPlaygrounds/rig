@@ -76,6 +76,7 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
         .add_observer(log_tool_outputs)
         .init_resource::<Ended>()
         .add_observer(log_ended)
+        .register_required_components::<TurnOf, StatusItems>()
         .init_resource::<ShownLong>()
         .add_systems(Last, watch_status);
     collect::<Notice>(&mut app);
