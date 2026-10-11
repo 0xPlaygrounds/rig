@@ -303,12 +303,19 @@ struct KillArgs {
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
 
-fn answered(text: String) -> Outcome {
-    Outcome::from(ToolResult::success(text.into()))
-}
-
-fn failed(why: String) -> Outcome {
-    Outcome::from(ToolResult::failed(ToolExecutionError::other(why)))
+/// Decides `call`: its result's text, or why it failed.
+fn decide(
+    calls: &mut Query<&mut Decision, ToolCalls>,
+    call: Entity,
+    result: Result<String, String>,
+) {
+    let Ok(mut decision) = calls.get_mut(call) else {
+        return;
+    };
+    decision.decide(match result {
+        Ok(text) => ToolResult::success(text.into()),
+        Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
+    });
 }
 
 fn pool() -> &'static TaskPool {
@@ -321,6 +328,7 @@ fn on_start(
     paths: Option<Res<SessionPaths>>,
     processes: Res<Processes>,
     wake: Res<Wake>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let (call, agent) = (called.call, called.agent);
@@ -329,7 +337,7 @@ fn on_start(
     };
     let Some(paths) = paths else {
         let why = "No session directory to keep the job's log in.".to_owned();
-        commands.entity(call).insert_if_new(failed(why));
+        decide(&mut calls, call, Err(why));
         return;
     };
     let id = jobs.0.iter().map(|job| job.id).max().unwrap_or(0) + 1;
@@ -344,7 +352,7 @@ fn on_start(
         Ok(child) => child,
         Err(error) => {
             let why = format!("Could not start the job: {error}");
-            commands.entity(call).insert_if_new(failed(why));
+            decide(&mut calls, call, Err(why));
             return;
         }
     };
@@ -375,7 +383,7 @@ fn on_start(
         "Started job {id} `{name}` (pid {pid}), logging to {}. You will be told when it exits.",
         log.display()
     );
-    commands.entity(call).insert_if_new(answered(text));
+    decide(&mut calls, call, Ok(text));
 }
 
 /// Starts `command` as `launcher` starts processes, its output to `log`.
@@ -408,12 +416,13 @@ fn on_output(
     agents: Query<&AgentJobs>,
     settings: Res<JobSettings>,
     wake: Res<Wake>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let call = called.call;
     let Some(job) = find(&agents, called.agent, called.args.id) else {
         let why = format!("No job {}; job_list lists them.", called.args.id);
-        commands.entity(call).insert_if_new(failed(why));
+        decide(&mut calls, call, Err(why));
         return;
     };
     let (log, bytes) = (PathBuf::from(&job.log), settings.buffer_bytes);
@@ -434,7 +443,7 @@ fn on_kill(
     called: On<ToolCalled<KillArgs>>,
     mut agents: Query<&mut AgentJobs>,
     live: Query<(&JobOf, &LiveJob)>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let (call, agent, id) = (called.call, called.agent, called.args.id);
     let job = live.iter().find(|(of, job)| of.0 == agent && job.id == id);
@@ -442,19 +451,23 @@ fn on_kill(
         .get_mut(agent)
         .ok()
         .and_then(|jobs| jobs.into_inner().0.iter_mut().find(|job| job.id == id));
-    let outcome = match (job, record) {
+    let result = match (job, record) {
         (Some((_, job)), Some(record)) => {
             job.group.kill();
             record.state = JobState::Killed;
-            answered(format!("Killed job {id} `{}`.", record.name))
+            Ok(format!("Killed job {id} `{}`.", record.name))
         }
-        (None, Some(record)) => failed(format!("Job {id} is not running: {}", record.line())),
-        (_, None) => failed(format!("No job {id}; job_list lists them.")),
+        (None, Some(record)) => Err(format!("Job {id} is not running: {}", record.line())),
+        (_, None) => Err(format!("No job {id}; job_list lists them.")),
     };
-    commands.entity(call).insert_if_new(outcome);
+    decide(&mut calls, call, result);
 }
 
-fn on_list(called: On<ToolCalled<ListArgs>>, agents: Query<&AgentJobs>, mut commands: Commands) {
+fn on_list(
+    called: On<ToolCalled<ListArgs>>,
+    agents: Query<&AgentJobs>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+) {
     let lines = agents
         .get(called.agent)
         .map(|jobs| jobs.0.iter().map(JobRecord::line).collect::<Vec<_>>())
@@ -464,7 +477,7 @@ fn on_list(called: On<ToolCalled<ListArgs>>, agents: Query<&AgentJobs>, mut comm
     } else {
         lines.join("\n")
     };
-    commands.entity(called.call).insert_if_new(answered(text));
+    decide(&mut calls, called.call, Ok(text));
 }
 
 /// `/jobs`: every agent's jobs.
