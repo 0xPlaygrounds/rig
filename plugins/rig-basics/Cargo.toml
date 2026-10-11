@@ -22,6 +22,8 @@ tui = ["dep:rig-tui"]
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
+# Named by Bevy's derives.
+bevy_reflect = { workspace = true }
 # The local date in the system prompt.
 chrono = { workspace = true, features = ["clock"] }
 rig-ecs = { path = "../../crates/rig-ecs" }

@@ -12561,6 +12561,7 @@ version = "0.44.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
+ "bevy_reflect",
  "chrono",
  "rig-cassette",
  "rig-core",
@@ -13001,6 +13002,7 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
+ "bevy_reflect",
  "rig-ecs",
  "rig-harness",
  "rig-tools",

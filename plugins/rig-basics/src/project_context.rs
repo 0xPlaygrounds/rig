@@ -7,11 +7,14 @@
 //! A section only changes when its text does, so the prompt stays cached.
 //! An agent with no [`SystemPrompt`] of its own is told it is rig, a coding
 //! agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its system prompt.
+//! `/context` lists the prompt's sections and what other plugins put in
+//! the context besides, as [`ContextEntry`]s.
 
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
 
 use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
@@ -89,6 +92,30 @@ fn default_prompt(
                 true => DEFAULT_SYSTEM_PROMPT.to_owned(),
                 false => format!("{DEFAULT_SYSTEM_PROMPT}\n\n{prompt}"),
             };
+        }
+    }
+}
+
+/// What a plugin puts in the context besides the system prompt's
+/// sections, for `/context` to list, such as the rules it adds to tool
+/// results: spawn one and keep its `text` current. Entries are listed
+/// after the sections, by `tag`; an empty `text`, or Bevy's `Disabled` on
+/// the entity, leaves one out.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default)]
+pub struct ContextEntry {
+    /// What it is, such as `nested rules`.
+    pub tag: String,
+    /// What `/context` says about it; it may take several lines.
+    pub text: String,
+}
+
+impl ContextEntry {
+    /// `text` about `tag`.
+    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            text: text.into(),
         }
     }
 }
@@ -184,12 +211,13 @@ fn refresh_on_turn(
     }
 }
 
-/// `/context`: re-reads the sections now and lists the instruction files
-/// and every section of the system prompt.
+/// `/context`: re-reads the sections now and lists the instruction files,
+/// every section of the system prompt and the [`ContextEntry`]s.
 fn show_context(
     In(args): In<CommandArgs>,
     mut sections: Query<(&Section, &mut PromptSection)>,
     others: Query<&PromptSection, Without<Section>>,
+    entries: Query<&ContextEntry>,
     home: Res<RigHome>,
     root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
@@ -210,6 +238,14 @@ fn show_context(
         lines.push(format!("  {} ({} bytes)", section.tag, section.text.len()));
     }
     lines.push(context.section(Section::Environment).text);
+    let mut entries: Vec<&ContextEntry> = entries
+        .iter()
+        .filter(|entry| !entry.text.is_empty())
+        .collect();
+    entries.sort_by(|a, b| a.tag.cmp(&b.tag));
+    for entry in entries {
+        lines.push(format!("{}: {}", entry.tag, entry.text));
+    }
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 

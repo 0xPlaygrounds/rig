@@ -4,7 +4,9 @@ The basic slash commands, `/help`, `/retry`, `/quit` and, with the default
 `tui` feature, `/agents` and the agents at work in the terminal view's status
 line (`BasicCommandsPlugin`), and the project context (`ProjectContextPlugin`): the
 instruction files (`AGENTS.md` or `CLAUDE.md`) and the environment in every
-agent's system prompt, re-read when a turn starts, and `/context`.
+agent's system prompt, re-read when a turn starts, and `/context`. Other
+plugins add to `/context` with `ContextEntry`s and to each agent's line in
+`/agents` with `AgentColumn`s.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
 on the public API of the crates it depends on. Its plugins are in the default

@@ -12,6 +12,8 @@ use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::ModelChoice;
 use rig_tui::{Focus, PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
+use super::{AgentColumn, AgentColumns};
+
 /// Where a spawned agent's name is: before its model.
 const TITLE: StatusItem = StatusItem::at(Side::Left, 20, 14);
 /// Where its subagents at work are counted: after its status.
@@ -90,13 +92,16 @@ struct Listed {
     name: &'static Name,
     model: Option<&'static ModelChoice>,
     busy: Has<ActiveTurn>,
+    columns: Option<&'static AgentColumns>,
 }
 
 /// `/agents`: picks an agent to show, each listed under the agent that
-/// spawned it, or shows the one whose id starts with the argument.
+/// spawned it with its [`AgentColumn`]s, or shows the one whose id starts
+/// with the argument.
 fn agents(
     In(args): In<CommandArgs>,
     agents: Query<Listed, With<Agent>>,
+    columns: Query<&AgentColumn>,
     spawned: Query<&Spawned>,
     parents: Query<&SpawnedBy>,
     mut commands: Commands,
@@ -134,8 +139,24 @@ fn agents(
         let depth = parents.iter_ancestors(agent.entity).count();
         let model = agent.model.map_or("no model", |model| model.0.as_str());
         let state = if agent.busy { "working" } else { "idle" };
+        let mut own: Vec<&AgentColumn> = agent
+            .columns
+            .into_iter()
+            .flat_map(|of| of.iter())
+            .filter_map(|column| columns.get(column).ok())
+            .filter(|column| !column.text.is_empty())
+            .collect();
+        own.sort_by(|a, b| a.tag.cmp(&b.tag));
+        let own: String = own
+            .iter()
+            .map(|column| format!(" · {}", column.text))
+            .collect();
         items.push(PickItem {
-            label: format!("{}{} · {model} · {state}", "  ".repeat(depth), agent.name),
+            label: format!(
+                "{}{} · {model} · {state}{own}",
+                "  ".repeat(depth),
+                agent.name
+            ),
             command: format!("agents {}", agent.id.0),
         });
     }
@@ -146,3 +167,6 @@ fn agents(
         selected,
     });
 }
+
+#[cfg(test)]
+mod tests;
