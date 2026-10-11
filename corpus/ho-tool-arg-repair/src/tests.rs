@@ -17,11 +17,11 @@ struct Pick {
 }
 
 /// `pick` says what it was given.
-fn picked(called: On<ToolCalled<Pick>>, mut commands: Commands) {
+fn picked(called: On<ToolCalled<Pick>>, mut calls: Query<&mut Decision, ToolCalls>) {
     let text = format!("{} x{}", called.args.path, called.args.count);
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(ToolResult::success(text.into())));
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success(text.into()));
+    }
 }
 
 /// A call of `pick` streamed as argument fragments.
@@ -135,4 +135,9 @@ fn broken_arguments_run_repaired_and_are_kept_repaired() {
         "{:?}",
         notices.iter().map(|n| &n.text).collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ToolArgRepairPlugin);
 }

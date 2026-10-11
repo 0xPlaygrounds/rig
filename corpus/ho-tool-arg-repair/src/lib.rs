@@ -18,6 +18,7 @@ mod repair;
 use std::collections::BTreeMap;
 
 use bevy_log::debug;
+use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::error::ErrorKind;
@@ -52,6 +53,7 @@ pub struct Repairs(pub BTreeMap<String, BTreeMap<String, u32>>);
 
 /// The plugin's stage systems, for others to order against: a Prepare
 /// system that edits tool arguments goes `.after(ArgRepairSystems::Call)`.
+/// `Call` runs before the coding tools give a call its agent's directory.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ArgRepairSystems {
     /// Review: repairs the calls of a model's reply before it is committed.
@@ -70,7 +72,12 @@ impl Plugin for ToolArgRepairPlugin {
         app.add_setting::<ArgRepairSettings>("tool_arg_repair")
             .init_resource::<Repairs>()
             .configure_sets(AgentPass, ArgRepairSystems::Reply.in_set(Stage::Review))
-            .configure_sets(AgentPass, ArgRepairSystems::Call.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                ArgRepairSystems::Call
+                    .in_set(Stage::Prepare)
+                    .before(CodingToolsSystems),
+            )
             .configure_sets(AgentPass, ArgRepairSystems::Hint.in_set(Stage::Review))
             .add_systems(
                 AgentPass,
@@ -88,45 +95,44 @@ impl Plugin for ToolArgRepairPlugin {
     }
 }
 
-/// Repairs the calls of each turn's reply before it is committed, so the
-/// conversation keeps the repaired arguments, unless the settings keep the
-/// model's text.
+/// Repairs the calls of each turn's reply in place before it is committed,
+/// so the conversation keeps the repaired arguments, unless the settings
+/// keep the model's text. A repaired reply needs no repair, so the next
+/// pass leaves it alone.
 fn repair_replies(
-    replies: Query<(Entity, &Outcome, Option<&SentTo>), (Unreviewed, With<TurnCall>)>,
+    mut replies: Query<(&mut Outcome, Option<&SentTo>), (Unreviewed, ModelCalls, With<TurnCall>)>,
     tools: Query<&ToolDef>,
     settings: Res<ArgRepairSettings>,
     mut repairs: ResMut<Repairs>,
-    mut commands: Commands,
 ) {
     if settings.store == Store::Original {
         return;
     }
-    for (reply, outcome, sent) in &replies {
-        let Some(response) = outcome.completion() else {
-            continue;
-        };
-        let needs = response
-            .tool_calls()
-            .any(|call| repaired(&call.function, &tools).is_some());
+    for (mut outcome, sent) in &mut replies {
+        let needs = outcome.completion().is_some_and(|response| {
+            response
+                .tool_calls()
+                .any(|call| repaired(&call.function, &tools).is_some())
+        });
         if !needs {
             continue;
         }
         let model = sent.map_or_else(|| "unknown".to_owned(), |sent| sent.0.spec.reference());
-        let mut response = response.clone();
+        let Ok(Answered::Completion(response)) = &mut outcome.0 else {
+            continue;
+        };
         for part in &mut response.choice {
             if let AssistantContent::ToolCall(call) = part {
                 apply(&mut call.function, &tools, &model, &mut repairs);
             }
         }
-        let outcome = Outcome(Ok(Answered::Completion(response)));
-        commands.entity(reply).insert(outcome);
     }
 }
 
 /// Repairs each tool call as it is admitted: one whose reply kept the
 /// model's text, or one no reply asked for.
 fn repair_calls(
-    mut calls: Query<(&mut ToolRequest, &Effect), Added<Admitted>>,
+    mut calls: Query<(&mut ToolRequest, &Effect), (Added<Admitted>, ToolCalls)>,
     replies: Query<(&Effect, &SentTo)>,
     tools: Query<&ToolDef>,
     mut repairs: ResMut<Repairs>,
@@ -148,29 +154,31 @@ fn repair_calls(
 #[component(storage = "SparseSet")]
 struct Hinted;
 
-/// A call refused for its arguments gets the hint of what they must be.
+/// A call refused for its arguments gets the hint of what they must be,
+/// once.
 fn hint(
-    calls: Query<(Entity, &ToolRequest, &Outcome), (Unreviewed, Without<Hinted>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &mut Outcome),
+        (Unreviewed, ToolCalls, Without<Hinted>),
+    >,
     tools: Query<&ToolDef>,
     mut commands: Commands,
 ) {
-    for (call, request, outcome) in &calls {
-        let Err(report) = &outcome.0 else {
+    for (call, request, mut outcome) in &mut calls {
+        let refused = outcome.0.as_ref().err().is_some_and(|report| {
+            matches!(report.kind, ErrorKind::Tool(ToolErrorKind::InvalidArgs))
+        });
+        let Some(schema) = schema(&request.call.function, &tools).filter(|_| refused) else {
             continue;
         };
-        if !matches!(report.kind, ErrorKind::Tool(ToolErrorKind::InvalidArgs)) {
-            continue;
+        if let Err(report) = &mut outcome.0 {
+            let like = repair::summary(schema);
+            report.message = format!(
+                "{} Hint: arguments must be a JSON object like: {like}",
+                report.message
+            );
+            commands.entity(call).insert(Hinted);
         }
-        let Some(schema) = schema(&request.call.function, &tools) else {
-            continue;
-        };
-        let mut report = report.clone();
-        let like = repair::summary(schema);
-        report.message = format!(
-            "{} Hint: arguments must be a JSON object like: {like}",
-            report.message
-        );
-        commands.entity(call).insert((Outcome(Err(report)), Hinted));
     }
 }
 
