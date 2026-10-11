@@ -946,15 +946,17 @@ fn fall_back(
 # What a model streams
 
 Every model call streams, a turn's and a plugin's own alike. Each fragment
-of text or reasoning is a `StreamDelta { effect, agent, kind, text }`
-message, written in `Arrive` in the order it came, before the call's
+of text, reasoning or a tool call's argument JSON is a
+`StreamDelta { effect, agent, kind, part, text }` message (`part` tells
+parallel tool calls apart), written in `Arrive` in the order it came, before the call's
 outcome is applied; Bevy keeps a message at least two frames, so a reader in
 `PostUpdate` gets the last fragments of a reply that settled in the same
 frame. They are what the call's adapters left: a `map_stream` rewrite
-comes before them. A turn's call also adds them up in its `Partial`,
-which is gone once the reply is in the conversation. When a call's stream sends its
-first item of any kind, text or a tool call, the call gets a
-`FirstChunk { at }`, beside its `Started { at }`.
+comes before them. A turn's call also adds its text and reasoning up in its `Partial`,
+which is gone once the reply is in the conversation. From its stream's
+first item of any kind, text, a tool call or the end, the call has a
+`Streamed { first, last, items }` beside its `Started { at }`: `last` is
+its latest item, the reply's end once it ended.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -979,12 +981,12 @@ fn print_text(mut deltas: MessageReader<StreamDelta>) {
 
 /// Says how long each model call took to start answering.
 fn time_to_first(
-    first: On<Add<FirstChunk>>,
-    calls: Query<(&FirstChunk, &Started, Option<&ForAgent>)>,
+    streamed: On<Add<Streamed>>,
+    calls: Query<(&Streamed, &Started, Option<&ForAgent>)>,
     mut notices: MessageWriter<Notice>,
 ) {
-    if let Ok((first, started, agent)) = calls.get(first.entity) {
-        let waited = first.at.duration_since(started.at).unwrap_or_default();
+    if let Ok((streamed, started, agent)) = calls.get(streamed.entity) {
+        let waited = streamed.first.duration_since(started.at).unwrap_or_default();
         let text = format!("First token after {} ms.", waited.as_millis());
         notices.write(Notice::info(agent.map(|agent| agent.0), text));
     }

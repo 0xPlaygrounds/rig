@@ -9,7 +9,7 @@
 //! reasoning from `StreamDelta`, tool arguments from a stream tap, since
 //! `StreamDelta` carries no argument fragments), and corrected to the
 //! provider's output tokens when its usage arrives. Times are the kernel's
-//! own stamps on the call: `Started` and `FirstChunk`.
+//! own stamps on the call: `Started` and `Streamed`.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -172,7 +172,11 @@ fn chars(text: &str) -> u64 {
 /// Adds the text and reasoning each call streamed to its tally, in the
 /// pass it arrived, so it is all there when the call settles.
 fn tally_deltas(mut deltas: MessageReader<StreamDelta>, mut calls: Query<&mut Tally>) {
-    for delta in deltas.read() {
+    // Argument fragments are counted by the stream tap.
+    for delta in deltas
+        .read()
+        .filter(|delta| delta.kind != DeltaKind::Arguments)
+    {
         if let Ok(mut tally) = calls.get_mut(delta.effect) {
             tally.chars += chars(&delta.text);
         }
@@ -212,7 +216,7 @@ fn settled(
     calls: Query<(
         &Tally,
         &Started,
-        Option<&FirstChunk>,
+        Option<&Streamed>,
         &SentTo,
         &Outcome,
         Option<&ForAgent>,
@@ -260,9 +264,9 @@ fn settled(
 
 /// The numbers of a call that started at `started`, streamed its first
 /// item at `first` and `tokens` tokens until `ended`.
-fn finished(started: &Started, first: &FirstChunk, ended: Option<SystemTime>, tokens: u64) -> Done {
-    let first_token = first.at.duration_since(started.at).unwrap_or_default();
-    let streaming = ended.and_then(|ended| ended.duration_since(first.at).ok());
+fn finished(started: &Started, first: &Streamed, ended: Option<SystemTime>, tokens: u64) -> Done {
+    let first_token = first.first.duration_since(started.at).unwrap_or_default();
+    let streaming = ended.and_then(|ended| ended.duration_since(first.first).ok());
     Done {
         first_token,
         rate: streaming.and_then(|streaming| rate(tokens, streaming)),
@@ -288,7 +292,7 @@ fn label(done: Done) -> String {
 /// dimmed once it ended.
 fn show(
     mut agents: Query<(&mut LiveSpeed, &mut StatusItems)>,
-    calls: Query<(&Tally, &Started, Option<&FirstChunk>)>,
+    calls: Query<(&Tally, &Started, Option<&Streamed>)>,
     time: Res<Time<Real>>,
 ) {
     let now = time.elapsed();

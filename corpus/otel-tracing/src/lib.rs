@@ -469,7 +469,7 @@ fn end_model_call(
         &ModelRequest,
         &Outcome,
         &ForAgent,
-        Option<(&Started, &FirstChunk)>,
+        Option<(&Started, &Streamed)>,
         Option<&RetryVerdict>,
         Has<SupersededBy>,
     )>,
@@ -482,7 +482,7 @@ fn end_model_call(
     };
     let span = context.span();
     if let Some((started, first)) = first {
-        let waited = first.at.duration_since(started.at).unwrap_or_default();
+        let waited = first.first.duration_since(started.at).unwrap_or_default();
         let ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
         span.set_attribute(count("gen_ai.response.time_to_first_chunk_ms", ms));
     }

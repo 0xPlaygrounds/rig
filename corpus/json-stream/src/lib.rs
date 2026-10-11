@@ -271,6 +271,7 @@ fn stream_deltas(
         let kind = match delta.kind {
             DeltaKind::Text => "text_delta",
             DeltaKind::Reasoning => "reasoning_delta",
+            DeltaKind::Arguments => continue,
         };
         out.emit(kind, delta.agent, json!({ "text": delta.text }));
     }

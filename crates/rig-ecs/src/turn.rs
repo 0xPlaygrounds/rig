@@ -44,7 +44,7 @@ use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_core::transcript::close_pending_with;
 use web_time::Instant;
@@ -247,10 +247,10 @@ pub(crate) struct Feed(Receiver<Fed>);
 
 /// What a model call's stream feeds its entity.
 pub(crate) enum Fed {
-    /// The stream's first item came, of any kind.
-    First(web_time::SystemTime),
-    /// A fragment of text or reasoning.
-    Delta(DeltaKind, String),
+    /// An item of any kind came at this time, the reply's end too.
+    Item(web_time::SystemTime),
+    /// A fragment of text, reasoning or tool-call arguments, of a part.
+    Delta(DeltaKind, Part, String),
 }
 
 /// What a [`StreamDelta`] streamed.
@@ -260,13 +260,16 @@ pub enum DeltaKind {
     Text,
     /// Reasoning text.
     Reasoning,
+    /// A tool call's raw argument JSON.
+    Arguments,
 }
 
-/// A fragment of text or reasoning a model call streamed, any model call,
-/// written in [`Stage::Arrive`] in the order it came, before the call's
-/// outcome is applied. Bevy keeps a message at least two frames, so a reader in
-/// `PostUpdate` sees the last fragments of a reply that settled this
-/// frame. A [`TurnCall`]'s fragments also add up in its [`Partial`].
+/// A fragment of text, reasoning or tool-call arguments a model call
+/// streamed, any model call, written in [`Stage::Arrive`] in the order it
+/// came, before the call's outcome is applied. Bevy keeps a message at
+/// least two frames, so a reader in `PostUpdate` sees the last fragments
+/// of a reply that settled this frame. A [`TurnCall`]'s text and reasoning
+/// also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -275,17 +278,27 @@ pub struct StreamDelta {
     pub agent: Option<Entity>,
     /// What it is.
     pub kind: DeltaKind,
+    /// The part of the reply it belongs to, which tells the arguments of
+    /// parallel tool calls apart.
+    pub part: Part,
     /// The text.
     pub text: String,
 }
 
-/// When a model call's stream sent its first item of any kind, such as
-/// text or a tool call: the time to the first token, beside its
-/// [`Started`]. It stays on the call until it is despawned.
+/// When a model call's stream sent its first and its latest item of any
+/// kind, such as text, a tool call or the reply's end, and how many it
+/// sent: the time to the first token beside its [`Started`], stalls, and
+/// when the reply ended. On the call from its first item until it is
+/// despawned.
 #[derive(Component, Clone, Copy, Debug)]
-pub struct FirstChunk {
-    /// The wall-clock time.
-    pub at: web_time::SystemTime,
+pub struct Streamed {
+    /// The wall-clock time of the first item.
+    pub first: web_time::SystemTime,
+    /// The wall-clock time of the latest item; the reply's end once it
+    /// ended.
+    pub last: web_time::SystemTime,
+    /// How many items came, the end included.
+    pub items: u64,
 }
 
 /// Model calls wait on the network: they run on the IO pool.
@@ -740,34 +753,43 @@ impl ModelStarts<'_, '_> {
     }
 }
 
-/// Streams the reply, feeding `feed` when its first item comes and with
-/// its text and reasoning, waking the loop for each, and returns the
-/// response the provider ended it with.
+/// Streams the reply, feeding `feed` when each item comes and with its
+/// text, reasoning and tool-call arguments, waking the loop for each, and
+/// returns the response the provider ended it with.
 pub(crate) async fn stream_reply(
     reply: Reply,
     feed: Sender<Fed>,
     wake: Wake,
 ) -> Result<effect::Outcome, ErrorReport> {
     let mut events = reply.into_stream();
-    let mut first = true;
     while let Some(item) = events.next().await {
-        if first && item.is_ok() {
-            first = false;
-            // The call may be gone; the reply still finishes.
-            feed.send(Fed::First(web_time::SystemTime::now())).ok();
-        }
-        let delta = match item {
-            Ok(Relayed::Done(response)) => return Ok(effect::Outcome::Completion(*response)),
+        let event = match item {
             Err(report) => return Err(report),
-            Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => {
-                Fed::Delta(DeltaKind::Text, text)
+            // Where the reply is from, before its first item.
+            Ok(Relayed::Origin(_)) => continue,
+            Ok(Relayed::Done(response)) => {
+                // The call may be gone; the reply still finishes.
+                feed.send(Fed::Item(web_time::SystemTime::now())).ok();
+                return Ok(effect::Outcome::Completion(*response));
             }
-            Ok(Relayed::Item(Item::Event(StreamEvent::Reasoning { text, .. }))) => {
-                Fed::Delta(DeltaKind::Reasoning, text)
-            }
-            Ok(_) => continue,
+            Ok(Relayed::Item(item)) => item,
         };
-        feed.send(delta).ok();
+        feed.send(Fed::Item(web_time::SystemTime::now())).ok();
+        let delta = match event {
+            Item::Event(StreamEvent::Text { part, text }) => {
+                Some(Fed::Delta(DeltaKind::Text, part, text))
+            }
+            Item::Event(StreamEvent::Reasoning { part, text }) => {
+                Some(Fed::Delta(DeltaKind::Reasoning, part, text))
+            }
+            Item::Event(StreamEvent::Arguments { part, json }) => {
+                Some(Fed::Delta(DeltaKind::Arguments, part, json))
+            }
+            _ => None,
+        };
+        if let Some(delta) = delta {
+            feed.send(delta).ok();
+        }
         wake.wake();
     }
     Err(stream_truncated())
@@ -782,26 +804,47 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`FirstChunk`], a [`StreamDelta`] per fragment, in order, and the
-/// fragments into its [`Partial`], if it has one.
+/// [`Streamed`], a [`StreamDelta`] per fragment, in order, and the text
+/// and reasoning into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
-    mut calls: Query<(Entity, &Feed, Option<&mut Partial>, Option<&ForAgent>)>,
+    mut calls: Query<(
+        Entity,
+        &Feed,
+        Option<&mut Partial>,
+        Option<&mut Streamed>,
+        Option<&ForAgent>,
+    )>,
     mut deltas: MessageWriter<StreamDelta>,
     mut commands: Commands,
 ) {
-    for (effect, feed, mut partial, agent) in &mut calls {
+    for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
+        // The stamp of a call whose first item came now.
+        let mut first: Option<Streamed> = None;
         for fed in feed.0.try_iter() {
-            let (kind, text) = match fed {
-                Fed::First(at) => {
-                    commands.entity(effect).try_insert(FirstChunk { at });
+            let (kind, part, text) = match fed {
+                Fed::Item(at) => {
+                    match streamed.as_deref_mut().or(first.as_mut()) {
+                        Some(stamp) => {
+                            stamp.last = at;
+                            stamp.items += 1;
+                        }
+                        None => {
+                            first = Some(Streamed {
+                                first: at,
+                                last: at,
+                                items: 1,
+                            });
+                        }
+                    }
                     continue;
                 }
-                Fed::Delta(kind, text) => (kind, text),
+                Fed::Delta(kind, part, text) => (kind, part, text),
             };
             if let Some(partial) = partial.as_mut() {
                 match kind {
                     DeltaKind::Text => partial.text.push_str(&text),
                     DeltaKind::Reasoning => partial.reasoning.push_str(&text),
+                    DeltaKind::Arguments => {}
                 }
             }
             let agent = agent.map(|agent| agent.0);
@@ -809,8 +852,12 @@ pub(crate) fn stream_partials(
                 effect,
                 agent,
                 kind,
+                part,
                 text,
             });
+        }
+        if let Some(first) = first {
+            commands.entity(effect).try_insert(first);
         }
     }
 }

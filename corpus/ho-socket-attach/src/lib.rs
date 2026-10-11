@@ -167,13 +167,14 @@ impl Events<'_, '_> {
             let Server { deltas, .. } = &mut *self.server;
             deltas
                 .read(&self.deltas)
-                .map(|delta| {
+                .filter_map(|delta| {
                     let kind = match delta.kind {
                         DeltaKind::Text => "text",
                         DeltaKind::Reasoning => "reasoning",
+                        DeltaKind::Arguments => return None,
                     };
                     let agent = delta.agent.and_then(|agent| self.names.get(agent).ok());
-                    json!({ "type": kind, "agent": agent.map(Name::as_str), "text": delta.text })
+                    Some(json!({ "type": kind, "agent": agent.map(Name::as_str), "text": delta.text }))
                 })
                 .collect()
         };

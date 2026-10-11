@@ -1762,12 +1762,12 @@ fn an_agent_retired_as_its_turn_ends_goes_with_the_turn() {
     assert_eq!(turns, 0, "the turn went with its agent");
 }
 
-/// What model calls streamed, as a `PostUpdate` reader saw it, and the
-/// calls whose first item came.
+/// What model calls streamed, as a `PostUpdate` reader saw it, and each
+/// call's latest stream stamp.
 #[derive(Resource, Default)]
-struct Streamed {
-    deltas: Vec<(Entity, DeltaKind, String)>,
-    first: Vec<Entity>,
+struct Streams {
+    deltas: Vec<(Entity, DeltaKind, Part, String)>,
+    stamps: Vec<(Entity, Streamed)>,
 }
 
 #[test]
@@ -1777,8 +1777,19 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
         id: "r".to_owned(),
         reasoning: "hm".to_owned(),
     };
+    // Two parallel tool calls whose arguments stream interleaved, then an
+    // answer.
     let model = MockCompletionModel::from_stream_turns([
-        reply(&[("look", "l1")]),
+        vec![
+            MockStreamEvent::tool_call_name_delta("l1", "look"),
+            MockStreamEvent::tool_call_name_delta("t1", "touch"),
+            MockStreamEvent::tool_call_arguments_delta("l1", "{\"a\":"),
+            MockStreamEvent::tool_call_arguments_delta("t1", "{}"),
+            MockStreamEvent::tool_call_arguments_delta("l1", "1}"),
+            MockStreamEvent::tool_call_end("l1"),
+            MockStreamEvent::tool_call_end("t1"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
         vec![
             thought,
             MockStreamEvent::text("Hel"),
@@ -1786,35 +1797,61 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ]);
-    app.init_resource::<Streamed>()
+    app.init_resource::<Streams>()
         .init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_observer(
-            |first: On<Add<FirstChunk>>,
-             calls: Query<(), With<TurnCall>>,
-             mut seen: ResMut<Streamed>| {
-                if calls.contains(first.entity) {
-                    seen.first.push(first.entity);
-                }
-            },
-        )
         .add_systems(
             PostUpdate,
-            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streamed>| {
+            |mut deltas: MessageReader<StreamDelta>,
+             calls: Query<(Entity, &Streamed), (With<TurnCall>, Changed<Streamed>)>,
+             mut seen: ResMut<Streams>| {
                 let read = deltas
                     .read()
-                    .map(|delta| (delta.effect, delta.kind, delta.text.clone()));
+                    .map(|delta| (delta.effect, delta.kind, delta.part, delta.text.clone()));
                 seen.deltas.extend(read);
+                for (call, stamp) in &calls {
+                    seen.stamps.retain(|(seen, _)| *seen != call);
+                    seen.stamps.push((call, *stamp));
+                }
             },
         );
     let agent = agent_on(&mut app, &model);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    let seen = app.world().resource::<Streamed>();
-    let fragments: Vec<(DeltaKind, &str)> = seen
-        .deltas
+    let seen = app.world().resource::<Streams>();
+    // Both calls, the one that only called tools too, were stamped.
+    assert_eq!(seen.stamps.len(), 2, "{:?}", seen.stamps);
+    let [(tools, tools_stamp), (text, text_stamp)] = seen.stamps.as_slice() else {
+        return;
+    };
+    let of = |call: &Entity| -> Vec<(DeltaKind, Part, &str)> {
+        let of_call = seen.deltas.iter().filter(|(effect, ..)| effect == call);
+        of_call
+            .map(|(_, kind, part, text)| (*kind, *part, text.as_str()))
+            .collect()
+    };
+    let arguments = of(tools);
+    let parts: Vec<Part> = arguments.iter().map(|(_, part, _)| *part).collect();
+    assert_eq!(parts.len(), 3, "{arguments:?}");
+    let [look, touch, again] = parts.as_slice() else {
+        return;
+    };
+    assert!(look == again && look != touch, "{parts:?}");
+    let fragments: Vec<(DeltaKind, &str)> = arguments
         .iter()
-        .map(|(_, kind, text)| (*kind, text.as_str()))
+        .map(|(kind, _, text)| (*kind, *text))
+        .collect();
+    assert_eq!(
+        fragments,
+        [
+            (DeltaKind::Arguments, "{\"a\":"),
+            (DeltaKind::Arguments, "{}"),
+            (DeltaKind::Arguments, "1}")
+        ]
+    );
+    let fragments: Vec<(DeltaKind, &str)> = of(text)
+        .into_iter()
+        .map(|(kind, _, text)| (kind, text))
         .collect();
     assert_eq!(
         fragments,
@@ -1824,12 +1861,12 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
             (DeltaKind::Text, "lo")
         ]
     );
-    // Both calls, the one that only called a tool too, got their first
-    // item; the fragments are the second's.
-    assert_eq!(seen.first.len(), 2, "{:?}", seen.first);
-    let text = seen.first.get(1);
-    assert!(seen.first.first() != text);
-    assert!(seen.deltas.iter().all(|(call, ..)| Some(call) == text));
+    // Every fragment was an item, and so was the end.
+    for (call, stamp) in [(tools, tools_stamp), (text, text_stamp)] {
+        let fragments = of(call).len() as u64;
+        assert!(stamp.items > fragments, "{stamp:?}");
+        assert!(stamp.last >= stamp.first, "{stamp:?}");
+    }
     let said = conversation(&app, agent);
     assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
 }
