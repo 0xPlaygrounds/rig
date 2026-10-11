@@ -1,8 +1,8 @@
 //! Plugin corpus: 46. HTTP API front (spec `46-http-api.md`).
 //!
 //! Drives the agent over local HTTP while the terminal view keeps working:
-//! `RIG_SERVE=127.0.0.1:7777` starts a server whose random bearer token is
-//! shown as a notice and written to `RIG_HOME/serve-token`.
+//! `rig --serve=127.0.0.1:7777` starts a server whose random bearer token
+//! is shown as a notice and written to `RIG_HOME/serve-token`.
 //!
 //! - `POST /agents/{id}/messages {text, mode}` delivers a message as if
 //!   typed (slash commands run), `POST /agents/{id}/interrupt` stops a turn.
@@ -14,7 +14,7 @@
 //!
 //! An agent is named by its id or the id's first characters. A client
 //! lagging more than 256 events behind is dropped. Binding to anything but
-//! localhost needs `RIG_SERVE_ALLOW_REMOTE=1`.
+//! localhost needs `--serve-remote`.
 
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
@@ -30,11 +30,11 @@ mod server;
 
 use server::{Call, Reply, Request, Server};
 
-/// The address to serve on, such as `127.0.0.1:7777`.
-pub const SERVE_ENV: &str = "RIG_SERVE";
+/// The option naming the address to serve on, such as `127.0.0.1:7777`.
+pub const SERVE: &str = "serve";
 
-/// `1` or `true` lets the server bind an address that is not localhost.
-pub const ALLOW_REMOTE_ENV: &str = "RIG_SERVE_ALLOW_REMOTE";
+/// The option that lets the server bind an address that is not localhost.
+pub const SERVE_REMOTE: &str = "serve-remote";
 
 /// The pickers kept for an answer; older ones are forgotten.
 const PENDING_PICKERS: usize = 32;
@@ -51,34 +51,24 @@ pub struct Serve {
 }
 
 impl Serve {
-    /// From [`SERVE_ENV`] and [`ALLOW_REMOTE_ENV`], with the token in
-    /// `RIG_HOME/serve-token`; `None` without [`SERVE_ENV`].
-    pub fn from_env() -> Option<Self> {
-        let addr = std::env::var(SERVE_ENV)
-            .ok()
-            .filter(|addr| !addr.is_empty())?;
-        let allow_remote =
-            std::env::var(ALLOW_REMOTE_ENV).is_ok_and(|allow| allow == "1" || allow == "true");
+    /// From the command line's `--serve=ADDR` and `--serve-remote`, with
+    /// the token in `home`'s `serve-token`; `None` without `--serve`.
+    pub fn from_invocation(invoked: &Invoked, home: &Home) -> Option<Self> {
+        let addr = invoked.flag_value(SERVE).filter(|addr| !addr.is_empty())?;
         Some(Self {
-            addr,
-            allow_remote,
-            token_file: Some(Home::from_env().root().join("serve-token")),
+            addr: addr.to_owned(),
+            allow_remote: invoked.flag(SERVE_REMOTE),
+            token_file: Some(home.root().join("serve-token")),
         })
     }
 }
 
-/// The HTTP API front. Serves nothing without a [`Serve`].
+/// The HTTP API front. Serves nothing without a [`Serve`], which the
+/// command line gives unless one is set here.
+#[derive(Default)]
 pub struct HttpApiPlugin {
-    /// Where to serve; [`Serve::from_env`] by default.
+    /// Where to serve; [`Serve::from_invocation`] when `None`.
     pub serve: Option<Serve>,
-}
-
-impl Default for HttpApiPlugin {
-    fn default() -> Self {
-        Self {
-            serve: Serve::from_env(),
-        }
-    }
 }
 
 /// The running server's address and bearer token.
@@ -92,7 +82,16 @@ pub struct HttpApi {
 
 impl Plugin for HttpApiPlugin {
     fn build(&self, app: &mut App) {
-        let Some(serve) = self.serve.clone() else {
+        app.add_flag(Flag::new(SERVE, "Serve the HTTP API on ADDR").value("ADDR"))
+            .add_flag(Flag::new(
+                SERVE_REMOTE,
+                "Let --serve bind an address that is not localhost",
+            ));
+        let invoked = app.world().get_resource::<Invoked>();
+        let from_invocation = || {
+            invoked.and_then(|invoked| Serve::from_invocation(invoked, &RigHome::of(app.world())))
+        };
+        let Some(serve) = self.serve.clone().or_else(from_invocation) else {
             return;
         };
         app.add_message::<PickRequest>()

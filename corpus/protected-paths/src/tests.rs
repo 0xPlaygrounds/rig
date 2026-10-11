@@ -32,7 +32,11 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(rig_harness::error::warn)
-        .insert_resource(PathPolicy::load(&project, &[]))
+        .insert_resource(PathPolicy::load(
+            &project,
+            ("none", &PathsFile::default()),
+            &[],
+        ))
         .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool, SearchTool))
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()

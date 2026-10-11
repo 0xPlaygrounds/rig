@@ -4,23 +4,21 @@
 //! A Gate system sees each `shell` call when it is about to run. A command
 //! that matches no [`DestructivePatterns`], or a pattern the user allowed
 //! for the session ([`SessionAllowances`]), runs as the `shell` tool's
-//! call. One that matches is held by an [`AwaitingApproval`] entity until
-//! the user answers in a picker (`/confirm`), and is refused at once when
-//! nobody sits at the terminal.
-
-use std::fs;
-use std::io::ErrorKind;
+//! call. One that matches is held by an [`Ask`] that any front answers:
+//! allow it once, allow its pattern for the session, or deny it (a line of
+//! text denies it with that reason). With nobody to answer, it is refused
+//! at once. The user's own patterns are the `[confirm]` table of
+//! `settings.toml`: `patterns = ['\bterraform\s+destroy\b']`.
 
 use bevy_log::warn;
 use regex::Regex;
 use rig_harness::prelude::*;
-use rig_tui::{PickItem, PickRequest};
 use serde::Deserialize;
 
 /// The tool whose calls are checked.
 pub const SHELL: &str = "shell";
 
-/// The commands asked about unless `RIG_HOME/confirm.toml` adds more.
+/// The commands asked about, besides the user's own patterns.
 pub const BUILT_IN: &[&str] = &[
     r"\brm\s+(?:-\S*\s+)*-[a-zA-Z]*[rRf]",
     r"\brm\b[^;&|]*\s--(?:recursive|force)\b",
@@ -35,8 +33,23 @@ pub const BUILT_IN: &[&str] = &[
 /// What the model reads for a call the user denied.
 pub const DENIED: &str = "The user denied this command";
 
-/// What the model reads for a matching call with nobody at the terminal.
+/// What the model reads for a matching call with nobody to answer.
 pub const HEADLESS: &str = "needs approval; not available non-interactively";
+
+/// Refuses the call; offered first, as the default answer.
+pub const DENY: &str = "deny";
+/// Runs the call.
+pub const ALLOW: &str = "allow";
+/// Runs the call, and any later one matching its pattern this session.
+pub const SESSION: &str = "session";
+
+/// The `[confirm]` table of `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct ConfirmSettings {
+    /// Regexes added to the built-in ones.
+    pub patterns: Vec<String>,
+}
 
 /// The patterns a `shell` command is checked against.
 #[derive(Resource, Clone, Debug)]
@@ -54,24 +67,6 @@ impl DestructivePatterns {
         Self(sources.into_iter().filter_map(compile).collect())
     }
 
-    /// The built-in patterns and those of `RIG_HOME/confirm.toml`:
-    /// `patterns = ['\bterraform\s+destroy\b']`.
-    fn from_home() -> Self {
-        let path = Home::from_env().root().join("confirm.toml");
-        let extra = match fs::read_to_string(&path) {
-            Ok(text) => toml::from_str::<ConfirmFile>(&text)
-                .inspect_err(|error| warn!("confirm: {} not read: {error}", path.display()))
-                .map(|file| file.patterns)
-                .unwrap_or_default(),
-            Err(error) if error.kind() == ErrorKind::NotFound => Vec::new(),
-            Err(error) => {
-                warn!("confirm: {} not read: {error}", path.display());
-                Vec::new()
-            }
-        };
-        Self::new(BUILT_IN.iter().copied().map(str::to_owned).chain(extra))
-    }
-
     /// The first pattern `command` matches.
     pub fn matching(&self, command: &str) -> Option<&Regex> {
         self.0.iter().find(|pattern| pattern.is_match(command))
@@ -84,58 +79,15 @@ impl Default for DestructivePatterns {
     }
 }
 
-/// `RIG_HOME/confirm.toml`.
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct ConfirmFile {
-    /// Regexes added to the built-in ones.
-    #[serde(default)]
-    patterns: Vec<String>,
-}
-
 /// The patterns the user allowed for the rest of the session, kept with
 /// it across `/reload` and `/resume`.
 #[derive(Resource, Reflect, Clone, Debug, Default)]
 #[reflect(Resource, Saved, Default)]
 pub struct SessionAllowances(pub Vec<String>);
 
-/// A hold on a `shell` call waiting for the user's answer: an entity
-/// [`HoldOf`] the call. Interrupting or stopping the turn despawns this
-/// hold, and its question with it.
+/// On an [`Ask`] about a `shell` call: the pattern its command matched.
 #[derive(Component, Clone, Debug)]
-pub struct AwaitingApproval {
-    /// The calling agent.
-    pub agent: Entity,
-    /// The command.
-    pub command: String,
-    /// The pattern it matched.
-    pub pattern: String,
-    /// Whether the user chose "Deny with reason": the next message they
-    /// type to the agent is the reason.
-    pub reason_asked: bool,
-}
-
-impl AwaitingApproval {
-    /// The picker asking about the hold `hold`, with "Deny" selected.
-    fn picker(&self, hold: Entity) -> PickRequest {
-        let key = hold.to_bits();
-        let item = |label: &str, answer: &str| PickItem {
-            label: label.to_owned(),
-            command: format!("confirm {key} {answer}"),
-        };
-        PickRequest {
-            agent: self.agent,
-            title: format!("Allow `{}`?", self.command),
-            items: vec![
-                item("Allow once", "allow"),
-                item("Allow for this session", "session"),
-                item("Deny", "deny"),
-                item("Deny with reason", "reason"),
-            ],
-            selected: 2,
-        }
-    }
-}
+pub struct Matched(pub String);
 
 /// On a `shell` call the user allowed: the gate lets it run.
 #[derive(Component)]
@@ -148,35 +100,26 @@ pub struct ConfirmDestructivePlugin;
 
 impl Plugin for ConfirmDestructivePlugin {
     fn build(&self, app: &mut App) {
+        app.add_setting::<ConfirmSettings>("confirm");
         if !app.world().contains_resource::<DestructivePatterns>() {
-            app.insert_resource(DestructivePatterns::from_home());
+            let own = app.world().resource::<ConfirmSettings>().patterns.clone();
+            let built_in = BUILT_IN.iter().copied().map(str::to_owned);
+            app.insert_resource(DestructivePatterns::new(built_in.chain(own)));
         }
-        app.add_message::<PickRequest>()
-            .init_resource::<SessionAllowances>()
-            .add_systems(AgentPass, (gate, take_reason).in_set(Stage::Gate))
-            .add_command(
-                "confirm",
-                "Answer a shell command waiting for approval; alone, asks again",
-                confirm,
-            )
-            .add_observer(ask_next);
+        app.init_resource::<SessionAllowances>()
+            .add_systems(AgentPass, (answered, gate).chain().in_set(Stage::Gate));
     }
 }
 
-/// Holds each destructive `shell` call about to run for the user, or
+/// Asks about each destructive `shell` call about to run, holding it, or
 /// refuses it with nobody to ask; any other runs.
 fn gate(
     calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Approved>)>,
     patterns: Res<DestructivePatterns>,
     allowed: Res<SessionAllowances>,
-    invoked: Option<Res<Invoked>>,
-    waiting: Query<(), With<AwaitingApproval>>,
+    answerers: Answerers,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
 ) {
-    let interactive = invoked.is_some_and(|invoked| invoked.interactive());
-    // One question at a time: the next is asked once this one is answered.
-    let mut asking = !waiting.is_empty();
     for (call, ToolRequest { call: request }, &ForAgent(agent)) in &calls {
         if request.function.name.as_str() != SHELL {
             continue;
@@ -194,134 +137,48 @@ fn gate(
         let Some(pattern) = pattern else {
             continue;
         };
-        if !interactive {
+        if !answerers.can_answer(Some(agent)) {
             let refused = Outcome::refused(format!("`{command}` {HEADLESS}"));
             commands.entity(call).insert_if_new(refused);
             continue;
         }
-        let awaiting = AwaitingApproval {
-            agent,
-            command: command.to_owned(),
-            pattern,
-            reason_asked: false,
-        };
-        let hold = commands.spawn((awaiting.clone(), HoldOf(call))).id();
-        if !asking {
-            asking = true;
-            picks.write(awaiting.picker(hold));
-        }
+        let ask = Ask::new(format!("Allow `{command}`?"))
+            .body(format!(
+                "It matches `{pattern}`. Type a reason to deny it with."
+            ))
+            .choice(DENY, "Deny")
+            .choice(ALLOW, "Allow once")
+            .choice(SESSION, "Allow for this session")
+            .free_text();
+        commands.spawn((ask, Matched(pattern), ForAgent(agent), HoldOf(call)));
     }
 }
 
-/// Refuses the held call of `hold` as denied, for `reason` if given, and
-/// releases it.
-fn deny(commands: &mut Commands, (hold, call): (Entity, Entity), reason: Option<&str>) {
-    let why = match reason.map(str::trim).filter(|reason| !reason.is_empty()) {
-        Some(reason) => format!("{DENIED}: {reason}"),
-        None => format!("{DENIED}."),
-    };
-    commands.entity(call).insert_if_new(Outcome::refused(why));
-    commands.entity(hold).despawn();
-}
-
-/// `/confirm <hold> allow|session|deny [reason]|reason`, as the picker
-/// runs it; `/confirm` alone asks about the first waiting call again, such
-/// as after the picker was closed.
-fn confirm(
-    In(args): In<CommandArgs>,
-    mut waiting: Query<(Entity, &HoldOf, &mut AwaitingApproval)>,
+/// Carries out each answer: the call runs, or is refused with the reason
+/// typed, and the question lets go of it.
+fn answered(
+    asks: Query<(Entity, &Outcome, &HoldOf, &Matched), Added<Outcome>>,
     mut allowed: ResMut<SessionAllowances>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
 ) {
-    let mut words = args.args.splitn(3, char::is_whitespace);
-    let (key, answer, reason) = (words.next(), words.next(), words.next());
-    let hold = key
-        .filter(|key| !key.is_empty())
-        .and_then(|key| key.parse().ok())
-        .and_then(Entity::try_from_bits);
-    let Some(hold) = hold else {
-        match waiting.iter().next() {
-            Some((hold, _, awaiting)) => {
-                picks.write(awaiting.picker(hold));
+    for (ask, outcome, &HoldOf(call), Matched(pattern)) in &asks {
+        match Answer::of(outcome) {
+            Some(Answer::Choice(choice)) if choice == ALLOW || choice == SESSION => {
+                if choice == SESSION && !allowed.0.contains(pattern) {
+                    allowed.0.push(pattern.clone());
+                }
+                commands.entity(call).insert(Approved);
             }
-            None => {
-                notices.write(Notice::info(args.agent, "No shell command waits."));
+            Some(Answer::Text(reason)) if !reason.trim().is_empty() => {
+                let why = format!("{DENIED}: {}", reason.trim());
+                commands.entity(call).insert_if_new(Outcome::refused(why));
+            }
+            _ => {
+                let why = format!("{DENIED}.");
+                commands.entity(call).insert_if_new(Outcome::refused(why));
             }
         }
-        return;
-    };
-    let Ok((hold, &HoldOf(call), mut awaiting)) = waiting.get_mut(hold) else {
-        notices.write(Notice::error(
-            args.agent,
-            "That shell command no longer waits.",
-        ));
-        return;
-    };
-    match answer.unwrap_or_default() {
-        "allow" | "session" => {
-            if answer == Some("session") && !allowed.0.contains(&awaiting.pattern) {
-                allowed.0.push(awaiting.pattern.clone());
-            }
-            commands.entity(call).insert(Approved);
-            commands.entity(hold).despawn();
-        }
-        "deny" => deny(&mut commands, (hold, call), reason),
-        "reason" => {
-            awaiting.reason_asked = true;
-            notices.write(Notice::info(
-                awaiting.agent,
-                format!(
-                    "Type why `{}` is denied: your next message is the reason.",
-                    awaiting.command
-                ),
-            ));
-        }
-        other => {
-            notices.write(Notice::error(
-                args.agent,
-                format!("/confirm: `{other}` is not allow, session, deny or reason."),
-            ));
-        }
-    }
-}
-
-/// The user's next message after "Deny with reason" is the reason: this
-/// Gate system takes it over, so it denies the call and goes nowhere else.
-fn take_reason(
-    typed: Query<(Entity, &Incoming, &ForAgent), Undecided>,
-    waiting: Query<(Entity, &HoldOf, &AwaitingApproval)>,
-    mut commands: Commands,
-) {
-    let mut denied = Vec::new();
-    for (message, typed, &ForAgent(agent)) in &typed {
-        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
-            continue;
-        }
-        let asked = waiting.iter().find(|(hold, _, awaiting)| {
-            awaiting.agent == agent && awaiting.reason_asked && !denied.contains(hold)
-        });
-        if let Some((hold, &HoldOf(call), _)) = asked {
-            denied.push(hold);
-            let taken = Outcome::custom("the reason for a denial");
-            commands.entity(message).insert_if_new(taken);
-            deny(&mut commands, (hold, call), Some(typed.text.trim()));
-        }
-    }
-}
-
-/// Once a question is answered, or its call is gone, asks the next one.
-fn ask_next(
-    answered: On<Remove<AwaitingApproval>>,
-    waiting: Query<(Entity, &AwaitingApproval)>,
-    mut picks: MessageWriter<PickRequest>,
-) {
-    let next = waiting
-        .iter()
-        .find(|(hold, awaiting)| *hold != answered.entity && !awaiting.reason_asked);
-    if let Some((hold, awaiting)) = next {
-        picks.write(awaiting.picker(hold));
+        commands.entity(ask).remove::<HoldOf>();
     }
 }
 

@@ -8,11 +8,13 @@
 //! would not help) and supersedes the call with the same request on the
 //! next model; a Prepare system sends a call bound for a cooling model to
 //! the chain instead. A context overflow is left to compaction, and a
-//! failure another plugin took over is left to it. The chain is
-//! `RIG_HOME/fallback.json`:
+//! failure another plugin took over is left to it. The chain is the
+//! `[model-fallback]` table of the user's `settings.toml`:
 //!
-//! ```json
-//! { "chain": ["anthropic/claude-opus-4-5", "openai/gpt-5"], "cooldown": "5m" }
+//! ```toml
+//! [model-fallback]
+//! chain = ["anthropic/claude-opus-4-5", "openai/gpt-5"]
+//! cooldown = "5m"
 //! ```
 
 use std::collections::HashMap;
@@ -62,10 +64,21 @@ pub struct ModelFallbackPlugin;
 
 impl Plugin for ModelFallbackPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FallbackChain>()
-            .init_resource::<Cooling>()
+        if !app.world().contains_resource::<FallbackChain>() {
+            app.add_setting::<FallbackSettings>("model-fallback");
+            let settings = app.world().resource::<FallbackSettings>();
+            let chain = FallbackChain {
+                chain: settings.chain.clone(),
+                cooldown: settings
+                    .cooldown
+                    .as_deref()
+                    .and_then(parse_duration)
+                    .unwrap_or(COOLDOWN),
+            };
+            app.insert_resource(chain);
+        }
+        app.init_resource::<Cooling>()
             .init_resource::<Connected>()
-            .add_systems(Startup, read_config)
             .add_systems(
                 AgentPass,
                 (
@@ -76,30 +89,12 @@ impl Plugin for ModelFallbackPlugin {
     }
 }
 
-/// `RIG_HOME/fallback.json`.
-#[derive(Deserialize)]
-struct Config {
+/// The `[model-fallback]` table of `settings.toml`.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+struct FallbackSettings {
     chain: Vec<String>,
     cooldown: Option<String>,
-}
-
-/// Reads the chain of an agent the launcher started, so a test never reads
-/// the user's home.
-fn read_config(invoked: Option<Res<Invoked>>, mut chain: ResMut<FallbackChain>) {
-    if invoked.is_none() || !chain.chain.is_empty() {
-        return;
-    }
-    let path = Home::from_env().root().join("fallback.json");
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
-    };
-    let Ok(config) = serde_json::from_str::<Config>(&text) else {
-        return;
-    };
-    chain.chain = config.chain;
-    if let Some(cooldown) = config.cooldown.as_deref().and_then(parse_duration) {
-        chain.cooldown = cooldown;
-    }
 }
 
 /// `90`, `90s`, `5m` or `1h`.

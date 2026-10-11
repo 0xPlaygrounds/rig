@@ -7,10 +7,10 @@
 //! is reported and the run goes on live, its calls left to start as usual.
 //!
 //! The replay is started by a [`ReplaySource`] resource inserted before the
-//! plugin is added, or by the `RIG_REPLAY` environment variable naming a
-//! session directory (with `RIG_REPLAY_FLAGS`, a comma list of
-//! `continue-live`, `live-tools` and `speed`). Without either the plugin
-//! does nothing. Nothing recorded is written to.
+//! plugin is added, or by the option `--replay=DIR` naming a session
+//! directory (with `--replay-flags=`, a comma list of `continue-live`,
+//! `live-tools` and `speed`). Without either the plugin does nothing.
+//! Nothing recorded is written to.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
@@ -28,6 +28,12 @@ use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
+
+/// The option naming the session directory to replay.
+pub const REPLAY: &str = "replay";
+
+/// The option with [`ReplayFlags`] as a comma list.
+pub const REPLAY_FLAGS: &str = "replay-flags";
 
 /// How a replay runs.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -72,11 +78,11 @@ impl ReplaySource {
         })
     }
 
-    /// The source `RIG_REPLAY` and `RIG_REPLAY_FLAGS` name, if any.
-    fn from_env() -> Option<io::Result<Self>> {
-        let dir = std::env::var_os("RIG_REPLAY")?;
-        let flags = std::env::var("RIG_REPLAY_FLAGS").unwrap_or_default();
-        Some(Self::from_dir(Path::new(&dir), ReplayFlags::parse(&flags)))
+    /// The source `--replay` and `--replay-flags` name, if any.
+    fn from_invocation(invoked: &Invoked) -> Option<io::Result<Self>> {
+        let dir = invoked.flag_value(REPLAY)?;
+        let flags = invoked.flag_value(REPLAY_FLAGS).unwrap_or_default();
+        Some(Self::from_dir(Path::new(dir), ReplayFlags::parse(flags)))
     }
 }
 
@@ -393,12 +399,22 @@ pub struct SessionReplayPlugin;
 
 impl Plugin for SessionReplayPlugin {
     fn build(&self, app: &mut App) {
+        app.add_flag(Flag::new(REPLAY, "Replay the session recorded in DIR").value("DIR"))
+            .add_flag(
+                Flag::new(
+                    REPLAY_FLAGS,
+                    "How --replay runs: continue-live, live-tools, speed",
+                )
+                .value("LIST"),
+            );
+        let invoked = app.world().get_resource::<Invoked>();
+        let from_invocation = invoked.and_then(ReplaySource::from_invocation);
         let source = match app.world_mut().remove_resource::<ReplaySource>() {
             Some(source) => source,
-            None => match ReplaySource::from_env() {
+            None => match from_invocation {
                 Some(Ok(source)) => source,
                 Some(Err(failure)) => {
-                    let why = format!("Cannot replay the session in RIG_REPLAY: {failure}.");
+                    let why = format!("Cannot replay the session --replay names: {failure}.");
                     app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
                         notices.write(Notice::error(None, why.clone()));
                     });

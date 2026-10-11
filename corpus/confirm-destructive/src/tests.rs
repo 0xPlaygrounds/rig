@@ -5,33 +5,24 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ShellTool;
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::harness_protocol::Invocation;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    AnswerAsks, Answers, Ended, app_on, connect, log_ended, reply, run_until,
+};
 
-/// The pickers the plugin asked the view to show.
-#[derive(Resource, Default)]
-struct Asked(Vec<PickRequest>);
-
-fn collect_picks(mut picks: MessageReader<PickRequest>, mut asked: ResMut<Asked>) {
-    asked.0.extend(picks.read().cloned());
-}
-
-/// The kernel with the real `shell` tool and this plugin, someone at the
-/// terminal when `interactive`, and its first agent, answered by `model`.
+/// The kernel with the real `shell` tool and this plugin, a front that
+/// answers with `answers` when given, and its first agent, answered by
+/// `model`.
 fn start(
     store: &MemoryStore,
     model: &MockCompletionModel,
-    interactive: bool,
+    answers: Option<Answers>,
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
-    if interactive {
-        app.insert_resource(Invoked {
-            args: Invocation::default(),
-            terminal: true,
-        });
+    if let Some(answers) = answers {
+        app.add_plugins(AnswerAsks).insert_resource(answers);
     }
     app.insert_resource(DestructivePatterns::default())
         .add_plugins((
@@ -40,9 +31,7 @@ fn start(
             ShellTool,
             ConfirmDestructivePlugin,
         ))
-        .init_resource::<Asked>()
         .init_resource::<Ended>()
-        .add_systems(Update, collect_picks)
         .add_observer(log_ended);
     app.finish();
     app.update();
@@ -99,41 +88,35 @@ fn results(request: Option<&CompletionRequest>) -> Vec<String> {
 }
 
 #[test]
-fn a_denied_command_does_not_run_while_its_harmless_sibling_does() {
+fn a_command_denied_with_a_reason_does_not_run_and_its_sibling_does() {
     let dir = workspace("deny");
     let model = model(&dir);
-    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, true);
+    // The user answers the question with a line of text: a denial with
+    // that reason.
+    let answers = Answers::new([Answer::Text("we need it".to_owned())]);
+    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, Some(answers));
     app.world_mut().trigger(Deliver::new(
         agent,
         "clean the build directory",
         DeliveryMode::Queue,
     ));
     run_until(&mut app, &wakes, |world| {
-        !world.resource::<Asked>().0.is_empty()
-    });
-
-    // The user is asked about the `rm`, and picks "Deny" as the view would.
-    let asked = app.world().resource::<Asked>().0.clone();
-    assert_eq!(asked.len(), 1, "{asked:?}");
-    let picker = asked.first();
-    assert!(picker.is_some_and(|picker| picker.title.starts_with("Allow `rm -rf")));
-    let deny = picker
-        .and_then(|picker| picker.items.iter().find(|item| item.label == "Deny"))
-        .map(|item| item.command.clone())
-        .unwrap_or_default();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: deny,
-    });
-    run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
 
+    let asked = &app.world().resource::<Answers>().asked;
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert!(
+        asked.iter().all(|title| title.starts_with("Allow `rm -rf")),
+        "{asked:?}"
+    );
     assert!(dir.join("build").is_dir(), "build/ was removed");
     let requests = model.requests();
     let sent = results(requests.get(1));
     assert_eq!(sent.len(), 2, "{sent:?}");
-    let denied = sent.first().is_some_and(|denied| denied.contains(DENIED));
+    let denied = sent
+        .first()
+        .is_some_and(|denied| denied.contains(&format!("{DENIED}: we need it")));
     assert!(denied, "{sent:?}");
     assert!(
         sent.get(1)
@@ -149,10 +132,30 @@ fn a_denied_command_does_not_run_while_its_harmless_sibling_does() {
 }
 
 #[test]
+fn a_command_allowed_for_the_session_runs_and_its_pattern_is_not_asked_again() {
+    let dir = workspace("allow");
+    let model = model(&dir);
+    let answers = Answers::new([Answer::Choice(SESSION.to_owned())]);
+    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, Some(answers));
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "clean the build directory",
+        DeliveryMode::Queue,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert!(!dir.join("build").exists(), "build/ is still there");
+    let allowed = &app.world().resource::<SessionAllowances>().0;
+    assert_eq!(allowed.len(), 1, "{allowed:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn with_nobody_at_the_terminal_a_destructive_command_is_denied_at_once() {
     let dir = workspace("headless");
     let model = model(&dir);
-    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, false);
+    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, None);
     app.world_mut().trigger(Deliver::new(
         agent,
         "clean the build directory",
@@ -162,7 +165,8 @@ fn with_nobody_at_the_terminal_a_destructive_command_is_denied_at_once() {
         !world.resource::<Ended>().0.is_empty()
     });
 
-    assert!(app.world().resource::<Asked>().0.is_empty());
+    let mut asks = app.world_mut().query::<&Ask>();
+    assert_eq!(asks.iter(app.world()).count(), 0);
     assert!(dir.join("build").is_dir(), "build/ was removed");
     let requests = model.requests();
     let sent = results(requests.get(1));

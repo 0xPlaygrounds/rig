@@ -1,8 +1,9 @@
 //! Protected paths (corpus spec 02): the file tools never read secrets
 //! nor write outside the project or into `.git/`.
 //!
-//! The rules are `deny_read` and `deny_write` globs: defaults, then
-//! `RIG_HOME/paths.toml`, then `<project>/.rig/paths.toml`. A Gate system
+//! The rules are `deny_read` and `deny_write` globs: defaults, then the
+//! `[protected-paths]` table of the user's `settings.toml`, then the
+//! project's `.rig/paths.toml`. A Gate system
 //! checks every path a tool call names (its `path`, `file` and `paths`
 //! arguments) when the call is about to run, resolved first (`~`, `..` and
 //! symbolic links) so none sneaks past, and refuses a denied one. A Review
@@ -39,10 +40,16 @@ pub struct ProtectedPathsPlugin;
 impl Plugin for ProtectedPathsPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<PathPolicy>() {
-            let root = std::env::current_dir().unwrap_or_default();
-            let home = Home::from_env().root().join("paths.toml");
-            let project = root.join(".rig").join("paths.toml");
-            app.insert_resource(PathPolicy::load(&root, &[home, project]));
+            app.add_setting::<PathsFile>("protected-paths")
+                .init_resource::<ProjectRoot>();
+            let world = app.world();
+            let root = world.resource::<ProjectRoot>().0.clone();
+            let user = (
+                "settings.toml [protected-paths]",
+                world.resource::<PathsFile>(),
+            );
+            let policy = PathPolicy::load(&root, user, &[root.join(".rig").join("paths.toml")]);
+            app.insert_resource(policy);
         }
         app.init_resource::<PathGuardCounts>()
             .add_systems(
@@ -134,14 +141,16 @@ impl Rule {
     }
 }
 
-/// `paths.toml`.
-#[derive(Deserialize, Default)]
+/// `paths.toml`, and the user's `[protected-paths]` settings.
+#[derive(Resource, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-struct PathsFile {
+pub struct PathsFile {
+    /// Globs no tool reads.
     #[serde(default)]
-    deny_read: Vec<String>,
+    pub deny_read: Vec<String>,
+    /// Globs no tool writes.
     #[serde(default)]
-    deny_write: Vec<String>,
+    pub deny_write: Vec<String>,
 }
 
 /// The active rules, the project root they are relative to, and what could
@@ -177,9 +186,9 @@ impl Denied<'_> {
 }
 
 impl PathPolicy {
-    /// The default rules for the project at `root`, then those of each of
-    /// `files` that exists, in order.
-    pub fn load(root: &Path, files: &[PathBuf]) -> Self {
+    /// The default rules for the project at `root`, then the user's from
+    /// `source`, then those of each of `files` that exists, in order.
+    pub fn load(root: &Path, (source, user): (&str, &PathsFile), files: &[PathBuf]) -> Self {
         let root = real(&std::path::absolute(root).unwrap_or_else(|_| root.to_path_buf()));
         let home = std::env::home_dir().map(|home| real(&home));
         let mut policy = Policy {
@@ -196,24 +205,14 @@ impl PathPolicy {
             source: "default".to_owned(),
             matcher: Matcher::Outside,
         });
+        policy.add_file(user, source);
         for file in files {
             let Ok(text) = std::fs::read_to_string(file) else {
                 continue;
             };
             let source = file.display().to_string();
             match toml::from_str::<PathsFile>(&text) {
-                Ok(paths) => {
-                    policy.add(
-                        Access::Read,
-                        paths.deny_read.iter().map(String::as_str),
-                        &source,
-                    );
-                    policy.add(
-                        Access::Write,
-                        paths.deny_write.iter().map(String::as_str),
-                        &source,
-                    );
-                }
+                Ok(paths) => policy.add_file(&paths, &source),
                 Err(error) => policy.problems.push(format!("{source}: {error}")),
             }
         }
@@ -242,6 +241,20 @@ impl PathPolicy {
 }
 
 impl Policy {
+    /// The rules of `paths`, from `source`.
+    fn add_file(&mut self, paths: &PathsFile, source: &str) {
+        self.add(
+            Access::Read,
+            paths.deny_read.iter().map(String::as_str),
+            source,
+        );
+        self.add(
+            Access::Write,
+            paths.deny_write.iter().map(String::as_str),
+            source,
+        );
+    }
+
     fn add<'a>(&mut self, access: Access, globs: impl Iterator<Item = &'a str>, source: &str) {
         for glob in globs {
             match self.matcher(glob) {

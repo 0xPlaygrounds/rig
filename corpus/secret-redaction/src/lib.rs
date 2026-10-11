@@ -1,7 +1,8 @@
 //! Plugin corpus: 10. Secret redaction (spec `10-secret-redaction.md`).
 //!
 //! Secrets (API keys, tokens, private keys, `PASSWORD=…` values and the
-//! values of the env vars named in `RIG_REDACT_ENV`) never leave the
+//! values of the env vars the `[secret-redaction]` table of the user's
+//! `settings.toml` names, `env_vars = ["DB_PASSWORD"]`) never leave the
 //! machine: each distinct one becomes a stable placeholder `‹SECRET_n›` in
 //! every request, in the session log and in the results of every tool. A
 //! tool call that names a placeholder gets the real value. The
@@ -32,36 +33,31 @@ use serde_json::Value;
 #[cfg(test)]
 mod tests;
 
-/// The env var naming, comma-separated, the env vars whose values are
-/// secrets.
-pub const ENV: &str = "RIG_REDACT_ENV";
-
 /// Values shorter than this are not taken as secrets.
 const SHORTEST: usize = 6;
 
 /// Redacts secrets from everything that leaves the machine.
+#[derive(Default)]
 pub struct SecretRedactionPlugin {
+    /// The env vars whose exact values are secrets, besides those the
+    /// user's settings name.
+    pub env_vars: Vec<String>,
+}
+
+/// The `[secret-redaction]` table of `settings.toml`.
+#[derive(Resource, serde::Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct RedactionSettings {
     /// The env vars whose exact values are secrets.
     pub env_vars: Vec<String>,
 }
 
-impl Default for SecretRedactionPlugin {
-    fn default() -> Self {
-        let named = std::env::var(ENV).unwrap_or_default();
-        let env_vars = named
-            .split(',')
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_owned)
-            .collect();
-        Self { env_vars }
-    }
-}
-
 impl Plugin for SecretRedactionPlugin {
     fn build(&self, app: &mut App) {
+        app.add_setting::<RedactionSettings>("secret-redaction");
+        let named = &app.world().resource::<RedactionSettings>().env_vars;
         let secrets = Secrets::default();
-        for name in &self.env_vars {
+        for name in self.env_vars.iter().chain(named) {
             if let Ok(value) = std::env::var(name)
                 && value.len() >= SHORTEST
             {
