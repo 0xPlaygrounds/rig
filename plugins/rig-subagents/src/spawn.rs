@@ -99,24 +99,6 @@ impl SpawnSubagent {
         }
     }
 
-    /// The same request, on the catalog model `model` (`vendor/model`).
-    #[must_use]
-    pub fn model(self, model: impl Into<String>) -> Self {
-        Self {
-            model: Some(model.into()),
-            ..self
-        }
-    }
-
-    /// The same request, with only `tools`.
-    #[must_use]
-    pub fn tools<S: Into<String>>(self, tools: impl IntoIterator<Item = S>) -> Self {
-        Self {
-            tools: Some(tools.into_iter().map(Into::into).collect()),
-            ..self
-        }
-    }
-
     /// The same request, with the system prompt `prompt`.
     #[must_use]
     pub fn system_prompt(self, prompt: impl Into<String>) -> Self {
