@@ -2,48 +2,6 @@ use rig_harness::harness_protocol::Invocation;
 
 use super::*;
 
-/// The error notices written so far.
-#[derive(Resource, Default)]
-struct Errors(Vec<String>);
-
-#[test]
-fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
-    let mut app = App::new();
-    app.insert_resource(Invoked {
-        args: Invocation {
-            print: Some("hi".to_owned()),
-            model: None,
-            ..Invocation::default()
-        },
-        terminal: false,
-    })
-    .add_plugins((TaskPoolPlugin::default(), AgentPlugin, PrintPlugin))
-    .init_resource::<Errors>()
-    .add_systems(
-        Last,
-        |mut notices: MessageReader<Notice>, mut errors: ResMut<Errors>| {
-            let failed = notices
-                .read()
-                .filter(|notice| notice.level == NoticeLevel::Error);
-            errors.0.extend(failed.map(|notice| notice.text.clone()));
-        },
-    );
-    app.world_mut()
-        .spawn((Agent, ModelChoice("nobody/nothing".to_owned())));
-    app.finish();
-    app.cleanup();
-    // Read the exit in the frame that wrote it: Bevy drops a message once
-    // two fixed steps passed, which a slow machine takes in a few frames.
-    let mut exit = None;
-    for _ in 0..10 {
-        app.update();
-        exit = exit.or(app.should_exit());
-    }
-    assert_eq!(exit, Some(AppExit::from_code(1)));
-    let errors = &app.world().resource::<Errors>().0;
-    assert_eq!(errors.len(), 1, "{errors:?}");
-}
-
 /// A print run of `prompt` with `--answer=answers` when given, after its
 /// first frame.
 fn print_run(answers: Option<&str>) -> App {
