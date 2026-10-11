@@ -1,6 +1,6 @@
 use rig_core::tool::{ExitStatus, Tool, ToolContext};
 
-use super::{Shell, ShellArgs, Stop, run};
+use super::{Shell, ShellArgs};
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -8,7 +8,7 @@ fn shell(command: &str, spill: Option<crate::Spill>) -> String {
         spill,
         ..Shell::default()
     };
-    run(&shell, ShellArgs::new(command), &Stop::default())
+    futures::executor::block_on(shell.run(ShellArgs::new(command)))
         .map(|ran| ran.output)
         .unwrap_or_default()
 }
