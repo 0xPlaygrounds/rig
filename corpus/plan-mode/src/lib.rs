@@ -1,8 +1,11 @@
 //! Plan mode (corpus spec `09-plan-mode.md`). `/plan` lets the shown agent
 //! read but not change anything: a Prepare system offers its model calls
-//! only the tools that change nothing and tells the model to plan, and a
-//! Gate system refuses, with its own reason, a call that may change
-//! something, of the agent or of an agent it spawned. The answer that ends
+//! only the read-only tools ([`Footprint::ReadOnly`], which a tool's
+//! read-only annotation gives it) and tells the model to plan, and a Gate
+//! system refuses, with its own reason, any other call, of the agent or
+//! of an agent it spawned. A tool that changes nothing its reply's other
+//! calls see ([`Footprint::Independent`]: starting a subagent, scheduling
+//! a job, a reload) still acts, so it waits until the plan is approved. The answer that ends
 //! a planning turn is the plan: it is written to `.rig/plan.md` and the
 //! user is asked whether to execute it, keep planning or discard it. The
 //! agent's tools are never changed, so leaving gives back exactly what it
@@ -45,10 +48,10 @@ struct PlanQuestion;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlanModeSystems {
     /// In [`Stage::Prepare`], before compaction measures the request: a
-    /// planning agent's requests offer only the tools that change nothing.
+    /// planning agent's requests offer only the read-only tools.
     Prepare,
-    /// In [`Stage::Gate`]: refuses a planning agent's calls that may change
-    /// something.
+    /// In [`Stage::Gate`]: refuses a planning agent's calls of any other
+    /// tool.
     Gate,
 }
 
@@ -117,8 +120,8 @@ fn plans(agent: Entity, planning: &Query<(), With<PlanMode>>, parents: &Query<&S
         .any(|agent| planning.contains(agent))
 }
 
-/// A planning agent's turn calls offer only the tools that change nothing,
-/// and tell the model to plan only.
+/// A planning agent's turn calls offer only the read-only tools, and tell
+/// the model to plan only.
 fn plan_only(
     mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     tools: Query<(&ToolDef, &Footprint)>,
@@ -127,7 +130,7 @@ fn plan_only(
 ) {
     let reads: Vec<&str> = tools
         .iter()
-        .filter(|(_, footprint)| **footprint != Footprint::Exclusive)
+        .filter(|(_, footprint)| **footprint == Footprint::ReadOnly)
         .map(|(def, _)| def.0.name.as_str())
         .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
@@ -142,8 +145,8 @@ fn plan_only(
     }
 }
 
-/// Refuses each call that may change something, of a planning agent, when
-/// it is about to run.
+/// Refuses each call of a tool that is not read-only, of a planning agent,
+/// when it is about to run.
 fn no_changes(
     calls: Query<(Entity, &Footprint, &ForAgent), (Undecided, With<ToolRequest>)>,
     planning: Query<(), With<PlanMode>>,
@@ -151,7 +154,7 @@ fn no_changes(
     mut commands: Commands,
 ) {
     for (call, footprint, &ForAgent(agent)) in &calls {
-        if *footprint == Footprint::Exclusive && plans(agent, &planning, &parents) {
+        if *footprint != Footprint::ReadOnly && plans(agent, &planning, &parents) {
             commands
                 .entity(call)
                 .insert_if_new(Outcome::refused(REFUSED));

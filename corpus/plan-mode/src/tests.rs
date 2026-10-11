@@ -4,7 +4,7 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, WriteTool};
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::{CompletionRequest, Message};
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use serde_json::json;
 
 use super::*;
@@ -46,7 +46,11 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let target = dir.join("x.txt");
     let write = json!({ "path": target.display().to_string(), "content": "hello" });
     let model = MockCompletionModel::from_stream_turns([
-        calls("w1", "write", write.clone()),
+        vec![
+            MockStreamEvent::tool_call("w1", "write", write.clone()),
+            MockStreamEvent::tool_call("s1", "schedule", json!({})),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
         reply("Plan: 1. create x.txt"),
         calls("w2", "write", write),
         reply("done"),
@@ -64,6 +68,17 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
             AnswerAsks,
             PlanModePlugin,
         ));
+    // Changes nothing the reply's other calls see, but acts: a stand-in
+    // for cron-agent's `schedule`.
+    let scheduled = |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
+        let done = Outcome::from(ToolResult::success("scheduled".into()));
+        commands.entity(called.call).insert_if_new(done);
+    };
+    let independent = ToolOptions {
+        rules: &[],
+        footprint: Some(Footprint::Independent),
+    };
+    app.add_open_tool("schedule", "Run a prompt later.", independent, scheduled);
     let mut agent = app.world_mut().spawn(Agent);
     if let Some(connection) = connect(&model) {
         let choice = ModelChoice(connection.spec.reference());
@@ -84,9 +99,12 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let first = tool_names(requests.first());
     assert!(first.contains(&"read".to_owned()), "{first:?}");
     assert!(!first.contains(&"write".to_owned()), "{first:?}");
+    assert!(!first.contains(&"schedule".to_owned()), "{first:?}");
     let told = |at: usize| format!("{:?}", requests.get(at).map(|r| &r.chat_history));
     assert!(told(0).contains("Plan mode: you may read"));
     let refused = app.world().resource::<ToolOutputs>().0.get("w1").cloned();
+    assert!(refused.unwrap_or_default().contains(REFUSED));
+    let refused = app.world().resource::<ToolOutputs>().0.get("s1").cloned();
     assert!(refused.unwrap_or_default().contains(REFUSED));
     assert!(!target.exists());
     let plan = std::fs::read_to_string(dir.join(PLAN_FILE)).unwrap_or_default();
@@ -102,6 +120,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let requests = model.requests();
     let third = tool_names(requests.get(2));
     assert!(third.contains(&"write".to_owned()), "{third:?}");
+    assert!(third.contains(&"schedule".to_owned()), "{third:?}");
     let told = |at: usize| format!("{:?}", requests.get(at).map(|r| &r.chat_history));
     assert!(!told(2).contains("Plan mode: you may read"));
     let asked = prompt(requests.get(2));
