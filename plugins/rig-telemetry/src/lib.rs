@@ -9,4 +9,4 @@ pub mod usage;
 
 pub use diagnostics::{Diagnostics, DiagnosticsPlugin};
 pub use effect_log::EffectLogPlugin;
-pub use usage::{Spending, TurnSpending, UsagePlugin};
+pub use usage::{SessionSpending, Spending, TurnSpending, UsagePlugin, UsageRow};

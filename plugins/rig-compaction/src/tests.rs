@@ -152,7 +152,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             .is_some_and(|condensed| condensed.upto > 2)
     );
     // The usage plugin counts the summary's call with the turn's.
-    let spent = app.world().get::<Spending>(agent).map(|spent| spent.0);
+    let spent = app.world().get::<Spending>(agent).map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
     drop(app);
 
@@ -164,7 +164,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let Ok(agent) = agent else {
         return;
     };
-    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.0), spent);
+    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.total), spent);
     let restored = world.get::<Condensed>(agent);
     let summary = |condensed: Option<&Condensed>| condensed.map(|kept| kept.summary.clone());
     assert_eq!(summary(restored), summary(condensed.as_ref()));

@@ -30,7 +30,7 @@ fn show_meter(
         Or<(Changed<Spending>, Changed<LastUsage>, Changed<Connection>)>,
     >,
 ) {
-    for (Spending(spent), last, connection, mut items) in &mut agents {
+    for (Spending { total: spent, .. }, last, connection, mut items) in &mut agents {
         let shown = spent.calls > 0;
         let window = connection.and_then(|connection| connection.spec.context_window);
         let context = last.context().map(|tokens| ContextUse { tokens, window });

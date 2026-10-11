@@ -13289,6 +13289,7 @@ dependencies = [
  "rig-core",
  "rig-ecs",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-tui",
  "serde",
 ]

@@ -30,17 +30,17 @@ fn show_name(title: Res<SessionTitle>, mut status: ResMut<AppStatus>) {
     status.0.show(NAME.says(name, Tone::Cyan));
 }
 
-/// Lets the user pick an earlier session to resume.
+/// Lets the user pick an earlier session under `home` to resume.
 pub(super) fn pick_session(
     agent: Entity,
-    paths: Option<&SessionPaths>,
+    (home, paths): (&Home, Option<&SessionPaths>),
     picks: &mut MessageWriter<PickRequest>,
     notices: &mut MessageWriter<Notice>,
 ) {
     let Some(paths) = paths else {
         return;
     };
-    let items: Vec<PickItem> = list(&Home::from_env(), paths.path())
+    let items: Vec<PickItem> = list(home, paths.path())
         .into_iter()
         .map(|session| PickItem {
             label: session.label(),
