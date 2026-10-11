@@ -5,7 +5,7 @@ use rig_core::message::{
     CallId, DocumentSourceKind, ImageMediaType, ToolName, ToolResultContent, UserContent,
 };
 
-use super::{JournalStore, MemoryStore, load_images, store_images};
+use super::{JournalStore, LogLines, MemoryStore, fork, load_images, store_images};
 
 #[test]
 fn images_are_logged_as_blobs_and_read_back() {
@@ -46,4 +46,118 @@ fn images_are_logged_as_blobs_and_read_back() {
         gone.images()
             .all(|image| image.data == DocumentSourceKind::Unknown)
     );
+}
+
+/// The lines of a log are read without writing to it: a torn tail is left
+/// out of the lines and of the length, and blank lines are skipped.
+#[test]
+fn a_log_is_read_without_its_torn_tail_and_never_written() {
+    let store = MemoryStore::default();
+    store
+        .append("a", b"{\"n\":1}\n\n{\"n\":2}\n{\"n\":")
+        .expect("appended");
+    let log = LogLines::read(&store, "a").expect("read");
+    let lines: Vec<(u64, &[u8])> = log.iter().collect();
+    assert_eq!(lines, [(8, &b"{\"n\":1}"[..]), (17, &b"{\"n\":2}"[..])]);
+    assert_eq!((log.len(), log.torn(), log.is_empty()), (17, true, false));
+    assert_eq!(log.prefix(8), b"{\"n\":1}\n");
+    assert_eq!(log.prefix(1000).len(), 17);
+    assert_eq!(store.read("a").expect("read").len(), 22, "nothing was cut");
+
+    // A complete last line that is not JSON is torn too.
+    let log = LogLines::parse(b"{\"n\":1}\n{\"n\"\n".to_vec());
+    assert_eq!((log.len(), log.torn()), (8, true));
+    let empty = LogLines::parse(Vec::new());
+    assert!(empty.is_empty() && !empty.torn() && empty.iter().next().is_none());
+    assert!(LogLines::read(&store, "nobody").is_err());
+}
+
+/// A fork copies every blob and each log as far as asked, leaving out the
+/// agents it is told to and every torn tail; a removed log is gone.
+#[test]
+fn a_fork_copies_blobs_and_each_log_up_to_a_point() {
+    let from = MemoryStore::default();
+    from.append("a", b"{\"n\":1}\n{\"n\":2}\n{")
+        .expect("appended");
+    from.append("b", b"{\"n\":1}\n").expect("appended");
+    from.append("gone", b"{\"n\":1}\n").expect("appended");
+    from.put_blob("x.png", b"png").expect("stored");
+    let to = MemoryStore::default();
+    fork(&from, &to, |agent, log| match agent {
+        "a" => log.iter().next().map(|(end, _)| end),
+        "gone" => None,
+        _ => Some(log.len()),
+    })
+    .expect("forked");
+    assert_eq!(to.read("a").expect("a"), b"{\"n\":1}\n");
+    assert_eq!(to.read("b").expect("b"), b"{\"n\":1}\n");
+    assert!(to.read("gone").is_err());
+    assert_eq!(to.blobs().expect("listed"), ["x.png"]);
+    assert_eq!(to.blob("x.png").expect("copied"), b"png");
+
+    from.remove("a").expect("removed");
+    let mut agents = from.agents().expect("listed");
+    agents.sort();
+    assert_eq!(agents, ["b", "gone"]);
+}
+
+/// A store that cannot list its blobs or remove a log says so.
+#[test]
+fn a_store_without_listing_or_removal_says_it_is_unsupported() {
+    struct Bare;
+
+    impl JournalStore for Bare {
+        fn agents(&self) -> std::io::Result<Vec<String>> {
+            Ok(Vec::new())
+        }
+
+        fn read(&self, _agent: &str) -> std::io::Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
+
+        fn truncate(&self, _agent: &str, _len: u64) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn append(&self, _agent: &str, _bytes: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn put_blob(&self, _name: &str, _bytes: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn blob(&self, _name: &str) -> std::io::Result<Vec<u8>> {
+            Ok(Vec::new())
+        }
+    }
+
+    let unsupported = |result: std::io::Result<()>| {
+        result.is_err_and(|error| error.kind() == std::io::ErrorKind::Unsupported)
+    };
+    assert!(unsupported(Bare.blobs().map(drop)));
+    assert!(unsupported(Bare.remove("a")));
+    assert!(unsupported(fork(&Bare, &MemoryStore::default(), |_, _| {
+        None
+    })));
+}
+
+/// A directory store lists the blobs it holds, not one being written, and
+/// removes a log for good.
+#[cfg(feature = "jsonl")]
+#[test]
+fn a_directory_store_lists_blobs_and_removes_logs() {
+    use super::JsonlDirStore;
+
+    let dir = std::env::temp_dir().join(format!("rig-cassette-journal-{}", std::process::id()));
+    let store = JsonlDirStore::new(&dir);
+    assert_eq!(store.blobs().expect("none yet"), Vec::<String>::new());
+    store.put_blob("x.png", b"png").expect("stored");
+    std::fs::write(dir.join("blobs").join("y.tmp"), b"half").expect("a blob being written");
+    store.append("a", b"{}\n").expect("appended");
+    assert_eq!(store.blobs().expect("listed"), ["x.png"]);
+    store.remove("a").expect("removed");
+    store.remove("a").expect("removing nothing is fine");
+    assert_eq!(store.agents().expect("listed"), Vec::<String>::new());
+    std::fs::remove_dir_all(dir).ok();
 }
