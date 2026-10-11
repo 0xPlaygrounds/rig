@@ -24,6 +24,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -80,20 +81,42 @@ impl ContextValue for Split {
 #[derive(Default)]
 pub struct ThinkTagSplitterPlugin;
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ThinkTagSystems {
+    /// In [`Stage::Prepare`], before [`CompactionSystems::Prepare`], which
+    /// measures the adapted call: puts the split on each model call.
+    Prepare,
+    /// In [`Stage::Review`]: learns which models send tags.
+    Review,
+}
+
 impl Plugin for ThinkTagSplitterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ThinkTags>("think_tags")
             .init_resource::<SendsTags>()
+            .configure_sets(
+                AgentPass,
+                (
+                    ThinkTagSystems::Prepare
+                        .in_set(Stage::Prepare)
+                        .before(CompactionSystems::Prepare),
+                    ThinkTagSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
-                (adapt.in_set(Stage::Prepare), remember.in_set(Stage::Review)),
+                (
+                    adapt.in_set(ThinkTagSystems::Prepare),
+                    remember.in_set(ThinkTagSystems::Review),
+                ),
             );
     }
 }
 
 /// Puts the split on each new model call, for whichever model it goes to.
 fn adapt(
-    mut calls: Query<&mut Adapters, Added<Admitted>>,
+    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
     tags: Res<ThinkTags>,
     sends: Res<SendsTags>,
 ) {
@@ -126,7 +149,10 @@ fn adapt(
 }
 
 /// Learns which models send tags from the replies the split rewrote.
-fn remember(calls: Query<(&SentTo, &Published), Unreviewed>, mut sends: ResMut<SendsTags>) {
+fn remember(
+    calls: Query<(&SentTo, &Published), (Unreviewed, ModelCalls)>,
+    mut sends: ResMut<SendsTags>,
+) {
     for (sent, published) in &calls {
         let model = sent.0.spec.reference();
         if matches!(published.0.get::<Split>(), Ok(Some(_))) && !sends.0.contains(&model) {
