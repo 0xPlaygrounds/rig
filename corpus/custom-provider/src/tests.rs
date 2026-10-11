@@ -134,7 +134,12 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     let Some(agent) = agent else {
         return;
     };
-    // Both models complete `/model`'s argument; the keyless one says why.
+    // Both models complete `/model`'s argument, once it is typed; the
+    // keyless one says why.
+    let mut typed = rig_tui::TuiInput::default();
+    typed.set("/model ");
+    app.insert_resource(typed);
+    app.update();
     let world = app.world_mut();
     let offered: Vec<(String, String)> = world
         .query::<&ArgCompletion>()

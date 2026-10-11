@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
 use rig_harness::rig_core::providers::registry::ProviderId;
-use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone, TuiInput};
 
 use super::{ModelItem, ModelLabel};
 
@@ -18,7 +18,7 @@ const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
     app.add_systems(PostUpdate, show.in_set(StatusSystems))
-        .add_systems(Update, complete_models.run_if(models_changed));
+        .add_systems(Update, complete_models);
 }
 
 /// What a catalog model is to `/model`: its reference, and its line with
@@ -34,10 +34,12 @@ struct Listed {
 fn catalog(models: &Connector) -> Vec<Listed> {
     let reachable = models.reachable();
     let mut statuses: HashMap<ProviderId, ModelStatus> = HashMap::new();
+    // `reachable` borrows from the catalog: the same entry is the same
+    // address.
     let others = models.catalog().iter().filter(|spec| {
         !reachable
             .iter()
-            .any(|reached| reached.reference() == spec.reference())
+            .any(|reached| std::ptr::eq(*reached, *spec))
     });
     let mut listed: Vec<Listed> = reachable
         .iter()
@@ -107,28 +109,36 @@ pub(super) fn pick_model(
     });
 }
 
-/// Whether the catalog, or the choices plugins add, changed.
-fn models_changed(
-    models: Res<Models>,
-    items: Query<(), Changed<ModelItem>>,
-    mut gone: RemovedComponents<ModelItem>,
-) -> bool {
-    let gone = gone.read().count() > 0;
-    models.is_changed() || !items.is_empty() || gone
-}
-
 /// On the entity of `/model`'s completions.
 #[derive(Component)]
 struct ModelCompletions;
 
 /// Offers the [`ModelItem`]s' names and the catalog's models as `/model`'s
-/// argument, each with its line.
+/// argument, each with its line: built once the input is a `/model`
+/// command, again only after the catalog or the choices plugins add
+/// changed. Listing the catalog asks each provider whether it connects,
+/// too slow for every start.
 fn complete_models(
     models: Res<Models>,
     items: Query<&ModelItem>,
+    changed: Query<(), Changed<ModelItem>>,
+    mut gone: RemovedComponents<ModelItem>,
+    input: Option<Res<TuiInput>>,
     completions: Query<Entity, With<ModelCompletions>>,
+    mut current: Local<bool>,
     mut commands: Commands,
 ) {
+    if models.is_changed() || !changed.is_empty() || gone.read().count() > 0 {
+        *current = false;
+    }
+    let typed = input.is_some_and(|input| {
+        let command = input.text().strip_prefix('/');
+        command.and_then(|line| line.split_whitespace().next()) == Some("model")
+    });
+    if *current || !typed {
+        return;
+    }
+    *current = true;
     let mut contributed: Vec<&ModelItem> = items.iter().collect();
     contributed.sort_by(|a, b| a.name.cmp(&b.name));
     let mut completion = ArgCompletion::new("model");

@@ -127,7 +127,7 @@ fn the_last_model_chosen_is_kept_in_the_apps_home() {
 
 #[cfg(feature = "tui")]
 #[test]
-fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument() {
+fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_typed() {
     use std::borrow::Cow;
 
     use rig_harness::rig_core::catalog::{Catalog, Connector, ModelSpec};
@@ -146,7 +146,15 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument() {
         })
     });
     let (mut app, agent) = routed();
-    app.insert_resource(Models(connector));
+    app.insert_resource(Models(connector))
+        .init_resource::<rig_tui::TuiInput>();
+    app.update();
+    let mut completions = app.world_mut().query::<&rig_tui::ArgCompletion>();
+    // Listing the catalog waits for the input to be a `/model` command.
+    assert_eq!(completions.iter(app.world()).count(), 0);
+    app.world_mut()
+        .resource_mut::<rig_tui::TuiInput>()
+        .set("/model rig");
     app.update();
     run(&mut app, agent, "model");
     let world = app.world_mut();
@@ -163,7 +171,6 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument() {
         listed.is_some_and(|label| label.ends_with("(no key: set CORP_KEY)")),
         "{labels:?}"
     );
-    let mut completions = world.query::<&rig_tui::ArgCompletion>();
     let offered: Vec<String> = completions
         .iter(world)
         .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
