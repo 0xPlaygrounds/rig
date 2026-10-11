@@ -238,3 +238,8 @@ fn a_subagent_over_a_cap_is_stopped_and_reported_with_its_partial_answer() {
         assert!(!report.contains("Never sent."));
     }
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SubagentPolicyPlugin);
+}

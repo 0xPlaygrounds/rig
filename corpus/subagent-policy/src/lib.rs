@@ -17,7 +17,9 @@ use std::path::Path;
 use bevy_log::warn;
 use rig_basics::{AgentColumn, ColumnOf};
 use rig_harness::prelude::*;
-use rig_subagents::{Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentsPlugin, TASK};
+use rig_subagents::{
+    Lifecycle, Role, SpawnSubagent, SubagentPolicy, SubagentSystems, SubagentsPlugin, TASK,
+};
 use rig_telemetry::{Spending, UsagePlugin};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::Deserialize;
@@ -93,6 +95,18 @@ struct PolicyColumn(Entity);
 /// After the agent's subagents at work in the status line.
 const QUEUED: StatusItem = StatusItem::at(Side::Left, 65, 15);
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SubagentPolicySystems {
+    /// In [`Stage::Prepare`]: gives `task` requests the default model and
+    /// tools.
+    Prepare,
+    /// In [`Stage::Gate`], after [`SubagentSystems::Gate`]: refuses a
+    /// `task` call too deep, holds requests without a free slot, and stops
+    /// a subagent's turn over a cap.
+    Gate,
+}
+
 /// Applies [`SubagentsConfig`] to rig-subagents' requests, adding that
 /// plugin and rig-telemetry's usage unless they are there.
 #[derive(Default)]
@@ -112,11 +126,20 @@ impl Plugin for SubagentPolicyPlugin {
         }
         app.register_required_components::<Agent, QueuedTasks>()
             .add_observer(add_column)
+            .configure_sets(
+                AgentPass,
+                (
+                    SubagentPolicySystems::Prepare.in_set(Stage::Prepare),
+                    SubagentPolicySystems::Gate
+                        .in_set(Stage::Gate)
+                        .after(SubagentSystems::Gate),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    with_defaults.in_set(Stage::Prepare),
-                    (refuse_too_deep, queue, cap).in_set(Stage::Gate),
+                    with_defaults.in_set(SubagentPolicySystems::Prepare),
+                    (refuse_too_deep, queue, cap).in_set(SubagentPolicySystems::Gate),
                 ),
             )
             .add_systems(Update, show_column)
@@ -136,7 +159,7 @@ impl Plugin for SubagentPolicyPlugin {
 /// call named its own and the policy allows that. Default tools its parent
 /// may not use are left out.
 fn with_defaults(
-    mut requests: Query<(&mut SpawnSubagent, &ForAgent), Added<Admitted>>,
+    mut requests: Query<(&mut SpawnSubagent, &ForAgent), (Added<Admitted>, PluginEffects)>,
     access: Query<&ToolAccess>,
     config: Res<SubagentsConfig>,
 ) {
@@ -164,19 +187,18 @@ fn with_defaults(
 /// allows, for its model to read. An agent at the limit is not offered
 /// `task`, but its model may call it anyway.
 fn refuse_too_deep(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), Undecided>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
     lineage: Query<&SpawnedBy>,
     config: Res<SubagentsConfig>,
-    mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent)) in &calls {
+    for (request, &ForAgent(agent), mut decision) in &mut calls {
         let depth = lineage.iter_ancestors(agent).count() + 1;
         if request.call.function.name.as_str() == TASK && depth > config.max_depth {
             let why = format!(
                 "subagent depth limit {} reached; do it yourself",
                 config.max_depth
             );
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
         }
     }
 }
@@ -187,7 +209,10 @@ fn refuse_too_deep(
 /// The session's limit leaves out the parent and the agents above it, which
 /// wait on the request.
 fn queue(
-    new: Query<(Entity, &SpawnSubagent, &ForAgent), Undecided>,
+    new: Query<
+        (Entity, &SpawnSubagent, &ForAgent, &Decision),
+        (Undecided, PluginEffects, Without<Ask>),
+    >,
     held: Query<(Entity, &Queued, &HoldOf)>,
     parents: Query<&ForAgent, With<SpawnSubagent>>,
     (subagents, lineage): (Query<(Entity, &SpawnedBy, &Lifecycle)>, Query<&SpawnedBy>),
@@ -221,8 +246,8 @@ fn queue(
             still.push(parent);
         }
     }
-    for (request, spawn, &ForAgent(parent)) in &new {
-        if spawn.role != Role::Task {
+    for (request, spawn, &ForAgent(parent), decision) in &new {
+        if spawn.role != Role::Task || decision.is_decided() {
             continue;
         }
         if free(&at_work, parent) {
@@ -243,7 +268,7 @@ fn queue(
 /// or once the subagent spent `max_cost`. rig-subagents reports the
 /// reason with what it had said.
 fn cap(
-    calls: Query<(&CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
+    calls: Query<(&CallOf, &ForAgent), (Undecided, ModelCalls, With<TurnCall>)>,
     turns: Query<&Calls, Without<TurnOutcome>>,
     model_calls: Query<(), With<TurnCall>>,
     subagents: Query<&Spending, With<SpawnedBy>>,
