@@ -26,6 +26,7 @@
 //! is not failure), 10 (fail closed) and 11 (interrupt). 12 (restore) is
 //! in `src/restore/tests.rs`.
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -758,8 +759,11 @@ fn a_replys_calls_start_and_their_results_go_back_in_the_frames_they_arrive() {
         answer("done"),
     ]);
     let agent = agent_on(&mut app, &model);
-    // The frame each step was first seen in, after the update.
+    // The frame each step was first seen in, after the update. A started
+    // model call is seen at the end of its frame even when it settled in
+    // it: a settled effect stays until the next frame's loop.
     let (mut replied, mut started, mut answered, mut asked) = (None, None, None, None);
+    let mut model_calls = HashSet::new();
     let done = run_until(&mut app, |world| {
         let frame = world.resource::<Frame>().0;
         let said = world
@@ -767,13 +771,12 @@ fn a_replys_calls_start_and_their_results_go_back_in_the_frames_they_arrive() {
             .map_or(0, |c| c.messages().len());
         let mut calls = world.query_filtered::<(), (With<ToolRequest>, With<Started>)>();
         let running = calls.iter(world).count();
-        let mut models =
-            world.query_filtered::<(), (With<TurnCall>, With<Started>, Without<Settled>)>();
-        let calling = models.iter(world).count() > 0;
+        let mut models = world.query_filtered::<&Effect, (With<TurnCall>, With<Started>)>();
+        model_calls.extend(models.iter(world).map(Effect::id));
         replied = replied.or((said >= 2).then_some(frame));
         started = started.or((running == 3).then_some(frame));
         answered = answered.or((said >= 3).then_some(frame));
-        asked = asked.or((answered.is_some() && calling).then_some(frame));
+        asked = asked.or((model_calls.len() == 2).then_some(frame));
         said == 4
     });
     assert!(done, "{:?}", conversation(&app, agent));
