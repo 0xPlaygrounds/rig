@@ -1,9 +1,13 @@
-//! The terminal view's part: the `/model` and `/effort` pickers, and each
-//! agent's model and reasoning setting in its status line.
+//! The terminal view's part: the `/model` and `/effort` pickers, `/model`'s
+//! completions, and each agent's model and reasoning setting in its status
+//! line.
+
+use std::collections::HashMap;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::ModelSpec;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 use super::{ModelItem, ModelLabel};
 
@@ -13,11 +17,69 @@ const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
 const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
-    app.add_systems(PostUpdate, show.in_set(StatusSystems));
+    app.add_systems(PostUpdate, show.in_set(StatusSystems))
+        .add_systems(Update, complete_models.run_if(models_changed));
 }
 
-/// Lets the user pick one of the [`ModelItem`]s, then of the models that
-/// can be reached.
+/// What a catalog model is to `/model`: its reference, and its line with
+/// why it cannot be used, if it cannot.
+struct Listed {
+    reference: String,
+    line: String,
+}
+
+/// Every catalog model: first those that can be reached, as rig-core
+/// orders them, then the others with why not. Whether a provider's models
+/// connect is asked once per provider, as rig-core's `reachable` does.
+fn catalog(models: &Connector) -> Vec<Listed> {
+    let reachable = models.reachable();
+    let mut statuses: HashMap<ProviderId, ModelStatus> = HashMap::new();
+    let others = models.catalog().iter().filter(|spec| {
+        !reachable
+            .iter()
+            .any(|reached| reached.reference() == spec.reference())
+    });
+    let mut listed: Vec<Listed> = reachable
+        .iter()
+        .map(|spec| {
+            let note = match models.plan(spec) {
+                Some(plan) => format!("  ({plan} plan)"),
+                None if spec.provider.requires_credential() => String::new(),
+                None => "  (no key needed)".to_owned(),
+            };
+            listing(spec, &note)
+        })
+        .collect();
+    for spec in others {
+        let status = match spec.tools {
+            false => ModelStatus::NoTools,
+            true => statuses
+                .entry(spec.provider)
+                .or_insert_with(|| models.status(spec))
+                .clone(),
+        };
+        let note = match status {
+            ModelStatus::Usable => String::new(),
+            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
+            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
+            ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
+        };
+        listed.push(listing(spec, &note));
+    }
+    listed
+}
+
+/// `spec` listed with `note`.
+fn listing(spec: &ModelSpec, note: &str) -> Listed {
+    let reference = spec.reference();
+    Listed {
+        line: format!("{reference}  {}{note}", spec.display_name),
+        reference,
+    }
+}
+
+/// Lets the user pick one of the [`ModelItem`]s, then of the catalog's
+/// models, each with why it cannot be used, if it cannot.
 pub(super) fn pick_model(
     agent: Entity,
     (models, contributed): (&Models, &Query<&ModelItem>),
@@ -30,31 +92,64 @@ pub(super) fn pick_model(
         label: item.label.clone(),
         command: item.command.clone(),
     });
-    let reachable = models.0.reachable().into_iter().map(|spec| {
-        let reference = spec.reference();
-        let note = match models.0.plan(spec) {
-            Some(plan) => format!("  ({plan} plan)"),
-            None if spec.provider.requires_credential() => String::new(),
-            None => "  (no key needed)".to_owned(),
-        };
-        PickItem {
-            label: format!("{reference}  {}{note}", spec.display_name),
-            command: format!("model {reference}"),
-        }
+    let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
+        label: listed.line,
+        command: format!("model {}", listed.reference),
     });
-    let items: Vec<PickItem> = contributed.chain(reachable).collect();
+    let items: Vec<PickItem> = contributed.chain(listed).collect();
     if items.is_empty() {
-        notices.write(Notice::error(
-            agent,
-            "No provider with tool-calling models can be reached: set a key such as \
-             OPENAI_API_KEY, or sign in with /login chatgpt.",
-        ));
+        notices.write(Notice::error(agent, "The catalog lists no model."));
         return;
     }
     commands.spawn(Picker {
         items,
         ..Picker::new("Model").for_agent(agent)
     });
+}
+
+/// Whether the catalog, or the choices plugins add, changed.
+fn models_changed(
+    models: Res<Models>,
+    items: Query<(), Changed<ModelItem>>,
+    mut gone: RemovedComponents<ModelItem>,
+) -> bool {
+    let gone = gone.read().count() > 0;
+    models.is_changed() || !items.is_empty() || gone
+}
+
+/// On the entity of `/model`'s completions.
+#[derive(Component)]
+struct ModelCompletions;
+
+/// Offers the [`ModelItem`]s' names and the catalog's models as `/model`'s
+/// argument, each with its line.
+fn complete_models(
+    models: Res<Models>,
+    items: Query<&ModelItem>,
+    completions: Query<Entity, With<ModelCompletions>>,
+    mut commands: Commands,
+) {
+    let mut contributed: Vec<&ModelItem> = items.iter().collect();
+    contributed.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut completion = ArgCompletion::new("model");
+    for item in contributed {
+        completion = completion.candidate(item.name.clone(), item.label.clone());
+    }
+    for listed in catalog(&models.0) {
+        let detail = listed
+            .line
+            .strip_prefix(&listed.reference)
+            .unwrap_or_default();
+        completion = completion.candidate(listed.reference.clone(), detail.trim_start());
+    }
+    match completions.iter().next() {
+        Some(entity) => {
+            commands.entity(entity).insert(completion);
+        }
+        None => {
+            commands.spawn((Name::new("completions:model"), ModelCompletions, completion));
+        }
+    }
 }
 
 /// Lets the user pick one of the reasoning settings of `spec`.

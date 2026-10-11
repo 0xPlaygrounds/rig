@@ -4,9 +4,11 @@
 //! ones a new session starts with, the last ones chosen
 //! ([`DefaultsPlugin`]).
 //!
-//! `/model` lists the catalog's models that can be reached, which a
-//! provider plugin adds to through rig-core's [`Connector`] (in
-//! [`Models`]), and the [`ModelItem`]s other plugins spawn for choices
+//! `/model` lists every catalog model, those that can be reached first and
+//! each other one with why not (no key, no tool calls, the provider's
+//! reason), and completes its argument with them; a provider plugin adds
+//! to the catalog through rig-core's [`Connector`] (in [`Models`]). It
+//! lists the [`ModelItem`]s other plugins spawn too, for choices
 //! that are no catalog model, such as a router that picks the model per
 //! request. Such a plugin says what an agent's model is with a
 //! [`ModelLabel`], which the status line shows in place of its

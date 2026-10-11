@@ -124,3 +124,49 @@ fn the_last_model_chosen_is_kept_in_the_apps_home() {
     assert_eq!(chosen.as_deref(), Some("deepseek/deepseek-flash"));
     fs::remove_dir_all(&root).ok();
 }
+
+#[cfg(feature = "tui")]
+#[test]
+fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument() {
+    use std::borrow::Cow;
+
+    use rig_harness::rig_core::catalog::{Catalog, Connector, ModelSpec};
+    use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
+
+    let Ok(corp) = ProviderId::declare("rig-models-corp") else {
+        return;
+    };
+    let mut catalog = Catalog::default();
+    catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
+    let mut connector = Connector::new(catalog);
+    connector.provide(corp, |_: &ModelSpec, _: &Catalog| {
+        Err(ConnectError::MissingKey {
+            vendor: "rig-models-corp".to_owned(),
+            tried: vec![Cow::Borrowed("CORP_KEY")],
+        })
+    });
+    let (mut app, agent) = routed();
+    app.insert_resource(Models(connector));
+    app.update();
+    run(&mut app, agent, "model");
+    let world = app.world_mut();
+    let mut pickers = world.query::<&rig_harness::pick::Picker>();
+    let labels: Vec<String> = pickers
+        .iter(world)
+        .flat_map(|picker| picker.items.iter().map(|item| item.label.clone()))
+        .collect();
+    let listed = labels
+        .iter()
+        .find(|label| label.starts_with("rig-models-corp/big"));
+    let listed = listed.map(String::as_str);
+    assert!(
+        listed.is_some_and(|label| label.ends_with("(no key: set CORP_KEY)")),
+        "{labels:?}"
+    );
+    let mut completions = world.query::<&rig_tui::ArgCompletion>();
+    let offered: Vec<String> = completions
+        .iter(world)
+        .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
+        .collect();
+    assert_eq!(offered, ["router", "rig-models-corp/big"]);
+}
