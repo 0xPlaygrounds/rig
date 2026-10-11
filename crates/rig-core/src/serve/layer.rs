@@ -21,6 +21,7 @@ use crate::{
 };
 
 use super::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
+use crate::streaming::Relayed;
 
 /// What a layer decides about a dispatch before the handler sees it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,9 +53,12 @@ pub enum Verdict {
     Keep,
     /// The consumer receives this instead; the record keeps the handler's
     /// answer. Over a streaming dispatch the events were already delivered
-    /// as they came, so only an error can replace the answer there: a
-    /// `Replace(Ok(_))` reaches the consumer as an `Internal` error naming
-    /// the layer.
+    /// as they came, so a replacement is the reply's end: a completion
+    /// replaces the response the stream ends with (its
+    /// [`Relayed::Done`](crate::streaming::Relayed::Done)), which is what
+    /// the consumer's fold returns, and an error ends the stream with that
+    /// error. A replacement of another family reaches the consumer as an
+    /// `Internal` error naming the layer.
     Replace(Result<Outcome, ErrorReport>),
 }
 
@@ -205,12 +209,21 @@ impl<I: Intercept> Serve for Layer<I> {
                             attribution.replaced(&intercept.name());
                             Err(report)
                         }
-                        Verdict::Replace(Ok(_)) => {
+                        Verdict::Replace(Ok(Outcome::Completion(response))) => {
+                            attribution.replaced(&intercept.name());
+                            Ok(Relayed::Done(Box::new(response)))
+                        }
+                        Verdict::Replace(Ok(other)) => {
                             attribution.replaced(&intercept.name());
                             Err(ErrorReport::new(
                                 ErrorKind::Internal,
-                                format!("layer `{}`: cannot replace a streamed answer already delivered; replace with an error, or decide before", intercept.name()),
-                            ).with_retryable(false))
+                                format!(
+                                    "layer `{}`: replaced a streamed completion with a {} outcome",
+                                    intercept.name(),
+                                    other.family()
+                                ),
+                            )
+                            .with_retryable(false))
                         }
                     }
                 } else {
