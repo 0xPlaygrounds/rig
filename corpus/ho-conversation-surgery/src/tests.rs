@@ -150,7 +150,8 @@ fn stub_and_drop_edit_the_logged_conversation_and_wait_for_the_turn() {
         "{ended:?}"
     );
     let sent = model.requests().last().map(json).unwrap_or_default();
-    assert!(!sent.contains("c1"), "{sent}");
+    // Quoted: the request's cache key is a random UUID that may hold "c1".
+    assert!(!sent.contains("\"c1\""), "{sent}");
     let edited = messages(&app, agent);
     drop(app);
 
