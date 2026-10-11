@@ -35,9 +35,11 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<Ended>()
         .add_observer(log_ended);
     for tool in ["read", "search", "write"] {
-        let answer = |called: On<ToolCalled<NoArgs>>, mut commands: Commands| {
-            let done = Outcome::from(ToolResult::success("ok".into()));
-            commands.entity(called.call).insert_if_new(done);
+        let answer = |called: On<ToolCalled<NoArgs>>,
+                      mut calls: Query<&mut Decision, ToolCalls>| {
+            if let Ok(mut call) = calls.get_mut(called.call) {
+                call.decide(ToolResult::success("ok".into()));
+            }
         };
         app.add_open_tool(tool, "A stand-in.", ToolOptions::default(), answer);
     }
@@ -177,4 +179,9 @@ fn task_starts_a_subagent_as_a_profile() {
     let task = offered.find(|tool| tool.name.as_str() == "task");
     let properties = task.and_then(|task| task.parameters.get("properties"));
     assert!(properties.is_some_and(|declared| declared.get("profile").is_some()));
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(AgentProfilesPlugin);
 }
