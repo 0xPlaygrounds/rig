@@ -15,9 +15,10 @@ bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The session's name, the one `/name` sets.
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-# Telling an attached file from what the user typed.
-rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true, features = ["derive"] }
+# Unused since the harness has `first_typed`; removing it changes
+# Cargo.lock, which this rework must not.
+rig-tools = { path = "../../crates/rig-tools" }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
