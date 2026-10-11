@@ -2190,6 +2190,7 @@ dependencies = [
  "indexmap 2.14.0",
  "log",
  "nonmax",
+ "rand 0.10.1",
  "serde",
  "slotmap",
  "smallvec",
@@ -15089,6 +15090,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-defaults-test-support"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-activity",
+ "rig-basics",
+ "rig-coding-tools",
+ "rig-compaction",
+ "rig-core",
+ "rig-ecs",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-inspect",
+ "rig-login-chatgpt",
+ "rig-models",
+ "rig-print",
+ "rig-reload",
+ "rig-sessions",
+ "rig-subagents",
+ "rig-telemetry",
+ "rig-tui",
+ "serde_json",
+]
+
+[[package]]
 name = "rig-derive"
 version = "0.44.0"
 dependencies = [
@@ -15208,25 +15236,11 @@ name = "rig-harness-test-support"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "bevy_time",
- "rig-activity",
- "rig-basics",
  "rig-cassette",
- "rig-coding-tools",
- "rig-compaction",
  "rig-core",
  "rig-ecs",
  "rig-harness",
- "rig-inspect",
- "rig-login-chatgpt",
- "rig-models",
- "rig-print",
- "rig-reload",
- "rig-sessions",
- "rig-subagents",
- "rig-telemetry",
- "rig-tui",
  "serde_json",
 ]
 
