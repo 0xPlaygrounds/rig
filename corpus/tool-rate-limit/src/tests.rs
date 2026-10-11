@@ -190,3 +190,8 @@ fn over_the_minute_limit_a_call_starts_once_the_minute_passed() {
     assert_eq!(ran.load(Ordering::SeqCst), 2);
     assert_eq!([output(&app, "a"), output(&app, "b")], ["a", "b"]);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ToolRateLimitPlugin);
+}

@@ -120,6 +120,11 @@ struct WaitingFor {
 #[derive(Default)]
 pub struct ToolRateLimitPlugin;
 
+/// The plugin's stage system, in [`Stage::Gate`]: it refuses or holds a
+/// call over its tool's limits.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ToolRateLimitSystems;
+
 impl Plugin for ToolRateLimitPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<Limits>() {
@@ -130,7 +135,8 @@ impl Plugin for ToolRateLimitPlugin {
             .init_resource::<Recent>()
             .register_required_components::<Agent, SessionUsage>()
             .register_required_components::<TurnOf, TurnUsage>()
-            .add_systems(AgentPass, limit.in_set(Stage::Gate))
+            .configure_sets(AgentPass, ToolRateLimitSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, limit.in_set(ToolRateLimitSystems))
             .add_observer(free_on_answer)
             .add_observer(free)
             .add_command("limits", "Show each tool limit and its use", show_limits);
@@ -144,7 +150,7 @@ impl Plugin for ToolRateLimitPlugin {
 /// has no slot, else let through and counted. A call a restart runs again
 /// was counted before: it only takes a slot.
 fn limit(
-    calls: Query<
+    mut calls: Query<
         (
             Entity,
             &Effect,
@@ -152,8 +158,9 @@ fn limit(
             &ForAgent,
             Option<&CallOf>,
             Has<Restored>,
+            &mut Decision,
         ),
-        (Undecided, Without<Slot>),
+        (Undecided, ToolCalls, Without<Slot>),
     >,
     slots: Query<&Slot>,
     limits: Res<Limits>,
@@ -169,10 +176,14 @@ fn limit(
     for Slot(key) in &slots {
         *running.entry(key.clone()).or_default() += 1;
     }
-    let mut queue: Vec<_> = calls.iter().collect();
+    let mut queue: Vec<_> = calls.iter_mut().collect();
     queue.sort_by_key(|(_, effect, ..)| effect.id());
-    for (call, _, request, &ForAgent(agent), of, restored) in queue {
+    for (call, _, request, &ForAgent(agent), of, restored, mut decision) in queue {
         let tool = request.call.function.name.as_str();
+        // Another gate decided it: it never runs, so it takes no slot.
+        if decision.is_decided() {
+            continue;
+        }
         let Some(limit) = limits.0.get(tool) else {
             continue;
         };
@@ -201,7 +212,7 @@ fn limit(
         .find_map(|(most, used, per)| most.filter(|most| used >= *most).map(|most| (most, per)));
         if let Some((most, per)) = over.filter(|_| !restored) {
             let why = format!("limit reached: {most} per {per} for `{tool}`");
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
             continue;
         }
         let busy = running.entry(key.clone()).or_default();
