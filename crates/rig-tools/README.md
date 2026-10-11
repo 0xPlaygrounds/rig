@@ -18,7 +18,9 @@ with each change's diff (`FilesChanged`), all by resolved absolute path, and
 `shell` how the command ended (`ExitStatus`). The file tools take an optional
 `base` directory for relative paths and can be `confine`d to it, which refuses
 any path that resolves outside it; a confined `shell` refuses only a `cwd`
-outside its directory, not what the command does. Every tool's arguments
+outside its directory, not what the command does. Each call's `footprint`
+says what it may read and change: `read` and `search` read the path they
+name, `write` and `edit` write it, and `shell` may change anything. Every tool's arguments
 are plain data with public fields. The crate also has what they are built from:
 `context` (the `AGENTS.md`/`CLAUDE.md` instruction files from the working
 directory up), `fs` (`write_atomic`, capped reads, `resolve`, `file_change`), `process`

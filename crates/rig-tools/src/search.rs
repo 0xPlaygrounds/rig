@@ -8,8 +8,8 @@ use ignore::overrides::OverrideBuilder;
 use regex::Regex;
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    ContextValue, FileRead, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema,
-    content_hash,
+    ContextValue, FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches,
+    args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
@@ -148,6 +148,13 @@ impl Tool for Search {
         ToolAnnotations::default()
             .with_read_only(true)
             .with_open_world(false)
+    }
+
+    fn footprint(&self, args: &SearchArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            args.path.as_deref().unwrap_or("."),
+        )]))
     }
 
     async fn call(

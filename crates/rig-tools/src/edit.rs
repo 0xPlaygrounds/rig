@@ -12,12 +12,13 @@ use std::path::PathBuf;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
+    FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error, place, read_text, write_atomic};
+use crate::fs::{file_change, io_error, place, read_text, resolve, write_atomic};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Most matches an ambiguity error lists by line.
@@ -121,6 +122,13 @@ impl Tool for Edit {
             .with_destructive(true)
             .with_idempotent(false)
             .with_open_world(false)
+    }
+
+    fn footprint(&self, args: &EditArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
     }
 
     async fn call(

@@ -3,12 +3,13 @@
 use std::path::PathBuf;
 
 use rig_core::tool::{
-    FileRead, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
+    FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{place, read_text};
+use crate::fs::{place, read_text, resolve};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
@@ -104,6 +105,13 @@ impl Tool for Read {
         rig_core::completion::ToolAnnotations::default()
             .with_read_only(true)
             .with_open_world(false)
+    }
+
+    fn footprint(&self, args: &ReadArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
     }
 
     async fn call(

@@ -9,8 +9,12 @@
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
 //! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). The file tools name
 //! files by their resolved paths ([`fs::resolve`]), from an optional base
-//! directory they can be confined to. Their arguments are
-//! plain data with public fields, to build or read a call's.
+//! directory they can be confined to. Each call says what it may read and
+//! change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
+//! `search` read the path they name, `write` and `edit` write it, and
+//! `shell` may change anything, so a host runs calls on different files
+//! side by side. Their arguments are plain data with public fields, to
+//! build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,

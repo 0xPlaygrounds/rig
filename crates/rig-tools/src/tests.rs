@@ -1,6 +1,13 @@
 use unicode_width::UnicodeWidthStr as _;
 
-use super::{Cut, shorten};
+use std::path::PathBuf;
+
+use rig_core::tool::{Scope, Tool, Touches};
+
+use super::{
+    Cut, Edit, EditArgs, Read, ReadArgs, Search, SearchArgs, Shell, ShellArgs, Write, WriteArgs,
+    shorten,
+};
 
 /// A cut keeps whole lines from the end, within both limits, and says how
 /// many it left out; a last line longer than the byte limit leaves nothing.
@@ -42,4 +49,53 @@ fn shorten_fits_the_width() {
         }
     }
     assert_eq!(shorten("日本語", 5), "日本…");
+}
+
+/// Each call's footprint names the path it reads or writes, resolved
+/// against the tool's base; a search without a path reads the base, and a
+/// shell call may change anything.
+#[test]
+fn each_call_names_what_it_touches() {
+    let base = PathBuf::from("/nowhere/work");
+    let at = |path: &str| Scope::Paths(vec![base.join(path)]);
+    let read = Read {
+        base: Some(base.clone()),
+        confine: false,
+    };
+    let search = Search {
+        base: Some(base.clone()),
+        confine: false,
+    };
+    let edit = Edit {
+        base: Some(base.clone()),
+        confine: false,
+    };
+    let write = Write {
+        base: Some(base.clone()),
+        confine: false,
+    };
+    assert_eq!(
+        read.footprint(&ReadArgs::new("src/../a.rs")),
+        Touches::Reads(at("a.rs"))
+    );
+    assert_eq!(
+        search.footprint(&SearchArgs::new("x").in_path("src")),
+        Touches::Reads(at("src"))
+    );
+    assert_eq!(
+        search.footprint(&SearchArgs::new("x")),
+        Touches::Reads(Scope::Paths(vec![base.clone()]))
+    );
+    assert_eq!(
+        edit.footprint(&EditArgs::new("a.rs", [])),
+        Touches::Writes(at("a.rs"))
+    );
+    assert_eq!(
+        write.footprint(&WriteArgs::new("/elsewhere/b.rs", "")),
+        Touches::Writes(Scope::Paths(vec![PathBuf::from("/elsewhere/b.rs")]))
+    );
+    assert_eq!(
+        Shell::default().footprint(&ShellArgs::new("ls")),
+        Touches::Writes(Scope::Anything)
+    );
 }

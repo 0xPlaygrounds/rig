@@ -5,12 +5,12 @@ use std::path::{Path, PathBuf};
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema, content_hash,
+    FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error, place, write_atomic};
+use crate::fs::{file_change, io_error, place, resolve, write_atomic};
 use crate::{MAX_FILE_BYTES, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
@@ -73,6 +73,13 @@ impl Tool for Write {
             .with_destructive(true)
             .with_idempotent(true)
             .with_open_world(false)
+    }
+
+    fn footprint(&self, args: &WriteArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
     }
 
     async fn call(
