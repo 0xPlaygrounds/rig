@@ -4,6 +4,7 @@
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use rig_core::completion::Message;
 
 use super::complete::Completion;
 use super::editor::TuiInput;
@@ -11,7 +12,7 @@ use super::keys::KeyPress;
 use super::panel::Focused;
 use super::pick::Choosing;
 use super::transcript::Scroll;
-use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
+use rig_ecs::agent::{Agent, AgentId, Conversation, MessageId, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
 use rig_harness::primary::Shown;
 
@@ -51,22 +52,98 @@ pub(crate) struct TuiView {
 }
 
 /// A notice placed in a transcript.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct ShownNotice {
     /// The agent it is about, or `None` for every agent.
-    agent: Option<Entity>,
-    /// The length of that agent's conversation (the focused one's, for an
-    /// app notice) when it arrived; it is drawn after that many messages.
-    pub(crate) after: usize,
-    /// Whether it reports a failure.
+    agent: Option<AgentId>,
+    /// Where it was written in its agent's transcript (the one shown, for
+    /// a notice about every agent); `None` before that agent had a
+    /// message, or with no agent shown.
+    at: Option<Anchor>,
+    /// Whether it informs, warns or reports a failure.
     pub(crate) level: NoticeLevel,
     /// The text.
     pub(crate) text: String,
 }
 
+/// Where a notice was written: after the first `items` content items of
+/// message `message` of `agent`'s conversation, which it stays after as
+/// messages are added, merged or spliced.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct Anchor {
+    agent: AgentId,
+    message: MessageId,
+    items: usize,
+}
+
+/// Where a notice is drawn in a transcript.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Slot {
+    /// Before the first message.
+    Top,
+    /// After this message.
+    After(usize),
+    /// Inside this message, before this content item.
+    Inside(usize, usize),
+}
+
 impl ShownNotice {
-    /// Whether it belongs in `agent`'s transcript.
-    pub(crate) fn is_for(&self, agent: Option<Entity>) -> bool {
-        self.agent.is_none() || self.agent == agent
+    /// Whether it is shown with no agent shown: it is about every agent.
+    pub(crate) fn is_for_every_agent(&self) -> bool {
+        self.agent.is_none()
+    }
+
+    /// Where it goes in the transcript of the agent `id` with
+    /// `conversation`, or `None` when it is no part of it: it is about
+    /// another agent, or about every agent and was written in another's.
+    /// One whose message is gone goes where that message was.
+    pub(crate) fn slot(&self, id: &AgentId, conversation: &Conversation) -> Option<Slot> {
+        if self.agent.as_ref().is_some_and(|agent| agent != id) {
+            return None;
+        }
+        let Some(at) = &self.at else {
+            return Some(Slot::Top);
+        };
+        if &at.agent != id {
+            return None;
+        }
+        Some(match conversation.index_of(at.message) {
+            Some(index) if items(conversation, index) > at.items => Slot::Inside(index, at.items),
+            Some(index) => Slot::After(index),
+            None => match conversation.start_of(at.message).checked_sub(1) {
+                Some(index) => Slot::After(index),
+                None => Slot::Top,
+            },
+        })
+    }
+}
+
+/// The content items of message `index`.
+fn items(conversation: &Conversation, index: usize) -> usize {
+    match conversation.messages().get(index) {
+        Some(Message::User { content }) => content.len(),
+        Some(Message::Assistant(assistant)) => assistant.content.len(),
+        _ => 0,
+    }
+}
+
+/// The end of `id`'s conversation, where a notice written now goes.
+fn anchor(id: &AgentId, conversation: &Conversation) -> Option<Anchor> {
+    let last = conversation.messages().len().checked_sub(1)?;
+    Some(Anchor {
+        agent: id.clone(),
+        message: conversation.id(last)?,
+        items: items(conversation, last),
+    })
+}
+
+impl TuiView {
+    /// Keeps `notice` for display, dropping the oldest past
+    /// [`KEPT_NOTICES`].
+    fn keep(&mut self, notice: ShownNotice) {
+        self.notices.push(notice);
+        let excess = self.notices.len().saturating_sub(KEPT_NOTICES);
+        self.notices.drain(..excess);
     }
 }
 
@@ -106,11 +183,11 @@ pub(crate) fn on_focus(
     view.completion = None;
 }
 
-/// Keeps the latest notices for display, each placed after the messages
-/// its agent had when it arrived.
+/// Keeps the latest notices for display, each placed where its agent's
+/// conversation ended when it arrived.
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
-    conversations: Query<&Conversation>,
+    agents: Query<(&AgentId, &Conversation)>,
     shown: Res<Shown>,
     mut view: ResMut<TuiView>,
 ) {
@@ -118,27 +195,25 @@ pub(crate) fn collect_notices(
         return;
     }
     for notice in notices.read() {
-        let after = notice
+        let about = notice.agent.and_then(|agent| agents.get(agent).ok());
+        let written = notice
             .agent
             .or(shown.0)
-            .and_then(|agent| conversations.get(agent).ok())
-            .map_or(0, |conversation| conversation.messages().len());
-        view.notices.push(ShownNotice {
-            agent: notice.agent,
-            after,
+            .and_then(|agent| agents.get(agent).ok());
+        view.keep(ShownNotice {
+            agent: about.map(|(id, _)| id.clone()),
+            at: written.and_then(|(id, conversation)| anchor(id, conversation)),
             level: notice.level,
             text: notice.text.clone(),
         });
     }
-    let excess = view.notices.len().saturating_sub(KEPT_NOTICES);
-    view.notices.drain(..excess);
 }
 
 /// Puts what was typed and not sent back in the input, before what is
 /// typed there now, and says why a refused command was.
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
-    conversations: Query<&Conversation>,
+    agents: Query<(&AgentId, &Conversation)>,
     shown: Res<Shown>,
     mut view: ResMut<TuiView>,
     mut input: ResMut<TuiInput>,
@@ -148,11 +223,10 @@ pub(crate) fn recall_messages(
             continue;
         }
         if let Some(why) = &recalled.why {
-            view.notices.push(ShownNotice {
-                agent: Some(recalled.agent),
-                after: conversations
-                    .get(recalled.agent)
-                    .map_or(0, |conversation| conversation.messages().len()),
+            let agent = agents.get(recalled.agent).ok();
+            view.keep(ShownNotice {
+                agent: agent.map(|(id, _)| id.clone()),
+                at: agent.and_then(|(id, conversation)| anchor(id, conversation)),
                 level: NoticeLevel::Error,
                 text: format!("{why} Enter sends it to the model as it is."),
             });
@@ -167,3 +241,6 @@ pub(crate) fn recall_messages(
         input.set(text);
     }
 }
+
+#[cfg(test)]
+mod tests;

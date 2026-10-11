@@ -1,6 +1,7 @@
 //! Draws the focused agent: transcript, status line, input editor with its
 //! completion list, and the picker or question shown.
 
+use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
@@ -9,7 +10,7 @@ use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::{execute, queue};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 use unicode_width::UnicodeWidthChar;
@@ -23,10 +24,10 @@ use super::pick::{Choices, Choosing, Listing, Row};
 use super::renderers::ToolRenderer;
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
-use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{ShownNotice, TuiView};
+use super::transcript::{Below, Look, Part, Renderers, Transcript, notice_lines, plain_lines};
+use super::view::{ShownNotice, Slot, TuiView};
 use super::wrap::wrap_all;
-use rig_ecs::agent::{ActiveTurn, Calls, Conversation, NoticeLevel, Partial};
+use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
 use rig_harness::primary::Shown;
@@ -158,55 +159,86 @@ pub(crate) fn layout(
     };
 }
 
-/// The transcript's parts after the shown agent's messages are laid out:
-/// each message, after the notices that came before it; then the notices
-/// after the last message, the
-/// reply streaming in and the messages the agent accepted and has not
-/// sent yet. Without an agent, the app's notices.
-fn transcript_parts(
+/// The agent shown, as its transcript draws it.
+pub(crate) struct ShownAgent<'a> {
+    pub(crate) entity: Entity,
+    pub(crate) id: &'a AgentId,
+    pub(crate) conversation: &'a Conversation,
+    /// Whether its conversation changed since the last frame.
+    pub(crate) changed: bool,
+    /// The messages it accepted and has not sent yet, in the order they
+    /// came.
+    pub(crate) inbox: &'a [&'a Incoming],
+}
+
+/// Brings `transcript` up to date with the agent shown and returns its
+/// parts at `width`: each message, with the notices written inside it,
+/// after those written before it; then the notices after the last
+/// message, the reply streaming in and the messages the agent accepted
+/// and has not sent yet. Without an agent, the notices about every agent.
+pub(crate) fn lay_out_transcript(
+    transcript: &mut Transcript,
     view: &TuiView,
-    agent: Option<Entity>,
-    shown: Option<(&Conversation, &[&Incoming])>,
-    partial: Option<&Partial>,
-    width: usize,
+    shown: Option<&ShownAgent<'_>>,
+    (renderers, partial): (&Renderers<'_>, Option<&Partial>),
+    width: u16,
 ) -> Vec<Part> {
+    let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
-    let Some((conversation, inbox)) = shown else {
+    let Some(shown) = shown else {
         let mut extra = Vec::new();
-        for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
+        let notices = view.notices.iter();
+        for notice in notices.filter(|notice| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra);
         }
-        parts.push(Part::Rows(wrap_all(&extra, width)));
+        parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
         return parts;
     };
-    let mut notices = view
-        .notices
-        .iter()
-        .filter(|notice| notice.is_for(agent))
-        .peekable();
-    for index in 0..conversation.messages().len() {
+    let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
+    // Notices before the first message, after each message, and inside one.
+    let mut after: Vec<Vec<&ShownNotice>> = vec![Vec::new(); count + 1];
+    let mut look = Look {
+        renderers,
+        notices: HashMap::new(),
+    };
+    for notice in &view.notices {
+        let before = match notice.slot(shown.id, conversation) {
+            None => continue,
+            Some(Slot::Top) => 0,
+            Some(Slot::After(index)) => index + 1,
+            Some(Slot::Inside(index, item)) => {
+                look.notices.entry(index).or_default().push((item, notice));
+                continue;
+            }
+        };
+        if let Some(at) = after.get_mut(before) {
+            at.push(notice);
+        }
+    }
+    transcript.update(shown.entity, conversation, shown.changed, &look, width);
+    let mut after = after.into_iter();
+    for index in 0..=count {
         let mut extra = Vec::new();
-        while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
+        for notice in after.next().unwrap_or_default() {
             notice_lines(notice, &mut extra);
         }
+        if index == count {
+            if let Some(partial) = partial {
+                extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
+                if !partial.text.is_empty() {
+                    extra.push(Line::default());
+                    extra.extend(markdown::render(&partial.text));
+                }
+            }
+            inbox_lines(shown.inbox, &mut extra);
+            parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
+            break;
+        }
         if !extra.is_empty() {
-            parts.push(Part::Rows(wrap_all(&extra, width)));
+            parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
         }
         parts.push(Part::Message(index));
     }
-    let mut extra = Vec::new();
-    for notice in notices {
-        notice_lines(notice, &mut extra);
-    }
-    if let Some(partial) = partial {
-        extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
-        if !partial.text.is_empty() {
-            extra.push(Line::default());
-            extra.extend(markdown::render(&partial.text));
-        }
-    }
-    inbox_lines(inbox, &mut extra);
-    parts.push(Part::Rows(wrap_all(&extra, width)));
     parts
 }
 
@@ -231,7 +263,7 @@ pub(crate) fn render(
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<&Conversation>,
+    agents: Query<(&AgentId, &Conversation)>,
     changed: Query<(), Changed<Conversation>>,
     (turns, partials, active, accepted): (
         Query<&Calls>,
@@ -252,7 +284,6 @@ pub(crate) fn render(
     // redraw for.
     let view = view.bypass_change_detection();
     let shown_agent = shown_agent.0;
-    let shown = shown_agent.and_then(|agent| Some((agent, agents.get(agent).ok()?)));
     let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
@@ -263,6 +294,16 @@ pub(crate) fn render(
         .collect();
     inbox.sort_by_key(|(effect, _)| effect.id());
     let inbox: Vec<&Incoming> = inbox.into_iter().map(|(_, message)| message).collect();
+    let shown = shown_agent.and_then(|entity| {
+        let (id, conversation) = agents.get(entity).ok()?;
+        Some(ShownAgent {
+            entity,
+            id,
+            conversation,
+            changed: changed.contains(entity),
+            inbox: &inbox,
+        })
+    });
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
@@ -297,21 +338,12 @@ pub(crate) fn render(
             let layout = input_rows;
             // The input box scrolls to keep the cursor in sight.
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            if let Some((agent, conversation)) = shown {
-                transcript.update(
-                    agent,
-                    conversation,
-                    changed.contains(agent),
-                    &by_tool,
-                    transcript_area.width,
-                );
-            }
-            let parts = transcript_parts(
+            let parts = lay_out_transcript(
+                &mut transcript,
                 view,
-                shown_agent,
-                shown.map(|(_, conversation)| (conversation, &inbox[..])),
-                partial,
-                usize::from(transcript_area.width.max(1)),
+                shown.as_ref(),
+                (&by_tool, partial),
+                transcript_area.width,
             );
             let (rows, below) = transcript.visible(
                 &parts,
@@ -668,15 +700,6 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
             Span::from(format!("{first}{more}")).dim(),
         ]));
     }
-}
-
-fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
-    let style = match notice.level {
-        NoticeLevel::Info => Style::new().fg(Color::Magenta),
-        NoticeLevel::Warn => Style::new().fg(Color::Yellow),
-        NoticeLevel::Error => Style::new().fg(Color::Red),
-    };
-    lines.extend(plain_lines(&notice.text, style));
 }
 
 #[cfg(test)]
