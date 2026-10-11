@@ -88,9 +88,12 @@ impl SignIn for ChatGptSignIn {
     fn handler(
         &self,
         spec: &ModelSpec,
-        _transport: &Transport,
+        transport: &Transport,
     ) -> Option<Result<ErasedHandler, ConnectError>> {
-        let model = || SignedInModel::new(spec.clone(), self.0.clone(), rig_reqwest::shared());
+        let model = || {
+            let http = transport.shared().ok_or(ConnectError::NoHttpClient)?;
+            SignedInModel::new(spec.clone(), self.0.clone(), http)
+        };
         let signed_in = self.plan(spec).is_some() && auth_file().is_file();
         signed_in.then(|| model().map(ErasedHandler::new))
     }
