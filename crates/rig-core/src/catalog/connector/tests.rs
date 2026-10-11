@@ -214,3 +214,103 @@ fn status_says_why_a_model_cannot_serve_an_agent() {
         ModelStatus::Unavailable("the gateway is down".to_owned())
     );
 }
+
+/// A transport wrapper that keeps what each request says it serves.
+#[derive(Clone)]
+struct Served {
+    inner: RecordingHttpClient,
+    seen: std::sync::Arc<std::sync::Mutex<Vec<Option<crate::serve::Serving>>>>,
+}
+
+impl Served {
+    fn note<T>(&self, request: &crate::http_client::Request<T>) {
+        if let Ok(mut seen) = self.seen.lock() {
+            seen.push(request.extensions().get().cloned());
+        }
+    }
+}
+
+impl crate::http_client::HttpClientExt for Served {
+    fn send<T, U>(
+        &self,
+        req: crate::http_client::Request<T>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<
+            crate::http_client::Response<crate::http_client::LazyBody<U>>,
+        >,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static
+    where
+        T: Into<crate::http_client::Bytes> + crate::wasm_compat::WasmCompatSend,
+        U: From<crate::http_client::Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+    {
+        self.note(&req);
+        self.inner.send(req)
+    }
+
+    fn send_multipart<U>(
+        &self,
+        req: crate::http_client::Request<crate::http_client::MultipartForm>,
+    ) -> impl Future<
+        Output = crate::http_client::Result<
+            crate::http_client::Response<crate::http_client::LazyBody<U>>,
+        >,
+    > + crate::wasm_compat::WasmCompatSend
+    + 'static
+    where
+        U: From<crate::http_client::Bytes> + crate::wasm_compat::WasmCompatSend + 'static,
+    {
+        self.note(&req);
+        self.inner.send_multipart(req)
+    }
+
+    fn send_streaming<T>(
+        &self,
+        req: crate::http_client::Request<T>,
+    ) -> impl Future<Output = crate::http_client::Result<crate::http_client::StreamingResponse>>
+    + crate::wasm_compat::WasmCompatSend
+    where
+        T: Into<crate::http_client::Bytes> + crate::wasm_compat::WasmCompatSend,
+    {
+        self.note(&req);
+        self.inner.send_streaming(req)
+    }
+}
+
+/// A wrapper reads which effect a model's request serves, and which
+/// handler and provider it was dispatched to, from the request itself.
+#[tokio::test]
+async fn a_request_says_which_effect_it_serves() {
+    let served = Served {
+        inner: RecordingHttpClient::new("{}"),
+        seen: Default::default(),
+    };
+    let mut connector = Connector::default();
+    let wrapper = served.clone();
+    connector.wrap_http(move |_inner: DynHttpClient| DynHttpClient::new(wrapper.clone()));
+    let reference = model_of(&connector, "ollama");
+    let (spec, handler) = connector.connect(&reference).expect("connected");
+    let kind = EffectKind::Completion {
+        request: CompletionRequest::new("hi"),
+        stream: false,
+    };
+    let id = crate::effect::EffectId::from_raw(7);
+    // The empty reply does not decode; the request went out all the same.
+    let _ = handler
+        .handle(kind, crate::serve::Dispatch::new(id, false))
+        .await;
+    let seen = served
+        .seen
+        .lock()
+        .map(|seen| seen.clone())
+        .unwrap_or_default();
+    let [Some(serving)] = seen.as_slice() else {
+        panic!("one request, marked: {seen:?}");
+    };
+    assert_eq!(serving.effect, id);
+    assert_eq!(serving.handler, crate::effect::model_key(&spec.reference()));
+    assert_eq!(
+        serving.provider.map(|provider| provider.vendor()),
+        Some("ollama")
+    );
+}

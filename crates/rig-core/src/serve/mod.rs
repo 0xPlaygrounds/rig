@@ -14,6 +14,7 @@
 //! ```
 
 pub mod adapters;
+pub use adapters::Serving;
 mod handler;
 mod layer;
 mod map;

@@ -152,6 +152,7 @@ where
         let exchange = Exchange {
             mode: Mode::Unary,
             observation: None,
+            extensions: http::Extensions::new(),
         };
         let opened = match self
             .inner
@@ -330,7 +331,6 @@ where
     fn send(&self, payload: Encoded, exchange: Exchange) -> Opening<WireFrame> {
         let this = self.clone();
         Opening::new(async move {
-            let Exchange { mode, observation } = exchange;
             let path = payload.request.uri().path().to_owned();
             let bytes = match payload.request.body() {
                 Body::Bytes(bytes) => Some(bytes.clone()),
@@ -338,16 +338,10 @@ where
             };
             let parsed = bytes.as_deref().and_then(parse);
             let (Some(bytes), Some(model), Some(parsed)) = (bytes, model_of(&path), parsed) else {
-                return this
-                    .inner
-                    .send(payload, Exchange { mode, observation })
-                    .await;
+                return this.inner.send(payload, exchange).await;
             };
             if parsed.has_cached_content {
-                return this
-                    .inner
-                    .send(payload, Exchange { mode, observation })
-                    .await;
+                return this.inner.send(payload, exchange).await;
             }
 
             let d = digests(&model, &parsed);
@@ -394,16 +388,7 @@ where
                 },
                 None => with_body(&payload, bytes.clone())?,
             };
-            let mut opened: Opened<WireFrame> = this
-                .inner
-                .send(
-                    sent,
-                    Exchange {
-                        mode,
-                        observation: observation.clone(),
-                    },
-                )
-                .await?;
+            let mut opened: Opened<WireFrame> = this.inner.send(sent, exchange.clone()).await?;
             if let Some(lease) = read.clone() {
                 let first = opened.frames.next().await;
                 let forbidden = matches!(
@@ -416,7 +401,7 @@ where
                     read = None;
                     opened = this
                         .inner
-                        .send(with_body(&payload, bytes)?, Exchange { mode, observation })
+                        .send(with_body(&payload, bytes)?, exchange)
                         .await?;
                 } else {
                     this.book.touched(&lease);
