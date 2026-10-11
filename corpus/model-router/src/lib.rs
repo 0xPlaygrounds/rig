@@ -45,6 +45,7 @@
 use std::collections::BTreeMap;
 
 use bevy_log::warn;
+use rig_basics::ProjectContextSystems;
 use rig_compaction::CompactionSystems;
 use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
@@ -81,6 +82,7 @@ impl Plugin for ModelRouterPlugin {
                 AgentPass,
                 RouteSystems
                     .in_set(Stage::Prepare)
+                    .after(ProjectContextSystems)
                     .before(CompactionSystems::Prepare),
             )
             .add_systems(
@@ -257,7 +259,12 @@ fn leave(inserted: On<Insert<ModelChoice>>, agents: Query<&Routing>, mut command
 fn route(
     mut calls: Query<
         (&mut ModelRequest, &CallOf, &ForAgent),
-        (Added<Admitted>, With<TurnCall>, Without<Supersedes>),
+        (
+            Added<Admitted>,
+            ModelCalls,
+            With<TurnCall>,
+            Without<Supersedes>,
+        ),
     >,
     agents: Query<(&Routing, &Conversation, &LastUsage, Option<&ModelLabel>)>,
     turns: Query<&Turn>,

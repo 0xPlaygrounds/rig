@@ -142,3 +142,8 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     assert_eq!(app.world().get::<Routing>(agent), Some(&Routing(false)));
     assert!(app.world().get::<ModelLabel>(agent).is_none());
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ModelRouterPlugin);
+}
