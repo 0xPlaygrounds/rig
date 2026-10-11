@@ -102,7 +102,9 @@ fn a_template_is_a_command_that_sends_its_expansion() {
         app.update();
     };
 
-    // `/help` lists the template with its description.
+    // The template is a command once its directory's watch is armed, and
+    // `/help` lists it with its description.
+    run_until(&mut app, &wakes, |world| has_command(world, "/review"));
     typed(&mut app, "/help");
     let notices = app.world().resource::<Messages<Notice>>();
     let help: Vec<String> = notices
@@ -136,6 +138,12 @@ fn a_template_is_a_command_that_sends_its_expansion() {
         last_user_text(&model).as_deref(),
         Some("Review src/lib.rs for bugs.")
     );
+    // The conversation keeps the template's name on the message.
+    let titled = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.origin(0, 0)?.title.clone());
+    assert_eq!(titled.as_deref(), Some("review"));
 
     // A template written while the agent runs is a command once seen, and
     // its turn runs on the model it names.

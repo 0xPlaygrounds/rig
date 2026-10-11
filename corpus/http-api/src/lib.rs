@@ -9,26 +9,31 @@
 //!   typed (slash commands run), `POST /agents/{id}/interrupt` stops a turn.
 //! - `GET /agents` lists the agents with their status,
 //!   `GET /agents/{id}/conversation` returns the messages.
-//! - `GET /events` streams Server-Sent Events: `turn_start`, `text_delta`,
-//!   `tool_start`, `tool_end`, `turn_end`, `notice`, `approval_request`
-//!   and `approval_closed`.
-//! - `POST /approvals/{id} {choice}` answers any plugin's open [`Ask`], or
-//!   a [`Picker`] the terminal view would show.
+//! - `GET /events` streams Server-Sent Events, in the order things
+//!   happened: `turn_start`, `text_delta`, `reasoning_delta`, `tool_start`,
+//!   `tool_end`, `turn_end`, `notice`, `approval_request` and
+//!   `approval_closed`.
+//! - `POST /approvals/{id} {choice}` answers any plugin's open [`Ask`] or
+//!   [`Picker`] with [`Pick`], as the terminal view does; a `null` choice
+//!   closes it.
 //!
 //! An agent is named by its id or the id's first characters. A client
 //! lagging more than 256 events behind is dropped. Binding to anything but
 //! localhost needs `allow_remote = true` in `[serve]`.
 
-use crossbeam_channel::Sender;
+use std::sync::mpsc::SyncSender;
+
+use bevy_ecs::message::{MessageCursor, Messages};
+use bevy_ecs::system::SystemParam;
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_activity::Activity;
 use rig_harness::prelude::*;
-use rig_tui::Focused;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 mod server;
 
-use server::{Call, Reply, Request, Server};
+use server::{Call, Reply, Request};
 
 /// The option naming the address to serve on, such as `127.0.0.1:7777`.
 pub const SERVE: &str = "serve";
@@ -72,38 +77,35 @@ impl Plugin for HttpApiPlugin {
         let allow_remote = settings.allow_remote;
         let token_file = RigHome::of(world).root().join("serve-token");
         app.init_resource::<Subscribers>()
-            .register_required_components::<TurnCall, Streamed>()
             .add_systems(
                 Startup,
                 move |wake: Res<Wake>,
                       mut commands: Commands,
                       mut notices: MessageWriter<Notice>| {
-                    match server::start(&addr, allow_remote, &token_file, wake.clone()) {
-                        Ok((api, server)) => {
-                            notices.write(Notice::info(
-                                None,
-                                format!(
-                                    "HTTP API on http://{}, bearer token {} (in {})",
-                                    api.addr,
-                                    api.token,
-                                    token_file.display()
-                                ),
-                            ));
-                            commands.insert_resource(api);
-                            commands.insert_resource(server);
-                            commands.spawn(Answerer::default());
-                        }
-                        Err(why) => {
-                            notices.write(Notice::error(None, why));
-                        }
-                    }
+                    let (api, listener, requests) =
+                        match server::start(&addr, allow_remote, &token_file) {
+                            Ok(started) => started,
+                            Err(why) => {
+                                notices.write(Notice::error(None, why));
+                                return;
+                            }
+                        };
+                    let file = token_file.display();
+                    let text = format!(
+                        "HTTP API on http://{}, bearer token {} (in {file})",
+                        api.addr, api.token
+                    );
+                    notices.write(Notice::info(None, text));
+                    commands.insert_resource(api);
+                    let pool = IoTaskPool::get_or_init(TaskPool::default);
+                    commands.spawn((listener, Running::stream(pool, &wake, requests)));
+                    commands.spawn(Answerer::default());
                 },
             )
-            .add_systems(PreUpdate, answer_requests.run_if(resource_exists::<Server>))
             .add_systems(PostUpdate, (stream_text, relay_notices))
+            .add_observer(answer_requests)
             .add_observer(turn_started)
             .add_observer(turn_ended)
-            .add_observer(reply_settled)
             .add_observer(tool_started)
             .add_observer(tool_ended)
             .add_observer(asked)
@@ -113,27 +115,66 @@ impl Plugin for HttpApiPlugin {
     }
 }
 
-/// The event streams' senders.
+/// The event streams' senders, and how far they got in what model calls
+/// streamed.
 #[derive(Resource, Default)]
-struct Subscribers(Vec<Sender<String>>);
+struct Subscribers {
+    clients: Vec<SyncSender<String>>,
+    deltas: MessageCursor<StreamDelta>,
+}
 
-impl Subscribers {
-    /// Sends the event `kind` with `data` to every client, dropping those
-    /// that lag behind or went away.
+/// Sends events to every client, dropping those that lag behind or went
+/// away. Every event first sends the fragments model calls streamed before
+/// it, so a stream keeps the order things happened in: the fragments are
+/// messages, the rest observers.
+#[derive(SystemParam)]
+struct Events<'w, 's> {
+    subscribers: ResMut<'w, Subscribers>,
+    deltas: Res<'w, Messages<StreamDelta>>,
+    ids: Query<'w, 's, &'static AgentId>,
+}
+
+impl Events<'_, '_> {
+    /// The id of `agent`.
+    fn agent(&self, agent: Entity) -> Option<String> {
+        self.ids.get(agent).ok().map(|id| id.0.clone())
+    }
+
+    /// Sends the event `kind` with `data`.
     fn send(&mut self, kind: &str, data: &Value) {
-        if self.0.is_empty() {
-            return;
+        self.flush();
+        send(&mut self.subscribers.clients, kind, data);
+    }
+
+    /// Sends the fragments streamed since the last event, as `text_delta`
+    /// and `reasoning_delta`.
+    fn flush(&mut self) {
+        let Subscribers { clients, deltas } = &mut *self.subscribers;
+        for delta in deltas.read(&self.deltas) {
+            let kind = match delta.kind {
+                DeltaKind::Text => "text_delta",
+                DeltaKind::Reasoning => "reasoning_delta",
+            };
+            let agent = delta.agent.and_then(|agent| self.ids.get(agent).ok());
+            let data = json!({
+                "agent": agent.map(|id| &id.0),
+                "call": delta.effect.to_bits(),
+                "text": delta.text,
+            });
+            send(clients, kind, &data);
         }
-        let event = format!("event: {kind}\ndata: {data}\n\n");
-        self.0
-            .retain(|subscriber| subscriber.try_send(event.clone()).is_ok());
     }
 }
 
-/// On each turn's model call: how much of its [`Partial`] text went out
-/// as deltas.
-#[derive(Component, Default)]
-struct Streamed(usize);
+/// Sends the event `kind` with `data` to `clients`, dropping those that lag
+/// behind or went away.
+fn send(clients: &mut Vec<SyncSender<String>>, kind: &str, data: &Value) {
+    if clients.is_empty() {
+        return;
+    }
+    let event = format!("event: {kind}\ndata: {data}\n\n");
+    clients.retain(|client| client.try_send(event.clone()).is_ok());
+}
 
 /// The agents as requests name them.
 type AgentRow<'a> = (
@@ -150,32 +191,34 @@ type AgentRow<'a> = (
 type Choosable<'w, 's> = (
     Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
     Query<'w, 's, &'static Picker>,
-    Query<'w, 's, Entity, With<Focused>>,
 );
 
-/// Answers the requests the connections handed over since the last frame.
+/// Answers each request a connection hands over.
 fn answer_requests(
-    server: Res<Server>,
+    handed: On<Insert<Done<Request>>>,
+    requests: Query<&Done<Request>>,
     agents: Query<AgentRow>,
-    ids: Query<&AgentId>,
     choosable: Choosable,
-    mut subscribers: ResMut<Subscribers>,
+    mut events: Events,
     mut commands: Commands,
 ) {
-    for request in server.requests.try_iter() {
-        match request {
-            Request::Subscribe(sender) => subscribers.0.push(sender),
-            Request::Call(call, reply) => {
-                let answer = answer(call, &agents, &ids, &choosable, &mut commands);
-                reply.send(answer).ok();
-            }
+    match requests.get(handed.entity) {
+        Ok(Done(Request::Subscribe(client))) => {
+            // A new client gets what streams from now on.
+            events.flush();
+            events.subscribers.clients.push(client.clone());
         }
+        Ok(Done(Request::Call(call, reply))) => {
+            let answer = answer(call, &agents, &events.ids, &choosable, &mut commands);
+            reply.send(answer).ok();
+        }
+        Err(_) => {}
     }
 }
 
 /// The reply to `call`.
 fn answer(
-    call: Call,
+    call: &Call,
     agents: &Query<AgentRow>,
     ids: &Query<&AgentId>,
     choosable: &Choosable,
@@ -201,131 +244,88 @@ fn answer(
                         "name": name.as_str(),
                         "status": status,
                         "busy": busy,
-                        "spawned_by": parent.and_then(|parent| agent_id(ids, parent.0)),
+                        "spawned_by": parent.and_then(|parent| ids.get(parent.0).ok()).map(|id| &id.0),
                     })
                 })
                 .collect();
             Reply::new(200, json!({ "agents": listed }))
         }
-        Call::Conversation(wanted) => match find(&wanted) {
+        Call::Conversation(wanted) => match find(wanted) {
             Some((_, id, _, conversation, ..)) => Reply::new(
                 200,
                 json!({ "agent": id.0, "messages": conversation.messages() }),
             ),
-            None => missing(&wanted),
+            None => missing(wanted),
         },
-        Call::Deliver { agent, text, mode } => match find(&agent) {
+        Call::Deliver { agent, text, mode } => match find(agent) {
             Some((entity, ..)) => {
-                commands.trigger(Deliver::new(entity, text, mode));
+                commands.trigger(Deliver::new(entity, text.clone(), *mode));
                 Reply::new(202, json!({ "accepted": true }))
             }
-            None => missing(&agent),
+            None => missing(agent),
         },
-        Call::Interrupt(agent) => match find(&agent) {
+        Call::Interrupt(agent) => match find(agent) {
             Some((entity, .., true, _)) => {
                 commands.trigger(Interrupt::new(entity));
                 Reply::new(202, json!({ "accepted": true }))
             }
             Some(_) => Reply::error(409, "no turn runs"),
-            None => missing(&agent),
+            None => missing(agent),
         },
-        Call::Answer { id, choice } => choose(id, &choice, choosable, commands),
+        Call::Answer { id, choice } => choose(*id, choice, choosable, commands),
     }
 }
 
 /// Answers the open [`Ask`] or [`Picker`] `id` with `choice`: a choice's
-/// position, id or label, or a line of text where one answers it.
-fn choose(
-    id: u64,
-    choice: &Value,
-    (asks, pickers, focused): &Choosable,
-    commands: &mut Commands,
-) -> Reply {
-    let accepted = Reply::new(202, json!({ "accepted": true }));
-    let no_choice = Reply::error(400, "no such choice");
-    let entity = Entity::try_from_bits(id);
-    if let Some((entity, ask)) = entity.and_then(|entity| Some((entity, asks.get(entity).ok()?))) {
-        let chosen = match choice {
-            Value::Number(index) => index
-                .as_u64()
-                .and_then(|index| ask.choices.get(usize::try_from(index).ok()?)),
-            Value::String(wanted) => ask
-                .choices
-                .iter()
-                .find(|choice| &choice.id == wanted || &choice.label == wanted),
-            _ => None,
-        };
-        let answer = match (chosen, choice) {
-            (Some(chosen), _) => Answer::Choice(chosen.id.clone()),
-            (None, Value::String(text)) if ask.free_text => Answer::Text(text.clone()),
-            _ => return no_choice,
-        };
-        commands.entity(entity).insert_if_new(answer.outcome());
-        return accepted;
-    }
-    let Some((entity, picker)) =
-        entity.and_then(|entity| Some((entity, pickers.get(entity).ok()?)))
-    else {
+/// position, id, label or command, a line of text where one answers it, or
+/// `null` to close it.
+fn choose(id: u64, choice: &Value, (asks, pickers): &Choosable, commands: &mut Commands) -> Reply {
+    let open = Entity::try_from_bits(id).and_then(|entity| {
+        if let Ok(ask) = asks.get(entity) {
+            let names = ask.choices.iter().map(|choice| [&choice.id, &choice.label]);
+            return Some((entity, names.collect::<Vec<_>>(), ask.free_text));
+        }
+        let picker = pickers.get(entity).ok()?;
+        let names = picker.items.iter().map(|item| [&item.label, &item.command]);
+        Some((entity, names.collect(), picker.free_text))
+    });
+    let Some((entity, names, free_text)) = open else {
         return Reply::error(404, format!("no open question {id}"));
     };
     let index = match choice {
         Value::Number(index) => index
             .as_u64()
             .and_then(|index| usize::try_from(index).ok())
-            .filter(|&index| index < picker.items.len()),
-        Value::String(wanted) => picker
-            .items
-            .iter()
-            .position(|item| &item.label == wanted || &item.command == wanted),
+            .filter(|&index| index < names.len()),
+        Value::String(wanted) => names.iter().position(|names| names.contains(&wanted)),
         _ => None,
     };
     let chosen = match (index, choice) {
-        (Some(index), _) => Chosen::Item(index),
-        (None, Value::String(text)) if picker.free_text => Chosen::Text(text.clone()),
-        _ => return no_choice,
+        (Some(index), _) => Some(Chosen::Item(index)),
+        (None, Value::String(text)) if free_text => Some(Chosen::Text(text.clone())),
+        (None, Value::Null) => None,
+        _ => return Reply::error(400, "no such choice"),
     };
-    // What the terminal view does on a pick, which it keeps to itself.
-    let item = index.and_then(|index| picker.items.get(index));
-    if let (Some(item), Some(agent)) = (item, picker.agent.or(focused.iter().next()))
-        && !item.command.is_empty()
-    {
-        commands.trigger(RunCommand::new(agent, item.command.clone()));
-    }
-    commands.trigger(Picked {
-        entity,
-        chosen: Some(chosen),
-    });
-    commands.entity(entity).try_despawn();
-    accepted
+    commands.trigger(Pick { entity, chosen });
+    Reply::new(202, json!({ "accepted": true }))
 }
 
-/// The id of `agent`.
-fn agent_id(ids: &Query<&AgentId>, agent: Entity) -> Option<String> {
-    ids.get(agent).ok().map(|id| id.0.clone())
-}
-
-fn turn_started(
-    started: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
+fn turn_started(started: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut events: Events) {
     if let Ok(&TurnOf(agent)) = turns.get(started.entity) {
-        let data = json!({ "agent": agent_id(&ids, agent) });
-        subscribers.send("turn_start", &data);
+        let data = json!({ "agent": events.agent(agent) });
+        events.send("turn_start", &data);
     }
 }
 
 fn turn_ended(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
+    mut events: Events,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let agent = agent_id(&ids, agent);
+    let agent = events.agent(agent);
     let data = match outcome {
         TurnOutcome::Answered(message) => {
             json!({ "agent": agent, "outcome": "answered", "answer": final_answer(message) })
@@ -333,157 +333,82 @@ fn turn_ended(
         TurnOutcome::Failed(why) => json!({ "agent": agent, "outcome": "failed", "error": why }),
         TurnOutcome::Stopped(why) => json!({ "agent": agent, "outcome": "stopped", "reason": why }),
     };
-    subscribers.send("turn_end", &data);
+    events.send("turn_end", &data);
 }
 
 fn tool_started(
     started: On<Add<Started>>,
     calls: Query<(&ToolRequest, &ForAgent)>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
+    mut events: Events,
 ) {
     if let Ok((request, &ForAgent(agent))) = calls.get(started.entity) {
-        let data = json!({ "agent": agent_id(&ids, agent), "call": request.call });
-        subscribers.send("tool_start", &data);
+        let data = json!({ "agent": events.agent(agent), "call": request.call });
+        events.send("tool_start", &data);
     }
 }
 
 fn tool_ended(
     settled: On<Add<Settled>>,
     calls: Query<(&ToolRequest, &ForAgent, &Outcome)>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
+    mut events: Events,
 ) {
     if let Ok((request, &ForAgent(agent), outcome)) = calls.get(settled.entity) {
         let data = json!({
-            "agent": agent_id(&ids, agent),
+            "agent": events.agent(agent),
             "id": request.call.id,
             "name": request.call.function.name.as_str(),
             "result": outcome.tool_result(),
         });
-        subscribers.send("tool_end", &data);
+        events.send("tool_end", &data);
     }
 }
 
-/// Sends the text each turn's model call streamed since the last frame.
-fn stream_text(
-    mut calls: Query<(&Partial, &mut Streamed, &ForAgent), Changed<Partial>>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
-    for (partial, mut streamed, &ForAgent(agent)) in &mut calls {
-        send_delta(
-            &partial.text,
-            &mut streamed,
-            agent_id(&ids, agent),
-            &mut subscribers,
-        );
-    }
+/// Sends what model calls streamed since the last event.
+fn stream_text(mut events: Events) {
+    events.flush();
 }
 
-/// Sends what a settled call's reply has beyond what [`stream_text`] sent:
-/// the kernel takes the call's [`Partial`] away when it commits the reply,
-/// often in the frame its last fragments came, before `PostUpdate`.
-fn reply_settled(
-    settled: On<Add<Settled>>,
-    mut calls: Query<(&Outcome, &mut Streamed, &ForAgent)>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
-    let Ok((outcome, mut streamed, &ForAgent(agent))) = calls.get_mut(settled.entity) else {
-        return;
-    };
-    let Some(response) = outcome.completion() else {
-        return;
-    };
-    let text: String = response
-        .choice
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect();
-    send_delta(
-        &text,
-        &mut streamed,
-        agent_id(&ids, agent),
-        &mut subscribers,
-    );
-}
-
-/// Sends `text` past what `streamed` says went out, as a `text_delta`.
-fn send_delta(
-    text: &str,
-    streamed: &mut Streamed,
-    agent: Option<String>,
-    subscribers: &mut Subscribers,
-) {
-    if let Some(delta) = text.get(streamed.0..).filter(|delta| !delta.is_empty()) {
-        subscribers.send("text_delta", &json!({ "agent": agent, "text": delta }));
-        streamed.0 = text.len();
-    }
-}
-
-fn relay_notices(
-    mut notices: MessageReader<Notice>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
+fn relay_notices(mut notices: MessageReader<Notice>, mut events: Events) {
     for notice in notices.read() {
         let level = match notice.level {
             NoticeLevel::Info => "info",
             NoticeLevel::Error => "error",
         };
         let data = json!({
-            "agent": notice.agent.and_then(|agent| agent_id(&ids, agent)),
+            "agent": notice.agent.and_then(|agent| events.agent(agent)),
             "level": level,
             "text": notice.text,
         });
-        subscribers.send("notice", &data);
+        events.send("notice", &data);
     }
 }
 
 /// Offers each question a plugin asks, by its entity's bits.
-fn asked(
-    added: On<Add<Ask>>,
-    asks: Query<(&Ask, Option<&ForAgent>)>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
+fn asked(added: On<Add<Ask>>, asks: Query<(&Ask, Option<&ForAgent>)>, mut events: Events) {
     if let Ok((ask, agent)) = asks.get(added.entity) {
         let data = json!({
             "id": added.entity.to_bits(),
             "kind": "ask",
-            "agent": agent.and_then(|agent| agent_id(&ids, agent.0)),
+            "agent": agent.and_then(|agent| events.agent(agent.0)),
             "title": ask.title,
             "body": ask.body,
             "choices": ask.choices,
             "free_text": ask.free_text,
         });
-        subscribers.send("approval_request", &data);
+        events.send("approval_request", &data);
     }
 }
 
 /// Says a question was answered, here or in another front.
-fn ask_answered(
-    answered: On<Add<Outcome>>,
-    asks: Query<(), With<Ask>>,
-    mut subscribers: ResMut<Subscribers>,
-) {
+fn ask_answered(answered: On<Add<Outcome>>, asks: Query<(), With<Ask>>, mut events: Events) {
     if asks.contains(answered.entity) {
         let data = json!({ "id": answered.entity.to_bits() });
-        subscribers.send("approval_closed", &data);
+        events.send("approval_closed", &data);
     }
 }
 
 /// Offers each picker a plugin opens or replaces, by its entity's bits.
-fn picker_opened(
-    inserted: On<Insert<Picker>>,
-    pickers: Query<&Picker>,
-    ids: Query<&AgentId>,
-    mut subscribers: ResMut<Subscribers>,
-) {
+fn picker_opened(inserted: On<Insert<Picker>>, pickers: Query<&Picker>, mut events: Events) {
     if let Ok(picker) = pickers.get(inserted.entity) {
         let choices: Vec<Value> = picker
             .items
@@ -494,20 +419,20 @@ fn picker_opened(
         let data = json!({
             "id": inserted.entity.to_bits(),
             "kind": "picker",
-            "agent": picker.agent.and_then(|agent| agent_id(&ids, agent)),
+            "agent": picker.agent.and_then(|agent| events.agent(agent)),
             "title": picker.title,
             "body": picker.body,
             "choices": choices,
             "free_text": picker.free_text,
         });
-        subscribers.send("approval_request", &data);
+        events.send("approval_request", &data);
     }
 }
 
 /// Says a picker closed, here or in the terminal view.
-fn picker_closed(removed: On<Remove<Picker>>, mut subscribers: ResMut<Subscribers>) {
+fn picker_closed(removed: On<Remove<Picker>>, mut events: Events) {
     let data = json!({ "id": removed.entity.to_bits() });
-    subscribers.send("approval_closed", &data);
+    events.send("approval_closed", &data);
 }
 
 #[cfg(test)]

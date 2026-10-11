@@ -1,11 +1,10 @@
 use std::sync::{Arc, Mutex};
 
-use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{advance, app_on, connect, first_agent, reply, run_until};
 use rig_tui::KeyBinding;
 
 /// Records a fixed buffer.
@@ -61,16 +60,6 @@ impl Speaker for FakeSpeaker {
     fn stop(&self) {}
 }
 
-/// Runs one frame `by` later on the app's clock, then a few with it still.
-fn advance(app: &mut App, by: Duration) {
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(by));
-    app.update();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
-    for _ in 0..3 {
-        app.update();
-    }
-}
-
 fn draft(world: &World) -> String {
     world.resource::<TuiInput>().text().to_owned()
 }
@@ -79,23 +68,20 @@ fn draft(world: &World) -> String {
 fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_without_code() {
     let speaker = FakeSpeaker::default();
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-        .insert_resource(VoiceBackends {
-            recorder: Some(Arc::new(FakeRecorder)),
-            transcriber: Some(Arc::new(FakeTranscriber)),
-            speaker: Some(Arc::new(speaker.clone())),
-        })
-        .add_plugins((AgentPlugin, JournalPlugin, VoicePlugin));
+    app.insert_resource(VoiceBackends {
+        recorder: Some(Arc::new(FakeRecorder)),
+        transcriber: Some(Arc::new(FakeTranscriber)),
+        speaker: Some(Arc::new(speaker.clone())),
+    })
+    .add_plugins((AgentPlugin, JournalPlugin, VoicePlugin));
     app.finish();
-    app.update();
+    // Frames take no time until the test moves the clock.
+    advance(&mut app, Duration::ZERO);
     let model = MockCompletionModel::from_stream_turns([reply(
         "There are three files.\n\n```\na b c\n```",
     )]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = first_agent(world);
     let key = KEY.parse::<Keys>().ok();
     let binding = world
         .query::<(Entity, &KeyBinding)>()

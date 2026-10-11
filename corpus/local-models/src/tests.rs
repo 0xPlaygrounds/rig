@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use rig_cassette::journal::MemoryStore;
-use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
+use rig_harness::rig_core::catalog::ModelStatus;
+use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
 use rig_models::ModelsPlugin;
 
 use super::*;
@@ -143,7 +144,8 @@ struct Seen {
     answer: Option<String>,
     window: Option<u32>,
     warmed_up: bool,
-    available_after_stop: Option<bool>,
+    /// What the catalog says of the model once its server stopped.
+    status_after_stop: Option<ModelStatus>,
     /// Why a turn on the unavailable model failed.
     failed_after_stop: Option<String>,
 }
@@ -158,7 +160,9 @@ fn a_local_model_is_found_answers_and_is_marked_unavailable_once_its_server_stop
             answer: Some("hi".to_owned()),
             window: Some(32768),
             warmed_up: true,
-            available_after_stop: Some(false),
+            status_after_stop: Some(ModelStatus::Unavailable(format!(
+                "Ollama not running at {url}"
+            ))),
             failed_after_stop: Some(format!("Ollama not running at {url}")),
         })
     );
@@ -192,13 +196,8 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
     run_until(&mut app, &wakes, |world| {
         qwen_available(world) == Some(true)
     });
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-        .ok_or("no agent")?;
-    world.trigger(Deliver::new(
+    let agent = first_agent(app.world_mut()).ok_or("no agent")?;
+    app.world_mut().trigger(Deliver::new(
         agent,
         "/model local/qwen-coder",
         DeliveryMode::Queue,
@@ -234,7 +233,12 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
     run_until(&mut app, &wakes, |world| {
         qwen_available(world) == Some(false)
     });
-    let available_after_stop = qwen_available(app.world());
+    let models = &app.world().resource::<Models>().0;
+    let status_after_stop = models
+        .catalog()
+        .resolve("local/qwen-coder")
+        .ok()
+        .map(|found| models.status(found.spec));
 
     app.world_mut()
         .trigger(Deliver::new(agent, "hello again", DeliveryMode::Queue));
@@ -250,7 +254,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         answer,
         window,
         warmed_up,
-        available_after_stop,
+        status_after_stop,
         failed_after_stop,
     })
 }

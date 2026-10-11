@@ -34,11 +34,18 @@
 //! effect log and rig-telemetry's per-model spending record it under the
 //! real model. The agent's [`ModelLabel`] says `router → deepseek-flash`
 //! in the status line. A rule whose target is not configured or cannot be
-//! connected is off, with a warning at startup.
+//! connected is off, with a warning at startup; once the catalog changes,
+//! such as a provider plugin adding the model, it is connected again.
+//!
+//! The routing runs in [`RouteSystems`], before compaction measures the
+//! request against the model it goes to. A call that takes over another
+//! (`Supersedes`), such as a fallback's, keeps the model the plugin that
+//! spawned it chose.
 
 use std::collections::BTreeMap;
 
 use bevy_log::warn;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
 use rig_models::{ModelItem, ModelLabel};
@@ -49,6 +56,12 @@ mod tests;
 
 /// The virtual model's name, as `/model router` takes it.
 pub const ROUTER: &str = "router";
+
+/// The router's Prepare system, which sets each routed call's
+/// `connection`: a plugin that edits a request for the model it goes to
+/// runs after it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RouteSystems;
 
 /// Adds the `router` virtual model.
 #[derive(Default)]
@@ -64,8 +77,17 @@ impl Plugin for ModelRouterPlugin {
                 "Route each model request by the [router] rules of settings.toml",
                 router,
             )
-            .add_systems(Startup, connect_targets)
-            .add_systems(AgentPass, route.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                RouteSystems
+                    .in_set(Stage::Prepare)
+                    .before(CompactionSystems::Prepare),
+            )
+            .add_systems(
+                PreUpdate,
+                connect_targets.run_if(resource_changed::<Models>),
+            )
+            .add_systems(AgentPass, route.in_set(RouteSystems))
             .add_observer(label)
             .add_observer(leave.run_if(resource_exists::<SessionRestored>));
         let item = ModelItem::new(ROUTER, "router  a model per request, by [router]", ROUTER);
@@ -141,7 +163,7 @@ impl std::fmt::Display for When {
     }
 }
 
-/// The targets that could be connected at startup, by name.
+/// The targets that could be connected, by name.
 #[derive(Resource, Clone, Default)]
 pub struct Targets(pub BTreeMap<String, Connection>);
 
@@ -151,13 +173,17 @@ pub struct Targets(pub BTreeMap<String, Connection>);
 #[reflect(Component, Saved, Default)]
 pub struct Routing(pub bool);
 
-/// Connects each target a rule uses, and warns of each rule that is off.
+/// Connects each target a rule uses, whenever the catalog changed, and
+/// warns of each rule that is off the first time, at startup.
 fn connect_targets(
     config: Res<RouterConfig>,
     models: Res<Models>,
     mut targets: ResMut<Targets>,
     mut notices: MessageWriter<Notice>,
+    mut started: Local<bool>,
 ) {
+    let warn_off = !std::mem::replace(&mut *started, true);
+    targets.0.clear();
     for rule in &config.rules {
         if targets.0.contains_key(&rule.target) {
             continue;
@@ -170,7 +196,7 @@ fn connect_targets(
             Ok(connection) => {
                 targets.0.insert(rule.target.clone(), connection);
             }
-            Err(why) => {
+            Err(why) if warn_off => {
                 let text = format!(
                     "Router rule \"{} → {}\" is off: {why}",
                     rule.when, rule.target
@@ -178,6 +204,7 @@ fn connect_targets(
                 warn!("{text}");
                 notices.write(Notice::info(None, text));
             }
+            Err(_) => {}
         }
     }
 }
@@ -226,9 +253,12 @@ fn leave(inserted: On<Insert<ModelChoice>>, agents: Query<&Routing>, mut command
 }
 
 /// Sends each turn request of a routed agent to the target of the first
-/// rule that matches it.
+/// rule that matches it, unless it took over another call.
 fn route(
-    mut calls: Query<(&mut ModelRequest, &CallOf, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<
+        (&mut ModelRequest, &CallOf, &ForAgent),
+        (Added<Admitted>, With<TurnCall>, Without<Supersedes>),
+    >,
     agents: Query<(&Routing, &Conversation, &LastUsage, Option<&ModelLabel>)>,
     turns: Query<&Turn>,
     tools: Query<(&ToolDef, &Footprint)>,

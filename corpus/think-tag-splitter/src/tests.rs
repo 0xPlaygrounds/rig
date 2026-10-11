@@ -5,6 +5,8 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
+use rig_harness::rig_core::streaming::Transcript;
+
 use super::*;
 
 /// The text and reasoning each turn's model call streamed, as fronts saw
@@ -103,4 +105,44 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
         !sent.contains("think>") && !sent.contains("plan it"),
         "{sent}"
     );
+
+    // The rewritten events, which the record keeps, are a transcript of
+    // the rewritten response: each part ends with the block at its index.
+    let text = Part::new(0);
+    let chunks = ["<thi", "nk>plan it</think>The answer", " is 4."];
+    let whole = AssistantContent::Text(Text::new(chunks.concat()));
+    let events = std::iter::once(StreamEvent::Start {
+        part: text,
+        kind: PartKind::Text,
+        name: None,
+    })
+    .chain(chunks.map(|chunk| StreamEvent::Text {
+        part: text,
+        text: chunk.to_owned(),
+    }))
+    .chain([StreamEvent::End {
+        part: text,
+        content: whole.clone(),
+    }]);
+    let mut parts = Parts::new(false);
+    let items: Vec<Relayed> = events
+        .flat_map(|event| parts.relay(Relayed::Item(Item::Event(event))))
+        .collect();
+    let ends: Vec<AssistantContent> = items
+        .iter()
+        .filter_map(|item| match item {
+            Relayed::Item(Item::Event(StreamEvent::End { content, .. })) => Some(content.clone()),
+            _ => None,
+        })
+        .collect();
+    let items: Vec<_> = items
+        .into_iter()
+        .filter_map(|item| match item {
+            Relayed::Item(item) => Some(item),
+            _ => None,
+        })
+        .collect();
+    let transcript = serde_json::to_value(items).map(Transcript::parse);
+    assert!(matches!(transcript, Ok(Ok(_))), "{transcript:?}");
+    assert_eq!(ends, split_choice(&[whole], false));
 }

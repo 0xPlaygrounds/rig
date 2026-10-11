@@ -2,14 +2,15 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
-use bevy_time::TimeUpdateStrategy;
 use futures::FutureExt;
 use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_cassette::journal::MemoryStore;
-use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, ToolOutputs, advance, app_on, connect, first_agent, log_ended, log_tool_outputs, reply,
+    run_until,
+};
 use schemars::JsonSchema;
 use serde_json::json;
 
@@ -89,16 +90,14 @@ fn start(
     app.insert_resource(limits)
         .add_plugins((AgentPlugin, JournalPlugin, ToolRateLimitPlugin))
         .init_resource::<Ended>()
-        .add_observer(log_ended);
+        .add_observer(log_ended)
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
     tools(&mut app);
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-        .unwrap_or(Entity::PLACEHOLDER);
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
     if let Some(connection) = connect(model) {
         world.entity_mut(agent).insert(connection);
     }
@@ -117,22 +116,10 @@ fn model(tool: &str, ids: &[&str]) -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([calls, reply("Done.")])
 }
 
-/// The tool results `request` sends, as JSON text.
-fn results(request: Option<&CompletionRequest>) -> Vec<String> {
-    let messages = request.map(|request| request.chat_history.iter());
-    messages
-        .into_iter()
-        .flatten()
-        .filter_map(|message| match message {
-            Message::User { content } => Some(content.iter()),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|content| match content {
-            UserContent::ToolResult(result) => serde_json::to_string(result).ok(),
-            _ => None,
-        })
-        .collect()
+/// The output of call `id`, as the model read it.
+fn output(app: &App, id: &str) -> String {
+    let outputs = &app.world().resource::<ToolOutputs>().0;
+    outputs.get(id).cloned().unwrap_or_default()
 }
 
 fn ended(world: &World) -> bool {
@@ -150,17 +137,9 @@ fn a_call_over_the_turn_limit_is_refused_and_not_run() {
     run_until(&mut app, &wakes, ended);
 
     assert_eq!(ran.load(Ordering::SeqCst), 2);
-    let sent = results(model.requests().get(1));
-    assert_eq!(sent.len(), 3, "{sent:?}");
-    let refused: Vec<_> = sent
-        .iter()
-        .filter(|r| r.contains("limit reached"))
-        .collect();
-    assert_eq!(refused.len(), 1, "{sent:?}");
-    assert!(
-        sent.last().is_some_and(|r| r.contains("2 per turn")),
-        "{sent:?}"
-    );
+    assert_eq!([output(&app, "a"), output(&app, "b")], ["a", "b"]);
+    let refused = output(&app, "c");
+    assert!(refused.contains("limit reached: 2 per turn"), "{refused}");
 }
 
 #[test]
@@ -198,23 +177,16 @@ fn over_the_minute_limit_a_call_starts_once_the_minute_passed() {
     let model = model("echo_tool", &["a", "b"]);
     let echo = EchoTool(ran.clone());
     let (mut app, wakes) = start("[echo_tool]\nper_minute = 1", &model, |app| {
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-            .add_tool(echo);
+        app.add_tool(echo);
     });
-    app.world_mut()
-        .resource_mut::<Time<Virtual>>()
-        .set_max_delta(Duration::from_secs(120));
     run_until(&mut app, &wakes, |_| ran.load(Ordering::SeqCst) > 0);
     for _ in 0..20 {
         app.update();
     }
     assert_eq!(ran.load(Ordering::SeqCst), 1);
 
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(61)));
-    app.update();
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    advance(&mut app, Duration::from_secs(61));
     run_until(&mut app, &wakes, ended);
     assert_eq!(ran.load(Ordering::SeqCst), 2);
-    let sent = results(model.requests().get(1));
-    assert!(sent.iter().all(|r| !r.contains("limit")), "{sent:?}");
+    assert_eq!([output(&app, "a"), output(&app, "b")], ["a", "b"]);
 }

@@ -5,7 +5,10 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_harness::rig_core::catalog::{Catalog, Connector};
 use rig_harness::rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until, start_call};
+use rig_harness_test_support::{
+    ToolOutputs, answer_open, app_on, calls, connect, log_tool_outputs, reply, run_until,
+    start_call,
+};
 use rig_subagents::{SubagentsPlugin, TASK};
 use rig_tui::{KeyPressed, Keys};
 use serde_json::json;
@@ -20,7 +23,9 @@ fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
         .add_plugins((ReadTool, WriteTool, EditTool, ShellTool))
-        .add_plugins(PermissionModesPlugin);
+        .add_plugins(PermissionModesPlugin)
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
     app.world_mut().spawn(Answerer::default());
     let mut agent = app.world_mut().spawn((Agent, mode));
     if let Some(connection) = connect(model) {
@@ -33,11 +38,10 @@ fn session(mode: PermissionMode, model: &MockCompletionModel) -> (App, Receiver<
     (app, wakes, agent)
 }
 
-/// A fresh directory for a test's files, in this crate's `target`.
+/// A fresh directory for a test's files, beside the test's binary.
 fn scratch(name: &str) -> PathBuf {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("target")
-        .join(format!("{name}-{}", std::process::id()));
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("permission-modes-{name}"));
     std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir).ok();
     dir
@@ -52,13 +56,16 @@ fn idle(world: &World, agent: Entity) -> bool {
     world.get::<ActiveTurn>(agent).is_none()
 }
 
-/// The open approval question about `agent`'s call, and its title.
-fn question(world: &mut World, agent: Entity) -> Option<(Entity, String)> {
-    let mut asks =
-        world.query_filtered::<(Entity, &Ask, &ForAgent), (With<Approval>, Without<Outcome>)>();
-    asks.iter(world)
-        .find(|(.., to)| to.0 == agent)
-        .map(|(ask, question, _)| (ask, question.title.clone()))
+/// Whether a question titled `title` is open.
+fn asked(world: &World, title: &str) -> bool {
+    let asks = world.try_query_filtered::<&Ask, Without<Outcome>>();
+    asks.is_some_and(|mut asks| asks.iter(world).any(|ask| ask.title == title))
+}
+
+/// What the model read as call `id`'s result.
+fn output(app: &App, id: &str) -> String {
+    let outputs = &app.world().resource::<ToolOutputs>().0;
+    outputs.get(id).cloned().unwrap_or_default()
 }
 
 #[test]
@@ -85,8 +92,8 @@ fn read_only_offers_and_runs_only_tools_that_read() {
     for changes in ["write", "edit", "shell"] {
         assert!(!offered.iter().any(|name| name == changes), "{offered:?}");
     }
-    let answered = format!("{:?}", requests.get(1));
-    assert!(answered.contains("read-only mode"), "{answered}");
+    let refused = output(&app, "w1");
+    assert!(refused.contains("read-only mode"), "{refused}");
     assert!(!file.exists());
 
     // shift+tab cycles the shown agent's mode.
@@ -132,35 +139,25 @@ fn edits_runs_edits_and_asks_before_shell_also_for_a_subagent() {
     ]);
     let (mut app, wakes, agent) = session(PermissionMode::Edits, &model);
     tell(&mut app, agent, "Edit, then run.");
-    run_until(&mut app, &wakes, |world| {
-        let asks = world.try_query_filtered::<&ForAgent, With<Approval>>();
-        asks.is_some_and(|mut asks| asks.iter(world).any(|to| to.0 == agent))
-    });
+    let shell_asked = "The agent wants to run `shell`";
+    run_until(&mut app, &wakes, |world| asked(world, shell_asked));
 
     // The edit ran at once; the shell call waits for the user's answer.
     let edited = std::fs::read_to_string(&file).unwrap_or_default();
     assert_eq!(edited, "goodbye\n");
-    let asked = question(app.world_mut(), agent);
-    assert!(
-        asked
-            .as_ref()
-            .is_some_and(|(_, title)| title == "The agent wants to run `shell`")
-    );
     assert!(!marker.exists());
     assert_eq!(model.request_count(), 1);
 
-    // The user answers Deny.
-    if let Some((ask, _)) = asked {
-        let deny = Answer::Choice("deny".to_owned()).outcome();
-        app.world_mut().entity_mut(ask).insert(deny);
-    }
+    // The user answers Deny, and the model reads the denial.
+    let deny = Answer::Choice("deny".to_owned());
+    assert!(answer_open(app.world_mut(), shell_asked, &deny));
     run_until(&mut app, &wakes, |world| {
         model.request_count() == 2 && idle(world, agent)
     });
-    let answered = format!("{:?}", model.requests().get(1));
+    let denied = output(&app, "s1");
     assert!(
-        answered.contains("Denied: the user did not allow"),
-        "{answered}"
+        denied.contains("Denied: the user did not allow"),
+        "{denied}"
     );
     assert!(!marker.exists());
 
@@ -168,29 +165,15 @@ fn edits_runs_edits_and_asks_before_shell_also_for_a_subagent() {
     // shell call waits too, asked with its name.
     let task = json!({ "description": "Run it", "prompt": "Run the command." });
     start_call(app.world_mut(), agent, (TASK, "t1"), task);
-    run_until(&mut app, &wakes, |world| {
-        let child = world
-            .get::<Spawned>(agent)
-            .and_then(|spawned| spawned.iter().last());
-        let mut asks = world.try_query_filtered::<&ForAgent, With<Approval>>();
-        let asked = |child| {
-            asks.as_mut()
-                .is_some_and(|asks| asks.iter(world).any(|to| to.0 == child))
-        };
-        child.is_some_and(asked)
-    });
+    let sub_asked = "Subagent \"Run it\" wants to run `shell`";
+    run_until(&mut app, &wakes, |world| asked(world, sub_asked));
     let child = app
         .world()
         .get::<Spawned>(agent)
         .and_then(|spawned| spawned.iter().last());
-    let child = child.unwrap_or(Entity::PLACEHOLDER);
-    let mode = app.world().get::<PermissionMode>(child).copied();
-    assert_eq!(mode, Some(PermissionMode::Edits));
-    let asked = question(app.world_mut(), child).map(|(_, title)| title);
-    assert_eq!(
-        asked.as_deref(),
-        Some("Subagent \"Run it\" wants to run `shell`")
-    );
+    let mode = child.and_then(|child| app.world().get::<PermissionMode>(child));
+    assert_eq!(mode, Some(&PermissionMode::Edits));
+    assert!(asked(app.world(), sub_asked));
     assert!(!marker.exists());
     std::fs::remove_dir_all(&dir).ok();
 }

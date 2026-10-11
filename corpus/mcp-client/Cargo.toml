@@ -9,12 +9,14 @@ description = "Plugin corpus: 19. MCP client"
 workspace = true
 
 [dependencies]
-# Each server's events reach the app through it.
+# Each server task's events, read as a `Running::stream` on its entity.
 async-channel = { workspace = true }
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+# The pool a server's `Running::stream` runs on, and `or`.
+bevy_tasks = { workspace = true }
 # An HTTP server's headers.
 http = { workspace = true }
 rig-core = { workspace = true }

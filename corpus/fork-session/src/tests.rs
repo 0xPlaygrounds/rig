@@ -1,14 +1,10 @@
 use std::fs;
-use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::JsonlDirStore;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::harness_protocol::{SessionDir, SessionId};
-use rig_harness::host::session::SessionPlugin;
-use rig_harness::rig_ecs::journal::{JournalPlugin, SessionStore};
-use rig_harness::settings::Settings;
-use rig_harness_test_support::{connect, reply, run_until};
+use rig_harness::harness_protocol::SessionId;
+use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness_test_support::{app_in, connect, first_agent, reply, run_until, scratch_home};
 
 use super::*;
 
@@ -29,36 +25,17 @@ fn count(
     }
 }
 
-/// The harness's session service, the kernel and this plugin on the
-/// session in `dir` of `home`, after its first frame restored it.
-fn start(home: &Home, dir: &SessionDir) -> (App, Receiver<()>) {
-    let (sender, wakes) = std::sync::mpsc::channel();
-    let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default())
-        .insert_resource(Wake::new(move || {
-            sender.send(()).ok();
-        }))
-        .insert_resource(Settings::default())
-        .insert_resource(RigHome(home.clone()))
-        .insert_resource(SessionPaths(dir.clone()))
-        .insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
-        .init_resource::<TuiInput>()
-        .add_plugins((AgentPlugin, JournalPlugin, SessionPlugin, ForkSessionPlugin))
+/// The kernel, the harness's session service and this plugin on session
+/// `id` of `home`, after its first frame restored it.
+fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_in(home, id);
+    app.init_resource::<TuiInput>()
+        .add_plugins((AgentPlugin, JournalPlugin, ForkSessionPlugin))
         .register_required_components::<Agent, Turns>()
         .add_observer(count);
-    // The session service sends panics to its log; the test shows them.
-    drop(std::panic::take_hook());
     app.finish();
     app.update();
     (app, wakes)
-}
-
-fn first_agent(app: &mut App) -> Option<Entity> {
-    let world = app.world_mut();
-    world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
 }
 
 /// What each message of the first agent says, and its saved count.
@@ -85,23 +62,13 @@ fn state(app: &mut App) -> (Vec<String>, Option<u32>) {
     (texts, Some(turns.0))
 }
 
-/// A `RIG_HOME` of the test's own beside its binary, emptied.
-fn home() -> Home {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root: PathBuf = exe.with_file_name("fork-session-home");
-    fs::remove_dir_all(&root).ok();
-    Home::at(root)
-}
-
 #[test]
 fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
-    let home = home();
+    let home = scratch_home("fork-session-home");
     let id: SessionId = "1000-1".parse().unwrap_or_else(|_| SessionId::generate());
-    let original = home.session(&id);
-    assert!(fs::create_dir_all(original.path()).is_ok());
-    let (mut app, wakes) = start(&home, &original);
+    let (mut app, wakes) = start(&home, &id);
     let model = MockCompletionModel::from_stream_turns([reply("r1"), reply("r2"), reply("r3")]);
-    let (agent, connection) = (first_agent(&mut app), connect(&model));
+    let (agent, connection) = (first_agent(app.world_mut()), connect(&model));
     assert!(
         agent.is_some() && connection.is_some(),
         "an agent and a model"
@@ -158,15 +125,13 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         entity: picker,
         chosen: Some(Chosen::Item(two)),
     });
-    // The fork is written at the frame's end, its family the next frame.
+    // The fork is written at the frame's end, its seed the next frame.
     let branched = || {
         fs::read_dir(home.sessions())
             .into_iter()
             .flatten()
             .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
-            .find(|session| *session != id)
-            .map(|session| home.session(&session))
-            .filter(|dir| dir.path().join(FAMILY).exists())
+            .find(|session| home.session(session).path().join(SEED).exists())
     };
     run_until(&mut app, &wakes, |_| branched().is_some());
     drop(app);
@@ -175,11 +140,8 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
     let Some(branched) = branched else {
         return;
     };
-    let family = read_json::<Family>(&branched.path().join(FAMILY));
-    assert_eq!(
-        family.and_then(|family| family.parent).as_deref(),
-        Some(id.as_str())
-    );
+    let parent = ForkedFrom::of(&home.session(&branched));
+    assert_eq!(parent.map(|parent| parent.session), Some(id.clone()));
 
     // The branch holds turn one and the count as of then; "two" waits in
     // the input.
@@ -189,10 +151,14 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         (vec!["one".to_owned(), "r1".to_owned()], Some(1))
     );
     assert_eq!(app.world().resource::<TuiInput>().text(), "two");
+    assert!(
+        !home.session(&branched).path().join(SEED).exists(),
+        "seeded once"
+    );
     drop(app);
 
     // The original, reloaded from its log, still has all three turns.
-    let (mut app, _) = start(&home, &original);
+    let (mut app, _) = start(&home, &id);
     let (messages, turns) = state(&mut app);
     assert_eq!(messages, ["one", "r1", "two", "r2", "three", "r3"]);
     assert_eq!(turns, Some(3));

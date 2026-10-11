@@ -9,7 +9,7 @@ use serde_json::json;
 
 use super::*;
 use rig_harness_test_support::{
-    AnswerAsks, Answers, Ended, app_on, connect, log_ended, reply, run_until,
+    AnswerAsks, Answers, Ended, app_on, connect, first_agent, log_ended, reply, run_until,
 };
 
 /// The kernel with the real `shell` tool and this plugin, a front that
@@ -34,14 +34,9 @@ fn start(
     .add_observer(log_ended);
     app.finish();
     app.update();
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-        .unwrap_or(Entity::PLACEHOLDER);
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     if let Some(connection) = connect(model) {
-        world.entity_mut(agent).insert(connection);
+        app.world_mut().entity_mut(agent).insert(connection);
     }
     (app, wakes, agent)
 }
@@ -131,11 +126,12 @@ fn a_command_denied_with_a_reason_does_not_run_and_its_sibling_does() {
 }
 
 #[test]
-fn a_command_allowed_for_the_session_runs_and_its_pattern_is_not_asked_again() {
+fn a_command_allowed_for_the_session_runs_and_its_pattern_is_kept_with_the_session() {
     let dir = workspace("allow");
     let model = model(&dir);
     let answers = Answers::new([Answer::Choice(SESSION.to_owned())]);
-    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, Some(answers));
+    let store = MemoryStore::default();
+    let (mut app, wakes, agent) = start(&store, &model, Some(answers));
     app.world_mut().trigger(Deliver::new(
         agent,
         "clean the build directory",
@@ -145,8 +141,14 @@ fn a_command_allowed_for_the_session_runs_and_its_pattern_is_not_asked_again() {
         !world.resource::<Ended>().0.is_empty()
     });
     assert!(!dir.join("build").exists(), "build/ is still there");
-    let allowed = &app.world().resource::<SessionAllowances>().0;
+    let allowed = app.world().resource::<SessionAllowances>().0.clone();
     assert_eq!(allowed.len(), 1, "{allowed:?}");
+    drop(app);
+
+    // A restart on the same session, as `/reload` and `/resume` do.
+    let (app, _, _) = start(&store, &model, None);
+    let restored = &app.world().resource::<SessionAllowances>().0;
+    assert_eq!(restored, &allowed);
     std::fs::remove_dir_all(&dir).ok();
 }
 
@@ -181,6 +183,40 @@ fn with_nobody_at_the_terminal_a_destructive_command_is_denied_at_once() {
     let ended = &app.world().resource::<Ended>().0;
     assert!(
         matches!(ended.as_slice(), [TurnOutcome::Answered(_)]),
+        "{ended:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn interrupting_while_a_command_waits_closes_the_question_and_runs_nothing() {
+    let dir = workspace("interrupt");
+    let model = model(&dir);
+    let (mut app, wakes, agent) = start(&MemoryStore::default(), &model, None);
+    // A front that shows questions and leaves them open.
+    app.world_mut().spawn(Answerer::default());
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "clean the build directory",
+        DeliveryMode::Queue,
+    ));
+    let open = |world: &World| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Ask>() && !entity.contains::<Outcome>())
+    };
+    run_until(&mut app, &wakes, open);
+    assert!(open(app.world()), "nothing was asked");
+
+    app.world_mut().trigger(Interrupt::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    assert!(!open(app.world()), "the question is still open");
+    assert!(dir.join("build").is_dir(), "build/ was removed");
+    let ended = &app.world().resource::<Ended>().0;
+    assert!(
+        matches!(ended.as_slice(), [TurnOutcome::Stopped(None)]),
         "{ended:?}"
     );
     std::fs::remove_dir_all(&dir).ok();

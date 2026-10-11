@@ -15,10 +15,10 @@
 //!
 //! rig-subagents' `task` tool gets a `profile` argument, and the profiles
 //! are listed in its rules, which are in the system prompt of every agent
-//! offered `task`. A Prepare system takes the argument off the call before
-//! `task` reads it, a Prepare system on the [`SpawnSubagent`] it asks for
-//! gives it the profile's model, reasoning setting and tools, and a Review
-//! system gives the agent spawned the profile's prompt.
+//! offered `task`, which hands the argument on in its [`SpawnSubagent`]'s
+//! `extra`. A Prepare system on that request gives it the profile's model,
+//! reasoning setting and tools, a Gate system refuses an unknown profile,
+//! and a Review system gives the agent spawned the profile's prompt.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -59,7 +59,7 @@ impl Plugin for AgentProfilesPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (take_task_profile, profile_spawn).in_set(Stage::Prepare),
+                    profile_spawn.in_set(Stage::Prepare),
                     refuse_unknown.in_set(Stage::Gate),
                     prompt_spawned.in_set(Stage::Review),
                 ),
@@ -260,49 +260,26 @@ fn offer_to_task(profiles: Res<Profiles>, mut tools: Query<(&mut ToolDef, &mut T
     properties.insert(PROFILE.to_owned(), argument);
 }
 
-/// On a `task` call that named a profile, which its arguments no longer
-/// carry.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct TaskProfile(String);
-
-/// Takes the `profile` argument off each `task` call as it is admitted,
-/// before `task` reads its arguments, and keeps it on the call.
-fn take_task_profile(
-    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
-    mut commands: Commands,
-) {
-    for (call, mut request) in &mut calls {
-        let function = &mut request.call.function;
-        if function.name.as_str() != TASK {
-            continue;
-        }
-        if let Some(profile) = function.arguments.shift_remove(PROFILE) {
-            let name = profile
-                .as_str()
-                .map_or_else(|| profile.to_string(), str::to_owned);
-            commands.entity(call).insert(TaskProfile(name));
-        }
-    }
-}
-
-/// The profile of the `task` call a spawn request is for, if it named one.
-fn named_profile<'a>(of: Option<&ChildOf>, calls: &'a Query<&TaskProfile>) -> Option<&'a str> {
-    let profile = calls.get(of?.parent()).ok()?;
-    Some(profile.0.as_str())
+/// The name of the profile a spawn request names in its `extra`, as
+/// `task`'s `profile` argument puts it there.
+fn named(request: &SpawnSubagent) -> Option<String> {
+    let name = request.extra.get(PROFILE)?;
+    Some(
+        name.as_str()
+            .map_or_else(|| name.to_string(), str::to_owned),
+    )
 }
 
 /// Gives a subagent asked for with a profile the profile's model and
 /// reasoning setting where the call named none, and its tools narrowed to
 /// the profile's.
 fn profile_spawn(
-    mut requests: Query<(&mut SpawnSubagent, &ForAgent, Option<&ChildOf>), Added<Admitted>>,
-    calls: Query<&TaskProfile>,
+    mut requests: Query<(&mut SpawnSubagent, &ForAgent), Added<Admitted>>,
     parents: Query<&ToolAccess>,
     profiles: Res<Profiles>,
 ) {
-    for (mut request, &ForAgent(parent), of) in &mut requests {
-        let Some(Ok(profile)) = named_profile(of, &calls).map(|name| profiles.get(name)) else {
+    for (mut request, &ForAgent(parent)) in &mut requests {
+        let Some(Ok(profile)) = named(&request).map(|name| profiles.get(&name)) else {
             continue;
         };
         let request = &mut *request;
@@ -321,16 +298,13 @@ fn profile_spawn(
 
 /// Refuses a subagent asked for with a profile nobody defined.
 fn refuse_unknown(
-    requests: Query<(Entity, Option<&ChildOf>), (With<SpawnSubagent>, Undecided)>,
-    calls: Query<&TaskProfile>,
+    requests: Query<(Entity, &SpawnSubagent), Undecided>,
     profiles: Res<Profiles>,
     mut commands: Commands,
 ) {
-    for (request, of) in &requests {
-        if let Some(Err(why)) = named_profile(of, &calls).map(|name| profiles.get(name)) {
-            commands
-                .entity(request)
-                .insert_if_new(Outcome::refused(why));
+    for (entity, request) in &requests {
+        if let Some(Err(why)) = named(request).map(|name| profiles.get(&name)) {
+            commands.entity(entity).insert_if_new(Outcome::refused(why));
         }
     }
 }
@@ -338,22 +312,21 @@ fn refuse_unknown(
 /// Gives a subagent spawned with a profile the profile's prompt, saved with
 /// it as its [`AppliedProfile`].
 fn prompt_spawned(
-    spawned: Query<(&SpawnedAgent, Option<&ChildOf>), (With<SpawnSubagent>, Unreviewed)>,
-    calls: Query<&TaskProfile>,
+    spawned: Query<(&SpawnSubagent, &SpawnedAgent), Unreviewed>,
     agents: Query<Settings, Without<AppliedProfile>>,
     profiles: Res<Profiles>,
     mut commands: Commands,
 ) {
-    for (&SpawnedAgent(agent), of) in &spawned {
-        let Some(name) = named_profile(of, &calls) else {
+    for (request, &SpawnedAgent(agent)) in &spawned {
+        let Some(name) = named(request) else {
             continue;
         };
-        let (Ok(profile), Ok((tools, model, &effort))) = (profiles.get(name), agents.get(agent))
+        let (Ok(profile), Ok((tools, model, &effort))) = (profiles.get(&name), agents.get(agent))
         else {
             continue;
         };
         commands.entity(agent).insert(AppliedProfile {
-            name: name.to_owned(),
+            name,
             prompt: profile.prompt.clone(),
             before: Before {
                 tools: tools.clone(),

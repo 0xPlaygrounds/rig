@@ -9,13 +9,13 @@ description = "Plugin corpus: 48. JSON event stream and RPC mode"
 workspace = true
 
 [dependencies]
+# Command lines from stdin, a stream the app reads.
+async-channel = { workspace = true }
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-# stdin lines from the reader thread to the app.
-crossbeam-channel = { workspace = true }
+# The pool the command stream runs on.
+bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Pickers other plugins open, which become `request` events.
-rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

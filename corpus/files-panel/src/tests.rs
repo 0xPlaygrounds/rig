@@ -3,7 +3,9 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ReadTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+};
 use rig_tui::ratatui::Terminal;
 use rig_tui::ratatui::backend::TestBackend;
 use serde_json::json;
@@ -78,10 +80,9 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store, &root);
     let world = app.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    let connection = connect(&model);
-    assert!(agent.is_ok() && connection.is_some(), "no agent to run");
-    let (Ok(agent), Some(connection)) = (agent, connection) else {
+    let (agent, connection) = (first_agent(world), connect(&model));
+    assert!(agent.is_some() && connection.is_some(), "no agent to run");
+    let (Some(agent), Some(connection)) = (agent, connection) else {
         return;
     };
     world.entity_mut(agent).insert(connection);
@@ -97,8 +98,9 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
     let files = app.world().resource::<TouchedFiles>().clone();
     let changed = vec!["b.txt +3 −0".to_owned(), "a.txt +1 −1".to_owned()];
     assert_eq!(data(&files, &root), (changed, vec!["a.txt".to_owned()]));
-    let originals = app.world().resource::<Originals>().clone();
-    let diff = session_diff(&absolute(&root, "a.txt"), &root, &originals);
+    let a_path = a.display().to_string();
+    let diff = files.files.get(&a_path).map(TouchedFile::session_diff);
+    let diff = diff.unwrap_or_default();
     assert!(diff.contains("-two\n+deux\n"), "{diff}");
 
     let mut terminal = Terminal::new(TestBackend::new(WIDTH, 10)).ok();
@@ -131,10 +133,7 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
     let shown = world
         .query_filtered::<&DiffBox, With<TuiPanel>>()
         .single(world);
-    assert_eq!(
-        shown.map(|diff| diff.path.clone()).ok(),
-        Some(absolute(&root, "a.txt"))
-    );
+    assert_eq!(shown.map(|diff| diff.path.clone()).ok(), Some(a_path));
     let focus = world.resource::<KeyFocus>().0;
     let diff_box = world
         .query_filtered::<Entity, With<DiffBox>>()
@@ -144,6 +143,5 @@ fn reads_edits_and_writes_are_listed_drawn_and_restored() {
 
     let (restarted, _wakes) = start(&store, &root);
     assert_eq!(restarted.world().resource::<TouchedFiles>(), &files);
-    assert_eq!(restarted.world().resource::<Originals>(), &originals);
     std::fs::remove_dir_all(&root).ok();
 }

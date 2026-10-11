@@ -18,10 +18,10 @@
 //! otherwise the command is refused with its usage line. The project's
 //! template wins a name clash with the user's, and a template never
 //! replaces another plugin's command: it is skipped with a warning. Both
-//! directories are watched, so a template added, edited or removed counts
-//! without a restart.
+//! directories are watched, from their first listing on, so a template
+//! added, edited or removed counts without a restart.
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use bevy_log::warn;
@@ -38,16 +38,9 @@ pub struct PromptTemplatesPlugin;
 impl Plugin for PromptTemplatesPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<FileChanges>()
-            .add_systems(Startup, sync)
+            .add_systems(Startup, watch)
             .add_systems(Update, reload)
             .add_systems(AgentPass, route.in_set(Stage::Prepare));
-    }
-
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        for dir in dirs(world) {
-            world.spawn((TemplateWatch, FileWatch::new(dir)));
-        }
     }
 }
 
@@ -59,9 +52,8 @@ struct TemplateWatch;
 #[derive(Component)]
 struct TemplateCommand;
 
-/// On a template's message whose turn runs on the template's model, and
-/// on the turn that message went to.
-#[derive(Component, Clone)]
+/// On a template's message whose turn runs on the template's model.
+#[derive(Component)]
 struct TemplateModel(Connection);
 
 /// The directories templates are read from, the most general first: a
@@ -75,6 +67,14 @@ fn dirs(world: &World) -> [PathBuf; 2] {
         RigHome::of(world).root().join("prompts"),
         project.0.join(".rig").join("prompts"),
     ]
+}
+
+/// Watches the template directories. Their first `FileChanges`, the
+/// files there when armed, reads the templates.
+fn watch(world: &mut World) {
+    for dir in dirs(world) {
+        world.spawn((TemplateWatch, FileWatch::new(dir)));
+    }
 }
 
 /// One template file.
@@ -196,15 +196,16 @@ impl Template {
 
     /// The message this template sends for `args`, with the model its
     /// turn runs on; or why it cannot be used.
-    fn message(&self, args: &str, models: Option<&Models>) -> Result<Sent, String> {
+    fn message(&self, args: &CommandArgs, models: Option<&Models>) -> Result<Sent, String> {
         let text = self
-            .expand(&split_args(args))
+            .expand(&split_args(&args.args))
             .map_err(|needed| self.usage(needed))?;
         if text.trim().is_empty() {
             return Err(format!("/{} expands to nothing.", self.name));
         }
-        // The user's own words, sent as typed even if they start with `/`.
-        let incoming = Incoming::new(text, DeliveryMode::Steer)
+        // The user's own words, sent as typed even if they start with `/`,
+        // titled so the transcript names the template.
+        let incoming = Incoming::new(text, args.mode)
             .with_origin(Origin::user().titled(self.name.clone()))
             .literal();
         let model = match &self.model {
@@ -310,7 +311,8 @@ fn sync(world: &mut World) {
     }
 }
 
-/// Reads the templates again when a file in their directories changed.
+/// Reads the templates when a watch is armed, and again when a file in
+/// their directories changed.
 fn reload(
     mut changes: MessageReader<FileChanges>,
     watches: Query<(), With<TemplateWatch>>,
@@ -328,60 +330,31 @@ fn reload(
 /// An error notice refuses it, with the line back in the input.
 fn command(
     template: Template,
-) -> impl FnMut(
-    In<CommandArgs>,
-    Option<Res<Models>>,
-    Query<&EffectParent>,
-    Res<Wake>,
-    Commands,
-    MessageWriter<Notice>,
-) {
-    move |In(args), models, parents, wake, mut commands, mut notices| {
-        let agent = args.agent;
-        match template.message(&args.args, models.as_deref()) {
-            Ok((incoming, model)) => {
-                // A user message keeps no title, so the transcript is told
-                // which template it came from beside it.
-                let from = format!("/{}: {}", template.name, template.path.display());
-                notices.write(Notice::info(agent, from));
-                // `Deliver` spawns this too, without the template's model.
-                let parent = parents.get(agent).ok().map(|parent| parent.0);
-                let mut message =
-                    commands.spawn((incoming, ForAgent(agent), Effect::child_of(parent)));
-                if let Some(model) = model {
-                    message.insert(model);
-                }
-                wake.wake();
+) -> impl FnMut(In<CommandArgs>, Option<Res<Models>>, Commands, MessageWriter<Notice>) {
+    move |In(args), models, mut commands, mut notices| match template
+        .message(&args, models.as_deref())
+    {
+        Ok((incoming, model)) => {
+            let mut message = commands.spawn((incoming, ForAgent(args.agent)));
+            if let Some(model) = model {
+                message.insert(model);
             }
-            Err(why) => {
-                notices.write(Notice::error(agent, why));
-            }
+        }
+        Err(why) => {
+            notices.write(Notice::error(args.agent, why));
         }
     }
 }
 
-/// Sends the turn calls of the turn a template's message went to to the
-/// template's model, in Prepare: the message goes to its agent's running
-/// turn, or the one it starts, when the kernel answers it.
+/// Sends each call of a turn a template's message went with to the
+/// template's model.
 fn route(
-    delivered: Query<(&TemplateModel, &ForAgent), (With<Incoming>, With<Started>, Added<Outcome>)>,
-    agents: Query<&ActiveTurn>,
-    routed: Query<&TemplateModel>,
     mut calls: Query<(&mut ModelRequest, &CallOf), (With<TurnCall>, Added<Admitted>)>,
-    mut commands: Commands,
+    templates: Query<(&TemplateModel, &DeliveredIn)>,
 ) {
-    let mut now = HashMap::new();
-    for (model, &ForAgent(agent)) in &delivered {
-        if let Ok(active) = agents.get(agent) {
-            now.insert(active.turn(), model.0.clone());
-            commands.entity(active.turn()).insert(model.clone());
-        }
-    }
     for (mut request, &CallOf(turn)) in &mut calls {
-        let model = now
-            .get(&turn)
-            .or_else(|| routed.get(turn).ok().map(|model| &model.0));
-        if let Some(model) = model {
+        let model = templates.iter().find(|(_, into)| into.0 == turn);
+        if let Some((TemplateModel(model), _)) = model {
             request.connection = Some(model.clone());
         }
     }

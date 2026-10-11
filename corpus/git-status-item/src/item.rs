@@ -3,7 +3,6 @@
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
-use std::time::Instant;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
@@ -19,26 +18,18 @@ const EVERY: Duration = Duration::from_secs(1);
 #[serde(default, deny_unknown_fields)]
 pub struct GitStatusSettings {
     /// `"left"` or `"right"`.
-    pub side: Edge,
+    pub side: Side,
     /// Its place on its side, lowest first.
     pub order: u8,
     /// The items with the lowest go first when the line is too narrow.
     pub keep: u8,
 }
 
-/// A side of the status line, as the settings name it.
-#[derive(Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "lowercase")]
-pub enum Edge {
-    Left,
-    Right,
-}
-
 impl Default for GitStatusSettings {
     /// Right, before the telemetry's tokens; gone before the context.
     fn default() -> Self {
         Self {
-            side: Edge::Right,
+            side: Side::Right,
             order: 5,
             keep: 6,
         }
@@ -48,11 +39,7 @@ impl Default for GitStatusSettings {
 impl GitStatusSettings {
     /// The item's place, saying nothing.
     pub fn place(&self) -> StatusItem {
-        let side = match self.side {
-            Edge::Left => Side::Left,
-            Edge::Right => Side::Right,
-        };
-        StatusItem::at(side, self.order, self.keep)
+        StatusItem::at(self.side, self.order, self.keep)
     }
 }
 
@@ -89,13 +76,12 @@ impl Default for GitRunner {
     }
 }
 
-/// Whether a look is wanted, whether the timer that waits out the pace is
-/// set, and when the last look started.
+/// Whether a look is wanted, and whether the last one started less than
+/// [`EVERY`] ago.
 #[derive(Resource, Default)]
 struct Looks {
     wanted: bool,
-    timer: bool,
-    last: Option<Instant>,
+    paced: bool,
 }
 
 /// The entity of the look that runs.
@@ -150,8 +136,8 @@ fn after(
     }
 }
 
-/// Starts a wanted look unless one runs, or sets the timer for when the
-/// pace allows it.
+/// Starts a wanted look unless one runs or the last started less than
+/// [`EVERY`] ago; a delayed command ends the pace, which runs this again.
 fn start(
     mut looks: ResMut<Looks>,
     running: Query<(), With<Look>>,
@@ -161,26 +147,21 @@ fn start(
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    if !looks.wanted || looks.timer || !running.is_empty() {
+    if !looks.wanted || looks.paced || !running.is_empty() {
         return;
     }
-    let wait = looks
-        .last
-        .map_or(Duration::ZERO, |last| EVERY.saturating_sub(last.elapsed()));
-    if !wait.is_zero() {
-        looks.timer = true;
-        commands
-            .delayed()
-            .duration(wait)
-            .queue(|world: &mut World| {
-                if let Some(mut looks) = world.get_resource_mut::<Looks>() {
-                    looks.timer = false;
-                }
-            });
-        return;
-    }
-    looks.wanted = false;
-    looks.last = Some(Instant::now());
+    *looks = Looks {
+        wanted: false,
+        paced: true,
+    };
+    commands
+        .delayed()
+        .duration(EVERY)
+        .queue(|world: &mut World| {
+            if let Some(mut looks) = world.get_resource_mut::<Looks>() {
+                looks.paced = false;
+            }
+        });
     let (runner, launcher, dir) = (runner.clone(), processes.launcher(), root.0.clone());
     let git = move |args: &[&str]| {
         let mut command = launcher.command("git");

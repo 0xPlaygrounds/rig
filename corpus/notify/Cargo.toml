@@ -13,7 +13,7 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Pickers, the terminal's focus events and the terminal view's front.
+# The terminal view: its front, its focus and its writer.
 rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 

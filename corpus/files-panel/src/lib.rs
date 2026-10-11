@@ -1,21 +1,18 @@
 //! Plugin corpus: 52. Touched-files panel (spec `52-files-panel.md`).
 //!
 //! Every file an agent of the session read or changed, with the lines its
-//! changes added and removed, kept as saved resources so `/resume` brings
-//! the same list back. Changes are what tools publish ([`FilesChanged`]),
-//! whatever the tool; a file's text before its first change is kept when a
-//! call that may change it is about to run, so its session diff is that
-//! text against the file now. In the terminal view, `ctrl+f` opens the
-//! panel on the right with the keys, up and down select, Enter shows the
-//! selected file's session diff over the screen and Esc closes it;
-//! `/files` lists the files in any front.
+//! changes added and removed and their diffs, kept as a saved resource so
+//! `/resume` brings the same list back. It is what tools publish
+//! ([`FilesRead`], [`FilesChanged`]), whatever the tool. In the terminal
+//! view, `ctrl+f` opens the panel on the right with the keys, up and down
+//! select, Enter shows the selected file's session diff over the screen
+//! and Esc closes it; `/files` lists the files in any front.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::{ChangeKind, FilesChanged};
-use rig_tools::ReadArgs;
+use rig_harness::rig_core::tool::{ChangeKind, FilesChanged, FilesRead};
 use rig_tui::crossterm::event::KeyCode;
 use rig_tui::ratatui::buffer::Buffer;
 use rig_tui::ratatui::layout::{Constraint, Rect};
@@ -32,13 +29,10 @@ use rig_tui::{
 /// The panel's width.
 pub const WIDTH: u16 = 32;
 
-/// The largest file whose text is kept for its session diff.
-const MAX_KEPT: u64 = 256 * 1024;
-
 /// A file an agent touched.
 #[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
 pub struct TouchedFile {
-    /// The file's absolute path.
+    /// The file's path, as the tools published it.
     pub path: String,
     /// The subagent that touched it last, by name; empty for a top agent.
     pub by: String,
@@ -46,6 +40,8 @@ pub struct TouchedFile {
     pub added: usize,
     /// Lines its changes removed.
     pub removed: usize,
+    /// Its changes' unified diffs, oldest first, as the tools made them.
+    pub diffs: Vec<String>,
     /// When it last changed, on [`TouchedFiles::clock`].
     pub changed_at: Option<u64>,
     /// When it was last read, on [`TouchedFiles::clock`].
@@ -54,11 +50,19 @@ pub struct TouchedFile {
     pub gone: bool,
 }
 
+impl TouchedFile {
+    /// Its session diff: its changes' diffs in order. Empty when no tool
+    /// made one.
+    pub fn session_diff(&self) -> String {
+        self.diffs.concat()
+    }
+}
+
 /// Every file the session's agents read or changed, saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Resource, Saved)]
 pub struct TouchedFiles {
-    /// The files, by absolute path.
+    /// The files, by path.
     pub files: HashMap<String, TouchedFile>,
     /// Counts touches, to order the lists newest first.
     pub clock: u64,
@@ -89,17 +93,18 @@ impl TouchedFiles {
         files
     }
 
-    /// The file at `path`, its entry made if new, and the time of this
-    /// touch.
-    fn touch(&mut self, path: String) -> (&mut TouchedFile, u64) {
+    /// The file at `path`, its entry made if new, touched by `by` now; and
+    /// the time of this touch.
+    fn touch(&mut self, path: &str, by: &str) -> (&mut TouchedFile, u64) {
         self.clock += 1;
         let file = self
             .files
-            .entry(path)
+            .entry(path.to_owned())
             .or_insert_with_key(|path| TouchedFile {
                 path: path.clone(),
                 ..TouchedFile::default()
             });
+        by.clone_into(&mut file.by);
         (file, self.clock)
     }
 
@@ -115,29 +120,6 @@ impl TouchedFiles {
         lines.extend(self.read().iter().map(|f| format!("  {}", name(f, root))));
         lines.join("\n")
     }
-}
-
-/// What a changed file held before its first change this session.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq)]
-pub enum Before {
-    /// It did not exist.
-    Missing,
-    /// This text.
-    Text(String),
-    /// More than is kept.
-    TooLarge,
-}
-
-/// Each file's text before its first change this session, by absolute
-/// path, for its session diff; saved with the session.
-#[derive(Resource, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Resource, Saved)]
-pub struct Originals(pub HashMap<String, Before>);
-
-/// `path` as an absolute path under `root`, without `.` parts.
-fn absolute(root: &Path, path: &str) -> String {
-    let path: PathBuf = root.join(path).components().collect();
-    path.display().to_string()
 }
 
 /// A file's path, relative to `root` when under it, with the subagent that
@@ -160,22 +142,6 @@ fn shown(path: &str, root: &Path) -> String {
 /// A changed file's name with its counts, such as `a.txt +1 −1`.
 fn label(file: &TouchedFile, root: &Path) -> String {
     format!("{} +{} −{}", name(file, root), file.added, file.removed)
-}
-
-/// The session diff of the file at `path`: what it held before its first
-/// change against what it holds now. Empty when nothing was kept.
-pub fn session_diff(path: &str, root: &Path, originals: &Originals) -> String {
-    let before = match originals.0.get(path) {
-        Some(Before::Text(text)) => text.as_str(),
-        Some(Before::Missing) => "",
-        Some(Before::TooLarge) | None => return String::new(),
-    };
-    let now = std::fs::read_to_string(path).unwrap_or_default();
-    let shown = shown(path, root);
-    similar::TextDiff::from_lines(before, &now)
-        .unified_diff()
-        .header(&shown, &shown)
-        .to_string()
 }
 
 /// Draws the files into `area` of `buffer`, the row `selected` marked.
@@ -228,17 +194,16 @@ fn fit(text: &str, width: usize) -> String {
 #[derive(Default)]
 pub struct FilesPanelPlugin;
 
-/// The panel's entity, there while it is closed too, with its selected row.
-/// Open, it is a [`TuiPanel`].
+/// The panel's entity, there while it is closed too (its keys are bound to
+/// it), with its selected row. Open, it is a [`TuiPanel`].
 #[derive(Component, Default)]
 struct FilesPanel(usize);
 
-/// The diff box's entity: a file's session diff and how far it is
-/// scrolled. Open, it is a [`TuiPanel`].
+/// The diff box's entity: the file whose session diff it shows, and how
+/// far it is scrolled. Open, it is a [`TuiPanel`].
 #[derive(Component, Default)]
 struct DiffBox {
     path: String,
-    diff: String,
     scroll: u16,
 }
 
@@ -255,10 +220,8 @@ impl Plugin for FilesPanelPlugin {
         let in_diff =
             |code, label: &str| KeyBinding::new(key(code), label).in_scope(KeyScope::Panel(diff));
         app.init_resource::<TouchedFiles>()
-            .init_resource::<Originals>()
             .init_resource::<ProjectRoot>()
             .register_type::<TouchedFiles>()
-            .register_type::<Originals>()
             .add_command(
                 "files",
                 "The files the agents read and changed",
@@ -266,7 +229,6 @@ impl Plugin for FilesPanelPlugin {
             )
             .add_observer(track)
             .add_observer(check_gone)
-            .add_systems(AgentPass, keep_original.in_set(Stage::Gate))
             .add_systems(
                 PostUpdate,
                 refresh
@@ -274,6 +236,12 @@ impl Plugin for FilesPanelPlugin {
                     .in_set(TuiSystems::Prepare),
             )
             .add_systems(PostUpdate, (draw_panel, draw_diff).in_set(TuiSystems::Draw));
+        // Shadows the input's `ctrl+f` (a character forward, which the right
+        // arrow does too).
+        app.add_key_binding(
+            KeyBinding::new(KeyPress::ctrl('f'), "The files panel"),
+            toggle,
+        );
         app.add_key_binding(in_panel(KeyCode::Up, "Select the file above"), select(-1));
         app.add_key_binding(in_panel(KeyCode::Down, "Select the file below"), select(1));
         app.add_key_binding(
@@ -284,85 +252,34 @@ impl Plugin for FilesPanelPlugin {
         app.add_key_binding(in_diff(KeyCode::Down, "Scroll the diff down"), scroll(1));
         app.add_key_binding(in_diff(KeyCode::Esc, "Close the diff"), close_diff);
     }
-
-    /// Once every plugin was built, the view's own `ctrl+f` (a character
-    /// forward, which the right arrow does too) is there to free.
-    fn finish(&self, app: &mut App) {
-        let ctrl_f = Keys::from(KeyPress::ctrl('f'));
-        let world = app.world_mut();
-        let mut bindings = world.query::<(Entity, &KeyBinding)>();
-        let taken: Vec<Entity> = bindings
-            .iter(world)
-            .filter(|(_, binding)| binding.keys == ctrl_f)
-            .map(|(entity, _)| entity)
-            .collect();
-        for binding in taken {
-            world.entity_mut(binding).insert(Disabled);
-        }
-        app.add_key_binding(KeyBinding::new(ctrl_f, "The files panel"), toggle);
-    }
 }
 
-/// Keeps the text of the file a call names in `path` before the session
-/// first changes it, when a call that may change files is about to run:
-/// the calls before it in its reply are done by then.
-fn keep_original(
-    calls: Query<(&ToolRequest, &Footprint), Undecided>,
-    root: Res<ProjectRoot>,
-    mut originals: ResMut<Originals>,
-) {
-    for (request, footprint) in &calls {
-        let path = request.call.function.arguments.get("path");
-        let Some(path) = path.and_then(|path| path.as_str()) else {
-            continue;
-        };
-        let path = absolute(&root.0, path);
-        if *footprint != Footprint::Exclusive || originals.0.contains_key(&path) {
-            continue;
-        }
-        let before = match std::fs::metadata(&path) {
-            Err(_) => Before::Missing,
-            Ok(meta) if meta.len() > MAX_KEPT => Before::TooLarge,
-            Ok(_) => std::fs::read_to_string(&path).map_or(Before::TooLarge, Before::Text),
-        };
-        originals.0.insert(path, before);
-    }
-}
-
-/// Records each tool call as it settles: the files it changed, and the
-/// file a successful `read` read.
+/// Records what each tool call published as it settles: the files it read
+/// and the files it changed, by the agent's name if it is a subagent.
 fn track(
     settled: On<Add<Settled>>,
-    calls: Query<(&ToolRequest, &Outcome, Option<&Published>, &ForAgent)>,
+    calls: Query<(&Published, &ForAgent)>,
     subagents: Query<&Name, With<SpawnedBy>>,
-    root: Res<ProjectRoot>,
     mut files: ResMut<TouchedFiles>,
 ) {
-    let Ok((request, outcome, published, &ForAgent(agent))) = calls.get(settled.entity) else {
+    let Ok((Published(published), &ForAgent(agent))) = calls.get(settled.entity) else {
         return;
     };
-    let by = subagents
-        .get(agent)
-        .map(|name| name.as_str().to_owned())
-        .unwrap_or_default();
-    let changes = published.and_then(|p| p.0.get::<FilesChanged>().ok().flatten());
-    for change in changes.unwrap_or_default().0 {
-        let (file, at) = files.touch(absolute(&root.0, &change.path));
-        file.by.clone_from(&by);
-        file.added += change.added;
-        file.removed += change.removed;
-        file.changed_at = Some(at);
-        file.gone = change.kind == ChangeKind::Deleted;
-    }
-    let function = &request.call.function;
-    if function.name.as_str() != "read" || !outcome.tool_result().is_success() {
-        return;
-    }
-    if let Ok(args) = serde_json::from_value::<ReadArgs>(function.arguments.clone().into()) {
-        let (file, at) = files.touch(absolute(&root.0, &args.path));
-        file.by = by;
+    let by = subagents.get(agent).map(Name::as_str).unwrap_or_default();
+    let read = published.get::<FilesRead>().ok().flatten();
+    for path in read.unwrap_or_default().0 {
+        let (file, at) = files.touch(&path, by);
         file.read_at = Some(at);
         file.gone = false;
+    }
+    let changed = published.get::<FilesChanged>().ok().flatten();
+    for change in changed.unwrap_or_default().0 {
+        let (file, at) = files.touch(&change.path, by);
+        file.added += change.added;
+        file.removed += change.removed;
+        file.diffs.extend(change.diff);
+        file.changed_at = Some(at);
+        file.gone = change.kind == ChangeKind::Deleted;
     }
 }
 
@@ -395,7 +312,7 @@ fn files_command(
 }
 
 /// `ctrl+f`: opens the panel with the keys; gives it the keys back when
-/// it is open without them; closes it when it has them.
+/// it is open without them; closes it, and the diff box, when it has them.
 fn toggle(
     _: On<KeyPressed>,
     panels: Query<(Entity, Has<TuiPanel>), With<FilesPanel>>,
@@ -406,19 +323,18 @@ fn toggle(
     let Ok((panel, open)) = panels.single() else {
         return;
     };
-    if !open {
-        let right = Placement::Right(Constraint::Length(WIDTH));
-        commands.entity(panel).insert(TuiPanel::new(right));
-        focus.0 = Some(panel);
-    } else if focus.0 == Some(panel) {
+    if open && focus.0 == Some(panel) {
         commands.entity(panel).remove::<TuiPanel>();
         for diff in &boxes {
             commands.entity(diff).remove::<TuiPanel>();
         }
-        focus.0 = None;
-    } else {
-        focus.0 = Some(panel);
+        return;
     }
+    if !open {
+        let right = Placement::Right(Constraint::Length(WIDTH));
+        commands.entity(panel).insert(TuiPanel::new(right));
+    }
+    focus.0 = Some(panel);
 }
 
 /// Up and down in the panel.
@@ -441,22 +357,15 @@ fn open_diff(
     panels: Query<&FilesPanel>,
     mut boxes: Query<(Entity, &mut DiffBox)>,
     files: Res<TouchedFiles>,
-    originals: Res<Originals>,
-    root: Res<ProjectRoot>,
     mut focus: ResMut<KeyFocus>,
     mut commands: Commands,
 ) {
-    let row = panels
-        .iter()
-        .next()
-        .map(|panel| panel.0)
-        .unwrap_or_default();
+    let row = panels.single().map(|panel| panel.0).unwrap_or_default();
     let (Some(file), Ok((entity, mut diff))) = (files.rows().get(row).copied(), boxes.single_mut())
     else {
         return;
     };
     diff.path.clone_from(&file.path);
-    diff.diff = session_diff(&file.path, &root.0, &originals);
     diff.scroll = 0;
     let over = Placement::Over {
         width: Constraint::Percentage(80),
@@ -489,22 +398,14 @@ fn close_diff(
     for diff in &boxes {
         commands.entity(diff).remove::<TuiPanel>();
     }
-    focus.0 = panels.iter().next();
+    focus.0 = panels.single().ok();
 }
 
-/// When the files changed while the panel or the diff box is open: the
-/// diff again, and a frame.
+/// A frame when the files changed while the panel or the diff box is open.
 fn refresh(
     open: Query<(), (Or<(With<FilesPanel>, With<DiffBox>)>, With<TuiPanel>)>,
-    mut boxes: Query<&mut DiffBox, With<TuiPanel>>,
-    originals: Res<Originals>,
-    root: Res<ProjectRoot>,
     mut redraw: MessageWriter<RequestRedraw>,
 ) {
-    for mut shown in &mut boxes {
-        let DiffBox { path, diff, .. } = &mut *shown;
-        *diff = session_diff(path, &root.0, &originals);
-    }
     if !open.is_empty() {
         redraw.write(RequestRedraw);
     }
@@ -525,11 +426,17 @@ fn draw_panel(
 
 fn draw_diff(
     mut boxes: Query<(&mut PanelCanvas, &DiffBox), With<TuiPanel>>,
+    files: Res<TouchedFiles>,
     root: Res<ProjectRoot>,
 ) {
     for (mut canvas, diff) in &mut boxes {
-        let lines = rig_tui::diff::unified_lines(&diff.diff, usize::MAX)
-            .unwrap_or_else(|| vec![Line::from("No changes kept for this file.").dim()]);
+        let text = files
+            .files
+            .get(&diff.path)
+            .map(TouchedFile::session_diff)
+            .unwrap_or_default();
+        let lines = rig_tui::diff::unified_lines(&text, usize::MAX)
+            .unwrap_or_else(|| vec![Line::from("No diff for this file.").dim()]);
         let title = format!("{} (Esc closes)", shown(&diff.path, &root.0));
         let area = canvas.area();
         Paragraph::new(lines)

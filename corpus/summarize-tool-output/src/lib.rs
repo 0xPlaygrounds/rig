@@ -9,10 +9,13 @@
 //! model, or it fails or takes longer than
 //! [`SummarizeOutputs::timeout_secs`], the model gets the output's head and
 //! tail with a note instead. The summary's usage counts with the agent's
-//! under the purpose `summarizer`.
+//! under the purpose `summarizer`. The default `shell` keeps whole
+//! outputs while the plugin is loaded ([`ShellOutput`]), so the summary and
+//! the saved file cover all of a command's output, not its last lines.
 
 use std::path::{Path, PathBuf};
 
+use rig_coding_tools::ShellOutput;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::Outcome as Answered;
@@ -26,14 +29,23 @@ pub struct SummarizeToolOutputPlugin;
 
 impl Plugin for SummarizeToolOutputPlugin {
     fn build(&self, app: &mut App) {
+        app.world_mut()
+            .get_resource_or_init::<ShellOutput>()
+            .set(None);
         app.add_setting::<SummarizeOutputs>("summarize_outputs")
             .init_resource::<ProjectRoot>()
+            .configure_sets(AgentPass, SummarizeSystems.in_set(Stage::Review))
             .add_systems(
                 AgentPass,
-                (take_summaries, summarize).chain().in_set(Stage::Review),
+                (take_summaries, summarize).chain().in_set(SummarizeSystems),
             );
     }
 }
+
+/// The Review systems that replace big tool results with their summary or
+/// a cut. A reviewer that must see a call's final output goes `.after` it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SummarizeSystems;
 
 /// The `[summarize_outputs]` settings.
 #[derive(Resource, Clone, Debug, Deserialize)]

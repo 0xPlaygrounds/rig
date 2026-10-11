@@ -3,7 +3,9 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{
+    Collected, app_on, collect, connect, first_agent, pass_wall_clock, reply, run_until,
+};
 
 use super::*;
 
@@ -23,6 +25,7 @@ fn session(
     model: Option<&MockCompletionModel>,
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
+    collect::<Notice>(&mut app);
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((AgentPlugin, JournalPlugin, CronPlugin))
         .init_resource::<Seen>()
@@ -48,20 +51,13 @@ fn session(
     }
     app.finish();
     app.update();
-    let world = app.world_mut();
-    let mut roots = world.query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>();
-    let agent = roots.iter(world).next().unwrap_or(Entity::PLACEHOLDER);
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     (app, wakes, agent)
 }
 
-/// The wall clock moves on by `minutes`, as the plugin sees it: every
-/// job's next tick comes that much sooner. `WakeAt` reads the real clock,
-/// which a test cannot move.
+/// `minutes` of wall-clock time pass.
 fn later(app: &mut App, minutes: u64) {
-    let mut jobs = app.world_mut().resource_mut::<CronJobs>();
-    for job in &mut jobs.jobs {
-        job.next = job.next.saturating_sub(minutes * 60_000);
-    }
+    pass_wall_clock(app.world_mut(), Duration::from_secs(minutes * 60));
     app.update();
     app.update();
 }
@@ -100,7 +96,8 @@ fn a_job_runs_in_its_own_agent_on_its_tick_and_survives_a_restart() {
         })
     };
     run_until(&mut app, &wakes, noted);
-    assert!(noted(app.world()), "{:?}", seen(&app).delivered);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    assert!(noted(app.world()), "{:?} {notices:?}", seen(&app).delivered);
     assert_eq!(seen(&app).started, ["cron:1"]);
     let asked = format!("{:?}", model.requests());
     assert!(asked.contains("check CI"), "{asked}");
@@ -119,14 +116,9 @@ fn a_job_runs_in_its_own_agent_on_its_tick_and_survives_a_restart() {
     app.world_mut()
         .trigger(RunCommand::new(agent, "cron list".to_owned()));
     app.update();
-    let notices = app.world().resource::<Messages<Notice>>();
-    let mut cursor = notices.get_cursor();
-    let texts: Vec<&str> = cursor
-        .read(notices)
-        .map(|notice| notice.text.as_str())
-        .collect();
-    let listed = texts
-        .iter()
-        .any(|text| text.contains("cron:1 \"every 10m\"") && text.contains("check CI"));
-    assert!(listed, "{texts:?}");
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let listed = notices.iter().any(|notice| {
+        notice.text.contains("cron:1 \"every 10m\"") && notice.text.contains("check CI")
+    });
+    assert!(listed, "{notices:?}");
 }

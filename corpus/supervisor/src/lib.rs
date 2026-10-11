@@ -455,7 +455,7 @@ fn verdict_for_supervisors(
 fn on_verdict(
     called: On<ToolCalled<VerdictArgs>>,
     supervisors: Query<&SpawnedBy, With<Supervisor>>,
-    workers: Query<Has<ActiveTurn>>,
+    workers: Query<&ActiveTurn>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -471,7 +471,7 @@ fn on_verdict(
         answer(Err("Only a supervisor gives verdicts."));
         return;
     };
-    let busy = workers.get(worker).unwrap_or_default();
+    let turn = workers.get(worker).ok().map(ActiveTurn::turn);
     let message = called.args.message.as_deref().map(str::trim);
     match (
         called.args.decision,
@@ -486,10 +486,9 @@ fn on_verdict(
         (Decision::Steer, Some(text)) => {
             // A worker whose turn ended reads it with its next turn's
             // request; it starts none.
-            let mode = if busy {
-                DeliveryMode::Steer
-            } else {
-                DeliveryMode::Note
+            let mode = match turn {
+                Some(_) => DeliveryMode::Steer,
+                None => DeliveryMode::Note,
             };
             let origin = Origin::agent(called.caller.clone(), None).titled(NAME);
             answer(Ok("Sent; the worker reads it with its next model call."));
@@ -497,11 +496,13 @@ fn on_verdict(
         }
         (Decision::Stop, Some(reason)) => {
             answer(Ok("The worker's turn is stopped and the user told why."));
-            if busy {
-                commands.trigger(Interrupt {
-                    entity: worker,
-                    reason: Some(format!("the supervisor stopped it: {reason}")),
-                });
+            // Its calls that have not started never start, the others are
+            // told why they stopped, and the turn ends.
+            if let Some(turn) = turn {
+                let why = format!("the supervisor stopped it: {reason}");
+                commands
+                    .entity(turn)
+                    .try_insert(TurnOutcome::Stopped(Some(why)));
             }
             let told = format!("The supervisor stopped the turn: {reason}");
             notices.write(Notice::info(worker, told));

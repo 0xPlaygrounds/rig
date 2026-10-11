@@ -3,7 +3,10 @@ use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness::watch::WatchPlugin;
+use rig_harness_test_support::{
+    Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until,
+};
 
 use super::*;
 
@@ -59,15 +62,24 @@ fn a_fitting_example_goes_first_in_the_request_and_nowhere_else() {
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(ProjectRoot(root.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, FewShotExamplesPlugin))
+        .add_plugins((
+            AgentPlugin,
+            JournalPlugin,
+            WatchPlugin,
+            FewShotExamplesPlugin,
+        ))
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    collect::<FileChanges>(&mut app);
     app.finish();
     app.update();
+    // The examples are read on the watch's first listing.
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Collected<FileChanges>>().0.is_empty()
+    });
     let model = MockCompletionModel::from_stream_turns([reply("Committed."), reply("Hi.")]);
     let world = app.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    let (agent, connection) = (agent.ok(), connect(&model));
+    let (agent, connection) = (first_agent(world), connect(&model));
     assert!(
         agent.is_some() && connection.is_some(),
         "one agent, and the model"

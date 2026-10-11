@@ -9,7 +9,9 @@
 //! before it is committed, and again, as a change, one whose text changed
 //! since. What each agent was given is saved with the session and
 //! forgotten when its conversation is condensed, so a compacted agent is
-//! told again on its next access. `/context` lists the files given.
+//! told again on its next access. `/context` lists the files given. The
+//! Review system is in the public [`NestedContextSystems`] set, so another
+//! reviewer that replaces tool outcomes orders against it.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -35,12 +37,19 @@ impl Plugin for NestedContextPlugin {
         app.init_resource::<ProjectRoot>()
             .register_required_components::<Agent, NestedLoaded>()
             .add_observer(forget_on_condense)
-            .add_systems(AgentPass, add_rules.in_set(Stage::Review))
+            .configure_sets(AgentPass, NestedContextSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, add_rules.in_set(NestedContextSystems))
             .add_systems(Update, list_loaded);
         app.world_mut()
             .spawn((NestedEntry, ContextEntry::new("nested rules", "")));
     }
 }
+
+/// The Review system that appends nested rules to tool results, for
+/// another reviewer of tool outcomes to order against: `.after` it to see
+/// the rules in the result, `.before` it to have them appended to yours.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct NestedContextSystems;
 
 /// The nested instruction files this agent was given, by their path from
 /// the project root, with the text it was given.

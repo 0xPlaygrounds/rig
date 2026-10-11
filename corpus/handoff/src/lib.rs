@@ -9,13 +9,15 @@
 //! in the terminal view: the brief waits in the input line to be edited and
 //! sent, or is sent at once with `--now` (and in a run without the view).
 //! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
-//! names it.
+//! names it, and a handoff moves the agent shown ([`Shown`], in any front)
+//! from the old agent to the new one, when it happens and again when the
+//! session is restored.
 
 use std::borrow::Cow;
 
 use rig_harness::prelude::*;
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
-use rig_tui::{Focus, TuiInput};
+use rig_tui::TuiInput;
 use serde::Deserialize;
 
 /// The purpose the brief's call is made for, in usage.
@@ -45,11 +47,13 @@ pub struct HandoffPlugin;
 impl Plugin for HandoffPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<HandoffSettings>("handoff")
+            .init_resource::<Shown>()
             .add_command(
                 "handoff",
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
                 handoff,
             )
+            .add_systems(Update, show_successor)
             .add_observer(take_brief)
             .add_observer(name_successor);
     }
@@ -199,8 +203,8 @@ type Inherited<'a> = (
 );
 
 /// Takes a settled brief: ends the handoff's turn and starts the new
-/// agent with the old one's settings, shown with the brief in the input
-/// line, or sent the brief at once.
+/// agent with the old one's settings, with the brief in the input line,
+/// or sent the brief at once.
 fn take_brief(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
@@ -246,7 +250,6 @@ fn take_brief(
         successor.insert(model.clone());
     }
     let successor = successor.id();
-    commands.trigger(Focus { entity: successor });
     match input.filter(|_| editable.0 && !briefing.now) {
         Some(mut input) => input.set(brief),
         // The model's text, never a command.
@@ -269,6 +272,32 @@ fn name_successor(
         let name = format!("{} (from {})", from.goal, from.agent.short());
         commands.entity(inserted.entity).insert(Name::new(name));
     }
+}
+
+/// Moves the agent shown (or the primary one, while none is) along the
+/// handoffs from it to the new agents taking over: the successor just
+/// started, or, when a session is restored, the end of its handoff chain.
+fn show_successor(
+    new: Query<(Entity, &HandedOffFrom), Added<HandedOffFrom>>,
+    agents: PrimaryQuery,
+    mut shown: ResMut<Shown>,
+) {
+    if new.is_empty() {
+        return;
+    }
+    let mut at = shown.0.or_else(|| primary(&agents));
+    // At most one step per new agent.
+    for _ in 0..new.iter().count() {
+        let id = at
+            .and_then(|agent| agents.get(agent).ok())
+            .map(|(_, id, _)| id);
+        let next = new.iter().find(|(_, from)| Some(&from.agent) == id);
+        let Some((successor, _)) = next else {
+            break;
+        };
+        at = Some(successor);
+    }
+    shown.set_if_neq(Shown(at));
 }
 
 #[cfg(test)]

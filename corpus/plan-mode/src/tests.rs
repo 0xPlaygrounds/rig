@@ -8,7 +8,10 @@ use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{AnswerAsks, Answers, app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{
+    AnswerAsks, Answers, ToolOutputs, answer_open, app_on, calls, connect, log_tool_outputs, reply,
+    run_until,
+};
 
 /// A directory of its own for this test, beside the test binary, so
 /// nothing lands in the source tree.
@@ -37,12 +40,6 @@ fn prompt(request: Option<&CompletionRequest>) -> String {
     }
 }
 
-/// The open question about a plan, if any.
-fn question(world: &mut World) -> Option<Entity> {
-    let mut open = world.query_filtered::<Entity, (With<PlanQuestion>, Without<Outcome>)>();
-    open.iter(world).next()
-}
-
 #[test]
 fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let dir = scratch();
@@ -57,6 +54,8 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .insert_resource(ProjectRoot(dir.clone()))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs)
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -87,20 +86,15 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     assert!(!first.contains(&"write".to_owned()), "{first:?}");
     let told = |at: usize| format!("{:?}", requests.get(at).map(|r| &r.chat_history));
     assert!(told(0).contains("Plan mode: you may read"));
-    let refused = told(1);
-    assert!(refused.contains("is_error: true"), "{refused}");
-    assert!(refused.contains(REFUSED), "{refused}");
+    let refused = app.world().resource::<ToolOutputs>().0.get("w1").cloned();
+    assert!(refused.unwrap_or_default().contains(REFUSED));
     assert!(!target.exists());
     let plan = std::fs::read_to_string(dir.join(PLAN_FILE)).unwrap_or_default();
     assert_eq!(plan, "Plan: 1. create x.txt");
 
-    // The user picks Execute, as a front answers.
-    let asked = question(app.world_mut());
-    assert!(asked.is_some());
-    if let Some(asked) = asked {
-        let execute = Answer::Choice("execute".to_owned()).outcome();
-        app.world_mut().entity_mut(asked).insert(execute);
-    }
+    // The user picks Execute.
+    let execute = Answer::Choice("execute".to_owned());
+    assert!(answer_open(app.world_mut(), "The plan", &execute));
     run_until(&mut app, &wakes, |world| {
         model.request_count() == 4 && !world.entity(agent).contains::<ActiveTurn>()
     });
@@ -108,8 +102,8 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     let requests = model.requests();
     let third = tool_names(requests.get(2));
     assert!(third.contains(&"write".to_owned()), "{third:?}");
-    let told = format!("{:?}", requests.get(2).map(|r| &r.chat_history));
-    assert!(!told.contains("Plan mode: you may read"));
+    let told = |at: usize| format!("{:?}", requests.get(at).map(|r| &r.chat_history));
+    assert!(!told(2).contains("Plan mode: you may read"));
     let asked = prompt(requests.get(2));
     assert!(
         asked.contains("text: \"Execute this plan: Plan: 1. create x.txt\""),

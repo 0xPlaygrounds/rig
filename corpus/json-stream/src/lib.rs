@@ -1,9 +1,10 @@
 #![doc = include_str!("../README.md")]
 
-use std::io::{BufRead as _, Write};
+use std::io::Write;
 
+use async_channel::{Receiver, Sender};
 use bevy_ecs::system::SystemParam;
-use crossbeam_channel::{Receiver, Sender, TryRecvError};
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
@@ -28,14 +29,15 @@ impl JsonSink {
     }
 }
 
-/// The command lines coming in: stdin's unless the app inserted another.
+/// The command lines coming in: stdin's unless the app inserted another;
+/// they end when every sender dropped.
 #[derive(Resource)]
 pub struct RpcInput(Receiver<String>);
 
 impl RpcInput {
     /// An input fed by the returned sender; it ends when the sender drops.
     pub fn channel() -> (Sender<String>, Self) {
-        let (sender, receiver) = crossbeam_channel::unbounded();
+        let (sender, receiver) = async_channel::unbounded();
         (sender, Self(receiver))
     }
 }
@@ -58,8 +60,9 @@ impl Plugin for JsonStreamPlugin {
             return;
         }
         let invoked = app.world().get_resource::<Invoked>().cloned();
-        let args = invoked.as_ref().map(|invoked| &invoked.args);
-        let prompt = args.and_then(|args| args.print.clone());
+        let prompt = invoked
+            .as_ref()
+            .and_then(|invoked| invoked.args.print.clone());
         let rpc = prompt.is_none() || invoked.as_ref().is_some_and(|invoked| invoked.flag(RPC));
         if !app.world().contains_resource::<JsonSink>() {
             app.insert_resource(JsonSink::new(std::io::stdout()));
@@ -76,36 +79,27 @@ impl Plugin for JsonStreamPlugin {
                 ),
             )
             .add_systems(AgentPass, stream_deltas.in_set(Stage::Review));
-        if rpc {
-            app.world_mut().spawn(Answerer::default());
-            if !app.world().contains_resource::<RpcInput>() {
-                app.add_systems(Startup, read_stdin);
+        if !rpc {
+            // Nobody answers questions: with no `Answerer`, plugins refuse.
+            if let Some(prompt) = prompt {
+                app.run_headless(prompt).add_observer(headless_ended);
             }
-            app.add_systems(
-                Update,
-                run_commands
-                    .before(AgentLoop)
-                    .run_if(resource_exists::<RpcInput>),
-            );
-        } else {
-            app.add_systems(AgentPass, refuse_asks.in_set(Stage::Gate));
+            return;
         }
-        if let Some(prompt) = prompt {
-            let model = args.is_some_and(|args| args.model.is_some());
-            app.insert_resource(PrintRun {
-                prompt,
-                model,
-                step: Step::Start,
-                exit: !rpc,
-                answered: false,
-            })
-            .add_systems(
-                Update,
-                drive
-                    .before(AgentLoop)
-                    .run_if(resource_exists::<SessionRestored>),
-            );
+        app.world_mut().spawn(Answerer::default());
+        if !app.world().contains_resource::<RpcInput>() {
+            let (sender, input) = RpcInput::channel();
+            // A `-p` prompt is the first command.
+            if let Some(text) = prompt {
+                let first = json!({ "type": "prompt", "id": "print", "text": text });
+                sender.try_send(first.to_string()).ok();
+            }
+            app.insert_resource(input)
+                .add_systems(Startup, move || read_stdin(sender.clone()));
         }
+        app.add_systems(Startup, listen)
+            .add_observer(command)
+            .add_observer(input_ended);
     }
 }
 
@@ -230,7 +224,6 @@ fn settled(
     effects: Query<(&ForAgent, Option<&Outcome>, Option<&TurnOutcome>)>,
     calls: Query<&ToolRequest>,
     models: Query<(), With<ModelRequest>>,
-    run: Option<ResMut<PrintRun>>,
     mut out: Out,
 ) {
     let entity = settled.entity;
@@ -260,11 +253,6 @@ fn settled(
             TurnOutcome::Failed(why) => json!({ "outcome": "failed", "error": why }),
             TurnOutcome::Stopped(why) => json!({ "outcome": "stopped", "error": why }),
         };
-        if let Some(mut run) = run
-            && run.step == Step::Sent(agent)
-        {
-            run.answered = matches!(ended, TurnOutcome::Answered(_));
-        }
         out.emit("turn_end", Some(agent), fields);
     }
 }
@@ -299,33 +287,52 @@ fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
     }
 }
 
-/// Nobody answers a `-p` run's questions: each is refused.
-fn refuse_asks(asks: Query<Entity, (With<Ask>, Undecided)>, mut commands: Commands) {
-    for ask in &asks {
-        let why = "nobody answers questions in a --json -p run";
-        commands.entity(ask).insert_if_new(Outcome::refused(why));
-    }
-}
+/// The command lines of an RPC run, a stream on this entity.
+#[derive(Component)]
+struct CommandLines;
 
-/// Starts the thread that feeds stdin's lines in, waking the loop for each.
-fn read_stdin(wake: Res<Wake>, mut commands: Commands) {
-    let (sender, input) = RpcInput::channel();
-    let wake = wake.clone();
+/// Starts the thread that sends stdin's lines to `sender`.
+fn read_stdin(sender: Sender<String>) {
     std::thread::spawn(move || {
-        for line in std::io::stdin().lock().lines() {
+        for line in std::io::stdin().lines() {
             let Ok(line) = line else {
                 break;
             };
-            if sender.send(line).is_err() {
+            if sender.send_blocking(line).is_err() {
                 break;
             }
-            wake.wake();
         }
-        // The input ends with the sender.
-        drop(sender);
-        wake.wake();
     });
-    commands.insert_resource(input);
+}
+
+/// Reads the command lines as a stream on an entity of their own.
+fn listen(input: Option<Res<RpcInput>>, wake: Option<Res<Wake>>, mut commands: Commands) {
+    let Some(input) = input else {
+        return;
+    };
+    let wake = wake.map(|wake| wake.clone()).unwrap_or_default();
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    commands.spawn((CommandLines, Running::stream(pool, &wake, input.0.clone())));
+    commands.remove_resource::<RpcInput>();
+}
+
+/// The end of the command lines ends the run.
+fn input_ended(
+    ended: On<Remove<Running>>,
+    lines: Query<(), With<CommandLines>>,
+    mut commands: Commands,
+) {
+    if lines.contains(ended.entity) {
+        commands.trigger(Exit(ExitReason::Quit));
+    }
+}
+
+/// A `-p` run could not send its prompt.
+fn headless_ended(ended: On<HeadlessEnded>, mut out: Out) {
+    if let Some(why) = &ended.why {
+        let fields = json!({ "level": "error", "text": why });
+        out.emit("notice", ended.agent, fields);
+    }
 }
 
 /// A command line.
@@ -333,7 +340,7 @@ fn read_stdin(wake: Res<Wake>, mut commands: Commands) {
 struct Command {
     #[serde(default)]
     id: Value,
-    /// The agent's `AgentId`; the agent the user talks to without one.
+    /// The agent's `AgentId`; the agent shown without one.
     #[serde(default)]
     agent: Option<String>,
     #[serde(flatten)]
@@ -360,191 +367,88 @@ enum Kind {
 /// What a command needs of the app.
 #[derive(SystemParam)]
 struct Rpc<'w, 's> {
-    input: Res<'w, RpcInput>,
-    agents: PrimaryQuery<'w, 's>,
+    agents: Query<'w, 's, (Entity, &'static AgentId)>,
+    shown: Res<'w, Shown>,
     asks: Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
     pickers: Query<'w, 's, &'static Picker>,
     commands: Commands<'w, 's>,
-    exits: MessageWriter<'w, AppExit>,
 }
 
-/// Runs each command line that came in, answering each with a `response`;
-/// the end of the input ends the run.
-fn run_commands(mut rpc: Rpc, mut out: Out) {
-    loop {
-        let line = match rpc.input.0.try_recv() {
-            Ok(line) => line,
-            Err(TryRecvError::Empty) => return,
-            Err(TryRecvError::Disconnected) => {
-                rpc.exits.write(AppExit::Success);
-                return;
-            }
+impl Rpc<'_, '_> {
+    /// The agent named `id`, else the one shown.
+    fn agent(&self, id: Option<String>) -> Result<Entity, String> {
+        let agent = match id {
+            Some(id) => AgentId(id).find_in(self.agents.iter()),
+            None => self.shown.0,
         };
-        if line.trim().is_empty() {
-            continue;
-        }
-        let (id, done) = match serde_json::from_str::<Command>(&line) {
-            Ok(command) => (command.id.clone(), run(&mut rpc, command)),
-            Err(error) => (Value::Null, Err(format!("not a command: {error}"))),
-        };
-        let fields = match done {
-            Ok(()) => json!({ "id": id, "ok": true }),
-            Err(error) => json!({ "id": id, "ok": false, "error": error }),
-        };
-        out.emit("response", None, fields);
+        agent.ok_or_else(|| "no such agent".to_owned())
     }
+}
+
+/// Runs a command line that came in and answers it with a `response`.
+fn command(
+    line: On<Insert<Done<String>>>,
+    lines: Query<&Done<String>, With<CommandLines>>,
+    mut rpc: Rpc,
+    mut out: Out,
+) {
+    let Ok(Done(line)) = lines.get(line.entity) else {
+        return;
+    };
+    if line.trim().is_empty() {
+        return;
+    }
+    let (id, done) = match serde_json::from_str::<Command>(line) {
+        Ok(command) => (command.id.clone(), run(&mut rpc, command)),
+        Err(error) => (Value::Null, Err(format!("not a command: {error}"))),
+    };
+    let fields = match done {
+        Ok(()) => json!({ "id": id, "ok": true }),
+        Err(error) => json!({ "id": id, "ok": false, "error": error }),
+    };
+    out.emit("response", None, fields);
 }
 
 /// Runs `command`, or says why it cannot.
 fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
-    let agent = match &command.agent {
-        Some(id) => AgentId(id.clone()).find_in(rpc.agents.iter().map(|(e, id, _)| (e, id))),
-        None => primary(&rpc.agents),
-    };
-    let agent = agent.ok_or("no such agent")?;
     match command.kind {
         Kind::Prompt { text } => {
+            let agent = rpc.agent(command.agent)?;
             let prompt = Deliver::new(agent, text, DeliveryMode::Queue);
             rpc.commands.trigger(prompt);
         }
-        Kind::Interrupt => rpc.commands.trigger(Interrupt::new(agent)),
-        Kind::SetModel { model } => rpc.commands.trigger(SetModel {
-            entity: agent,
-            model,
-        }),
+        Kind::Interrupt => {
+            let agent = rpc.agent(command.agent)?;
+            rpc.commands.trigger(Interrupt::new(agent));
+        }
+        Kind::SetModel { model } => {
+            let entity = rpc.agent(command.agent)?;
+            rpc.commands.trigger(SetModel { entity, model });
+        }
         Kind::Answer {
             request_id,
             choice,
             text,
         } => {
-            let request = Entity::try_from_bits(request_id).ok_or("no such request")?;
-            answer(rpc, agent, request, (choice, text))?;
-        }
-    }
-    Ok(())
-}
-
-/// Answers the open question or picker `request` with the item at
-/// `choice`, else with `text`.
-fn answer(
-    rpc: &mut Rpc,
-    agent: Entity,
-    request: Entity,
-    (choice, text): (Option<usize>, Option<String>),
-) -> Result<(), String> {
-    if let Ok(ask) = rpc.asks.get(request) {
-        let answer = match (choice, text) {
-            (Some(index), _) => {
-                let choice = ask.choices.get(index).ok_or("no such choice")?;
-                Answer::Choice(choice.id.clone())
-            }
-            (None, Some(text)) if ask.free_text => Answer::Text(text),
-            _ => return Err("the answer needs a choice".to_owned()),
-        };
-        rpc.commands.entity(request).insert_if_new(answer.outcome());
-        return Ok(());
-    }
-    // A picker is the terminal view's: picking runs the item's command,
-    // then tells its plugin and closes it, as the view does.
-    let picker = rpc.pickers.get(request).map_err(|_| "no such request")?;
-    let chosen = match (choice, text) {
-        (Some(index), _) => {
-            let item = picker.items.get(index).ok_or("no such choice")?;
-            if !item.command.is_empty() {
-                rpc.commands.trigger(RunCommand::new(
-                    picker.agent.unwrap_or(agent),
-                    item.command.clone(),
-                ));
-            }
-            Chosen::Item(index)
-        }
-        (None, Some(text)) if picker.free_text => Chosen::Text(text),
-        _ => return Err("the answer needs a choice".to_owned()),
-    };
-    rpc.commands.trigger(Picked {
-        entity: request,
-        chosen: Some(chosen),
-    });
-    rpc.commands.entity(request).despawn();
-    Ok(())
-}
-
-/// A `-p` run: its prompt, then, unless commands keep it running, the exit
-/// once no agent works.
-#[derive(Resource)]
-struct PrintRun {
-    prompt: String,
-    /// Whether `--model` named the model, which rig-models chooses.
-    model: bool,
-    step: Step,
-    /// Whether the run exits after the prompt.
-    exit: bool,
-    /// Whether the prompt's last turn ended with an answer.
-    answered: bool,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Step {
-    Start,
-    /// The prompt went to this agent.
-    Sent(Entity),
-    Done,
-}
-
-/// What keeps a `-p` run from exiting: turns, other work such as a
-/// sign-in, and messages on their way to an agent.
-#[derive(SystemParam)]
-struct Busy<'w, 's> {
-    turns: Query<'w, 's, (), With<TurnOf>>,
-    running: Query<'w, 's, (), With<Running>>,
-    messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
-}
-
-impl Busy<'_, '_> {
-    fn any(&self) -> bool {
-        !self.turns.is_empty() || !self.running.is_empty() || !self.messages.is_empty()
-    }
-}
-
-/// Sends the prompt, with the first model that can be reached when none
-/// was chosen, and exits once no agent works: 0 when the prompt's turn was
-/// answered, 1 otherwise.
-fn drive(
-    mut run: ResMut<PrintRun>,
-    (agents, chosen): (PrimaryQuery, Query<(), With<ModelChoice>>),
-    busy: Busy,
-    models: Res<Models>,
-    mut commands: Commands,
-    mut exits: MessageWriter<AppExit>,
-) {
-    match run.step {
-        Step::Start => {
-            let Some(agent) = primary(&agents) else {
-                return;
+            let entity = Entity::try_from_bits(request_id).ok_or("no such request")?;
+            let (count, free_text) = match (rpc.asks.get(entity), rpc.pickers.get(entity)) {
+                (Ok(ask), _) => (ask.choices.len(), ask.free_text),
+                (_, Ok(picker)) => (picker.items.len(), picker.free_text),
+                _ => return Err("no such request".to_owned()),
             };
-            if !run.model
-                && !chosen.contains(agent)
-                && let Some(spec) = models.0.reachable().first()
-            {
-                let model = spec.reference().to_string();
-                commands.trigger(SetModel {
-                    entity: agent,
-                    model,
-                });
-            }
-            let prompt = Deliver::new(agent, run.prompt.clone(), DeliveryMode::Steer);
-            commands.trigger(prompt);
-            run.step = Step::Sent(agent);
-        }
-        Step::Sent(_) if run.exit && !busy.any() => {
-            run.step = Step::Done;
-            exits.write(match run.answered {
-                true => AppExit::Success,
-                false => AppExit::from_code(1),
+            let chosen = match (choice, text) {
+                (Some(index), _) if index < count => Chosen::Item(index),
+                (Some(_), _) => return Err("no such choice".to_owned()),
+                (None, Some(text)) if free_text => Chosen::Text(text),
+                _ => return Err("the answer needs a choice".to_owned()),
+            };
+            rpc.commands.trigger(Pick {
+                entity,
+                chosen: Some(chosen),
             });
         }
-        Step::Sent(_) | Step::Done => {}
     }
+    Ok(())
 }
 
 #[cfg(test)]

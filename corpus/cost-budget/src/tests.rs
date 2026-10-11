@@ -4,13 +4,17 @@ use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::Catalog;
 use rig_core::completion::Usage;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, run_until};
+use rig_harness_test_support::{
+    Collected, Ended, app_on, collect, connect, first_agent, log_ended, run_until,
+};
 
 use super::*;
 
 /// The notices written so far.
-#[derive(Resource, Default)]
-struct Seen(Vec<String>);
+fn seen(app: &App) -> Vec<String> {
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    notices.iter().map(|notice| notice.text.clone()).collect()
+}
 
 /// The budget plugin on `store`, with a `[budget]` default of $5, after
 /// the first frame restored the session, with its loop's wakes.
@@ -18,40 +22,21 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Settings::from_toml("[budget]\ndefault = 5.0"))
         .add_plugins((AgentPlugin, JournalPlugin, CostBudgetPlugin))
-        .init_resource::<Seen>()
         .init_resource::<Ended>()
-        .add_observer(log_ended)
-        .add_systems(
-            Last,
-            |mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>| {
-                seen.0
-                    .extend(notices.read().map(|notice| notice.text.clone()));
-            },
-        );
+        .add_observer(log_ended);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     (app, wakes)
 }
 
-/// The app's first agent.
-fn first_agent(app: &mut App) -> Option<Entity> {
-    let world = app.world_mut();
-    world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-}
-
 /// Runs `/line` for `agent`, and returns the notices it wrote.
 fn command(app: &mut App, agent: Entity, line: &str) -> Vec<String> {
-    let before = app.world().resource::<Seen>().0.len();
-    let line = line.to_owned();
-    app.world_mut().trigger(RunCommand::new(agent, line));
+    let before = seen(app).len();
+    app.world_mut()
+        .trigger(RunCommand::new(agent, line.to_owned()));
     app.update();
-    let seen = &app.world().resource::<Seen>().0;
-    seen.get(before..)
-        .map(<[String]>::to_vec)
-        .unwrap_or_default()
+    seen(app).into_iter().skip(before).collect()
 }
 
 /// The end of a reply of a million output tokens: $0.60 at the catalog's
@@ -84,7 +69,7 @@ fn a_spent_budget_stops_the_next_request_and_is_kept_with_the_session() {
     .priced_as(spec);
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
-    let (agent, connection) = (first_agent(&mut app), connect(&model));
+    let (agent, connection) = (first_agent(app.world_mut()), connect(&model));
     assert!(
         agent.is_some() && connection.is_some(),
         "an agent on the scripted model"
@@ -108,7 +93,7 @@ fn a_spent_budget_stops_the_next_request_and_is_kept_with_the_session() {
     assert_eq!(model.request_count(), 2, "the third request was not sent");
     let ended = &app.world().resource::<Ended>().0;
     assert!(matches!(ended.as_slice(), [TurnOutcome::Failed(why)] if why.contains("budget")));
-    let seen = &app.world().resource::<Seen>().0;
+    let seen = seen(&app);
     let warnings = seen.iter().filter(|text| text.contains("nearly spent"));
     assert_eq!(warnings.count(), 1, "{seen:?}");
     let reached = "budget of $1.00 reached ($1.20 spent)";
@@ -120,7 +105,7 @@ fn a_spent_budget_stops_the_next_request_and_is_kept_with_the_session() {
     // The restored session keeps its budget, not the default, and its
     // spending, and does not answer the stopped request by itself.
     let (mut restarted, wakes) = start(&store);
-    let (agent, connection) = (first_agent(&mut restarted), connect(&model));
+    let (agent, connection) = (first_agent(restarted.world_mut()), connect(&model));
     assert!(agent.is_some(), "the agent was restored");
     let (Some(agent), Some(connection)) = (agent, connection) else {
         return;

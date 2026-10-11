@@ -13,7 +13,7 @@ use super::*;
 struct Recording(Mutex<Vec<String>>);
 
 impl Notify for Recording {
-    fn notify(&self, text: &str) {
+    fn notify(&self, text: &str, _: &mut MessageWriter<TerminalWrite>) {
         if let Ok(mut sent) = self.0.lock() {
             sent.push(text.to_owned());
         }
@@ -37,7 +37,8 @@ fn advance(app: &mut App, by: Duration) {
 }
 
 #[test]
-fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_and_an_answered_question_do_not() {
+fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_question_and_a_focused_terminal_do_not()
+ {
     let recording = Arc::new(Recording::default());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
@@ -60,6 +61,9 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_and_an_answered_qu
         .spawn((Agent, sub_line, SpawnedBy(parent)))
         .id();
     app.finish();
+    // The terminal view is the front, and the user is in another window.
+    app.insert_resource(TerminalView(true))
+        .insert_resource(TerminalFocus(false));
     app.update();
     for agent in [parent, child] {
         let ask = Deliver::new(agent, "Go.", DeliveryMode::Queue);
@@ -89,11 +93,16 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_and_an_answered_qu
     let yes = Answer::Choice("yes".to_owned()).outcome();
     app.world_mut().entity_mut(question).insert(yes);
     advance(&mut app, Duration::from_secs(2));
-    assert_eq!(
-        recording.sent(),
-        [
-            "rig: done — All done.",
-            "rig needs you: Allow `rm -rf build`?"
-        ]
-    );
+    let sent = [
+        "rig: done — All done.",
+        "rig needs you: Allow `rm -rf build`?",
+    ];
+    assert_eq!(recording.sent(), sent);
+
+    // Back at the terminal, a picker waiting does not notify.
+    app.insert_resource(TerminalFocus(true));
+    app.world_mut().spawn(Picker::new("Allow `git push`?"));
+    app.update();
+    advance(&mut app, Duration::from_secs(3));
+    assert_eq!(recording.sent(), sent);
 }

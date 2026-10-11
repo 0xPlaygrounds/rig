@@ -1,15 +1,15 @@
 //! Plugin corpus: 60. Reasoning tag splitter (spec `60-think-tag-splitter.md`).
 //!
 //! Open reasoning models behind plain OpenAI-compatible endpoints send their
-//! thinking inline, as `<think>…</think>` in the answer text. For each model
-//! call of such a model this plugin, in Prepare, puts a stream transform in
-//! front of the call's handler, so the call's [`Partial`] (what fronts and
-//! other plugins follow) streams the thinking as reasoning and the rest as
-//! text. In Review it splits the response the call ended with the same way,
-//! so the conversation keeps the reasoning as reasoning and the answer
-//! without tags; the effect log keeps the provider's reply beside it. A
-//! request to such a model sends no earlier reasoning back unless
-//! `resend_reasoning` is set.
+//! thinking inline, as `<think>…</think>` in the answer text. This plugin
+//! puts an [`Adapter`] on every model call. Start applies it to the model
+//! the call finally goes to, whatever routed it there; for a listed model,
+//! or any model while `detect` is on, it rewrites the reply stream so the
+//! thinking streams as reasoning and the rest as text, and the response the
+//! reply ends with is split the same way. The kernel, the fronts and other
+//! plugins only ever see the split reply, and so does the conversation.
+//! Reasoning that no provider sent as reasoning (the split-out kind) is left
+//! out of what those models are sent unless `resend_reasoning` is set.
 //!
 //! Settings, `[think_tags]` in `RIG_HOME/settings.toml`:
 //!
@@ -20,21 +20,21 @@
 //! resend_reasoning = false
 //! ```
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use futures::StreamExt;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as Answered, family};
+use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::message::{Reasoning, Text};
-use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
-use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent, StreamEvents};
+use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
+use rig_harness::rig_core::streaming::{Item, Part, PartKind, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
 
+const NAME: &str = "think-tags";
 const OPEN: &str = "<think>";
 const CLOSE: &str = "</think>";
 
@@ -47,7 +47,7 @@ pub struct ThinkTags {
     pub models: Vec<String>,
     /// Also split a reply of any other model that starts with `<think>`.
     pub detect: bool,
-    /// Send earlier reasoning back to a model that sends tags.
+    /// Send split-out reasoning back to the models that are split.
     pub resend_reasoning: bool,
 }
 
@@ -61,156 +61,92 @@ impl Default for ThinkTags {
     }
 }
 
-/// The models not listed in [`ThinkTags::models`] whose replies started
-/// with `<think>` this session.
-#[derive(Resource, Reflect, Default)]
-#[reflect(Resource, Saved)]
-struct Detected(HashSet<String>);
-
-/// The plugin's Prepare and Review systems: a plugin that routes a call to
-/// another model orders itself before them, one that reviews a reply's
-/// text after them.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SplitThinkTags;
-
 #[derive(Default)]
 pub struct ThinkTagSplitterPlugin;
 
 impl Plugin for ThinkTagSplitterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ThinkTags>("think_tags")
-            .init_resource::<Detected>()
-            .add_systems(
-                AgentPass,
-                (
-                    prepare.in_set(Stage::Prepare),
-                    split_replies.in_set(Stage::Review),
-                )
-                    .in_set(SplitThinkTags),
-            );
+            .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
     }
 }
 
-impl ThinkTags {
-    /// Whether `model`'s replies are split from their first byte.
-    fn always(&self, model: &str) -> bool {
-        self.models.iter().any(|listed| listed == model)
+/// Puts the split on each new model call, for whichever model it goes to.
+fn adapt(mut calls: Query<&mut ModelRequest, Added<Admitted>>, tags: Res<ThinkTags>) {
+    if !tags.detect && tags.models.is_empty() {
+        return;
+    }
+    for mut call in &mut calls {
+        let tags = tags.clone();
+        call.adapters
+            .push(Adapter::new(NAME, move |mut connection: Connection| {
+                let model = connection.spec.reference();
+                let always = tags.models.contains(&model);
+                if !(always || tags.detect) {
+                    return connection;
+                }
+                let split = move || {
+                    let mut parts = Parts::new(always);
+                    move |relayed| parts.relay(relayed)
+                };
+                let mut handler = connection.handler.0.map_stream(NAME, split);
+                if !tags.resend_reasoning {
+                    handler = handler.layered(LeaveOutSplitReasoning);
+                }
+                connection.handler = Handler(handler);
+                connection
+            }));
     }
 }
 
-/// Puts the stream split in front of each new model call that may send
-/// tags, and leaves earlier reasoning out of a request to a model that
-/// sends them.
-fn prepare(
-    mut calls: Query<(&mut ModelRequest, Option<&ForAgent>), Added<Admitted>>,
-    agents: Query<&Connection, With<Agent>>,
-    tags: Res<ThinkTags>,
-    detected: Res<Detected>,
-) {
-    for (mut call, agent) in &mut calls {
-        let own = agent.and_then(|&ForAgent(agent)| agents.get(agent).ok());
-        let Some(mut connection) = call.connection.as_ref().or(own).cloned() else {
-            continue;
+/// Leaves reasoning no provider item stands behind, which is what the split
+/// makes, out of the assistant messages a request sends.
+struct LeaveOutSplitReasoning;
+
+impl Intercept for LeaveOutSplitReasoning {
+    fn name(&self) -> String {
+        format!("{NAME}-history")
+    }
+
+    async fn before(&self, _: EffectId, kind: &EffectKind) -> Decision {
+        let EffectKind::Completion { request, stream } = kind else {
+            return Decision::Proceed;
         };
-        let model = connection.spec.reference();
-        let always = tags.always(&model);
-        if !(always || tags.detect) {
-            continue;
+        let split = |block: &AssistantContent| matches!(block, AssistantContent::Reasoning(reasoning) if reasoning.native.is_none());
+        let answers = || {
+            request
+                .chat_history
+                .iter()
+                .filter_map(|message| match message {
+                    message::Message::Assistant(answer) => Some(answer),
+                    _ => None,
+                })
+        };
+        if !answers().any(|answer| answer.content.iter().any(split)) {
+            return Decision::Proceed;
         }
-        let inner = connection.handler.0;
-        connection.handler = Handler(ErasedHandler::new(SplitStream { inner, always }));
-        call.connection = Some(connection);
-        if tags.resend_reasoning || !(always || detected.0.contains(&model)) {
-            continue;
-        }
-        for message in &mut call.request.chat_history {
+        let mut request = request.clone();
+        for message in &mut request.chat_history {
             if let message::Message::Assistant(answer) = message {
-                answer
-                    .content
-                    .retain(|block| !matches!(block, AssistantContent::Reasoning(_)));
+                answer.content.retain(|block| !split(block));
             }
         }
+        let stream = *stream;
+        Decision::Patch(EffectKind::Completion { request, stream })
+    }
+
+    async fn after(
+        &self,
+        _: EffectId,
+        _: &EffectKind,
+        _: &Result<Answered, ErrorReport>,
+    ) -> Verdict {
+        Verdict::Keep
     }
 }
 
-/// Splits the text of each model reply not settled yet, once: the stream
-/// was split as it came, the response it ended with is the provider's.
-fn split_replies(
-    calls: Query<(Entity, &ModelRequest, &Outcome), Unreviewed>,
-    tags: Res<ThinkTags>,
-    mut detected: ResMut<Detected>,
-    mut commands: Commands,
-) {
-    for (call, request, outcome) in &calls {
-        let (Some(connection), Some(response)) = (&request.connection, outcome.completion()) else {
-            continue;
-        };
-        let model = connection.spec.reference();
-        let always = tags.always(&model);
-        if !(always || tags.detect) {
-            continue;
-        }
-        let mut split = false;
-        let mut choice = Vec::with_capacity(response.choice.len());
-        for block in &response.choice {
-            let AssistantContent::Text(text) = block else {
-                choice.push(block.clone());
-                continue;
-            };
-            let mut splitter = Splitter::new(always);
-            let mut pieces = splitter.push(&text.text);
-            pieces.extend(splitter.finish());
-            if !splitter.split() {
-                choice.push(block.clone());
-                continue;
-            }
-            split = true;
-            choice.extend(blocks(pieces));
-        }
-        if choice == response.choice {
-            continue;
-        }
-        if split && !always && !detected.0.contains(&model) {
-            detected.0.insert(model);
-        }
-        let mut response = response.clone();
-        response.choice = choice;
-        commands
-            .entity(call)
-            .insert(Outcome(Ok(Answered::Completion(response))));
-    }
-}
-
-/// A model handler whose streamed text has its `<think>` tags split out.
-struct SplitStream {
-    inner: ErasedHandler,
-    /// Split from the first byte, not only a reply that starts with a tag.
-    always: bool,
-}
-
-impl Serve for SplitStream {
-    type Family = family::Dynamic;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        let mut descriptor = self.inner.descriptor();
-        descriptor.layers.insert(0, "think-tags".to_owned());
-        descriptor
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        match self.inner.handle(kind, dispatch).await {
-            Reply::Stream(events) => {
-                let mut parts = Parts::new(self.always);
-                let split = events.flat_map(move |item| futures::stream::iter(parts.relay(item)));
-                let split: StreamEvents = Box::pin(split);
-                Reply::Stream(split)
-            }
-            other => other,
-        }
-    }
-}
-
-/// The parts of one reply stream, renumbered as text parts split.
+/// One reply being split: its parts renumbered as text parts split, so the
+/// rewritten events are a valid transcript of the rewritten response.
 struct Parts {
     always: bool,
     /// The next part number to give out.
@@ -243,15 +179,20 @@ impl Parts {
         part
     }
 
-    /// What `item` becomes once split.
-    fn relay(&mut self, item: Result<Relayed, ErrorReport>) -> Vec<Result<Relayed, ErrorReport>> {
-        let Ok(Relayed::Item(Item::Event(event))) = item else {
-            return vec![item];
-        };
-        self.event(event)
-            .into_iter()
-            .map(|event| Ok(Relayed::Item(Item::Event(event))))
-            .collect()
+    /// What `relayed` becomes once split.
+    fn relay(&mut self, relayed: Relayed) -> Vec<Relayed> {
+        match relayed {
+            Relayed::Item(Item::Event(event)) => self
+                .event(event)
+                .into_iter()
+                .map(|event| Relayed::Item(Item::Event(event)))
+                .collect(),
+            Relayed::Done(mut response) => {
+                response.choice = split_choice(&response.choice, self.always);
+                vec![Relayed::Done(response)]
+            }
+            other => vec![other],
+        }
     }
 
     fn event(&mut self, event: StreamEvent) -> Vec<StreamEvent> {
@@ -365,18 +306,31 @@ fn renumber(event: StreamEvent, part: Part) -> StreamEvent {
     }
 }
 
-/// The blocks of `pieces`: one per run of a kind.
-fn blocks(pieces: Vec<Piece>) -> Vec<AssistantContent> {
-    let mut runs: Vec<(PartKind, String)> = Vec::new();
-    for Piece { kind, text } in pieces {
-        match runs.last_mut() {
-            Some((last, so_far)) if *last == kind => so_far.push_str(&text),
-            _ => runs.push((kind, text)),
+/// A response's blocks, each text block split as its stream was.
+fn split_choice(choice: &[AssistantContent], always: bool) -> Vec<AssistantContent> {
+    let mut split = Vec::with_capacity(choice.len());
+    for block in choice {
+        let AssistantContent::Text(text) = block else {
+            split.push(block.clone());
+            continue;
+        };
+        let mut splitter = Splitter::new(always);
+        let mut pieces = splitter.push(&text.text);
+        pieces.extend(splitter.finish());
+        if splitter.mode != Mode::Split {
+            split.push(block.clone());
+            continue;
         }
+        let mut runs: Vec<(PartKind, String)> = Vec::new();
+        for Piece { kind, text } in pieces {
+            match runs.last_mut() {
+                Some((last, so_far)) if *last == kind => so_far.push_str(&text),
+                _ => runs.push((kind, text)),
+            }
+        }
+        split.extend(runs.into_iter().map(|(kind, text)| content(kind, text)));
     }
-    runs.into_iter()
-        .map(|(kind, text)| content(kind, text))
-        .collect()
+    split
 }
 
 /// A fragment of a split reply: [`PartKind::Text`] or
@@ -415,11 +369,6 @@ impl Splitter {
             held: String::new(),
             trim: always,
         }
-    }
-
-    /// Whether this text is split.
-    fn split(&self) -> bool {
-        self.mode == Mode::Split
     }
 
     /// The pieces `text` completes.

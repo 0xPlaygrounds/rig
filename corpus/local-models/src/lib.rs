@@ -10,9 +10,12 @@
 //!   picker, `--model`, the saved choice, usage and cost take them like any
 //!   other model.
 //! - A model the server stops listing, or whose server is down, is marked
-//!   unavailable (and so named in the picker); a model call to it is
-//!   refused at the gate with "Ollama not running at …". An endpoint that
-//!   is down is skipped with one debug line.
+//!   unavailable: the vendor's provider refuses to connect it with "Ollama
+//!   not running at …" (so the picker notes it so, and choosing it fails),
+//!   and a model call of an agent already connected to it is refused at the
+//!   gate with the same words. An endpoint that is down is skipped with one
+//!   debug line. A saved choice of a local model connects once a probe
+//!   finds it (the kernel reconnects when the catalog changes).
 //! - A model without tool support is offered none (the kernel's rule for a
 //!   catalog entry without tools), and its agent's system prompt says so,
 //!   in words that leave room for a plugin that describes tools as text
@@ -151,9 +154,7 @@ pub struct LocalModel {
 impl LocalModel {
     /// Its catalog entry.
     fn spec(&self, vendor: ProviderId) -> ModelSpec {
-        let state = if self.available { "" } else { ", unavailable" };
         let spec = ModelSpec::new(vendor, &self.name)
-            .with_display_name(format!("{} (local{state})", self.name))
             .with_tools(self.tools)
             .with_pricing(Pricing::new(0.0, 0.0));
         match self.context {
@@ -353,14 +354,12 @@ async fn fetch(
 }
 
 /// Takes a finished probe: marks each model available or not, lists the
-/// models in the catalog, points the `local` vendor at their servers, and
-/// connects the agents whose saved choice named a model not found yet.
+/// models in the catalog and points the `local` vendor at their servers.
 fn found(
     done: On<Add<Done<Probed>>>,
     mut probes: Query<&mut Done<Probed>>,
     mut local: ResMut<LocalModels>,
     mut models: ResMut<Models>,
-    agents: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     mut commands: Commands,
 ) {
     let Ok(mut probe) = probes.get_mut(done.entity) else {
@@ -399,39 +398,28 @@ fn found(
     for model in local.0.values() {
         catalog.insert(model.spec(vendor));
     }
-    let servers: BTreeMap<String, Endpoint> = local
-        .0
-        .iter()
-        .map(|(name, model)| (name.clone(), model.endpoint.clone()))
-        .collect();
+    let servers = local.0.clone();
     models
         .0
         .provide(vendor, move |spec: &ModelSpec, catalog: &Catalog| {
             serve(&servers, spec, catalog)
         });
-    // A session restored on a local model could not connect it before
-    // this probe found it: choosing it again connects it now.
-    for (agent, choice) in &agents {
-        let name = choice
-            .0
-            .strip_prefix(VENDOR)
-            .and_then(|it| it.strip_prefix('/'));
-        if name.is_some_and(|name| local.0.contains_key(name)) {
-            commands.entity(agent).insert(choice.clone());
-        }
-    }
 }
 
-/// The local model `spec` on its server's OpenAI-compatible `/v1`.
+/// The local model `spec` on its server's OpenAI-compatible `/v1`, or why
+/// it cannot be reached.
 fn serve(
-    servers: &BTreeMap<String, Endpoint>,
+    servers: &BTreeMap<String, LocalModel>,
     spec: &ModelSpec,
     catalog: &Catalog,
 ) -> Result<ErasedHandler, ConnectError> {
-    let endpoint = servers.get(&spec.id).ok_or(ConnectError::CatalogOnly {
-        vendor: VENDOR.to_owned(),
-        served_by: "a local server, once one lists it",
-    })?;
+    let model = servers
+        .get(&spec.id)
+        .ok_or_else(|| ConnectError::Provider(format!("no local server lists {}", spec.id)))?;
+    let endpoint = &model.endpoint;
+    if !model.available {
+        return Err(ConnectError::Provider(endpoint.down()));
+    }
     let served = format!("{}/{}", endpoint.server.dialect(), spec.id);
     let options = ConnectOptions::new().base_url(format!("{}/v1", endpoint.base()));
     let model = catalog.connect_with(served.as_str(), options)?;

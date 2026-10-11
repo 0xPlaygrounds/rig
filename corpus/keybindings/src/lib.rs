@@ -174,8 +174,7 @@ impl Entry {
             world.entity_mut(entity).insert(Disabled);
         }
 
-        let mark = binding.clone();
-        match action {
+        let bound = match action {
             Action::Editor => app.add_key_binding(binding, edit),
             Action::Command(line) => {
                 let line = line.trim_start_matches('/').to_owned();
@@ -185,11 +184,8 @@ impl Entry {
             Action::CycleModel(models) => app.add_key_binding(binding, cycle_model(models)),
             Action::Send(text) => app.add_key_binding(binding, send(text)),
         };
-        // `add_key_binding` does not return the binding's entity.
-        let world = app.world_mut();
-        let mut bound = world.query::<(Entity, &KeyBinding)>();
-        if let Some((entity, _)) = bound.iter(world).find(|(_, other)| **other == mark) {
-            world.entity_mut(entity).insert(UserKey);
+        if let Some(entity) = bound {
+            app.world_mut().entity_mut(entity).insert(UserKey);
         }
         Ok(())
     }

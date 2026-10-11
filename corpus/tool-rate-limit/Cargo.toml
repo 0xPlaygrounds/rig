@@ -25,7 +25,6 @@ serde = { workspace = true, features = ["derive"] }
 toml = "1"
 
 [dev-dependencies]
-bevy_time = { workspace = true }
 futures = { workspace = true }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }

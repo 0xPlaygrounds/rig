@@ -59,13 +59,16 @@ fn asked(world: &World, agent: Entity) -> usize {
     })
 }
 
-/// Runs `line` for `agent` and returns the notices it wrote.
+/// Runs `line` for `agent` and returns the notices it wrote, and why it
+/// was refused.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
     let world = app.world_mut();
     world.trigger(RunCommand::new(agent, line.to_owned()));
     world.flush();
     let mut notices = world.resource_mut::<Messages<Notice>>();
-    let texts: Vec<String> = notices.drain().map(|notice| notice.text).collect();
+    let mut texts: Vec<String> = notices.drain().map(|notice| notice.text).collect();
+    let mut recalled = world.resource_mut::<Messages<Recalled>>();
+    texts.extend(recalled.drain().filter_map(|recalled| recalled.why));
     texts.join("\n")
 }
 
@@ -88,6 +91,16 @@ fn a_retried_turn_answers_on_another_model_and_the_old_answer_can_be_picked() {
         .trigger(Deliver::new(agent, "the question", DeliveryMode::Queue));
     run_until(&mut app, &wakes, idle_with("answer A"));
     assert_eq!(last_answer(app.world(), agent), "answer A");
+
+    let world = app.world_mut();
+    let mut completions = world.query::<&rig_tui::ArgCompletion>();
+    let offered: Vec<String> = completions
+        .iter(world)
+        .flat_map(|completion| completion.candidates.iter().map(|item| item.text.clone()))
+        .collect();
+    assert_eq!(offered, ["--force", "test/a", "test/b"]);
+    let refused = command(&mut app, agent, "retry-with test/bb");
+    assert!(refused.contains("`test/b`"), "{refused}");
 
     command(&mut app, agent, "retry-with test/b");
     run_until(&mut app, &wakes, idle_with("answer B"));

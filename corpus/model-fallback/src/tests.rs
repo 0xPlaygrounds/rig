@@ -2,6 +2,7 @@ use std::sync::mpsc::Receiver;
 
 use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::MemoryStore;
+use rig_compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::{Catalog, ModelSpec};
 use rig_core::operation::Completion;
@@ -70,7 +71,12 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
              chain = [\"anthropic/claude-opus-4-5\", \"openai/gpt-5\"]\n\
              cooldown = \"5m\"",
         ))
-        .add_plugins((AgentPlugin, JournalPlugin, ModelFallbackPlugin))
+        .add_plugins((
+            AgentPlugin,
+            JournalPlugin,
+            CompactionPlugin,
+            ModelFallbackPlugin,
+        ))
         .insert_resource(TimeUpdateStrategy::ManualDuration(FRAME))
         .init_resource::<Ended>()
         .init_resource::<Notices>()

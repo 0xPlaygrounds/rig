@@ -103,8 +103,8 @@ impl Recent {
     }
 }
 
-/// On a call this plugin let through. It takes a `concurrent` slot until
-/// the call is answered.
+/// On a call this plugin let through and not yet answered: it takes a
+/// `concurrent` slot.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Slot(Key);
@@ -132,7 +132,7 @@ impl Plugin for ToolRateLimitPlugin {
             .register_required_components::<TurnOf, TurnUsage>()
             .add_systems(AgentPass, limit.in_set(Stage::Gate))
             .add_observer(free_on_answer)
-            .add_observer(free_on_removal)
+            .add_observer(free)
             .add_command("limits", "Show each tool limit and its use", show_limits);
         #[cfg(feature = "tui")]
         app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
@@ -155,7 +155,7 @@ fn limit(
         ),
         (Undecided, Without<Slot>),
     >,
-    slots: Query<&Slot, Without<Outcome>>,
+    slots: Query<&Slot>,
     limits: Res<Limits>,
     mut turns: Query<&mut TurnUsage>,
     mut agents: Query<&mut SessionUsage>,
@@ -245,34 +245,24 @@ fn limit(
     }
 }
 
-/// An answered call frees its slot: the calls waiting for one are gated
+/// An answered call gives its slot back.
+fn free_on_answer(answered: On<Insert<Outcome>>, mut commands: Commands) {
+    commands.entity(answered.entity).try_remove::<Slot>();
+}
+
+/// A slot given back, answered or despawned unanswered as an interrupt
+/// does, releases the calls of its tool waiting for one: they are gated
 /// again.
-fn free_on_answer(
-    answered: On<Insert<Outcome>>,
+fn free(
+    freed: On<Remove<Slot>>,
     slots: Query<&Slot>,
     waits: Query<(Entity, &WaitingFor)>,
-    commands: Commands,
+    mut commands: Commands,
 ) {
-    if let Ok(Slot(key)) = slots.get(answered.entity) {
-        free(key, &waits, commands);
-    }
-}
-
-/// So does one despawned unanswered, as an interrupt does.
-fn free_on_removal(
-    removed: On<Remove<Slot>>,
-    slots: Query<&Slot, Without<Outcome>>,
-    waits: Query<(Entity, &WaitingFor)>,
-    commands: Commands,
-) {
-    if let Ok(Slot(key)) = slots.get(removed.entity) {
-        free(key, &waits, commands);
-    }
-}
-
-/// Releases the calls of `key` waiting for a running one.
-fn free(key: &Key, waits: &Query<(Entity, &WaitingFor)>, mut commands: Commands) {
-    for (hold, wait) in waits {
+    let Ok(Slot(key)) = slots.get(freed.entity) else {
+        return;
+    };
+    for (hold, wait) in &waits {
         if wait.until.is_none() && wait.key == *key {
             commands.entity(hold).despawn();
         }
@@ -287,7 +277,7 @@ fn show_limits(
     turns: Query<&TurnUsage>,
     shared: Res<SharedUsage>,
     mut recent: ResMut<Recent>,
-    slots: Query<&Slot, Without<Outcome>>,
+    slots: Query<&Slot>,
     waits: Query<&WaitingFor>,
     time: Res<Time>,
     mut notices: MessageWriter<Notice>,

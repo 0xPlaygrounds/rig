@@ -8,8 +8,11 @@
 //! retries gave up, or a retry would not help) and supersedes the call; a
 //! Prepare system sends a call bound for a cooling model to the chain
 //! instead. A context overflow is left to compaction, and a failure another
-//! plugin holds or superseded is left to it. The `[model-fallback]` table
-//! of `settings.toml`:
+//! plugin holds or superseded is left to it. Both systems are in the public
+//! [`FallbackSystems`] sets, ordered against [`CompactionSystems`]: a call
+//! is routed before compaction measures it, and a failure is taken over
+//! after compaction had its chance. The `[model-fallback]` table of
+//! `settings.toml`:
 //!
 //! ```toml
 //! [model-fallback]
@@ -20,6 +23,7 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
 use serde::{Deserialize, Deserializer};
@@ -52,6 +56,15 @@ impl Default for FallbackChain {
 #[derive(Resource, Default)]
 struct Cooling(HashMap<String, Duration>);
 
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum FallbackSystems {
+    /// Prepare: sends a turn's call bound for a cooling model to the chain.
+    Route,
+    /// Review: takes over a turn's call that failed for good.
+    TakeOver,
+}
+
 #[derive(Default)]
 pub struct ModelFallbackPlugin;
 
@@ -59,11 +72,22 @@ impl Plugin for ModelFallbackPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FallbackChain>("model-fallback")
             .init_resource::<Cooling>()
+            .configure_sets(
+                AgentPass,
+                (
+                    FallbackSystems::Route
+                        .in_set(Stage::Prepare)
+                        .before(CompactionSystems::Prepare),
+                    FallbackSystems::TakeOver
+                        .in_set(Stage::Review)
+                        .after(CompactionSystems::Recover),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    route.in_set(Stage::Prepare),
-                    fall_back.in_set(Stage::Review),
+                    route.in_set(FallbackSystems::Route),
+                    fall_back.in_set(FallbackSystems::TakeOver),
                 ),
             );
     }

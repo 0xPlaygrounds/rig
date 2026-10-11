@@ -276,14 +276,11 @@ fn confine(
     let Some(backend) = &sandbox.backend else {
         return;
     };
-    let mut launcher = sandbox.unconfined.clone();
-    let wrapped = std::mem::take(&mut launcher.prefix);
-    launcher.prefix = backend.prefix(&root.0, &config, network.allowed);
-    launcher.prefix.extend(wrapped);
-    if launcher.cwd.is_none() {
-        launcher.cwd = Some(root.0.clone());
-    }
-    processes.set(launcher);
+    let unconfined = &sandbox.unconfined;
+    let mut prefix = backend.prefix(&root.0, &config, network.allowed);
+    prefix.extend(unconfined.prefix.iter().cloned());
+    let cwd = unconfined.cwd.clone().unwrap_or_else(|| root.0.clone());
+    processes.set(unconfined.clone().wrapped(prefix).in_dir(cwd));
 }
 
 /// Refuses each `shell` call when there is no sandbox to run it in.

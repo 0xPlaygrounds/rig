@@ -82,7 +82,9 @@ fn the_goal_is_in_every_request_survives_a_restart_and_is_absent_in_a_new_sessio
     assert!(preamble.contains("Session goal: Ship OAuth"), "{preamble}");
     let status = app.world().resource::<AppStatus>().0.clone();
     assert!(
-        status.iter().any(|item| item.text == "◎ Ship OAuth"),
+        status
+            .iter()
+            .any(|item| item.text == "◎ Ship OAuth" && item.min_width > 0),
         "{status:?}"
     );
     assert_eq!(resume_label(&mut app), "◎ Ship OAuth");

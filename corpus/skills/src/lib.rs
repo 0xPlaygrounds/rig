@@ -35,7 +35,6 @@ impl Plugin for SkillsPlugin {
             .init_resource::<Skills>()
             .add_message::<FileChanges>()
             .register_required_components::<Agent, LoadedSkills>()
-            .register_required_components::<Agent, Coming>()
             .register_required_components::<TurnOf, LoadedInTurn>()
             .add_open_tool(
                 LOAD_SKILL,
@@ -61,7 +60,7 @@ impl Plugin for SkillsPlugin {
                 "List the skills and which were loaded this session",
                 list_skills,
             )
-            .add_observer(take_coming)
+            .add_observer(delivered)
             .add_observer(forget_condensed)
             .add_systems(Startup, watch_roots)
             .add_systems(Update, refresh.before(AgentLoop));
@@ -102,9 +101,9 @@ pub struct LoadedSkills(pub Vec<String>);
 #[derive(Component, Default, Debug)]
 pub struct LoadedInTurn(pub Vec<String>);
 
-/// The skills `/skill` sent an idle agent, for the turn its message starts.
-#[derive(Component, Default)]
-struct Coming(Vec<String>);
+/// On a message `/skill` sent: the skill it carries.
+#[derive(Component)]
+struct SkillMessage(String);
 
 /// The prompt section listing the skills.
 #[derive(Component)]
@@ -287,22 +286,24 @@ fn refresh(
     }
 }
 
-/// A turn started by a `/skill` message holds that skill.
-fn take_coming(
-    started: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    mut coming: Query<&mut Coming>,
-    mut loaded: Query<&mut LoadedInTurn>,
+/// A `/skill` message delivered into a turn loads its skill there, and
+/// for the session.
+fn delivered(
+    delivered: On<Add<DeliveredIn>>,
+    messages: Query<(&DeliveredIn, &SkillMessage, &ForAgent)>,
+    mut turns: Query<&mut LoadedInTurn>,
+    mut session: Query<&mut LoadedSkills>,
 ) {
-    let Ok(&TurnOf(agent)) = turns.get(started.entity) else {
+    let Ok((&DeliveredIn(turn), SkillMessage(name), &ForAgent(agent))) =
+        messages.get(delivered.entity)
+    else {
         return;
     };
-    if let (Ok(mut coming), Ok(mut loaded)) =
-        (coming.get_mut(agent), loaded.get_mut(started.entity))
-    {
-        for name in coming.0.drain(..) {
-            add(&mut loaded.0, &name);
-        }
+    if let Ok(mut turn) = turns.get_mut(turn) {
+        add(&mut turn.0, name);
+    }
+    if let Ok(mut session) = session.get_mut(agent) {
+        add(&mut session.0, name);
     }
 }
 
@@ -371,12 +372,10 @@ fn load_skill(
 }
 
 /// `/skill <name> [text]`: sends the skill's body with the text, as the
-/// user's message, into the running turn or the one it starts.
+/// user's message, titled with the skill, as the line was sent.
 fn send_skill(
     In(args): In<CommandArgs>,
     skills: Res<Skills>,
-    mut agents: Query<(&mut LoadedSkills, &mut Coming, Option<&ActiveTurn>)>,
-    mut turns: Query<&mut LoadedInTurn>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -393,16 +392,11 @@ fn send_skill(
             return;
         }
     };
-    if let Ok((mut session, mut coming, running)) = agents.get_mut(args.agent) {
-        add(&mut session.0, name);
-        match running.and_then(|running| turns.get_mut(running.turn()).ok()) {
-            Some(mut turn) => add(&mut turn.0, name),
-            None => add(&mut coming.0, name),
-        }
-    }
-    let message = format!("{body}\n\n{}", text.trim());
-    let message = Deliver::new(args.agent, message.trim(), DeliveryMode::Steer);
-    commands.trigger(message.literal());
+    let text = format!("{body}\n\n{}", text.trim());
+    let origin = Origin::user().titled(format!("skill {name}"));
+    let message = Incoming::new(text.trim(), args.mode).with_origin(origin);
+    let mark = SkillMessage(name.to_owned());
+    commands.spawn((message, ForAgent(args.agent), mark));
 }
 
 /// `/skills`: the skills, which this agent loaded this session, and the

@@ -11,12 +11,9 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # Custom header names read from the file.
 http = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# `ModelItem`: a configured model without its key, listed and marked.
-rig-models = { path = "../../plugins/rig-models", default-features = false }
 # The shared HTTP client every configured model sends through.
 rig-reqwest = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -27,5 +24,8 @@ toml = "1"
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# `/model`, its completions with each model's status.
+rig-models = { path = "../../plugins/rig-models" }
+rig-tui = { path = "../../plugins/rig-tui" }
 # The cost a reply adds, at the configured prices.
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

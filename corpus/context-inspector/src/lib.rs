@@ -8,7 +8,9 @@
 //! [`Built`] when the `ModelRequest` is inserted, before any Prepare
 //! system ran; the request as sent is copied to the agent's
 //! [`LastRequest`] when the call is `Started`, with the prompt sections
-//! that applied and the plugin that spawned each ([`ProvidedBy`]).
+//! that applied and the plugin that spawned each ([`ProvidedBy`]). Each
+//! part of the system prompt is rendered as the kernel renders it
+//! ([`system_prompt`], [`tool_rules`]) and found in the prompt sent.
 //!
 //! `/why [full] [agent]` (or `/context --last`) then shows the request's
 //! estimated tokens, a bar of the context window by part, the system
@@ -21,6 +23,7 @@ use std::fmt::Write as _;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, ToolDefinition, tokens_label};
+use rig_harness::rig_ecs::prompt::{system_prompt, tool_rules};
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 
 use message::Message;
@@ -63,7 +66,9 @@ pub struct LastRequest {
     pub built: Option<CompletionRequest>,
     /// The agent's own prompt.
     pub role: String,
-    /// The prompt sections that applied, in prompt order.
+    /// The `<tool_rules>` block of the tools sent, as the kernel renders it.
+    pub rules: String,
+    /// The prompt sections that applied.
     pub sections: Vec<SectionNote>,
     /// The summary that replaced older messages, if any.
     pub summary: Option<String>,
@@ -72,16 +77,21 @@ pub struct LastRequest {
 /// A prompt section that applied to a request, and who spawned it.
 #[derive(Clone, Debug)]
 pub struct SectionNote {
-    /// Its tag.
-    pub tag: String,
-    /// Its text, trimmed as the prompt sends it.
-    pub text: String,
+    /// The section.
+    pub section: PromptSection,
     /// Its entity's name, if any.
     pub name: Option<String>,
     /// The plugin that spawned it, if known.
     pub plugin: Option<String>,
     /// Whether it is the agent's own (`SectionOf`).
     pub own: bool,
+}
+
+impl SectionNote {
+    /// The section as the kernel writes it in a system prompt.
+    fn block(&self) -> String {
+        system_prompt("", "", [&self.section])
+    }
 }
 
 /// Keeps the request of each turn's call as it is first put on the call.
@@ -107,6 +117,7 @@ fn keep_sent(
         Option<&Name>,
         Option<&ProvidedBy>,
     )>,
+    tools: Query<(&ToolDef, &ToolRules)>,
     names: Query<&Name>,
     mut commands: Commands,
 ) {
@@ -117,30 +128,29 @@ fn keep_sent(
         return;
     };
     let connection = call.connection.as_ref().or(own);
-    let mut applying: Vec<(i32, SectionNote)> = sections
+    let rules = call.request.tools.iter().filter_map(|sent| {
+        let rules = tools.iter().find(|(def, _)| def.0.name == sent.name);
+        rules.map(|(_, rules)| rules)
+    });
+    let sections = sections
         .iter()
-        .filter(|(section, of, ..)| {
-            !section.text.trim().is_empty() && of.is_none_or(|of| of.0 == agent)
+        .filter(|(_, of, ..)| of.is_none_or(|of| of.0 == agent))
+        .map(|(section, of, name, by)| SectionNote {
+            section: section.clone(),
+            name: name.map(|name| name.as_str().to_owned()),
+            plugin: by.and_then(|by| names.get(by.0).ok()).map(short),
+            own: of.is_some(),
         })
-        .map(|(section, of, name, by)| {
-            let note = SectionNote {
-                tag: section.tag.clone(),
-                text: section.text.trim().to_owned(),
-                name: name.map(|name| name.as_str().to_owned()),
-                plugin: by.and_then(|by| names.get(by.0).ok()).map(short),
-                own: of.is_some(),
-            };
-            (section.order, note)
-        })
+        .filter(|note| !note.block().is_empty())
         .collect();
-    applying.sort_by(|(a, x), (b, y)| a.cmp(b).then_with(|| x.tag.cmp(&y.tag)));
     let last = LastRequest {
         model: connection.map_or_else(String::new, |connection| connection.spec.reference()),
         window: connection.and_then(|connection| connection.spec.context_window),
         sent: call.request.clone(),
         built: built.map(|built| built.0.clone()),
-        role: prompt.0.trim().to_owned(),
-        sections: applying.into_iter().map(|(_, note)| note).collect(),
+        role: system_prompt(&prompt.0, "", []),
+        rules: tool_rules(rules),
+        sections,
         summary: condensed.map(|condensed| condensed.summary.clone()),
     };
     commands.entity(agent).try_insert(last);
@@ -410,59 +420,74 @@ fn report(
     )
 }
 
-/// The system prompt's parts, found in the sent `preamble`: the agent's own
-/// prompt, the tool rules and each section, with what was rewritten, left
-/// out or added in `changes`.
+/// The system prompt's parts, as the kernel renders each, found in the
+/// sent `preamble` in the order it holds them: the agent's own prompt, the
+/// tool rules and each section, with what was rewritten, left out or added
+/// in `changes`.
 fn prompt_parts(last: &LastRequest, preamble: &str, changes: &mut Vec<String>) -> Vec<String> {
-    let mut parts = Vec::new();
+    let mut found = Vec::new();
     let mut rest = preamble.to_owned();
     if !last.role.is_empty() {
-        if rest.starts_with(&last.role) {
-            let size = tokens_label(tokens(&last.role));
-            parts.push(format!("  the agent's own prompt: ~{size}"));
+        if preamble.starts_with(&last.role) {
+            found.push((
+                0,
+                format!("  the agent's own prompt: ~{}", size(&last.role)),
+            ));
             rest = rest.replacen(&last.role, "", 1);
         } else {
             changes.push("~ the agent's own prompt was rewritten".to_owned());
         }
     }
-    if let (Some(start), Some(end)) = (rest.find("<tool_rules>"), rest.find("</tool_rules>"))
-        && let Some(block) = rest.get(start..end + "</tool_rules>".len())
+    if let Some(at) = preamble
+        .find(&last.rules)
+        .filter(|_| !last.rules.is_empty())
     {
-        let block = block.to_owned();
-        let size = tokens_label(tokens(&block));
-        parts.push(format!("  <tool_rules> of the tools offered: ~{size}"));
-        rest = rest.replacen(&block, "", 1);
+        let line = format!(
+            "  <tool_rules> of the tools offered: ~{}",
+            size(&last.rules)
+        );
+        found.push((at, line));
+        rest = rest.replacen(&last.rules, "", 1);
     }
-    for section in &last.sections {
-        let block = format!("<{0}>\n{1}\n</{0}>", section.tag, section.text);
-        let named = section
+    for note in &last.sections {
+        let tag = &note.section.tag;
+        let block = note.block();
+        let named = note
             .name
             .as_deref()
             .map(|name| format!(" \"{name}\""))
             .unwrap_or_default();
-        if rest.contains(&block) {
-            let from = match (&section.plugin, section.own) {
+        if let Some(at) = preamble.find(&block) {
+            let from = match (&note.plugin, note.own) {
                 (Some(plugin), _) => format!("from {plugin}"),
                 (None, true) => "this agent's own".to_owned(),
                 (None, false) => "from no known plugin".to_owned(),
             };
-            let size = tokens_label(tokens(&block));
-            parts.push(format!("  <{}>{named}: ~{size}, {from}", section.tag));
+            found.push((at, format!("  <{tag}>{named}: ~{}, {from}", size(&block))));
             rest = rest.replacen(&block, "", 1);
-        } else if rest.contains(&format!("<{}>", section.tag)) {
-            changes.push(format!("~ section <{}>{named} rewritten", section.tag));
+        } else if preamble.contains(&format!("<{tag}>")) {
+            changes.push(format!("~ section <{tag}>{named} rewritten"));
         } else {
-            changes.push(format!("- section <{}>{named} left out", section.tag));
+            changes.push(format!("- section <{tag}>{named} left out"));
         }
     }
+    found.sort_by_key(|(at, _)| *at);
+    let mut parts: Vec<String> = found.into_iter().map(|(_, line)| line).collect();
     let added = rest.trim();
     if !added.is_empty() {
-        let size = tokens_label(tokens(added));
         let shown: String = added.chars().take(60).collect();
-        parts.push(format!("  added before sending: ~{size}"));
-        changes.push(format!("+ system prompt text \"{shown}\" (~{size} tokens)"));
+        parts.push(format!("  added before sending: ~{}", size(added)));
+        changes.push(format!(
+            "+ system prompt text \"{shown}\" (~{} tokens)",
+            size(added)
+        ));
     }
     parts
+}
+
+/// The estimated tokens of a text, as a label.
+fn size(text: &str) -> String {
+    tokens_label(tokens(text))
 }
 
 /// The tools added to and left out of the `built` ones.

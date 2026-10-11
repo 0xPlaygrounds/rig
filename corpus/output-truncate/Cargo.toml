@@ -13,14 +13,15 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The `shell` that returns all of its output, for this plugin to cut.
+# The default `shell`'s own cut, which this plugin turns off to cut itself.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+# The `shell` tool's name.
 rig-tools = { path = "../../crates/rig-tools" }
 # The `[truncate]` settings table.
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 serde_json = { workspace = true }

@@ -2,21 +2,20 @@
 //!
 //! A desktop notification, or the terminal's OSC 9 / OSC 777 escape, and
 //! the bell, when a top-level agent's long turn ends or a picker or
-//! question waits on the user. Nothing is sent while the terminal reports
-//! that it has focus, nor in a `--print` run. `/notify on|off`.
+//! question waits on the user. Nothing is sent while the terminal view has
+//! the user's focus ([`TerminalFocus`]), nor in a `--print` run. The
+//! escapes go through the view's own writer ([`TerminalWrite`]).
+//! `/notify on|off`.
 //!
 //! The `[notify]` table of the settings: `min_seconds = 20`,
 //! `via = "desktop" | "osc9" | "osc777" | "bell"`.
 
-use std::fs::OpenOptions;
-use std::io::Write;
 use std::process::Stdio;
 use std::sync::Arc;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
-use rig_tui::TerminalEvent;
-use rig_tui::crossterm::event::Event;
+use rig_tui::{TerminalFocus, TerminalWrite};
 use serde::Deserialize;
 
 /// How long a picker or question waits on the user before it notifies.
@@ -24,8 +23,9 @@ pub const PATIENCE: Duration = Duration::from_secs(2);
 
 /// Sends a notification.
 pub trait Notify: Send + Sync + 'static {
-    /// Shows `text`, such as `rig: done — All done.`.
-    fn notify(&self, text: &str);
+    /// Shows `text`, such as `rig: done — All done.`, writing to the
+    /// terminal what it wants written there.
+    fn notify(&self, text: &str, terminal: &mut MessageWriter<TerminalWrite>);
 }
 
 /// What sends the notifications. Inserted before the app is finished, it
@@ -78,7 +78,7 @@ pub struct SystemNotifier {
 }
 
 impl Notify for SystemNotifier {
-    fn notify(&self, text: &str) {
+    fn notify(&self, text: &str, terminal: &mut MessageWriter<TerminalWrite>) {
         // An escape must not end early on a control character of the text.
         let clean: String = text.chars().filter(|c| !c.is_control()).collect();
         let escape = match self.via {
@@ -90,7 +90,7 @@ impl Notify for SystemNotifier {
             Via::Osc777 => format!("\x1b]777;notify;rig;{clean}\x07"),
             Via::Bell => String::new(),
         };
-        to_terminal(&format!("{escape}\x07"));
+        terminal.write(TerminalWrite(format!("{escape}\x07").into_bytes()));
     }
 }
 
@@ -119,35 +119,10 @@ fn desktop(processes: &Processes, text: &str) {
     }
 }
 
-/// Writes `bytes` to the controlling terminal, beside the terminal view's
-/// frames, if there is one.
-fn to_terminal(bytes: &str) {
-    if let Ok(mut tty) = OpenOptions::new().write(true).open("/dev/tty") {
-        tty.write_all(bytes.as_bytes()).ok();
-        tty.flush().ok();
-    }
-}
-
-/// Whether the terminal last reported that it has focus.
+/// Whether the terminal view is the front, so [`TerminalFocus`] says
+/// where the user is.
 #[derive(Resource, Default)]
-struct TerminalFocused(bool);
-
-/// While it lives, the terminal reports focus changes (`CSI ? 1004 h`).
-#[derive(Resource)]
-struct FocusReports;
-
-impl FocusReports {
-    fn start() -> Self {
-        to_terminal("\x1b[?1004h");
-        Self
-    }
-}
-
-impl Drop for FocusReports {
-    fn drop(&mut self) {
-        to_terminal("\x1b[?1004l");
-    }
-}
+struct TerminalView(bool);
 
 /// When the turn on this entity started, on the app's clock.
 #[derive(Component)]
@@ -157,18 +132,21 @@ struct TurnClock(Duration);
 #[derive(Event)]
 struct Overdue(Entity);
 
-/// Sends a notification unless they are off or the terminal has focus.
+/// Sends a notification unless they are off or the terminal view has the
+/// user's focus.
 #[derive(SystemParam)]
 struct Sender<'w> {
     settings: Res<'w, NotifySettings>,
-    focused: Res<'w, TerminalFocused>,
+    view: Res<'w, TerminalView>,
+    focus: Res<'w, TerminalFocus>,
     notifier: Res<'w, Notifier>,
+    terminal: MessageWriter<'w, TerminalWrite>,
 }
 
 impl Sender<'_> {
-    fn send(&self, text: &str) {
-        if self.settings.on && !self.focused.0 {
-            self.notifier.0.notify(text);
+    fn send(&mut self, text: &str) {
+        if self.settings.on && !(self.view.0 && self.focus.0) {
+            self.notifier.0.notify(text, &mut self.terminal);
         }
     }
 }
@@ -188,15 +166,14 @@ impl Plugin for NotifyPlugin {
             return;
         }
         app.add_setting::<NotifySettings>("notify")
-            .init_resource::<TerminalFocused>()
-            .add_message::<TerminalEvent>()
+            .init_resource::<TerminalFocus>()
+            .add_message::<TerminalWrite>()
             .add_command("notify", "Desktop notifications: /notify on|off", toggle)
             .add_observer(started)
             .add_observer(ended)
             .add_observer(picker_opened)
             .add_observer(asked)
-            .add_observer(overdue)
-            .add_systems(Update, track_focus);
+            .add_observer(overdue);
     }
 
     fn finish(&self, app: &mut App) {
@@ -209,9 +186,8 @@ impl Plugin for NotifyPlugin {
             let processes = world.get_resource_or_init::<Processes>().clone();
             world.insert_resource(Notifier(Arc::new(SystemNotifier { via, processes })));
         }
-        if app.runs_front(rig_tui::FRONT) {
-            app.insert_resource(FocusReports::start());
-        }
+        let view = app.runs_front(rig_tui::FRONT);
+        app.insert_resource(TerminalView(view));
     }
 }
 
@@ -227,7 +203,7 @@ fn ended(
     turns: Query<(&TurnOutcome, &ForAgent, &TurnClock)>,
     subagents: Query<(), With<SpawnedBy>>,
     time: Res<Time<Real>>,
-    sender: Sender,
+    mut sender: Sender,
 ) {
     let Ok((outcome, &ForAgent(agent), TurnClock(since))) = turns.get(settled.entity) else {
         return;
@@ -269,7 +245,7 @@ fn overdue(
     overdue: On<Overdue>,
     pickers: Query<&Picker>,
     asks: Query<&Ask, Without<Outcome>>,
-    sender: Sender,
+    mut sender: Sender,
 ) {
     let question = match (pickers.get(overdue.0), asks.get(overdue.0)) {
         (Ok(picker), _) => &picker.title,
@@ -277,17 +253,6 @@ fn overdue(
         _ => return,
     };
     sender.send(&format!("rig needs you: {question}"));
-}
-
-/// Keeps what the terminal reports about its focus.
-fn track_focus(mut events: MessageReader<TerminalEvent>, mut focused: ResMut<TerminalFocused>) {
-    for TerminalEvent(event) in events.read() {
-        match event {
-            Event::FocusGained => focused.0 = true,
-            Event::FocusLost => focused.0 = false,
-            _ => {}
-        }
-    }
 }
 
 /// `/notify on|off`.

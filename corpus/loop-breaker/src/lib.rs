@@ -60,8 +60,6 @@ pub struct TurnCalls {
     /// Each distinct call, its tool and arguments, and how often it was
     /// made. Arguments compare as JSON values, whatever their keys' order.
     pub seen: Vec<(String, Map<String, Value>, u32)>,
-    /// Whether this plugin stopped the turn.
-    pub stopped: bool,
 }
 
 impl TurnCalls {
@@ -85,6 +83,11 @@ impl TurnCalls {
     }
 }
 
+/// The loop breaker's Gate system, which refuses calls and stops turns,
+/// for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LoopBreakerSystems;
+
 /// On a tool call the plugin counted: it is counted once.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
@@ -99,7 +102,8 @@ impl Plugin for LoopBreakerPlugin {
         app.add_setting::<LoopLimits>("loops")
             .init_resource::<LoopBreaking>()
             .register_required_components::<TurnOf, TurnCalls>()
-            .add_systems(AgentPass, judge.in_set(Stage::Gate))
+            .configure_sets(AgentPass, LoopBreakerSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, judge.in_set(LoopBreakerSystems))
             .add_command(
                 "loops",
                 "Show the loop breaker, or turn it `on` or `off` for the session",
@@ -150,7 +154,6 @@ fn judge(
                 commands
                     .entity(turn)
                     .insert(TurnOutcome::Stopped(Some(why)));
-                counts.stopped = true;
                 break;
             }
             if times >= limits.refuse_at {

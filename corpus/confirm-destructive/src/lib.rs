@@ -13,10 +13,8 @@
 use bevy_log::warn;
 use regex::Regex;
 use rig_harness::prelude::*;
+use rig_tools::{Shell, ShellArgs};
 use serde::Deserialize;
-
-/// The tool whose calls are checked.
-pub const SHELL: &str = "shell";
 
 /// The commands asked about, besides the user's own patterns.
 pub const BUILT_IN: &[&str] = &[
@@ -113,17 +111,16 @@ fn gate(
     mut commands: Commands,
 ) {
     for (call, ToolRequest { call: request }, &ForAgent(agent)) in &calls {
-        if request.function.name.as_str() != SHELL {
+        if request.function.name.as_str() != Shell::NAME {
             continue;
         }
-        let command = request
-            .function
-            .arguments
-            .get("command")
-            .and_then(serde_json::Value::as_str)
-            .unwrap_or_default();
+        // Arguments the tool cannot read never run.
+        let Ok(ShellArgs { command, .. }) = ShellArgs::deserialize(&request.function.arguments)
+        else {
+            continue;
+        };
         let pattern = patterns
-            .matching(command)
+            .matching(&command)
             .map(|pattern| pattern.as_str().to_owned())
             .filter(|pattern| !allowed.0.contains(pattern));
         let Some(pattern) = pattern else {
@@ -155,8 +152,8 @@ fn answered(
 ) {
     for (ask, outcome, &HoldOf(call), Matched(pattern)) in &asks {
         match Answer::of(outcome) {
-            Some(Answer::Choice(choice)) if choice == ALLOW || choice == SESSION => {
-                if choice == SESSION && !allowed.0.contains(pattern) {
+            Some(answer) if answer.is(ALLOW) || answer.is(SESSION) => {
+                if answer.is(SESSION) && !allowed.0.contains(pattern) {
                     allowed.0.push(pattern.clone());
                 }
                 commands.entity(call).insert(Approved);

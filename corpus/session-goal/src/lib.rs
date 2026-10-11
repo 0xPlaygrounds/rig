@@ -22,12 +22,14 @@ pub const ORDER_GOAL: i32 = 260;
 /// The tag of the goal's prompt section and `/resume` label.
 const TAG: &str = "goal";
 
-/// Most characters of the goal in the status line.
-const SHOWN_CHARS: usize = 40;
+/// Most characters of the goal in a session's `/resume` line, which goes
+/// on with the session's cost and directory.
+const LABEL_CHARS: usize = 40;
 
 /// Where the goal is in the status line: right after the session's name,
-/// and gone before the model's reasoning setting when the line is narrow.
-const GOAL_ITEM: StatusItem = StatusItem::at(Side::Left, 15, 6);
+/// cut down to 12 columns when the line is narrow, and gone before the
+/// model's reasoning setting.
+const GOAL_ITEM: StatusItem = StatusItem::at(Side::Left, 15, 6).shrinks_to(12);
 
 /// `/goal`, and the goal's prompt section, `/resume` label and status item.
 #[derive(Default)]
@@ -70,19 +72,20 @@ fn show_goal(
     mut shown: Query<(&mut PromptSection, &mut ResumeLabel), With<GoalShown>>,
     mut status: ResMut<AppStatus>,
 ) {
-    let (section, item) = match goal.0.as_str() {
-        "" => (String::new(), String::new()),
+    let (section, label, item) = match goal.0.as_str() {
+        "" => Default::default(),
         goal => (
             format!(
                 "Session goal: {goal}\nThe user set this goal for the whole session; work \
                  towards it. Only the user can change it."
             ),
-            format!("◎ {}", shorten(goal, SHOWN_CHARS)),
+            format!("◎ {}", shorten(goal, LABEL_CHARS)),
+            format!("◎ {goal}"),
         ),
     };
-    for (mut prompt, mut label) in &mut shown {
+    for (mut prompt, mut resume) in &mut shown {
         prompt.set_if_neq(PromptSection::new(ORDER_GOAL, TAG, section.clone()));
-        label.set_if_neq(ResumeLabel::new(TAG, item.clone()));
+        resume.set_if_neq(ResumeLabel::new(TAG, label.clone()));
     }
     status.0.show(GOAL_ITEM.says(item, Tone::Cyan));
 }

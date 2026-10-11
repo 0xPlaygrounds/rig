@@ -1,17 +1,8 @@
-use std::path::PathBuf;
+use rig_harness_test_support::{Collected, collect, first_agent, scratch_home};
 
 use super::*;
 
-/// The notices written so far.
-#[derive(Resource, Default)]
-struct Seen(Vec<String>);
-
-fn collect(mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>) {
-    seen.0
-        .extend(notices.read().map(|notice| notice.text.clone()));
-}
-
-/// The bindings of `keys` in force.
+/// The bindings of `keys` in force, and whether each is the user's.
 fn bound(app: &mut App, keys: &str) -> Vec<(Entity, bool)> {
     let keys: Result<Keys, String> = keys.parse();
     let world = app.world_mut();
@@ -24,7 +15,7 @@ fn bound(app: &mut App, keys: &str) -> Vec<(Entity, bool)> {
 }
 
 /// Presses the user's binding of `keys` for `agent`, as the terminal view
-/// does, then runs a frame.
+/// does on a match (there is no public headless view), then runs a frame.
 fn press(app: &mut App, keys: &str, agent: Entity) {
     let user = bound(app, keys).into_iter().find(|(_, user)| *user);
     assert!(user.is_some(), "{keys} is not bound");
@@ -44,14 +35,15 @@ fn model(app: &App, agent: Entity) -> Option<&str> {
         .map(|choice| choice.0.as_str())
 }
 
+fn notices(app: &App) -> Vec<String> {
+    let seen = &app.world().resource::<Collected<Notice>>().0;
+    seen.iter().map(|notice| notice.text.clone()).collect()
+}
+
 #[test]
 fn keys_cycle_the_model_and_a_taken_key_needs_override() {
-    let target = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
-        || PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target")),
-        PathBuf::from,
-    );
-    let dir = target.join(format!("corpus-keybindings-{}", std::process::id()));
-    assert!(std::fs::create_dir_all(&dir).is_ok());
+    let home = scratch_home("corpus-keybindings");
+    assert!(std::fs::create_dir_all(home.root()).is_ok());
     // The catalog has no `deepseek/deepseek-pro`, the spec's second model.
     let keys = r#"
 "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
@@ -60,23 +52,21 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
 "ctrl+e" = { editor = true, override = true }
 "enter" = { send = "hello" }
 "#;
-    assert!(std::fs::write(dir.join(USER_FILE), keys).is_ok());
+    assert!(std::fs::write(home.root().join(USER_FILE), keys).is_ok());
 
     let mut app = App::new();
-    app.insert_resource(Invoked::default())
-        .insert_resource(RigHome(Home::at(&dir)))
+    app.insert_resource(RigHome(home.clone()))
         .insert_resource(Settings::default())
-        .init_resource::<Seen>()
-        .add_plugins((AgentPlugin, KeyBindingsPlugin))
-        .add_systems(Last, collect);
+        .add_plugins((AgentPlugin, KeyBindingsPlugin));
+    collect::<Notice>(&mut app);
     app.finish();
     app.cleanup();
     app.update();
-    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(home.root()).ok();
 
     // `enter` sends and `ctrl+k` deletes to the line's end in the view, so
     // both are refused without `override`; `ctrl+e` replaced the line end.
-    let seen = &app.world().resource::<Seen>().0;
+    let seen = notices(&app);
     let refused = |key: &str| {
         seen.iter()
             .any(|text| text.starts_with(&format!("keys.toml: `{key}` refused")))
@@ -87,13 +77,12 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     assert!(bound(&mut app, "enter").iter().all(|(_, user)| !user));
     assert!(bound(&mut app, "ctrl+e").iter().all(|(_, user)| *user));
 
-    let world = app.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    assert!(agent.is_ok(), "no agent");
-    let Ok(agent) = agent else {
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "no agent");
+    let Some(agent) = agent else {
         return;
     };
-    world.trigger(SetModel {
+    app.world_mut().trigger(SetModel {
         entity: agent,
         model: "deepseek/deepseek-flash".to_owned(),
     });
@@ -109,8 +98,7 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     app.world_mut()
         .trigger(RunCommand::new(agent, "keys".to_owned()));
     app.update();
-    let seen = &app.world().resource::<Seen>().0;
-    let listed = seen.last().map(String::as_str).unwrap_or_default();
+    let listed = notices(&app).pop().unwrap_or_default();
     assert!(
         listed
             .lines()

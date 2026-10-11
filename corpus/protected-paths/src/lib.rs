@@ -6,23 +6,20 @@
 //! system checks every path a tool call names (its `path`, `file` and
 //! `paths` arguments) when the call is about to run, resolved first (`~`,
 //! `..` and symbolic links) so none sneaks past, and refuses a denied one.
-//! A Prepare system runs each `search` through rig-tools' search as data,
-//! hidden files included, and drops the matches in read-protected files,
-//! publishing what it dropped. `/paths` lists the rules and what each
-//! blocked.
+//! A Review system drops the matches in read-protected files from each
+//! search's result, read from the hits it published, before the model sees
+//! it. `/paths` lists the rules and what each blocked.
 
 use std::collections::HashMap;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Component as Part, Path, PathBuf};
 use std::sync::Arc;
 
 use glob::{MatchOptions, Pattern};
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{ContextValue, ToolContext};
+use rig_core::effect::Outcome as Answered;
+use rig_core::tool::ToolOutput;
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::effects::Handler;
-use rig_tools::{Found, Search, SearchArgs, find};
-use serde::{Deserialize, Serialize};
+use rig_tools::{Found, SearchHits, render};
+use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
@@ -34,7 +31,7 @@ const DEFAULT_WRITE: &[&str] = &[".git/**"];
 /// The arguments that name paths, in any tool's schema.
 const PATH_ARGUMENTS: &[&str] = &["path", "file", "paths"];
 
-/// The tool whose matches are filtered.
+/// The built-in search tool, which reads every file below its path.
 const SEARCH: &str = "search";
 
 /// Adds the path guard and `/paths`.
@@ -57,11 +54,10 @@ impl Plugin for ProtectedPathsPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    filter_searches.in_set(Stage::Prepare),
                     guard.in_set(Stage::Gate),
+                    filter_searches.in_set(Stage::Review),
                 ),
             )
-            .add_observer(count_hidden)
             .add_command(
                 "paths",
                 "List the protected-path rules and what each blocked",
@@ -209,43 +205,6 @@ impl PathPolicy {
             .filter(|rule| rule.access == access)
             .find(|rule| rule.matches(&path, &self.0.root))
     }
-
-    /// `found` as the `search` tool shows it, without the matches in
-    /// read-protected files nor those in other hidden files (which the tool
-    /// never shows), and the rule that hid each dropped protected match.
-    fn filter(&self, args: &SearchArgs, found: Found) -> (String, Hidden) {
-        let root = args.path.as_deref().unwrap_or(".");
-        let root = Path::new(root.strip_prefix("./").unwrap_or(root));
-        let mut hidden = Hidden::default();
-        let mut kept = Vec::new();
-        for hit in found.hits {
-            if let Some(rule) = self.check(Access::Read, &hit.path.to_string_lossy()) {
-                hidden.0.push(rule.label());
-            } else if !is_hidden(hit.path.strip_prefix(root).unwrap_or(&hit.path)) {
-                kept.push(hit.to_string());
-            }
-        }
-        if kept.is_empty() {
-            kept.push("No matches.".to_owned());
-        }
-        if found.stopped {
-            kept.push("[stopped at 200 matches]".to_owned());
-        }
-        if let count @ 1.. = hidden.0.len() {
-            let noun = if count == 1 { "match" } else { "matches" };
-            kept.push(format!("[{count} {noun} in protected files hidden]"));
-        }
-        (kept.join("\n"), hidden)
-    }
-}
-
-/// Whether a walk below its root skips `path` as hidden: a component starts
-/// with `.`.
-fn is_hidden(path: &Path) -> bool {
-    path.components().any(|part| match part {
-        Component::Normal(name) => name.to_string_lossy().starts_with('.'),
-        _ => false,
-    })
 }
 
 impl Policy {
@@ -298,7 +257,7 @@ impl Policy {
 /// `path` (absolute) with its longest existing prefix canonicalized and
 /// the rest normalized without the file system.
 fn real(path: &Path) -> PathBuf {
-    let parts: Vec<Component> = path.components().collect();
+    let parts: Vec<Part> = path.components().collect();
     for split in (0..=parts.len()).rev() {
         let (head, tail) = parts.split_at(split);
         let head: PathBuf = head.iter().collect();
@@ -307,11 +266,11 @@ fn real(path: &Path) -> PathBuf {
         };
         for part in tail {
             match part {
-                Component::ParentDir => {
+                Part::ParentDir => {
                     resolved.pop();
                 }
-                Component::Normal(name) => resolved.push(name),
-                Component::CurDir | Component::RootDir | Component::Prefix(_) => {}
+                Part::Normal(name) => resolved.push(name),
+                Part::CurDir | Part::RootDir | Part::Prefix(_) => {}
             }
         }
         return resolved;
@@ -328,51 +287,6 @@ pub struct PathGuardCounts {
     pub blocked: HashMap<String, u32>,
     /// `search` matches hidden, by rule.
     pub hidden: HashMap<String, u32>,
-}
-
-/// What a `search` call dropped: the rule that hid each match, published
-/// beside its text.
-#[derive(Serialize, Deserialize, Default)]
-struct Hidden(Vec<String>);
-
-impl ContextValue for Hidden {
-    const KEY: &'static str = "protected_paths_hidden";
-}
-
-/// rig-tools' `search`, hidden files included, its matches in
-/// read-protected files dropped.
-struct GuardedSearch(PathPolicy);
-
-impl Tool for GuardedSearch {
-    const NAME: &'static str = SEARCH;
-    type Args = SearchArgs;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        Tool::description(&Search)
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<SearchArgs>()
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: SearchArgs,
-    ) -> Result<String, ToolExecutionError> {
-        let policy = self.0.clone();
-        let (text, hidden) = blocking(move || {
-            let found = find(&args, |_| false)?;
-            Ok::<_, ToolExecutionError>(policy.filter(&args, found))
-        })
-        .await?;
-        if !hidden.0.is_empty() {
-            context.insert_result(hidden)?;
-        }
-        Ok(text)
-    }
 }
 
 /// What a call of the tool `name` is checked for: the built-in file tools
@@ -407,18 +321,64 @@ fn named_paths(arguments: &serde_json::Map<String, serde_json::Value>, search: b
     paths
 }
 
-/// Runs each `search` call through [`GuardedSearch`] as it is admitted.
+/// Drops the matches in read-protected files from the result of each call
+/// that published search hits, before it is committed, and counts them by
+/// the rule that hid them.
 fn filter_searches(
-    mut calls: Query<(&ToolRequest, &mut CallHandler), Added<Admitted>>,
+    calls: Query<(Entity, &Outcome, &Published, Has<Restored>), (Unreviewed, Without<Filtered>)>,
     policy: Res<PathPolicy>,
+    mut counts: ResMut<PathGuardCounts>,
+    mut commands: Commands,
 ) {
-    for (request, mut handler) in &mut calls {
-        if request.call.function.name.as_str() == SEARCH {
-            let tool = ToolAdapter::new(GuardedSearch(policy.clone()));
-            *handler = CallHandler(Handler(ErasedHandler::new(tool)));
+    for (call, outcome, Published(published), restored) in &calls {
+        commands.entity(call).insert(Filtered);
+        let Ok(Answered::ToolResult { result }) = &outcome.0 else {
+            continue;
+        };
+        let Ok(Some(SearchHits(found))) = published.get::<SearchHits>() else {
+            continue;
+        };
+        if result.is_error() {
+            continue;
+        }
+        let mut hidden = Vec::new();
+        let mut kept = Found {
+            hits: Vec::new(),
+            stopped: found.stopped,
+        };
+        for hit in found.hits {
+            match policy.check(Access::Read, &hit.path.to_string_lossy()) {
+                Some(rule) => hidden.push(rule.label()),
+                None => kept.hits.push(hit),
+            }
+        }
+        if hidden.is_empty() {
+            continue;
+        }
+        let noun = if hidden.len() == 1 {
+            "match"
+        } else {
+            "matches"
+        };
+        let text = format!(
+            "{}\n[{} {noun} in protected files hidden]",
+            render(&kept),
+            hidden.len()
+        );
+        let filtered = ToolResult::success(ToolOutput::text(text));
+        commands.entity(call).insert(Outcome::from(filtered));
+        if !restored {
+            for rule in hidden {
+                *counts.hidden.entry(rule).or_default() += 1;
+            }
         }
     }
 }
+
+/// On a call whose search hits were filtered: once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Filtered;
 
 /// Refuses each tool call about to run that names a path a rule denies to
 /// it.
@@ -452,20 +412,6 @@ fn guard(
             rule.glob, rule.source
         );
         commands.entity(call).insert_if_new(Outcome::refused(why));
-    }
-}
-
-/// Counts the matches each `search` hid, as it publishes them.
-fn count_hidden(
-    published: On<Add<Published>>,
-    calls: Query<&Published, Without<Restored>>,
-    mut counts: ResMut<PathGuardCounts>,
-) {
-    let Ok(Published(context)) = calls.get(published.entity) else {
-        return;
-    };
-    for rule in context.get::<Hidden>().ok().flatten().unwrap_or_default().0 {
-        *counts.hidden.entry(rule).or_default() += 1;
     }
 }
 

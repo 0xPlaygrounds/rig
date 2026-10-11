@@ -1,24 +1,12 @@
-use std::path::PathBuf;
-
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, connect, run_until};
+use rig_harness_test_support::{app_in, connect, run_until, scratch_home};
 use rig_subagents::SubagentsPlugin;
 use rig_telemetry::EffectLogPlugin;
 use serde_json::json;
 
 use super::*;
-
-/// A directory of this test's own under the build directory.
-fn scratch() -> PathBuf {
-    let target = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
-        || PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target"),
-        PathBuf::from,
-    );
-    target.join(format!("corpus-export-test-{}", std::process::id()))
-}
 
 /// The end of a reply of a million output tokens, which the catalog
 /// prices.
@@ -44,11 +32,12 @@ fn priced(model: MockCompletionModel) -> MockCompletionModel {
 
 #[test]
 fn exports_the_saved_session_with_the_subagent_under_its_task_call() {
-    let project = scratch();
-    let home = Home::at(project.join("home"));
+    // The session is kept in its directory under a RIG_HOME of the test's.
+    let home = scratch_home("corpus-export-test");
     let id = SessionId::generate();
-    let dir = home.session(&id);
-    std::fs::create_dir_all(dir.path()).ok();
+    let (mut app, wakes) = app_in(&home, &id);
+    let project = home.root().join("work");
+    std::fs::create_dir_all(&project).ok();
     let notes = project.join("notes.txt");
     std::fs::write(&notes, "The answer is in the subagent.").ok();
 
@@ -67,12 +56,7 @@ fn exports_the_saved_session_with_the_subagent_under_its_task_call() {
         says("Done."),
     ]));
     let child_model = priced(MockCompletionModel::from_stream_turns([says("sub-answer")]));
-    // The session is kept in its directory under a RIG_HOME of the test's.
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
-        .insert_resource(SessionPaths(dir.clone()))
-        .insert_resource(RigHome(home))
-        .insert_resource(ProjectRoot(project.clone()))
+    app.insert_resource(ProjectRoot(project.clone()))
         .insert_resource(Models(Connector::new(Catalog::default())));
     let child_connection = connect(&child_model);
     app.add_plugins((
@@ -144,11 +128,17 @@ fn exports_the_saved_session_with_the_subagent_under_its_task_call() {
         })
         .collect();
     assert_eq!(calls, [3, 1], "each model call with its cost: {exported}");
+    let turns = agents
+        .iter()
+        .filter_map(|agent| agent.get("calls").and_then(Value::as_array))
+        .flatten()
+        .all(|call| call.get("turn").is_some_and(Value::is_u64));
+    assert!(turns, "each call names its turn: {exported}");
     let cost = agents
         .first()
         .and_then(|parent| parent.pointer("/usage/cost"));
     let cost = cost.and_then(Value::as_f64).unwrap_or_default();
     assert!(cost > 0.0, "{exported}");
 
-    std::fs::remove_dir_all(&project).ok();
+    std::fs::remove_dir_all(home.root()).ok();
 }

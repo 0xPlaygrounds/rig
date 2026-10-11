@@ -1,25 +1,23 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
-use std::sync::mpsc;
+use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::settings::Settings;
-use rig_harness_test_support::{app_on, connect, reply};
-use std::sync::mpsc::Receiver;
+use rig_harness::pick::PickPlugin;
+use rig_harness_test_support::{app_on, connect, reply, scratch_home};
 
 use super::*;
 
 /// An app serving on a free localhost port, its token written under a
 /// scratch `RIG_HOME`.
-fn serving(test: &str) -> (App, Receiver<()>, PathBuf) {
-    let home = std::env::temp_dir().join(format!("corpus-http-api-{test}-{}", std::process::id()));
+fn serving(test: &str) -> (App, Receiver<()>, Home) {
+    let home = scratch_home(&format!("corpus-http-api-{test}"));
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(Settings::from_toml("[serve]\naddr = \"127.0.0.1:0\""))
-        .insert_resource(RigHome(Home::at(&home)))
-        .add_plugins((AgentPlugin, JournalPlugin, HttpApiPlugin));
+        .insert_resource(RigHome(home.clone()))
+        .add_plugins((AgentPlugin, JournalPlugin, PickPlugin, HttpApiPlugin));
     app.finish();
     app.update();
     (app, wakes, home)
@@ -131,8 +129,8 @@ fn a_posted_message_streams_its_reply_and_the_token_is_required() {
     };
     world.entity_mut(agent).insert(connection);
     assert_ne!(api.addr.port(), 0, "the bound port is exposed");
-    let token = std::fs::read_to_string(home.join("serve-token")).ok();
-    std::fs::remove_dir_all(&home).ok();
+    let token = std::fs::read_to_string(home.root().join("serve-token")).ok();
+    std::fs::remove_dir_all(home.root()).ok();
     assert_eq!(token.as_deref(), Some(api.token.as_str()));
 
     let seen = drive(&mut app, &wakes, move || {
@@ -163,14 +161,17 @@ fn a_posted_message_streams_its_reply_and_the_token_is_required() {
     assert!(seen.turn_ended, "{seen:?}");
 }
 
-/// How each question was answered.
+/// How each question and picker was answered.
 #[derive(Resource, Default)]
-struct Answers(Vec<Option<Answer>>);
+struct Answers {
+    asked: Vec<Option<Answer>>,
+    picked: Vec<Option<Chosen>>,
+}
 
 #[test]
-fn a_plugins_question_is_answered_over_http() {
+fn a_plugins_question_and_picker_are_answered_over_http() {
     let (mut app, wakes, home) = serving("ask");
-    std::fs::remove_dir_all(&home).ok();
+    std::fs::remove_dir_all(home.root()).ok();
     let api = app.world().get_resource::<HttpApi>().cloned();
     assert!(api.is_some(), "the server runs");
     let Some(api) = api else {
@@ -180,41 +181,52 @@ fn a_plugins_question_is_answered_over_http() {
     let answerers = world.query::<&Answerer>().iter(world).count();
     assert_eq!(answerers, 1, "the server answers questions");
 
-    // The question is asked once the client listens; its answers are kept.
+    // A question and a picker open once the client listens; their answers
+    // are kept.
     app.init_resource::<Answers>().add_observer(
         |answered: On<Add<Outcome>>,
          asks: Query<&Outcome, With<Ask>>,
          mut answers: ResMut<Answers>| {
             if let Ok(outcome) = asks.get(answered.entity) {
-                answers.0.push(Answer::of(outcome));
+                answers.asked.push(Answer::of(outcome));
             }
         },
     );
     app.add_systems(
         Update,
         |subscribers: Res<Subscribers>, mut asked: Local<bool>, mut commands: Commands| {
-            if !*asked && !subscribers.0.is_empty() {
+            if !*asked && !subscribers.clients.is_empty() {
                 *asked = true;
                 commands.spawn(Ask::yes_no("Deploy?"));
+                let picker = Picker::new("Branch").item("main", "").item("dev", "");
+                commands.spawn(picker).observe(
+                    |picked: On<Picked>, mut answers: ResMut<Answers>| {
+                        answers.picked.push(picked.chosen.clone());
+                    },
+                );
             }
         },
     );
     let status = drive(&mut app, &wakes, move || {
         let mut stream = events(&api)?;
-        let mut id = None;
+        let mut ids = Vec::new();
         read_events(&mut stream, |kind, data| {
-            id = data.get("id").and_then(Value::as_u64);
-            kind == "approval_request"
+            if kind == "approval_request" {
+                ids.extend(data.get("id").and_then(Value::as_u64));
+            }
+            ids.len() == 2
         })?;
-        let path = format!("/approvals/{}", id.unwrap_or_default());
+        let paths = ids.iter().map(|id| format!("/approvals/{id}"));
+        let [ask, picker] = <[String; 2]>::try_from(paths.collect::<Vec<_>>()).unwrap_or_default();
         let statuses = [
-            post(&api, &path, r#"{"choice":"maybe"}"#)?,
-            post(&api, &path, r#"{"choice":"yes"}"#)?,
+            post(&api, &ask, r#"{"choice":"maybe"}"#)?,
+            post(&api, &ask, r#"{"choice":"yes"}"#)?,
+            post(&api, &picker, r#"{"choice":"dev"}"#)?,
         ];
-        let mut closed = false;
+        let mut closed = 0;
         read_events(&mut stream, |kind, _| {
-            closed = kind == "approval_closed";
-            closed
+            closed += usize::from(kind == "approval_closed");
+            closed == 2
         })?;
         std::io::Result::Ok((statuses, closed))
     });
@@ -222,11 +234,10 @@ fn a_plugins_question_is_answered_over_http() {
     let Ok((statuses, closed)) = status else {
         return;
     };
-    assert_eq!(
-        statuses,
-        ["HTTP/1.1 400 Bad Request", "HTTP/1.1 202 Accepted"]
-    );
-    assert!(closed, "the stream says the question closed");
-    let answers = &app.world().resource::<Answers>().0;
-    assert_eq!(answers, &[Some(Answer::Choice("yes".to_owned()))]);
+    let accepted = "HTTP/1.1 202 Accepted";
+    assert_eq!(statuses, ["HTTP/1.1 400 Bad Request", accepted, accepted]);
+    assert_eq!(closed, 2, "the stream says both closed");
+    let answers = app.world().resource::<Answers>();
+    assert_eq!(answers.asked, [Some(Answer::Choice("yes".to_owned()))]);
+    assert_eq!(answers.picked, [Some(Chosen::Item(1))]);
 }

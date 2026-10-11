@@ -1,3 +1,5 @@
+use std::sync::mpsc::Receiver;
+
 use rig_cassette::journal::MemoryStore;
 use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
@@ -17,15 +19,23 @@ const EARLIER: [&str; 6] = [
     "answer three",
 ];
 
-#[test]
-fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
+/// The kernel, the handoff and usage plugins on `store`, after the first
+/// frame restored the session, with its loop's wakes.
+fn start(store: &MemoryStore) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin, HandoffPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
     app.update();
+    (app, wakes)
+}
+
+#[test]
+fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
     let model = MockCompletionModel::from_stream_turns([
         reply("Brief: files x.rs; goal API"),
         reply("On it."),
@@ -72,6 +82,8 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     let from = world.get::<HandedOffFrom>(b).map(|from| from.agent.clone());
     assert_eq!(from.as_ref(), world.get::<AgentId>(a));
     assert_eq!(world.get::<ModelChoice>(b), Some(&choice));
+    assert_eq!(world.resource::<Shown>().0, Some(b), "B is shown");
+    let b_id = world.get::<AgentId>(b).cloned();
 
     let requests = model.requests();
     let json = |at: usize| {
@@ -100,4 +112,24 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
         .get::<Spending>(a)
         .and_then(|spent| spent.purposes.get(PURPOSE));
     assert_eq!(spent.map(|spent| spent.calls), Some(1));
+    drop(app);
+
+    // A restart shows B again, named after its goal and A.
+    let (mut restarted, _wakes) = start(&store);
+    let world = restarted.world_mut();
+    let shown = world.resource::<Shown>().0;
+    let shown = shown.and_then(|agent| world.get::<AgentId>(agent)).cloned();
+    assert!(shown.is_some() && shown == b_id, "{shown:?}");
+    let named = world
+        .query_filtered::<&Name, With<HandedOffFrom>>()
+        .iter(world)
+        .map(|name| name.as_str().to_owned())
+        .collect::<Vec<_>>();
+    assert!(
+        named.len() == 1
+            && named
+                .iter()
+                .all(|name| name.starts_with("implement API (from ")),
+        "{named:?}"
+    );
 }

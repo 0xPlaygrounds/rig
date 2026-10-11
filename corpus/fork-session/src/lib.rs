@@ -5,7 +5,7 @@
 //! shown agent's own messages and forks the session as of just before it
 //! (the kernel cuts every log there, so saved plugin state comes back as it
 //! was then); the new session starts with that message in the input line.
-//! Each new session's [`FAMILY`] file names its parent and the fork point,
+//! The harness records each fork's parent and fork point ([`ForkedFrom`]),
 //! and `/tree` shows the family. Files on disk are never branched, except
 //! that `/branch --files` (with the `checkpoints` feature and spec 31's
 //! plugin) puts them back as that plugin's checkpoint before the message
@@ -13,16 +13,17 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_ecs::journal::now_ms;
 use rig_sessions::{ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
 use rig_tui::{Focus, TuiInput};
 use serde::{Deserialize, Serialize};
+use std::fs;
 
-/// A session directory's file saying where the session came from.
-pub const FAMILY: &str = "family.json";
+/// The file a fork made by this plugin starts with: the name and input
+/// its first start takes, then removes.
+pub const SEED: &str = "fork-seed.json";
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -60,29 +61,14 @@ impl Plugin for ForkSessionPlugin {
     }
 }
 
-/// Where a session came from, in its [`FAMILY`] file.
+/// What a fork's first start takes, in its [`SEED`] file.
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(default)]
-pub struct Family {
-    /// The session it was forked or branched from.
-    pub parent: Option<String>,
-    /// Where: `fork`, or the message it was branched before.
-    pub point: String,
-    /// When, in milliseconds since the Unix epoch.
-    pub created: u64,
-    /// The name `/fork` gave it, set once it starts.
+pub struct Seed {
+    /// The name `/fork` gave it.
     pub name: Option<String>,
-    /// What goes in an agent's input line once it starts.
-    pub input: Option<Input>,
-}
-
-/// Text for an agent's input line.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct Input {
-    /// The agent's id.
-    pub agent: String,
-    /// The text.
-    pub text: String,
+    /// What goes in an agent's input line: its id and the text.
+    pub input: Option<(String, String)>,
 }
 
 /// The fork asked for, until the harness wrote it.
@@ -92,7 +78,7 @@ struct Pending(Option<Asked>);
 struct Asked {
     agent: Entity,
     before: Option<(AgentId, u64)>,
-    family: Family,
+    seed: Seed,
     /// The command that puts the files back, for `/branch --files`.
     files: Option<String>,
 }
@@ -129,20 +115,22 @@ fn one_line(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// This session's id, or why nothing can be forked now.
+/// Why nothing can be forked now, if so.
 fn forkable(
     agent: Entity,
     turns: &Query<(), With<TurnOf>>,
     paths: Option<&SessionPaths>,
-) -> Result<String, Notice> {
+) -> Result<(), Notice> {
     if !turns.is_empty() {
         return Err(Notice::turn_running(agent));
     }
-    paths
-        .filter(|paths| paths.is_saved())
-        .and_then(|paths| paths.id())
-        .map(|id| id.to_string())
-        .ok_or_else(|| Notice::error(agent, "Nothing of this session is saved yet."))
+    match paths {
+        Some(paths) if paths.is_saved() => Ok(()),
+        _ => Err(Notice::error(
+            agent,
+            "Nothing of this session is saved yet.",
+        )),
+    }
 }
 
 /// `/fork [name]`.
@@ -154,21 +142,15 @@ fn fork(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let parent = match forkable(args.agent, &turns, paths.as_deref()) {
-        Ok(parent) => parent,
-        Err(refused) => {
-            notices.write(refused);
-            return;
-        }
-    };
+    if let Err(refused) = forkable(args.agent, &turns, paths.as_deref()) {
+        notices.write(refused);
+        return;
+    }
     let name = args.args.trim();
     pending.0 = Some(Asked {
         agent: args.agent,
         before: None,
-        family: Family {
-            parent: Some(parent),
-            point: "fork".to_owned(),
-            created: now_ms(),
+        seed: Seed {
             name: (!name.is_empty()).then(|| one_line(name)),
             input: None,
         },
@@ -187,13 +169,10 @@ fn branch(
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
-    let parent = match forkable(agent, &turns, paths.as_deref()) {
-        Ok(parent) => parent,
-        Err(refused) => {
-            notices.write(refused);
-            return;
-        }
-    };
+    if let Err(refused) = forkable(agent, &turns, paths.as_deref()) {
+        notices.write(refused);
+        return;
+    }
     let files = match args.args.trim() {
         "" => false,
         "--files" if cfg!(feature = "checkpoints") => true,
@@ -247,15 +226,9 @@ fn branch(
             pending.0 = Some(Asked {
                 agent,
                 before: before.clone(),
-                family: Family {
-                    parent: Some(parent.clone()),
-                    point: format!("before “{}”", shorten(&one_line(text), 40)),
-                    created: now_ms(),
+                seed: Seed {
                     name: None,
-                    input: Some(Input {
-                        agent: id.0.clone(),
-                        text: text.clone(),
-                    }),
+                    input: Some((id.0.clone(), text.clone())),
                 },
                 files,
             });
@@ -287,8 +260,7 @@ fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: u64) -> Result<String, Str
     Err("/branch --files needs spec 31's checkpoints.".to_owned())
 }
 
-/// Writes the family of each fork this plugin asked for, then switches to
-/// it.
+/// Seeds each fork this plugin asked for, then switches to it.
 fn forked(
     mut forks: MessageReader<SessionForked>,
     mut pending: ResMut<Pending>,
@@ -300,9 +272,11 @@ fn forked(
         let Some(asked) = pending.0.take_if(|asked| asked.before == fork.before) else {
             continue;
         };
-        let file = home.0.session(&fork.to).path().join(FAMILY);
-        if let Err(failure) = write_json(&file, &asked.family) {
-            let why = format!("Could not write session {}'s family: {failure}", fork.to);
+        let file = home.0.session(&fork.to).path().join(SEED);
+        if asked.seed != Seed::default()
+            && let Err(failure) = write_json(&file, &asked.seed)
+        {
+            let why = format!("Could not seed session {}: {failure}", fork.to);
             notices.write(Notice::error(asked.agent, why));
             continue;
         }
@@ -315,9 +289,9 @@ fn forked(
     }
 }
 
-/// A forked session's start: says where it came from in `/resume`, takes
-/// the name `/fork` gave it, and puts the message it was branched before
-/// in the input line, showing its agent.
+/// A fork's start: says where it came from in `/resume`, and the first
+/// time takes its seed: the name `/fork` gave it, and the message it was
+/// branched before in the input line, showing its agent.
 fn arrive(
     paths: Option<Res<SessionPaths>>,
     agents: PrimaryQuery,
@@ -325,34 +299,47 @@ fn arrive(
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
 ) {
-    let Some(file) = paths.map(|paths| paths.path().join(FAMILY)) else {
+    let Some(paths) = paths else {
         return;
     };
-    let Some(mut family) = read_json::<Family>(&file) else {
+    let Some(parent) = ForkedFrom::of(&paths) else {
         return;
     };
-    if let Some(parent) = &family.parent {
-        let label = format!("from {parent}, {}", family.point);
-        commands.spawn(ResumeLabel::new("family", label));
-    }
-    let (name, typed) = (family.name.take(), family.input.take());
-    if name.is_none() && typed.is_none() {
+    let how = if parent.before.is_some() {
+        "branch"
+    } else {
+        "fork"
+    };
+    commands.spawn(ResumeLabel::new(
+        "family",
+        format!("{how} of {}", parent.session),
+    ));
+    let file = paths.path().join(SEED);
+    let Some(seed) = read_json::<Seed>(&file) else {
         return;
+    };
+    // Once: a later start of the session leaves its input alone.
+    fs::remove_file(&file).ok();
+    if seed.name.is_some() {
+        title.name = seed.name;
     }
-    if name.is_some() {
-        title.name = name;
-    }
-    if let Some(typed) = typed {
-        let agent = agents.iter().find(|(_, id, _)| id.0 == typed.agent);
+    if let Some((agent, text)) = seed.input {
+        let agent = agents.iter().find(|(_, id, _)| id.0 == agent);
         if let Some(entity) = agent.map(|(agent, ..)| agent).or_else(|| primary(&agents)) {
             commands.trigger(Focus { entity });
         }
         if let Some(mut input) = input {
-            input.set(typed.text);
+            input.set(text);
         }
     }
-    // Once: a later start of the session leaves its input alone.
-    write_json(&file, &family).ok();
+}
+
+/// A session of the family: its id, its line, and how it was forked from
+/// which session.
+struct Node {
+    id: String,
+    label: String,
+    parent: Option<ForkedFrom>,
 }
 
 /// `/tree`: the sessions forked and branched from this one's root, as a
@@ -371,25 +358,24 @@ fn tree(
     let Some(current) = paths.id().map(|id| id.to_string()) else {
         return;
     };
-    let family_of =
-        |path: &std::path::Path| read_json::<Family>(&path.join(FAMILY)).unwrap_or_default();
-    // Every saved session: its id, its line and its family.
-    let mut nodes: Vec<(String, String, Family)> = list(&home.0, paths.path())
+    let this = title.name.clone().unwrap_or_else(|| title.typed.clone());
+    let mut nodes: Vec<Node> = list(&home.0, paths.path())
         .into_iter()
-        .map(|entry| {
-            let family = family_of(home.0.session(&entry.id).path());
-            (entry.id.to_string(), entry.label(), family)
+        .map(|entry| Node {
+            parent: ForkedFrom::of(&home.0.session(&entry.id)),
+            id: entry.id.to_string(),
+            label: entry.label(),
         })
         .collect();
-    let this = title.name.clone().unwrap_or_else(|| title.typed.clone());
-    nodes.push((
-        current.clone(),
-        format!("● this session  {this}"),
-        family_of(paths.path()),
-    ));
-    let parent_of = |id: &str| {
-        let parent = nodes.iter().find(|node| node.0 == id)?.2.parent.clone()?;
-        nodes.iter().any(|node| node.0 == parent).then_some(parent)
+    nodes.push(Node {
+        id: current.clone(),
+        label: format!("● this session  {this}"),
+        parent: ForkedFrom::of(&paths),
+    });
+    let parent_of = |id: &str| -> Option<String> {
+        let node = nodes.iter().find(|node| node.id == id)?;
+        let parent = node.parent.as_ref()?.session.to_string();
+        nodes.iter().any(|node| node.id == parent).then_some(parent)
     };
     let mut root = current.clone();
     for _ in 0..DEPTH {
@@ -401,33 +387,38 @@ fn tree(
     let mut picker = Picker::new("This session's family").for_agent(args.agent);
     let mut stack = vec![(root, 0usize)];
     while let Some((id, depth)) = stack.pop() {
-        let Some((_, label, family)) = nodes.iter().find(|node| node.0 == id) else {
+        let Some(node) = nodes.iter().find(|node| node.id == id) else {
             continue;
         };
         if depth > DEPTH || picker.items.len() > 500 {
             break;
         }
-        let point = match family.point.as_str() {
-            "" => String::new(),
-            point => format!("  · {point}"),
+        let how = match &node.parent {
+            Some(parent) if parent.before.is_some() => "  · branch",
+            Some(_) => "  · fork",
+            None => "",
         };
         let command = if id == current {
+            picker.selected = picker.items.len();
             String::new()
         } else {
             format!("resume {id}")
         };
-        if id == current {
-            picker.selected = picker.items.len();
-        }
-        picker = picker.item(format!("{}{label}{point}", "  ".repeat(depth)), command);
-        let mut children: Vec<(u64, String)> = nodes
+        let line = format!("{}{}{how}", "  ".repeat(depth), node.label);
+        picker = picker.item(line, command);
+        // Session ids start with their creation time: oldest first once
+        // popped.
+        let mut children: Vec<&str> = nodes
             .iter()
-            .filter(|node| node.2.parent.as_deref() == Some(id.as_str()))
-            .map(|node| (node.2.created, node.0.clone()))
+            .filter(|child| parent_of(&child.id).as_deref() == Some(id.as_str()))
+            .map(|child| child.id.as_str())
             .collect();
-        // Oldest first once popped.
         children.sort_by(|a, b| b.cmp(a));
-        stack.extend(children.into_iter().map(|(_, child)| (child, depth + 1)));
+        stack.extend(
+            children
+                .into_iter()
+                .map(|child| (child.to_owned(), depth + 1)),
+        );
     }
     if picker.items.len() < 2 {
         let none = "This session has no forks or branches; /fork or /branch makes one.";

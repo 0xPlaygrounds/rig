@@ -8,6 +8,7 @@
 //! agent's tools are never changed, so leaving gives back exactly what it
 //! had.
 
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
@@ -40,6 +41,17 @@ pub struct PlanMode;
 #[derive(Component)]
 struct PlanQuestion;
 
+/// The plan mode plugin's stage systems, for others to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PlanModeSystems {
+    /// In [`Stage::Prepare`], before compaction measures the request: a
+    /// planning agent's requests offer only the tools that change nothing.
+    Prepare,
+    /// In [`Stage::Gate`]: refuses a planning agent's calls that may change
+    /// something.
+    Gate,
+}
+
 /// `/plan`, the plan-only requests and calls, the plan's capture and the
 /// question about it.
 #[derive(Default)]
@@ -54,11 +66,20 @@ impl Plugin for PlanModePlugin {
                 "Plan before changing anything: /plan, /plan off",
                 plan,
             )
+            .configure_sets(
+                AgentPass,
+                (
+                    PlanModeSystems::Prepare
+                        .in_set(Stage::Prepare)
+                        .before(CompactionSystems::Prepare),
+                    PlanModeSystems::Gate.in_set(Stage::Gate),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    plan_only.in_set(Stage::Prepare),
-                    no_changes.in_set(Stage::Gate),
+                    plan_only.in_set(PlanModeSystems::Prepare),
+                    no_changes.in_set(PlanModeSystems::Gate),
                 ),
             )
             .add_observer(capture)

@@ -26,7 +26,8 @@ use super::{Export, ExportedAgent, ModelCall};
 ///     "task_call": "the parent's task call id" | null, "title": "…" | null,
 ///     "model": "vendor/model" | null, "started_ms": 0, "retired": false,
 ///     "usage": rig-core's UsageTotals (tokens, cost) of `calls`,
-///     "calls": [{ "effect": 7, "purpose": "turn" | null, "model": "provider/model",
+///     "calls": [{ "effect": 7, "purpose": "turn" | null, "turn": 0 | null,
+///                 "model": "provider/model",
 ///                 "usage": rig-core Usage (tokens, cost), "response_id": "…" | null,
 ///                 "disposition": "ran" | "superseded" | … }],
 ///     "condensed": { "upto": 4, "summary": "replaces messages[..upto]" } | null,
@@ -355,6 +356,7 @@ fn call_json(call: &ModelCall) -> Value {
     json!({
         "effect": call.effect,
         "purpose": call.purpose,
+        "turn": call.turn,
         "model": call.model,
         "usage": call.usage,
         "response_id": call.response_id,

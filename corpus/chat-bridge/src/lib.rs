@@ -16,6 +16,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use bevy_log::info;
+use rig_harness::pick::PickPlugin;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
@@ -157,6 +158,10 @@ pub struct ChatBridgePlugin;
 
 impl Plugin for ChatBridgePlugin {
     fn build(&self, app: &mut App) {
+        // It answers questions with `Pick`, which this carries out.
+        if !app.is_plugin_added::<PickPlugin>() {
+            app.add_plugins(PickPlugin);
+        }
         app.add_setting::<ChatSettings>("chat")
             .add_front(Front::new("chat").on_flag("chat", "Answer a Slack or Matrix channel"))
             .init_resource::<ChatBridge>()
@@ -194,8 +199,8 @@ type OpenAsks<'w, 's> = Query<
 >;
 
 /// Routes each message received: as the answer to its thread's oldest open
-/// question, to its thread's agent, or to a new agent when it mentions the
-/// bot.
+/// question (a [`Pick`], as any front answers), to its thread's agent, or
+/// to a new agent when it mentions the bot.
 fn receive(
     mut bridge: ResMut<ChatBridge>,
     settings: Res<ChatSettings>,
@@ -242,29 +247,31 @@ fn receive(
             .filter(|(ask, _, to, _)| to.0 == agent && !answered.contains(ask))
             .min_by_key(|(.., effect)| effect.id());
         if let Some((ask, question, ..)) = open
-            && let Some(choice) = choice(question, &message.text)
+            && let Some(index) = choice(question, &message.text)
         {
             answered.push(ask);
-            commands
-                .entity(ask)
-                .insert_if_new(Answer::Choice(choice).outcome());
+            let chosen = Some(Chosen::Item(index));
+            commands.trigger(Pick {
+                entity: ask,
+                chosen,
+            });
             continue;
         }
         // A question that takes text is answered by this line, by the
-        // harness, before it reaches the model.
-        commands.trigger(Deliver::new(agent, message.text, DeliveryMode::Queue).literal());
+        // harness, before it reaches the model. The origin keeps who
+        // wrote it.
+        let origin = Origin::user().titled(message.user);
+        let deliver = Deliver::new(agent, message.text, DeliveryMode::Queue);
+        commands.trigger(deliver.with_origin(origin).literal());
     }
 }
 
-/// The choice a reply names, by id or label.
-fn choice(ask: &Ask, reply: &str) -> Option<String> {
+/// The position of the choice a reply names, by id or label.
+fn choice(ask: &Ask, reply: &str) -> Option<usize> {
     let reply = reply.trim();
-    ask.choices
-        .iter()
-        .find(|choice| {
-            choice.id.eq_ignore_ascii_case(reply) || choice.label.eq_ignore_ascii_case(reply)
-        })
-        .map(|choice| choice.id.clone())
+    ask.choices.iter().position(|choice| {
+        choice.id.eq_ignore_ascii_case(reply) || choice.label.eq_ignore_ascii_case(reply)
+    })
 }
 
 /// A top-level agent for `thread`, on the model of the agent the user

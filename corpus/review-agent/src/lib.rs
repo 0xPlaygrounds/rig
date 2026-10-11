@@ -20,7 +20,8 @@
 //!   message, so the fixes are not reviewed again by default.
 //! - `/review` reviews the uncommitted diff now; `/review off` and
 //!   `/review on` switch auto-review for the session ([`AutoReview`]).
-//! - The reviewer is an agent: its model calls count in usage under it.
+//! - The reviewer is an agent that does one job: its model calls count in
+//!   usage under it, and it retires once its review is done.
 //! - A user message, Esc, or anything else that carries the turn on
 //!   cancels the review, and stops the reviewer.
 
@@ -297,7 +298,8 @@ fn review_proposed_end(
     }
 }
 
-/// Takes the diff of a review that started.
+/// Takes the diff of a review that started, off the main thread; it ends
+/// as a [`Done<Diff>`] on the review.
 fn take_diff(
     started: On<Add<Started>>,
     reviews: Query<&Review>,
@@ -315,30 +317,24 @@ fn take_diff(
     let (base, cap) = (review.base.clone(), settings.max_diff_bytes);
     let git = Git::new(processes.launcher(), &root.0);
     let work = async move { Diff(blocking_git(move || git.diff(base, cap)).await) };
-    commands.spawn((
-        Name::new("review diff"),
-        ChildOf(started.entity),
-        Running::spawn(pool(), &wake, work),
-    ));
+    commands
+        .entity(started.entity)
+        .insert(Running::spawn(pool(), &wake, work));
 }
 
 /// Spawns the reviewer of a diff that is not empty, briefed with it.
 fn diff_taken(
     done: On<Add<Done<Diff>>>,
-    diffs: Query<(&ChildOf, &Done<Diff>)>,
-    reviews: Query<(&Review, &ForAgent)>,
+    reviews: Query<(&Review, &ForAgent, &Done<Diff>)>,
     agents: Query<(&Reviews, &ToolAccess)>,
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<ReviewSettings>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((of, Done(Diff(diff)))) = diffs.get(done.entity) else {
-        return;
-    };
-    let review = of.parent();
-    commands.entity(done.entity).despawn();
-    let Ok((&Review { asked, .. }, &ForAgent(agent))) = reviews.get(review) else {
+    let review = done.entity;
+    let Ok((&Review { asked, .. }, &ForAgent(agent), Done(Diff(diff)))) = reviews.get(review)
+    else {
         return;
     };
     let Ok((reviews, access)) = agents.get(agent) else {
@@ -379,6 +375,7 @@ fn diff_taken(
         ..SpawnSubagent::helper(title)
             .brief(brief)
             .system_prompt(settings.prompt.clone())
+            .once()
     };
     commands.spawn((reviewer, ForAgent(agent), ChildOf(review)));
 }
@@ -482,7 +479,8 @@ fn stop_reviewer(
     }
 }
 
-/// A restored reviewer stays idle: the review it was on is gone.
+/// A restored reviewer's turn is stopped, so it retires: the review it was
+/// on is gone.
 fn stop_restored_reviewers(
     turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
     reviewers: Query<(), With<Reviewer>>,

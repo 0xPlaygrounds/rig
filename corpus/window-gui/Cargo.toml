@@ -11,7 +11,7 @@ workspace = true
 [features]
 default = ["window"]
 # The Bevy UI window that draws the model; without it only the model runs.
-window = ["dep:bevy"]
+window = ["dep:bevy", "dep:rig-tui"]
 
 [dependencies]
 # The window: Bevy UI on winit, with the default font and UI picking.
@@ -37,8 +37,8 @@ bevy = { workspace = true, optional = true, features = [
 bevy_ecs = { workspace = true }
 rig-activity = { path = "../../plugins/rig-activity" }
 rig-harness = { path = "../../crates/rig-harness" }
-# Pickers (`Picker`) and markdown, shared with the terminal view.
-rig-tui = { path = "../../plugins/rig-tui" }
+# The window draws markdown as the terminal view parses it.
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

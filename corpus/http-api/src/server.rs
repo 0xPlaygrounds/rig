@@ -1,17 +1,18 @@
 //! The HTTP side: a listener thread, and a thread per connection that
-//! parses one request, hands it to the app through a channel (waking its
-//! loop, as the terminal view's input thread does) and writes the reply,
-//! or streams the app's events as Server-Sent Events.
+//! parses one request, hands it to the app through a channel the app reads
+//! as a `Running::stream`, and writes the reply, or streams the app's
+//! events as Server-Sent Events.
 
 use std::io::{self, BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, ToSocketAddrs};
 use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{self, RecvTimeoutError, SyncSender};
 use std::time::Duration;
 
-use crossbeam_channel::{Receiver, RecvTimeoutError, Sender};
-use rig_harness::prelude::{DeliveryMode, Resource, Wake};
+use async_channel::{Receiver, Sender};
+use rig_harness::prelude::{Component, DeliveryMode};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -73,22 +74,21 @@ impl Reply {
 /// What a connection hands the app.
 pub(crate) enum Request {
     /// A call, answered on the sender.
-    Call(Call, Sender<Reply>),
+    Call(Call, SyncSender<Reply>),
     /// An event stream: the app sends each event, formatted, and drops the
     /// sender of a client that lags [`EVENT_BUFFER`] events behind.
-    Subscribe(Sender<String>),
+    Subscribe(SyncSender<String>),
 }
 
-/// The running server, as the app holds it: the requests of its
-/// connections. Dropping it stops the listener.
-#[derive(Resource)]
-pub(crate) struct Server {
-    pub(crate) requests: Receiver<Request>,
+/// The listener, on the entity reading its requests. Despawning it stops
+/// the listener.
+#[derive(Component)]
+pub(crate) struct Listener {
     addr: SocketAddr,
     stop: Arc<AtomicBool>,
 }
 
-impl Drop for Server {
+impl Drop for Listener {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::Relaxed);
         // Wakes the listener's blocking accept, which then sees `stop`.
@@ -101,13 +101,13 @@ impl Drop for Server {
 }
 
 /// Binds `addr`, which must be localhost unless `allow_remote`, writes a
-/// new token to `token_file`, and starts the listener.
+/// new token to `token_file`, and starts the listener; the requests of its
+/// connections come on the receiver.
 pub(crate) fn start(
     addr: &str,
     allow_remote: bool,
     token_file: &Path,
-    wake: Wake,
-) -> Result<(HttpApi, Server), String> {
+) -> Result<(HttpApi, Listener, Receiver<Request>), String> {
     let cannot = |failure: &dyn std::fmt::Display| format!("cannot serve on {addr}: {failure}");
     let bound = addr
         .to_socket_addrs()
@@ -128,20 +128,16 @@ pub(crate) fn start(
     );
     write_token(token_file, &token)
         .map_err(|failure| format!("cannot write {}: {failure}", token_file.display()))?;
-    let (sender, requests) = crossbeam_channel::unbounded();
+    let (sender, requests) = async_channel::unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = Arc::clone(&stop);
     let shared = token.clone();
     std::thread::Builder::new()
         .name("rig-http-api".to_owned())
-        .spawn(move || listen(&listener, &stopped, &shared, &sender, &wake))
+        .spawn(move || listen(&listener, &stopped, &shared, &sender))
         .map_err(|failure| format!("cannot start the HTTP API: {failure}"))?;
-    let server = Server {
-        requests,
-        addr: bound,
-        stop,
-    };
-    Ok((HttpApi { addr: bound, token }, server))
+    let api = HttpApi { addr: bound, token };
+    Ok((api, Listener { addr: bound, stop }, requests))
 }
 
 /// Writes the token, readable by the user alone.
@@ -157,13 +153,7 @@ fn write_token(path: &Path, token: &str) -> io::Result<()> {
 }
 
 /// Accepts connections until `stop`, each on a thread of its own.
-fn listen(
-    listener: &TcpListener,
-    stop: &AtomicBool,
-    token: &str,
-    requests: &Sender<Request>,
-    wake: &Wake,
-) {
+fn listen(listener: &TcpListener, stop: &AtomicBool, token: &str, requests: &Sender<Request>) {
     for stream in listener.incoming() {
         if stop.load(Ordering::Relaxed) {
             return;
@@ -171,10 +161,10 @@ fn listen(
         let Ok(stream) = stream else {
             continue;
         };
-        let (token, requests, wake) = (token.to_owned(), requests.clone(), wake.clone());
+        let (token, requests) = (token.to_owned(), requests.clone());
         std::thread::Builder::new()
             .name("rig-http-api-connection".to_owned())
-            .spawn(move || connection(stream, &token, &requests, &wake).ok())
+            .spawn(move || connection(stream, &token, &requests).ok())
             .ok();
     }
 }
@@ -203,12 +193,7 @@ struct AnswerBody {
 }
 
 /// Serves one request of `stream`.
-fn connection(
-    mut stream: TcpStream,
-    token: &str,
-    requests: &Sender<Request>,
-    wake: &Wake,
-) -> io::Result<()> {
+fn connection(mut stream: TcpStream, token: &str, requests: &Sender<Request>) -> io::Result<()> {
     stream.set_read_timeout(Some(WAIT))?;
     stream.set_write_timeout(Some(WAIT))?;
     let mut reader = BufReader::new(stream.try_clone()?);
@@ -225,7 +210,7 @@ fn connection(
     let path = request.path.split('?').next().unwrap_or_default();
     let segments: Vec<&str> = path.trim_matches('/').split('/').collect();
     let call = match (request.method.as_str(), segments.as_slice()) {
-        ("GET", ["events"]) => return events(stream, requests, wake),
+        ("GET", ["events"]) => return events(stream, requests),
         ("GET", ["agents"]) => Ok(Call::Agents),
         ("GET", ["agents", agent, "conversation"]) => Ok(Call::Conversation((*agent).to_owned())),
         ("POST", ["agents", agent, "interrupt"]) => Ok(Call::Interrupt((*agent).to_owned())),
@@ -252,34 +237,32 @@ fn connection(
         _ => Err(Reply::error(404, "no such endpoint")),
     };
     let reply = match call {
-        Ok(call) => ask(call, requests, wake),
+        Ok(call) => ask(call, requests),
         Err(reply) => reply,
     };
     respond(&mut stream, &reply)
 }
 
 /// Hands `call` to the app and waits for its reply.
-fn ask(call: Call, requests: &Sender<Request>, wake: &Wake) -> Reply {
-    let (sender, replies) = crossbeam_channel::bounded(1);
-    if requests.send(Request::Call(call, sender)).is_err() {
+fn ask(call: Call, requests: &Sender<Request>) -> Reply {
+    let (sender, replies) = mpsc::sync_channel(1);
+    if requests.send_blocking(Request::Call(call, sender)).is_err() {
         return Reply::error(503, "the agent is shutting down");
     }
-    wake.wake();
     replies
         .recv_timeout(WAIT)
         .unwrap_or_else(|_| Reply::error(503, "the agent did not answer"))
 }
 
 /// Streams the app's events to the client until it goes away or lags.
-fn events(mut stream: TcpStream, requests: &Sender<Request>, wake: &Wake) -> io::Result<()> {
-    let (sender, events) = crossbeam_channel::bounded(EVENT_BUFFER);
-    if requests.send(Request::Subscribe(sender)).is_err() {
+fn events(mut stream: TcpStream, requests: &Sender<Request>) -> io::Result<()> {
+    let (sender, events) = mpsc::sync_channel(EVENT_BUFFER);
+    if requests.send_blocking(Request::Subscribe(sender)).is_err() {
         return respond(
             &mut stream,
             &Reply::error(503, "the agent is shutting down"),
         );
     }
-    wake.wake();
     stream.write_all(
         b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\
           Cache-Control: no-cache\r\nConnection: close\r\n\r\n",

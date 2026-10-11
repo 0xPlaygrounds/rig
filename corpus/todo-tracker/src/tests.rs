@@ -5,7 +5,9 @@ use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until,
+};
 
 /// The kernel and the todo plugin on `store`, after the first frame
 /// restored the session, with its first agent.
@@ -16,11 +18,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>, Option<Entity>) {
         .add_observer(log_ended);
     app.finish();
     app.update();
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = first_agent(app.world_mut());
     (app, wakes, agent)
 }
 

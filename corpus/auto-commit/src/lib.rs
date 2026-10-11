@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Message};
 use rig_harness::rig_core::tool::FilesChanged;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests;
@@ -113,9 +113,11 @@ impl Said {
     }
 }
 
-/// On a turn: its repository, what was dirty when it started, and the
-/// files its tool calls said they changed.
-#[derive(Component)]
+/// On an agent while its turn runs: the repository, what was dirty when
+/// the turn started, and the files its tool calls said they changed.
+/// Saved, so a turn a restart carries on keeps its start's snapshot.
+#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Serialize, Deserialize)]
 struct Before {
     root: PathBuf,
     dirty: BTreeSet<String>,
@@ -138,10 +140,12 @@ struct Subject(String);
 #[derive(Component)]
 struct WritesSubject(Entity);
 
-/// Records what is dirty as a turn starts.
+/// Records on its agent what is dirty as a turn starts; a turn a restart
+/// carries on keeps the snapshot saved when it first started.
 fn snapshot(
     turn: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
+    turns: Query<(&TurnOf, Has<Restored>)>,
+    snapshots: Query<(), With<Before>>,
     state: Res<AutoCommit>,
     project: Res<ProjectRoot>,
     processes: Res<Processes>,
@@ -149,10 +153,10 @@ fn snapshot(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
+    let Ok((&TurnOf(agent), restored)) = turns.get(turn.entity) else {
         return;
     };
-    if !state.enabled {
+    if !state.enabled || (restored && snapshots.contains(agent)) {
         return;
     }
     let before = repository(&processes, &project.0).and_then(|root| {
@@ -165,7 +169,7 @@ fn snapshot(
     });
     match before {
         Ok(before) => {
-            commands.entity(turn.entity).insert(before);
+            commands.entity(agent).insert(before);
         }
         Err(why) => said.once(agent, why, &mut notices),
     }
@@ -174,21 +178,20 @@ fn snapshot(
 /// Notes the files each tool call of a turn says it changed.
 fn touch(
     published: On<Add<Published>>,
-    calls: Query<(&Published, &CallOf)>,
-    mut turns: Query<&mut Before>,
-    project: Res<ProjectRoot>,
+    calls: Query<(&Published, &ForAgent), With<CallOf>>,
+    mut agents: Query<&mut Before>,
 ) {
-    let Ok((Published(facts), &CallOf(turn))) = calls.get(published.entity) else {
+    let Ok((Published(facts), &ForAgent(agent))) = calls.get(published.entity) else {
         return;
     };
-    let Ok(mut before) = turns.get_mut(turn) else {
+    let Ok(mut before) = agents.get_mut(agent) else {
         return;
     };
     let Ok(Some(files)) = facts.get::<FilesChanged>() else {
         return;
     };
     for path in files.paths() {
-        if let Some(path) = relative(&before.root, &project.0.join(path)) {
+        if let Some(path) = relative(&before.root, Path::new(path)) {
             before.touched.insert(path);
         }
     }
@@ -197,7 +200,8 @@ fn touch(
 /// Holds each proposed end of a turn that changed files with a call to the
 /// message model, given the changes' diff.
 fn ask_subject(
-    proposed: Query<(Entity, &TurnOf, &Before), Added<TurnOutcome>>,
+    proposed: Query<(Entity, &TurnOf), Added<TurnOutcome>>,
+    snapshots: Query<&Before>,
     config: Res<AutoCommitConfig>,
     models: Res<Models>,
     processes: Res<Processes>,
@@ -205,9 +209,10 @@ fn ask_subject(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (turn, &TurnOf(agent), before) in &proposed {
+    for (turn, &TurnOf(agent)) in &proposed {
         commands.entity(turn).remove::<Subject>();
-        let Some(reference) = config.message_model.as_deref() else {
+        let (Some(reference), Ok(before)) = (config.message_model.as_deref(), snapshots.get(agent))
+        else {
             continue;
         };
         let changed = match before.changed(&processes) {
@@ -271,20 +276,22 @@ fn take_subject(
 /// touched that the user had changed before it.
 fn commit_turn(
     settled: On<Add<Settled>>,
-    turns: Query<(&Before, &Turn, &ForAgent, Option<&Subject>)>,
-    agents: Query<(&AgentId, &Conversation)>,
+    turns: Query<(&Turn, &ForAgent, Option<&Subject>)>,
+    agents: Query<(&AgentId, &Conversation, &Before)>,
     mut state: ResMut<AutoCommit>,
     processes: Res<Processes>,
     session: Option<Res<SessionPaths>>,
     mut said: ResMut<Said>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((before, turn, &ForAgent(agent), subject)) = turns.get(settled.entity) else {
+    let Ok((turn, &ForAgent(agent), subject)) = turns.get(settled.entity) else {
         return;
     };
-    let Ok((id, conversation)) = agents.get(agent) else {
+    let Ok((id, conversation, before)) = agents.get(agent) else {
         return;
     };
+    commands.entity(agent).remove::<Before>();
     if !state.enabled {
         return;
     }
@@ -493,11 +500,12 @@ fn status(processes: &Processes, root: &Path) -> Result<BTreeSet<String>, String
     Ok(paths)
 }
 
-/// `path` relative to the repository's top `root`, if it is in it.
+/// The absolute `path` relative to the repository's top `root`, if it is
+/// in it.
 fn relative(root: &Path, path: &Path) -> Option<String> {
-    let absolute = std::path::absolute(path).ok()?;
-    let parent = absolute.parent()?.canonicalize().ok()?;
-    let full = parent.join(absolute.file_name()?);
+    path.is_absolute().then_some(())?;
+    let parent = path.parent()?.canonicalize().ok()?;
+    let full = parent.join(path.file_name()?);
     let relative = full.strip_prefix(root).ok()?;
     Some(relative.to_string_lossy().replace('\\', "/"))
 }

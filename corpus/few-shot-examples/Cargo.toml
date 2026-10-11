@@ -14,10 +14,9 @@ bevy_ecs = { workspace = true }
 # File globs in an example's `when`.
 glob = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The `read` tool's arguments, for the files a turn read.
-rig-tools = { path = "../../crates/rig-tools" }
+# The set the examples go in before, so compaction measures them.
+rig-compaction = { path = "../../plugins/rig-compaction" }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

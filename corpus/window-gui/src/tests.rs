@@ -2,6 +2,8 @@ use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 
 use super::*;
+use rig_harness::ask::AskPlugin;
+use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 /// The text of the user's messages to `agent`.
@@ -34,13 +36,15 @@ fn typing_in_the_input_box_reaches_the_agent_and_its_answer_the_transcript() {
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
         JournalPlugin,
+        AskPlugin,
+        PickPlugin,
         WindowGuiPlugin,
     ));
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply("hello")]);
     let world = app.world_mut();
-    let agent = world.resource::<GuiAgents>().shown;
+    let agent = world.resource::<Shown>().0;
     if let (Some(agent), Some(connection)) = (agent, connect(&model)) {
         world.entity_mut(agent).insert(connection);
     }
@@ -83,11 +87,13 @@ fn a_question_is_a_dialog_its_buttons_answer() {
     app.set_error_handler(bevy_ecs::error::warn).add_plugins((
         AgentPlugin,
         JournalPlugin,
+        AskPlugin,
+        PickPlugin,
         WindowGuiPlugin,
     ));
     app.finish();
     app.update();
-    let agent = app.world().resource::<GuiAgents>().shown;
+    let agent = app.world().resource::<Shown>().0;
     let agent = agent.unwrap_or(Entity::PLACEHOLDER);
     let ask = Ask::yes_no("Run `shell`?").body("cargo test");
     let ask = app.world_mut().spawn((ask, ForAgent(agent))).id();

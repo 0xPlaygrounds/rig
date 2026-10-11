@@ -7,12 +7,10 @@
 //! target: a secret GitHub gist (with a token from `GH_TOKEN`,
 //! `GITHUB_TOKEN` or `gh auth token`), or an `http` paste server that
 //! answers a POST with `{"url": …}`. The link is shown, copied to the
-//! clipboard when a clipboard tool is there, and saved with the session,
-//! so `/share` again updates the same page and `/unshare` deletes it. A
-//! run nobody answers questions in shares only when started with `--yes`.
-
-use std::io::Write as _;
-use std::process::Stdio;
+//! clipboard through the terminal view (`CopyToClipboard`, OSC 52), and
+//! saved with the session, so `/share` again updates the same page and
+//! `/unshare` deletes it. A run nobody answers questions in shares only
+//! when started with `--yes`.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -21,6 +19,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
 use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
 use rig_harness::rig_core::{ErrorKind, ErrorReport};
+use rig_tui::CopyToClipboard;
 use serde::{Deserialize, Serialize};
 
 mod render;
@@ -123,8 +122,6 @@ enum Op {
 struct Link {
     id: String,
     url: String,
-    /// Whether the link was copied to the clipboard.
-    copied: bool,
 }
 
 /// Adds `/share`, `/unshare` and `--yes`.
@@ -136,6 +133,8 @@ impl Plugin for SharePlugin {
         app.add_setting::<ShareSettings>("share")
             .add_flag(Flag::new(YES, "Let /share publish without asking"))
             .init_resource::<Processes>()
+            // Inert without the terminal view, which copies them.
+            .add_message::<CopyToClipboard>()
             .register_type::<Shared>()
             .add_command(
                 "share",
@@ -314,21 +313,9 @@ fn upload(
     let (settings, op) = (upload.settings.clone(), upload.op.clone());
     let processes = processes.clone();
     let work = async move {
-        let link = run(&settings, op, &processes).await;
-        let outcome = match link {
-            Ok(Some(mut link)) => {
-                if settings.clipboard {
-                    let url = link.url.clone();
-                    link.copied = blocking(move || Ok(copy(&processes, &url)))
-                        .await
-                        .unwrap_or(false);
-                }
-                Ok(Answered::Custom {
-                    payload: serde_json::to_value(link).unwrap_or_default(),
-                })
-            }
-            Ok(None) => Ok(Answered::Custom {
-                payload: serde_json::Value::Null,
+        let outcome = match run(&settings, op, &processes).await {
+            Ok(link) => Ok(Answered::Custom {
+                payload: serde_json::to_value(link).unwrap_or_default(),
             }),
             Err(why) => Err(ErrorReport::new(ErrorKind::Other, why)),
         };
@@ -346,6 +333,7 @@ fn report(
     uploads: Query<(&Upload, &Outcome, &ForAgent)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
+    mut clipboard: MessageWriter<CopyToClipboard>,
 ) {
     let Ok((upload, outcome, &ForAgent(agent))) = uploads.get(settled.entity) else {
         return;
@@ -369,8 +357,10 @@ fn report(
         }
         (Op::Publish { .. }, Ok(Answered::Custom { payload })) => {
             if let Ok(link) = Link::deserialize(payload) {
-                let copied = if link.copied { " (copied)" } else { "" };
-                notices.write(Notice::info(agent, format!("Shared: {}{copied}", link.url)));
+                notices.write(Notice::info(agent, format!("Shared: {}", link.url)));
+                if upload.settings.clipboard {
+                    clipboard.write(CopyToClipboard(link.url.clone()));
+                }
                 commands.entity(agent).insert(Shared {
                     target: upload.settings.label(),
                     id: link.id,
@@ -465,11 +455,7 @@ fn parse_link(answer: &str, url_key: &str, id_key: &str) -> Result<Link, String>
                 .map(str::to_owned)
         })
         .unwrap_or_default();
-    Ok(Link {
-        id,
-        url,
-        copied: false,
-    })
+    Ok(Link { id, url })
 }
 
 /// Sends a request on the shared client, answering its body; a failed
@@ -523,31 +509,4 @@ async fn gist_token(processes: Processes) -> Result<String, String> {
     })
     .await
     .map_err(|error| format!("no GitHub token (set GH_TOKEN or run `gh auth login`): {error}"))
-}
-
-/// Copies `text` with the first clipboard tool found; whether it did.
-fn copy(processes: &Processes, text: &str) -> bool {
-    let tools: [(&str, &[&str]); 3] = [
-        ("wl-copy", &[]),
-        ("xclip", &["-selection", "clipboard"]),
-        ("pbcopy", &[]),
-    ];
-    let launcher = processes.launcher();
-    tools.iter().any(|(tool, args)| {
-        let Ok(mut child) = launcher
-            .command(tool)
-            .args(*args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        else {
-            return false;
-        };
-        let written = child
-            .stdin
-            .take()
-            .is_some_and(|mut stdin| stdin.write_all(text.as_bytes()).is_ok());
-        child.wait().is_ok_and(|status| status.success()) && written
-    })
 }

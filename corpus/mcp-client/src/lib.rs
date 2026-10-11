@@ -14,9 +14,11 @@ use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
 use std::process::Stdio;
 
-use async_channel::{Receiver, Sender};
+use async_channel::Sender;
 use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
+use bevy_tasks::futures_lite::future;
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_core::completion::ToolDefinition;
 use rig_core::effect::{EffectId, EffectKind, Outcome as Answer};
 use rig_core::error::ErrorReport;
@@ -31,7 +33,6 @@ use rmcp::transport::StreamableHttpClientTransport;
 use rmcp::transport::streamable_http_client::StreamableHttpClientTransportConfig;
 use rmcp::{ClientHandler, ServiceExt};
 use serde::Deserialize;
-use tokio::task::AbortHandle;
 
 #[cfg(test)]
 mod tests;
@@ -49,10 +50,9 @@ impl Plugin for McpClientPlugin {
             .init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
-            .init_resource::<Events>()
             .register_type::<McpStatus>()
             .add_systems(Startup, connect_configured)
-            .add_systems(Update, apply_events.before(AgentLoop))
+            .add_observer(apply_event)
             .add_command(
                 "mcp",
                 "MCP servers; `/mcp add <name> <command…>`, `/mcp remove <name>`",
@@ -157,16 +157,6 @@ pub struct McpToolOf(pub Entity);
 #[relationship_target(relationship = McpToolOf, linked_spawn)]
 pub struct McpTools(Vec<Entity>);
 
-/// Stops a server's connection task when its entity goes.
-#[derive(Component)]
-struct Supervisor(AbortHandle);
-
-impl Drop for Supervisor {
-    fn drop(&mut self) {
-        self.0.abort();
-    }
-}
-
 /// What a server's connection task tells the app.
 enum ServerEvent {
     Connecting,
@@ -175,34 +165,14 @@ enum ServerEvent {
     Lost(String),
 }
 
-/// Every server's events, drained each frame before the agent loop.
-#[derive(Resource)]
-struct Events {
-    sender: Sender<(Entity, ServerEvent)>,
-    receiver: Receiver<(Entity, ServerEvent)>,
-}
-
-impl Default for Events {
-    fn default() -> Self {
-        let (sender, receiver) = async_channel::unbounded();
-        Self { sender, receiver }
-    }
-}
-
-/// A server task's way to the app: sends its events and wakes the loop.
+/// A server task's way to its entity, where each event arrives as a
+/// `Done<ServerEvent>` (a [`Running::stream`] of the channel).
 #[derive(Clone)]
-struct Outbox {
-    server: Entity,
-    sender: Sender<(Entity, ServerEvent)>,
-    wake: Wake,
-}
+struct Outbox(Sender<ServerEvent>);
 
 impl Outbox {
-    /// Sends `event`; `false` once the app is gone.
-    fn send(&self, event: ServerEvent) -> bool {
-        let sent = self.sender.try_send((self.server, event)).is_ok();
-        self.wake.wake();
-        sent
+    fn send(&self, event: ServerEvent) {
+        self.0.try_send(event).ok();
     }
 }
 
@@ -210,7 +180,6 @@ impl Outbox {
 #[derive(SystemParam)]
 struct Connect<'w> {
     runtime: Option<Res<'w, TokioRuntime>>,
-    events: Res<'w, Events>,
     wake: Res<'w, Wake>,
     settings: Res<'w, McpSettings>,
     processes: Res<'w, Processes>,
@@ -223,26 +192,27 @@ impl Connect<'_> {
         let Some(runtime) = &self.runtime else {
             return Err("MCP is off: rig has no tokio runtime.".to_owned());
         };
-        let server = commands
-            .spawn((Name::new(format!("mcp:{name}")), McpStatus::default()))
-            .id();
-        let outbox = Outbox {
-            server,
-            sender: self.events.sender.clone(),
-            wake: self.wake.clone(),
-        };
+        let (sender, events) = async_channel::unbounded();
         let start = Start {
             spec: spec.clone(),
             processes: self.processes.clone(),
             root: self.root.0.clone(),
         };
         let first = Duration::from_secs(self.settings.first_retry_secs);
-        let task = runtime
+        // The connection lasts until nothing reads its events: until the
+        // server's entity, and its `Running` with them, is gone.
+        let closed = sender.clone();
+        let connection = supervise(name.clone(), start, first, Outbox(sender));
+        runtime
             .0
-            .spawn(supervise(name.clone(), start, first, outbox));
-        commands
-            .entity(server)
-            .insert((McpServer { name, spec }, Supervisor(task.abort_handle())));
+            .spawn(future::or(connection, async move { closed.closed().await }));
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        commands.spawn((
+            Name::new(format!("mcp:{name}")),
+            McpStatus::default(),
+            McpServer { name, spec },
+            Running::stream(pool, &self.wake, events),
+        ));
         Ok(())
     }
 }
@@ -287,7 +257,7 @@ struct Start {
     root: PathBuf,
 }
 
-/// Connects `name` until it is removed: lists its tools, waits for it to go,
+/// Connects `name` again and again: lists its tools, waits for it to go,
 /// then waits before the next attempt.
 async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) {
     let mut wait = first;
@@ -300,9 +270,7 @@ async fn supervise(name: String, start: Start, first: Duration, outbox: Outbox) 
             }
             Err(error) => error,
         };
-        if !outbox.send(ServerEvent::Lost(lost)) {
-            return;
-        }
+        outbox.send(ServerEvent::Lost(lost));
         tokio::time::sleep(wait).await;
         wait = (wait * 2).min(MAX_RETRY.max(first));
     }
@@ -404,34 +372,33 @@ impl ClientHandler for Listener {
     }
 }
 
-/// Applies what the servers' tasks sent since the last frame.
-fn apply_events(
-    events: Res<Events>,
-    mut servers: Query<(&McpServer, &mut McpStatus)>,
+/// Applies what a server's task sent.
+fn apply_event(
+    event: On<Insert<Done<ServerEvent>>>,
+    mut servers: Query<(&McpServer, &mut McpStatus, &Done<ServerEvent>)>,
     mut commands: Commands,
 ) {
-    while let Ok((server, event)) = events.receiver.try_recv() {
-        let Ok((spec, mut status)) = servers.get_mut(server) else {
-            continue;
-        };
-        match event {
-            ServerEvent::Connecting => status.state = McpState::Connecting,
-            ServerEvent::Started(pid) => status.pid = Some(pid),
-            ServerEvent::Lost(why) => {
-                *status = McpStatus {
-                    state: McpState::Retrying,
-                    last_error: Some(why),
-                    ..McpStatus::default()
-                };
-                commands.entity(server).despawn_related::<McpTools>();
-            }
-            ServerEvent::Listed(sink, tools) => {
-                status.state = McpState::Connected;
-                let name = spec.name.clone();
-                commands.queue(move |world: &mut World| {
-                    register(world, server, &name, &sink, tools);
-                });
-            }
+    let server = event.entity;
+    let Ok((spec, mut status, Done(event))) = servers.get_mut(server) else {
+        return;
+    };
+    match event {
+        ServerEvent::Connecting => status.state = McpState::Connecting,
+        ServerEvent::Started(pid) => status.pid = Some(*pid),
+        ServerEvent::Lost(why) => {
+            *status = McpStatus {
+                state: McpState::Retrying,
+                last_error: Some(why.clone()),
+                ..McpStatus::default()
+            };
+            commands.entity(server).despawn_related::<McpTools>();
+        }
+        ServerEvent::Listed(sink, tools) => {
+            status.state = McpState::Connected;
+            let (name, sink, tools) = (spec.name.clone(), sink.clone(), tools.clone());
+            commands.queue(move |world: &mut World| {
+                register(world, server, &name, &sink, tools);
+            });
         }
     }
 }

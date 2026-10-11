@@ -12,6 +12,9 @@ workspace = true
 # Named by the ECS derives.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# Ordered against compaction: routing before it measures, taking a failure
+# over after it had its chance at an overflow.
+rig-compaction = { path = "../../plugins/rig-compaction" }
 # The `[model-fallback]` settings.
 serde = { workspace = true, features = ["derive"] }
 

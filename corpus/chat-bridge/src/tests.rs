@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, calls, connect, first_agent, reply, run_until};
 use schemars::JsonSchema;
 
 use super::*;
@@ -106,13 +106,28 @@ fn agents_of(world: &mut World, thread: &str) -> Vec<Entity> {
         .collect()
 }
 
+/// Whether `agent`'s conversation has `text` from the user, by the chat
+/// user `U1`.
 fn said(world: &World, agent: Entity, text: &str) -> bool {
-    world.get::<Conversation>(agent).is_some_and(|conversation| {
-        conversation.messages().iter().any(|message| {
-            matches!(message, message::Message::User { content }
-                if content.iter().any(|item| matches!(item, UserContent::Text(said) if said.text == text)))
+    world
+        .get::<Conversation>(agent)
+        .is_some_and(|conversation| {
+            conversation
+                .messages()
+                .iter()
+                .enumerate()
+                .any(|(at, message)| {
+                    let message::Message::User { content } = message else {
+                        return false;
+                    };
+                    content.iter().enumerate().any(|(item, content)| {
+                        matches!(content, UserContent::Text(said) if said.text == text)
+                            && conversation
+                                .origin(at, item)
+                                .is_some_and(|origin| origin.title.as_deref() == Some("U1"))
+                    })
+                })
         })
-    })
 }
 
 #[test]
@@ -125,11 +140,7 @@ fn a_thread_gets_its_own_agent_its_answers_and_its_questions() {
     let fake = Fake::default();
     let store = MemoryStore::default();
     let (mut app, wakes) = bridge_app(&store, &fake, Some(&model));
-    let terminal = {
-        let world = app.world_mut();
-        let mut agents = world.query_filtered::<Entity, With<Agent>>();
-        agents.iter(world).next().unwrap_or(Entity::PLACEHOLDER)
-    };
+    let terminal = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
 
     fake.say("T1", "U1", "fix the bug", true);
     run_until(&mut app, &wakes, |_| fake.posted("T1", "fixed"));

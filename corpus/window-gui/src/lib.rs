@@ -2,13 +2,15 @@
 //! indented, the shown agent's transcript in the middle (markdown answers,
 //! collapsible reasoning and tool calls, the reply streaming in), an input
 //! box under it, and every open question ([`Ask`]) and picker
-//! ([`Picker`]) as a dialog with buttons.
+//! ([`Picker`]) as a dialog with buttons, answered with [`Pick`].
 //!
 //! What the window shows is its model, four resources kept by systems that
 //! need no window: [`GuiAgents`], [`GuiTranscript`], [`GuiInput`] and
 //! [`GuiDialogs`]. The window, or a test, changes it only through the
 //! requests [`Show`], [`Submit`], [`Stop`], [`Toggle`], [`Choose`] and
 //! [`Dismiss`], which become the same requests the terminal view sends.
+//! The agent shown is the harness's [`Shown`], so the window and the
+//! terminal view beside it show the same agent.
 //! With the default `window` feature, a Bevy UI window draws the model,
 //! redrawing a part only when its resource changed.
 //!
@@ -21,7 +23,6 @@ mod window;
 
 use std::collections::HashSet;
 
-use bevy_ecs::system::SystemParam;
 use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
 use rig_harness::prelude::*;
 use rig_harness::primary::primary_order;
@@ -50,6 +51,7 @@ impl Plugin for WindowGuiPlugin {
             .init_resource::<GuiTranscript>()
             .init_resource::<GuiInput>()
             .init_resource::<GuiDialogs>()
+            .init_resource::<Shown>()
             .add_front(Front::new(FRONT).on_flag(FRONT, "Run the agent in a window"))
             .configure_sets(PostUpdate, GuiSystems.after(ActivitySystems))
             .add_systems(Update, (collect_notices, recall))
@@ -95,11 +97,9 @@ pub struct AgentRow {
     pub depth: usize,
 }
 
-/// The agent list, subagents under their parent, and the agent shown.
+/// The agent list, subagents under their parent.
 #[derive(Resource, Default, Debug)]
 pub struct GuiAgents {
-    /// The agent shown and typed to.
-    pub shown: Option<Entity>,
     /// Every agent, in tree order.
     pub rows: Vec<AgentRow>,
 }
@@ -254,7 +254,7 @@ pub struct GuiDialogs {
     pub open: Vec<Dialog>,
 }
 
-/// Show `agent` and send what is typed to it.
+/// Show `agent` and send what is typed to it: it becomes [`Shown`].
 #[derive(Event, Clone, Copy, Debug)]
 pub struct Show {
     /// The agent.
@@ -315,8 +315,7 @@ type AgentItem<'a> = (
     Option<&'a Spawned>,
 );
 
-/// Keeps the agent list and the agent shown: the first agent the user
-/// started when none is shown or the shown one is gone.
+/// Keeps the agent list.
 fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents>) {
     let mut roots: Vec<_> = agents.iter().filter(|agent| !agent.4).collect();
     roots.sort_by(|a, b| primary_order(a.4, a.2).cmp(&primary_order(b.4, b.2)));
@@ -338,13 +337,6 @@ fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents
             stack.extend(children.into_iter().rev().map(|child| (child, depth + 1)));
         }
     }
-    let shown = list
-        .shown
-        .filter(|shown| agents.contains(*shown))
-        .or_else(|| roots.first().map(|root| root.0));
-    if list.shown != shown {
-        list.shown = shown;
-    }
     if list.rows != rows {
         list.rows = rows;
     }
@@ -353,12 +345,12 @@ fn list_agents(agents: Query<AgentItem, With<Agent>>, mut list: ResMut<GuiAgents
 /// Keeps the shown agent's transcript as blocks, rebuilt when its
 /// conversation changed.
 fn show_transcript(
-    list: Res<GuiAgents>,
+    shown: Res<Shown>,
     conversations: Query<Ref<Conversation>>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
-    let shown = list
-        .shown
+    let shown = shown
+        .0
         .and_then(|agent| Some((agent, conversations.get(agent).ok()?)));
     let Some((agent, conversation)) = shown else {
         if transcript.agent.is_some() {
@@ -380,19 +372,16 @@ fn show_transcript(
     }
 }
 
-/// The reply streaming in to the shown agent, from its model call.
+/// The reply streaming in to the shown agent: what its turn's model call
+/// added up so far.
 fn stream_reply(
-    list: Res<GuiAgents>,
-    active: Query<&ActiveTurn>,
-    turns: Query<&Calls>,
-    partials: Query<&Partial>,
+    shown: Res<Shown>,
+    partials: Query<(&Partial, &ForAgent), (With<TurnCall>, Without<Settled>)>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
-    let partial = list
-        .shown
-        .and_then(|agent| active.get(agent).ok())
-        .and_then(|turn| turns.get(turn.turn()).ok())
-        .and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let partial = partials
+        .iter()
+        .find_map(|(partial, &ForAgent(agent))| (shown.0 == Some(agent)).then_some(partial));
     let (text, reasoning) = partial.map_or(("", ""), |partial| {
         (partial.text.as_str(), partial.reasoning.as_str())
     });
@@ -563,12 +552,12 @@ fn collect_notices(mut notices: MessageReader<Notice>, mut transcript: ResMut<Gu
 /// and says why a refused command was.
 fn recall(
     mut recalled: MessageReader<Recalled>,
-    list: Res<GuiAgents>,
+    shown: Res<Shown>,
     mut input: ResMut<GuiInput>,
     mut transcript: ResMut<GuiTranscript>,
 ) {
     for recalled in recalled.read() {
-        if list.shown != Some(recalled.agent) {
+        if shown.0 != Some(recalled.agent) {
             continue;
         }
         if let Some(why) = &recalled.why {
@@ -587,35 +576,32 @@ fn recall(
     }
 }
 
-fn show(show: On<Show>, agents: Query<(), With<Agent>>, mut list: ResMut<GuiAgents>) {
-    if agents.contains(show.agent) && list.shown != Some(show.agent) {
-        list.shown = Some(show.agent);
+fn show(show: On<Show>, agents: Query<(), With<Agent>>, mut shown: ResMut<Shown>) {
+    if agents.contains(show.agent) {
+        shown.set_if_neq(Shown(Some(show.agent)));
     }
 }
 
 fn submit(
     _submit: On<Submit>,
-    list: Res<GuiAgents>,
+    shown: Res<Shown>,
     dialogs: Res<GuiDialogs>,
+    pickers: Query<&Picker>,
     mut input: ResMut<GuiInput>,
-    closing: Closing,
     mut commands: Commands,
 ) {
-    let Some(agent) = list.shown else {
+    let Some(agent) = shown.0 else {
         return;
     };
     if input.text.trim().is_empty() {
         return;
     }
     let text = std::mem::take(&mut input.text);
-    if let Some(picker) = dialogs.open.first().map(|dialog| dialog.entity)
-        && closing
-            .pickers
-            .get(picker)
-            .is_ok_and(|picker| picker.free_text)
+    if let Some(entity) = dialogs.open.first().map(|dialog| dialog.entity)
+        && pickers.get(entity).is_ok_and(|picker| picker.free_text)
     {
-        let chosen = Chosen::Text(text.trim().to_owned());
-        closing.close(picker, Some(chosen), Some(agent), &mut commands);
+        let chosen = Some(Chosen::Text(text.trim().to_owned()));
+        commands.trigger(Pick { entity, chosen });
         return;
     }
     let refused = input.refused.take().as_ref() == Some(&text);
@@ -623,8 +609,8 @@ fn submit(
     commands.trigger(if refused { typed.literal() } else { typed });
 }
 
-fn stop(_stop: On<Stop>, list: Res<GuiAgents>, mut commands: Commands) {
-    if let Some(entity) = list.shown {
+fn stop(_stop: On<Stop>, shown: Res<Shown>, mut commands: Commands) {
+    if let Some(entity) = shown.0 {
         commands.trigger(Interrupt::new(entity));
     }
 }
@@ -646,75 +632,22 @@ fn toggle(toggle: On<Toggle>, mut transcript: ResMut<GuiTranscript>) {
     }
 }
 
-fn choose(
-    choose: On<Choose>,
-    dialogs: Res<GuiDialogs>,
-    list: Res<GuiAgents>,
-    closing: Closing,
-    mut commands: Commands,
-) {
+fn choose(choose: On<Choose>, dialogs: Res<GuiDialogs>, mut commands: Commands) {
     if let Some(dialog) = dialogs.open.first() {
-        let chosen = Chosen::Item(choose.item);
-        closing.close(dialog.entity, Some(chosen), list.shown, &mut commands);
+        let chosen = Some(Chosen::Item(choose.item));
+        commands.trigger(Pick {
+            entity: dialog.entity,
+            chosen,
+        });
     }
 }
 
-fn dismiss(
-    _dismiss: On<Dismiss>,
-    dialogs: Res<GuiDialogs>,
-    list: Res<GuiAgents>,
-    closing: Closing,
-    mut commands: Commands,
-) {
+fn dismiss(_dismiss: On<Dismiss>, dialogs: Res<GuiDialogs>, mut commands: Commands) {
     if let Some(dialog) = dialogs.open.first() {
-        closing.close(dialog.entity, None, list.shown, &mut commands);
-    }
-}
-
-/// What closing a dialog reads.
-#[derive(SystemParam)]
-struct Closing<'w, 's> {
-    pickers: Query<'w, 's, &'static Picker>,
-    asks: Query<'w, 's, &'static Ask, Without<Outcome>>,
-}
-
-impl Closing<'_, '_> {
-    /// Carries out what the user chose for `entity`, `None` for closing
-    /// it, as the terminal view does: a picker runs its item's command for
-    /// its agent, else the one shown, hears [`Picked`] and is despawned; a
-    /// question is answered, a closed one refused.
-    fn close(
-        &self,
-        entity: Entity,
-        chosen: Option<Chosen>,
-        shown: Option<Entity>,
-        commands: &mut Commands,
-    ) {
-        if let Ok(picker) = self.pickers.get(entity) {
-            let item = match &chosen {
-                Some(Chosen::Item(index)) => picker.items.get(*index),
-                _ => None,
-            };
-            if let (Some(item), Some(agent)) = (item, picker.agent.or(shown))
-                && !item.command.is_empty()
-            {
-                commands.trigger(RunCommand::new(agent, item.command.clone()));
-            }
-            commands.trigger(Picked { entity, chosen });
-            commands.entity(entity).try_despawn();
-        } else if let Ok(ask) = self.asks.get(entity) {
-            let answer = match chosen {
-                Some(Chosen::Item(index)) => ask
-                    .choices
-                    .get(index)
-                    .map(|choice| Answer::Choice(choice.id.clone()).outcome()),
-                Some(Chosen::Text(text)) => Some(Answer::Text(text).outcome()),
-                None => Some(Outcome::refused("The user closed the question.")),
-            };
-            if let Some(answer) = answer {
-                commands.entity(entity).insert_if_new(answer);
-            }
-        }
+        commands.trigger(Pick {
+            entity: dialog.entity,
+            chosen: None,
+        });
     }
 }
 

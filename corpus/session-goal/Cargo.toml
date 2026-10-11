@@ -13,7 +13,7 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# `shorten` for the status item.
+# `shorten` for the `/resume` label.
 rig-tools = { path = "../../crates/rig-tools" }
 # The goal's part of this session's line in `/resume`.
 rig-sessions = { path = "../../plugins/rig-sessions" }

@@ -157,6 +157,11 @@ fn a_turn_is_one_trace_of_its_model_and_tool_calls() {
     for (key, value) in tokens {
         assert_eq!(attribute(first, key), Some(&value.into()), "{key}");
     }
+    // The first reply only calls a tool; both are timed to their first item.
+    for model in [first, second] {
+        let waited = attribute(model, "gen_ai.response.time_to_first_chunk_ms");
+        assert!(waited.is_some(), "{model:#?}");
+    }
     assert_eq!(
         attribute(turn, "rig.turn.outcome"),
         Some(&"answered".into())

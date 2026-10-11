@@ -21,6 +21,7 @@ use std::time::UNIX_EPOCH;
 
 use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
+use rig_compaction::CompactionSystems;
 use rig_core::DynModel;
 use rig_core::operation::Embedding;
 use rig_core::tool::FilesChanged;
@@ -76,16 +77,31 @@ impl Plugin for CodeSearchPlugin {
                 index,
             )
             .add_systems(Startup, start)
-            .add_systems(AgentPass, add_context.in_set(Stage::Prepare))
+            .configure_sets(AgentPass, CodeSearchSystems.in_set(Stage::Prepare))
+            .add_systems(
+                AgentPass,
+                (
+                    look_up.in_set(Stage::Gate),
+                    add_context
+                        .in_set(CodeSearchSystems)
+                        .before(CompactionSystems::Prepare),
+                ),
+            )
             .add_observer(listed)
             .add_observer(indexed)
             .add_observer(searched)
             .add_observer(reindex_changed)
-            .add_observer(context_found);
+            .add_observer(context_found)
+            .add_observer(delivered);
         #[cfg(feature = "tui")]
         status::add(app);
     }
 }
+
+/// The Prepare system that adds the chunks found for a user's message to
+/// its turn's requests, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CodeSearchSystems;
 
 /// The `[code_search]` settings.
 #[derive(Resource, Deserialize, Clone, Default)]
@@ -276,16 +292,13 @@ struct Searched {
     result: ToolResult,
 }
 
-/// The chunks found for a turn's user message, on the hold that kept the
-/// turn's model call back meanwhile.
+/// The chunks found for a user's message, on the hold that kept it back
+/// meanwhile.
 #[derive(Component)]
-struct ContextFound {
-    turn: Entity,
-    context: TurnContext,
-}
+struct ContextFound(TurnContext);
 
-/// On a turn: the chunks that go with its requests, for the user message
-/// `key`.
+/// On a user's message, then on the turn it went into: the chunks that go
+/// with the turn's requests, for the message `key`.
 #[derive(Component, Clone)]
 struct TurnContext {
     key: String,
@@ -649,13 +662,10 @@ fn describe(hits: &[Hit<'_>]) -> String {
     hits.collect::<Vec<_>>().join("\n\n")
 }
 
-/// The context of the user's newest message, in each of its turn's model
-/// calls as they are admitted. The turn's first call for a message is held
-/// while the index is searched for it ([`context_found`] adds it and lets
-/// the call go); the turn's later calls get the same chunks at once.
-fn add_context(
-    mut calls: Query<(Entity, &mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
-    turns: Query<&TurnContext>,
+/// Holds each new message the user sends while the index is searched for
+/// it, so the chunks found are ready when its turn's calls are prepared.
+fn look_up(
+    messages: Query<(Entity, &Incoming), (Undecided, Without<TurnContext>)>,
     settings: Res<CodeSearchSettings>,
     index: Res<CodeIndex>,
     embedder: Res<Embedder>,
@@ -666,97 +676,87 @@ fn add_context(
     if k == 0 || index.files.is_empty() {
         return;
     }
-    for (call, mut request, &CallOf(turn)) in &mut calls {
-        let Some(key) = newest_user_text(&request.request.chat_history).map(|(_, key)| key) else {
+    for (message, incoming) in &messages {
+        let key = incoming.text.trim();
+        if incoming.origin.kind != OriginKind::User
+            || incoming.command().is_some()
+            || key.is_empty()
+        {
             continue;
-        };
-        match turns.get(turn) {
-            Ok(context) if context.key == key => context.add_to(&mut request),
-            _ => {
-                let (files, embedder) = (index.files.clone(), embedder.clone());
-                let work = async move {
-                    let query = embedder.embed_one(key.clone()).await.unwrap_or_default();
-                    let hits = rank(current(&files, &[]), &query, k);
-                    let text = (!hits.is_empty()).then(|| {
-                        format!(
-                            "<code-context>\nCode that may be relevant:\n\n{}\n</code-context>",
-                            describe(&hits)
-                        )
-                    });
-                    ContextFound {
-                        turn,
-                        context: TurnContext { key, text },
-                    }
-                };
-                commands.spawn((
-                    Name::new("code context"),
-                    HoldOf(call),
-                    Running::spawn_into::<ContextFound, _>(pool(), &wake, work),
-                ));
-            }
         }
+        let (files, embedder, key) = (index.files.clone(), embedder.clone(), key.to_owned());
+        let work = async move {
+            let query = embedder.embed_one(key.clone()).await.unwrap_or_default();
+            let hits = rank(current(&files, &[]), &query, k);
+            let text = (!hits.is_empty()).then(|| {
+                format!(
+                    "<code-context>\nCode that may be relevant:\n\n{}\n</code-context>",
+                    describe(&hits)
+                )
+            });
+            ContextFound(TurnContext { key, text })
+        };
+        commands.spawn((
+            Name::new("code context"),
+            HoldOf(message),
+            Running::spawn_into::<ContextFound, _>(pool(), &wake, work),
+        ));
     }
 }
 
-/// Adds the context found to the call it held, keeps it on the turn for its
-/// later calls, and lets the call go.
+/// Puts the chunks found on the message they were found for, and lets it
+/// go.
 fn context_found(
     add: On<Add<ContextFound>>,
     found: Query<(&ContextFound, &HoldOf)>,
-    mut calls: Query<&mut ModelRequest>,
     mut commands: Commands,
 ) {
-    let Ok((found, &HoldOf(call))) = found.get(add.entity) else {
-        return;
-    };
-    if let Ok(mut request) = calls.get_mut(call) {
-        found.context.add_to(&mut request);
+    if let Ok((ContextFound(context), &HoldOf(message))) = found.get(add.entity) {
+        commands.entity(message).try_insert(context.clone());
     }
-    commands
-        .entity(found.turn)
-        .try_insert(found.context.clone());
     commands.entity(add.entity).despawn();
 }
 
-impl TurnContext {
-    /// Adds the chunks to `request`'s newest user message, if it is the one
-    /// they were found for.
-    fn add_to(&self, request: &mut ModelRequest) {
-        let history = &mut request.request.chat_history;
-        let Some(text) = &self.text else {
-            return;
-        };
-        if let Some((position, key)) = newest_user_text(history)
-            && key == self.key
-            && let Some(message::Message::User { content }) = history.get_mut(position)
-        {
-            content.push(UserContent::text(text.clone()));
+/// Keeps a message's chunks on the turn it went into, for the turn's calls.
+fn delivered(
+    add: On<Add<DeliveredIn>>,
+    messages: Query<(&TurnContext, &DeliveredIn)>,
+    mut commands: Commands,
+) {
+    if let Ok((context, &DeliveredIn(turn))) = messages.get(add.entity) {
+        commands.entity(turn).try_insert(context.clone());
+    }
+}
+
+/// Adds the chunks of a turn's message to each of the turn's model calls.
+fn add_context(
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    turns: Query<&TurnContext>,
+) {
+    for (mut request, &CallOf(turn)) in &mut calls {
+        if let Ok(context) = turns.get(turn) {
+            context.add_to(&mut request);
         }
     }
 }
 
-/// The position and text of the newest user message that has text and no
-/// tool results.
-fn newest_user_text(messages: &[message::Message]) -> Option<(usize, String)> {
-    messages
-        .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(position, message)| {
-            let message::Message::User { content } = message else {
-                return None;
-            };
-            let mut texts = Vec::new();
-            for item in content.iter() {
-                match item {
-                    UserContent::ToolResult(_) => return None,
-                    UserContent::Text(text) => texts.push(text.text.as_str()),
-                    _ => {}
-                }
-            }
-            let text = texts.join("\n");
-            (!text.trim().is_empty()).then_some((position, text))
-        })
+impl TurnContext {
+    /// Adds the chunks to the newest of `request`'s user messages that holds
+    /// the text they were found for.
+    fn add_to(&self, request: &mut ModelRequest) {
+        let Some(text) = &self.text else {
+            return;
+        };
+        let typed = |item: &UserContent| matches!(item, UserContent::Text(typed) if typed.text.ends_with(&self.key));
+        let mut messages = request.request.chat_history.iter_mut().rev();
+        let found = messages.find_map(|message| match message {
+            message::Message::User { content } if content.iter().any(typed) => Some(content),
+            _ => None,
+        });
+        if let Some(content) = found {
+            content.push(UserContent::text(text.clone()));
+        }
+    }
 }
 
 /// `/index rebuild` or `/index status`.

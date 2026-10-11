@@ -17,6 +17,8 @@ bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The shared HTTP client the targets are sent with.
 rig-reqwest = { workspace = true }
+# The terminal view, which copies the link (OSC 52).
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

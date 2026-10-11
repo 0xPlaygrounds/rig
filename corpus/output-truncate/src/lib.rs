@@ -10,6 +10,7 @@
 //! `.before(TruncateResults)`; a result it shrank under the limits is left
 //! alone.
 
+use std::borrow::Cow;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -17,11 +18,11 @@ use std::time::{Duration, SystemTime};
 
 use bevy_ecs::schedule::SystemSet;
 use bevy_log::warn;
+use rig_coding_tools::ShellOutput;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::ToolAnnotations;
-use rig_harness::rig_core::effect;
-use rig_harness::rig_core::tool::{ToolContext, ToolOutput as Output};
-use rig_tools::{Shell, ShellArgs};
+use rig_harness::rig_core::tool::ToolOutput as Output;
+use rig_harness::rig_core::{self, effect};
+use rig_tools::Shell;
 use serde::Deserialize;
 
 /// The `[truncate]` settings table: what is cut, how, and where the whole
@@ -89,70 +90,16 @@ impl Plugin for OutputTruncatePlugin {
             .add_systems(AgentPass, cut_long_results.in_set(TruncateResults));
     }
 
-    /// The default `shell` keeps only its output's last lines, so this
-    /// plugin, which keeps the first ones too, takes its place with one
-    /// that returns all of it.
+    /// The default `shell` keeps only its output's last lines; this
+    /// plugin keeps the first ones too, so it asks for all of it.
     fn finish(&self, app: &mut App) {
-        let covered = app.world().get_resource::<Truncate>();
-        if !covered.is_some_and(|config| config.covers(Shell::NAME)) {
-            return;
+        let world = app.world();
+        let covered = world.get_resource::<Truncate>();
+        if covered.is_some_and(|config| config.covers(Shell::NAME))
+            && let Some(output) = world.get_resource::<ShellOutput>()
+        {
+            output.set(None);
         }
-        let world = app.world_mut();
-        let mut tools = world.query::<(Entity, &ToolDef)>();
-        let shell = tools
-            .iter(world)
-            .find(|(_, def)| def.0.name.as_str() == Shell::NAME)
-            .map(|(shell, _)| shell);
-        if let Some(shell) = shell {
-            world.entity_mut(shell).insert(Disabled);
-            let processes = world.get_resource_or_init::<Processes>().clone();
-            let options = ToolOptions {
-                rules: Shell::RULES,
-                footprint: None,
-            };
-            app.add_tool_with(WholeShell(processes), options);
-        }
-    }
-}
-
-/// [`Shell`] returning all of its output, started as [`Processes`] say
-/// when it runs.
-struct WholeShell(Processes);
-
-impl WholeShell {
-    fn shell(&self) -> Shell {
-        Shell {
-            launcher: self.0.launcher(),
-            spill: None,
-            cut: None,
-        }
-    }
-}
-
-impl Tool for WholeShell {
-    const NAME: &'static str = Shell::NAME;
-    type Args = ShellArgs;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        self.shell().description()
-    }
-
-    fn parameters(&self) -> rig_harness::rig_core::serde_json::Value {
-        self.shell().parameters()
-    }
-
-    fn annotations(&self) -> ToolAnnotations {
-        self.shell().annotations()
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: ShellArgs,
-    ) -> Result<String, ToolExecutionError> {
-        self.shell().call(context, args).await
     }
 }
 
@@ -185,16 +132,22 @@ fn cut_long_results(
 }
 
 /// `result` cut around a marker, with its whole text written to the spill
-/// file of the call `id` under `root` first; `None` when it is short
-/// enough, is not plain text, or could not be spilled (then it goes whole,
-/// never lost).
+/// file of the call `id` under `root` first (a JSON result is cut as its
+/// pretty-printed text); `None` when it is short enough, is neither text
+/// nor JSON (images stay whole), or could not be spilled (then it goes
+/// whole, never lost).
 pub fn shorten(
     result: &ToolResult,
     id: &str,
     config: &Truncate,
     root: &Path,
 ) -> Option<ToolResult> {
-    let text = result.output().as_text()?;
+    let output = result.output();
+    let text = match output.as_text() {
+        Some(text) => Cow::Borrowed(text),
+        None => Cow::Owned(rig_core::serde_json::to_string_pretty(output.as_json()?).ok()?),
+    };
+    let text = text.as_ref();
     if text.lines().count() <= config.max_lines && text.len() <= config.max_bytes {
         return None;
     }

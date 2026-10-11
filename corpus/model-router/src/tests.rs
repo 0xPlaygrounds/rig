@@ -1,12 +1,12 @@
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
-use rig_core::completion::{Effort as Level, Reasoning};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::{ConnectError, ProviderId};
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
+use rig_core::catalog::ReasoningSupport;
+use rig_core::completion::{CompletionRequest, Effort as Level, Reasoning};
+use rig_core::effect::model_key;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply, run_until,
+    scripted_models,
+};
 use rig_telemetry::{Spending, UsagePlugin};
 
 use super::*;
@@ -19,38 +19,21 @@ cheap = "scripted/cheap"
 strong = "scripted/strong"
 "#;
 
-/// `cheap` and `strong` in the catalog as the scripted vendor's models,
-/// answered by the mock of the same name; `cheap` does not reason.
-fn scripted(models: &mut Models, cheap: &MockCompletionModel, strong: &MockCompletionModel) {
-    let Ok(vendor) = ProviderId::declare("scripted") else {
-        return;
-    };
-    let catalog = models.0.catalog_mut();
-    catalog.insert(ModelSpec::new(vendor, "cheap").with_tools(true));
-    let reasons = ReasoningSupport::Unknown { default: None };
-    catalog.insert(
-        ModelSpec::new(vendor, "strong")
-            .with_tools(true)
-            .with_reasoning(reasons),
-    );
-    let (cheap, strong) = (cheap.clone(), strong.clone());
-    models.0.provide(
-        vendor,
-        move |spec: &ModelSpec, _: &Catalog| -> Result<ErasedHandler, ConnectError> {
-            let model = if spec.id == "cheap" { &cheap } else { &strong };
-            let adapter = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
-            Ok(ErasedHandler::new(adapter))
-        },
-    );
-}
-
 #[test]
 fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one() {
     let cheap = MockCompletionModel::from_stream_turns([reply("It is a small crate.")]);
     let read = calls("1", "read", serde_json::json!({ "path": "src/lib.rs" }));
     let strong = MockCompletionModel::from_stream_turns([read]);
-    let mut models = Models::default();
-    scripted(&mut models, &cheap, &strong);
+    let mut models = scripted_models([("scripted/cheap", &cheap), ("scripted/strong", &strong)]);
+    // `strong` reasons; `cheap` does not.
+    let catalog = models.0.catalog_mut();
+    let reasons = ReasoningSupport::Unknown { default: None };
+    let spec = catalog
+        .resolve("scripted/strong")
+        .map(|found| found.spec.clone());
+    if let Ok(spec) = spec {
+        catalog.insert(spec.with_reasoning(reasons));
+    }
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(Settings::from_toml(SETTINGS))
@@ -73,13 +56,12 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         )
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    collect::<Recorded>(&mut app);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = first_agent(world);
     assert!(agent.is_some(), "the session has an agent");
     let Some(agent) = agent else {
         return;
@@ -105,7 +87,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     let (planned, followed) = (strong.requests(), cheap.requests());
     assert_eq!(planned.len(), 1, "the plan's request went to strong");
     assert_eq!(followed.len(), 1, "the read-only follow-up went to cheap");
-    let reasoning = |requests: &[rig_core::completion::CompletionRequest]| {
+    let reasoning = |requests: &[CompletionRequest]| {
         requests
             .first()
             .and_then(|request| request.options.reasoning)
@@ -124,6 +106,28 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         models,
         ["scripted/cheap", "scripted/strong"],
         "usage lists both"
+    );
+    let completions: Vec<_> = app
+        .world()
+        .resource::<Collected<Recorded>>()
+        .0
+        .iter()
+        .filter(|Recorded(record)| record.kind.name() == "completion")
+        .map(|Recorded(record)| record.key.clone())
+        .collect();
+    assert_eq!(
+        completions,
+        [model_key("scripted/strong"), model_key("scripted/cheap")],
+        "the effect log records each call under its real model"
+    );
+    let warned = app.world().resource::<Collected<Notice>>();
+    let warned = warned.0.iter().any(|notice| {
+        notice.text.contains("→ default\" is off")
+            && notice.text.contains("not in [router.targets]")
+    });
+    assert!(
+        warned,
+        "the rule to the unconfigured `default` is off, with a warning"
     );
     let label = app
         .world()

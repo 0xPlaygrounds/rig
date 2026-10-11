@@ -20,7 +20,6 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
-bevy_time = { workspace = true }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

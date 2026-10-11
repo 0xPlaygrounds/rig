@@ -1,94 +1,68 @@
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::harness_protocol::{Home, SessionId};
+use rig_harness::harness_protocol::SessionId;
+use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
-    AnswerAsks, Answers, Ended, app_on, calls, connect, log_ended, reply, run_until,
+    AnswerAsks, Answers, Collected, Ended, app_in, calls, collect, first_agent, log_ended, reply,
+    run_until, scratch_home, scripted_models,
 };
 use serde_json::json;
 
 use super::*;
 
-/// What came back to the input line.
-#[derive(Resource, Default)]
-struct Seen(Vec<String>);
-
-/// A git repository and a `RIG_HOME` inside the crate, removed when
-/// dropped.
-struct Dirs(PathBuf);
-
-impl Drop for Dirs {
-    fn drop(&mut self) {
-        fs::remove_dir_all(&self.0).ok();
-    }
+/// The test's `RIG_HOME`, with the git repository inside it.
+fn repo(home: &Home) -> PathBuf {
+    home.root().join("repo")
 }
 
-impl Dirs {
-    fn repo(&self) -> PathBuf {
-        self.0.join("repo")
-    }
+fn git(home: &Home, args: &[&str]) -> String {
+    let git = Git {
+        root: repo(home),
+        launcher: Launcher::default(),
+    };
+    git.run(None, args)
+        .unwrap_or_else(|failure| format!("failed: {failure}"))
+}
 
-    fn git(&self, args: &[&str]) -> String {
-        let git = Git {
-            root: self.repo(),
-            launcher: Launcher::default(),
-        };
-        git.run(None, args)
-            .unwrap_or_else(|failure| format!("failed: {failure}"))
-    }
+fn read(home: &Home, path: &str) -> String {
+    fs::read_to_string(repo(home).join(path)).unwrap_or_default()
+}
 
-    fn read(&self, path: &str) -> String {
-        fs::read_to_string(self.repo().join(path)).unwrap_or_default()
-    }
-
-    fn refs(&self) -> String {
-        self.git(&["for-each-ref", "--format=%(refname)", REFS])
-    }
+fn refs(home: &Home) -> String {
+    git(home, &["for-each-ref", "--format=%(refname)", REFS])
 }
 
 /// A repository with one commit and one stash entry.
-fn dirs() -> Dirs {
-    let path =
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!("test-{}", std::process::id()));
-    fs::remove_dir_all(&path).ok();
-    let dirs = Dirs(path);
-    fs::create_dir_all(dirs.repo()).ok();
-    dirs.git(&["init", "-q", "-b", "main"]);
-    fs::write(dirs.repo().join(".gitignore"), "target/\n").ok();
-    fs::write(dirs.repo().join("README"), "hello\n").ok();
-    dirs.git(&["add", "."]);
-    dirs.git(&["commit", "-q", "-m", "first"]);
-    fs::write(dirs.repo().join("README"), "stashed\n").ok();
-    dirs.git(&["stash", "-q"]);
-    dirs
+fn init(home: &Home) {
+    let root = repo(home);
+    fs::create_dir_all(&root).ok();
+    git(home, &["init", "-q", "-b", "main"]);
+    fs::write(root.join(".gitignore"), "target/\n").ok();
+    fs::write(root.join("README"), "hello\n").ok();
+    git(home, &["add", "."]);
+    git(home, &["commit", "-q", "-m", "first"]);
+    fs::write(root.join("README"), "stashed\n").ok();
+    git(home, &["stash", "-q"]);
 }
 
-fn start(store: &MemoryStore, dirs: &Dirs, session: &SessionId) -> (App, Receiver<()>) {
-    let (mut app, wakes) = app_on(store);
-    let home = Home::at(dirs.0.join("home"));
-    app.insert_resource(ProjectRoot(dirs.repo()))
-        .insert_resource(SessionPaths(home.session(session)))
-        .insert_resource(RigHome(home))
+fn start(home: &Home, session: &SessionId, model: &MockCompletionModel) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_in(home, session);
+    app.insert_resource(ProjectRoot(repo(home)))
+        .insert_resource(scripted_models([("test/model", model)]))
         .insert_resource(Answers::new([Answer::Choice("yes".to_owned())]))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            PickPlugin,
             WriteTool,
             AnswerAsks,
             CheckpointRewindPlugin,
         ))
         .init_resource::<Ended>()
-        .init_resource::<Seen>()
-        .add_observer(log_ended)
-        .add_systems(
-            Last,
-            |mut recalled: MessageReader<Recalled>, mut seen: ResMut<Seen>| {
-                seen.0
-                    .extend(recalled.read().map(|recalled| recalled.text.clone()));
-            },
-        );
+        .add_observer(log_ended);
+    collect::<Recalled>(&mut app);
     app.finish();
     app.update();
     (app, wakes)
@@ -103,22 +77,23 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) {
     });
 }
 
-/// The command of the picker's item for the message `text`.
-fn picked(app: &mut App, text: &str) -> Option<String> {
+/// The open picker and the position of its item for the message `text`.
+fn item(app: &mut App, text: &str) -> Option<(Entity, usize)> {
     let world = app.world_mut();
-    let mut pickers = world.query::<&Picker>();
-    let picker = pickers.iter(world).next()?;
-    let item = picker
+    let mut pickers = world.query::<(Entity, &Picker)>();
+    let (entity, picker) = pickers.iter(world).next()?;
+    let index = picker
         .items
         .iter()
-        .find(|item| item.label.ends_with(text))?;
-    Some(item.command.clone())
+        .position(|item| item.label.ends_with(text))?;
+    Some((entity, index))
 }
 
 #[test]
 fn rewind_restores_files_and_conversation_without_touching_the_branch() {
-    let dirs = dirs();
-    let file = dirs.repo().join("a.txt").to_string_lossy().into_owned();
+    let home = scratch_home("checkpoint-rewind");
+    init(&home);
+    let file = repo(&home).join("a.txt").to_string_lossy().into_owned();
     let model = MockCompletionModel::from_stream_turns([
         reply("hi"),
         calls("1", "write", json!({ "path": file, "content": "1" })),
@@ -126,66 +101,72 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
         calls("2", "write", json!({ "path": file, "content": "2" })),
         reply("changed a"),
     ]);
-    let session: SessionId = "1-1".parse().unwrap_or_else(|_| SessionId::generate());
-    let store = MemoryStore::default();
-    let (mut app, wakes) = start(&store, &dirs, &session);
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
-    let found = agent.zip(connect(&model));
-    assert!(found.is_some(), "an agent and the catalog's model");
-    let Some((agent, connection)) = found else {
-        return;
-    };
-    let choice = ModelChoice(connection.spec.reference());
-    world.entity_mut(agent).insert((connection, choice));
-    let head = dirs.git(&["rev-parse", "HEAD"]);
-    let branch = dirs.git(&["symbolic-ref", "HEAD"]);
-    let stash = dirs.git(&["stash", "list"]);
-    let status = dirs.git(&["status", "--porcelain"]);
+    let session = SessionId::generate();
+    let (mut app, wakes) = start(&home, &session, &model);
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let model_name = "test/model".to_owned();
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: model_name,
+    });
+    let head = git(&home, &["rev-parse", "HEAD"]);
+    let branch = git(&home, &["symbolic-ref", "HEAD"]);
+    let stash = git(&home, &["stash", "list"]);
+    let status = git(&home, &["status", "--porcelain"]);
 
     ask(&mut app, &wakes, agent, "say hi");
     ask(&mut app, &wakes, agent, "make a");
     ask(&mut app, &wakes, agent, "change a");
-    assert_eq!(dirs.read("a.txt"), "2");
+    assert_eq!(read(&home, "a.txt"), "2");
     // Turn 1 began with the files turn 0 began with: no ref of its own.
-    assert_eq!(dirs.refs(), format!("{REFS}/1-1/0\n{REFS}/1-1/2"));
+    let ours = format!("{REFS}/{session}");
+    assert_eq!(refs(&home), format!("{ours}/0\n{ours}/2"));
 
     // An edit of the user's since the last turn is undone only once they
     // said yes.
-    fs::write(dirs.repo().join("notes.md"), "mine\n").ok();
+    fs::write(repo(&home).join("notes.md"), "mine\n").ok();
     app.world_mut()
         .trigger(RunCommand::new(agent, "rewind".to_owned()));
     app.update();
-    let command = picked(&mut app, "change a");
-    assert_eq!(command.as_deref(), Some("rewind 2"));
-    app.world_mut()
-        .trigger(RunCommand::new(agent, command.unwrap_or_default()));
+    let picked = item(&mut app, "change a");
+    assert!(picked.is_some(), "a picker with turn 2's message");
+    let (picker, index) = picked.unwrap_or((Entity::PLACEHOLDER, 0));
+    let chosen = Some(Chosen::Item(index));
+    app.world_mut().trigger(Pick {
+        entity: picker,
+        chosen,
+    });
     run_until(&mut app, &wakes, |world| {
-        !world.resource::<Seen>().0.is_empty()
+        !world.resource::<Collected<Recalled>>().0.is_empty()
     });
 
     let asked = &app.world().resource::<Answers>().asked;
     assert_eq!(asked, &["Rewind to before turn 2?"]);
-    assert_eq!(dirs.read("a.txt"), "1");
-    assert!(!dirs.repo().join("notes.md").exists());
+    assert_eq!(read(&home, "a.txt"), "1");
+    assert!(!repo(&home).join("notes.md").exists());
     let conversation = app.world().get::<Conversation>(agent);
     let last = conversation.and_then(|conversation| conversation.messages().last());
     assert_eq!(last.and_then(final_answer).as_deref(), Some("made a"));
-    assert_eq!(app.world().resource::<Seen>().0, ["change a"]);
-    assert_eq!(dirs.refs(), format!("{REFS}/1-1/0"));
-    assert_eq!(dirs.git(&["rev-parse", "HEAD"]), head);
-    assert_eq!(dirs.git(&["symbolic-ref", "HEAD"]), branch);
-    assert_eq!(dirs.git(&["stash", "list"]), stash);
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let texts: Vec<&str> = recalled
+        .iter()
+        .map(|recalled| recalled.text.as_str())
+        .collect();
+    assert_eq!(texts, ["change a"]);
+    assert_eq!(refs(&home), format!("{ours}/0"));
+    assert_eq!(git(&home, &["rev-parse", "HEAD"]), head);
+    assert_eq!(git(&home, &["symbolic-ref", "HEAD"]), branch);
+    assert_eq!(git(&home, &["stash", "list"]), stash);
     // The user's index is untouched: a.txt is still untracked.
     let untracked = format!("{status}\n?? a.txt");
-    assert_eq!(dirs.git(&["status", "--porcelain"]), untracked.trim_start());
+    assert_eq!(
+        git(&home, &["status", "--porcelain"]),
+        untracked.trim_start()
+    );
 
     // A restart keeps both the cut and the checkpoints left.
     drop(app);
-    let (mut app, wakes) = start(&store, &dirs, &session);
+    let (mut app, _) = start(&home, &session, &model);
     let world = app.world_mut();
     let mut agents = world.query::<(&Conversation, &Checkpoints)>();
     let restored = agents.iter(world).next();
@@ -194,8 +175,112 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     let turns = restored.map(|(_, kept)| kept.list.iter().map(|kept| kept.turn).collect());
     assert_eq!(turns, Some(vec![0, 1]));
 
-    // Deleting the session deletes its checkpoints.
-    app.world_mut().write_message(SessionDeleted(session));
-    run_until(&mut app, &wakes, |_| dirs.refs().is_empty());
-    assert_eq!(dirs.refs(), "");
+    // Deleting the session from another one deletes its checkpoints.
+    drop(app);
+    let other: SessionId = format!("{session}-2")
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let (mut app, wakes) = start(&home, &other, &model);
+    app.world_mut().trigger(DeleteSession(session));
+    run_until(&mut app, &wakes, |_| refs(&home).is_empty());
+    assert_eq!(refs(&home), "");
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Holds a test's tool call that never runs.
+#[derive(Component)]
+struct Stuck;
+
+/// Holds every call writing `c.txt`, so the turn is still running.
+fn hold_c(
+    calls: Query<(Entity, &ToolRequest), Undecided>,
+    stuck: Query<&HoldOf, With<Stuck>>,
+    mut commands: Commands,
+) {
+    for (call, request) in &calls {
+        let path = request.call.function.arguments.get("path");
+        let writes_c = path
+            .and_then(|path| path.as_str())
+            .is_some_and(|path| path.ends_with("c.txt"));
+        if writes_c && !stuck.iter().any(|&HoldOf(held)| held == call) {
+            commands.spawn((Stuck, HoldOf(call)));
+        }
+    }
+}
+
+#[test]
+fn a_stopped_turns_edits_are_not_the_users() {
+    let home = scratch_home("checkpoint-rewind-stopped");
+    init(&home);
+    let path = |name: &str| repo(&home).join(name).to_string_lossy().into_owned();
+    let model = MockCompletionModel::from_stream_turns([
+        reply("hi"),
+        calls(
+            "1",
+            "write",
+            json!({ "path": path("b.txt"), "content": "b" }),
+        ),
+        calls(
+            "2",
+            "write",
+            json!({ "path": path("c.txt"), "content": "c" }),
+        ),
+        reply("ok"),
+    ]);
+    let (mut app, wakes) = start(&home, &SessionId::generate(), &model);
+    app.add_systems(AgentPass, hold_c.in_set(Stage::Gate));
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let model_name = "test/model".to_owned();
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model: model_name,
+    });
+    ask(&mut app, &wakes, agent, "say hi");
+
+    // The agent writes b.txt, and is stopped while it would write c.txt.
+    app.world_mut()
+        .trigger(Deliver::new(agent, "write b and c", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| {
+        world
+            .iter_entities()
+            .any(|entity| entity.contains::<Stuck>())
+    });
+    app.world_mut().trigger(Interrupt::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        let noting = world
+            .iter_entities()
+            .any(|entity| entity.contains::<Settling>());
+        world.resource::<Ended>().0.len() == 2 && !noting
+    });
+
+    // Only the file the user wrote since counts as theirs.
+    fs::write(repo(&home).join("notes.md"), "mine\n").ok();
+    ask(&mut app, &wakes, agent, "go on");
+    let checkpoints = app.world().get::<Checkpoints>(agent);
+    let last = checkpoints.and_then(|checkpoints| checkpoints.list.last());
+    let edits = last.map(|last| (last.text.as_str(), last.user_edits.clone()));
+    assert_eq!(edits, Some(("go on", vec!["notes.md".to_owned()])));
+
+    // Rewinding the conversation to before it keeps the stopped turn's
+    // tool results, stopped.
+    let rewind = "rewind --chat-only 2".to_owned();
+    app.world_mut().trigger(RunCommand::new(agent, rewind));
+    app.update();
+    let recalled = &app.world().resource::<Collected<Recalled>>().0;
+    let texts: Vec<&str> = recalled
+        .iter()
+        .map(|recalled| recalled.text.as_str())
+        .collect();
+    assert_eq!(texts, ["go on"]);
+    let conversation = app.world().get::<Conversation>(agent);
+    let last = conversation.and_then(|conversation| conversation.messages().last());
+    let content = match last {
+        Some(message::Message::User { content }) => content.as_slice(),
+        _ => &[],
+    };
+    let results = content
+        .iter()
+        .filter(|item| matches!(item, UserContent::ToolResult(_)));
+    assert_eq!((results.count(), content.len()), (1, 1), "{last:?}");
+    fs::remove_dir_all(home.root()).ok();
 }

@@ -75,6 +75,12 @@ impl Default for FormatOnWrite {
     }
 }
 
+/// The Prepare system that wraps `write` and `edit` calls' handlers, for
+/// another plugin that wraps them too to order against: a layer wrapped
+/// after this one is outside it, so it sees the text this one appends.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct FormatOnWriteSystems;
+
 /// Formats and lints every file `write` and `edit` change.
 #[derive(Default)]
 pub struct FormatOnWritePlugin;
@@ -83,7 +89,8 @@ impl Plugin for FormatOnWritePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FormatOnWrite>("format_on_write")
             .init_resource::<Processes>()
-            .add_systems(AgentPass, format_after.in_set(Stage::Prepare));
+            .configure_sets(AgentPass, FormatOnWriteSystems.in_set(Stage::Prepare))
+            .add_systems(AgentPass, format_after.in_set(FormatOnWriteSystems));
     }
 }
 

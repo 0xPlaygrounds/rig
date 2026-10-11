@@ -1,25 +1,22 @@
 //! Plugin corpus: 55. Effect log query tool (spec `55-effect-query.md`).
 //!
 //! The `effects` and `effects_detail` tools, and `/effects`, read the
-//! session's effect log (`effects.jsonl`, written by rig-telemetry's
-//! `EffectLogPlugin`) back from disk, so they see every model and tool
-//! call of the session, plugins' own and those from before a `/reload`.
-//! They only read it. Which turn of its agent an effect belongs to comes
-//! from the kernel's turn numbers, kept per agent as the first effect of
-//! each turn ([`TurnStarts`], saved with the session).
+//! session's effect log back through rig-telemetry's [`EffectLog`], so
+//! they see every model and tool call of the session, plugins' own and
+//! those from before a `/reload`, with the turn each was made in. They
+//! only read it.
 
 mod query;
 
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use bevy_tasks::AsyncComputeTaskPool;
-use rig_cassette::effect_log::{EffectLog, jsonl};
-use rig_cassette::journal::EFFECT_LOG;
+use rig_core::effect::EffectRecord;
 use rig_harness::prelude::*;
+use rig_telemetry::EffectLog;
 
-pub use query::{AgentInfo, DetailArgs, Filter, Status};
+pub use query::{DetailArgs, Filter, Status};
 
 /// The tool that lists effects.
 pub const EFFECTS_TOOL: &str = "effects";
@@ -38,18 +35,11 @@ pub struct EffectQueryPlugin;
 
 impl Plugin for EffectQueryPlugin {
     fn build(&self, app: &mut App) {
-        let log = app
-            .world()
-            .get_resource::<SessionPaths>()
-            .map(|paths| paths.path().join(EFFECT_LOG));
         let read_only = || ToolOptions {
             rules: &[],
             footprint: Some(Footprint::ReadOnly),
         };
-        app.insert_resource(LogFile(log))
-            .register_required_components::<Agent, TurnStarts>()
-            .add_observer(note_turn_start)
-            .add_open_tool(EFFECTS_TOOL, EFFECTS_DESCRIPTION, read_only(), on_effects)
+        app.add_open_tool(EFFECTS_TOOL, EFFECTS_DESCRIPTION, read_only(), on_effects)
             .add_open_tool(DETAIL_TOOL, DETAIL_DESCRIPTION, read_only(), on_detail)
             .add_command(
                 "effects",
@@ -60,96 +50,43 @@ impl Plugin for EffectQueryPlugin {
     }
 }
 
-/// Where the effect log is, when the session has a directory.
-#[derive(Resource, Clone)]
-struct LogFile(Option<PathBuf>);
+/// The live agents' names by their ids.
+type Names = Arc<HashMap<String, String>>;
 
-impl LogFile {
-    /// The log as it is on disk; an empty one before its first record.
-    fn read(&self) -> Result<EffectLog, String> {
-        let Some(path) = &self.0 else {
-            return Err("This session has no directory, so no effect log.".to_owned());
-        };
-        match jsonl::read(path) {
-            Ok(log) => Ok(log),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(EffectLog::default()),
-            Err(error) => Err(format!("Reading the effect log failed: {error}")),
-        }
-    }
+fn names(agents: &Query<(&AgentId, &Name)>) -> Names {
+    let names = agents
+        .iter()
+        .map(|(id, name)| (id.0.clone(), name.as_str().to_owned()));
+    Arc::new(names.collect())
 }
 
-/// The first effect of each of an agent's turns, by the turn's index, so
-/// an effect's turn is the last that started at or before it. Saved with
-/// the session, so effects from before a restart keep their turns.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default)]
-pub struct TurnStarts(pub Vec<TurnStart>);
-
-/// Where one turn begins in the effect log.
-#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TurnStart {
-    /// The turn's [`Turn::index`].
-    pub index: u64,
-    /// Its first effect's id.
-    pub first_effect: u64,
+/// Reads the whole log off the main thread, then `answer` makes the text
+/// of what it holds.
+async fn read_log(
+    log: Option<EffectLog>,
+    answer: impl FnOnce(Vec<EffectRecord>) -> Result<String, String> + Send + 'static,
+) -> Result<String, ToolExecutionError> {
+    let log = log.ok_or_else(|| ToolExecutionError::other("This session keeps no effect log."))?;
+    blocking(move || {
+        let records = log.read().map_err(|error| {
+            ToolExecutionError::other(format!("Reading the effect log failed: {error}"))
+        })?;
+        answer(records).map_err(ToolExecutionError::other)
+    })
+    .await
 }
 
-/// Notes each turn's first effect as it starts.
-fn note_turn_start(
-    started: On<Add<Started>>,
-    calls: Query<(&Effect, &CallOf, &ForAgent)>,
-    turns: Query<&Turn>,
-    mut agents: Query<&mut TurnStarts>,
-) {
-    let Ok((effect, &CallOf(turn), &ForAgent(agent))) = calls.get(started.entity) else {
-        return;
-    };
-    let (Ok(turn), Ok(mut starts)) = (turns.get(turn), agents.get_mut(agent)) else {
-        return;
-    };
-    let id = effect.id().as_u64();
-    match starts.0.iter_mut().find(|start| start.index == turn.index) {
-        Some(start) if start.first_effect > id => start.first_effect = id,
-        Some(_) => {}
-        None => starts.0.push(TurnStart {
-            index: turn.index,
-            first_effect: id,
-        }),
-    }
-}
-
-/// Each agent's name and turn starts by its id, for the table.
-fn agent_infos(agents: &Query<(&AgentId, &Name, &TurnStarts)>) -> Arc<HashMap<String, AgentInfo>> {
-    Arc::new(
-        agents
-            .iter()
-            .map(|(id, name, starts)| {
-                let info = AgentInfo {
-                    name: name.as_str().to_owned(),
-                    turns: starts.0.iter().map(|s| (s.index, s.first_effect)).collect(),
-                };
-                (id.0.clone(), info)
-            })
-            .collect(),
-    )
-}
-
-/// Runs `answer` on the effect log off the main thread and ends `call`
-/// with what it says.
+/// Answers `call` off the main thread with what `answer` says of the log.
 fn answer_call(
     commands: &mut Commands,
     wake: &Wake,
     call: Entity,
-    file: LogFile,
-    answer: impl FnOnce(EffectLog) -> Result<String, String> + Send + 'static,
+    log: Option<&EffectLog>,
+    answer: impl FnOnce(Vec<EffectRecord>) -> Result<String, String> + Send + 'static,
 ) {
-    let work = blocking(move || {
-        file.read()
-            .and_then(answer)
-            .map_err(ToolExecutionError::other)
-    });
+    let read = read_log(log.cloned(), answer);
     let work = async move {
-        match work.await {
+        match read.await {
             Ok(text) => ToolResult::success(text.into()),
             Err(error) => ToolResult::failed(error),
         }
@@ -162,36 +99,27 @@ fn answer_call(
 
 fn on_effects(
     mut called: On<ToolCalled<Filter>>,
-    agents: Query<(&AgentId, &Name, &TurnStarts)>,
-    file: Res<LogFile>,
+    agents: Query<(&AgentId, &Name)>,
+    log: Option<Res<EffectLog>>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let names = agent_infos(&agents);
-    let filter = std::mem::take(&mut called.args);
-    answer_call(
-        &mut commands,
-        &wake,
-        called.call,
-        file.clone(),
-        move |log| Ok(query::table(&log, &names, &filter)),
-    );
+    let (names, filter) = (names(&agents), std::mem::take(&mut called.args));
+    let answer = move |records: Vec<_>| Ok(query::table(&records, &names, &filter));
+    answer_call(&mut commands, &wake, called.call, log.as_deref(), answer);
 }
 
 fn on_detail(
     called: On<ToolCalled<DetailArgs>>,
-    file: Res<LogFile>,
+    log: Option<Res<EffectLog>>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let id = called.args.id;
-    answer_call(
-        &mut commands,
-        &wake,
-        called.call,
-        file.clone(),
-        move |log| query::detail(&log, id).ok_or_else(|| format!("No effect {id} is in the log.")),
-    );
+    let answer = move |records: Vec<_>| {
+        query::detail(&records, id).ok_or_else(|| format!("No effect {id} is in the log."))
+    };
+    answer_call(&mut commands, &wake, called.call, log.as_deref(), answer);
 }
 
 /// A `/effects` listing being read, for the agent it was typed for.
@@ -203,8 +131,8 @@ struct Listing {
 /// `/effects [filter]`: the same table as the tool, as a notice.
 fn effects_command(
     In(args): In<CommandArgs>,
-    agents: Query<(&AgentId, &Name, &TurnStarts)>,
-    file: Res<LogFile>,
+    agents: Query<(&AgentId, &Name)>,
+    log: Option<Res<EffectLog>>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -217,10 +145,12 @@ fn effects_command(
             return;
         }
     };
-    let (names, file) = (agent_infos(&agents), file.clone());
-    let read = blocking(move || Ok(file.read().map(|log| query::table(&log, &names, &filter))));
+    let names = names(&agents);
+    let read = read_log(log.as_deref().cloned(), move |records| {
+        Ok(query::table(&records, &names, &filter))
+    });
     let work = async move {
-        let text = read.await.map_err(|error| error.to_string()).flatten();
+        let text = read.await.map_err(|error| error.to_string());
         Listing { agent, text }
     };
     let pool = AsyncComputeTaskPool::get_or_init(Default::default);

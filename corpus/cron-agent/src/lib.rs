@@ -9,7 +9,7 @@
 //! `in 1h` (once) or five cron fields in local time. The jobs are a saved
 //! resource ([`CronJobs`]) whose ticks are wall-clock times; one timer
 //! entity's [`WakeAt`] is the soonest, so the loop sleeps until it. A run is
-//! a [`SpawnSubagent`] helper, retired once it answered.
+//! one-job [`SpawnSubagent`] helper, which retires once it answered.
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -62,8 +62,8 @@ impl Plugin for CronPlugin {
             .add_open_tool(SCHEDULE, DESCRIPTION, options, on_schedule)
             .add_observer(due)
             .add_systems(Startup, catch_up)
-            .add_systems(Update, arm.run_if(resource_changed::<CronJobs>))
-            .add_systems(PostUpdate, report)
+            .add_systems(PostUpdate, arm.run_if(resource_changed::<CronJobs>))
+            .add_observer(report)
             .add_systems(AgentPass, adopt.in_set(Stage::Review));
     }
 }
@@ -94,13 +94,12 @@ pub struct CronJob {
     pub next: u64,
 }
 
-/// On a job's agent, saved with it: the job it runs and the agent its
-/// answer goes to.
+/// On a job's agent, saved with it: the job it runs. Its answer goes to
+/// the agent that spawned it ([`SpawnedBy`]), the job's owner.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Saved, Default)]
 pub struct CronRun {
     pub job: u32,
-    pub owner: String,
 }
 
 /// On a job's [`SpawnSubagent`] request until its agent is spawned.
@@ -167,19 +166,21 @@ impl Runs<'_, '_> {
             self.notices.write(Notice::info(owner, text));
             return;
         }
-        let request = SpawnSubagent::helper(name(job.id)).brief(job.prompt.clone());
+        let request = SpawnSubagent::helper(name(job.id))
+            .brief(job.prompt.clone())
+            .once();
         self.commands
             .spawn((request, ForAgent(owner), CronRequest(job.id)));
     }
 
-    /// Runs the jobs that are due, or at startup those missed meanwhile
-    /// with `catch_up`, and moves each to its next tick; a job that never
-    /// runs again goes.
-    fn tick(&mut self, jobs: &mut CronJobs, fire: Fire) {
+    /// Runs the jobs due by `at`, or at startup those missed meanwhile with
+    /// `catch_up`, and moves each to its next tick after now; a job that
+    /// never runs again goes.
+    fn tick(&mut self, jobs: &mut CronJobs, at: u64, fire: Fire) {
         let now = now();
         let mut kept = Vec::new();
         for mut job in std::mem::take(&mut jobs.jobs) {
-            if job.next > now {
+            if job.next > at {
                 kept.push(job);
                 continue;
             }
@@ -346,16 +347,19 @@ struct ScheduleArgs {
 }
 
 /// Adds the job a `schedule` call asks for. A job's own agent schedules for
-/// that job's owner, since it is retired once it answered.
+/// that job's owner, since it retires once it answered.
 fn on_schedule(
     called: On<ToolCalled<ScheduleArgs>>,
     mut jobs: ResMut<CronJobs>,
-    runs: Query<&CronRun>,
+    runs: Query<&SpawnedBy, With<CronRun>>,
+    ids: Query<&AgentId>,
     mut commands: Commands,
 ) {
     let args = &called.args;
-    let owner = runs.get(called.agent).map(|run| AgentId(run.owner.clone()));
-    let owner = owner.unwrap_or_else(|_| called.caller.clone());
+    let owner = runs
+        .get(called.agent)
+        .and_then(|&SpawnedBy(owner)| ids.get(owner));
+    let owner = owner.cloned().unwrap_or_else(|_| called.caller.clone());
     let fields = (args.schedule.as_str(), args.prompt.as_str(), args.catch_up);
     let result = match add(&mut jobs, fields, &owner) {
         Ok(job) => ToolResult::success(
@@ -374,7 +378,8 @@ fn on_schedule(
         .insert_if_new(Outcome::from(result));
 }
 
-/// The timer's wall-clock time passed: runs the jobs that are due.
+/// The timer says the soonest tick passed: runs the jobs due by then or by
+/// now, whichever is later.
 fn due(
     due: On<Add<Due>>,
     timers: Query<(), With<CronTimer>>,
@@ -382,13 +387,15 @@ fn due(
     mut runs: Runs,
 ) {
     if timers.contains(due.entity) {
-        runs.tick(&mut jobs, Fire::Due);
+        let soonest = jobs.jobs.iter().map(|job| job.next).min();
+        let at = soonest.unwrap_or_default().max(now());
+        runs.tick(&mut jobs, at, Fire::Due);
     }
 }
 
 /// At startup, the ticks missed while the agent was not running.
 fn catch_up(mut jobs: ResMut<CronJobs>, mut runs: Runs) {
-    runs.tick(&mut jobs, Fire::Startup);
+    runs.tick(&mut jobs, now(), Fire::Startup);
 }
 
 /// Sets the timer to the soonest tick, or takes it off with no jobs left.
@@ -413,66 +420,55 @@ fn adopt(
         ),
         Unreviewed,
     >,
-    ids: Query<&AgentId>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     for (request, &CronRequest(job), outcome, &ForAgent(owner), spawned) in &requests {
         commands.entity(request).remove::<CronRequest>();
-        match (spawned, ids.get(owner), &outcome.0) {
-            (Some(&SpawnedAgent(agent)), Ok(id), _) => {
-                let run = CronRun {
-                    job,
-                    owner: id.0.clone(),
-                };
-                commands.entity(agent).insert(run);
+        match (spawned, &outcome.0) {
+            (Some(&SpawnedAgent(agent)), _) => {
+                commands.entity(agent).insert(CronRun { job });
                 notices.write(Notice::info(owner, format!("{} started.", name(job))));
             }
-            (_, _, Err(why)) => {
+            (None, Err(why)) => {
                 let text = format!("{} could not start: {}", name(job), why.message);
                 notices.write(Notice::error(owner, text));
             }
-            _ => {}
+            (None, Ok(_)) => {}
         }
     }
 }
 
-/// A job's agent ended its turn: its answer goes to the job's owner as a
-/// note and a notice, and the agent is retired, so no restore brings it
-/// back. After the frame's passes, where retiring it disturbs no stage.
+/// A job's agent ended its one turn, and retires: its answer goes to the
+/// job's owner as a note and a notice.
 fn report(
-    settled: Query<(&TurnOutcome, &ForAgent), Added<Settled>>,
-    runs: Query<(&CronRun, &AgentId)>,
-    ids: Query<(Entity, &AgentId)>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    runs: Query<(&CronRun, &SpawnedBy, &AgentId)>,
     mut notices: MessageWriter<Notice>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
-    for (outcome, &ForAgent(agent)) in &settled {
-        let Ok((run, id)) = runs.get(agent) else {
-            continue;
-        };
-        let (job, from) = (name(run.job), id.clone());
-        let owner = AgentId(run.owner.clone()).find_in(ids.iter());
-        commit.retire(agent);
-        let Some(owner) = owner else {
-            continue;
-        };
-        match outcome {
-            TurnOutcome::Answered(message) => {
-                let answer = final_answer(message).unwrap_or_else(|| "(no answer)".to_owned());
-                notices.write(Notice::info(owner, format!("{job}: {answer}")));
-                let origin = Origin::agent(from, None).titled(job);
-                let note = Deliver::new(owner, answer, DeliveryMode::Note);
-                commands.trigger(note.with_origin(origin));
-            }
-            TurnOutcome::Failed(why) => {
-                notices.write(Notice::error(owner, format!("{job} failed: {why}")));
-            }
-            TurnOutcome::Stopped(why) => {
-                let why = why.as_deref().unwrap_or("by you");
-                notices.write(Notice::info(owner, format!("{job} was stopped {why}.")));
-            }
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
+    let Ok((run, &SpawnedBy(owner), from)) = runs.get(agent) else {
+        return;
+    };
+    let job = name(run.job);
+    match outcome {
+        TurnOutcome::Answered(message) => {
+            let answer = final_answer(message).unwrap_or_else(|| "(no answer)".to_owned());
+            notices.write(Notice::info(owner, format!("{job}: {answer}")));
+            let origin = Origin::agent(from.clone(), None).titled(job);
+            let note = Deliver::new(owner, answer, DeliveryMode::Note);
+            commands.trigger(note.with_origin(origin));
+        }
+        TurnOutcome::Failed(why) => {
+            notices.write(Notice::error(owner, format!("{job} failed: {why}")));
+        }
+        TurnOutcome::Stopped(why) => {
+            let why = why.as_deref().unwrap_or("by you");
+            notices.write(Notice::info(owner, format!("{job} was stopped {why}.")));
         }
     }
 }

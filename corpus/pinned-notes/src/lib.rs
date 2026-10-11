@@ -7,7 +7,9 @@
 //! and `/resume` and `/reload` bring back, and whose insertion rewrites the
 //! agent's own [`PromptSection`]. A compaction's summary call is told the
 //! notes in Prepare, so the summary does not repeat them, and a `task` call
-//! with `inherit_pins: true` gives the subagent a copy of its parent's.
+//! with `inherit_pins: true` (an argument this plugin adds to `task`, which
+//! hands it on in its request's `extra`) gives the subagent a copy of its
+//! parent's.
 
 use rig_compaction::Summarizing;
 use rig_harness::prelude::*;
@@ -64,7 +66,7 @@ impl Plugin for PinnedNotesPlugin {
             .add_systems(
                 AgentPass,
                 (
-                    (tell_summaries, take_inherit_pins).in_set(Stage::Prepare),
+                    tell_summaries.in_set(Stage::Prepare),
                     inherit.in_set(Stage::Review),
                 ),
             );
@@ -72,16 +74,18 @@ impl Plugin for PinnedNotesPlugin {
         app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems));
     }
 
-    /// Offers `inherit_pins` on `task`, once rig-subagents added it.
+    /// Offers `inherit_pins` on `task`, once rig-subagents added it; a
+    /// `task` call puts it in its request's `extra`.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let mut tools = world.query::<&mut ToolDef>();
-        for mut def in tools.iter_mut(world) {
+        let mut tools = world.query::<(&mut ToolDef, &mut ToolRules)>();
+        for (mut def, mut rules) in tools.iter_mut(world) {
             if def.0.name.as_str() != TASK {
                 continue;
             }
-            let properties = def.0.parameters.get_mut("properties");
-            if let Some(properties) = properties.and_then(serde_json::Value::as_object_mut) {
+            if let Some(properties) = def.0.parameters.get_mut("properties")
+                && let Some(properties) = properties.as_object_mut()
+            {
                 let argument = serde_json::json!({
                     "type": "boolean",
                     "description": "When true, the subagent starts with a copy of your pinned \
@@ -89,6 +93,11 @@ impl Plugin for PinnedNotesPlugin {
                 });
                 properties.insert(INHERIT_PINS.to_owned(), argument);
             }
+            rules.0.push(
+                "Give `task` `inherit_pins: true` when the subagent must keep your pinned \
+                 notes in mind."
+                    .to_owned(),
+            );
         }
     }
 }
@@ -309,42 +318,19 @@ fn tell_summaries(
     }
 }
 
-/// On a `task` call that asked for `inherit_pins: true`.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct InheritPins;
-
-/// Takes `inherit_pins` out of each `task` call as it is admitted, before
-/// rig-subagents parses the rest, and marks the call that asked for it.
-fn take_inherit_pins(
-    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
-    mut commands: Commands,
-) {
-    for (call, mut request) in &mut calls {
-        let function = &request.call.function;
-        if function.name.as_str() != TASK || !function.arguments.contains_key(INHERIT_PINS) {
-            continue;
-        }
-        let asked = request.call.function.arguments.shift_remove(INHERIT_PINS);
-        if asked.and_then(|asked| asked.as_bool()) == Some(true) {
-            commands.entity(call).insert(InheritPins);
-        }
-    }
-}
-
-/// Gives the subagent of a `task` call that asked for it a copy of its
-/// parent's pinned notes, as it is spawned.
+/// Gives the subagent of a `task` call with `inherit_pins: true` a copy
+/// of its parent's pinned notes, as it is spawned.
 fn inherit(
-    spawned: Query<
-        (&SpawnedAgent, &ForAgent, &ChildOf),
-        (With<SpawnSubagent>, Unreviewed, Added<SpawnedAgent>),
-    >,
-    asked: Query<(), With<InheritPins>>,
+    spawned: Query<(&SpawnSubagent, &SpawnedAgent, &ForAgent), (Unreviewed, Added<SpawnedAgent>)>,
     pins: Query<&Pins>,
     mut commands: Commands,
 ) {
-    for (&SpawnedAgent(child), &ForAgent(parent), of) in &spawned {
-        if asked.contains(of.parent())
+    for (request, &SpawnedAgent(child), &ForAgent(parent)) in &spawned {
+        let asked = request
+            .extra
+            .get(INHERIT_PINS)
+            .and_then(serde_json::Value::as_bool);
+        if asked == Some(true)
             && let Ok(pins) = pins.get(parent)
         {
             commands.entity(child).insert(pins.clone());

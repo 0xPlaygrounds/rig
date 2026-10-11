@@ -5,7 +5,8 @@ use std::sync::{Arc, Mutex};
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{
-    AnswerAsks, Answers, Ended, app_on, calls, connect, log_ended, reply, run_until,
+    AnswerAsks, Answers, Collected, Ended, app_on, calls, collect, connect, first_agent, log_ended,
+    reply, run_until,
 };
 
 use super::*;
@@ -63,25 +64,15 @@ fn stub(received: &Received) -> Option<String> {
     Some(url)
 }
 
-/// What the plugin showed the user: its questions' bodies and notices.
+/// The bodies of the questions asked.
 #[derive(Resource, Default)]
-struct Shown {
-    asked: Vec<String>,
-    notices: Vec<String>,
-}
-
-fn record(mut notices: MessageReader<Notice>, mut shown: ResMut<Shown>) {
-    shown
-        .notices
-        .extend(notices.read().map(|notice| notice.text.clone()));
-}
+struct Bodies(Vec<String>);
 
 fn shared_links(world: &World) -> usize {
-    let shown = world.resource::<Shown>();
-    shown
-        .notices
+    let notices = &world.resource::<Collected<Notice>>().0;
+    notices
         .iter()
-        .filter(|notice| notice.starts_with("Shared:"))
+        .filter(|notice| notice.text.starts_with("Shared:"))
         .count()
 }
 
@@ -99,21 +90,20 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     let received = Received::default();
     let url = stub(&received).unwrap_or_default();
     assert!(!url.is_empty(), "the stub server listens");
-    let settings = format!("[share]\ntarget = \"http\"\nurl = \"{url}\"\nclipboard = false\n");
+    let settings = format!("[share]\ntarget = \"http\"\nurl = \"{url}\"\n");
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     let confirm = Answer::Choice("share".to_owned());
     app.insert_resource(Settings::from_toml(&settings))
         .insert_resource(Answers::new([confirm.clone(), confirm]))
-        .init_resource::<Shown>()
+        .init_resource::<Bodies>()
         .init_resource::<Ended>()
         .add_plugins((AgentPlugin, JournalPlugin, AnswerAsks, SharePlugin))
-        .add_systems(Last, record)
         .add_observer(log_ended)
         .add_observer(
-            |asked: On<Add<Ask>>, asks: Query<&Ask>, mut shown: ResMut<Shown>| {
-                shown
-                    .asked
+            |asked: On<Add<Ask>>, asks: Query<&Ask>, mut bodies: ResMut<Bodies>| {
+                bodies
+                    .0
                     .extend(asks.get(asked.entity).map(|ask| ask.body.clone()));
             },
         )
@@ -129,6 +119,8 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
                     .insert_if_new(Outcome::from(result));
             },
         );
+    collect::<Notice>(&mut app);
+    collect::<CopyToClipboard>(&mut app);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
@@ -136,11 +128,7 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
         reply("It holds an OpenAI key."),
     ]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-        .unwrap_or(Entity::PLACEHOLDER);
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
     if let Some(connection) = connect(&model) {
         world.entity_mut(agent).insert(connection);
     }
@@ -150,16 +138,22 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     });
 
     share(&mut app, &wakes, agent);
-    let shown = app.world().resource::<Shown>();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
-        shown
-            .notices
+        notices
             .iter()
-            .any(|notice| notice == "Shared: http://x/1"),
-        "{:?}",
-        shown.notices
+            .any(|notice| notice.text == "Shared: http://x/1"),
+        "{notices:?}"
     );
-    let body = shown.asked.first().cloned().unwrap_or_default();
+    let copied = &app.world().resource::<Collected<CopyToClipboard>>().0;
+    assert_eq!(copied, &[CopyToClipboard("http://x/1".to_owned())]);
+    let body = app
+        .world()
+        .resource::<Bodies>()
+        .0
+        .first()
+        .cloned()
+        .unwrap_or_default();
     assert!(
         body.contains("sk-tes… (27 chars)") && !body.contains(KEY),
         "{body}"

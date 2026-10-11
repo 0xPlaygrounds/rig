@@ -9,10 +9,10 @@
 //! [`WorkerOf`] the call once spawned. A Gate system refuses a worker's
 //! call that could change anything but its file, a Prepare system fails a
 //! worker's turn once it asked its model more than
-//! [`MapConfig::per_file_turn_limit`] times, and a worker whose turn ended
-//! hands its answer, or why there is none, to the job and is retired. When
-//! the call settles, interrupted or answered, the workers still running
-//! are retired with it.
+//! [`MapConfig::per_file_turn_limit`] times, and a worker, a one-job
+//! helper ([`SpawnSubagent::once`]), hands its answer, or why there is
+//! none, to the job as its turn ends, and retires. When the call settles,
+//! interrupted or answered, the workers still running are retired with it.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -110,7 +110,7 @@ impl Plugin for MapReducePlugin {
                     keep_to_file.in_set(Stage::Gate),
                 ),
             )
-            .add_systems(Update, retire.before(AgentLoop));
+            .add_systems(Update, retire_orphans.before(AgentLoop));
         #[cfg(feature = "tui")]
         app.add_systems(PostUpdate, show_progress.in_set(rig_tui::StatusSystems));
     }
@@ -167,8 +167,9 @@ pub struct MapWorker {
     model_calls: usize,
 }
 
-/// Saved on a map worker, so a restart, which ends its job, retires it
-/// instead of bringing back a worker nothing waits for.
+/// Saved on a map worker. A restart answers its `map_files` call as
+/// interrupted, but brings back a worker the exit cut off mid-turn, which
+/// would carry on with no job and no file rule, so this plugin retires it.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Saved, Default)]
 pub struct WasMapWorker;
@@ -274,7 +275,7 @@ impl MapJob {
             Some(path) => (format!("map: {}", path.display()), &self.tools.0),
             None => ("map: reduce".to_owned(), &self.tools.1),
         };
-        let mut request = SpawnSubagent::helper(title).brief(text);
+        let mut request = SpawnSubagent::helper(title).brief(text).once();
         request.tools = Some(tools.clone());
         commands.spawn((
             request,
@@ -422,21 +423,25 @@ fn on_spawned(
     ));
 }
 
-/// A worker's turn ended: its answer, or why there is none, waits on it
-/// for [`retire`]. Not handed over here: the kernel's command that settled
-/// the turn still names the agent, so the agent stays until then.
+/// A worker's turn ended: its answer, or why there is none, goes to its
+/// job, which may ask for the next worker. rig-subagents retires the
+/// worker, a one-job helper, as the same turn ends.
 fn on_worker_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
-    workers: Query<(), With<MapWorker>>,
+    workers: Query<(&MapWorker, &WorkerOf)>,
+    mut jobs: Query<&mut MapJob>,
     mut commands: Commands,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    if !workers.contains(agent) {
+    let Ok((MapWorker { path, .. }, &WorkerOf(job))) = workers.get(agent) else {
         return;
-    }
+    };
+    let Ok(mut map) = jobs.get_mut(job) else {
+        return;
+    };
     let result = match outcome {
         TurnOutcome::Answered(message) => {
             final_answer(message).ok_or_else(|| "ended without a final message".to_owned())
@@ -445,7 +450,7 @@ fn on_worker_end(
         TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
         TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
     };
-    commands.entity(agent).insert(Retire(result));
+    map.settle(job, path.clone(), result, &mut commands);
 }
 
 /// A `map_files` call settled, answered or interrupted: the workers it
@@ -530,29 +535,13 @@ fn same_file(named: &Path, allowed: &Path) -> bool {
     named == allowed
 }
 
-/// On a map worker whose turn ended: its answer, or why there is none.
-#[derive(Component)]
-struct Retire(Result<String, String>);
-
-/// Hands each finished worker's result to its job, which may ask for the
-/// next worker, and retires the worker, so no more than `concurrency` live
-/// at once. Retires too each worker a restart brought back, which has no
-/// job: its call was answered as interrupted. Before the agent loop, so a
-/// restored turn never goes on and the call's answer is committed this
-/// frame.
-fn retire(
-    done: Query<(Entity, &Retire, &MapWorker, &WorkerOf)>,
+/// Retires each map worker a restart brought back: its call was answered
+/// as interrupted, so nothing waits for its answer. Before the agent loop,
+/// so its restored turn never goes on.
+fn retire_orphans(
     restored: Query<Entity, (Added<WasMapWorker>, Without<WorkerOf>)>,
-    mut jobs: Query<&mut MapJob>,
     mut commit: Commit,
-    mut commands: Commands,
 ) {
-    for (worker, Retire(result), MapWorker { path, .. }, &WorkerOf(job)) in &done {
-        commit.retire(worker);
-        if let Ok(mut map) = jobs.get_mut(job) {
-            map.settle(job, path.clone(), result.clone(), &mut commands);
-        }
-    }
     for worker in &restored {
         commit.retire(worker);
     }

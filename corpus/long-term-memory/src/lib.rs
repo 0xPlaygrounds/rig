@@ -9,10 +9,11 @@
 //! (`FileWatch`). The `remember` and `forget` tools change them; at the
 //! first model request of each turn, the memories that share the most
 //! words with the user's message, and every pinned one, are added to that
-//! message in each request of the turn, after the cached prefix, and never
-//! to the saved conversation. `/memory` lists them, `/memory edit` opens
-//! the files in `$EDITOR` in the terminal view, and `/memory off` and
-//! `/memory on` stop and restart the recall for the session.
+//! message in each request of the turn, after the request's cache
+//! breakpoint, and never to the saved conversation. `/memory` lists them,
+//! `/memory edit` opens the files in `$EDITOR` in the terminal view, and
+//! `/memory off` and `/memory on` stop and restart the recall for the
+//! session.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -345,7 +346,8 @@ fn open(root: Res<ProjectRoot>, home: Res<RigHome>, mut commands: Commands) {
     commands.insert_resource(memories);
 }
 
-/// Reads the files again when one changed on disk.
+/// Reads the files again when one changed on disk; a watch's first
+/// report, when it is armed, covers a change since `open` read them.
 fn reload(
     mut changes: MessageReader<FileChanges>,
     files: Query<(), With<MemoryFile>>,
@@ -375,8 +377,9 @@ type NewTurnCalls<'w, 's> = Query<
 >;
 
 /// Recalls the memories for the user's message the turn answers at its
-/// first request, and adds them to that message in each of its requests:
-/// after the cached prefix, and only in what is sent.
+/// first request, and adds them to that message in each of its requests,
+/// only in what is sent; the request's cache breakpoint ends before that
+/// message, so the block stays after the cached prefix.
 fn recall(
     mut calls: NewTurnCalls,
     turns: Query<(&Turn, Option<&Recollection>)>,
@@ -408,14 +411,20 @@ fn recall(
                 recalled
             }
         };
-        let sent = call
-            .request
+        let request = &mut call.request;
+        let Some((at, recalled)) = request
             .chat_history
-            .iter_mut()
-            .rev()
-            .find(|message| *message == asked);
-        if let (Some(recalled), Some(message::Message::User { content })) = (recalled, sent) {
+            .iter()
+            .rposition(|message| message == asked)
+            .zip(recalled)
+        else {
+            continue;
+        };
+        if let Some(message::Message::User { content }) = request.chat_history.get_mut(at) {
             content.push(UserContent::text(recalled));
+            // What comes before the message is the stable prefix to cache.
+            let kept = request.cache_breakpoint.map_or(at, |kept| kept.min(at));
+            request.cache_breakpoint = Some(kept);
         }
     }
 }

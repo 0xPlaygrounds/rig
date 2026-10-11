@@ -12,6 +12,7 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-models = { path = "../../plugins/rig-models" }
 serde = { workspace = true, features = ["derive"] }

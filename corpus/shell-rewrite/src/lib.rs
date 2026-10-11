@@ -76,8 +76,7 @@ pub struct Place {
     pub path: Option<OsString>,
 }
 
-/// The rules, in file order. Inserted before the plugin is added, it takes
-/// the place of `RIG_HOME/shell-rewrite.toml`.
+/// The rules of `RIG_HOME/shell-rewrite.toml`, in file order.
 #[derive(Resource, Deserialize, Clone, Debug, Default)]
 #[serde(deny_unknown_fields)]
 pub struct ShellRewrites {
@@ -265,27 +264,44 @@ fn executable(path: &Path) -> bool {
 #[component(storage = "SparseSet")]
 pub struct RanAs(pub String);
 
-/// Rewrites `shell` commands by [`ShellRewrites`] before they run.
+/// The plugin's stage systems, for others to order against: `Prepare`
+/// edits each `shell` call's command, `Review` replaces the result of each
+/// rewritten one.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShellRewriteSystems {
+    /// Rewrites the command of each `shell` call as it is admitted.
+    Prepare,
+    /// Puts "(ran as: …)" first in each rewritten call's result.
+    Review,
+}
+
+/// Rewrites `shell` commands by the rules of `RIG_HOME/shell-rewrite.toml`
+/// before they run.
 #[derive(Default)]
 pub struct ShellRewritePlugin;
 
 impl Plugin for ShellRewritePlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<ShellRewrites>() {
-            let path = RigHome::of(app.world()).root().join(FILE);
-            let rewrites = ShellRewrites::load(&path).unwrap_or_else(|error| {
-                warn!("{}: {error}; no shell command is rewritten", path.display());
-                ShellRewrites::default()
-            });
-            app.insert_resource(rewrites);
-        }
-        app.init_resource::<ProjectRoot>()
+        let path = RigHome::of(app.world()).root().join(FILE);
+        let rewrites = ShellRewrites::load(&path).unwrap_or_else(|error| {
+            warn!("{}: {error}; no shell command is rewritten", path.display());
+            ShellRewrites::default()
+        });
+        app.insert_resource(rewrites)
+            .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
+            .configure_sets(
+                AgentPass,
+                (
+                    ShellRewriteSystems::Prepare.in_set(Stage::Prepare),
+                    ShellRewriteSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    rewrite.in_set(Stage::Prepare),
-                    say_what_ran.in_set(Stage::Review),
+                    rewrite.in_set(ShellRewriteSystems::Prepare),
+                    say_what_ran.in_set(ShellRewriteSystems::Review),
                 ),
             );
     }

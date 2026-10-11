@@ -15,23 +15,25 @@
 //! fix(parser): accept a trailing comma
 //! ```
 //!
-//! A Prepare system puts the examples whose `when` matches the latest user
-//! text, or a file the turn read or changed, right after the system prompt
-//! of each request built from an agent, at most `max_examples` of them
-//! (the `[few_shot_examples]` setting, 3 by default), in file-name order:
-//! the same examples make the same prefix, so the provider's prompt cache
-//! keeps working. They are never committed to the [`Conversation`], so the
-//! session log and compaction's summaries never see them. The directory is
-//! watched and read again when it changes. `/examples` says which went
-//! with the agent's last request.
+//! A Prepare system ([`ExampleSystems`], before compaction measures the
+//! request) puts the examples whose `when` matches the latest user text, or
+//! a file the turn's tool calls said they read or changed ([`FilesRead`],
+//! [`FilesChanged`]), right after the system prompt of each request built
+//! from an agent, at most `max_examples` of them (the `[few_shot_examples]`
+//! setting, 3 by default), in file-name order: the same examples make the
+//! same prefix, so the provider's prompt cache keeps working. They are
+//! never committed to the [`Conversation`], so the session log and
+//! compaction's summaries never see them. The directory is watched, and
+//! read on the watch's first listing and on each change. `/examples` says
+//! which went with the agent's last request.
 
 use std::path::{Path, PathBuf};
 
 use glob::Pattern;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
-use rig_harness::rig_core::tool::FilesChanged;
-use rig_tools::{Read, ReadArgs};
+use rig_harness::rig_core::tool::{FilesChanged, FilesRead};
 use serde::Deserialize;
 
 /// Injects the project's few-shot examples into the requests they fit, and
@@ -47,11 +49,16 @@ impl Plugin for FewShotExamplesPlugin {
             .add_message::<FileChanges>()
             .register_required_components::<TurnOf, Touched>()
             .register_required_components::<Agent, SentExamples>()
-            .add_observer(track_reads)
-            .add_observer(track_changes)
+            .add_observer(track_files)
             .add_systems(Startup, watch)
             .add_systems(Update, reload.before(AgentLoop))
-            .add_systems(AgentPass, inject.in_set(Stage::Prepare))
+            .configure_sets(AgentPass, ExampleSystems.in_set(Stage::Prepare))
+            .add_systems(
+                AgentPass,
+                inject
+                    .in_set(ExampleSystems)
+                    .before(CompactionSystems::Prepare),
+            )
             .add_command(
                 "examples",
                 "List the few-shot examples that went with the last request",
@@ -59,6 +66,11 @@ impl Plugin for FewShotExamplesPlugin {
             );
     }
 }
+
+/// The Prepare system that puts the examples in each request, for other
+/// plugins that edit requests to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ExampleSystems;
 
 /// The `[few_shot_examples]` settings table.
 #[derive(Resource, Clone, Copy, Debug, Deserialize)]
@@ -251,14 +263,12 @@ fn read_library(dir: &Path) -> Library {
     library
 }
 
-/// Reads the examples and watches their directory.
-fn watch(root: Res<ProjectRoot>, mut library: ResMut<Library>, mut commands: Commands) {
-    let dir = examples_dir(&root);
-    *library = read_library(&dir);
-    commands.spawn((ExamplesWatch, FileWatch::new(dir)));
+/// Watches the examples' directory.
+fn watch(root: Res<ProjectRoot>, mut commands: Commands) {
+    commands.spawn((ExamplesWatch, FileWatch::new(examples_dir(&root))));
 }
 
-/// Reads the examples again once their directory changed.
+/// Reads the examples on the watch's first listing and after each change.
 fn reload(
     mut changes: MessageReader<FileChanges>,
     watches: Query<(), With<ExamplesWatch>>,
@@ -270,28 +280,8 @@ fn reload(
     }
 }
 
-/// Notes the file of each `read` call on its turn, as the model asks for it.
-fn track_reads(
-    call: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &CallOf)>,
-    mut turns: Query<&mut Touched>,
-) {
-    let Ok((request, &CallOf(turn))) = calls.get(call.entity) else {
-        return;
-    };
-    let function = &request.call.function;
-    if function.name.as_str() != <Read as Tool>::NAME {
-        return;
-    }
-    if let Ok(args) = serde_json::from_value::<ReadArgs>(function.arguments.clone().into())
-        && let Ok(mut touched) = turns.get_mut(turn)
-    {
-        touched.note(args.path);
-    }
-}
-
-/// Notes the files any tool call says it changed on its turn.
-fn track_changes(
+/// Notes the files any tool call says it read or changed on its turn.
+fn track_files(
     published: On<Insert<Published>>,
     calls: Query<(&Published, &CallOf)>,
     mut turns: Query<&mut Touched>,
@@ -299,13 +289,16 @@ fn track_changes(
     let Ok((published, &CallOf(turn))) = calls.get(published.entity) else {
         return;
     };
-    let Ok(Some(changed)) = published.0.get::<FilesChanged>() else {
+    let Ok(mut touched) = turns.get_mut(turn) else {
         return;
     };
-    if let Ok(mut touched) = turns.get_mut(turn) {
-        for path in changed.paths() {
-            touched.note(path.to_owned());
-        }
+    if let Ok(Some(FilesRead(read))) = published.0.get::<FilesRead>() {
+        read.into_iter().for_each(|path| touched.note(path));
+    }
+    if let Ok(Some(changed)) = published.0.get::<FilesChanged>() {
+        changed
+            .paths()
+            .for_each(|path| touched.note(path.to_owned()));
     }
 }
 

@@ -1,14 +1,15 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_ecs::message::Messages;
 use rig_cassette::journal::MemoryStore;
 use rig_compaction::CompactionPlugin;
 use rig_core::catalog::{Catalog, Connector};
-use rig_core::test_utils::MockCompletionModel;
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_subagents::SubagentsPlugin;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until, start_call};
+use rig_harness_test_support::{
+    Collected, Ended, app_on, collect, connect, first_agent, log_ended, reply, run_until,
+};
 
 /// The kernel, compaction, subagents and pinned notes on `store`, after
 /// the first frame restored the session, with its loop's wakes and its
@@ -33,11 +34,9 @@ fn start(
         let choice = ModelChoice(connection.spec.reference());
         app.world_mut().spawn((Agent, connection, choice));
     }
-    app.finish();
+    collect::<Notice>(&mut app).finish();
     app.update();
-    let world = app.world_mut();
-    let mut roots = world.query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>();
-    let agent = roots.iter(world).next()?;
+    let agent = first_agent(app.world_mut())?;
     Some((app, wakes, agent))
 }
 
@@ -112,12 +111,8 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
     };
     run(&mut app, agent, "pins");
     app.update();
-    let notices = app.world().resource::<Messages<Notice>>();
-    let mut cursor = notices.get_cursor();
-    let said: Vec<&str> = cursor
-        .read(notices)
-        .map(|notice| notice.text.as_str())
-        .collect();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let said: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
     assert!(
         said.contains(&"Pinned notes (1):\n1. Use approach B"),
         "{said:?}"
@@ -126,34 +121,66 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
 
 #[test]
 fn only_a_task_with_inherit_pins_passes_the_pins_on() {
-    let model = MockCompletionModel::from_stream_turns([reply("Looked.")]);
+    let task = |id: &str, inherit: bool| {
+        let prompt = format!("Look, inheriting: {inherit}.");
+        let args =
+            serde_json::json!({ "description": "Look", "prompt": prompt, "inherit_pins": inherit });
+        MockStreamEvent::tool_call(id, TASK, args)
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            task("t1", true),
+            task("t2", false),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Started both."),
+        reply("Looked."),
+        reply("Looked."),
+        reply("Both looked."),
+    ]);
     let started = start(&MemoryStore::default(), Some(&model));
     assert!(started.is_some(), "the session has one agent");
-    let Some((mut app, _wakes, parent)) = started else {
+    let Some((mut app, wakes, parent)) = started else {
         return;
     };
     run(&mut app, parent, "pin Keep the API stable");
-    let task = |inherit: bool| serde_json::json!({ "description": "Look", "prompt": "Look around.", "inherit_pins": inherit });
-    let world = app.world_mut();
-    start_call(world, parent, (TASK, "t1"), task(true));
-    start_call(world, parent, (TASK, "t2"), task(false));
-    for _ in 0..8 {
-        app.world_mut().run_schedule(AgentPass);
-    }
+    app.world_mut()
+        .trigger(Deliver::new(parent, "Look twice.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 4
+    });
 
-    let world = app.world();
-    let children: Vec<Entity> = world
-        .get::<Spawned>(parent)
-        .map(|spawned| spawned.iter().collect())
-        .unwrap_or_default();
-    let pins: Vec<Option<&Pins>> = children
+    let sent: Vec<String> = model
+        .requests()
         .iter()
-        .map(|&child| world.get::<Pins>(child))
+        .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
-    let kept = Pins(vec!["Keep the API stable".to_owned()]);
     assert_eq!(
-        pins,
-        [Some(&kept), Some(&Pins::default())],
-        "the first task inherits, the second does not"
+        sent.len(),
+        5,
+        "the parent's two turns (three requests) and each subagent's"
     );
+    assert!(
+        sent.first()
+            .is_some_and(|first| first.contains(INHERIT_PINS)),
+        "the model is offered `inherit_pins` on `task`"
+    );
+    // Each subagent's requests: whether it was asked to inherit, and
+    // whether its prompt has the pin. The parent's all have it.
+    let pin = "1. Keep the API stable";
+    let mut children: Vec<(bool, bool)> = sent
+        .iter()
+        .filter(|request| request.contains("<subagent_role>"))
+        .map(|request| (request.contains("inheriting: true"), request.contains(pin)))
+        .collect();
+    children.sort_unstable();
+    assert_eq!(children, [(false, false), (true, true)], "{sent:?}");
+    let parent = sent
+        .iter()
+        .filter(|request| !request.contains("<subagent_role>"));
+    assert!(
+        parent.clone().all(|request| request.contains(pin)),
+        "{sent:?}"
+    );
+    assert_eq!(parent.count(), 3, "{sent:?}");
 }

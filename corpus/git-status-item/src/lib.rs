@@ -13,7 +13,7 @@
 mod item;
 
 #[cfg(feature = "tui")]
-pub use item::{Edge, GitRunner, GitStatusSettings};
+pub use item::{GitRunner, GitStatusSettings};
 
 use rig_harness::prelude::*;
 

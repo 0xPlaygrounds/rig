@@ -1,5 +1,4 @@
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -8,7 +7,9 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::journal::JournalPlugin;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{
+    app_on, calls, connect, first_agent, reply, run_until, scratch_home,
+};
 use rig_tui::{AppStatus, FRONT};
 
 use super::*;
@@ -26,9 +27,8 @@ fn item(world: &World) -> Option<String> {
 
 #[test]
 fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
-    let base = std::env::var_os("CARGO_TARGET_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
-    let dir = base.join(format!("corpus-git-status-item-{}", std::process::id()));
-    fs::remove_dir_all(&dir).ok();
+    // An emptied directory beside the test binary.
+    let dir = scratch_home("corpus-git-status-item").root().to_path_buf();
     assert!(fs::create_dir_all(&dir).is_ok());
     let init = Command::new("git")
         .args(["init", "-q", "-b", "main"])
@@ -72,9 +72,9 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
     assert_eq!(item(app.world()).as_deref(), Some("main"));
 
     let world = app.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    assert!(agent.is_ok(), "one agent");
-    let Ok(agent) = agent else {
+    let agent = first_agent(world);
+    assert!(agent.is_some(), "an agent");
+    let Some(agent) = agent else {
         return;
     };
     world.entity_mut(agent).insert(connection);

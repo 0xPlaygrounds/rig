@@ -16,3 +16,6 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 # `RIG_HOME/keys.toml`; the version rig-harness reads settings.toml with.
 toml = "1"
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

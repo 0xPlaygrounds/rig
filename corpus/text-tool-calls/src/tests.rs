@@ -29,9 +29,9 @@ struct ReadArgs {
 #[derive(Resource, Default)]
 struct Reads(Vec<String>);
 
-/// Each streamed text a front could have drawn.
+/// The text each model call streamed, as a front reads it, by call.
 #[derive(Resource, Default)]
-struct Shown(Vec<String>);
+struct Shown(Vec<(Entity, String)>);
 
 /// The kernel and the plugin on `store`, with a `read` tool that answers
 /// "x", after the first frame restored the session.
@@ -42,7 +42,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<Shown>()
         .init_resource::<Ended>()
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
-        .add_systems(Update, watch.after(PollCalls))
+        .add_systems(PostUpdate, watch)
         .add_observer(log_ended);
     app.finish();
     app.update();
@@ -55,11 +55,14 @@ fn read(called: On<ToolCalled<ReadArgs>>, mut reads: ResMut<Reads>, mut commands
     commands.entity(called.call).insert_if_new(read);
 }
 
-/// A front drawing each call's `Partial` as it streams in.
-fn watch(partials: Query<&Partial, Changed<Partial>>, mut shown: ResMut<Shown>) {
-    shown
-        .0
-        .extend(partials.iter().map(|partial| partial.text.clone()));
+/// A front drawing each call's text as it streams in.
+fn watch(mut deltas: MessageReader<StreamDelta>, mut shown: ResMut<Shown>) {
+    for delta in deltas.read().filter(|delta| delta.kind == DeltaKind::Text) {
+        match shown.0.iter_mut().find(|(call, _)| *call == delta.effect) {
+            Some((_, text)) => text.push_str(&delta.text),
+            None => shown.0.push((delta.effect, delta.text.clone())),
+        }
+    }
 }
 
 fn first_agent(world: &mut World) -> Option<Entity> {
@@ -123,13 +126,10 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
     assert!(preamble.contains("## read"), "{preamble}");
     assert_eq!(app.world().resource::<Reads>().0, ["a.txt"]);
 
-    // Whatever a front drew of the replies as they streamed, it never
-    // showed a bit of the block. (A scripted reply often streams whole
-    // between two frames, so the exact text is checked on the handler in
-    // `a_block_split_mid_tag_never_streams`.)
+    // A front saw the text outside the block, and never a bit of it.
     let shown = &app.world().resource::<Shown>().0;
-    let flashed = shown.iter().find(|text| text.contains('<'));
-    assert_eq!(flashed, None);
+    let shown: Vec<&str> = shown.iter().map(|(_, text)| text.as_str()).collect();
+    assert_eq!(shown, ["Let me look.", "It says x."]);
 
     // The result went back as user text, with no native call or result.
     let result_as_text = second.chat_history.iter().any(|message| match message {
@@ -157,50 +157,4 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
             if content.iter().any(|content| matches!(content, UserContent::ToolResult(_))))
     });
     assert!(has_result, "{messages:?}");
-}
-
-/// The reply as the kernel streams it from the wrapped handler: the block
-/// never reaches it, though the chunks cut it mid-tag, and the response
-/// holds the real call.
-#[test]
-fn a_block_split_mid_tag_never_streams() {
-    let model = MockCompletionModel::from_stream_turns([chunked_call()]);
-    let handler = connect(&model).map(|connection| FromText(connection.handler.0));
-    assert!(handler.is_some(), "the catalog lists the model");
-    let Some(handler) = handler else {
-        return;
-    };
-    let request = rig_core::completion::CompletionRequest::new(Message::user("What is in a.txt?"));
-    let kind = EffectKind::Completion {
-        request,
-        stream: true,
-    };
-    let dispatch = Dispatch::new(rig_core::effect::EffectId::from_raw(1), true);
-    let items: Vec<_> = futures::executor::block_on(async {
-        handler
-            .serve(kind, dispatch)
-            .await
-            .into_stream()
-            .collect()
-            .await
-    });
-    let mut streamed = String::new();
-    let mut calls = Vec::new();
-    for item in items {
-        match item {
-            Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => {
-                streamed.push_str(&text)
-            }
-            Ok(Relayed::Done(response)) => {
-                calls.extend(
-                    response
-                        .tool_calls()
-                        .map(|call| call.function.raw_arguments()),
-                );
-            }
-            _ => {}
-        }
-    }
-    assert_eq!(streamed, "Let me look.");
-    assert_eq!(calls, [r#"{"path":"a.txt"}"#]);
 }

@@ -1,11 +1,12 @@
-use std::path::PathBuf;
-
 use corpus_few_shot_examples::FewShotExamplesPlugin;
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
-use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_harness::watch::WatchPlugin;
+use rig_harness_test_support::{
+    Collected, Ended, app_in, collect, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
+};
 
 use super::*;
 
@@ -31,67 +32,56 @@ impl Plugin for HouseRulesPlugin {
         app.add_open_tool(
             "lookup",
             "Look a word up.",
-            ToolOptions::default(),
+            ToolOptions {
+                rules: &["Look words up before using them."],
+                ..ToolOptions::default()
+            },
             |_: On<ToolCalled<serde_json::Value>>| {},
         );
     }
 }
 
-/// The notices' texts.
-#[derive(Resource, Default)]
-struct Seen(Vec<String>);
-
-fn see(mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>) {
-    seen.0
-        .extend(notices.read().map(|notice| notice.text.clone()));
-}
-
-/// A project of its own beside the test binary, holding `commit.md`.
-fn project() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let root = exe
-        .parent()?
-        .join(format!("context-inspector-{}", std::process::id()));
-    let examples = root.join(".rig").join("examples");
-    std::fs::create_dir_all(&examples).ok()?;
-    std::fs::write(examples.join("commit.md"), EXAMPLE).ok()?;
-    Some(root)
-}
-
 /// Types `line` to `agent`, as the user, and returns the notices it wrote.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
-    app.world_mut().resource_mut::<Seen>().0.clear();
+    app.world_mut()
+        .resource_mut::<Collected<Notice>>()
+        .0
+        .clear();
     let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
     app.world_mut().trigger(typed);
     app.update();
-    app.world().resource::<Seen>().0.join("\n")
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let texts: Vec<&str> = notices.iter().map(|notice| notice.text.as_str()).collect();
+    texts.join("\n")
 }
 
 #[test]
 fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
-    let root = project();
-    assert!(root.is_some(), "the project was written");
-    let Some(root) = root else {
-        return;
-    };
-    let session = Home::at(root.join("home")).session(&SessionId::generate());
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(ProjectRoot(root.clone()))
-        .insert_resource(SessionPaths(session.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin));
+    let home = scratch_home("context-inspector");
+    let root = home.root().join("project");
+    let examples = root.join(".rig").join("examples");
+    std::fs::create_dir_all(&examples).ok();
+    std::fs::write(examples.join("commit.md"), EXAMPLE).ok();
+    let session = SessionId::generate();
+    let (mut app, wakes) = app_in(&home, &session);
+    app.insert_resource(ProjectRoot(root))
+        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin));
     load::<HouseRulesPlugin>(&mut app, "house-rules", "test");
     load::<FewShotExamplesPlugin>(&mut app, "corpus-few-shot-examples", "test");
     load::<ContextInspectorPlugin>(&mut app, "corpus-context-inspector", "test");
-    app.init_resource::<Ended>()
-        .init_resource::<Seen>()
-        .add_systems(Last, see)
+    collect::<Notice>(&mut app)
+        .init_resource::<Ended>()
         .add_observer(log_ended);
+    collect::<FileChanges>(&mut app);
     app.finish();
     app.update();
+    // The few-shot plugin reads its examples on its watch's first listing.
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Collected<FileChanges>>().0.is_empty()
+    });
     let model = MockCompletionModel::from_stream_turns([reply("Committed.")]);
     let world = app.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    let (agent, connection) = (agent.ok(), connect(&model));
+    let (agent, connection) = (first_agent(world), connect(&model));
     assert!(
         agent.is_some() && connection.is_some(),
         "one agent, and the model"
@@ -113,6 +103,7 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     for expected in [
         "<house_rules> \"House rules\"",
         "from HouseRulesPlugin",
+        "<tool_rules> of the tools offered",
         "Tools offered: 1",
         "lookup",
         "+ 2 messages added before the conversation (user, assistant;",
@@ -122,7 +113,8 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
 
     let full = command(&mut app, agent, "/context --last full");
     let id = app.world().get::<AgentId>(agent).map(|id| id.0.clone());
-    let path = session
+    let path = home
+        .session(&session)
         .path()
         .join("requests")
         .join(format!("{}-last-request.json", id.unwrap_or_default()));
@@ -135,5 +127,5 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
         "{json}"
     );
     assert_eq!(model.requests().len(), sent, "/why calls no model");
-    std::fs::remove_dir_all(root).ok();
+    std::fs::remove_dir_all(home.root()).ok();
 }

@@ -180,6 +180,16 @@ pub struct Approval(pub String);
 #[component(storage = "SparseSet")]
 struct Approved;
 
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PermissionSystems {
+    /// Prepare: takes the tools that change something out of a read-only
+    /// agent's requests.
+    Offer,
+    /// Gate: refuses, holds and lets go of calls by their agent's mode.
+    Gate,
+}
+
 /// Permission modes for every agent.
 #[derive(Default)]
 pub struct PermissionModesPlugin;
@@ -194,11 +204,18 @@ impl Plugin for PermissionModesPlugin {
                 "Set how much the agent may do without asking: read-only, ask, edits or auto",
                 set_mode,
             )
+            .configure_sets(
+                AgentPass,
+                (
+                    PermissionSystems::Offer.in_set(Stage::Prepare),
+                    PermissionSystems::Gate.in_set(Stage::Gate),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    offer.in_set(Stage::Prepare),
-                    (answered, ask).chain().in_set(Stage::Gate),
+                    offer.in_set(PermissionSystems::Offer),
+                    (answered, ask).chain().in_set(PermissionSystems::Gate),
                 ),
             )
             .add_observer(inherit)

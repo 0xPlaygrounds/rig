@@ -1,30 +1,34 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use rig_cassette::journal::MemoryStore;
+use corpus_confirm_destructive::ConfirmDestructivePlugin;
 use rig_core::effect::EffectKind;
-use rig_core::message::{Message, ToolResultContent};
+use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness::harness_protocol::SessionId;
+use rig_harness_test_support::{
+    AnswerAsks, Answers, Collected, Ended, ToolOutputs, app_in, calls, collect, connect,
+    first_agent, log_ended, log_tool_outputs, reply, run_until, scratch_home,
+};
 
 use super::*;
 
-/// A fresh directory of the test's own, beside the test binary in the
-/// target directory.
-fn scratch(name: &str) -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let base = exe.parent().map(Path::to_path_buf).unwrap_or_default();
-    let dir = base.join(format!(
-        "corpus-shell-rewrite-{name}-{}",
-        std::process::id()
-    ));
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(dir.join("bin")).ok();
-    dir
-}
+/// `rm -rf` and `rm` go to the trash, when there is one.
+const RULES: &str = r#"
+[[rule]]
+command = "rm -rf"
+replace = "trash"
+needs_program = "trash"
+
+[[rule]]
+command = "rm"
+replace = "trash"
+needs_program = "trash"
+"#;
 
 /// A `trash` in `dir/bin` that moves files to `./.trash`.
 fn fake_trash(dir: &Path) {
     let trash = dir.join("bin/trash");
+    std::fs::create_dir_all(dir.join("bin")).ok();
     std::fs::write(&trash, "#!/bin/sh\nmkdir -p .trash && mv \"$@\" .trash/\n").ok();
     #[cfg(unix)]
     {
@@ -33,89 +37,40 @@ fn fake_trash(dir: &Path) {
     }
 }
 
-/// Stands in for spec 01's guard: asks the user about every `shell` call
-/// about to run whose command has `rm -rf`, as a hold on the call.
-fn guard(calls: Query<(Entity, &ToolRequest, &ForAgent), Undecided>, mut commands: Commands) {
-    for (call, request, &ForAgent(agent)) in &calls {
-        let arguments = &request.call.function.arguments;
-        let command = arguments.get("command").and_then(|c| c.as_str());
-        let command = command.unwrap_or_default();
-        if command.contains("rm -rf") {
-            let ask = Ask::yes_no("Run a destructive command?").body(command.to_owned());
-            commands.spawn((ask, ForAgent(agent), HoldOf(call)));
-        }
-    }
-}
-
-/// How many questions were asked.
-#[derive(Resource, Default)]
-struct Asked(usize);
-
-/// The arguments of each tool call the effect log recorded.
-#[derive(Resource, Default)]
-struct Logged(Vec<String>);
-
-fn log_calls(mut recorded: MessageReader<Recorded>, mut logged: ResMut<Logged>) {
-    for Recorded(record) in recorded.read() {
-        if let EffectKind::ToolCall { args, .. } = &record.kind {
-            logged.0.push(args.clone());
-        }
-    }
-}
-
-/// What the agent's conversation says.
-#[derive(Default)]
-struct Seen {
-    /// The arguments of each call in the conversation.
-    called: Vec<String>,
-    /// The first text of each tool result in the conversation.
-    results: Vec<String>,
-    /// The arguments of each call in the effect log.
-    logged: Vec<String>,
-    /// How many questions were asked.
-    asked: usize,
-}
-
-/// Runs a turn in `dir` whose model calls `shell` with `rm a.txt`, then
-/// with `rm -rf b`, under the rules `rm -rf` -> `trash` and `rm` ->
-/// `trash`, with a guard asking about `rm -rf`.
-fn run(dir: &Path) -> Option<Seen> {
-    let rules = r#"
-        [[rule]]
-        command = "rm -rf"
-        replace = "trash"
-        needs_program = "trash"
-
-        [[rule]]
-        command = "rm"
-        replace = "trash"
-        needs_program = "trash"
-    "#;
-    let rewrites = ShellRewrites::parse(rules).ok()?;
+/// The model calls `shell` with `rm a.txt`, then with `rm -rf b`, in a
+/// project whose `PATH` has a `trash`, under the rules of the test's
+/// `RIG_HOME/shell-rewrite.toml`, with spec 01's guard asking about
+/// destructive commands.
+#[test]
+fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_call() {
+    let home = scratch_home("corpus-shell-rewrite");
+    let dir = home.root().join("project");
+    fake_trash(&dir);
+    std::fs::write(home.root().join(FILE), RULES).ok();
+    std::fs::write(dir.join("a.txt"), "a").ok();
+    std::fs::create_dir_all(dir.join("b")).ok();
     let path = std::env::var_os("PATH").unwrap_or_default();
     let dirs = std::iter::once(dir.join("bin")).chain(std::env::split_paths(&path));
-    let path = std::env::join_paths(dirs).ok()?;
+    let path = std::env::join_paths(dirs).unwrap_or_default();
     let processes = Processes::default();
-    processes.set(processes.launcher().in_dir(dir).with_env("PATH", path));
+    processes.set(processes.launcher().in_dir(&dir).with_env("PATH", path));
 
-    let store = MemoryStore::default();
-    let (mut app, wakes) = app_on(&store);
-    app.insert_resource(rewrites)
-        .insert_resource(processes)
-        .insert_resource(ProjectRoot(dir.to_owned()))
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    app.insert_resource(processes)
+        .insert_resource(ProjectRoot(dir.clone()))
         .init_resource::<Ended>()
-        .init_resource::<Asked>()
-        .init_resource::<Logged>()
-        .add_systems(PostUpdate, log_calls)
         .add_observer(log_ended)
-        .add_observer(|_: On<Add<Ask>>, mut asked: ResMut<Asked>| asked.0 += 1)
-        .add_systems(AgentPass, guard.in_set(Stage::Gate))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs)
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
             rig_coding_tools::ShellTool,
+            ConfirmDestructivePlugin,
             ShellRewritePlugin,
+            AnswerAsks,
         ));
+    collect::<Recorded>(&mut app);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
@@ -124,22 +79,27 @@ fn run(dir: &Path) -> Option<Seen> {
         reply("Deleted."),
     ]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()?;
-    world.entity_mut(agent).insert(connect(&model)?);
-    world.trigger(Deliver::new(
-        agent,
-        "Delete a.txt and b",
-        DeliveryMode::Steer,
-    ));
+    let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
+    if let Some(connection) = connect(&model) {
+        world.entity_mut(agent).insert(connection);
+    }
+    let deliver = Deliver::new(agent, "Delete a.txt and b", DeliveryMode::Steer);
+    world.trigger(deliver);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
+    let world = app.world();
 
-    let messages = app.world().get::<Conversation>(agent)?.messages();
-    let called = messages
+    // What ran is the rewrite: both went to the trash.
+    assert!(dir.join(".trash/a.txt").exists());
+    assert!(dir.join(".trash/b").exists());
+    assert!(!dir.join("a.txt").exists());
+    // The guard judged `trash b`, not `rm -rf b`: nobody was asked.
+    assert_eq!(world.resource::<Answers>().asked, Vec::<String>::new());
+    // The conversation keeps the model's own calls.
+    let messages = world.get::<Conversation>(agent).map(Conversation::messages);
+    let called: Vec<String> = messages
+        .unwrap_or_default()
         .iter()
         .filter_map(|message| match message {
             Message::Assistant(assistant) => Some(assistant.tool_calls()),
@@ -148,60 +108,30 @@ fn run(dir: &Path) -> Option<Seen> {
         .flatten()
         .map(|call| call.function.raw_arguments())
         .collect();
-    let results = messages
-        .iter()
-        .filter_map(|message| match message {
-            Message::User { content } => Some(content.iter()),
-            _ => None,
-        })
-        .flatten()
-        .filter_map(|item| match item {
-            UserContent::ToolResult(result) => result.content.first(),
-            _ => None,
-        })
-        .filter_map(|content| match content {
-            ToolResultContent::Text(text) => Some(text.text.clone()),
-            _ => None,
-        })
-        .collect();
-    Some(Seen {
-        called,
-        results,
-        logged: app.world().resource::<Logged>().0.clone(),
-        asked: app.world().resource::<Asked>().0,
-    })
-}
-
-#[test]
-fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_call() {
-    let dir = scratch("rm");
-    fake_trash(&dir);
-    std::fs::write(dir.join("a.txt"), "a").ok();
-    std::fs::create_dir_all(dir.join("b")).ok();
-
-    let seen = run(&dir).unwrap_or_default();
-
-    // What ran is the rewrite: both went to the trash.
-    assert!(dir.join(".trash/a.txt").exists());
-    assert!(dir.join(".trash/b").exists());
-    assert!(!dir.join("a.txt").exists());
-    // The guard judged `trash b`, not `rm -rf b`: nobody was asked.
-    assert_eq!(seen.asked, 0);
-    // The conversation keeps the model's own calls.
     assert_eq!(
-        seen.called,
+        called,
         [r#"{"command":"rm a.txt"}"#, r#"{"command":"rm -rf b"}"#]
     );
     // The effect log records what ran.
+    let logged: Vec<&str> = world
+        .resource::<Collected<Recorded>>()
+        .0
+        .iter()
+        .filter_map(|Recorded(record)| match &record.kind {
+            EffectKind::ToolCall { args, .. } => Some(args.as_str()),
+            _ => None,
+        })
+        .collect();
     assert_eq!(
-        seen.logged,
+        logged,
         [r#"{"command":"trash a.txt"}"#, r#"{"command":"trash b"}"#]
     );
     // Each result says what ran.
-    assert_eq!(seen.results.len(), 2, "{:?}", seen.results);
-    let wanted = ["(ran as: `trash a.txt`)\n", "(ran as: `trash b`)\n"];
-    for (result, wanted) in seen.results.iter().zip(wanted) {
-        assert!(result.starts_with(wanted), "{result:?}");
+    let outputs = &world.resource::<ToolOutputs>().0;
+    for (id, wanted) in [("c1", "trash a.txt"), ("c2", "trash b")] {
+        let output = outputs.get(id).map(String::as_str).unwrap_or_default();
+        let wanted = format!("(ran as: `{wanted}`)\n");
+        assert!(output.starts_with(&wanted), "{output:?}");
     }
-    std::fs::remove_dir_all(&dir).ok();
+    std::fs::remove_dir_all(home.root()).ok();
 }

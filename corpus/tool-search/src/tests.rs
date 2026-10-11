@@ -1,7 +1,12 @@
+use std::sync::mpsc::Receiver;
+
 use rig_cassette::journal::MemoryStore;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Collected, Ended, ToolOutputs, app_on, calls, collect, connect, first_agent, log_ended,
+    log_tool_outputs, reply, run_until,
+};
 
 use super::*;
 
@@ -39,31 +44,21 @@ fn create_issue(
         .insert_if_new(Outcome::from(result));
 }
 
-/// The names of the tools a request offered.
-fn offered(request: &CompletionRequest) -> Vec<&str> {
-    request
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_str())
-        .collect()
-}
-
-/// The request's conversation, as JSON.
-fn history(request: &CompletionRequest) -> String {
-    serde_json::to_string(&request.chat_history).unwrap_or_default()
-}
-
-#[test]
-fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
-    let store = MemoryStore::default();
-    let (mut app, wakes) = app_on(&store);
+/// The kernel, the journal and the plugin on `store`, with 49 deferred
+/// dummy tools and `jira_create_issue`, after the first frame restored the
+/// session, and the loop's wakes.
+fn start(store: &MemoryStore) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_on(store);
     let settings = "[tool_search]\ntools = [\"dummy_*\", \"jira_*\"]";
     app.set_error_handler(bevy_ecs::error::warn)
         .insert_resource(Settings::from_toml(settings))
         .add_plugins((AgentPlugin, JournalPlugin, ToolSearchPlugin))
         .init_resource::<Created>()
         .init_resource::<Ended>()
-        .add_observer(log_ended);
+        .add_observer(log_ended)
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    collect::<Notice>(&mut app);
     for index in 0..49 {
         let name = format!("dummy_{index}");
         let description = format!("Dummy tool number {index}.");
@@ -77,7 +72,34 @@ fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
     );
     app.finish();
     app.update();
+    (app, wakes)
+}
 
+/// The names of the tools a request offered.
+fn offered(request: &CompletionRequest) -> Vec<&str> {
+    request
+        .tools
+        .iter()
+        .map(|tool| tool.name.as_str())
+        .collect()
+}
+
+/// What `/tools` says about the app's agent.
+fn count_tools(app: &mut App) -> String {
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut().trigger(RunCommand::new(agent, "tools"));
+    app.update();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    notices
+        .last()
+        .map(|notice| notice.text.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
     let model = MockCompletionModel::from_stream_turns([
         calls(
             "1",
@@ -93,21 +115,11 @@ fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
         calls("3", "dummy_7", serde_json::json!({})),
         reply("Filed PROJ-1."),
     ]);
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
-    let connection = connect(&model);
-    assert!(
-        agent.is_some() && connection.is_some(),
-        "an agent and the catalog's model"
-    );
-    let (Some(agent), Some(connection)) = (agent, connection) else {
-        return;
-    };
-    world.entity_mut(agent).insert(connection);
-    world.trigger(Deliver::new(
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    if let Some(connection) = connect(&model) {
+        app.world_mut().entity_mut(agent).insert(connection);
+    }
+    app.world_mut().trigger(Deliver::new(
         agent,
         "File a Jira issue: login fails.",
         DeliveryMode::Steer,
@@ -124,29 +136,29 @@ fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
     assert_eq!(offered(first), [TOOL_SEARCH], "only the core set first");
     let prompt = serde_json::to_string(first).unwrap_or_default();
     assert!(prompt.contains("50 more tools are deferred"), "{prompt}");
+    let outputs = &app.world().resource::<ToolOutputs>().0;
+    let found = outputs.get("1").cloned().unwrap_or_default();
     assert!(
-        history(second).contains("- jira_create_issue: Create an issue in a Jira project."),
-        "the search result names the tool: {}",
-        history(second)
+        found.contains("- jira_create_issue: Create an issue in a Jira project."),
+        "the search names the tool: {found}"
     );
     assert_eq!(offered(second), ["jira_create_issue", TOOL_SEARCH]);
     assert_eq!(app.world().resource::<Created>().0, ["Login fails"]);
     assert_eq!(offered(third), ["jira_create_issue", TOOL_SEARCH]);
+    let guessed = outputs.get("3").cloned().unwrap_or_default();
     assert!(
-        history(fourth).contains("`dummy_7` was deferred and not offered yet"),
-        "the guessed call's result says it is active now: {}",
-        history(fourth)
+        guessed.contains("`dummy_7` was deferred and not offered yet"),
+        "the guessed call's result says it is active now: {guessed}"
     );
     assert_eq!(
         offered(fourth),
         ["dummy_7", "jira_create_issue", TOOL_SEARCH]
     );
-    let activated = app
-        .world()
-        .get::<ActivatedTools>(agent)
-        .map(|a| a.0.clone());
-    assert_eq!(
-        activated,
-        Some(vec!["jira_create_issue".to_owned(), "dummy_7".to_owned()])
-    );
+    let counted = "Tools: 3 active, 48 deferred. Activated: jira_create_issue, dummy_7.";
+    assert_eq!(count_tools(&mut app), counted);
+    drop(app);
+
+    // A restart on the same session brings the activated tools back.
+    let (mut app, _) = start(&store);
+    assert_eq!(count_tools(&mut app), counted, "saved with the session");
 }

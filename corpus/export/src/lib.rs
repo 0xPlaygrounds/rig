@@ -44,9 +44,10 @@ impl Plugin for ExportPlugin {
             "Export the session: /export [md|html|json] [path] [--thinking] [--session <id>]",
             export,
         )
+        // Its run exports another session and keeps none of its own.
         .add_front(Front {
             flag: Some(flag),
-            ..Front::new("export")
+            ..Front::new("export").sessionless()
         })
         .add_flag(Flag::new("export-format", "--export's format: md, html or json").value("FORMAT"))
         .add_flag(Flag::new("export-to", "The file --export writes").value("PATH"))
@@ -91,6 +92,8 @@ pub struct ModelCall {
     pub effect: EffectId,
     /// What it was made for, such as `turn` or `compaction`.
     pub purpose: Option<String>,
+    /// The agent's turn it was made in, the first being 0.
+    pub turn: Option<u64>,
     /// The model that answered, as `provider/model`.
     pub model: String,
     /// The tokens it used and what it cost.
@@ -299,6 +302,7 @@ fn model_call(record: &EffectRecord) -> Option<ModelCall> {
     Some(ModelCall {
         effect: record.id,
         purpose: record.purpose.as_ref().map(|purpose| purpose.to_string()),
+        turn: record.turn,
         model: format!("{}/{}", response.origin.provider, response.origin.model),
         usage: response.usage,
         response_id: response.origin.response_id.clone(),

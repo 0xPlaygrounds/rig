@@ -4,7 +4,6 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use rig_cassette::effect_log::EffectLog;
 use rig_core::effect::{Disposition, EffectKind, EffectRecord, Outcome};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::tool::ToolErrorKind;
@@ -89,7 +88,7 @@ pub struct Filter {
     pub name: Option<String>,
     /// Only effects that ended so.
     pub status: Option<Status>,
-    /// Only effects of this turn of their agent and later (from 1).
+    /// Only effects of this turn of their agent and later (the first is 0).
     pub since_turn: Option<u64>,
     /// The most rows, the latest kept (30 by default).
     pub limit: Option<usize>,
@@ -111,8 +110,6 @@ pub struct DetailArgs {
 struct Row<'a> {
     record: &'a EffectRecord,
     agent: String,
-    /// The turn of its agent (from 1), when known.
-    turn: Option<u64>,
     kind: String,
     name: String,
     status: Status,
@@ -126,8 +123,7 @@ fn kind_label(kind: &EffectKind) -> String {
     match kind {
         EffectKind::Completion { .. } => "model".to_owned(),
         EffectKind::ToolCall { .. } => "tool".to_owned(),
-        EffectKind::Custom { kind, .. } => kind.to_string(),
-        other => other.family().to_string(),
+        other => other.name().to_string(),
     }
 }
 
@@ -142,43 +138,19 @@ fn name_of(record: &EffectRecord) -> String {
     }
 }
 
-/// What the table knows of an agent besides its effects.
-#[derive(Clone, Debug, Default)]
-pub struct AgentInfo {
-    /// Its name.
-    pub name: String,
-    /// Each turn's index and its first effect's id.
-    pub turns: Vec<(u64, u64)>,
-}
-
-impl AgentInfo {
-    /// The turn (from 1) effect `id` belongs to: the last that started at
-    /// or before it.
-    fn turn_of(&self, id: u64) -> Option<u64> {
-        self.turns
-            .iter()
-            .filter(|(_, first)| *first <= id)
-            .map(|(index, _)| index + 1)
-            .max()
-    }
-}
-
-/// Every effect of `log` as a row, in id order, with its agent's name and
-/// turn from `agents` (by agent id).
-fn rows<'a>(log: &'a EffectLog, agents: &HashMap<String, AgentInfo>) -> Vec<Row<'a>> {
-    let mut rows: Vec<Row> = log
-        .records
+/// Every effect of `records` as a row, in id order, with its agent's
+/// name from `names` (by agent id).
+fn rows<'a>(records: &'a [EffectRecord], names: &HashMap<String, String>) -> Vec<Row<'a>> {
+    let mut rows: Vec<Row> = records
         .iter()
         .map(|record| {
             let scope = record.scope.as_deref().unwrap_or("");
-            let info = agents.get(scope);
             Row {
                 record,
-                agent: info.map_or_else(
-                    || scope.get(..8).unwrap_or(scope).to_owned(),
-                    |info| info.name.clone(),
-                ),
-                turn: info.and_then(|info| info.turn_of(record.id.as_u64())),
+                agent: names
+                    .get(scope)
+                    .cloned()
+                    .unwrap_or_else(|| scope.get(..8).unwrap_or(scope).to_owned()),
                 kind: kind_label(&record.kind),
                 name: name_of(record),
                 status: Status::of_record(record),
@@ -206,7 +178,7 @@ impl Filter {
         let status = self.status.is_none_or(|status| status == row.status);
         let turn = self
             .since_turn
-            .is_none_or(|since| row.turn.is_some_and(|turn| turn >= since));
+            .is_none_or(|since| row.record.turn.is_some_and(|turn| turn >= since));
         agent && kind && name && status && turn
     }
 
@@ -272,10 +244,10 @@ fn human(bytes: usize) -> String {
     }
 }
 
-/// The effects of `log` that `filter` keeps, the latest `limit` or the
-/// slowest, as a table.
-pub fn table(log: &EffectLog, agents: &HashMap<String, AgentInfo>, filter: &Filter) -> String {
-    let all = rows(log, agents);
+/// The effects of `records` that `filter` keeps, the latest `limit` or
+/// the slowest, as a table; agents by their names in `names`.
+pub fn table(records: &[EffectRecord], names: &HashMap<String, String>, filter: &Filter) -> String {
+    let all = rows(records, names);
     let mut kept: Vec<&Row> = all
         .iter()
         .filter(|row| filter.keeps(row, row.record.scope.as_deref().unwrap_or("")))
@@ -317,7 +289,9 @@ pub fn table(log: &EffectLog, agents: &HashMap<String, AgentInfo>, filter: &Filt
             "{}\t{}\t{}\t{}\t{}\t{}\t{start}\t{took}\t{}\t{}\t{model}\t{cost}",
             row.record.id.as_u64(),
             row.agent,
-            row.turn.map_or("-".to_owned(), |turn| turn.to_string()),
+            row.record
+                .turn
+                .map_or("-".to_owned(), |turn| turn.to_string()),
             row.kind,
             row.name,
             row.status.as_str(),
@@ -328,10 +302,10 @@ pub fn table(log: &EffectLog, agents: &HashMap<String, AgentInfo>, filter: &Filt
     out
 }
 
-/// The effect `id` of `log` in full: its request and its result, cut to
-/// [`DETAIL_CHARS`].
-pub fn detail(log: &EffectLog, id: u64) -> Option<String> {
-    let record = log.records.iter().find(|record| record.id.as_u64() == id)?;
+/// The effect `id` of `records` in full: its request and its result, cut
+/// to [`DETAIL_CHARS`].
+pub fn detail(records: &[EffectRecord], id: u64) -> Option<String> {
+    let record = records.iter().find(|record| record.id.as_u64() == id)?;
     let request = match &record.kind {
         EffectKind::ToolCall { name, args } => format!("{name} {args}"),
         kind => pretty(kind),

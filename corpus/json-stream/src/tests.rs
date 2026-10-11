@@ -4,6 +4,7 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::Invocation;
+use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
 
 use super::*;
@@ -59,7 +60,13 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
     })
     .insert_resource(JsonSink::new(lines.clone()))
     .insert_resource(rpc)
-    .add_plugins((AgentPlugin, JournalPlugin, ReadTool, JsonStreamPlugin));
+    .add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        PickPlugin,
+        ReadTool,
+        JsonStreamPlugin,
+    ));
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
@@ -79,7 +86,7 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
     world.entity_mut(agent).insert(connection);
 
     let prompt = r#"{"type":"prompt","id":7,"text":"read a.txt"}"#;
-    assert!(input.send(prompt.to_owned()).is_ok());
+    assert!(input.try_send(prompt.to_owned()).is_ok());
     let watched = lines.clone();
     run_until(&mut app, &wakes, move |_| {
         watched.find("turn_end", |_| true).is_some()
@@ -149,13 +156,35 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
     );
     let answer =
         json!({ "type": "answer", "id": 8, "request_id": at(&request, "request_id"), "choice": 1 });
-    assert!(input.send(answer.to_string()).is_ok());
+    assert!(input.try_send(answer.to_string()).is_ok());
     run_until(&mut app, &wakes, |world| {
         world.get::<Outcome>(ask).is_some()
     });
     let answered = app.world().get::<Outcome>(ask).and_then(Answer::of);
     assert_eq!(answered, Some(Answer::Choice("no".to_owned())));
     let response = lines.find("response", |line| at(line, "id") == 8);
+    assert_eq!(
+        response.map(|line| at(&line, "ok").clone()),
+        Some(true.into())
+    );
+
+    // A plugin's picker too; the harness carries out the choice.
+    let picker = Picker::new("Branch").item("main", "").item("dev", "");
+    let picker = app.world_mut().spawn(picker).id();
+    let watched = lines.clone();
+    run_until(&mut app, &wakes, move |_| {
+        watched
+            .find("request", |line| at(line, "kind") == "picker")
+            .is_some()
+    });
+    let request = lines
+        .find("request", |line| at(line, "kind") == "picker")
+        .unwrap_or_default();
+    let answer =
+        json!({ "type": "answer", "id": 9, "request_id": at(&request, "request_id"), "choice": 1 });
+    assert!(input.try_send(answer.to_string()).is_ok());
+    run_until(&mut app, &wakes, |world| world.get_entity(picker).is_err());
+    let response = lines.find("response", |line| at(line, "id") == 9);
     assert_eq!(
         response.map(|line| at(&line, "ok").clone()),
         Some(true.into())

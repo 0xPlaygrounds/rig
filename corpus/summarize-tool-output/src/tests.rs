@@ -1,65 +1,16 @@
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::ProviderId;
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
+use rig_coding_tools::ShellTool;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scripted_models,
+};
 use rig_telemetry::{Spending, UsagePlugin};
-use schemars::JsonSchema;
 
 use super::*;
 
-/// Lines the scripted `shell` prints.
-const LINES: usize = 2000;
-
-/// A `shell` that prints [`LINES`] numbered lines, whatever it is asked.
-struct Shell;
-
-#[derive(Deserialize, JsonSchema)]
-struct Args {
-    /// The command.
-    #[allow(dead_code)]
-    command: String,
-}
-
-impl PortableTool for Shell {
-    const NAME: &'static str = "shell";
-    type Args = Args;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        "Run a command.".to_owned()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        args_schema::<Args>()
-    }
-
-    async fn call(&self, _args: Args) -> Result<String, ToolExecutionError> {
-        Ok((1..=LINES).map(|n| format!("line {n}\n")).collect())
-    }
-}
-
-/// The catalog with `corpus-summarizer/cheap`, answered by `cheap`.
-fn models(cheap: &MockCompletionModel) -> Option<Models> {
-    let vendor = ProviderId::declare("corpus-summarizer").ok()?;
-    let mut connector = Connector::new(Catalog::builtin().clone());
-    connector
-        .catalog_mut()
-        .insert(ModelSpec::new(vendor, "cheap"));
-    let cheap = cheap.clone();
-    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-        let model = ModelAdapter::<Completion>::new(spec.reference(), cheap.clone());
-        Ok(ErasedHandler::new(model))
-    });
-    Some(Models(connector))
-}
-
-/// One turn of an agent on `main`, in a project at `root`, whose outputs
-/// over 100 tokens `cheap` summarizes; the app and the agent's entity.
+/// One turn of an agent on `main`, with the real `shell`, in a project at
+/// `root`, whose outputs over 100 tokens `cheap` summarizes; the app and
+/// the agent's entity.
 fn run(
     main: &MockCompletionModel,
     cheap: &MockCompletionModel,
@@ -71,23 +22,20 @@ fn run(
         "[summarize_outputs]\nthreshold_tokens = 100\nmodel = \"corpus-summarizer/cheap\"";
     app.insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(root.to_owned()))
-        .insert_resource(models(cheap)?)
+        .insert_resource(scripted_models([("corpus-summarizer/cheap", cheap)]))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            ShellTool,
             SummarizeToolOutputPlugin,
             UsagePlugin,
         ))
-        .add_tool(Shell)
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()?;
+    let agent = first_agent(world)?;
     world.entity_mut(agent).insert(connect(main)?);
     world.trigger(Deliver::new(agent, "Run the tests.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
@@ -96,14 +44,10 @@ fn run(
     Some((app, agent))
 }
 
-/// A main model that runs `shell` once, then answers.
-fn main_model() -> MockCompletionModel {
+/// A main model that runs `command` in `shell` once, then answers.
+fn main_model(command: &str) -> MockCompletionModel {
     MockCompletionModel::from_stream_turns([
-        calls(
-            "call-1",
-            "shell",
-            serde_json::json!({ "command": "seq 2000" }),
-        ),
+        calls("call-1", "shell", serde_json::json!({ "command": command })),
         reply("done"),
     ])
 }
@@ -140,7 +84,7 @@ fn clean(dir: &Path) {
 fn a_big_output_is_saved_and_summarized_by_the_cheap_model() {
     let root = fresh("summarized");
     let cheap = MockCompletionModel::from_stream_turns([reply("SUMMARY: 2000 lines, no errors")]);
-    let main = main_model();
+    let main = main_model("seq 2000");
     let ran = run(&main, &cheap, &root);
     assert!(ran.is_some(), "an agent on the scripted model");
     let Some((app, agent)) = ran else {
@@ -149,9 +93,10 @@ fn a_big_output_is_saved_and_summarized_by_the_cheap_model() {
     let sent = second_request(&main);
     assert!(sent.contains("SUMMARY: 2000 lines, no errors"), "{sent}");
     assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
-    assert!(!sent.contains("line 1000"), "the output is not sent whole");
+    assert!(!sent.contains("\\n1000\\n"), "the output is not sent whole");
     let whole = std::fs::read_to_string(root.join(".rig/outputs/call-1.txt")).unwrap_or_default();
-    assert_eq!(whole.lines().count(), LINES);
+    let numbers = whole.lines().filter(|line| line.parse::<u32>().is_ok());
+    assert_eq!(numbers.count(), 2000, "{whole}");
     assert_eq!(cheap.request_count(), 1);
     // The summary counts in the agent's usage, as the summarizer's.
     let spent = app.world().get::<Spending>(agent);
@@ -160,17 +105,18 @@ fn a_big_output_is_saved_and_summarized_by_the_cheap_model() {
     clean(&root);
 }
 
+/// The head survives: `shell` no longer keeps only its last 2000 lines.
 #[test]
 fn a_failed_summary_sends_the_head_and_tail() {
     let root = fresh("failed");
     let failure = vec![MockStreamEvent::Error(MockError::provider("down"))];
     let cheap = MockCompletionModel::from_stream_turns([failure]);
-    let main = main_model();
+    let main = main_model("seq 3000");
     assert!(run(&main, &cheap, &root).is_some());
     let sent = second_request(&main);
-    assert!(sent.contains("line 1\\n"), "the head: {sent}");
-    assert!(sent.contains("line 2000"), "the tail: {sent}");
-    assert!(!sent.contains("line 1000\\n"), "the middle is cut: {sent}");
+    assert!(sent.contains("\"1\\n2\\n3\\n"), "the head: {sent}");
+    assert!(sent.contains("\\n3000\\n"), "the tail: {sent}");
+    assert!(!sent.contains("\\n1500\\n"), "the middle is cut: {sent}");
     assert!(sent.contains("the summarizer failed"), "{sent}");
     assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
     clean(&root);

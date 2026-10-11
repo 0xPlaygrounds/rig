@@ -1,82 +1,36 @@
 use std::fs;
-use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::journal::JsonlDirStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_ecs::journal::SessionStore;
-use rig_harness::harness_protocol::{SessionDir, SessionId, env};
-use rig_harness_test_support::{Ended, calls, connect, log_ended, reply, run_until, start_call};
+use rig_harness::harness_protocol::{Home, SessionId};
+use rig_harness_test_support::{
+    Ended, ToolOutputs, app_in, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
+    run_until, scratch_home, start_call,
+};
 use rig_telemetry::EffectLogPlugin;
 
 use super::*;
 
-/// Each finished tool call's output text, by the model's call id.
-#[derive(Resource, Default)]
-struct Outputs(HashMap<String, String>);
-
-fn keep_output(
-    output: On<Insert<Outcome>>,
-    calls: Query<(&ToolRequest, &Outcome)>,
-    mut outputs: ResMut<Outputs>,
-) {
-    if let Ok((request, outcome)) = calls.get(output.entity) {
-        let result = outcome.tool_result();
-        outputs
-            .0
-            .insert(request.call.id.to_string(), result.output().render());
-    }
-}
-
-/// The kernel, the effect log, `read` and this plugin on the session in
-/// `dir`, after its first frame restored it.
-fn start(dir: &SessionDir) -> (App, Receiver<()>) {
-    let (sender, wakes) = std::sync::mpsc::channel();
-    let mut app = App::new();
-    app.add_plugins(TaskPoolPlugin::default())
-        .insert_resource(Wake::new(move || {
-            sender.send(()).ok();
-        }))
-        .insert_resource(SessionPaths(dir.clone()))
-        .insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
-        .set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((
-            AgentPlugin,
-            JournalPlugin,
-            EffectLogPlugin,
-            ReadTool,
-            EffectQueryPlugin,
-        ))
-        .init_resource::<Outputs>()
-        .init_resource::<Ended>()
-        .add_observer(keep_output)
-        .add_observer(log_ended);
+/// The kernel, the effect log, `read` and this plugin on session `id` of
+/// `home`, after its first frame restored it, and its first agent.
+fn start(home: &Home, id: &SessionId) -> (App, Receiver<()>, Entity) {
+    let (mut app, wakes) = app_in(home, id);
+    app.add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        EffectLogPlugin,
+        ReadTool,
+        EffectQueryPlugin,
+    ))
+    .init_resource::<ToolOutputs>()
+    .init_resource::<Ended>()
+    .add_observer(log_tool_outputs)
+    .add_observer(log_ended);
     app.finish();
     app.update();
-    (app, wakes)
-}
-
-fn first_agent(app: &mut App) -> Option<Entity> {
-    let world = app.world_mut();
-    world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-}
-
-/// A `RIG_HOME` of the test's own beside its binary, emptied.
-fn home() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let root = exe
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("effect-query-home");
-    fs::remove_dir_all(&root).ok();
-    // SAFETY: this crate has one test, and nothing else reads the
-    // environment while it is set.
-    unsafe { std::env::set_var(env::HOME, &root) };
-    root
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    (app, wakes, agent)
 }
 
 /// Runs `tool` with `args` as `agent`'s call `id` outside a turn, and
@@ -90,10 +44,10 @@ fn call_tool(
 ) -> String {
     start_call(app.world_mut(), agent, (tool, id), args);
     run_until(app, wakes, |world| {
-        world.resource::<Outputs>().0.contains_key(id)
+        world.resource::<ToolOutputs>().0.contains_key(id)
     });
     app.world()
-        .resource::<Outputs>()
+        .resource::<ToolOutputs>()
         .0
         .get(id)
         .cloned()
@@ -111,24 +65,14 @@ fn rows(table: &str) -> Vec<Vec<&str>> {
 
 #[test]
 fn finds_the_failed_read_and_still_does_after_a_restart() {
-    let root = home();
-    let id = "1000-1".parse::<SessionId>();
-    assert!(id.is_ok(), "a session id");
-    let Ok(id) = id else {
-        return;
-    };
-    let dir = Home::from_env().session(&id);
-    assert!(fs::create_dir_all(dir.path()).is_ok());
-    let present = root.join("a.txt");
+    let home = scratch_home("effect-query-home");
+    let id = SessionId::generate();
+    let present = home.root().join("a.txt");
+    assert!(fs::create_dir_all(home.root()).is_ok());
     assert!(fs::write(&present, "hello\n").is_ok());
-    let missing = root.join("missing.txt");
+    let missing = home.root().join("missing.txt");
 
-    let (mut app, wakes) = start(&dir);
-    let agent = first_agent(&mut app);
-    assert!(agent.is_some(), "the first agent");
-    let Some(agent) = agent else {
-        return;
-    };
+    let (mut app, wakes, agent) = start(&home, &id);
     let model = MockCompletionModel::from_stream_turns([
         calls("c1", "read", serde_json::json!({ "path": present })),
         calls("c2", "read", serde_json::json!({ "path": missing })),
@@ -151,14 +95,14 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
         });
     }
 
-    let outputs = &app.world().resource::<Outputs>().0;
+    let outputs = &app.world().resource::<ToolOutputs>().0;
     let table = outputs.get("c3").cloned().unwrap_or_default();
     let found = rows(&table);
     assert_eq!(found.len(), 1, "one failed tool call:\n{table}");
     let row = found.first().cloned().unwrap_or_default();
     assert_eq!(row.get(4), Some(&"read"), "{table}");
     assert_eq!(row.get(5), Some(&"error"), "{table}");
-    assert_eq!(row.get(2), Some(&"1"), "the first turn's: {table}");
+    assert_eq!(row.get(2), Some(&"0"), "the first turn's: {table}");
     // When it started, and how long it took.
     assert!(row.get(6).is_some_and(|start| start.len() == 8), "{table}");
     assert!(
@@ -185,12 +129,7 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
     app.update();
     drop(app);
 
-    let (mut app, wakes) = start(&dir);
-    let agent = first_agent(&mut app);
-    assert!(agent.is_some(), "the restored agent");
-    let Some(agent) = agent else {
-        return;
-    };
+    let (mut app, wakes, agent) = start(&home, &id);
     let table = call_tool(
         &mut app,
         &wakes,
@@ -218,7 +157,7 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
         &wakes,
         agent,
         ("effects", "e2"),
-        serde_json::json!({ "kind": "model", "since_turn": 2 }),
+        serde_json::json!({ "kind": "model", "since_turn": 1 }),
     );
     assert_eq!(
         rows(&models).len(),
@@ -228,9 +167,12 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
     // `/effects slow` lists the slowest first.
     let slow = Filter::parse("slow kind=tool");
     assert!(slow.as_ref().is_ok_and(|filter| filter.slowest));
-    let log = app.world().resource::<LogFile>().read();
-    let slowest = log.map(|log| query::table(&log, &HashMap::new(), &slow.unwrap_or_default()));
-    let slowest = slowest.unwrap_or_default();
+    let records = app
+        .world()
+        .resource::<EffectLog>()
+        .read()
+        .unwrap_or_default();
+    let slowest = query::table(&records, &HashMap::new(), &slow.unwrap_or_default());
     let took: Vec<f64> = rows(&slowest)
         .iter()
         .filter_map(|row| row.get(7)?.strip_suffix('s')?.parse().ok())

@@ -22,7 +22,7 @@
 //! user message. A user message, or stopping the agent, cancels the checks.
 
 use std::collections::{BTreeSet, VecDeque};
-use std::path::{Component as PathPart, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
@@ -283,16 +283,16 @@ fn run_check(
     let args = ShellArgs::new(run.check.command.clone()).timeout_secs(TIMEOUT_SECS);
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     let work = async move {
-        let ran = shell.run(args).await.map(|ran| Ran {
-            status: ran.status,
-            output: ran.output,
-        });
-        let payload = ran.map(|ran| serde_json::to_value(ran).unwrap_or_default());
-        Outcome::from(
-            payload
-                .map(|payload| Answered::Custom { payload })
-                .map_err(ErrorReport::from),
-        )
+        match shell.run(args).await {
+            Ok(ran) => {
+                let ran = Ran {
+                    status: ran.status,
+                    output: ran.output,
+                };
+                Outcome::custom(serde_json::to_value(ran).unwrap_or_default())
+            }
+            Err(error) => Outcome(Err(ErrorReport::from(error))),
+        }
     };
     commands
         .entity(started.entity)
@@ -409,20 +409,12 @@ fn stop(agent: Entity, runs: &Query<(Entity, &ForAgent), With<CheckRun>>, comman
 }
 
 /// `path`, as a tool published it, relative to the project `root`; `None`
-/// outside it. A relative path is the tool's working directory's, the
-/// project's.
+/// outside it. rig-tools' file tools publish absolute paths; a relative
+/// one is taken as the call named it, from the project.
 fn relative(root: &Path, path: &str) -> Option<PathBuf> {
-    let path = Path::new(path);
-    let inside = match path.strip_prefix(root) {
-        Ok(inside) => inside,
-        Err(_) if path.is_absolute() => return None,
-        Err(_) => path,
-    };
-    let inside: PathBuf = inside
-        .components()
-        .filter(|part| !matches!(part, PathPart::CurDir))
-        .collect();
-    (!inside.as_os_str().is_empty()).then_some(inside)
+    let joined = root.join(path);
+    let inside = joined.strip_prefix(root).ok()?;
+    (!inside.as_os_str().is_empty()).then(|| inside.to_path_buf())
 }
 
 /// "checking: <name>" in the status line while a check runs.

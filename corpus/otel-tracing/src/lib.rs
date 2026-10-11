@@ -23,7 +23,6 @@
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::SystemTime;
 
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
@@ -223,7 +222,6 @@ impl Plugin for OtelTracingPlugin {
             .add_observer(start_call)
             .add_observer(end_model_call)
             .add_observer(end_tool_call)
-            .add_systems(Update, first_token.after(PollCalls))
             .add_systems(
                 Last,
                 flush_on_exit.after(StopTurns).run_if(on_message::<AppExit>),
@@ -247,11 +245,6 @@ struct Span(Context);
 /// recorded under ([`EffectParent`]).
 #[derive(Component)]
 struct ParentSpan(Context);
-
-/// On a model call whose first streamed text was timed.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct FirstToken;
 
 fn end_unfinished(world: DeferredWorld, context: HookContext) {
     if let Some(Span(traced)) = world.get::<Span>(context.entity) {
@@ -466,8 +459,9 @@ fn response_attributes(response: &CompletionResponse) -> Vec<KeyValue> {
     attributes
 }
 
-/// Ends a model call's span as it settles: the model it went to, its
-/// usage, cost and finish, or its error, retried or not.
+/// Ends a model call's span as it settles: the model it went to, the time
+/// to its first streamed item, its usage, cost and finish, or its error,
+/// retried or not.
 fn end_model_call(
     settled: On<Add<Settled>>,
     calls: Query<(
@@ -475,17 +469,23 @@ fn end_model_call(
         &ModelRequest,
         &Outcome,
         &ForAgent,
+        Option<(&Started, &FirstChunk)>,
         Option<&RetryVerdict>,
         Has<SupersededBy>,
     )>,
     agents: Query<&Connection>,
 ) {
-    let Ok((Span(context), request, outcome, &ForAgent(agent), verdict, superseded)) =
+    let Ok((Span(context), request, outcome, &ForAgent(agent), first, verdict, superseded)) =
         calls.get(settled.entity)
     else {
         return;
     };
     let span = context.span();
+    if let Some((started, first)) = first {
+        let waited = first.at.duration_since(started.at).unwrap_or_default();
+        let ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
+        span.set_attribute(count("gen_ai.response.time_to_first_chunk_ms", ms));
+    }
     if let Some(connection) = request.connection.as_ref().or(agents.get(agent).ok()) {
         let spec = &connection.spec;
         span.set_attribute(KeyValue::new("gen_ai.request.model", spec.id.clone()));
@@ -560,27 +560,6 @@ fn end_tool_call(
     };
     span.set_status(status);
     span.end();
-}
-
-/// Times a model call's first streamed text or reasoning from its start,
-/// when it streams any.
-fn first_token(
-    calls: Query<(Entity, &Partial, &Started, &Span), (Changed<Partial>, Without<FirstToken>)>,
-    mut commands: Commands,
-) {
-    for (call, partial, started, Span(context)) in &calls {
-        if partial.text.is_empty() && partial.reasoning.is_empty() {
-            continue;
-        }
-        let waited = SystemTime::now()
-            .duration_since(started.at)
-            .unwrap_or_default();
-        let ms = u64::try_from(waited.as_millis()).unwrap_or(u64::MAX);
-        context
-            .span()
-            .set_attribute(count("gen_ai.response.time_to_first_chunk_ms", ms));
-        commands.entity(call).insert(FirstToken);
-    }
 }
 
 /// On exit, after the turns the exit stopped were despawned (which ends

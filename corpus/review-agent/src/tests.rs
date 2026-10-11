@@ -2,14 +2,11 @@ use std::process::Command;
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, WriteTool};
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::ProviderId;
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
-use rig_telemetry::{Spending, UsagePlugin};
+use rig_harness_test_support::{
+    Ended, app_on, calls, log_ended, reply, run_until, scripted_models,
+};
+use rig_telemetry::{SessionSpending, Spending, UsagePlugin};
 
 use super::*;
 
@@ -31,20 +28,6 @@ fn repository() -> PathBuf {
     dir
 }
 
-/// The built-in catalog, with `corpus-review/gpt-x` answered by `reviewer`.
-fn models(reviewer: &MockCompletionModel) -> Option<Models> {
-    let vendor = ProviderId::declare("corpus-review").ok()?;
-    let mut connector = Connector::new(Catalog::builtin().clone());
-    let spec = ModelSpec::new(vendor, "gpt-x").with_tools(true);
-    connector.catalog_mut().insert(spec);
-    let reviewer = reviewer.clone();
-    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-        let model = ModelAdapter::<Completion>::new(spec.reference(), reviewer.clone());
-        Ok(ErasedHandler::new(model))
-    });
-    Some(Models(connector))
-}
-
 #[test]
 fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings() {
     let dir = repository();
@@ -58,24 +41,23 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     let reviewer = MockCompletionModel::from_stream_turns([reply("a.txt lacks a newline")]);
 
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    // Without the catalog, the reviewer is never asked and the test fails.
-    if let Some(models) = models(&reviewer) {
-        app.insert_resource(models);
-    }
+    let models = [("corpus/main", &main), ("corpus-review/gpt-x", &reviewer)];
     let settings = "[review]\nmodel = \"corpus-review/gpt-x\"";
-    app.insert_resource(Settings::from_toml(settings))
+    app.insert_resource(scripted_models(models))
+        .insert_resource(Settings::from_toml(settings))
         .insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool))
         .add_plugins((UsagePlugin, ReviewAgentPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
-    let mut agent = app.world_mut().spawn(Agent);
-    if let Some(connection) = connect(&main) {
-        agent.insert((ModelChoice(connection.spec.reference()), connection));
-    }
-    let agent = agent.id();
+    let agent = app.world_mut().spawn(Agent).id();
     app.finish();
     app.update();
+    let model = "corpus/main".to_owned();
+    app.world_mut().trigger(SetModel {
+        entity: agent,
+        model,
+    });
     app.world_mut()
         .trigger(Deliver::new(agent, "write a.txt", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
@@ -95,15 +77,20 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     assert!(followed.contains("lacks a newline"), "{followed}");
     let written = std::fs::read_to_string(&file).unwrap_or_default();
     assert_eq!(written, "x\n");
-    // The fix was not reviewed again; the one review counts under its own
-    // agent.
+    // The fix was not reviewed again. The reviewer did its one job and
+    // retired; its call counts in the session's usage under its model, not
+    // in the agent's.
     assert_eq!(reviewer.request_count(), 1);
     let world = app.world_mut();
-    let mut reviewers = world.query_filtered::<(&SpawnedBy, &Spending), With<Reviewer>>();
-    let spent: Vec<(Entity, u64)> = reviewers
+    let reviewers = world
+        .query_filtered::<(), With<Reviewer>>()
         .iter(world)
-        .map(|(by, spent)| (by.0, spent.total.calls))
-        .collect();
-    assert_eq!(spent, [(agent, 1)]);
+        .count();
+    assert_eq!(reviewers, 0);
+    let session = &world.resource::<SessionSpending>().0;
+    let reviewed = session.models.get("corpus-review/gpt-x");
+    assert_eq!(reviewed.map(|spent| spent.calls), Some(1));
+    let own = world.get::<Spending>(agent).map(|spent| spent.total.calls);
+    assert_eq!(own, Some(4));
     std::fs::remove_dir_all(&dir).ok();
 }

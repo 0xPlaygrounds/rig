@@ -5,9 +5,11 @@
 //! private ref, `refs/rig/checkpoints/<session>/<turn>`, through a
 //! temporary index: the user's branch, index and stash stay as they are.
 //! The snapshot runs off the main thread while it holds the turn's first
-//! model call. `/rewind` picks one of the user's messages and puts the
-//! files back as they were before it, cuts the conversation back to just
-//! before it, and puts the message back in the input line.
+//! model call, after the files the turn before left are noted, so the
+//! user's edits between turns are told apart from the agent's. `/rewind`
+//! picks one of the user's messages and puts the files back as they were
+//! before it, cuts the conversation back to just before it, and puts the
+//! message back in the input line.
 
 use std::collections::BTreeSet;
 use std::fs;
@@ -18,6 +20,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::agent::{Halt, STOPPED};
 use rig_tools::process::Launcher;
 
 /// Where the checkpoints are kept, below the session's id.
@@ -66,8 +69,9 @@ impl Plugin for CheckpointRewindPlugin {
                 AgentPass,
                 (snapshot.in_set(Stage::Gate), settle.in_set(Stage::Review)),
             )
-            .add_systems(Update, (confirmed.after(AgentLoop), prune))
+            .add_systems(Update, ((start, confirmed).after(AgentLoop), prune))
             .add_observer(taken)
+            .add_observer(stopped)
             .add_observer(settled)
             .add_command(
                 "rewind",
@@ -77,12 +81,14 @@ impl Plugin for CheckpointRewindPlugin {
     }
 }
 
-/// On a turn whose snapshot was taken or asked for: once is enough.
+/// On a top-level agent's turn whose snapshot was taken or asked for: once
+/// is enough.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Snapshotted;
 
-/// A snapshot being taken while it holds a turn's first model call.
+/// A snapshot holding a turn's first model call: waiting for the tree
+/// the agent's turn before left, then being taken.
 #[derive(Component)]
 struct Snapshot {
     agent: Entity,
@@ -101,7 +107,12 @@ struct Snap {
     user_edits: Vec<String>,
 }
 
-/// The tree a turn left, taken while it holds the turn's end.
+/// On a snapshot not started yet.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Waiting;
+
+/// The tree an agent's turn left, being noted.
 #[derive(Component)]
 struct Settling(Entity);
 
@@ -153,17 +164,16 @@ fn snapshot(
     calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
     turns: Query<&Turn, Without<Snapshotted>>,
     agents: Query<(&Conversation, &Checkpoints), Without<SpawnedBy>>,
-    repo: Repo,
     mut commands: Commands,
 ) {
     for (call, &CallOf(turn_entity), &ForAgent(agent)) in &calls {
         let Ok(turn) = turns.get(turn_entity) else {
             continue;
         };
-        commands.entity(turn_entity).insert(Snapshotted);
         let Ok((conversation, checkpoints)) = agents.get(agent) else {
             continue;
         };
+        commands.entity(turn_entity).insert(Snapshotted);
         let message = turn.first_message;
         let Some(text) = user_text(conversation, message) else {
             continue;
@@ -176,10 +186,36 @@ fn snapshot(
         }) {
             continue;
         }
+        let job = Snapshot {
+            agent,
+            turn: turn.index,
+            message,
+            seq,
+            text,
+        };
+        commands.spawn((job, Waiting, HoldOf(call)));
+    }
+}
+
+/// Starts each waiting snapshot once its agent's last turn end is noted.
+fn start(
+    waiting: Query<(Entity, &Snapshot), With<Waiting>>,
+    settling: Query<&Settling>,
+    agents: Query<&Checkpoints>,
+    repo: Repo,
+    mut commands: Commands,
+) {
+    for (entity, job) in &waiting {
+        if settling.iter().any(|&Settling(agent)| agent == job.agent) {
+            continue;
+        }
+        let Ok(checkpoints) = agents.get(job.agent) else {
+            continue;
+        };
         let git = repo.git();
         let session = repo.session();
         let record = repo.record(&session);
-        let index = turn.index;
+        let index = job.turn;
         let previous = checkpoints
             .list
             .last()
@@ -187,14 +223,7 @@ fn snapshot(
         let settled = checkpoints.settled.clone();
         let running =
             repo.spawn(move || take(&git, &session, &record, index, previous, settled.as_deref()));
-        let job = Snapshot {
-            agent,
-            turn: index,
-            message,
-            seq,
-            text,
-        };
-        commands.spawn((job, HoldOf(call), running));
+        commands.entity(entity).remove::<Waiting>().insert(running);
     }
 }
 
@@ -235,7 +264,7 @@ fn taken(
 }
 
 /// Holds each proposed end of a snapshotted turn while it notes the files
-/// the turn left, so the user's edits between turns are told apart.
+/// the turn left, so the next snapshot tells the user's edits apart.
 fn settle(
     proposed: Query<(Entity, &TurnOf), (Added<TurnOutcome>, With<Snapshotted>)>,
     repo: Repo,
@@ -245,6 +274,21 @@ fn settle(
         let git = repo.git();
         let running = repo.spawn(move || git.working_tree());
         commands.spawn((Settling(agent), HoldOf(turn), running));
+    }
+}
+
+/// Notes the files a stopped turn left. An interrupt cannot be held, so
+/// this runs after the turn ended; the next snapshot waits for it.
+fn stopped(
+    ended: On<Add<Settled>>,
+    turns: Query<(&ForAgent, &TurnOutcome), With<Snapshotted>>,
+    repo: Repo,
+    mut commands: Commands,
+) {
+    if let Ok((&ForAgent(agent), TurnOutcome::Stopped(_))) = turns.get(ended.entity) {
+        let git = repo.git();
+        let running = repo.spawn(move || git.working_tree());
+        commands.spawn((Settling(agent), running));
     }
 }
 
@@ -411,7 +455,20 @@ impl Rewinder<'_, '_> {
             checkpoints.settled = Some(target.tree.clone());
         }
         if asked.chat {
+            let before = joined(&conversation, message);
             self.commit.truncate(agent, &mut conversation, message);
+            // What the user's message was joined to, such as a stopped
+            // turn's tool results, stays, stopped as it was.
+            for (item, origin) in before.items {
+                let joined = message::Message::User {
+                    content: vec![item],
+                };
+                self.commit
+                    .message_from(agent, &mut conversation, joined, origin);
+            }
+            if before.stopped {
+                self.commit.halt(agent, &mut conversation, Halt::Stopped);
+            }
             let dropped = checkpoints.list.split_off(at);
             let kept: BTreeSet<&str> = checkpoints
                 .list
@@ -507,11 +564,39 @@ fn user_text(conversation: &Conversation, at: usize) -> Option<String> {
         .enumerate()
         .filter(|(item, _)| conversation.origin(at, *item).is_none())
         .filter_map(|(_, item)| match item {
-            UserContent::Text(text) => Some(text.text.as_str()),
+            UserContent::Text(text) if text.text != STOPPED => Some(text.text.as_str()),
             _ => None,
         })
         .collect();
     (!texts.is_empty()).then(|| texts.join("\n"))
+}
+
+/// What the user's message `at` was joined to, as a user message
+/// following the user's or a stopped request does.
+struct Joined {
+    /// The items before the user's text, with their origins.
+    items: Vec<(UserContent, Option<Origin>)>,
+    /// Whether the user's text followed a request they stopped.
+    stopped: bool,
+}
+
+fn joined(conversation: &Conversation, at: usize) -> Joined {
+    let content = match conversation.messages().get(at) {
+        Some(message::Message::User { content }) => content.as_slice(),
+        _ => &[],
+    };
+    let typed = |(item, content): &(usize, &UserContent)| {
+        matches!(content, UserContent::Text(_)) && conversation.origin(at, *item).is_none()
+    };
+    let first = content.iter().enumerate().find(typed);
+    let items = content
+        .iter()
+        .enumerate()
+        .take(first.map_or(0, |(item, _)| item))
+        .map(|(item, content)| (content.clone(), conversation.origin(at, item).cloned()))
+        .collect();
+    let stopped = matches!(first, Some((_, UserContent::Text(text))) if text.text == STOPPED);
+    Joined { items, stopped }
 }
 
 /// Takes the snapshot of turn `index`: a new ref, or the last one when the

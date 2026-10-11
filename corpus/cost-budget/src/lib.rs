@@ -10,7 +10,6 @@
 //! off. The budget is saved with the session, and the status line shows
 //! `$1.42/$2.00`, red past 80%.
 
-use bevy_ecs::schedule::SystemCondition;
 use rig_harness::prelude::*;
 use rig_telemetry::{SessionSpending, UsagePlugin};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};

@@ -15,6 +15,7 @@ use std::cmp::Reverse;
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolDefinition;
 use rig_harness::rig_core::effect::Outcome as Answered;
@@ -57,6 +58,16 @@ impl ActivatedTools {
     }
 }
 
+/// The plugin's stage systems, for others to order against: in Prepare,
+/// the one that takes the deferred tools out of a request (before
+/// compaction measures it); in Review, the one that notes a guessed call's
+/// activation at the end of its result.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolSearchSystems {
+    Offer,
+    Activate,
+}
+
 #[derive(Default)]
 pub struct ToolSearchPlugin;
 
@@ -79,11 +90,20 @@ impl Plugin for ToolSearchPlugin {
                 search,
             )
             .add_command("tools", "Count the active and deferred tools", tools)
+            .configure_sets(
+                AgentPass,
+                (
+                    ToolSearchSystems::Offer
+                        .in_set(Stage::Prepare)
+                        .before(CompactionSystems::Prepare),
+                    ToolSearchSystems::Activate.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    offer.in_set(Stage::Prepare),
-                    activate_on_call.in_set(Stage::Review),
+                    offer.in_set(ToolSearchSystems::Offer),
+                    activate_on_call.in_set(ToolSearchSystems::Activate),
                 ),
             );
     }

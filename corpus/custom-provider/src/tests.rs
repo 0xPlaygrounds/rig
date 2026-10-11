@@ -6,6 +6,7 @@ use rig_cassette::journal::MemoryStore;
 use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};
+use rig_tui::ArgCompletion;
 
 use super::*;
 
@@ -133,14 +134,24 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     let Some(agent) = agent else {
         return;
     };
-    // The keyless model is listed in `/model`, marked.
+    // Both models complete `/model`'s argument; the keyless one says why.
     let world = app.world_mut();
-    let items: Vec<String> = world
-        .query::<&ModelItem>()
+    let offered: Vec<(String, String)> = world
+        .query::<&ArgCompletion>()
         .iter(world)
-        .map(|item| item.label.clone())
+        .flat_map(|completion| &completion.candidates)
+        .filter(|item| item.text.starts_with("corp/") || item.text.starts_with("keyless/"))
+        .map(|item| (item.text.clone(), item.detail.clone()))
         .collect();
-    assert_eq!(items, ["keyless/small  (no key)"]);
+    let texts: Vec<&str> = offered.iter().map(|(text, _)| text.as_str()).collect();
+    assert_eq!(texts, ["corp/big", "keyless/small"], "{offered:?}");
+    let keyless = offered.iter().find(|(text, _)| text == "keyless/small");
+    assert!(
+        keyless.is_some_and(
+            |(_, detail)| detail.ends_with("(no key: set CORPUS_CUSTOM_PROVIDER_UNSET_KEY)")
+        ),
+        "{offered:?}"
+    );
 
     app.world_mut()
         .trigger(RunCommand::new(agent, "model corp/big".to_owned()));

@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
@@ -6,7 +6,9 @@ use rig_harness::watch::WatchPlugin;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, calls, connect, log_ended, reply, run_until, scratch_home,
+};
 
 /// Writes a skill `name` under `skills` with `description` and `body`.
 fn write_skill(skills: &Path, name: &str, description: &str, body: &str) -> Option<()> {
@@ -16,21 +18,15 @@ fn write_skill(skills: &Path, name: &str, description: &str, body: &str) -> Opti
     std::fs::write(dir.join("SKILL.md"), text).ok()
 }
 
-/// A project beside the test binary (never the system's temporary
-/// directory) whose `.rig/skills` has `release`, with a notes file its body
-/// links to, and a skill whose frontmatter is broken.
-fn project() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let root = exe
-        .parent()?
-        .join(format!("corpus-skills-{}", std::process::id()));
+/// A project in `root` whose `.rig/skills` has `release`, with a notes
+/// file its body links to, and a skill whose frontmatter is broken.
+fn project(root: &Path) -> Option<()> {
     let skills = root.join(".rig").join("skills");
     let body = "Run ./release.sh, after reading [the notes](notes.md).";
     write_skill(&skills, "release", "How to cut a release", body)?;
     std::fs::write(skills.join("release").join("notes.md"), "Tag it first.").ok()?;
     std::fs::create_dir_all(skills.join("broken")).ok()?;
-    std::fs::write(skills.join("broken").join("SKILL.md"), "no frontmatter").ok()?;
-    Some(root)
+    std::fs::write(skills.join("broken").join("SKILL.md"), "no frontmatter").ok()
 }
 
 /// The skill list in the system prompt.
@@ -45,21 +41,21 @@ fn listing(world: &World) -> String {
 
 #[test]
 fn a_skill_is_listed_loaded_once_per_turn_and_watched() {
-    let root = project();
-    assert!(root.is_some(), "the project is written");
-    let Some(root) = root else {
-        return;
-    };
+    let home = scratch_home("corpus-skills");
+    let root = home.root().to_path_buf();
+    assert!(project(&root).is_some(), "the project is written");
     let model = MockCompletionModel::from_stream_turns([
         calls("1", LOAD_SKILL, json!({ "name": "release" })),
         calls("2", LOAD_SKILL, json!({ "name": "release" })),
         reply("done"),
+        calls("3", LOAD_SKILL, json!({ "name": "release" })),
+        reply("shipped"),
     ]);
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(ProjectRoot(root.clone()))
-        .insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(RigHome(home))
         .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, SkillsPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -76,13 +72,20 @@ fn a_skill_is_listed_loaded_once_per_turn_and_watched() {
         !world.resource::<Ended>().0.is_empty()
     });
 
+    // `/skill` sends the body with the user's text, in the turn it starts.
+    let typed = Deliver::new(agent, "/skill release Ship it.", DeliveryMode::Steer);
+    app.world_mut().trigger(typed);
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() > 1
+    });
+
     let sent: Vec<String> = model
         .requests()
         .iter()
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
-    assert_eq!(sent.len(), 3, "{sent:?}");
-    let [first, second, third] = sent.as_slice() else {
+    assert_eq!(sent.len(), 5, "{sent:?}");
+    let [first, second, third, fourth, fifth] = sent.as_slice() else {
         return;
     };
     assert!(first.contains(HEADING), "{first}");
@@ -95,6 +98,10 @@ fn a_skill_is_listed_loaded_once_per_turn_and_watched() {
     assert!(second.contains(&linked), "the link is resolved: {second}");
     assert!(third.contains("already loaded above"), "{third}");
     assert_eq!(third.matches("Run ./release.sh").count(), 1, "{third}");
+    assert!(fourth.contains("Ship it."), "{fourth}");
+    assert_eq!(fourth.matches("Run ./release.sh").count(), 2, "{fourth}");
+    let again = fifth.matches("already loaded above").count();
+    assert_eq!(again, 2, "/skill loaded it in its turn: {fifth}");
     let loaded = app.world().get::<LoadedSkills>(agent);
     assert_eq!(
         loaded.map(|loaded| loaded.0.clone()),

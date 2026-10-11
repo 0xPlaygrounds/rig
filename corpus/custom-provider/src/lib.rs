@@ -4,7 +4,8 @@
 //! become catalog vendors: each is declared, its models are added to the
 //! catalog in [`Models`] as `<name>/<model>`, and the vendor is reached
 //! through this plugin's [`Provide`], never the environment's keys for a
-//! built-in vendor. So `--model`, `/model`, its picker, the remembered
+//! built-in vendor. So `--model`, `/model`, its picker and completions
+//! (with "no key: set …" for one whose `key_env` is unset), the remembered
 //! default, subagents and session restore take them like any built-in
 //! model. Each is reached on the wire of its `api`, at its `base_url`, with
 //! its extra `headers` and its key from `key_env` or `key_command` (run
@@ -19,14 +20,15 @@ use std::time::{Duration, Instant};
 
 use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Pricing, ReasoningSupport};
+use rig_harness::rig_core::catalog::{
+    Catalog, ModelFacts, ModelSpec, Pricing, Provide, ReasoningSupport,
+};
 use rig_harness::rig_core::http_client::{self, HttpMiddleware};
 use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
 use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
 use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
-use rig_models::ModelItem;
 use serde::Deserialize;
 
 /// The file under `RIG_HOME`.
@@ -63,32 +65,18 @@ impl Plugin for CustomProviderPlugin {
             .get_resource::<CustomProviders>()
             .map(|providers| providers.providers.clone())
             .unwrap_or_default();
-        let mut no_key = Vec::new();
         let mut models = world.get_resource_or_init::<Models>();
         for provider in providers {
             for spec in &provider.models {
                 models.0.catalog_mut().insert(spec.clone());
-                if spec.tools && provider.has_key() == Some(false) {
-                    no_key.push(spec.reference());
-                }
             }
             let gateway = Gateway {
                 provider: Arc::clone(&provider),
                 processes: processes.clone(),
                 runtime: runtime.clone(),
             };
-            models
-                .0
-                .provide(provider.id, move |spec: &ModelSpec, catalog: &Catalog| {
-                    gateway.handler(spec, catalog)
-                });
+            models.0.provide(provider.id, gateway);
         }
-        // The picker lists only models that can be reached; these are listed
-        // too, marked, and choosing one says which variable to set.
-        world.spawn_batch(no_key.into_iter().map(|reference| {
-            let label = format!("{reference}  (no key)");
-            ModelItem::new(label.clone(), label, format!("model {reference}"))
-        }));
     }
 }
 
@@ -118,7 +106,7 @@ pub struct Provider {
 /// Where a provider's key comes from.
 enum KeySource {
     /// An environment variable.
-    Env(&'static str),
+    Env(String),
     /// A command's output, kept until it expires.
     Command {
         command: String,
@@ -225,12 +213,11 @@ impl CustomProviders {
 impl Provider {
     fn new(entry: ProviderEntry) -> Result<Self, String> {
         let id = ProviderId::declare(&entry.name).map_err(|why| why.to_string())?;
-        if id.is_registered() {
+        if !id.is_declared() {
             return Err("the name is a built-in provider's".to_owned());
         }
         let key = match (entry.key_env, entry.key_command) {
-            // Named once per process, as rig-core names declared vendors.
-            (Some(env), None) => KeySource::Env(Box::leak(env.into_boxed_str())),
+            (Some(env), None) => KeySource::Env(env),
             (None, Some(command)) => KeySource::Command {
                 command,
                 cached: Mutex::new(None),
@@ -276,14 +263,6 @@ impl Provider {
             headers,
             models,
         })
-    }
-
-    /// Whether a key is there: `None` when only running its command tells.
-    pub fn has_key(&self) -> Option<bool> {
-        match &self.key {
-            KeySource::Env(name) => Some(std::env::var(name).is_ok_and(|key| !key.is_empty())),
-            KeySource::Command { .. } => None,
-        }
     }
 
     /// The token a `key_command` printed, if it has not expired.
@@ -350,16 +329,17 @@ struct Gateway {
     runtime: Option<TokioRuntime>,
 }
 
-impl Gateway {
+impl Provide for Gateway {
     /// A model of the provider, priced and windowed by its spec. A missing
-    /// `key_env` refuses it, so choosing it says what to set.
+    /// `key_env` refuses it, so `/model` marks it and choosing it says what
+    /// to set.
     fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
-        if let KeySource::Env(name) = self.provider.key
-            && self.provider.has_key() == Some(false)
+        if let KeySource::Env(name) = &self.provider.key
+            && env_key(name).is_none()
         {
             return Err(ConnectError::MissingKey {
                 vendor: self.provider.id.vendor().to_owned(),
-                tried: vec![name.into()],
+                tried: vec![name.clone().into()],
             });
         }
         let http = rig_reqwest::shared().with_middleware(self.clone());
@@ -369,16 +349,15 @@ impl Gateway {
             .config
             .completion_handler(&spec.reference(), &spec.id, http, facts))
     }
+}
 
+impl Gateway {
     /// The key: the variable's value, or the command's token, run again
     /// once the last one expired. A failed command says its stderr.
     async fn key(&self) -> Result<String, String> {
         let command = match &self.provider.key {
             KeySource::Env(name) => {
-                return std::env::var(name)
-                    .ok()
-                    .filter(|key| !key.is_empty())
-                    .ok_or_else(|| format!("no key: set `{name}`"));
+                return env_key(name).ok_or_else(|| format!("no key: set `{name}`"));
             }
             KeySource::Command { command, .. } => command,
         };
@@ -425,6 +404,11 @@ impl HttpMiddleware for Gateway {
             Ok(())
         })
     }
+}
+
+/// The non-empty value of the variable `name`.
+fn env_key(name: &str) -> Option<String> {
+    std::env::var(name).ok().filter(|key| !key.is_empty())
 }
 
 /// Runs `sh`, a `key_command` started as every child process starts: its

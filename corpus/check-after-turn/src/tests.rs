@@ -4,28 +4,25 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Collected, Ended, app_on, calls, collect, connect, first_agent, log_ended, reply, run_until,
+    scratch_home,
+};
 
 use super::*;
 
 /// The notices written, in order.
-#[derive(Resource, Default)]
-struct Notices(Vec<String>);
-
-fn collect(mut notices: MessageReader<Notice>, mut seen: ResMut<Notices>) {
-    seen.0
-        .extend(notices.read().map(|notice| notice.text.clone()));
+fn notices(app: &App) -> Vec<&str> {
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    notices.iter().map(|notice| notice.text.as_str()).collect()
 }
 
-/// A fresh project for `name`, under the build's target directory, with
-/// `checks` as its `.rig/checks.toml`.
+/// A fresh project named `name`, a scratch directory beside the test's
+/// binary, with `checks` as its `.rig/checks.toml`.
 fn project(name: &str, checks: &str) -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?.join(format!(
-        "corpus-check-after-turn-{name}-{}",
-        std::process::id()
-    ));
-    std::fs::remove_dir_all(&dir).ok();
+    let dir = scratch_home(&format!("corpus-check-after-turn-{name}"))
+        .root()
+        .to_path_buf();
     std::fs::create_dir_all(dir.join(".rig")).ok()?;
     std::fs::write(dir.join(".rig/checks.toml"), checks).ok()?;
     Some(dir)
@@ -46,21 +43,17 @@ fn run(store: &MemoryStore, root: &Path, model: &MockCompletionModel, until: &st
     app.insert_resource(ProjectRoot(root.to_path_buf()))
         .add_plugins((AgentPlugin, JournalPlugin, WriteTool, CheckAfterTurnPlugin))
         .init_resource::<Ended>()
-        .init_resource::<Notices>()
-        .add_observer(log_ended)
-        .add_systems(Last, collect);
+        .add_observer(log_ended);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()?;
+    let agent = first_agent(world)?;
     world.entity_mut(agent).insert(connect(model)?);
     world.trigger(Deliver::new(agent, "Make out.txt.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        let notices = &world.resource::<Notices>().0;
-        notices.iter().any(|notice| notice.contains(until))
+        let notices = &world.resource::<Collected<Notice>>().0;
+        notices.iter().any(|notice| notice.text.contains(until))
     });
     for _ in 0..20 {
         app.update();
@@ -86,11 +79,8 @@ fn a_failing_check_starts_a_fix_turn_until_it_passes() {
         2,
         "the user's turn and one fix turn"
     );
-    let notices = &app.world().resource::<Notices>().0;
-    assert!(
-        notices.iter().any(|notice| notice == "checks passed"),
-        "{notices:?}"
-    );
+    let notices = notices(&app);
+    assert!(notices.contains(&"checks passed"), "{notices:?}");
     let sent: Vec<String> = model
         .requests()
         .iter()
@@ -124,11 +114,9 @@ fn a_check_that_keeps_failing_stops_after_max_rounds() {
         "the user's turn and two fix rounds"
     );
     assert_eq!(model.request_count(), 6);
-    let notices = &app.world().resource::<Notices>().0;
+    let notices = notices(&app);
     assert!(
-        notices
-            .iter()
-            .any(|notice| notice == "checks still failing after 2 rounds"),
+        notices.contains(&"checks still failing after 2 rounds"),
         "{notices:?}"
     );
     std::fs::remove_dir_all(&dir).ok();

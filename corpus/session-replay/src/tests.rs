@@ -1,33 +1,22 @@
-use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness::harness_protocol::{Home, Invocation, SessionId};
+use rig_harness::host::exit::ExitPlugin;
+use rig_harness_test_support::{
+    app_in, app_on, calls, connect, first_agent, reply, run_until, scratch_home,
+};
+use rig_telemetry::EffectLogPlugin;
 use rig_tools::Write;
 
 use super::*;
 
-/// The records of the effects that settled, such as tool calls.
-#[derive(Resource, Default)]
-struct Settles(Vec<EffectRecord>);
-
-/// The kernel and the `write` tool on `store`, every agent answered by
-/// `model`.
-fn app(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) {
-    let (mut app, wakes) = app_on(store);
+/// The kernel and the `write` tool, every agent answered by `model`.
+fn with_agents(app: &mut App, model: &MockCompletionModel) {
     let connection = connect(model);
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin))
-        .init_resource::<Settles>()
-        .add_systems(
-            Last,
-            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
-                settles
-                    .0
-                    .extend(recorded.read().map(|record| record.0.clone()));
-            },
-        )
         .add_tool_with(
             Write,
             ToolOptions {
@@ -40,7 +29,6 @@ fn app(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) 
                 commands.entity(agent.entity).insert(connection);
             }
         });
-    (app, wakes)
 }
 
 /// The primary agent's conversation, as JSON.
@@ -54,27 +42,13 @@ fn conversation(app: &mut App) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Replays the recorded session with `section` added to the system prompt,
-/// on a model that has no reply; that model, the app's conversation and
-/// its replay.
-fn replay(
-    recorded: &ReplaySource,
-    section: Option<&str>,
-) -> (
-    MockCompletionModel,
-    Vec<serde_json::Value>,
-    Option<(ReplayStatus, Vec<Divergence>, (usize, usize))>,
-) {
-    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
-    let (mut app, wakes) = app(&MemoryStore::default(), &model);
-    if let Some(section) = section {
-        app.world_mut()
-            .spawn(PromptSection::new(50, "replay-test", section));
-    }
-    app.insert_resource(recorded.clone())
-        .add_plugins(SessionReplayPlugin);
+/// Runs `app`'s replay to its end; its status, divergences and answers.
+fn run_replay(
+    app: &mut App,
+    wakes: &Receiver<()>,
+) -> Option<(ReplayStatus, Vec<Divergence>, (usize, usize))> {
     app.finish();
-    run_until(&mut app, &wakes, |world| {
+    run_until(app, wakes, |world| {
         world.get_resource::<Replay>().is_some_and(|replay| {
             matches!(
                 replay.status(),
@@ -82,22 +56,17 @@ fn replay(
             )
         })
     });
-    let outcome = app
-        .world()
-        .get_resource::<Replay>()
-        .map(|replay| (replay.status(), replay.divergences(), replay.answered()));
-    (model.clone(), conversation(&mut app), outcome)
+    let replay = app.world().get_resource::<Replay>()?;
+    Some((
+        replay.status(),
+        replay.divergences().to_vec(),
+        replay.answered(),
+    ))
 }
 
-#[test]
-fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverges() {
-    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target-test-replay");
-    std::fs::create_dir_all(&dir).ok();
-    let file = dir.join("a.txt");
-    let path = file.to_string_lossy().into_owned();
-
-    // Record: one turn that writes a.txt, then answers "done".
-    let journal = MemoryStore::default();
+/// Records one turn that writes `path`, then answers "done", in the session
+/// `id` of `home`; its conversation.
+fn record(home: &Home, id: &SessionId, path: &str) -> Vec<serde_json::Value> {
     let model = MockCompletionModel::from_stream_turns([
         calls(
             "call-1",
@@ -106,56 +75,86 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
         ),
         reply("done"),
     ]);
-    let (mut app, wakes) = app(&journal, &model);
+    let (mut app, wakes) = app_in(home, id);
+    with_agents(&mut app, &model);
+    app.add_plugins(EffectLogPlugin);
     app.finish();
     app.update();
-    let ended = |world: &World| {
+    if let Some(agent) = first_agent(app.world_mut()) {
+        let ask = Deliver::new(agent, "write a.txt \"x\"", DeliveryMode::Queue);
+        app.world_mut().trigger(ask);
+    }
+    run_until(&mut app, &wakes, |world| {
         let mut agents = world.try_query::<&Conversation>();
         agents.as_mut().is_some_and(|agents| {
-            agents
-                .iter(world)
-                .any(|conversation| conversation.messages().len() == 4)
+            let mut conversations = agents.iter(world);
+            conversations.any(|conversation| conversation.messages().len() == 4)
         })
-    };
-    let agent = {
-        let world = app.world_mut();
-        world
-            .query_filtered::<Entity, With<Agent>>()
-            .iter(world)
-            .next()
-    };
-    if let Some(agent) = agent {
-        app.world_mut().trigger(Deliver::new(
-            agent,
-            "write a.txt \"x\"",
-            DeliveryMode::Queue,
-        ));
-    }
-    run_until(&mut app, &wakes, ended);
-    // The journal is written at the end of the frame.
+    });
+    // The effect log is written at the end of the frame.
     app.update();
-    let recorded_conversation = conversation(&mut app);
-    assert_eq!(recorded_conversation.len(), 4, "{recorded_conversation:?}");
+    conversation(&mut app)
+}
+
+#[test]
+fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverges() {
+    let home = scratch_home("session-replay");
+    let file = home.root().join("a.txt");
+    // Two ids of one second: `SessionId::generate` would give the same.
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("1-1"), id("1-2"));
+    let recorded = record(&home, &recorded_id, &file.to_string_lossy());
+    assert_eq!(recorded.len(), 4, "{recorded:?}");
     assert_eq!(std::fs::read_to_string(&file).ok().as_deref(), Some("x"));
     std::fs::remove_file(&file).ok();
-    // Every effect as it settled, the user's message too.
-    let settled = app.world().resource::<Settles>().0.clone();
-    let recorded = ReplaySource {
-        effects: EffectLog::from_records(settled),
-        flags: ReplayFlags::default(),
-    };
+    let recorded_dir = home.session(&recorded_id).path().to_owned();
 
-    // Replay: the same conversation, with no model call and no write.
-    let (model, replayed, outcome) = replay(&recorded, None);
+    // `--replay=DIR`, on a model that has no reply: the same conversation,
+    // with no model call and no write, in a session that is gone after.
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(
+                REPLAY.to_owned(),
+                Some(recorded_dir.to_string_lossy().into()),
+            )],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins((ExitPlugin, SessionReplayPlugin));
+    with_agents(&mut app, &model);
+    let outcome = run_replay(&mut app, &wakes);
     // Two model calls and the write, all answered from the record.
     assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
-    assert_eq!(replayed, recorded_conversation);
+    assert_eq!(conversation(&mut app), recorded);
     assert!(!file.exists(), "the write tool ran during the replay");
     assert!(model.requests().is_empty(), "the model was called");
+    run_until(&mut app, &wakes, |world| {
+        world.contains_resource::<ExitReason>()
+    });
+    app.update();
+    assert!(
+        !home.session(&replay_id).path().exists(),
+        "the replay kept its session"
+    );
+    assert!(recorded_dir.exists());
 
     // A prompt section added: the first request diverges on the system prompt.
-    let (model, _, outcome) = replay(&recorded, Some("Always answer in French."));
-    let (status, divergences, _) = outcome.unwrap_or_default();
+    let source = ReplaySource::from_dir(&recorded_dir, ReplayFlags::default());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    with_agents(&mut app, &model);
+    app.world_mut().spawn(PromptSection::new(
+        50,
+        "replay-test",
+        "Always answer in French.",
+    ));
+    if let Ok(source) = source {
+        app.insert_resource(source);
+    }
+    app.add_plugins(SessionReplayPlugin);
+    let (status, divergences, _) = run_replay(&mut app, &wakes).unwrap_or_default();
     assert_eq!(status, ReplayStatus::Stopped);
     let report = divergences
         .first()
@@ -165,5 +164,4 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert!(report.contains("+ Always answer in French."), "{report}");
     assert!(model.requests().is_empty(), "the model was called");
     assert!(!file.exists());
-    std::fs::remove_dir_all(&dir).ok();
 }

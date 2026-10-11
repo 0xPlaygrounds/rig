@@ -6,11 +6,13 @@
 //! only: the agent's own [`ModelChoice`] stays. `/alternatives` lists the
 //! kept answers and `/pick N` swaps the conversation to one of them. The
 //! conversation changes through [`Commit`], so the session log keeps them,
-//! and the alternatives are saved with the session.
+//! and the alternatives are saved with the session. The input completes
+//! `/retry-with`'s argument to the models the agent can reach.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
+use rig_tui::ArgCompletion;
 use serde::{Deserialize, Serialize};
 
 /// How long an answer's excerpt in `/alternatives` is, in characters.
@@ -26,6 +28,7 @@ impl Plugin for RetryWithModelPlugin {
             .add_observer(note_change)
             .add_observer(note_turn)
             .add_systems(AgentPass, route.in_set(Stage::Prepare))
+            .add_systems(Update, complete.run_if(resource_changed::<Models>))
             .add_command(
                 "retry-with",
                 "Run the last turn again on another model: /retry-with [--force] vendor/model",
@@ -186,6 +189,39 @@ fn route(
     }
 }
 
+/// On the entity of `/retry-with`'s completions.
+#[derive(Component)]
+struct RetryCompletions;
+
+/// Offers `--force` and the models the agent can reach as `/retry-with`'s
+/// argument.
+fn complete(
+    models: Res<Models>,
+    completions: Query<Entity, With<RetryCompletions>>,
+    mut commands: Commands,
+) {
+    let force = ArgCompletion::new("retry-with").candidate("--force", "even if files changed");
+    let completion = models
+        .0
+        .reachable()
+        .into_iter()
+        .fold(force, |completion, spec| {
+            completion.candidate(spec.reference(), spec.display_name.clone())
+        });
+    match completions.iter().next() {
+        Some(entity) => {
+            commands.entity(entity).insert(completion);
+        }
+        None => {
+            commands.spawn((
+                Name::new("completions:retry-with"),
+                RetryCompletions,
+                completion,
+            ));
+        }
+    }
+}
+
 /// The index of the last turn's user message, when the conversation still
 /// holds it.
 fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
@@ -195,15 +231,6 @@ fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option
         Some(Message::User { .. })
     )
     .then_some(turn)
-}
-
-/// A picker of `models`, each running `/retry-with` on it.
-fn models_picker(agent: Entity, force: bool, models: &[String]) -> Picker {
-    let flag = if force { "--force " } else { "" };
-    models.iter().fold(
-        Picker::new("Retry the last turn on").for_agent(agent),
-        |picker, model| picker.item(model, format!("retry-with {flag}{model}")),
-    )
 }
 
 type Agents<'w, 's> = Query<
@@ -240,13 +267,6 @@ fn retry_with(
         return;
     }
     let [model] = named.as_slice() else {
-        let reachable: Vec<String> = models
-            .0
-            .reachable()
-            .iter()
-            .map(|spec| spec.reference())
-            .collect();
-        commands.spawn(models_picker(agent, force, &reachable));
         notices.write(Notice::error(
             agent,
             "Usage: /retry-with [--force] vendor/model",
@@ -254,8 +274,7 @@ fn retry_with(
         return;
     };
     if let Err(missed) = models.0.catalog().resolve(model) {
-        commands.spawn(models_picker(agent, force, &missed.suggestions));
-        notices.write(Notice::error(agent, format!("Cannot retry: {missed}.")));
+        notices.write(Notice::error(agent, format!("Cannot retry: {missed}")));
         return;
     }
     let connection = match models.connect(model) {

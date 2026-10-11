@@ -1,32 +1,9 @@
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, ModelSpec};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::ProviderId;
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 
 use super::*;
-use rig_harness_test_support::{app_on, reply, run_until};
-
-/// Adds `model` to `models` as the catalog model `<vendor>/m`, which
-/// connects to it.
-fn scripted(models: &mut Models, vendor: &str, model: &MockCompletionModel) -> Option<()> {
-    let vendor = ProviderId::declare(vendor).ok()?;
-    let model = model.clone();
-    models
-        .0
-        .catalog_mut()
-        .insert(ModelSpec::new(vendor, "m").with_tools(true));
-    models
-        .0
-        .provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-            let model = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
-            Ok(ErasedHandler::new(model))
-        });
-    Some(())
-}
+use rig_harness_test_support::{app_on, reply, run_until, scripted_models};
 
 #[test]
 fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
@@ -34,17 +11,12 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     let pro = MockCompletionModel::from_stream_turns([reply("P1"), reply("P2")]);
     let con = MockCompletionModel::from_stream_turns([reply("C1"), reply("C2")]);
     let judge = MockCompletionModel::from_stream_turns([reply("Verdict: P")]);
-    let mut models = Models::default();
-    let parts = [
-        ("debate-main", &main),
-        ("debate-pro", &pro),
-        ("debate-con", &con),
-        ("debate-judge", &judge),
-    ];
-    let listed = parts
-        .iter()
-        .all(|(vendor, model)| scripted(&mut models, vendor, model).is_some());
-    assert!(listed, "the scripted models are in the catalog");
+    let models = scripted_models([
+        ("debate-main/m", &main),
+        ("debate-pro/m", &pro),
+        ("debate-con/m", &con),
+        ("debate-judge/m", &judge),
+    ]);
 
     let (mut app, wakes) = app_on(&MemoryStore::default());
     let settings = "[debate]\npro = \"debate-pro/m\"\ncon = \"debate-con/m\"\n\

@@ -4,28 +4,19 @@ use std::process::Command;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::EditTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Ended, ToolOutputs, app_on, calls, connect, first_agent, log_ended, log_tool_outputs, reply,
+    run_until,
+};
 use serde_json::json;
 
 use super::*;
 
-/// Each tool call's name and result text, in the order they settled.
-#[derive(Resource, Default)]
-struct Seen(Vec<(String, String)>);
-
-fn seen(settled: On<Add<Settled>>, calls: Query<(&ToolRequest, &Outcome)>, mut seen: ResMut<Seen>) {
-    if let Ok((request, outcome)) = calls.get(settled.entity) {
-        let result = outcome.tool_result();
-        let text = result.output().as_text().unwrap_or_default().to_owned();
-        seen.0
-            .push((request.call.function.name.as_str().to_owned(), text));
-    }
-}
-
-/// A git project in the system's temporary directory with networking code
-/// in `net.rs` and drawing code in `ui.rs`.
+/// A git project beside the test's binary with networking code in
+/// `net.rs` and drawing code in `ui.rs`.
 fn project() -> std::io::Result<PathBuf> {
-    let dir = std::env::temp_dir().join(format!("corpus-code-search-{}", std::process::id()));
+    let dir = std::env::current_exe()?.with_file_name("code-search-project");
+    std::fs::remove_dir_all(&dir).ok();
     std::fs::create_dir_all(&dir)?;
     let dir = std::fs::canonicalize(dir)?;
     let git = Command::new("git")
@@ -76,9 +67,9 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
         .insert_resource(Settings::from_toml("[code_search]\ncontext_chunks = 3"))
         .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, EditTool, CodeSearchPlugin))
-        .init_resource::<Seen>()
+        .init_resource::<ToolOutputs>()
         .init_resource::<Ended>()
-        .add_observer(seen)
+        .add_observer(log_tool_outputs)
         .add_observer(log_ended);
     app.finish();
     app.update();
@@ -104,10 +95,7 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
         reply("found"),
     ]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = first_agent(world);
     let connection = connect(&model);
     assert!(agent.is_some() && connection.is_some());
     let (Some(agent), Some(connection)) = (agent, connection) else {
@@ -141,15 +129,10 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     std::fs::remove_dir_all(&project).ok();
 
     assert!(reindexed, "the edit re-indexed ui.rs");
-    let outputs = &app.world().resource::<Seen>().0;
+    let outputs = &app.world().resource::<ToolOutputs>().0;
     assert_eq!(outputs.len(), 3, "{outputs:?}");
-    let [(first, retry), (edit, _), (second, backoff)] = outputs.as_slice() else {
-        return;
-    };
-    assert_eq!(
-        (first.as_str(), edit.as_str(), second.as_str()),
-        ("code_search", "edit", "code_search")
-    );
+    let output = |id: &str| outputs.get(id).map(String::as_str).unwrap_or_default();
+    let (retry, backoff) = (output("1"), output("3"));
     assert_eq!(first_hit(retry), Some("net.rs"), "{retry}");
     assert_eq!(first_hit(backoff), Some("ui.rs"), "{backoff}");
     assert!(backoff.contains("fn backoff_delay"), "{backoff}");

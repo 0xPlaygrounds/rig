@@ -11,7 +11,7 @@ use bevy::picking::events::PointerClick;
 use bevy::prelude::*;
 use bevy::window::{ExitCondition, WindowPlugin};
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-use rig_harness::prelude::{Answerer, Invoked, Wake};
+use rig_harness::prelude::{Answerer, Invoked, Shown, Wake};
 use rig_tui::ratatui::style::{Color as TermColor, Modifier};
 use rig_tui::ratatui::text::Line;
 
@@ -85,7 +85,8 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(
             PostUpdate,
             (
-                draw_agents.run_if(resource_changed::<GuiAgents>),
+                draw_agents
+                    .run_if(resource_changed::<GuiAgents>.or_eager(resource_changed::<Shown>)),
                 draw_transcript.run_if(resource_changed::<GuiTranscript>),
                 draw_input.run_if(resource_changed::<GuiInput>),
                 draw_dialog.run_if(resource_changed::<GuiDialogs>),
@@ -218,6 +219,7 @@ fn span(content: impl Into<String>, color: Color) -> impl Bundle {
 
 fn draw_agents(
     list: Res<GuiAgents>,
+    shown: Res<Shown>,
     panels: Query<Entity, With<AgentsPanel>>,
     mut commands: Commands,
 ) {
@@ -226,7 +228,7 @@ fn draw_agents(
         for row in &list.rows {
             let agent = row.agent;
             let indent = "  ".repeat(row.depth);
-            let background = if list.shown == Some(agent) {
+            let background = if shown.0 == Some(agent) {
                 SELECTED
             } else {
                 PANEL

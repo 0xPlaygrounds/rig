@@ -7,7 +7,10 @@ use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
+use rig_harness_test_support::{
+    Collected, Ended, ToolOutputs, app_on, calls, collect, connect, first_agent, log_ended,
+    log_tool_outputs, reply, run_until,
+};
 
 /// What the test `read` tool answers.
 const CONTENTS: &str = "the contents of a.txt";
@@ -35,10 +38,6 @@ impl PortableTool for Read {
     }
 }
 
-/// Every notice's text.
-#[derive(Resource, Default)]
-struct Notices(Vec<String>);
-
 /// The kernel, the journal and the loop breaker on `store`, with a `read`
 /// tool counting into `runs`, after the first frame restored the session,
 /// with its loop's wakes.
@@ -49,15 +48,9 @@ fn start(store: &MemoryStore, runs: &Arc<AtomicUsize>) -> (App, Receiver<()>) {
         .add_tool(Read(runs.clone()))
         .init_resource::<Ended>()
         .add_observer(log_ended)
-        .init_resource::<Notices>()
-        .add_systems(
-            Update,
-            |mut read: MessageReader<Notice>, mut notices: ResMut<Notices>| {
-                notices
-                    .0
-                    .extend(read.read().map(|notice| notice.text.clone()));
-            },
-        );
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    collect::<Notice>(&mut app);
     app.finish();
     app.update();
     (app, wakes)
@@ -80,10 +73,7 @@ fn repeated_calls_are_refused_then_stop_the_turn() {
         reply("done"),
     ]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = first_agent(world);
     let connection = connect(&model);
     assert!(
         agent.is_some() && connection.is_some(),
@@ -113,7 +103,14 @@ fn repeated_calls_are_refused_then_stop_the_turn() {
     assert!(second.contains(CONTENTS), "{second}");
     assert_eq!(third.matches(CONTENTS).count(), 2, "{third}");
     // Call 3's result is the refusal, and request 4 carries it.
-    let refused = "You already called `read` with these arguments twice with the same result";
+    let refused = "You already called `read` with these arguments twice with the same result; \
+                   change approach.";
+    let outputs = &app.world().resource::<ToolOutputs>().0;
+    assert_eq!(
+        outputs.get("3").map(String::as_str),
+        Some(refused),
+        "{outputs:?}"
+    );
     assert!(fourth.contains(refused), "{fourth}");
     assert!(fifth.contains("these arguments 3 times"), "{fifth}");
 
@@ -123,11 +120,11 @@ fn repeated_calls_are_refused_then_stop_the_turn() {
         matches!(ended.as_slice(), [TurnOutcome::Stopped(Some(stopped))] if stopped == why),
         "{ended:?}"
     );
-    let notices = &app.world().resource::<Notices>().0;
+    let notices = &app.world().resource::<Collected<Notice>>().0;
     assert!(
         notices
             .iter()
-            .any(|notice| *notice == format!("stopped: {why}")),
+            .any(|notice| notice.text == format!("stopped: {why}")),
         "{notices:?}"
     );
     drop(app);
