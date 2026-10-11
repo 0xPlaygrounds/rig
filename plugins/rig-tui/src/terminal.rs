@@ -12,7 +12,6 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::event::{
@@ -33,7 +32,7 @@ use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_harness::prelude::{ExitReason, RigHome, SessionPaths};
+use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -205,8 +204,8 @@ impl Drop for Tui {
     }
 }
 
-/// Opens the terminal and starts reading it at startup, or exits with code
-/// 1 when there is none. The input gets the prompt history.
+/// Opens the terminal and starts reading it at startup, or asks to exit
+/// with code 1 when there is none. The input gets the prompt history.
 pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
     home: Res<RigHome>,
@@ -214,7 +213,6 @@ pub(crate) fn open_terminal(
     mut typed: ResMut<TuiInput>,
     mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
-    mut exit: MessageWriter<AppExit>,
 ) {
     let opened = Tui::open(paths.map(|paths| paths.log()).as_deref())
         .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
@@ -229,7 +227,7 @@ pub(crate) fn open_terminal(
         }
         Err(failure) => {
             error!("could not open the terminal: {failure}");
-            exit.write(AppExit::from_code(1));
+            commands.trigger(Exit(ExitReason::Failed(1)));
         }
     }
 }
