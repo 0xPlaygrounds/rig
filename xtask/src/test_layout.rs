@@ -90,7 +90,7 @@ fn source_files(crates: &Path) -> Result<Vec<PathBuf>, String> {
 
 /// The set of files reachable only through a test-gated `mod x;` declaration,
 /// closed under "declared by a test-only file".
-fn test_only_files(parsed: &[(PathBuf, syn::File)]) -> BTreeSet<PathBuf> {
+pub(crate) fn test_only_files(parsed: &[(PathBuf, syn::File)]) -> BTreeSet<PathBuf> {
     let mut test_only = BTreeSet::new();
     loop {
         let before = test_only.len();
