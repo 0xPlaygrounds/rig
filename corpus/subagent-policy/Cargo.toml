@@ -1,0 +1,32 @@
+[package]
+name = "corpus-subagent-policy"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 39. Subagent policy"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# `/agents`' columns.
+rig-basics = { path = "../../plugins/rig-basics" }
+# The `SpawnSubagent` requests this plugin shapes, holds and refuses.
+rig-subagents = { path = "../../plugins/rig-subagents" }
+# Each agent's spend.
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+# The parent's status line.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+# `RIG_HOME/subagents.toml`; already in Cargo.lock (1.x), no new package.
+toml = "1"
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

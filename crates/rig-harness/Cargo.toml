@@ -22,6 +22,8 @@ bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
 crossbeam-channel = { workspace = true }
+# The clock a file watch waits on between looks.
+futures-timer = { workspace = true }
 # `termination` also catches SIGTERM and SIGHUP (a closed terminal).
 ctrlc = { workspace = true, features = ["termination"] }
 # The launcher protocol (`rig::harness_protocol`), shared with the `rig` binary.
@@ -34,13 +36,31 @@ rig-core = { workspace = true, features = ["reqwest"] }
 rig-ecs = { path = "../rig-ecs", version = "0.44.0" }
 # The file and process helpers, and spill files.
 rig-tools = { path = "../rig-tools", version = "0.44.0" }
+# The tokio runtime rig's HTTP requests run on, shared with plugins.
+rig-reqwest = { workspace = true }
+tokio = { workspace = true, features = ["rt"] }
+# Questions' answers, and the user's settings for plugins.
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+toml = "1"
 
 [dev-dependencies]
 # The terminal panel of the plugin guide's examples.
 rig-activity = { path = "../../plugins/rig-activity" }
+# The lists, stage sets, subagents and effect log of the plugin guide's
+# examples.
+rig-basics = { path = "../../plugins/rig-basics" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
+rig-compaction = { path = "../../plugins/rig-compaction" }
+rig-models = { path = "../../plugins/rig-models" }
+rig-print = { path = "../../plugins/rig-print" }
+rig-subagents = { path = "../../plugins/rig-subagents" }
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tui = { path = "../../plugins/rig-tui" }
+# The plugin guide's test example.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
 schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# The scripted model of the headless run's tests.
+rig-core = { workspace = true, features = ["test-utils"] }

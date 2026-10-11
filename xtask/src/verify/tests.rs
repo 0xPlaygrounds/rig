@@ -1395,16 +1395,47 @@ fn an_extension_item_is_re_exported_nowhere() {
     }
 }
 
-#[test]
-fn every_plugin_crate_is_a_harness_package() {
-    let plugins = Path::new(env!("CARGO_MANIFEST_DIR")).join("../plugins");
-    let names: Vec<String> = std::fs::read_dir(plugins)
+/// The directory names under the workspace's `folder`.
+fn member_dirs(folder: &str) -> Vec<String> {
+    let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join(folder);
+    std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(|entry| Some(entry.ok()?.file_name().to_string_lossy().into_owned()))
-        .collect();
+        .collect()
+}
+
+#[test]
+fn every_plugin_crate_is_a_harness_package() {
+    let names = member_dirs("plugins");
     assert!(names.len() > 10, "found {names:?}");
     for name in &names {
         assert!(checks::HARNESS_PACKAGES.contains(&name.as_str()), "{name}");
+    }
+}
+
+/// CI selects the corpus by the glob [`checks::CORPUS_PACKAGES`], so every
+/// corpus crate must be named by it, and none may be published.
+#[test]
+fn every_corpus_crate_is_selected_by_the_corpus_glob_and_unpublished() {
+    let prefix = checks::CORPUS_PACKAGES.trim_end_matches('*');
+    let dirs = member_dirs("corpus");
+    assert!(dirs.len() > 60, "found {dirs:?}");
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../corpus");
+    for dir in &dirs {
+        let manifest = std::fs::read_to_string(root.join(dir).join("Cargo.toml"))
+            .unwrap_or_else(|error| panic!("{dir}: {error}"));
+        let package = manifest.split("\n[").next().unwrap_or_default();
+        let lines: Vec<&str> = package.lines().map(str::trim).collect();
+        assert!(
+            lines.contains(&format!("name = \"{prefix}{dir}\"").as_str()),
+            "corpus/{dir} must be the package `{prefix}{dir}`"
+        );
+        assert!(
+            lines.contains(&"publish = false"),
+            "corpus/{dir} must be `publish = false`"
+        );
     }
 }

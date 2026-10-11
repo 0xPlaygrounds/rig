@@ -1,30 +1,28 @@
-//! Work that runs off the main thread: a [`Running`] task on a call entity
-//! becomes a [`Done`] component when it finishes, or a tool call's
-//! [`ToolOutput`](super::tools::ToolOutput), through one `poll_calls`
-//! system, so observers of that component carry the turn on.
-//! Each finished task also calls [`Wake`], so a loop that sleeps while
+//! Work that runs off the main thread: a [`Running`] task on an entity
+//! becomes a [`Done`] component when it finishes, through one `poll_calls`
+//! system, so observers of that component carry on; on an effect, such as
+//! an open tool call, it becomes the effect's
+//! [`Outcome`](super::stage::Outcome) in
+//! [`Stage::Arrive`](super::stage::Stage::Arrive). A long-lived source,
+//! such as a socket or a thread's channel, is a [`Running::stream`] whose
+//! every item becomes a [`Done`] on the entity, in order. Each finished
+//! task and each item also calls [`Wake`], so a loop that sleeps while
 //! nothing happens runs a frame for it.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
 
 use bevy_ecs::prelude::*;
-use bevy_reflect::prelude::*;
+use bevy_ecs::query::QueryFilter;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{ConditionalSendFuture, Task, TaskPool};
+use bevy_tasks::{ConditionalSend, ConditionalSendFuture, Task, TaskPool};
+use crossbeam_channel::Receiver;
+use futures::{Stream, StreamExt};
+
+use super::stage::{self, Effect};
 
 /// Frames run right after a woken one (see [`settle`]).
 const SETTLE_FRAMES: u32 = 4;
-
-/// The longest gap between two frames that Bevy's virtual clock counts in
-/// full, for a loop that sleeps while idle (a frame a second at least, in
-/// rig-harness). Bevy's default, 250 ms, suits a game's steady frames; across
-/// one-second frames it would make a retry's wait four times as long. A
-/// longer gap, such as a suspended machine, is still cut short, as Bevy
-/// intends: its fixed-step loop runs once for every 15.6 ms counted, all in
-/// the frame after the gap.
-pub const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
 
 /// Wakes the app's loop from another thread: a finished call, a streamed
 /// fragment, terminal input or a signal. The runner that sleeps between
@@ -35,8 +33,9 @@ pub const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
 /// runs a frame for agent activity (the recipe is in rig-harness's docs).
 ///
 /// A woken frame often leaves work for the next, such as a command's
-/// notice or a task that finished just after it woke the loop, so
-/// [`settle`] asks for a few more frames after each wake, whatever the loop.
+/// notice or a task that finished just after it woke the loop, so the
+/// kernel asks for four more frames after each wake, in `Last`, whatever
+/// the loop.
 #[derive(Resource, Clone)]
 pub struct Wake {
     wake: Arc<dyn Fn() + Send + Sync>,
@@ -66,35 +65,9 @@ impl Default for Wake {
     }
 }
 
-/// Keeps a loop that sleeps between frames running a frame at least this
-/// often while the entity exists: a spinner, or a panel that polls. Time
-/// itself is Bevy's: a system paced with
-/// `.run_if(on_real_timer(interval))` runs on time while a `KeepAwake` of
-/// that interval lives, and a one-off wait is a delayed command
-/// (`commands.delayed().duration(wait)`), whose deadline the loop wakes for
-/// on its own.
-///
-/// ```
-/// use std::time::Duration;
-/// use rig_ecs::prelude::*;
-///
-/// const STEP: Duration = Duration::from_millis(200);
-///
-/// fn tick() {}
-///
-/// let mut app = App::new();
-/// // `tick` runs every step while this entity lives; once it is despawned
-/// // the loop sleeps until there is work.
-/// app.world_mut().spawn((Name::new("spinner"), KeepAwake(STEP)));
-/// app.add_systems(Update, tick.run_if(on_real_timer(STEP)));
-/// ```
-#[derive(Component, Reflect, Clone, Copy, Debug)]
-#[reflect(Component, Clone, Debug)]
-pub struct KeepAwake(pub Duration);
-
 /// Runs four more frames after a frame some [`Wake`] woke,
 /// in `Last`, by asking the loop for each without counting it as a wake.
-pub fn settle(wake: Res<Wake>, mut left: Local<u32>) {
+pub(crate) fn settle(wake: Res<Wake>, mut left: Local<u32>) {
     if wake.woken.swap(false, Ordering::AcqRel) {
         *left = SETTLE_FRAMES;
     }
@@ -108,14 +81,25 @@ pub fn settle(wake: Res<Wake>, mut left: Local<u32>) {
 type Finish = Box<dyn FnOnce(EntityWorldMut) + Send>;
 
 /// Work running off the main thread for its entity, such as a call: when
-/// it finishes, [`poll_calls`] replaces it with its output, as a
+/// it finishes, the kernel replaces it with its output in [`PollCalls`], as a
 /// [`Done<T>`] or the component [`Running::spawn_into`] names, and
 /// observers of that component carry on. Bevy's own pattern
 /// (`examples/async_tasks/async_compute.rs`): one task component for every
 /// kind of output, so no plugin registers a system for its own. Dropping
 /// it, or the entity, cancels the task; so does the app's exit.
 #[derive(Component)]
-pub struct Running(Task<Finish>);
+pub struct Running(Work);
+
+/// What a [`Running`] waits for.
+enum Work {
+    /// One output, when the task finishes.
+    Task(Task<Finish>),
+    /// An output per item, as they come, until the task ends.
+    Stream {
+        items: Receiver<Finish>,
+        task: Task<()>,
+    },
+}
 
 impl Running {
     /// Spawns `work` on `pool`; it ends as a [`Done<T>`] on the entity, and
@@ -129,30 +113,98 @@ impl Running {
     }
 
     /// [`Running::spawn`], ending as the component `C` made from the
-    /// output, such as a tool call's
-    /// [`ToolOutput`](super::tools::ToolOutput).
+    /// output.
     pub fn spawn_into<C: Component + From<T>, T: Send + 'static>(
         pool: &TaskPool,
         wake: &Wake,
         work: impl ConditionalSendFuture<Output = T> + 'static,
     ) -> Self {
-        let wake = wake.clone();
-        Self(pool.spawn(async move {
-            let output = work.await;
-            wake.wake();
-            Box::new(move |mut entity: EntityWorldMut| {
-                entity.insert(C::from(output));
-            }) as Finish
-        }))
+        Self::finishing(pool, wake, work, |mut entity, output| {
+            entity.insert(C::from(output));
+        })
     }
 
-    /// Takes the task off, to be cancelled: `task.cancel().await`.
-    pub(crate) fn into_task(self) -> Task<Finish> {
-        self.0
+    /// Spawns `work` on `pool` for the effect it goes on, such as an open
+    /// tool call's `ToolResult`; it ends as the effect's
+    /// [`stage::Outcome`], unless something answered it first.
+    pub fn answering<T: Into<stage::Outcome> + Send + 'static>(
+        pool: &TaskPool,
+        wake: &Wake,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
+    ) -> Self {
+        Self::finishing(pool, wake, work, |mut entity, output| {
+            let outcome: stage::Outcome = output.into();
+            entity.insert_if_new(outcome);
+        })
+    }
+
+    /// Spawns a task on `pool` that runs `items` to their end, such as a
+    /// socket's messages or a thread's channel: each item is inserted on
+    /// the entity as a [`Done<T>`], in order, and wakes the loop; once the
+    /// last one is in, `Running` is removed. Several items may come in one
+    /// frame, so a reader observes `Insert<Done<T>>`, which sees each.
+    pub fn stream<T: Send + Sync + 'static>(
+        pool: &TaskPool,
+        wake: &Wake,
+        items: impl Stream<Item = T> + ConditionalSend + 'static,
+    ) -> Self {
+        let (sender, received) = crossbeam_channel::unbounded();
+        let wake = wake.clone();
+        let task = pool.spawn(async move {
+            let mut items = std::pin::pin!(items);
+            while let Some(item) = items.next().await {
+                let insert = move |mut entity: EntityWorldMut| {
+                    entity.insert(Done(item));
+                };
+                // Dropped with its entity: nothing reads the rest.
+                if sender.send(Box::new(insert) as Finish).is_err() {
+                    break;
+                }
+                wake.wake();
+            }
+            wake.wake();
+        });
+        Self(Work::Stream {
+            items: received,
+            task,
+        })
+    }
+
+    /// Spawns `work` on `pool`; `finish` puts its output on the entity.
+    pub(crate) fn finishing<T: Send + 'static>(
+        pool: &TaskPool,
+        wake: &Wake,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
+        finish: fn(EntityWorldMut, T),
+    ) -> Self {
+        let wake = wake.clone();
+        Self(Work::Task(pool.spawn(async move {
+            let output = work.await;
+            wake.wake();
+            Box::new(move |entity: EntityWorldMut| finish(entity, output)) as Finish
+        })))
+    }
+
+    /// Whether it is a [`Running::stream`], a source that may never end,
+    /// rather than work that finishes.
+    pub fn is_stream(&self) -> bool {
+        matches!(self.0, Work::Stream { .. })
+    }
+
+    /// Cancels the task, once awaited.
+    pub(crate) async fn cancel(self) {
+        match self.0 {
+            Work::Task(task) => {
+                task.cancel().await;
+            }
+            Work::Stream { task, .. } => {
+                task.cancel().await;
+            }
+        }
     }
 }
 
-/// A finished call's output.
+/// A finished call's output, or a [`Running::stream`]'s latest item.
 #[derive(Component)]
 pub struct Done<T: Send + Sync + 'static>(pub T);
 
@@ -167,11 +219,42 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PollCalls;
 
-/// Replaces each finished [`Running`] task with its output.
-pub fn poll_calls(mut calls: Query<(Entity, &mut Running)>, mut commands: Commands) {
+/// Replaces each finished [`Running`] task with its output, but an
+/// effect's, which the kernel takes in [`Stage::Arrive`](stage::Stage::Arrive).
+pub(crate) fn poll_calls(
+    calls: Query<(Entity, &mut Running), Without<Effect>>,
+    commands: Commands,
+) {
+    finish(calls, commands);
+}
+
+/// Replaces each finished effect's [`Running`] task with its outcome, in
+/// [`Stage::Arrive`](stage::Stage::Arrive).
+pub(crate) fn arrive(calls: Query<(Entity, &mut Running), With<Effect>>, commands: Commands) {
+    finish(calls, commands);
+}
+
+/// Replaces each finished task among `calls` with its output, and puts a
+/// stream's items on its entity in order, removing it once it ended.
+fn finish<F: QueryFilter>(mut calls: Query<(Entity, &mut Running), F>, mut commands: Commands) {
     for (entity, mut running) in &mut calls {
-        if let Some(finish) = check_ready(&mut running.bypass_change_detection().0) {
-            commands.entity(entity).remove::<Running>().queue(finish);
+        match &mut running.bypass_change_detection().0 {
+            Work::Task(task) => {
+                if let Some(finish) = check_ready(task) {
+                    commands.entity(entity).remove::<Running>().queue(finish);
+                }
+            }
+            Work::Stream { items, task } => {
+                // Every item was sent before the task ended.
+                let ended = check_ready(task).is_some();
+                let mut entity = commands.entity(entity);
+                for insert in items.try_iter() {
+                    entity.queue(insert);
+                }
+                if ended {
+                    entity.remove::<Running>();
+                }
+            }
         }
     }
 }

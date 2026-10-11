@@ -1,0 +1,30 @@
+[package]
+name = "corpus-git-status-item"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 51. Git status-line item"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The item on the terminal view's status line; without it the plugin does nothing.
+tui = ["dep:rig-tui", "dep:serde"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

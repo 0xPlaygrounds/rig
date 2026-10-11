@@ -114,6 +114,7 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
             name: crate::message::ToolName::new("rig_tool").expect("tool name"),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         }])
         .additional_params(json!({
             "tools": [{
@@ -1154,6 +1155,7 @@ fn progress_update_blocks_survive_decoding_and_replay_under_every_display() {
                 name: crate::message::ToolName::new("edit_file").expect("a tool name"),
                 description: "Edit a file.".to_owned(),
                 parameters: json!({"type": "object", "properties": {}}),
+                annotations: Default::default(),
             }];
             let request =
                 Completion::prepare(request, &wire.describe()).expect("the history adapts");

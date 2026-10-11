@@ -4,35 +4,40 @@
 //! one with [`AppCommandsExt::add_command`], a system that reads the
 //! [`CommandArgs`], such as one that triggers an event.
 //!
-//! What the user types that starts with `/` runs as a command: the
-//! kernel's delivery of a user's [`Deliver`](super::inbox::Deliver) turns
-//! it into a [`RunCommand`] ([`Deliver::command`](super::inbox::Deliver::command)).
-//! [`RunCommand`] runs a line at once, with everything it triggers. The
-//! notices written meanwhile are its reply. An unknown command, or an
-//! error notice about the agent, such as one refusing arguments, refuses
-//! the line: it comes back whole as [`Recalled`] with the reason, in place
-//! of that notice, so nothing typed is lost.
+//! What the user types that starts with `/` runs as a command: a Gate
+//! system in [`CommandSystems`] takes the user's line over
+//! ([`Incoming::command`]) and triggers a [`RunCommand`] with it. A plugin
+//! that takes such a line over itself orders its Gate system
+//! `.before(CommandSystems)`. [`RunCommand`] runs a line at once, with
+//! everything it triggers; the notices written meanwhile are its reply. An
+//! unknown command, or an error notice about the agent, such as one
+//! refusing arguments, refuses the line: it comes back whole as
+//! [`Recalled`] with the reason, in place of that notice, so nothing typed
+//! is lost.
 
 use std::mem;
 
-use bevy_app::App;
+use bevy_app::prelude::*;
 use bevy_ecs::message::Messages;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
+use rig_ecs::agent::{Notice, NoticeLevel};
+use rig_ecs::inbox::{DeliveryMode, Incoming, Recalled};
+use rig_ecs::stage::{AgentPass, Effect, ForAgent, Outcome, Stage, Undecided};
 
-use super::agent::{Notice, NoticeLevel};
-use super::inbox::Recalled;
-
-/// What a command system receives: the agent the command was typed for and
-/// the text after the command name.
+/// What a command system receives: the agent the command was typed for,
+/// the text after the command name, and how its line was sent.
 #[derive(Clone, Debug)]
 pub struct CommandArgs {
     /// The agent.
     pub agent: Entity,
     /// The arguments, trimmed.
     pub args: String,
+    /// How the line was sent, such as queued, for a command that sends
+    /// text on: as [`RunCommand::mode`] says.
+    pub mode: DeliveryMode,
 }
 
 /// A slash command, on the entity of the one-shot system it runs, whose
@@ -44,9 +49,69 @@ pub struct SlashCommand {
     pub help: String,
 }
 
-/// Registers slash commands on an [`App`]. A name already registered is
-/// refused with a warning: to replace another plugin's command, insert
-/// Bevy's `Disabled` on its entity first, which frees its name.
+/// Runs slash commands: what the user types as one, and each
+/// [`RunCommand`]. Registering a command adds it too.
+pub struct CommandPlugin;
+
+impl Plugin for CommandPlugin {
+    fn build(&self, app: &mut App) {
+        runner(app);
+    }
+}
+
+/// The Gate system that runs the user's `/` lines.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CommandSystems;
+
+/// That the app runs commands.
+#[derive(Resource)]
+struct Runner;
+
+/// Makes the app run commands, once.
+fn runner(app: &mut App) {
+    if app.world().contains_resource::<Runner>() {
+        return;
+    }
+    app.insert_resource(Runner)
+        .configure_sets(AgentPass, CommandSystems.in_set(Stage::Gate))
+        .add_systems(AgentPass, run_typed.in_set(CommandSystems))
+        .add_observer(on_run_command);
+}
+
+/// Takes each user's `/` line about to start over, in the order they were
+/// sent, and runs it for its agent, sent as it was.
+fn run_typed(
+    typed: Query<(Entity, &Effect, &Incoming, &ForAgent), Undecided>,
+    mut commands: Commands,
+) {
+    let mut lines: Vec<_> = typed
+        .iter()
+        .filter_map(|(entity, effect, message, agent)| {
+            Some((
+                effect.id(),
+                entity,
+                message.command()?,
+                message.mode,
+                agent.0,
+            ))
+        })
+        .collect();
+    lines.sort_unstable_by_key(|(id, ..)| *id);
+    for (_, message, line, mode, agent) in lines {
+        commands.trigger(RunCommand {
+            mode,
+            ..RunCommand::new(agent, line)
+        });
+        commands
+            .entity(message)
+            .insert_if_new(Outcome::custom("command"));
+    }
+}
+
+/// Registers slash commands on an [`App`], which then runs them
+/// ([`CommandPlugin`]). A name already registered is refused with a
+/// warning: to replace another plugin's command, insert Bevy's `Disabled`
+/// on its entity first, which frees its name.
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
     /// [`CommandArgs`] of each use.
@@ -65,6 +130,7 @@ impl AppCommandsExt for App {
         help: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self {
+        runner(self);
         let name = format!("/{name}");
         if find(self.world_mut(), &name).is_some() {
             warn!("command not registered: {name} exists; insert `Disabled` on it to replace it");
@@ -96,17 +162,31 @@ pub struct RunCommand {
     pub entity: Entity,
     /// The command line after the `/`.
     pub line: String,
+    /// How the line was sent: the mode of the message typed, else
+    /// [`DeliveryMode::Steer`], as by a key or a picker.
+    pub mode: DeliveryMode,
+}
+
+impl RunCommand {
+    /// Run `line` for `agent`, as if typed and sent at once.
+    pub fn new(agent: Entity, line: impl Into<String>) -> Self {
+        Self {
+            entity: agent,
+            line: line.into(),
+            mode: DeliveryMode::Steer,
+        }
+    }
 }
 
 /// Runs the command a [`RunCommand`] names, with everything it triggers.
-pub(crate) fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
-    let (agent, line) = (run.entity, run.line.clone());
-    commands.queue(move |world: &mut World| run_command(world, agent, line));
+fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
+    let (agent, line, mode) = (run.entity, run.line.clone(), run.mode);
+    commands.queue(move |world: &mut World| run_command(world, agent, line, mode));
 }
 
-/// Runs `line` for `agent`, keeping the notices written meanwhile apart,
-/// and recalls it when refused.
-fn run_command(world: &mut World, agent: Entity, line: String) {
+/// Runs `line` for `agent`, sent as `mode`, keeping the notices written
+/// meanwhile apart, and recalls it when refused.
+fn run_command(world: &mut World, agent: Entity, line: String, mode: DeliveryMode) {
     let typed = line.trim();
     let (name, args) = typed.split_once(char::is_whitespace).unwrap_or((typed, ""));
     let name = format!("/{name}");
@@ -119,6 +199,7 @@ fn run_command(world: &mut World, agent: Entity, line: String) {
                 CommandArgs {
                     agent,
                     args: args.trim().to_owned(),
+                    mode,
                 },
             );
             let mut reply = swap_notices(world, earlier);
@@ -152,3 +233,6 @@ fn swap_notices(world: &mut World, notices: Messages<Notice>) -> Messages<Notice
         None => notices,
     }
 }
+
+#[cfg(test)]
+mod tests;

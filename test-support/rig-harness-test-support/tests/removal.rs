@@ -3,8 +3,10 @@
 //! answers a `--print` prompt with a tool call on a scripted model, and so
 //! does the app with the optional `rig-inspect` plugin on top. `/reload`
 //! is there exactly when `rig-reload` is. The plugin `rig plugin new`
-//! writes comes last, listed twice and added once. Each case is a child
-//! process of this test with its own `RIG_HOME`, as a run is.
+//! writes comes last, listed twice and added once. No case leaves systems
+//! of one agent-loop stage that write the same data unordered (the debug
+//! build's ambiguity warning). Each case is a child process of this test
+//! with its own `RIG_HOME`, as a run is.
 
 #[path = "../../../src/launcher/plugin/scaffold.rs"]
 mod scaffold;
@@ -12,6 +14,7 @@ mod scaffold;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use bevy_ecs::schedule::{ScheduleBuildWarning, ScheduleBuilt, ScheduleLabel};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::journal::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
@@ -83,6 +86,22 @@ fn connect_first(added: On<Add<Agent>>, mut commands: Commands) {
     }
 }
 
+/// Fails the run when the agent loop holds unordered systems writing the
+/// same data in one stage.
+fn stages_ordered(built: On<ScheduleBuilt>) {
+    if built.label != AgentPass.intern() {
+        return;
+    }
+    let unordered: Vec<String> = built
+        .build_metadata
+        .warnings
+        .iter()
+        .filter(|warning| matches!(warning, ScheduleBuildWarning::Ambiguity(_)))
+        .map(ToString::to_string)
+        .collect();
+    assert!(unordered.is_empty(), "{unordered:?}");
+}
+
 /// Sends the prompt as `--print` does, when it is left out.
 fn ask(
     restored: Option<Res<SessionRestored>>,
@@ -101,13 +120,17 @@ fn ask(
 }
 
 fn answered(
-    ended: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<&TurnOutcome>,
     provided: Query<(&Name, &ProvidedBy)>,
     plugins: Query<&PluginSource>,
     slash_commands: Query<&Name, With<SlashCommand>>,
     mut exits: MessageWriter<AppExit>,
 ) {
-    let answered = matches!(&ended.outcome,
+    let Ok(outcome) = turns.get(settled.entity) else {
+        return;
+    };
+    let answered = matches!(outcome,
         TurnOutcome::Answered(message) if final_answer(message).as_deref() == Some("read"));
     let scaffold = |plugin: &PluginSource| plugin.krate == "rig-hello";
     let added_once = plugins.iter().filter(|plugin| scaffold(plugin)).count() == 1;
@@ -131,6 +154,7 @@ fn every_default_plugin_can_be_left_out() {
                 args: Invocation {
                     print: Some(PROMPT.to_owned()),
                     model: None,
+                    ..Invocation::default()
                 },
                 terminal: false,
             })
@@ -149,6 +173,7 @@ fn every_default_plugin_can_be_left_out() {
             (ask, give_up.run_if(on_real_timer(Duration::from_secs(30)))),
         )
         .add_observer(connect_first)
+        .add_observer(stages_ordered)
         .add_observer(answered);
         assert_eq!(app.run(), AppExit::Success, "without {left_out}");
         return;

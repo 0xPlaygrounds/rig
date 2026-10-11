@@ -283,9 +283,16 @@ impl BusDriver {
         }
         let dispatch = match &self.recorder {
             Some(recorder) => {
-                recorder
-                    .0
-                    .begin(id, key.clone(), kind.clone(), Origin { parent, scope });
+                recorder.0.begin(
+                    id,
+                    key.clone(),
+                    kind.clone(),
+                    Origin {
+                        parent,
+                        scope,
+                        purpose: None,
+                    },
+                );
                 recorder.observe(dispatch)
             }
             None => dispatch,

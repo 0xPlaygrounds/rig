@@ -1,7 +1,7 @@
 //! The kernel on its own: a headless app with Bevy's task pools, the agent
 //! runtime and its session journal, and nothing else: no effect log. A
-//! scripted model asks for one tool call, then answers; with a recorder,
-//! every call is recorded; a second app on the same store gets the
+//! scripted model asks for one tool call, then answers; every call is
+//! recorded as it settles, with ids after the ones given; a second app on the same store gets the
 //! conversation back; a failed call is sent again once its backoff passed
 //! on Bevy's clock; a reasoning setting the model does not take is reset.
 //! Only rig-ecs's public API is used, as a third-party plugin would.
@@ -11,13 +11,12 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
-use bevy_time::TimeUpdateStrategy;
-use rig_cassette::effect_log::EffectLogRecorder;
+use bevy_time::{Time, TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning, ToolDefinition};
-use rig_core::effect::{EffectId, HandlerKey, tool_key};
+use rig_core::effect::{EffectId, EffectRecord, HandlerKey, tool_key};
 use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -69,6 +68,10 @@ impl PortableTool for Add {
 #[derive(Resource, Default)]
 struct Ended(Vec<TurnOutcome>);
 
+/// The records of the effects that settled, such as tool calls.
+#[derive(Resource, Default)]
+struct Settles(Vec<EffectRecord>);
+
 /// A headless kernel app on `store`, with its loop's wakes.
 fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
@@ -80,10 +83,28 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
         .insert_resource(SessionStore::new(store.clone()))
         .add_plugins((AgentPlugin, JournalPlugin))
         .init_resource::<Ended>()
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .init_resource::<Settles>()
+        .add_systems(
+            Last,
+            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
+                settles
+                    .0
+                    .extend(recorded.read().map(|record| record.0.clone()));
+            },
+        )
+        .add_observer(
+            |settled: On<bevy_ecs::lifecycle::Add<Settled>>,
+             turns: Query<&TurnOutcome>,
+             mut log: ResMut<Ended>| {
+                log.0.extend(turns.get(settled.entity).cloned());
+            },
+        );
     app.finish();
+    // A loop that sleeps for seconds counts its frames in full, as
+    // rig-harness's does; Bevy's default stops at 250 ms.
+    if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
+        time.set_max_delta(Duration::from_secs(60));
+    }
     (app, wakes)
 }
 
@@ -229,32 +250,30 @@ fn a_turn_ends_answered_after_one_tool_round() {
 #[test]
 fn a_new_app_on_the_store_restores_the_conversation() {
     let store = MemoryStore::default();
-    let recorder = EffectLogRecorder::new();
     let last = Some(EffectId::from_raw(41));
-    let turn = one_turn(
-        &store,
-        Effects::recorded_by(Arc::new(recorder.clone()), last),
-    );
+    let turn = one_turn(&store, Effects::continue_after(last));
     assert!(turn.is_some(), "the built-in catalog lists the model");
     let Some((mut app, agent, _, _)) = turn else {
         return;
     };
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
-    // Both model calls and both tool calls, the refused one too, were
-    // recorded, numbered after the given id.
-    let log = recorder.log();
+    // The user's message, both model calls and both tool calls, the
+    // refused one too, were recorded as they settled, numbered after the
+    // given id.
+    let mut log = app.world().resource::<Settles>().0.clone();
+    log.sort_by_key(|record| record.id);
     let recorded: Vec<_> = log
-        .records
         .iter()
         .map(|record| (record.id.as_u64(), &record.key, record.outcome.is_ok()))
         .collect();
     let tool = |key: &HandlerKey, name| *key == tool_key(name);
+    let message = HandlerKey::new("message");
     assert!(
         matches!(
             recorded.as_slice(),
-            [(42, model, true), (43, add, true), (44, sub, false), (45, again, true)]
-                if tool(add, "add") && tool(sub, "sub") && model == again
+            [(42, said, true), (43, model, true), (44, add, true), (45, sub, false), (46, again, true)]
+                if **said == message && tool(add, "add") && tool(sub, "sub") && model == again
         ),
         "{recorded:?}"
     );
@@ -343,12 +362,12 @@ fn an_interrupt_during_a_backoff_cancels_the_retry() {
     let Some((mut app, _wakes, agent, model)) = started else {
         return;
     };
-    app.world_mut().trigger(Interrupt { entity: agent });
+    app.world_mut().trigger(Interrupt::new(agent));
     advance(&mut app, Duration::from_secs(5));
     assert!(
         matches!(
             app.world().resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped]
+            [TurnOutcome::Stopped(None)]
         ),
         "{:?}",
         app.world().resource::<Ended>().0
@@ -382,7 +401,7 @@ fn a_plugin_task_ends_as_done_and_the_exit_cancels_it() {
     assert!(app.world().get::<Running>(stuck).is_none());
 }
 
-/// The entity of the registered tool, command or prompt section that
+/// The entity of the registered tool or prompt section that
 /// `is` picks.
 fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> {
     let mut found = app.world_mut().query::<(Entity, &D)>();
@@ -391,25 +410,18 @@ fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> 
 }
 
 /// What another plugin added is turned off by inserting Bevy's
-/// `Disabled` on its entity, which frees its name: a tool, a command and
-/// a prompt section give way to their replacements, the tool one
-/// registered while the app runs, as an MCP plugin would.
+/// `Disabled` on its entity, which frees its name: a tool and a prompt
+/// section give way to their replacements, the tool one registered while
+/// the app runs, as an MCP plugin would.
 #[test]
-fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
+fn a_disabled_tool_or_section_gives_way_to_its_replacement() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
     let (old, new) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
-    let say = |text: &'static str| {
-        move |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
-            notices.write(Notice::info(args.agent, text));
-        }
-    };
-    app.add_tool(Add(old.clone()))
-        .add_command("hi", "Says hi", say("old"));
+    app.add_tool(Add(old.clone()));
     app.world_mut()
         .spawn(PromptSection::new(200, "rules", "the old rules"));
     let picked = [
         find::<ToolDef>(&mut app, |def| def.0.name.as_str() == "add"),
-        find::<Name>(&mut app, |name| name.as_str() == "/hi"),
         find::<PromptSection>(&mut app, |section| section.tag == "rules"),
     ];
     for entity in picked.into_iter().flatten() {
@@ -424,7 +436,6 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
     // From a system: `commands.queue(move |world: &mut World| { .. })`.
     let world = app.world_mut();
     world.spawn_tool(definition, handler, ToolOptions::default());
-    app.add_command("hi", "Says hi", say("new"));
     app.world_mut()
         .spawn(PromptSection::new(200, "rules", "the new rules"));
     let add = MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 }));
@@ -449,23 +460,12 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
         prompt.contains("the new rules") && !prompt.contains("the old rules"),
         "{prompt}"
     );
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "hi".to_owned(),
-    });
-    app.world_mut().flush();
-    let notices = app.world().resource::<Messages<Notice>>();
-    let said: Vec<&str> = notices
-        .iter_current_update_messages()
-        .map(|n| n.text.as_str())
-        .collect();
-    assert_eq!(said, ["new"]);
 }
 
-/// A `PrepareRequest` observer changes the system prompt, the tools and
-/// the options, the rules of a tool it drops leave the prompt, and a
-/// `Connection` on the turn sends the request to another model than the
-/// agent's.
+/// A Prepare system changes the system prompt, the tools and the options,
+/// and sends the turn's call to another model than the agent's; the rules
+/// of a tool it drops leave the prompt, and a reasoning setting the other
+/// model does not take is left out.
 #[test]
 fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
@@ -485,18 +485,18 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         MockCompletionModel::from_stream_turns([answer()]),
     );
     let route = connection(&routed);
-    app.add_observer(
-        move |turn: On<bevy_ecs::lifecycle::Add<TurnOf>>, mut commands: Commands| {
-            if let Some(route) = route.clone() {
-                commands.entity(turn.entity).insert(route);
+    let reshape = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(prompt) = call.system_prompt_mut() {
+                prompt.push_str("\n\nPlan only.");
             }
-        },
-    )
-    .add_observer(|mut prepare: On<PrepareRequest>| {
-        prepare.preamble.push_str("\n\nPlan only.");
-        prepare.tools.clear();
-        prepare.options.seed = Some(7);
-    });
+            call.request.tools.clear();
+            call.request.options.seed = Some(7);
+            call.request.options.reasoning = Some(Reasoning::Budget { tokens: 1000 });
+            call.connection = route.clone();
+        }
+    };
+    app.add_systems(AgentPass, reshape.in_set(Stage::Prepare));
     let agent = connected(&mut app, &own);
     assert!(agent.is_some(), "the built-in catalog lists the model");
     let Some(agent) = agent else { return };
@@ -510,50 +510,43 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         prompt.is_some_and(|prompt| prompt.ends_with("Plan only.") && !prompt.contains("`add`")),
         "{prompt:?}"
     );
-    assert!(
-        sent.is_some_and(|request| request.tools.is_empty() && request.options.seed == Some(7))
-    );
+    assert!(sent.is_some_and(|request| request.tools.is_empty()
+        && request.options.seed == Some(7)
+        && request.options.reasoning.is_none()));
 }
 
-/// The command lines `/echo` ran with.
-#[derive(Resource, Default)]
-struct Echoed(Vec<String>);
-
 #[test]
-fn observers_edit_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
+fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let (mut app, _) = kernel(&MemoryStore::default());
-    app.init_resource::<Echoed>()
-        .add_command(
-            "echo",
-            "Echoes",
-            |In(args): In<CommandArgs>, mut echoed: ResMut<Echoed>| echoed.0.push(args.args),
-        )
-        .add_observer(|mut typed: On<Deliver>| {
-            if typed.origin.kind != OriginKind::User {
-                return;
+    let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
+        for mut typed in &mut typed {
+            if typed.origin.kind == OriginKind::User && typed.text == "hi" {
+                typed.text = "hello".to_owned();
             }
-            if typed.text == "hi" {
-                typed.text = "/echo hello".to_owned();
+        }
+    };
+    // Taken over: nothing is sent.
+    let take_over = |typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands| {
+        for (message, typed) in &typed {
+            if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+                commands
+                    .entity(message)
+                    .insert_if_new(Outcome::custom("shell"));
             }
-            // Taken over: nothing is sent.
-            if typed.text.starts_with('!') {
-                typed.text.clear();
-            }
-        });
+        }
+    };
+    app.add_systems(
+        AgentPass,
+        (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),
+    );
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
     let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
-    for typed in [
-        note("hi"),
-        note("!ls"),
-        note("/echo typed"),
-        note("/echo sent").literal(),
-        note("/echo reported").with_origin(Origin::plugin("p")),
-    ] {
+    // The kernel has no slash commands: a `/` line is text to it.
+    for typed in [note("hi"), note("!ls"), note("/echo typed")] {
         app.world_mut().trigger(typed);
     }
     app.update();
-    assert_eq!(app.world().resource::<Echoed>().0, ["hello", "typed"]);
     let sent: Vec<String> = messages(&app, agent)
         .iter()
         .flat_map(|message| match message {
@@ -565,11 +558,5 @@ fn observers_edit_what_the_user_typed_before_it_is_delivered_or_run_as_a_command
             _ => None,
         })
         .collect();
-    assert_eq!(
-        sent,
-        [
-            "/echo sent",
-            "[Output of plugin p, not the user's words]\n/echo reported"
-        ]
-    );
+    assert_eq!(sent, ["hello", "/echo typed"]);
 }

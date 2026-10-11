@@ -37,8 +37,12 @@ use crate::support::{files_under, output};
 pub(crate) const HEADER: &str = "file\tsource\tlines\tbranches\tcovered lines\tcovered branches";
 
 /// Packages left out of the measurement: the nested minimal runner repeats
-/// sources `rig-cassette` already runs, and xtask is not production code.
-const EXCLUDED_PACKAGES: &[&str] = &["rig-cassette-minimal", "xtask"];
+/// sources `rig-cassette` already runs, xtask is not production code, and
+/// the plugin corpus (a cargo glob over its `publish = false` fixtures) is
+/// neither production code nor a library's own tests: a library file is
+/// held to what its own crate's tests cover, never to what a corpus plugin
+/// happens to run.
+const EXCLUDED_PACKAGES: &[&str] = &["rig-cassette-minimal", "xtask", "corpus-*"];
 
 /// Environment the per-test wrapper reads.
 const WRAP_OUT: &str = "RIG_COVERAGE_OUT";

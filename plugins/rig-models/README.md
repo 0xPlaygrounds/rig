@@ -4,7 +4,8 @@ Choosing a model: `-m`, `/model`, `/effort`, and with the default `tui`
 feature their pickers and both in the terminal view's status line
 (`ModelsPlugin`),
 and the model and reasoning setting a new session starts with, the last ones
-chosen (`DefaultsPlugin`).
+chosen (`DefaultsPlugin`). Other plugins add choices to `/model` with
+`ModelItem`s, and say what an agent's model is with a `ModelLabel`.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
 on the public API of the crates it depends on. Its plugins are in the default

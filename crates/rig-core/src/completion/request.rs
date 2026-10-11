@@ -60,6 +60,9 @@ impl std::fmt::Display for Document {
     }
 }
 
+/// A tool the model may call: its name, description and argument schema,
+/// sent to the model, and what the tool does to the world
+/// ([`ToolAnnotations`]), which stays with the host.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct ToolDefinition {
     /// Tool name exposed to the model. It must match the registered tool name.
@@ -68,11 +71,16 @@ pub struct ToolDefinition {
     pub description: String,
     /// JSON Schema describing tool arguments.
     pub parameters: serde_json::Value,
+    /// What calling the tool does to the world, for the host's policies
+    /// (approval, plan mode, running calls side by side). Never sent to
+    /// the model; written only when something is stated.
+    #[serde(default, skip_serializing_if = "ToolAnnotations::is_empty")]
+    pub annotations: ToolAnnotations,
 }
 
 impl ToolDefinition {
     /// A tool the model may call by `name`, with arguments matching the
-    /// JSON Schema `parameters`.
+    /// JSON Schema `parameters`, and no annotations.
     pub fn new(
         name: ToolName,
         description: impl Into<String>,
@@ -82,7 +90,118 @@ impl ToolDefinition {
             name,
             description: description.into(),
             parameters,
+            annotations: ToolAnnotations::default(),
         }
+    }
+
+    /// The same definition with `annotations`.
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.annotations = annotations;
+        self
+    }
+}
+
+/// What calling a tool does to the world, as the Model Context Protocol's
+/// tool annotations state it, and spelled as they are on its wire
+/// (`readOnlyHint`, …), so an MCP tool's annotations read straight into
+/// one. Each is a hint a tool's author gives: a host's policies read them
+/// (approval, plan mode, which calls run side by side), never trusting a
+/// tool it does not trust for them. A hint left unset takes the protocol's
+/// default, which the accessors apply: not read-only, destructive, not
+/// idempotent, open world.
+///
+/// ```
+/// use rig_core::completion::ToolAnnotations;
+///
+/// let read = ToolAnnotations::default().with_read_only(true).with_open_world(false);
+/// assert!(read.read_only() && !read.destructive() && !read.open_world());
+/// let unknown = ToolAnnotations::default();
+/// assert!(!unknown.read_only() && unknown.destructive() && unknown.open_world());
+/// let mcp: ToolAnnotations = serde_json::from_value(serde_json::json!({"readOnlyHint": true}))?;
+/// assert!(mcp.read_only());
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolAnnotations {
+    /// A human-readable title for the tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    /// Whether the tool changes nothing in its environment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_only_hint: Option<bool>,
+    /// Whether a tool that changes things may also destroy or overwrite
+    /// what was there (rather than only add). Meaningless for a read-only
+    /// tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub destructive_hint: Option<bool>,
+    /// Whether calling the tool again with the same arguments has no
+    /// further effect. Meaningless for a read-only tool.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub idempotent_hint: Option<bool>,
+    /// Whether the tool reaches beyond a closed set of things, such as the
+    /// web or a shell; `false` for one that works on a known store, such
+    /// as the project's files.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_world_hint: Option<bool>,
+}
+
+impl ToolAnnotations {
+    /// Whether nothing is stated.
+    pub fn is_empty(&self) -> bool {
+        *self == Self::default()
+    }
+
+    /// Whether the tool changes nothing: the hint, else `false`.
+    pub fn read_only(&self) -> bool {
+        self.read_only_hint.unwrap_or(false)
+    }
+
+    /// Whether the tool may destroy or overwrite something: never for a
+    /// read-only tool, else the hint, else `true`.
+    pub fn destructive(&self) -> bool {
+        !self.read_only() && self.destructive_hint.unwrap_or(true)
+    }
+
+    /// Whether repeating a call has no further effect: always for a
+    /// read-only tool, else the hint, else `false`.
+    pub fn idempotent(&self) -> bool {
+        self.read_only() || self.idempotent_hint.unwrap_or(false)
+    }
+
+    /// Whether the tool reaches an open world: the hint, else `true`.
+    pub fn open_world(&self) -> bool {
+        self.open_world_hint.unwrap_or(true)
+    }
+
+    /// The same annotations with a title.
+    pub fn with_title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// The same annotations stating whether the tool is read-only.
+    pub fn with_read_only(mut self, read_only: bool) -> Self {
+        self.read_only_hint = Some(read_only);
+        self
+    }
+
+    /// The same annotations stating whether the tool is destructive.
+    pub fn with_destructive(mut self, destructive: bool) -> Self {
+        self.destructive_hint = Some(destructive);
+        self
+    }
+
+    /// The same annotations stating whether the tool is idempotent.
+    pub fn with_idempotent(mut self, idempotent: bool) -> Self {
+        self.idempotent_hint = Some(idempotent);
+        self
+    }
+
+    /// The same annotations stating whether the tool reaches an open world.
+    pub fn with_open_world(mut self, open_world: bool) -> Self {
+        self.open_world_hint = Some(open_world);
+        self
     }
 }
 
@@ -1099,6 +1218,14 @@ pub struct CompletionRequest {
     /// provider, above the mapped options and below `additional_params`.
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
+    /// How many leading messages of [`Self::chat_history`] are a stable
+    /// prefix that later requests repeat, so content after it (per-turn
+    /// memory, a reminder) does not cost the cached prefix. A provider that
+    /// takes cache markers (Anthropic's Messages family) marks the prefix's
+    /// end when it has a marker to spare; one that caches prefixes on its
+    /// own sends nothing for it. `None` marks nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_breakpoint: Option<usize>,
 }
 
 impl CompletionRequest {
@@ -1303,6 +1430,7 @@ impl CompletionRequest {
             accept_unknown_finish_reasons: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
+            cache_breakpoint: None,
         }
     }
 

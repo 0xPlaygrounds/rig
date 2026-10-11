@@ -165,6 +165,8 @@ members = [
     "crates/*",
     # The rig agent's plugin crates, built on rig-harness's public API.
     "plugins/*",
+    # The plugin corpus: plugins written to shape and prove the kernel.
+    "corpus/*",
     "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",

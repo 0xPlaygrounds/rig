@@ -85,6 +85,7 @@ fn image_tool_result_contents(images: usize) -> serde_json::Value {
         name: ToolName::new("shot").expect("a tool name"),
         description: "a screenshot".to_owned(),
         parameters: serde_json::json!({"type": "object"}),
+        annotations: Default::default(),
     }];
     request.chat_history = vec![
         Message::user("shoot"),

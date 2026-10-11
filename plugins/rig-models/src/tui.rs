@@ -1,9 +1,15 @@
-//! The terminal view's part: the `/model` and `/effort` pickers, and each
-//! agent's model and reasoning setting in its status line.
+//! The terminal view's part: the `/model` and `/effort` pickers, `/model`'s
+//! completions, and each agent's model and reasoning setting in its status
+//! line.
+
+use std::collections::HashMap;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::ModelSpec;
-use rig_tui::{PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
+use rig_harness::rig_core::catalog::{Connector, ModelSpec, ModelStatus};
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_tui::{ArgCompletion, Side, StatusItem, StatusItems, StatusSystems, Tone, TuiInput};
+
+use super::{ModelItem, ModelLabel};
 
 /// Where the model is: always shown.
 const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
@@ -11,55 +17,155 @@ const MODEL: StatusItem = StatusItem::at(Side::Left, 30, u8::MAX);
 const REASONING: StatusItem = StatusItem::at(Side::Left, 40, 12);
 
 pub(super) fn add(app: &mut App) {
-    app.add_message::<PickRequest>()
-        .add_systems(PostUpdate, show.in_set(StatusSystems));
+    app.add_systems(PostUpdate, show.in_set(StatusSystems))
+        .add_systems(Update, complete_models);
 }
 
-/// Lets the user pick one of the models that can be reached.
-pub(super) fn pick_model(
-    agent: Entity,
-    models: &Models,
-    picks: &mut MessageWriter<PickRequest>,
-    notices: &mut MessageWriter<Notice>,
-) {
-    let items: Vec<PickItem> = models
-        .0
-        .reachable()
-        .into_iter()
+/// What a catalog model is to `/model`: its reference, and its line with
+/// why it cannot be used, if it cannot.
+struct Listed {
+    reference: String,
+    line: String,
+}
+
+/// Every catalog model: first those that can be reached, as rig-core
+/// orders them, then the others with why not. Whether a provider's models
+/// connect is asked once per provider, as rig-core's `reachable` does.
+fn catalog(models: &Connector) -> Vec<Listed> {
+    let reachable = models.reachable();
+    let mut statuses: HashMap<ProviderId, ModelStatus> = HashMap::new();
+    // `reachable` borrows from the catalog: the same entry is the same
+    // address.
+    let others = models.catalog().iter().filter(|spec| {
+        !reachable
+            .iter()
+            .any(|reached| std::ptr::eq(*reached, *spec))
+    });
+    let mut listed: Vec<Listed> = reachable
+        .iter()
         .map(|spec| {
-            let reference = spec.reference();
-            let note = match models.0.plan(spec) {
+            let note = match models.plan(spec) {
                 Some(plan) => format!("  ({plan} plan)"),
                 None if spec.provider.requires_credential() => String::new(),
                 None => "  (no key needed)".to_owned(),
             };
-            PickItem {
-                label: format!("{reference}  {}{note}", spec.display_name),
-                command: format!("model {reference}"),
-            }
+            listing(spec, &note)
         })
         .collect();
+    for spec in others {
+        let status = match spec.tools {
+            false => ModelStatus::NoTools,
+            true => statuses
+                .entry(spec.provider)
+                .or_insert_with(|| models.status(spec))
+                .clone(),
+        };
+        let note = match status {
+            ModelStatus::Usable => String::new(),
+            ModelStatus::NoKey(tried) => format!("  (no key: set {})", tried.join(" or ")),
+            ModelStatus::NoTools => "  (calls no tools)".to_owned(),
+            ModelStatus::Unavailable(why) => format!("  (unavailable: {why})"),
+        };
+        listed.push(listing(spec, &note));
+    }
+    listed
+}
+
+/// `spec` listed with `note`.
+fn listing(spec: &ModelSpec, note: &str) -> Listed {
+    let reference = spec.reference();
+    Listed {
+        line: format!("{reference}  {}{note}", spec.display_name),
+        reference,
+    }
+}
+
+/// Lets the user pick one of the [`ModelItem`]s, then of the catalog's
+/// models, each with why it cannot be used, if it cannot.
+pub(super) fn pick_model(
+    agent: Entity,
+    (models, contributed): (&Models, &Query<&ModelItem>),
+    notices: &mut MessageWriter<Notice>,
+    commands: &mut Commands,
+) {
+    let mut contributed: Vec<&ModelItem> = contributed.iter().collect();
+    contributed.sort_by(|a, b| a.name.cmp(&b.name));
+    let contributed = contributed.into_iter().map(|item| PickItem {
+        label: item.label.clone(),
+        command: item.command.clone(),
+    });
+    let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
+        label: listed.line,
+        command: format!("model {}", listed.reference),
+    });
+    let items: Vec<PickItem> = contributed.chain(listed).collect();
     if items.is_empty() {
-        notices.write(Notice::error(
-            agent,
-            "No provider with tool-calling models can be reached: set a key such as \
-             OPENAI_API_KEY, or sign in with /login chatgpt.",
-        ));
+        notices.write(Notice::error(agent, "The catalog lists no model."));
         return;
     }
-    picks.write(PickRequest {
-        agent,
-        title: "Model".to_owned(),
+    commands.spawn(Picker {
         items,
-        selected: 0,
+        ..Picker::new("Model").for_agent(agent)
     });
 }
 
+/// On the entity of `/model`'s completions.
+#[derive(Component)]
+struct ModelCompletions;
+
+/// Offers the [`ModelItem`]s' names and the catalog's models as `/model`'s
+/// argument, each with its line: built once the input is a `/model`
+/// command, again only after the catalog or the choices plugins add
+/// changed. Listing the catalog asks each provider whether it connects,
+/// too slow for every start.
+fn complete_models(
+    models: Res<Models>,
+    items: Query<&ModelItem>,
+    changed: Query<(), Changed<ModelItem>>,
+    mut gone: RemovedComponents<ModelItem>,
+    input: Option<Res<TuiInput>>,
+    completions: Query<Entity, With<ModelCompletions>>,
+    mut current: Local<bool>,
+    mut commands: Commands,
+) {
+    if models.is_changed() || !changed.is_empty() || gone.read().count() > 0 {
+        *current = false;
+    }
+    let typed = input.is_some_and(|input| {
+        let command = input.text().strip_prefix('/');
+        command.and_then(|line| line.split_whitespace().next()) == Some("model")
+    });
+    if *current || !typed {
+        return;
+    }
+    *current = true;
+    let mut contributed: Vec<&ModelItem> = items.iter().collect();
+    contributed.sort_by(|a, b| a.name.cmp(&b.name));
+    let mut completion = ArgCompletion::new("model");
+    for item in contributed {
+        completion = completion.candidate(item.name.clone(), item.label.clone());
+    }
+    for listed in catalog(&models.0) {
+        let detail = listed
+            .line
+            .strip_prefix(&listed.reference)
+            .unwrap_or_default();
+        completion = completion.candidate(listed.reference.clone(), detail.trim_start());
+    }
+    match completions.iter().next() {
+        Some(entity) => {
+            commands.entity(entity).insert(completion);
+        }
+        None => {
+            commands.spawn((Name::new("completions:model"), ModelCompletions, completion));
+        }
+    }
+}
+
 /// Lets the user pick one of the reasoning settings of `spec`.
-pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, picks: &mut MessageWriter<PickRequest>) {
-    picks.write(PickRequest {
-        agent,
-        title: format!("Reasoning for {}", spec.display_name),
+pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Commands) {
+    let title = format!("Reasoning for {}", spec.display_name);
+    commands.spawn(Picker {
         items: spec
             .reasoning
             .choices()
@@ -69,18 +175,33 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, picks: &mut MessageWr
                 command: format!("effort {}", choice.name),
             })
             .collect(),
-        selected: 0,
+        ..Picker::new(title).for_agent(agent)
     });
 }
 
+/// Each agent's model, its [`ModelLabel`] or else its choice, and its
+/// reasoning setting, when one of them changed.
 fn show(
-    mut agents: Query<
-        (Option<&ModelChoice>, &Effort, &mut StatusItems),
-        Or<(Changed<ModelChoice>, Changed<Effort>)>,
-    >,
+    mut agents: Query<(
+        Entity,
+        Option<&ModelChoice>,
+        Option<&ModelLabel>,
+        &Effort,
+        &mut StatusItems,
+    )>,
+    changed: Query<(), Or<(Changed<ModelChoice>, Changed<Effort>, Changed<ModelLabel>)>>,
+    mut unlabeled: RemovedComponents<ModelLabel>,
 ) {
-    for (model, effort, mut items) in &mut agents {
-        let model = model.map_or("no model: /model picks one", |model| &model.0);
+    let unlabeled: Vec<Entity> = unlabeled.read().collect();
+    for (agent, model, label, effort, mut items) in &mut agents {
+        if !changed.contains(agent) && !unlabeled.contains(&agent) {
+            continue;
+        }
+        let model = match (label, model) {
+            (Some(label), _) => &label.0,
+            (None, Some(model)) => &model.0,
+            (None, None) => "no model: /model picks one",
+        };
         items.show(MODEL.says(model, Tone::Bold));
         items.show(REASONING.says(format!("reasoning {effort}"), Tone::Dim));
     }

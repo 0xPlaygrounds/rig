@@ -75,6 +75,7 @@ fn operation_definition(name: &str, description: &str) -> ToolDefinition {
             },
             "required": ["x", "y"]
         }),
+        annotations: Default::default(),
     }
 }
 

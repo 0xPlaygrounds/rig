@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use rig_harness::harness_protocol::{RELOAD_EXIT_CODE, first_errors};
+use rig_harness::harness_protocol::first_errors;
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
@@ -210,16 +210,15 @@ fn drain_reload(
     );
 }
 
-/// Exits with [`RELOAD_EXIT_CODE`] once the build is ready and no turn
-/// runs, at most once.
+/// Exits to reload once the build is ready and no turn runs, at most once.
 fn finish_reload(
     status: Res<ReloadStatus>,
     turns: Query<(), With<TurnOf>>,
     mut exiting: Local<bool>,
-    mut exit: MessageWriter<AppExit>,
+    mut commands: Commands,
 ) {
     if !*exiting && *status == ReloadStatus::Ready && turns.is_empty() {
         *exiting = true;
-        exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
+        commands.trigger(Exit(ExitReason::Reload));
     }
 }

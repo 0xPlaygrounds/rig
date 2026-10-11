@@ -223,6 +223,7 @@ fn add_tool_definition() -> rig::completion::ToolDefinition {
             "properties": {"x": {"type": "integer"}, "y": {"type": "integer"}},
             "required": ["x", "y"]
         }),
+        annotations: Default::default(),
     }
 }
 

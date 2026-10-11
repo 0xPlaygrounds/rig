@@ -374,6 +374,8 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
                     report.message
                 );
             }
+            // Not among the checks that compare.
+            RequestCheck::Skip => {}
         }
         drop(dispatcher);
         corpus::within(driver).await.expect("the driver ends");

@@ -20,8 +20,7 @@ use bevy_log::warn;
 
 use rig_ecs::calls::Wake;
 
-/// The exit code of a signalled exit, as a shell reports Ctrl+C.
-const SIGNAL_EXIT_CODE: u8 = 130;
+use super::exit::SIGNAL_EXIT_CODE;
 
 /// How long a clean exit may take before a repeat signal forces it.
 const FORCE_AFTER: Duration = Duration::from_secs(2);

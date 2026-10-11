@@ -1,101 +1,106 @@
-//! The one dispatch path. Every model call and tool call goes through
-//! [`Effects::dispatch`] under the agent's stable id and an effect id; an
-//! open tool call, which no handler answers, gets its id when it is opened.
-//! A plugin that keeps an effect log, such as rig-harness's, inserts
-//! [`Effects::recorded_by`] its recorder, which then sees every effect with
-//! rig-core's effect types; without one nothing is recorded.
+//! The one dispatch path. Every effect entity ([`stage`](super::stage)),
+//! a model call, a tool call or a plugin's effect, runs through
+//! [`Effects`] under its effect id, recorded in the kernel's own
+//! [`RecordBuffer`], and its record is written as a
+//! [`Recorded`](super::stage::Recorded) when it settles. A plugin that
+//! keeps an effect log reads those, and continues the ids of the log it
+//! appends to with [`Effects::continue_after`].
+//!
+//! A streamed model call is recorded as the response it ended with, not
+//! its stream items: views follow the stream on the call ([`Partial`]),
+//! and a replay answers the call with its recorded outcome before it
+//! starts, in Gate, so nothing re-emits a stream.
+//!
+//! [`Partial`]: super::agent::Partial
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
-use rig_core::effect::{EffectId, EffectKind, tool_key};
-use rig_core::error::ErrorReport;
-use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
-
 use bevy_tasks::ConditionalSendFuture;
+use rig_core::effect::Outcome;
+use rig_core::effect::{EffectId, EffectKind};
+use rig_core::error::ErrorReport;
+use rig_core::serve::{
+    Dispatch, ErasedHandler, Origin, RecordBuffer, Recorder, Reply, catch_panics,
+};
+use rig_core::tool::{PublishedContext, ToolResultContext};
 
-/// The effect ids, and the recorder of every effect, if any.
-#[derive(Resource, Default)]
+/// What a handler's run left: its answer, and what a tool published beside
+/// it, if anything.
+pub(crate) type Ran = (Result<Outcome, ErrorReport>, Option<ToolResultContext>);
+
+/// The effect ids, and the records of the effects running.
+#[derive(Resource)]
 pub struct Effects {
-    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     /// The last id taken.
     last: AtomicU64,
+    /// The records of effect entities' dispatches, timed, until they settle;
+    /// without stream items.
+    buffer: RecordBuffer,
+}
+
+impl Default for Effects {
+    fn default() -> Self {
+        Self {
+            last: AtomicU64::new(0),
+            buffer: RecordBuffer::new().timed(),
+        }
+    }
 }
 
 impl Effects {
-    /// Effects recorded by `recorder`, with ids after `last`, such as the
-    /// highest id of the log it continues, so ids keep increasing across
-    /// restarts.
-    pub fn recorded_by(recorder: Arc<dyn Recorder + Send + Sync>, last: Option<EffectId>) -> Self {
+    /// Effects with ids after `last`, such as the highest id of the effect
+    /// log a plugin continues, so ids keep increasing across restarts.
+    pub fn continue_after(last: Option<EffectId>) -> Self {
         Self {
-            recorder: Some(recorder),
             last: AtomicU64::new(last.map_or(0, EffectId::as_u64)),
+            ..Self::default()
         }
     }
 
-    /// Dispatch `kind` to `handler`, recorded under `scope` (the agent's
-    /// id) with `parent` as the dispatch that asked for it. Returns the
-    /// effect id and the reply. Dropping the reply before it resolves
-    /// records the effect as cancelled.
-    pub fn dispatch(
+    /// Runs `kind` through `handler` as the effect `id` of an entity, from
+    /// `origin`, recorded in the kernel's buffer; `consume` turns the reply
+    /// into the outcome, such as `Reply::into_outcome`. A panic in the
+    /// handler or its stream becomes an internal error, recorded as its
+    /// outcome. What a tool publishes into its context comes back beside it.
+    pub(crate) fn run<F>(
         &self,
-        scope: &str,
-        parent: Option<EffectId>,
+        id: EffectId,
+        origin: Origin,
         handler: ErasedHandler,
         kind: EffectKind,
-    ) -> (
-        EffectId,
-        impl ConditionalSendFuture<Output = Reply> + 'static,
-    ) {
-        let id = self.next_id();
-        let mut dispatch = Dispatch::new(id, kind.streams());
-        if let Some(recorder) = &self.recorder {
-            let key = handler.descriptor().key;
-            recorder.begin(id, key, kind.clone(), origin(scope, parent));
-            dispatch = dispatch.recorded_by(recorder.clone());
+        consume: impl FnOnce(Reply) -> F + Send + 'static,
+    ) -> impl ConditionalSendFuture<Output = Ran> + 'static
+    where
+        F: ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static,
+    {
+        let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
+        recorder.begin(id, handler.descriptor().key, kind.clone(), origin);
+        let published = PublishedContext::new();
+        let dispatch = Dispatch::new(id, kind.streams())
+            .with_scope(published.clone())
+            .recorded_by(recorder.clone());
+        let work = async move { consume(handler.handle(kind, dispatch).await).await };
+        let work = catch_panics(Some(recorder), id, work);
+        async move {
+            let outcome = work.await;
+            let facts = published.take().map(|context| context.result_context());
+            (
+                outcome,
+                facts.filter(|facts| *facts != ToolResultContext::default()),
+            )
         }
-        (id, async move { handler.handle(kind, dispatch).await })
     }
 
-    /// Records the call of the tool `name` with `args`, under `scope` and
-    /// `parent` as [`dispatch`](Self::dispatch) does, for a call no handler
-    /// answers: its outcome is recorded when the returned [`OpenRecord`] is
-    /// settled, or as cancelled when it is dropped first.
-    pub(crate) fn open(
-        &self,
-        scope: &str,
-        parent: Option<EffectId>,
-        name: &str,
-        args: String,
-    ) -> OpenRecord {
-        let kind = EffectKind::ToolCall {
-            name: name.to_owned(),
-            args,
-        };
-        OpenRecord::begin(
-            self.recorder.clone(),
-            self.next_id(),
-            tool_key(name),
-            kind,
-            origin(scope, parent),
-        )
+    /// The records of effect entities' dispatches.
+    pub(crate) fn buffer(&self) -> &RecordBuffer {
+        &self.buffer
     }
 
     /// Takes the next effect id.
-    fn next_id(&self) -> EffectId {
+    pub(crate) fn next_id(&self) -> EffectId {
         EffectId::from_raw(self.last.fetch_add(1, Ordering::Relaxed) + 1)
-    }
-
-    /// Run `work`, the task that drives the effect `id`. A panic in it, in
-    /// the handler or in the reply's stream, becomes an internal error that
-    /// is also recorded as the effect's outcome.
-    pub(crate) fn caught<T: 'static>(
-        &self,
-        id: EffectId,
-        work: impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static,
-    ) -> impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static {
-        catch_panics(self.recorder.clone(), id, work)
     }
 }
 
@@ -121,11 +126,3 @@ unsafe impl Send for Handler {}
     not(target_feature = "atomics")
 ))]
 unsafe impl Sync for Handler {}
-
-/// Where an effect of the agent `scope` comes from.
-fn origin(scope: &str, parent: Option<EffectId>) -> Origin {
-    Origin {
-        parent,
-        scope: Some(Arc::from(scope)),
-    }
-}

@@ -37,6 +37,7 @@ fn request() -> CompletionRequest {
             "type": "object",
             "properties": {"q": {"type": "string"}}
         }),
+        annotations: Default::default(),
     }])
 }
 

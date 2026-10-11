@@ -1,21 +1,36 @@
+use std::cell::Cell;
+use std::collections::HashSet;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::completion::Message;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_ecs::journal::commit_message;
+use schemars::JsonSchema;
+use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until, start_call};
+use rig_harness_test_support::{
+    app_on, calls, commit_message, connect, reply, run_until, start_call,
+};
 
 /// Each message delivered: the agent it went to, the request it names, its
 /// mode and its text.
 #[derive(Resource, Default)]
 struct Delivered(Vec<(Entity, String, DeliveryMode, String)>);
 
-/// An app on a session store with the subagents, after its first frame
+/// The arguments of `look`, a read-only tool every agent may call.
+#[derive(Deserialize, JsonSchema)]
+struct LookArgs {}
+
+/// Answers a `look` call at once.
+fn look(called: On<ToolCalled<LookArgs>>, mut commands: Commands) {
+    let seen = Outcome::from(ToolResult::success("seen".into()));
+    commands.entity(called.call).insert_if_new(seen);
+}
+
+/// An app on a session store with the subagents and `look`, after its first frame
 /// restored the session, and the agent nothing spawned. No catalog model
 /// connects: agents have only the connections a test gives them, and a
 /// subagent on its parent's model shares the parent's.
@@ -31,13 +46,21 @@ impl Session {
         let (mut app, wakes) = app_on(store);
         app.insert_resource(Models(Connector::new(Catalog::default())))
             .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
+            .add_open_tool("look", "Look.", read_only(), look)
             .init_resource::<Delivered>()
-            .add_observer(|sent: On<Deliver>, mut delivered: ResMut<Delivered>| {
-                let request = sent.origin.request.clone().map(|request| request.0);
-                let text = sent.text.clone();
-                let entry = (sent.entity, request.unwrap_or_default(), sent.mode, text);
-                delivered.0.push(entry);
-            });
+            .add_observer(
+                |sent: On<Add<Incoming>>,
+                 messages: Query<(&Incoming, &ForAgent)>,
+                 mut delivered: ResMut<Delivered>| {
+                    let Ok((message, &ForAgent(to))) = messages.get(sent.entity) else {
+                        return;
+                    };
+                    let request = message.origin.request.clone().map(|request| request.0);
+                    let text = message.text.clone();
+                    let entry = (to, request.unwrap_or_default(), message.mode, text);
+                    delivered.0.push(entry);
+                },
+            );
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
             app.world_mut().spawn((Agent, connection, choice));
@@ -51,12 +74,14 @@ impl Session {
     }
 
     /// `agent` calls `tool` with `args` in call `id`, as the model call 1
-    /// asked, and gets its output once it has one.
+    /// asked, run by passes of the stages until it is answered and nothing
+    /// else of a frame, and gets its output once it has one.
     fn call(&mut self, agent: Entity, tool: &str, id: &str, args: serde_json::Value) -> String {
         let started = start_call(self.app.world_mut(), agent, (tool, id), args);
-        let output = started.and_then(|call| self.app.world().get::<ToolOutput>(call));
+        self.passes(|world| started.is_some_and(|call| world.get::<Outcome>(call).is_some()));
+        let output = started.and_then(|call| self.app.world().get::<Outcome>(call));
         output
-            .map(|output| output.0.output().render())
+            .map(|output| output.tool_result().output().render())
             .unwrap_or_default()
     }
 
@@ -67,6 +92,25 @@ impl Session {
         let spawned = self.app.world().get::<Spawned>(self.parent);
         let child = spawned.and_then(|spawned| spawned.iter().last());
         child.unwrap_or(Entity::PLACEHOLDER)
+    }
+
+    /// Runs passes of the stages, and nothing else of a frame, until
+    /// `done` or 8 passes ran.
+    fn passes(&mut self, done: impl Fn(&World) -> bool) {
+        for _ in 0..8 {
+            if done(self.app.world()) {
+                return;
+            }
+            self.app.world_mut().run_schedule(AgentPass);
+        }
+    }
+
+    /// The subagents and helpers of `agent`, in the order they were spawned.
+    fn children(&self, agent: Entity) -> Vec<Entity> {
+        let spawned = self.app.world().get::<Spawned>(agent);
+        spawned
+            .map(|spawned| spawned.iter().collect())
+            .unwrap_or_default()
     }
 
     /// The short id of `agent`.
@@ -168,11 +212,19 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
 #[test]
 fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_interrupted() {
     let store = MemoryStore::default();
-    // Its turns are never read: the session stops before a reply arrives.
+    // Its turns are never read: every model call is held, and the session
+    // stops before any is sent.
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&store, Some(&model));
+    let hold = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
+        for call in &calls {
+            commands.spawn(HoldOf(call));
+        }
+    };
+    session.app.add_systems(AgentPass, hold.in_set(Stage::Gate));
     let asked = Message::user("Find a name.");
-    commit_message(session.app.world_mut(), session.parent, asked);
+    let added = commit_message(session.app.world_mut(), session.parent, asked);
+    assert!(added.is_ok(), "{added:?}");
     let (a, b, c) = (session.task("ta"), session.task("tb"), session.task("tc"));
     // `a` waits on `c` through `b`, so `c` can neither ask nor wait for it;
     // the parent is idle, so nothing would come from it.
@@ -216,4 +268,370 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
     };
     let roles: Vec<usize> = children.into_iter().map(sections).collect();
     assert_eq!(roles, [2, 2, 2]);
+}
+
+/// A read-only tool's options.
+fn read_only() -> ToolOptions<'static> {
+    ToolOptions {
+        rules: &[],
+        footprint: Some(Footprint::ReadOnly),
+    }
+}
+
+/// Adds the argument `name` to `task`'s parameters, as a plugin's
+/// `finish` would.
+fn add_task_argument(world: &mut World, name: &str) {
+    let mut tools = world.query::<&mut ToolDef>();
+    for mut tool in tools.iter_mut(world) {
+        let tool = &mut tool.0;
+        if tool.name.as_str() == TASK
+            && let Some(properties) = tool.parameters.get_mut("properties")
+            && let Some(properties) = properties.as_object_mut()
+        {
+            properties.insert(name.to_owned(), json!({ "type": "string" }));
+        }
+    }
+}
+
+#[test]
+fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it() {
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    // A plugin's own `task` argument, `profile`, reaches the request, and
+    // picks its tools and system prompt; the agent spawned gets the
+    // profile's prompt section.
+    add_task_argument(session.app.world_mut(), "profile");
+    let apply = |mut requests: Query<&mut SpawnSubagent, Added<Admitted>>| {
+        for mut request in &mut requests {
+            if request.extra.get("profile") == Some(&json!("reviewer")) {
+                request.tools = Some(vec!["look".to_owned()]);
+                request.system_prompt = Some("You review.".to_owned());
+            }
+        }
+    };
+    let section = |spawned: Query<&SpawnedAgent, Added<SpawnedAgent>>, mut commands: Commands| {
+        for agent in &spawned {
+            let order = PromptSection::ORDER_ROLE + 5;
+            let section = PromptSection::new(order, "reviewer", "Be terse.");
+            commands.spawn((section, SectionOf(agent.0)));
+        }
+    };
+    session.app.add_systems(
+        AgentPass,
+        (apply.in_set(Stage::Prepare), section.in_set(Stage::Review)),
+    );
+    let args = json!({ "description": "Review", "prompt": "Review src.", "profile": "reviewer" });
+    let said = session.call(session.parent, TASK, "t1", args);
+    assert!(said.starts_with("Started subagent"), "{said}");
+
+    let child = session.children(session.parent).last().copied();
+    let world = session.app.world();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let access = world.get::<ToolAccess>(child);
+    let only_look = matches!(access, Some(ToolAccess::Only(tools)) if tools == &["look"]);
+    assert!(only_look, "its profile's tools only");
+    let prompt = world
+        .get::<SystemPrompt>(child)
+        .map(|prompt| prompt.0.to_string());
+    assert_eq!(prompt.as_deref(), Some("You review."));
+    let sections = world
+        .get::<AgentSections>(child)
+        .map_or(0, |of| of.iter().count());
+    assert_eq!(sections, 2, "its role and the profile's");
+    // The spawn is an effect of its own, nested under the call, recorded
+    // with the request as it started and the agent's id.
+    let id = world.get::<AgentId>(child).map(|id| id.0.clone());
+    let records = world.resource::<Messages<Recorded>>();
+    let spawn = records
+        .iter_current_update_messages()
+        .find_map(|Recorded(record)| match (&record.kind, &record.outcome) {
+            (
+                rig_core::effect::EffectKind::Custom { kind, payload },
+                Ok(rig_core::effect::Outcome::Custom { payload: answer }),
+            ) if &**kind == SUBAGENT => Some((payload.clone(), answer.clone(), record.parent)),
+            _ => None,
+        });
+    let (request, answer, parent) = spawn.unwrap_or_default();
+    assert_eq!(request.get("tools"), Some(&json!(["look"])));
+    assert_eq!(
+        request.get("extra"),
+        Some(&json!({ "profile": "reviewer" }))
+    );
+    let agent = answer.get("agent").and_then(|agent| agent.as_str());
+    assert_eq!(agent.map(str::to_owned), id);
+    let call = world.get::<EffectParent>(child).map(|parent| parent.0);
+    assert!(
+        parent.is_some() && call.is_some() && parent != call,
+        "{parent:?} {call:?}"
+    );
+}
+
+#[test]
+fn the_policy_limits_depth_and_a_gate_holds_spawns_until_a_slot_frees() {
+    /// On a hold of a request until its parent has a slot free.
+    #[derive(Component)]
+    struct Slot;
+    const SLOTS: usize = 2;
+    let working = |children: &Query<(&SpawnedBy, &Lifecycle)>, parent: Entity| {
+        let working = |(by, step): &(&SpawnedBy, &Lifecycle)| {
+            by.0 == parent && matches!(step, Lifecycle::Working | Lifecycle::WaitingOn(_))
+        };
+        children.iter().filter(working).count()
+    };
+    // At most two subagents of an agent work at once: a Gate system holds
+    // the others' requests, and a Review system releases one as a slot
+    // frees.
+    let queue = move |requests: Query<(Entity, &ForAgent), (With<SpawnSubagent>, Undecided)>,
+                      children: Query<(&SpawnedBy, &Lifecycle)>,
+                      mut commands: Commands| {
+        let mut admitted = 0;
+        for (request, &ForAgent(parent)) in &requests {
+            if working(&children, parent) + admitted < SLOTS {
+                admitted += 1;
+            } else {
+                commands.spawn((Slot, HoldOf(request)));
+            }
+        }
+    };
+    let release = move |holds: Query<(Entity, &HoldOf), With<Slot>>,
+                        requests: Query<&ForAgent>,
+                        children: Query<(&SpawnedBy, &Lifecycle)>,
+                        mut commands: Commands| {
+        let mut released = 0;
+        for (hold, HoldOf(request)) in &holds {
+            let Ok(&ForAgent(parent)) = requests.get(*request) else {
+                continue;
+            };
+            if working(&children, parent) + released < SLOTS {
+                released += 1;
+                commands.entity(hold).despawn();
+            }
+        }
+    };
+    let model = MockCompletionModel::from_stream_turns((0..5).map(|_| reply("Done.")));
+    let mut session = Session::new(&MemoryStore::default(), Some(&model));
+    session
+        .app
+        .insert_resource(SubagentPolicy { max_depth: 1 })
+        .add_systems(
+            AgentPass,
+            (queue.in_set(Stage::Gate), release.in_set(Stage::Review)),
+        );
+    let mut tasks = Vec::new();
+    for at in 0..4 {
+        let args = json!({ "description": format!("t{at}"), "prompt": "Count the files." });
+        let id = format!("t{at}");
+        tasks.extend(start_call(
+            session.app.world_mut(),
+            session.parent,
+            (TASK, &id),
+            args,
+        ));
+    }
+    session.app.update();
+    let held = |world: &mut World| world.query::<&HoldOf>().iter(world).count();
+    let spawned = session.children(session.parent).len();
+    assert_eq!((spawned, held(session.app.world_mut())), (2, 2));
+    // A call that ends first, as an interrupt ends it, ends its held
+    // request and the hold.
+    let last = tasks.last().copied().unwrap_or(Entity::PLACEHOLDER);
+    let ended = Outcome::refused("interrupted");
+    session.app.world_mut().entity_mut(last).insert(ended);
+    session.passes(|world| world.get::<Settled>(last).is_some());
+    let requests = |world: &mut World| {
+        let mut open = world.query_filtered::<(), (With<SpawnSubagent>, Without<Settled>)>();
+        open.iter(world).count()
+    };
+    let world = session.app.world_mut();
+    assert_eq!((held(world), requests(world)), (1, 1));
+
+    let most = Cell::new(0);
+    let finished = |world: &World| {
+        let children = world.get::<Spawned>(session.parent).into_iter();
+        let children = children.flat_map(|spawned| spawned.iter());
+        let steps: Vec<_> = children
+            .map(|child| world.get::<Lifecycle>(child))
+            .collect();
+        let at_work = steps
+            .iter()
+            .filter(|step| matches!(step, Some(Lifecycle::Working)));
+        most.set(most.get().max(at_work.count()));
+        steps
+            .iter()
+            .filter(|step| matches!(step, Some(Lifecycle::Finished(_))))
+            .count()
+            == 3
+    };
+    run_until(&mut session.app, &session.wakes, finished);
+    assert_eq!(session.children(session.parent).len(), 3);
+    assert_eq!(most.get(), 2, "never more than two at work");
+    let reports = session.to(session.parent);
+    let mut requests: Vec<&str> = reports.iter().map(|(request, ..)| *request).collect();
+    requests.sort_unstable();
+    assert_eq!(requests, ["t0", "t1", "t2"]);
+
+    // At the policy's depth, a subagent has no `task`, and a request for an
+    // agent of its is refused.
+    let child = session.children(session.parent).first().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let access = session.app.world().get::<ToolAccess>(child);
+    assert!(
+        access.is_some_and(|access| !access.allows(TASK)),
+        "no `task`"
+    );
+    let deeper = SpawnSubagent::helper("deeper");
+    let request = session
+        .app
+        .world_mut()
+        .spawn((deeper, ForAgent(child)))
+        .id();
+    session.passes(|world| world.get::<Outcome>(request).is_some());
+    let outcome = session.app.world().get::<Outcome>(request);
+    let refused = outcome.and_then(|outcome| outcome.0.as_ref().err());
+    let why = refused
+        .map(|report| report.message.as_str())
+        .unwrap_or_default();
+    assert!(why.contains("at most 1 deep"), "{why}");
+}
+
+#[test]
+fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
+    let parent = MockCompletionModel::from_stream_turns([reply("Noted.")]);
+    let mut session = Session::new(&MemoryStore::default(), Some(&parent));
+    // A plugin spawns a helper of its own, with its own system prompt.
+    let helping = SpawnSubagent::helper("pro")
+        .system_prompt("Argue for.")
+        .brief("Is Rust good?");
+    let request = session
+        .app
+        .world_mut()
+        .spawn((helping, ForAgent(session.parent)))
+        .id();
+    session.passes(|world| world.get::<Settled>(request).is_some());
+    let helper = session
+        .app
+        .world()
+        .get::<SpawnedAgent>(request)
+        .map(|a| a.0);
+    let helper = helper.unwrap_or(Entity::PLACEHOLDER);
+    let world = session.app.world();
+    assert_eq!(world.get::<Name>(helper).map(Name::as_str), Some("pro"));
+    let prompt = world.get::<SystemPrompt>(helper).map(|p| p.0.to_string());
+    assert_eq!(prompt.as_deref(), Some("Argue for."));
+    assert!(world.get::<Lifecycle>(helper).is_none());
+    // The parent's model cannot reach it.
+    let ask = json!({ "agent": session.short(helper), "text": "Hi." });
+    let said = session.call(session.parent, MESSAGE, "m1", ask);
+    assert!(said.contains("not an agent you can reach"), "{said}");
+
+    // A plugin stops a subagent's second model call, as a budget would, and
+    // marks every report it reads.
+    let args = json!({ "description": "Count", "prompt": "Count the files." });
+    session.call(session.parent, TASK, "t1", args);
+    let child = session.children(session.parent).last().copied();
+    let child = child.unwrap_or(Entity::PLACEHOLDER);
+    let budget = move |calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
+                       mut seen: Local<HashSet<Entity>>,
+                       mut commands: Commands| {
+        for (call, &CallOf(turn), &ForAgent(agent)) in &calls {
+            if agent == child && seen.insert(call) && seen.len() > 1 {
+                let stopped = TurnOutcome::Stopped(Some("over budget".to_owned()));
+                commands.entity(turn).insert(stopped);
+            }
+        }
+    };
+    let mark = |mut reports: Query<&mut Incoming, (With<Report>, Added<Admitted>)>| {
+        for mut report in &mut reports {
+            report.text.insert_str(0, "[report] ");
+        }
+    };
+    session.app.add_systems(
+        AgentPass,
+        (budget.in_set(Stage::Gate), mark.in_set(Stage::Prepare)),
+    );
+    let helper_model = MockCompletionModel::from_stream_turns([reply("Rust is good.")]);
+    let child_model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("Halfway there."),
+        MockStreamEvent::tool_call("l1", "look", json!({})),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    session.answer_by(helper, &helper_model);
+    session.answer_by(child, &child_model);
+    run_until(&mut session.app, &session.wakes, |world| {
+        let helper_idle = world.get::<ActiveTurn>(helper).is_none();
+        parent.request_count() > 0 && helper_model.request_count() > 0 && helper_idle
+    });
+
+    // Only the subagent reported, with why it stopped and what it had said;
+    // the helper's answer stayed its own.
+    let reports = session.to(session.parent);
+    assert_eq!(reports.len(), 1, "{reports:?}");
+    let (request, mode, text) = reports.first().copied().unwrap_or_default();
+    assert_eq!((request, mode), ("t1", DeliveryMode::Queue));
+    assert!(text.starts_with("Stopped: over budget."), "{text}");
+    assert!(text.contains("It had said: Halfway there."), "{text}");
+    assert_eq!(child_model.request_count(), 1);
+    let read = format!("{:?}", parent.requests());
+    assert!(read.contains("[report] Stopped: over budget."), "{read}");
+}
+
+/// The answers of the turns of helpers, as they ended.
+#[derive(Resource, Default)]
+struct HelperAnswers(Vec<Option<String>>);
+
+#[test]
+fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
+    let store = MemoryStore::default();
+    let parent = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&store, Some(&parent));
+    // The plugin reads the answer as the helper's turn ends.
+    session.app.init_resource::<HelperAnswers>().add_observer(
+        |settled: On<Add<Settled>>,
+         turns: Query<(&ForAgent, &TurnOutcome)>,
+         helpers: Query<(), With<Helper>>,
+         mut answers: ResMut<HelperAnswers>| {
+            if let Ok((&ForAgent(agent), outcome)) = turns.get(settled.entity)
+                && helpers.contains(agent)
+            {
+                let answer = match outcome {
+                    TurnOutcome::Answered(message) => final_answer(message),
+                    _ => None,
+                };
+                answers.0.push(answer);
+            }
+        },
+    );
+    let job = SpawnSubagent::helper("summarizer")
+        .brief("Sum up the session.")
+        .once();
+    let request = session
+        .app
+        .world_mut()
+        .spawn((job, ForAgent(session.parent)))
+        .id();
+    session.passes(|world| world.get::<Settled>(request).is_some());
+    let helper = session
+        .app
+        .world()
+        .get::<SpawnedAgent>(request)
+        .map(|a| a.0);
+    let helper = helper.unwrap_or(Entity::PLACEHOLDER);
+    let model = MockCompletionModel::from_stream_turns([reply("A short session.")]);
+    session.answer_by(helper, &model);
+    run_until(&mut session.app, &session.wakes, |world| {
+        world.get_entity(helper).is_err()
+    });
+    let answers = &session.app.world().resource::<HelperAnswers>().0;
+    assert_eq!(answers, &[Some("A short session.".to_owned())]);
+    assert!(session.app.world().get_entity(helper).is_err(), "retired");
+    session.app.update();
+    drop(session);
+
+    let mut session = Session::new(&store, None);
+    let world = session.app.world_mut();
+    let agents = world
+        .query_filtered::<(), With<Agent>>()
+        .iter(world)
+        .count();
+    assert_eq!(agents, 1, "only the parent comes back");
 }

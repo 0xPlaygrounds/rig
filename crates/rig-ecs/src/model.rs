@@ -17,7 +17,8 @@ use super::journal::ReflectSaved;
 
 /// The models agents can use and how each is reached: rig's built-in
 /// catalog by default. A plugin adds a sign-in with
-/// [`Connector::add_sign_in`], or replaces the catalog.
+/// [`Connector::add_sign_in`], or replaces the catalog. After a change, the
+/// next frame connects the agents whose chosen model was not usable before.
 #[derive(Resource, Clone, Default)]
 pub struct Models(pub Connector);
 
@@ -201,6 +202,23 @@ pub(crate) fn connect(
         Err(why) => {
             commands.entity(agent).remove::<Connection>();
             notices.write(Notice::error(agent, why));
+        }
+    }
+}
+
+/// Connects each agent whose [`ModelChoice`] is not connected once the
+/// [`Models`] changed, such as a model a plugin found or added to the
+/// catalog after the choice was restored, quietly as [`connect`] does for a
+/// restored choice. A choice still not usable is left as it is: its
+/// refusal was shown when it was made.
+pub(crate) fn reconnect(
+    agents: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
+    models: Res<Models>,
+    mut commands: Commands,
+) {
+    for (agent, choice) in &agents {
+        if let Ok(connection) = models.connect(&choice.0) {
+            commands.entity(agent).try_insert(connection);
         }
     }
 }

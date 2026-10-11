@@ -1,15 +1,20 @@
 //! The session's append-only logs. Each agent, a subagent too, has one
 //! JSON-lines log in the session's [`SessionStore`], created at its first
-//! message: a header, then one record per change a [`Commit`] made, per
-//! [`Condensed`] and per change of a [`ReflectSaved`] component, such as
-//! the agent's model, reasoning setting, system prompt, tool access and
-//! last usage. Records are queued as they happen and written
-//! at the end of the frame, a subagent's before its parent's, and at once
-//! before a tool that may change something runs. Nothing is ever
-//! rewritten; [`restore`](super::restore) folds the logs back at startup.
+//! message: a header, then one record per change a [`Commit`] made (a
+//! message, a cut, a halt, the agent retired), per [`Condensed`] and per
+//! change of a [`ReflectSaved`] component, such as the agent's model,
+//! reasoning setting, system prompt, tool access and last usage. Records
+//! are queued as they happen and written at the end of the frame, a
+//! subagent's before its parent's, and at once before a tool that may
+//! change something runs. Nothing is ever rewritten;
+//! [`restore`](super::restore) folds the logs back at startup,
+//! [`read_session`] reads a session's logs without restoring or writing
+//! anything, and [`fork_session`] copies a session as of one of its
+//! records.
 
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use bevy_app::prelude::*;
@@ -17,10 +22,10 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
 use bevy_ecs::system::SystemParam;
-use bevy_log::error;
+use bevy_log::{error, warn};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
-use rig_cassette::journal::{JournalStore, store_images};
+use rig_cassette::journal::{JournalStore, LogLines, fork, load_images, store_images};
 use rig_core::completion::Message;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -35,9 +40,10 @@ use super::{StopTurns, WriteJournal};
 /// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
 /// change of it is logged at the end of the frame by its type path (an
 /// agent's in its log, a resource in the session's [`SESSION`] log, written
-/// once an agent's log is) and restored by reflection, before the agents'
-/// [`Restored`](super::restore::Restored); a value that serializes to
-/// `null` is saved as absent, and so is an agent component removed. A
+/// once an agent's log is) and restored by reflection, inserted on the
+/// agent it was saved with before [`SessionRestored`] exists, so an
+/// `On<Insert<T>>` observer re-arms what it says; a value that serializes
+/// to `null` is saved as absent, and so is an agent component removed. A
 /// resource is restored in place of the one its plugin inserted while the
 /// app was built.
 /// Registration is a runtime fact: a generic type is saved only once
@@ -116,14 +122,13 @@ pub(crate) enum Record<'a> {
     /// message goes into it.
     Message {
         message: Cow<'a, Message>,
-        /// Where it came from, when it was not the user's own text, the
+        /// Where it came from, when it was not the user's plain text, the
         /// model's reply or tool results.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<Origin>,
     },
-    /// The last message was taken out, such as a user message no model
-    /// could answer.
-    Retract,
+    /// The messages from the one logged as `from` on were taken out.
+    Truncate { from: u64 },
     /// The user's last message was left unanswered, which a restore keeps.
     Halt { reason: Halt },
     /// A saved component, by type path; `value: null` when it was
@@ -133,8 +138,12 @@ pub(crate) enum Record<'a> {
         value: Option<Value>,
     },
     /// A [`Condensed`] conversation: requests send `summary` in place of
-    /// the messages before the one logged as `first_kept`.
+    /// the messages before the one logged as `first_kept`. A later cut
+    /// before `first_kept` undoes it.
     Condensed { summary: String, first_kept: u64 },
+    /// The agent is gone for good: a restore skips it, and the agents it
+    /// spawned.
+    Retired,
 }
 
 /// A line of an agent log.
@@ -142,6 +151,9 @@ pub(crate) enum Record<'a> {
 pub(crate) struct Line<'a> {
     /// Dense from 0, the header's, in each log.
     pub(crate) seq: u64,
+    /// Its place among the records of every log of the session, in the
+    /// order they were made: what a fork cuts the other logs by.
+    pub(crate) n: u64,
     /// When it was written, in milliseconds since the Unix epoch.
     pub(crate) t: u64,
     #[serde(flatten)]
@@ -150,8 +162,12 @@ pub(crate) struct Line<'a> {
 
 /// Milliseconds since the Unix epoch.
 pub fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    millis(SystemTime::now())
+}
+
+/// Milliseconds since the Unix epoch at `at`; 0 before it.
+pub(crate) fn millis(at: SystemTime) -> u64 {
+    at.duration_since(UNIX_EPOCH)
         .map(|elapsed| u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX))
         .unwrap_or_default()
 }
@@ -173,6 +189,8 @@ pub(crate) struct AgentLog {
 #[derive(Default)]
 struct Book {
     store: Option<Arc<dyn JournalStore>>,
+    /// The next record's [`Line::n`].
+    next_n: u64,
     /// Records are queued only once the session was restored.
     live: bool,
     /// Why the log stopped: every record after a failed write is dropped.
@@ -198,10 +216,11 @@ impl Book {
                 agent: agent.to_owned(),
                 parent: parent.map(str::to_owned),
             };
-            if let Err(failure) = enqueue(&mut log, Record::Header(header)) {
+            if let Err(failure) = enqueue(&mut log, self.next_n, Record::Header(header)) {
                 self.failure = Some(failure.to_string());
                 return None;
             }
+            self.next_n += 1;
             self.agents.insert(agent.to_owned(), log);
         }
         self.agents.get_mut(agent)
@@ -210,9 +229,14 @@ impl Book {
     /// Queues `record` for `agent`; its `seq`, or `None` when nothing is
     /// logged.
     fn record(&mut self, agent: &str, record: Record<'_>) -> Option<u64> {
-        let queued = enqueue(self.agent(agent, None)?, record);
+        self.agent(agent, None)?;
+        let n = self.next_n;
+        let queued = enqueue(self.agents.get_mut(agent)?, n, record);
         match queued {
-            Ok(seq) => Some(seq),
+            Ok(seq) => {
+                self.next_n += 1;
+                Some(seq)
+            }
             Err(failure) => {
                 self.failure = Some(failure.to_string());
                 None
@@ -221,11 +245,13 @@ impl Book {
     }
 }
 
-/// Queues `record` as the next line of `log`; its `seq`.
-fn enqueue(log: &mut AgentLog, record: Record<'_>) -> serde_json::Result<u64> {
+/// Queues `record` as the next line of `log`, the session's record `n`;
+/// its `seq`.
+fn enqueue(log: &mut AgentLog, n: u64, record: Record<'_>) -> serde_json::Result<u64> {
     let seq = log.next_seq;
     let line = Line {
         seq,
+        n,
         t: now_ms(),
         record,
     };
@@ -261,11 +287,17 @@ impl SessionLog {
     }
 
     /// Starts logging to `store`, after the logs restored from it as
-    /// `agents`, by agent id.
-    pub(crate) fn resume(&self, store: Arc<dyn JournalStore>, agents: Vec<(String, AgentLog)>) {
+    /// `agents`, by agent id, its next record the session's `next_n`.
+    pub(crate) fn resume(
+        &self,
+        store: Arc<dyn JournalStore>,
+        agents: Vec<(String, AgentLog)>,
+        next_n: u64,
+    ) {
         let mut book = self.book();
         book.store = Some(store);
         book.agents.extend(agents);
+        book.next_n = book.next_n.max(next_n);
         book.live = true;
     }
 
@@ -382,9 +414,10 @@ pub struct SessionRestored;
 /// [`Committed`], so a plugin sees every change the log records.
 #[derive(SystemParam)]
 pub struct Commit<'w, 's> {
-    ids: Query<'w, 's, &'static AgentId>,
+    ids: Query<'w, 's, (&'static AgentId, Option<&'static Condensed>)>,
     log: Res<'w, SessionLog>,
     committed: MessageWriter<'w, Committed>,
+    commands: Commands<'w, 's>,
 }
 
 impl Commit<'_, '_> {
@@ -404,7 +437,7 @@ impl Commit<'_, '_> {
         message: Message,
         origin: Option<Origin>,
     ) {
-        let Ok(id) = self.ids.get(agent) else {
+        let Ok((id, _)) = self.ids.get(agent) else {
             return;
         };
         let seq = self.log.log_message(id, &message, origin.clone());
@@ -416,44 +449,50 @@ impl Commit<'_, '_> {
         conversation.append(message, origin, seq);
     }
 
-    /// Takes the last message out of `conversation`, that of `agent`, such
-    /// as a user message no model could answer.
-    pub(crate) fn retract(&mut self, agent: Entity, conversation: &mut Conversation) {
-        if let Ok(id) = self.ids.get(agent)
-            && conversation.retract().is_some()
-        {
-            self.log.book().record(&id.0, Record::Retract);
-            self.committed.write(Committed::Retract { agent });
+    /// Takes every message from `len` on out of `conversation`, that of
+    /// `agent`, such as to rewind it or to take back a user message no
+    /// model could answer. A [`Condensed`] summary of messages taken out
+    /// goes too: requests send every message left.
+    pub fn truncate(&mut self, agent: Entity, conversation: &mut Conversation, len: usize) {
+        let Ok((id, condensed)) = self.ids.get(agent) else {
+            return;
+        };
+        let from = conversation.seq(len);
+        if !conversation.truncate(len) {
+            return;
         }
+        if let Some(from) = from {
+            self.log.book().record(&id.0, Record::Truncate { from });
+        }
+        if condensed.is_some_and(|condensed| condensed.upto > len) {
+            self.commands.entity(agent).try_remove::<Condensed>();
+        }
+        self.committed.write(Committed::Truncate { agent, len });
+    }
+
+    /// Retires `agent` for good: the log says so, so a restore brings back
+    /// neither it nor the agents it spawned, and it is despawned with them
+    /// and their work.
+    pub fn retire(&mut self, agent: Entity) {
+        let Ok((id, _)) = self.ids.get(agent) else {
+            return;
+        };
+        self.log.book().record(&id.0, Record::Retired);
+        self.committed.write(Committed::Retired { agent });
+        self.commands.entity(agent).try_despawn();
     }
 
     /// Leaves the user's last message in `conversation`, that of `agent`,
     /// unanswered for `reason` when the model owes an answer to it, so a
     /// restore does not send it to the model. Not for a turn the app's
-    /// exit stops (see [`Exiting`](super::turn::Exiting)): the restart
-    /// carries that one on.
+    /// exit stops: the restart carries that one on.
     pub fn halt(&mut self, agent: Entity, conversation: &mut Conversation, reason: Halt) {
-        if let Ok(id) = self.ids.get(agent)
+        if let Ok((id, _)) = self.ids.get(agent)
             && conversation.halt(reason)
         {
             self.log.book().record(&id.0, Record::Halt { reason });
             self.committed.write(Committed::Halt { agent, reason });
         }
-    }
-}
-
-/// Adds `message` to the conversation of `agent` as [`Commit::message`]
-/// does, from an exclusive system or a test.
-pub fn commit_message(world: &mut World, agent: Entity, message: Message) {
-    let add = |In((agent, message)): In<(Entity, Message)>,
-               mut agents: Query<&mut Conversation>,
-               mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            commit.message(agent, &mut conversation, message);
-        }
-    };
-    if let Err(error) = world.run_system_cached_with(add, (agent, message)) {
-        error!("could not add a message: {error}");
     }
 }
 
@@ -468,10 +507,12 @@ pub enum Committed {
         /// Where it came from, when not from the user, the model or a tool.
         origin: Option<Origin>,
     },
-    /// The last message was taken out.
-    Retract { agent: Entity },
+    /// The messages from `len` on were taken out.
+    Truncate { agent: Entity, len: usize },
     /// The user's last message was left unanswered.
     Halt { agent: Entity, reason: Halt },
+    /// The agent was retired, and despawned.
+    Retired { agent: Entity },
 }
 
 /// Restores the session at startup, settles what a crash or restart left
@@ -556,3 +597,319 @@ fn write_logs(log: Res<SessionLog>, mut reported: Local<bool>, mut notices: Mess
         ));
     }
 }
+
+/// The first fields of a line, read from every line to find the newest
+/// condensed record, the cuts and the newest record of each saved
+/// component, and where a fork cuts.
+#[derive(Deserialize)]
+struct Envelope {
+    seq: u64,
+    n: u64,
+    t: u64,
+    #[serde(rename = "type")]
+    kind: String,
+    component: Option<String>,
+    /// A cut's first message.
+    from: Option<u64>,
+    /// A summary's first kept message.
+    first_kept: Option<u64>,
+}
+
+/// An agent log folded into the agent's state.
+pub(crate) struct Folded {
+    pub(crate) header: Header,
+    /// When the log was started, in milliseconds since the Unix epoch.
+    pub(crate) started_ms: u64,
+    pub(crate) conversation: Conversation,
+    pub(crate) condensed: Option<Condensed>,
+    /// The newest value of each saved component, by type path.
+    pub(crate) components: HashMap<String, Value>,
+    /// The `seq` after the last line's.
+    pub(crate) next_seq: u64,
+    /// The session's `n` after the log's last line's.
+    pub(crate) next_n: u64,
+    /// Whether the agent was retired.
+    pub(crate) retired: bool,
+}
+
+/// Folds `log`, an agent's complete lines, its images read back from
+/// `store`: every message (`whole`), or those from the first message the
+/// newest summary still standing kept on. Records of unknown types are
+/// skipped.
+pub(crate) fn fold(
+    log: &LogLines,
+    store: &dyn JournalStore,
+    whole: bool,
+) -> Result<Folded, String> {
+    let lines: Vec<&[u8]> = log.iter().map(|(_, line)| line).collect();
+    let header = match lines
+        .first()
+        .and_then(|first| serde_json::from_slice::<Line>(first).ok())
+    {
+        Some(Line {
+            record: Record::Header(header),
+            ..
+        }) => header,
+        _ => return Err("it does not start with a header".to_owned()),
+    };
+    let envelopes: Vec<Option<Envelope>> = lines
+        .iter()
+        .map(|line| serde_json::from_slice(line).ok())
+        .collect();
+    let next_seq = envelopes.iter().flatten().map(|envelope| envelope.seq + 1);
+    let mut folded = Folded {
+        header,
+        started_ms: envelopes
+            .first()
+            .and_then(Option::as_ref)
+            .map_or(0, |at| at.t),
+        conversation: Conversation::default(),
+        condensed: None,
+        components: HashMap::new(),
+        next_seq: next_seq.max().unwrap_or(1),
+        next_n: envelopes
+            .iter()
+            .flatten()
+            .map(|envelope| envelope.n + 1)
+            .max()
+            .unwrap_or_default(),
+        retired: envelopes
+            .iter()
+            .flatten()
+            .any(|envelope| envelope.kind == "retired"),
+    };
+    let from = if whole { 1 } else { kept_from(&envelopes) };
+    // The summary in effect and the first message it kept.
+    let mut summary: Option<(String, u64)> = None;
+    for (line, envelope) in lines.iter().zip(&envelopes).skip(from) {
+        // Saved components are read below; unknown record types are
+        // skipped and left as they are.
+        if envelope
+            .as_ref()
+            .is_some_and(|envelope| envelope.component.is_some())
+        {
+            continue;
+        }
+        let Ok(line) = serde_json::from_slice::<Line>(line) else {
+            continue;
+        };
+        let conversation = &mut folded.conversation;
+        match line.record {
+            Record::Message { message, origin } => {
+                let mut message = message.into_owned();
+                if let Err(failure) = load_images(&mut message, store) {
+                    warn!(
+                        "an image agent {} logged is gone: {failure}",
+                        folded.header.agent
+                    );
+                }
+                conversation.append(message, origin, Some(line.seq));
+            }
+            Record::Truncate { from } => {
+                conversation.truncate(conversation.at_seq(from));
+                summary = summary.filter(|(_, first_kept)| *first_kept <= from);
+            }
+            // Only a conversation waiting for its model is halted, so a
+            // halt after a halt means it was asked again, as by a retry.
+            Record::Halt { reason } => {
+                conversation.resume();
+                conversation.halt(reason);
+            }
+            Record::Condensed {
+                summary: text,
+                first_kept,
+            } => summary = Some((text, first_kept)),
+            Record::Header(_) | Record::Component { .. } | Record::Retired => {}
+        }
+    }
+    folded.condensed = summary.map(|(summary, first_kept)| Condensed {
+        upto: folded.conversation.at_seq(first_kept),
+        summary,
+    });
+    // Only the newest record of each saved component is read, wherever it
+    // is in the log.
+    let newest: HashMap<&str, usize> = envelopes
+        .iter()
+        .enumerate()
+        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
+        .collect();
+    for at in newest.into_values() {
+        let line = lines
+            .get(at)
+            .and_then(|line| serde_json::from_slice(line).ok());
+        if let Some(Line {
+            record: Record::Component { component, value },
+            ..
+        }) = line
+        {
+            folded
+                .components
+                .extend(value.map(|value| (component, value)));
+        }
+    }
+    Ok(folded)
+}
+
+/// The index of the first line a restore reads messages from: the first
+/// message the newest summary kept, unless a later cut went before it,
+/// which undoes it and every summary before it; else the line after the
+/// header.
+fn kept_from(envelopes: &[Option<Envelope>]) -> usize {
+    let Some((at, first_kept)) = envelopes
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(at, envelope)| {
+            let envelope = envelope.as_ref()?;
+            (envelope.kind == "condensed").then_some((at, envelope.first_kept?))
+        })
+    else {
+        return 1;
+    };
+    let undone = envelopes.iter().skip(at).flatten().any(|envelope| {
+        envelope.kind == "truncate" && envelope.from.is_some_and(|from| from < first_kept)
+    });
+    if undone {
+        return 1;
+    }
+    envelopes
+        .iter()
+        .enumerate()
+        .skip(1)
+        .find(|(_, envelope)| matches!(envelope, Some(envelope) if envelope.seq >= first_kept))
+        .map_or(at, |(index, _)| index.min(at))
+}
+
+/// An agent as its log left it, read by [`read_session`].
+#[derive(Clone)]
+pub struct SavedAgent {
+    /// Its id.
+    pub id: AgentId,
+    /// The agent that spawned it, if any.
+    pub parent: Option<AgentId>,
+    /// When its log was started, in milliseconds since the Unix epoch.
+    pub started_ms: u64,
+    /// Its whole conversation, the messages a summary replaced included,
+    /// with their origins and log `seq`s.
+    pub conversation: Conversation,
+    /// The summary its requests send in place of the conversation's first
+    /// messages, if any.
+    pub condensed: Option<Condensed>,
+    /// The newest value of each of its saved components, by type path, as
+    /// reflection serialized it.
+    pub saved: BTreeMap<String, Value>,
+    /// Whether it was retired: a restore skips it, and the agents it
+    /// spawned.
+    pub retired: bool,
+}
+
+/// A session as its logs left it, read by [`read_session`].
+#[derive(Clone, Default)]
+pub struct SavedSession {
+    /// Its agents, in the order their logs were started.
+    pub agents: Vec<SavedAgent>,
+    /// The newest value of each of its saved resources, by type path.
+    pub resources: BTreeMap<String, Value>,
+    /// The logs that could not be read, by agent id, with why.
+    pub unreadable: Vec<(String, String)>,
+}
+
+/// Reads the session kept in `store`, another session's or the running
+/// one's, without restoring it and without writing to it: a torn last line
+/// is left out, not cut off. What the running app logged this frame is
+/// written at its end ([`WriteJournal`]).
+///
+/// # Errors
+///
+/// When the store cannot list its logs.
+pub fn read_session(store: &dyn JournalStore) -> io::Result<SavedSession> {
+    let mut session = SavedSession::default();
+    for agent in store.agents()? {
+        let log = LogLines::read(store, &agent).map_err(|failure| failure.to_string());
+        let folded = match log.and_then(|log| fold(&log, store, true)) {
+            Ok(folded) => folded,
+            Err(why) => {
+                session.unreadable.push((agent, why));
+                continue;
+            }
+        };
+        if folded.header.agent == SESSION {
+            session.resources = folded.components.into_iter().collect();
+            continue;
+        }
+        session.agents.push(SavedAgent {
+            id: AgentId(folded.header.agent),
+            parent: folded.header.parent.map(AgentId),
+            started_ms: folded.started_ms,
+            conversation: folded.conversation,
+            condensed: folded.condensed,
+            saved: folded.components.into_iter().collect(),
+            retired: folded.retired,
+        });
+    }
+    session
+        .agents
+        .sort_by(|a, b| (a.started_ms, &a.id.0).cmp(&(b.started_ms, &b.id.0)));
+    Ok(session)
+}
+
+/// Copies the session in `from` into `to`, an empty store, such as to
+/// branch it: every blob, and every log as of `before`, the record `seq`
+/// of the log of the agent named there, such as [`Conversation::seq`] of a
+/// message: that log up to that record, and every other log up to the
+/// records made before it in the session. Without `before`, all of it. An agent with
+/// no message left, such as one spawned later, is left out. A torn tail is
+/// never copied, and the effect log, which is not the store's, is not
+/// copied.
+///
+/// # Errors
+///
+/// When a store fails, `from` cannot list its blobs, or the agent logged
+/// no record `seq`.
+pub fn fork_session(
+    from: &dyn JournalStore,
+    to: &dyn JournalStore,
+    before: Option<(&AgentId, u64)>,
+) -> io::Result<()> {
+    let Some((agent, seq)) = before else {
+        return fork(from, to, |_, log| Some(log.len()));
+    };
+    let log = LogLines::read(from, &agent.0)?;
+    let mut start = 0;
+    let mut cut = None;
+    for (end, line) in log.iter() {
+        if let Ok(stamp) = serde_json::from_slice::<Envelope>(line)
+            && stamp.seq == seq
+        {
+            cut = Some((start, stamp.n));
+            break;
+        }
+        start = end;
+    }
+    let Some((offset, at)) = cut else {
+        let why = format!("agent {} logged no record {seq}", agent.0);
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+    };
+    fork(from, to, |id, log| {
+        let mut keep = None;
+        let mut message = false;
+        for (end, line) in log.iter() {
+            let Ok(stamp) = serde_json::from_slice::<Envelope>(line) else {
+                continue;
+            };
+            let kept = match id == agent.0 {
+                true => end <= offset,
+                false => stamp.n < at,
+            };
+            if !kept {
+                break;
+            }
+            message |= stamp.kind == "message";
+            keep = Some(end);
+        }
+        keep.filter(|_| message || id == SESSION)
+    })
+}
+
+#[cfg(test)]
+pub(crate) mod tests;

@@ -1,0 +1,27 @@
+[package]
+name = "corpus-session-goal"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 44. Session goal (saved custom state)"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# `shorten` for the `/resume` label.
+rig-tools = { path = "../../crates/rig-tools" }
+# The goal's part of this session's line in `/resume`.
+rig-sessions = { path = "../../plugins/rig-sessions" }
+# The status item.
+rig-tui = { path = "../../plugins/rig-tui" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

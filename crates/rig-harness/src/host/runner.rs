@@ -1,20 +1,22 @@
 //! The app's loop without a window. It runs a frame, then sleeps until the
 //! first of: a [`Wake`], the deadline of the next delayed command on Bevy's
-//! clock (a retried model call waits on one), the shortest [`KeepAwake`]
-//! interval, or a second. Frames never come faster than every 16 ms,
-//! however often a streaming reply wakes the loop; the frames after a wake
-//! come from [`settle`](rig_ecs::calls::settle), which works the same under
-//! any loop. It runs every schedule on the main thread, one system after
-//! another.
+//! clock (a retried model call waits on one), the next [`WakeAt`] on the
+//! wall clock, the shortest [`KeepAwake`] interval, or a second. Frames
+//! never come faster than every 16 ms, however often a streaming reply
+//! wakes the loop; the few frames after a wake come from the kernel (see
+//! [`Wake`]), the same under any loop. It runs every schedule on the main
+//! thread, one system after another.
 
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
-use bevy::time::{DelayedCommandQueue, Time};
+use bevy::time::{DelayedCommandQueue, Time, Virtual};
 use bevy_app::PluginsState;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use rig_ecs::calls::{KeepAwake, Wake};
+use rig_ecs::calls::Wake;
+
+use crate::clock::{Due, KeepAwake, WakeAt};
 
 /// The shortest time between two frames.
 const FRAME: Duration = Duration::from_millis(16);
@@ -22,8 +24,16 @@ const FRAME: Duration = Duration::from_millis(16);
 /// polls without a wake, such as a `/reload` build's process, is seen
 /// within it.
 const IDLE: Duration = Duration::from_secs(1);
+/// The longest gap between two frames that Bevy's virtual clock counts in
+/// full. Bevy's default, 250 ms, suits a game's steady frames; across this
+/// loop's one-second idle frames it would make a retry's wait four times
+/// as long. A longer gap, such as a suspended machine, is still cut short,
+/// as Bevy intends: its fixed-step loop runs once for every 15.6 ms
+/// counted, all in the frame after the gap.
+const MAX_FRAME_GAP: Duration = Duration::from_secs(60);
 
-/// Sets the loop and its [`Wake`].
+/// Sets the loop and its [`Wake`], and lets Bevy's clock count frames up
+/// to a minute apart in full.
 pub struct RunnerPlugin;
 
 impl Plugin for RunnerPlugin {
@@ -66,12 +76,19 @@ impl Plugin for RunnerPlugin {
             }
         });
     }
+
+    fn finish(&self, app: &mut App) {
+        if let Some(mut time) = app.world_mut().get_resource_mut::<Time<Virtual>>() {
+            time.set_max_delta(MAX_FRAME_GAP);
+        }
+    }
 }
 
 /// What decides when the next frame is due.
 struct NextFrame {
     delayed: QueryState<&'static DelayedCommandQueue>,
     awake: QueryState<&'static KeepAwake>,
+    alarms: QueryState<&'static WakeAt, Without<Due>>,
 }
 
 impl NextFrame {
@@ -79,6 +96,7 @@ impl NextFrame {
         Self {
             delayed: world.query(),
             awake: world.query(),
+            alarms: world.query_filtered(),
         }
     }
 
@@ -93,10 +111,13 @@ impl NextFrame {
                 .map(|queue| queue.submit_at.saturating_sub(time.elapsed()))
                 .min()
         });
+        let now = SystemTime::now();
+        let alarms = self.alarms.iter(world).map(|alarm| alarm.left(now));
         self.awake
             .iter(world)
             .map(|awake| awake.0)
             .chain(delayed)
+            .chain(alarms)
             .fold(IDLE, Duration::min)
     }
 }

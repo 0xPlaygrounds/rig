@@ -67,6 +67,19 @@ fn cache_and_a_long_session_name_go_before_what_the_session_spends() {
 }
 
 #[test]
+fn a_piece_that_shrinks_is_cut_before_it_goes() {
+    let goal = || Piece::new(20, Span::from("goal: ship the parser")).shrinking_to(8);
+    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
+    // "model  " is 7 wide; the goal is cut to the 13 columns left.
+    fit(&mut left, &mut Vec::new(), 20);
+    assert_eq!(text(&left, "  "), "model  goal: ship t…");
+    // Never below its least; then it goes.
+    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
+    fit(&mut left, &mut Vec::new(), 14);
+    assert_eq!(text(&left, "  "), "model");
+}
+
+#[test]
 fn the_model_and_status_always_stay() {
     let (mut left, mut right) = (left(), meter());
     fit(&mut left, &mut right, 10);
@@ -75,4 +88,62 @@ fn the_model_and_status_always_stay() {
         text(&left, "  "),
         "deepseek/deepseek-flash  thinking… (Esc stops)"
     );
+}
+
+#[test]
+fn a_question_shows_its_body_choices_and_typed_answer() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Position;
+
+    use super::super::pick::{Choosing, Listing, Row};
+    use super::draw_choice;
+
+    let shown = Listing {
+        title: "Allow `rm -rf build`?",
+        body: "It matches `rm -rf`.\nType a reason to deny it with.",
+        labels: vec!["Deny", "Allow once", "Allow for this session"],
+        free_text: true,
+        selected: 0,
+    };
+    let choosing = Choosing {
+        entity: bevy_ecs::entity::Entity::PLACEHOLDER,
+        filter: "allow".to_owned(),
+        selected: 0,
+    };
+    // What is typed filters the choices and is an answer of its own.
+    assert_eq!(
+        shown.rows(&choosing.filter),
+        [Row::Item(1), Row::Item(2), Row::Typed]
+    );
+    let Ok(mut terminal) = Terminal::new(TestBackend::new(60, 20));
+    assert!(
+        terminal
+            .draw(|frame| draw_choice(frame, &choosing, &shown))
+            .is_ok()
+    );
+    let buffer = terminal.backend().buffer();
+    let screen: Vec<String> = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .filter_map(|x| {
+                    buffer
+                        .cell(Position::new(x, y))
+                        .map(|cell| cell.symbol().to_owned())
+                })
+                .collect()
+        })
+        .collect();
+    let screen = screen.join("\n");
+    for shown in [
+        "Allow `rm -rf build`?",
+        "It matches `rm -rf`.",
+        "› allow",
+        "Allow once",
+        "Allow for this session",
+        "✎ allow",
+    ] {
+        assert!(screen.contains(shown), "{shown} not in\n{screen}");
+    }
+    assert!(!screen.contains("Deny"), "{screen}");
 }

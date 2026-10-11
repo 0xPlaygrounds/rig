@@ -1,88 +1,81 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
-//! pass that settles what a crash or a restart left half done. Each log is
-//! read from its newest [`Condensed`] record on, with a torn last line cut
-//! off and
-//! records of unknown types skipped. Each fix the reconcile pass makes is an
-//! ordinary record, so the next restore finds nothing left to fix; the
-//! request-build repair that answers any call still without a result stays
-//! as the backstop.
+//! pass that settles what a crash or a restart left half done, with
+//! ordinary records, so the next restore finds nothing left to fix. Each
+//! log is read as [`read_session`](super::journal::read_session) reads it,
+//! from its newest standing summary, a torn last line cut off; a retired
+//! agent and the agents it spawned are not restored.
 //!
-//! Plugins re-arm their own obligations from their saved components when
-//! [`Restored`] is triggered on each agent, and may keep an agent from
-//! carrying its work on:
+//! A call left without a result whose tool may change something is
+//! answered as interrupted; the work an agent carries on is spawned as
+//! ordinary stage entities marked [`Restored`] and gated like any, as
+//! nothing held or approved before the restart is kept. A plugin re-arms
+//! its own obligations from observers of the saved components the restore
+//! inserts (`On<Insert<MyWait>>`, before [`SessionRestored`] exists):
 //!
-//! ```ignore
-//! fn rearm(mut restored: On<Restored>, waits: Query<&MyWait>) {
-//!     if waits.contains(restored.entity) {
-//!         restored.event_mut().resume = false;
+//! ```
+//! use rig_ecs::prelude::*;
+//!
+//! #[derive(Component)]
+//! struct Paused;
+//!
+//! // A paused agent does not carry its work on after a restart.
+//! fn stay_paused(
+//!     turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
+//!     paused: Query<(), With<Paused>>,
+//!     mut commands: Commands,
+//! ) {
+//!     for (turn, &TurnOf(agent)) in &turns {
+//!         if paused.contains(agent) {
+//!             let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
+//!             commands.entity(turn).insert(stopped);
+//!         }
 //!     }
 //! }
+//!
+//! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
+use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
-use rig_cassette::journal::{JournalStore, load_images};
+use rig_cassette::journal::{JournalStore, LogLines};
 use rig_core::transcript::{close_pending_with, pending_calls};
-use serde::Deserialize;
-use serde::de::{DeserializeSeed, IgnoredAny};
+use serde::de::DeserializeSeed;
 use serde_json::Value;
 
-use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
+use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
+use super::effects::Effects;
 use super::journal::{
-    AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
-    SessionStore,
+    AgentLog, Commit, Folded, ReflectSaved, SESSION, SessionLog, SessionRestored, SessionStore,
+    fold,
 };
-use super::turn::{CallModel, ToolStarter};
+use super::stage::{Effect, ForAgent};
+use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::turn::TurnCall;
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
 const INTERRUPTED: &str = "interrupted by a restart; it may have partly run";
-
-/// The first fields of a line, read from every line to find the newest
-/// condensed record and the newest record of each saved component.
-#[derive(Deserialize)]
-struct Envelope {
-    seq: u64,
-    #[serde(rename = "type")]
-    kind: String,
-    component: Option<String>,
-}
-
-/// An agent log folded into the agent's state, and the log to carry on.
-struct Folded {
-    header: Header,
-    conversation: Conversation,
-    condensed: Option<Condensed>,
-    log: AgentLog,
-}
 
 /// The agents [`restore_session`] spawned, each with its depth, until
 /// [`reconcile`] took them.
 #[derive(Resource)]
 pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
-/// An agent was restored: its conversation with its origins, its settings,
-/// its saved components and the agent that spawned it are back, and the
-/// agents above it were reconciled. Triggered once per agent at startup,
-/// before the core carries it on. Plugins re-arm what they owe from their
-/// own saved components here.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct Restored {
-    /// The agent.
-    pub entity: Entity,
-    /// Whether the core carries the agent on: runs again its calls that
-    /// can run again, and sends a conversation that ends in a message the
-    /// model has not answered to the model. An observer sets it to `false`
-    /// to keep the agent idle; every call left without a result is then
-    /// answered as interrupted, and nothing runs again by itself.
-    pub resume: bool,
-}
+/// On the work a restore carries on for an agent: its turn, the turn's
+/// read-only calls that run again and its model calls. Gate sees each as it
+/// sees new work; a turn stopped there
+/// (`TurnOutcome::Stopped(Some("restart"))`) starts none of it, and its
+/// calls are answered as stopped.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Default)]
+pub struct Restored;
 
 /// Spawns the agents of the session's logs, with their conversations,
 /// condensed summaries and saved components, links each agent to the agent that
@@ -109,6 +102,9 @@ pub(crate) fn restore_session(world: &mut World) {
             )),
         }
     }
+    let next_n = folded.iter().map(|agent| agent.next_n).max();
+    let retired = retired(&folded);
+    folded.retain(|agent| !retired.contains(&agent.header.agent));
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
@@ -117,11 +113,17 @@ pub(crate) fn restore_session(world: &mut World) {
     let mut logs = Vec::new();
     let mut session = None;
     for agent in folded {
+        let log = AgentLog {
+            next_seq: agent.next_seq,
+            started: true,
+            components: agent.components,
+            ..AgentLog::default()
+        };
         let Folded {
             header,
             conversation,
             condensed,
-            log,
+            ..
         } = agent;
         if header.agent == SESSION {
             for (path, value) in &log.components {
@@ -176,7 +178,11 @@ pub(crate) fn restore_session(world: &mut World) {
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
     let logs = logs.into_iter().map(|(_, id, log)| (id, log));
-    log.resume(store, logs.chain(session).collect());
+    log.resume(
+        store,
+        logs.chain(session).collect(),
+        next_n.unwrap_or_default(),
+    );
     world.insert_resource(RestoredAgents(restored));
     world.insert_resource(SessionRestored);
     for notice in notices {
@@ -223,199 +229,112 @@ fn resource_entity<'w>(
         .map_err(|failure| failure.to_string())
 }
 
-/// Reads and folds the log of `agent` in `store`, cutting off a torn last
-/// line there first. Images come back from the store's blobs.
+/// Reads and folds the log of `agent` in `store` from the newest summary
+/// that stands, cutting off a torn last line there first. Images come back
+/// from the store's blobs.
 fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
-    let bytes = store.read(agent)?;
-    let complete = bytes
+    let log = LogLines::read(store, agent)?;
+    if log.torn() {
+        store.truncate(agent, log.len())?;
+    }
+    Ok(fold(&log, store, false)?)
+}
+
+/// The ids of the agents a restore skips: those retired, and the agents
+/// they spawned, all the way down.
+fn retired(agents: &[Folded]) -> HashSet<String> {
+    let parents: HashMap<&str, Option<&str>> = agents
         .iter()
-        .rposition(|byte| *byte == b'\n')
-        .map_or(0, |at| at + 1);
-    let mut lines: Vec<&[u8]> = bytes
-        .get(..complete)
-        .unwrap_or_default()
-        .split(|byte| *byte == b'\n')
+        .map(|agent| (agent.header.agent.as_str(), agent.header.parent.as_deref()))
         .collect();
-    if lines.last().is_some_and(|line| line.is_empty()) {
-        lines.pop();
-    }
-    let mut keep = complete;
-    if let Some(last) = lines.last()
-        && serde_json::from_slice::<IgnoredAny>(last).is_err()
-    {
-        keep = keep.saturating_sub(last.len() + 1);
-        lines.pop();
-    }
-    if keep < bytes.len() {
-        store.truncate(agent, u64::try_from(keep)?)?;
-    }
-    lines.retain(|line| !line.is_empty());
-    let header = match lines
-        .first()
-        .and_then(|first| serde_json::from_slice::<Line>(first).ok())
-    {
-        Some(Line {
-            record: Record::Header(header),
-            ..
-        }) => header,
-        _ => return Err("it does not start with a header".into()),
-    };
-    let envelopes: Vec<Option<Envelope>> = lines
+    let gone: HashSet<&str> = agents
         .iter()
-        .map(|line| serde_json::from_slice(line).ok())
+        .filter(|agent| agent.retired)
+        .map(|agent| agent.header.agent.as_str())
         .collect();
-    let next_seq = envelopes.iter().flatten().map(|envelope| envelope.seq + 1);
-    let mut folded = Folded {
-        header,
-        conversation: Conversation::default(),
-        condensed: None,
-        log: AgentLog {
-            next_seq: next_seq.max().unwrap_or(1),
-            started: true,
-            ..AgentLog::default()
-        },
-    };
-    // Messages are read from the first one the newest condensed record
-    // kept.
-    let condensed = envelopes
-        .iter()
-        .rposition(|envelope| matches!(envelope, Some(envelope) if envelope.kind == "condensed"))
-        .and_then(|at| match serde_json::from_slice(lines.get(at)?).ok()? {
-            Line {
-                record:
-                    Record::Condensed {
-                        summary,
-                        first_kept,
-                    },
-                ..
-            } => Some((at, summary, first_kept)),
-            _ => None,
-        });
-    let from = match condensed {
-        Some((at, summary, first_kept)) => {
-            folded.condensed = Some(Condensed { upto: 0, summary });
-            envelopes
-                .iter()
-                .enumerate()
-                .skip(1)
-                .find(|(_, envelope)| {
-                    matches!(envelope, Some(envelope) if envelope.seq >= first_kept)
-                })
-                .map_or(at, |(index, _)| index.min(at))
-        }
-        None => 1,
-    };
-    for (line, envelope) in lines.iter().zip(&envelopes).skip(from) {
-        // Saved components are read below; unknown record types are
-        // skipped and left on disk.
-        if envelope
-            .as_ref()
-            .is_some_and(|envelope| envelope.component.is_some())
-        {
-            continue;
-        }
-        let Ok(line) = serde_json::from_slice::<Line>(line) else {
-            continue;
-        };
-        match line.record {
-            Record::Message { message, origin } => {
-                let mut message = message.into_owned();
-                if let Err(failure) = load_images(&mut message, store) {
-                    warn!("an image agent {agent} logged is gone: {failure}");
-                }
-                folded.conversation.append(message, origin, Some(line.seq));
+    let mut skipped = HashSet::new();
+    for agent in agents {
+        let mut at = Some(agent.header.agent.as_str());
+        // A loop cannot happen, but a bound costs nothing.
+        for _ in 0..=agents.len() {
+            let Some(id) = at else {
+                break;
+            };
+            if gone.contains(id) {
+                skipped.insert(agent.header.agent.clone());
+                break;
             }
-            Record::Retract => {
-                folded.conversation.retract();
-            }
-            // Only a conversation waiting for its model is halted, so a
-            // halt after a halt means it was asked again, as by a retry.
-            Record::Halt { reason } => {
-                folded.conversation.resume();
-                folded.conversation.halt(reason);
-            }
-            Record::Header(_) | Record::Component { .. } | Record::Condensed { .. } => {}
+            at = parents.get(id).copied().flatten();
         }
     }
-    // Only the newest record of each saved component is read, wherever it
-    // is in the log.
-    let newest: HashMap<&str, usize> = envelopes
-        .iter()
-        .enumerate()
-        .filter_map(|(at, envelope)| Some((envelope.as_ref()?.component.as_deref()?, at)))
-        .collect();
-    for at in newest.into_values() {
-        let line = lines
-            .get(at)
-            .and_then(|line| serde_json::from_slice(line).ok());
-        if let Some(Line {
-            record: Record::Component { component, value },
-            ..
-        }) = line
-        {
-            folded
-                .log
-                .components
-                .extend(value.map(|value| (component, value)));
-        }
-    }
-    Ok(folded)
+    skipped
 }
 
 /// Settles what the restored agents left half done, parents before the
-/// agents they spawned. Each agent first gets [`Restored`]; then, by
-/// appending records, a tool call without a result starts again when its
-/// tool is an ordinary read-only one, and is answered as interrupted
-/// otherwise; and an agent whose conversation ends in the user's message
-/// that was not halted, or in a full set of tool results, calls its model
-/// again. An agent an observer kept idle only gets the interrupted
-/// results.
+/// agents they spawned: by appending records, a tool call without a
+/// result whose tool may change something is answered as interrupted, and
+/// the agent carries on with [`Restored`] work: a turn that runs again the
+/// calls of read-only tools, or that calls the model when the conversation
+/// ends in the user's message that was not halted, or in a full set of
+/// tool results.
 pub(crate) fn reconcile(world: &mut World) {
     let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
         return;
     };
     agents.sort_by_key(|&(depth, _)| depth);
     for (_, agent) in agents {
-        let mut restored = Restored {
-            entity: agent,
-            resume: true,
-        };
-        world.trigger_ref(&mut restored);
-        let carry = (agent, restored.resume);
-        if let Err(error) = world.run_system_cached_with(settle, carry) {
+        if let Err(error) = world.run_system_cached_with(settle, agent) {
             warn!("could not reconcile a restored agent: {error}");
         }
     }
 }
 
-/// Settles one restored agent, as [`reconcile`] says: `resume` is what its
-/// [`Restored`] observers left.
+/// Settles one restored agent, as [`reconcile`] says. The calls run again
+/// are a reply of a fresh effect id, as the model call that asked for them
+/// is gone.
 fn settle(
-    In((agent, resume)): In<(Entity, bool)>,
+    In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
-    starter: ToolStarter,
+    tools: Query<(&ToolDef, &Footprint)>,
+    effects: Res<Effects>,
     mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    // A call runs again when its tool, of any kind, only reads.
+    let reruns = |name: &str| {
+        tools.iter().any(|(def, footprint)| {
+            def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
+        })
+    };
     let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
         .into_iter()
-        .partition(|call| resume && starter.reruns(call.function.name.as_str()));
+        .partition(|call| reruns(call.function.name.as_str()));
     if !interrupted.is_empty() {
         let results = close_pending_with(&interrupted, INTERRUPTED);
         commit.message(agent, &mut conversation, results);
     }
-    if !resume {
-        return;
-    }
     if !reruns.is_empty() {
-        let turn = commands.spawn(TurnOf(agent)).id();
-        starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
+        let reply = effects.next_id();
+        let state = Turn {
+            reply: Some(reply),
+            ..Turn::default()
+        };
+        let turn = commands.spawn((TurnOf(agent), state, Restored)).id();
+        for call in reruns {
+            commands.spawn((
+                ToolRequest { call },
+                Effect::child_of(Some(reply)),
+                CallOf(turn),
+                ForAgent(agent),
+                Restored,
+            ));
+        }
     } else if conversation.awaits_model() {
-        let turn = commands.spawn(TurnOf(agent)).id();
-        commands.trigger(CallModel { entity: turn });
+        let turn = commands.spawn((TurnOf(agent), Restored)).id();
+        commands.spawn((TurnCall, CallOf(turn), ForAgent(agent), Restored));
     }
 }
 

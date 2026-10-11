@@ -1,0 +1,30 @@
+[package]
+name = "corpus-otel-tracing"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 54. OpenTelemetry tracing"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives and the span component's hook.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
+# The OpenTelemetry API, its SDK (spans, batching) and the OTLP/HTTP
+# exporter on a blocking client, which runs on the batch processor's own
+# thread: no async runtime needed.
+opentelemetry = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry_sdk = { version = "0.32", default-features = false, features = ["trace"] }
+opentelemetry-otlp = { version = "0.32", default-features = false, features = ["trace", "http-proto", "reqwest-blocking-client"] }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+schemars = { workspace = true }
+serde_json = { workspace = true }

@@ -1991,6 +1991,7 @@ where
             "properties": {"value": {"type": "integer"}},
             "required": ["value"]
         }),
+        annotations: Default::default(),
     };
     let tools = vec![
         definition(tool_name("alpha")?),

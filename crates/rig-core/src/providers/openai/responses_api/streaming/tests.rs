@@ -963,6 +963,7 @@ fn encoded_input(
                 name: call.function.name.clone(),
                 description: "A tool".to_owned(),
                 parameters: json!({"type": "object"}),
+                annotations: Default::default(),
             });
         }
     }

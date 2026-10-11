@@ -48,7 +48,10 @@ fn main() -> ExitCode {
             launcher::plugin::run(&home, command).map(|()| ExitCode::SUCCESS)
         }
         ["help" | "--help" | "-h"] => {
-            print!("{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{ENVIRONMENT}");
+            print!(
+                "{USAGE}{PLUGIN_USAGE}{SESSION}{INVOCATION_USAGE}{}{ENVIRONMENT}",
+                plugin_options(&home)
+            );
             Ok(ExitCode::SUCCESS)
         }
         _ => match parse(&args) {
@@ -65,6 +68,17 @@ fn main() -> ExitCode {
         eprintln!("error: {failure}");
         ExitCode::FAILURE
     })
+}
+
+/// The options the plugins of the last build that started take, as the
+/// agent wrote them, for the usage text; nothing before a build started.
+fn plugin_options(home: &Home) -> String {
+    match std::fs::read_to_string(home.flags()) {
+        Ok(options) if !options.trim().is_empty() => {
+            format!("\nPlugin options (of the last build that started):\n{options}")
+        }
+        _ => String::new(),
+    }
 }
 
 /// The session to run and the agent's arguments: the session option comes

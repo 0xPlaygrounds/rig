@@ -1,0 +1,23 @@
+[package]
+name = "corpus-checkpoint-rewind"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 31. Checkpoints and rewind"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

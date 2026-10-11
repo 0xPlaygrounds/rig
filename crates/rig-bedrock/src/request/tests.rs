@@ -24,6 +24,7 @@ fn tool(tool: &str) -> ToolDefinition {
         name: name(tool),
         description: format!("The {tool} tool"),
         parameters: json!({ "type": "object", "properties": {} }),
+        annotations: Default::default(),
     }
 }
 

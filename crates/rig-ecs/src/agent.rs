@@ -5,15 +5,14 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::{Message, Usage};
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, UserContent};
+use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::inbox::{Inbox, Origin};
+use super::inbox::Origin;
 use super::journal::ReflectSaved;
 use super::model::Effort;
-use super::tools::Footprint;
-use super::turn::NO_MODEL;
-use super::turn::Recovery;
+use super::stage::moved;
+use super::turn::{NO_MODEL, Recovery, start_turn};
 
 /// Marks an agent. Spawning it adds every per-agent component with its
 /// default, including a fresh [`AgentId`]. An agent has no
@@ -24,10 +23,10 @@ use super::turn::Recovery;
     AgentId,
     Conversation,
     Effort,
-    Inbox,
     LastUsage,
     SystemPrompt,
-    ToolAccess
+    ToolAccess,
+    TurnsStarted
 )]
 pub struct Agent;
 
@@ -134,8 +133,9 @@ impl Conversation {
     }
 
     /// Where content item `item` of message `message` came from, when it
-    /// was delivered by an agent or a plugin; `None` for the user's own
-    /// text, the model's messages and tool results.
+    /// was delivered by an agent or a plugin, or is the user's with a title
+    /// or a request id; `None` for the user's plain text, the model's
+    /// messages and tool results.
     pub fn origin(&self, message: usize, item: usize) -> Option<&Origin> {
         self.origins
             .iter()
@@ -175,10 +175,17 @@ impl Conversation {
         self.awaits_model()
     }
 
-    /// The `seq` of the log record that began message `message`, if it was
-    /// logged.
-    pub(crate) fn seq(&self, message: usize) -> Option<u64> {
+    /// The `seq` of the agent log's record that began message `message`,
+    /// if it was logged: where a fork of the session cuts it
+    /// ([`fork_session`](super::journal::fork_session)).
+    pub fn seq(&self, message: usize) -> Option<u64> {
         self.seqs.get(message).copied()
+    }
+
+    /// The first message whose log record is `seq` or later; the length
+    /// when none is.
+    pub(crate) fn at_seq(&self, seq: u64) -> usize {
+        self.seqs.partition_point(|&begun| begun < seq)
     }
 
     /// Adds `message`, whose content came from `origin` and which the log
@@ -217,14 +224,16 @@ impl Conversation {
         }
     }
 
-    /// Takes out the last message.
-    pub(crate) fn retract(&mut self) -> Option<Message> {
-        let message = self.messages.pop()?;
+    /// Takes out every message from `len` on; whether any was.
+    pub(crate) fn truncate(&mut self, len: usize) -> bool {
+        if len >= self.messages.len() {
+            return false;
+        }
+        self.messages.truncate(len);
         self.halted = None;
-        let len = self.messages.len();
         self.origins.retain(|(at, ..)| *at < len);
         self.seqs.truncate(len);
-        Some(message)
+        true
     }
 }
 
@@ -285,49 +294,25 @@ impl LastUsage {
 /// The agent's own part of its system prompt: who it is and how it works.
 /// Each request's prompt adds the rules of the tools the agent is offered
 /// and the app's [`PromptSection`](super::prompt::PromptSection)s, such as
-/// the project's instructions and the environment. Saved with the
-/// session, as `null` when it is the default, so a restored agent gets the
-/// default of the build that restores it.
-#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
+/// the project's instructions and the environment. Empty, the agent has
+/// none of its own, and the app's plugins may give it one in `Prepare`,
+/// as rig-basics gives rig's. Saved with the session, as `null` when empty,
+/// so a restored agent without its own gets what the build that restores
+/// it gives.
+#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(from = "Option<String>", into = "Option<String>")]
 pub struct SystemPrompt(pub String);
 
 impl From<SystemPrompt> for Option<String> {
     fn from(prompt: SystemPrompt) -> Self {
-        (prompt.0 != DEFAULT_SYSTEM_PROMPT).then_some(prompt.0)
+        (!prompt.0.is_empty()).then_some(prompt.0)
     }
 }
 
 impl From<Option<String>> for SystemPrompt {
     fn from(prompt: Option<String>) -> Self {
-        prompt.map_or_else(Self::default, Self)
-    }
-}
-
-/// An agent's [`SystemPrompt`] unless it is given another.
-pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
-    user's project from their terminal: \
-    you read and search code, edit files and run commands with the tools you are \
-    given, and answer questions about the code.\n\
-    \n\
-    - Work in the working directory named below, unless the user says otherwise.\n\
-    - Read a file before you edit it. Change what was asked, in the style of the \
-    code around it, and nothing else.\n\
-    - After a change, check it when you can: build it, run the tests, or run the \
-    code.\n\
-    - When something fails, read the error and fix the cause. Ask the user when the \
-    request is unclear or you are blocked, rather than guess.\n\
-    - Do not undo changes you did not make, and do not run commands that delete \
-    work, rewrite history or reach outside the project unless the user asked.\n\
-    - Keep answers short. Say what you changed and what is left, and name files by \
-    their path.\n\
-    - Give that answer once, at the end of the turn: no running commentary or \
-    interim summaries between tool calls.";
-
-impl Default for SystemPrompt {
-    fn default() -> Self {
-        Self(DEFAULT_SYSTEM_PROMPT.to_owned())
+        Self(prompt.unwrap_or_default())
     }
 }
 
@@ -353,20 +338,64 @@ impl ToolAccess {
 }
 
 /// A running turn of the agent it names: from a user message to the reply
-/// that ends it. At most one per agent. Despawning the turn stops it and
-/// cancels its calls; its end removes the agent's [`ActiveTurn`]. The turn
-/// counts its retries in a [`Recovery`]. Its `Name` is `turn` unless it
-/// is spawned with another.
+/// that ends it. At most one per agent. A turn ends with a [`TurnOutcome`]
+/// on it: the kernel proposes one in Commit when the model answered or
+/// the turn failed, Review may replace it, hold it ([`HoldOf`]) or carry
+/// the turn on, and a plugin may insert `Failed` or `Stopped` at any
+/// time. Once nothing holds the outcome and every call of the turn
+/// settled, Commit ends the turn: it removes this, so the agent is idle,
+/// and marks the turn [`Settled`](super::stage::Settled) for the readers
+/// of how it ended. The kernel makes a turn [`ForAgent`] its agent when it
+/// is spawned, so it is the agent's work, and goes when the agent goes,
+/// even after it ended. The turn counts its retries in a [`Recovery`].
+/// Its `Name` is `turn` unless it is spawned with another.
+///
+/// [`HoldOf`]: super::stage::HoldOf
+/// [`ForAgent`]: super::stage::ForAgent
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(Recovery, Name = Name::new("turn"))]
+#[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
 
-/// On a turn about to be despawned: how it ended. A turn despawned without
-/// one, such as by [`Interrupt`] or on exit, ended [`TurnOutcome::Stopped`].
-#[derive(Component, Clone, Debug)]
-pub(crate) struct Ending(pub(crate) TurnOutcome);
+/// Where a turn stands, on the turn. The kernel fills it in when the turn
+/// is spawned and keeps it.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[component(on_add = start_turn)]
+#[reflect(Component, Default)]
+pub struct Turn {
+    /// How many turns its agent started before this one, over the whole
+    /// session: the agent's count is saved with it.
+    pub index: u64,
+    /// Where the turn begins in its agent's [`Conversation`]: the index of
+    /// the user's message it answers, or, when the conversation does not
+    /// end in one, of the first message the turn adds.
+    pub first_message: usize,
+    /// The model call whose reply's tool calls run now, their effects'
+    /// parent, until their results are committed. Other calls of the turn
+    /// keep it open but are never committed as tool results.
+    #[reflect(ignore)]
+    pub reply: Option<EffectId>,
+}
+
+/// How many turns the agent started, the next turn's [`Turn::index`].
+/// Saved with the session, as `null` before the first.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+#[serde(from = "Option<u64>", into = "Option<u64>")]
+pub(crate) struct TurnsStarted(pub(crate) u64);
+
+impl From<TurnsStarted> for Option<u64> {
+    fn from(started: TurnsStarted) -> Self {
+        (started.0 > 0).then_some(started.0)
+    }
+}
+
+impl From<Option<u64>> for TurnsStarted {
+    fn from(started: Option<u64>) -> Self {
+        Self(started.unwrap_or_default())
+    }
+}
 
 /// The agent's running turn. An agent with it is busy.
 #[derive(Component, Reflect, Debug)]
@@ -405,30 +434,6 @@ pub struct Partial {
     pub reasoning: String,
 }
 
-/// A tool call of the model's last reply. It is [`Queued`] while an
-/// earlier call of the reply holds it back (see
-/// [`Footprint`]), then runs as a [`Running`](super::calls::Running) task,
-/// or stays open for an open tool, and ends with a
-/// [`ToolOutput`](super::tools::ToolOutput).
-/// Read-only calls run side by side; every other call runs alone, in order.
-#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
-#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
-pub struct ToolCallRun {
-    /// The call.
-    pub call: ToolCall,
-    /// The effect id of the model call that asked for it; `None` for a
-    /// call that a restart runs again.
-    pub parent: Option<EffectId>,
-    /// Whether it runs beside others, from its tool.
-    pub(crate) footprint: Footprint,
-}
-
-/// A tool call waiting for earlier calls of its reply to finish.
-#[derive(Component, Reflect, Default)]
-#[component(storage = "SparseSet")]
-#[reflect(Component, Default)]
-pub struct Queued;
-
 /// Send the agent's conversation to its model again as it stands: after a
 /// turn that failed on a transient error and kept the user's message, or
 /// one that stopped before the model answered the last tool results.
@@ -439,12 +444,28 @@ pub struct Retry {
     pub entity: Entity,
 }
 
-/// Stop the agent's running turn.
+/// Stop the agent's running turn at once: it ends
+/// [`TurnOutcome::Stopped`] with `reason`, the text its reply streamed so
+/// far is kept, every call of the turn that has not settled is answered as
+/// interrupted, and whatever held them is despawned. It cannot be reviewed
+/// or held.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Interrupt {
     /// The agent.
     pub entity: Entity,
+    /// Why, when it is not the user who stops it.
+    pub reason: Option<String>,
+}
+
+impl Interrupt {
+    /// The user stopping `agent`'s turn.
+    pub fn new(agent: Entity) -> Self {
+        Self {
+            entity: agent,
+            reason: None,
+        }
+    }
 }
 
 /// How a [`Notice`] is shown and logged.
@@ -497,44 +518,40 @@ impl Notice {
     }
 }
 
-/// How a turn ended.
-#[derive(Clone, Debug)]
+/// How a turn ends, on the turn. The kernel proposes `Answered` or `Failed`
+/// in Commit; in the next pass Review may replace it (`insert`), hold it
+/// ([`HoldOf`](super::stage::HoldOf) the turn), or carry the turn on by
+/// sending it a `Queue` or `Steer` message, which takes an `Answered`
+/// proposal away, or by spawning its next
+/// [`TurnCall`](super::turn::TurnCall), which takes any away once
+/// admitted; the holds on a proposal taken away are despawned with it. A
+/// plugin may insert `Failed` or `Stopped` at any time: the
+/// turn's calls that have not started then never start, the others are
+/// answered as stopped, and the turn ends once they settled. A turn that
+/// ended is [`Settled`](super::stage::Settled) with it, until the next
+/// frame: `On<Add<Settled>>` or `Added<Settled>` readers of
+/// `(&TurnOutcome, &ForAgent)` see each turn's last outcome once.
+#[derive(Component, Clone, Debug)]
+#[component(on_insert = moved::<TurnOutcome>, on_remove = moved::<TurnOutcome>)]
 pub enum TurnOutcome {
     /// The model answered: its last message, which ended the turn.
     Answered(Message),
     /// The turn failed, for the reason given.
     Failed(String),
-    /// The turn was stopped before an answer, by the user or on exit.
-    Stopped,
+    /// The turn was stopped before an answer: by the user when no reason
+    /// is given, or on exit.
+    Stopped(Option<String>),
 }
 
-/// The agents, each with whether it is a subagent, for [`primary`].
-pub type PrimaryQuery<'w, 's> =
-    Query<'w, 's, (Entity, &'static AgentId, Has<SpawnedBy>), With<Agent>>;
-
-/// Where an agent sorts among the agents of a session: the ones the user
-/// started first, each group by id. The first is the agent the user talks
-/// to when none is named.
-pub fn primary_order(spawned: bool, id: &AgentId) -> (bool, &str) {
-    (spawned, id.0.as_str())
-}
-
-/// The agent the user talks to when none is named: the first one by
-/// [`primary_order`].
-pub fn primary(agents: &PrimaryQuery) -> Option<Entity> {
-    agents
-        .iter()
-        .min_by(|a, b| primary_order(a.2, a.1).cmp(&primary_order(b.2, b.1)))
-        .map(|(entity, ..)| entity)
-}
-
-/// An agent's turn ended, however its turn entity went away. Triggered on
-/// the agent once it is idle. Not triggered for a turn the app's exit
-/// stops: the restart carries that one on.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct TurnEnded {
-    /// The agent.
-    pub entity: Entity,
-    /// How the turn ended.
-    pub outcome: TurnOutcome,
+impl TurnOutcome {
+    /// What the calls of a turn that ends this way are told, when it
+    /// stops them: `Failed` and `Stopped` do, `Answered` does not.
+    pub(crate) fn stops(&self) -> Option<String> {
+        match self {
+            Self::Answered(_) => None,
+            Self::Failed(why) => Some(format!("stopped: the turn failed: {why}")),
+            Self::Stopped(None) => Some("stopped".to_owned()),
+            Self::Stopped(Some(why)) => Some(format!("stopped: {why}")),
+        }
+    }
 }

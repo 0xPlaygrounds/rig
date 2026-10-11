@@ -1,0 +1,33 @@
+[package]
+name = "corpus-ho-exit-notes"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H14: Session notes written on exit"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives; `OnAppExitSystems` is bevy_app's.
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The note's date, in local time.
+chrono = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The set a request edit goes before, so compaction measures what is sent.
+rig-compaction = { path = "../../plugins/rig-compaction" }
+# The session's name.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+# Ctrl-D.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+serde_json = { workspace = true }

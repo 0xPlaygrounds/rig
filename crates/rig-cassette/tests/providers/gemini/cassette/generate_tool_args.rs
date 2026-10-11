@@ -261,6 +261,7 @@ async fn optional_nullable_argument_omitted_when_not_requested() {
                     },
                     "required": ["name"]
                 }),
+                annotations: Default::default(),
             });
 
             let response = model

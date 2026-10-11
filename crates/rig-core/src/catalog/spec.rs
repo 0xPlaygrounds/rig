@@ -506,6 +506,45 @@ impl ModelSpec {
             .collect()
     }
 
+    /// Fits `request` to this model: takes out each option it would refuse
+    /// ([`Self::refusals`]) and leaves everything else as it is, so a request
+    /// built or edited for another model keeps what this one takes. A refused
+    /// reasoning setting becomes the provider default (`None`) first, since
+    /// whether the model reasons decides whether it takes `temperature` and
+    /// `top_p`. Returns what was taken out, in that order; afterwards
+    /// [`Self::refusals`] of the request is empty.
+    ///
+    /// ```
+    /// use rig_core::catalog::{ModelSpec, ReasoningSupport};
+    /// use rig_core::completion::{CompletionRequest, Effort, GenerationOptions, Reasoning};
+    /// use rig_core::providers::registry::ProviderId;
+    ///
+    /// let vendor = ProviderId::catalog("ollama").ok_or("a known vendor")?;
+    /// let plain = ModelSpec::new(vendor, "plain").with_reasoning(ReasoningSupport::None);
+    /// let options = GenerationOptions::default().reasoning(Reasoning::Effort(Effort::High));
+    /// let mut request = CompletionRequest::new("hi").options(options.seed(7));
+    /// let dropped = plain.fit(&mut request);
+    /// assert_eq!(dropped.len(), 1);
+    /// assert_eq!((request.options.reasoning, request.options.seed), (None, Some(7)));
+    /// # Ok::<(), &str>(())
+    /// ```
+    pub fn fit(&self, request: &mut CompletionRequest) -> Vec<UnsupportedOption> {
+        let mut dropped = Vec::new();
+        // Only a set option is refused, and each pass unsets one, so this ends.
+        while let Some(refusal) = self.request_rules(request).into_iter().next() {
+            let options = &mut request.options;
+            match refusal.field {
+                "reasoning" => options.reasoning = None,
+                "cache" => options.cache = None,
+                "top_p" => options.top_p = None,
+                "temperature" => request.temperature = None,
+                _ => break,
+            }
+            dropped.push(self.unsupported(refusal));
+        }
+        dropped
+    }
+
     /// [`Self::refusals`] as the options and reasons the wires report under
     /// their own provider name.
     pub(crate) fn request_rules(&self, request: &CompletionRequest) -> Vec<CatalogRefusal> {

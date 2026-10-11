@@ -37,7 +37,7 @@ impl JsonlDirStore {
         self.dir.join(format!("{agent}.{EXTENSION}"))
     }
 
-    fn blobs(&self) -> PathBuf {
+    fn blob_dir(&self) -> PathBuf {
         self.dir.join("blobs")
     }
 
@@ -91,7 +91,7 @@ impl JournalStore for JsonlDirStore {
     }
 
     fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let blobs = self.blobs();
+        let blobs = self.blob_dir();
         let path = blobs.join(name);
         if path.exists() {
             return Ok(());
@@ -103,6 +103,27 @@ impl JournalStore for JsonlDirStore {
     }
 
     fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        fs::read(self.blobs().join(name))
+        fs::read(self.blob_dir().join(name))
+    }
+
+    fn blobs(&self) -> io::Result<Vec<String>> {
+        let entries = match fs::read_dir(self.blob_dir()) {
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
+            entries => entries?,
+        };
+        Ok(entries
+            .filter_map(Result::ok)
+            .filter_map(|entry| entry.file_name().into_string().ok())
+            // A blob being written has a temporary name.
+            .filter(|name| !name.ends_with(".tmp"))
+            .collect())
+    }
+
+    fn remove(&self, agent: &str) -> io::Result<()> {
+        self.open().remove(agent);
+        match fs::remove_file(self.agent_log(agent)) {
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(()),
+            removed => removed,
+        }
     }
 }

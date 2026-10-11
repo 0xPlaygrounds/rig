@@ -1,11 +1,13 @@
 //! The `__name__` plugin of the rig agent, made by `rig plugin new`.
 //!
 //! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
-//! has a short copy-ready example of each extension point: a tool and how
-//! its calls look, a slash command, what the user types, state kept with the
-//! session, turn hooks, a timer, turning off or replacing what another
-//! plugin added, the status line, what agents do and say in a terminal
-//! panel, and a window. Every
+//! states the rules every plugin follows (effects move through stages, and
+//! a hook is a system in one) and has a short copy-ready example of each
+//! extension point: a tool and gating its calls, asking the user, a slash
+//! command, what the user types, model requests, a turn's end, a plugin's
+//! own effects, settings and options, state kept with the session, time,
+//! the process, sessions, turning off or replacing what another plugin
+//! added, a front, the status line, a terminal panel, and a window. Every
 //! name they use comes from `rig_harness::prelude` or the plugin crate the
 //! example names, such as `rig_tui`; the optional `inspect` tool (crate
 //! `rig-inspect`) shows the rest.
@@ -37,15 +39,24 @@ impl Plugin for ScaffoldPlugin {
         // - a command's event:  trigger it from the command, commands.trigger(MyEvent { .. })
         // - a tool:             app.add_tool(MyTool), a `PortableTool`; one found at run time
         //                       with app.add_open_tool or world.spawn_tool ("A tool")
-        // - each model request: an observer of `On<PrepareRequest>` changes its preamble,
-        //                       tools or options; a `Connection` on a turn or call picks
-        //                       another model ("Turn hooks")
+        // - each model request: a system in `Stage::Prepare` edits a turn's `ModelRequest`
+        //                       (prompt, tools, options, the model it goes to); one in
+        //                       `Stage::Review` takes a failed call over ("Model requests")
+        // - a tool call:        a system in `Stage::Gate` refuses or holds it, one in
+        //                       `Stage::Review` replaces its result ("Gating and reviewing")
+        // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
+        // - a setting:          app.add_setting::<MySettings>("my-plugin"), read from
+        //                       RIG_HOME/settings.toml ("Settings and command-line options")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
-        // - what the user types: an observer of `On<Deliver>` may change it first
+        // - what the user types: an `Incoming` message, changed by a system in
+        //                       `Stage::Prepare`, taken over in `Stage::Gate`
         //                       ("What the user types")
         // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
         //                       agent's StatusItems ("The status line")
-        // - after a turn:       app.add_observer(on_turn_ended), taking `On<TurnEnded>`
+        // - a turn's end:       a system in `Stage::Review` reads, replaces or holds a
+        //                       turn's proposed `TurnOutcome`, or carries the turn on;
+        //                       `On<Add<Settled>>` on a turn sees how it ended
+        //                       ("How a turn ends")
         // - on a timer:         app.add_systems(Update, tick.run_if(on_real_timer(Duration::from_secs(1))))
         //                       while an entity with KeepAwake(Duration::from_secs(1)) lives
         // - once, later:        commands.delayed().duration(Duration::from_secs(5)).trigger(..)

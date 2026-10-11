@@ -3,8 +3,11 @@
 //! them requests, awaits their replies and calls their tools. Each call is a
 //! job sent into the world, which runs it in the next frame (the call asks
 //! for one through [`Wake`]) and answers on a oneshot channel. Tool calls
-//! made through it go through the one recorded dispatch path
-//! ([`ToolStarter`]), like the model's own.
+//! made through it are tool call effects ([`ToolRequest`]), like the
+//! model's own: gated, started and recorded the same way. Made for a call
+//! ([`Harness::within`]), they are that call's children (`ChildOf`): they
+//! end with it, so an interrupt that ends the call ends a tool call it held
+//! too, and whatever held it.
 
 use std::collections::HashMap;
 
@@ -12,17 +15,16 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
-use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
-    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnEnded, TurnOutcome,
+    Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
 };
 use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
 use rig_ecs::model::{Effort, ModelChoice, Models};
-use rig_ecs::tools::ToolOutput;
-use rig_ecs::turn::{ToolStarter, tool_name};
+use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled};
+use rig_ecs::tools::ToolRequest;
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;
@@ -32,10 +34,11 @@ impl Plugin for HarnessPlugin {
         app.init_resource::<Jobs>()
             .init_resource::<Replies>()
             .add_systems(PreStartup, insert_harness)
-            .add_systems(Update, run_jobs.before(PollCalls))
+            .add_systems(Update, run_jobs.before(PollCalls).before(AgentLoop))
             .add_observer(end_replies)
             .add_observer(drop_replies)
-            .add_observer(answer_call);
+            .add_observer(answer_call)
+            .add_observer(end_with_call);
     }
 }
 
@@ -48,6 +51,9 @@ type Answer<T> = oneshot::Sender<Result<T, String>>;
 /// Why a call failed when the app stopped, or dropped the call, before it
 /// answered.
 const CLOSED: &str = "the app stopped before it answered";
+
+/// Why a tool call was not made for a call that ended.
+const ENDED: &str = "the call it was made for ended";
 
 /// What [`Harness::spawn_agent`] starts. Each setting left out is taken
 /// from the parent, or is the default without one; the effort is the
@@ -71,16 +77,17 @@ pub struct AgentSpec {
 pub struct Harness {
     jobs: Sender<Job>,
     wake: Wake,
-    parent: Option<EffectId>,
+    call: Option<Entity>,
 }
 
 impl Harness {
-    /// This handle with `parent`, such as the open tool call whose work it
-    /// does, as the effect that tool calls through it and the model calls
-    /// of agents it spawns are recorded under.
-    pub fn within(&self, parent: EffectId) -> Self {
+    /// This handle doing the work of `call`, such as an open tool call:
+    /// tool calls through it are its children, recorded under it and ended
+    /// with it, and the model calls of agents it spawns are recorded under
+    /// it.
+    pub fn within(&self, call: Entity) -> Self {
         Self {
-            parent: Some(parent),
+            call: Some(call),
             ..self.clone()
         }
     }
@@ -92,9 +99,9 @@ impl Harness {
         spec: AgentSpec,
         parent: Option<AgentId>,
     ) -> Result<AgentId, String> {
-        let effect = self.parent;
+        let call = self.call;
         self.ask(move |world, answer: Answer<AgentId>| {
-            answer.send(spawn_agent(world, spec, parent, effect)).ok();
+            answer.send(spawn_agent(world, spec, parent, call)).ok();
         })
         .await
     }
@@ -137,10 +144,10 @@ impl Harness {
         name: &str,
         args: serde_json::Value,
     ) -> Result<ToolResult, String> {
-        let effect = self.parent;
+        let call = self.call;
         let name = name.to_owned();
         self.ask(move |world, answer: Answer<ToolResult>| {
-            call_tool(world, &agent, name, args, effect, answer);
+            call_tool(world, &agent, name, args, call, answer);
         })
         .await
     }
@@ -183,7 +190,7 @@ fn insert_harness(jobs: Res<Jobs>, wake: Res<Wake>, mut commands: Commands) {
     commands.insert_resource(Harness {
         jobs: jobs.sender.clone(),
         wake: wake.clone(),
-        parent: None,
+        call: None,
     });
 }
 
@@ -211,8 +218,11 @@ fn spawn_agent(
     world: &mut World,
     spec: AgentSpec,
     parent: Option<AgentId>,
-    effect: Option<EffectId>,
+    call: Option<Entity>,
 ) -> Result<AgentId, String> {
+    let effect = call
+        .and_then(|call| world.get::<Effect>(call))
+        .map(Effect::id);
     let parent = parent.map(|parent| find(world, &parent)).transpose()?;
     let inherited = parent.map(|parent| {
         (
@@ -332,16 +342,23 @@ fn await_reply(world: &mut World, request: RequestId, answer: Answer<TurnOutcome
 /// Ends every request waiting on the agent whose turn ended with that
 /// turn's outcome: a turn reads every message queued for it before it
 /// ends, so it answers them all.
-fn end_replies(end: On<TurnEnded>, mut replies: ResMut<Replies>) {
+fn end_replies(
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    mut replies: ResMut<Replies>,
+) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
     for reply in replies.0.values_mut() {
-        if reply.agent != end.entity {
+        if reply.agent != agent {
             continue;
         }
         if let ReplyState::Waiting(waiting) = &mut reply.state {
             for answer in waiting.drain(..) {
-                answer.send(Ok(end.outcome.clone())).ok();
+                answer.send(Ok(outcome.clone())).ok();
             }
-            reply.state = ReplyState::Ended(end.outcome.clone());
+            reply.state = ReplyState::Ended(outcome.clone());
         }
     }
 }
@@ -361,7 +378,7 @@ fn call_tool(
     agent: &AgentId,
     name: String,
     args: serde_json::Value,
-    effect: Option<EffectId>,
+    within: Option<Entity>,
     answer: Answer<ToolResult>,
 ) {
     let name = ToolName::new(name).map_err(|error| error.to_string());
@@ -372,38 +389,50 @@ fn call_tool(
             return;
         }
     };
+    let open = |call: Entity| {
+        world
+            .get_entity(call)
+            .is_ok_and(|call| !call.contains::<Settled>())
+    };
+    if within.is_some_and(|call| !open(call)) {
+        answer.send(Err(ENDED.to_owned())).ok();
+        return;
+    }
     let call = ToolCall::from_wire("", ToolFunction::new(name, args));
-    // A failure drops `answer`, which the caller reads as closed.
-    world
-        .run_system_cached_with(start_call, (agent, call, effect, answer))
-        .ok();
+    let call = (
+        ToolRequest { call },
+        ForAgent(agent),
+        HarnessCall(Some(answer)),
+    );
+    // Spawned with its parent, which its effect takes its parent from.
+    match within {
+        Some(within) => world.spawn((call, ChildOf(within))),
+        None => world.spawn(call),
+    };
 }
 
-/// Starts a [`Harness`] tool call as an entity of its own, outside any
-/// turn, on the path a model's call takes.
-fn start_call(
-    In((agent, call, parent, answer)): In<(Entity, ToolCall, Option<EffectId>, Answer<ToolResult>)>,
-    starter: ToolStarter,
-    mut commands: Commands,
-) {
-    let run = starter.run(call, parent);
-    let entity = commands
-        .spawn((tool_name(&run), run.clone(), HarnessCall(Some(answer))))
-        .id();
-    starter.start(&mut commands, entity, agent, &run);
-}
-
-/// Answers a [`Harness`] tool call with its output, then despawns it.
-fn answer_call(
-    done: On<Add<ToolOutput>>,
-    mut calls: Query<(&ToolOutput, &mut HarnessCall)>,
-    mut commands: Commands,
-) {
-    let Ok((ToolOutput(result), mut call)) = calls.get_mut(done.entity) else {
+/// Answers a [`Harness`] tool call with its result once it settled.
+fn answer_call(settled: On<Add<Settled>>, mut calls: Query<(&Outcome, &mut HarnessCall)>) {
+    let Ok((outcome, mut call)) = calls.get_mut(settled.entity) else {
         return;
     };
     if let Some(answer) = call.0.take() {
-        answer.send(Ok(result.clone())).ok();
+        answer.send(Ok(outcome.tool_result())).ok();
     }
-    commands.entity(done.entity).try_despawn();
+}
+
+/// Ends the tool calls a call made through a [`Harness`] that are still
+/// open when it settles, such as one a gate holds when an interrupt ends
+/// the call: each is despawned, which records it as cancelled and ends
+/// whatever held it.
+fn end_with_call(
+    settled: On<Add<Settled>>,
+    children: Query<&Children>,
+    open: Query<(), (With<HarnessCall>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    let calls = children.get(settled.entity).into_iter().flatten();
+    for &call in calls.filter(|&&call| open.contains(call)) {
+        commands.entity(call).despawn();
+    }
 }

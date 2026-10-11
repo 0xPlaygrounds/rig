@@ -16,14 +16,17 @@ use crate::{
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
-/// Recorded parent dispatch and stable program scope identifier, without live
-/// runtime handles.
+/// Recorded parent dispatch, stable program scope identifier and purpose,
+/// without live runtime handles.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Origin {
     /// The dispatch this one was made from, if a handler made it.
     pub parent: Option<EffectId>,
     /// The scope of the program that made it, if its dispatcher was scoped.
     pub scope: Option<std::sync::Arc<str>>,
+    /// What it was made for, such as `"turn"` or `"summary"`, if its
+    /// dispatcher said.
+    pub purpose: Option<std::borrow::Cow<'static, str>>,
 }
 
 /// What a driver tells about the dispatches it serves. A driver calls
@@ -75,8 +78,9 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     /// Who the streamed reply of `id` is from, before its first item, when
     /// [`keep_events`](Self::keep_events) says so.
     fn origin(&self, id: EffectId, origin: &crate::message::Origin);
-    /// Explicitly published tool output, delivered before `resolve`. A driver
-    /// snapshots it without consuming the caller's published context.
+    /// Explicitly published output, a tool's or a layer's facts, delivered
+    /// before `resolve`. A driver snapshots it without consuming the
+    /// caller's published context.
     fn tool_output(&self, id: EffectId, output: crate::tool::ToolResultContext);
     /// The outcome of `id`.
     fn resolve(&self, id: EffectId, outcome: Result<Outcome, ErrorReport>);

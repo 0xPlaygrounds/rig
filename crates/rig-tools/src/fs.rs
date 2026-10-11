@@ -1,12 +1,12 @@
-//! File helpers the tools share: an atomic write, capped text reads and
-//! JSON files.
+//! File helpers the tools share: an atomic write, capped text reads, JSON
+//! files, and the [`FileChange`] a tool that writes publishes.
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rig_core::tool::ToolExecutionError;
+use rig_core::tool::{FileChange, ToolExecutionError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -168,4 +168,64 @@ pub fn io_error(path: &str, error: io::Error) -> ToolExecutionError {
         ErrorKind::PermissionDenied => ToolExecutionError::permission_denied(message),
         _ => ToolExecutionError::other(message),
     }
+}
+
+/// `path` made absolute against this process's working directory, where
+/// the file tools open a relative path, as the facts they publish name it
+/// ([`FilesRead`](rig_core::tool::FilesRead), [`FileChange::path`]). `..`
+/// is kept and links are not followed. A path that cannot be made absolute
+/// (no working directory) stays as it is.
+///
+/// ```
+/// use rig_tools::fs::absolute;
+///
+/// let here = std::env::current_dir()?;
+/// assert_eq!(absolute("src/lib.rs"), here.join("src/lib.rs").to_string_lossy());
+/// assert_eq!(absolute("/etc/hosts"), "/etc/hosts");
+/// # Ok::<(), std::io::Error>(())
+/// ```
+pub fn absolute(path: &str) -> String {
+    std::path::absolute(path)
+        .map(|path| path.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| path.to_owned())
+}
+
+/// What turning `before` (`None`: there was no file) into `after` did to the
+/// file at `path`: its lines added and removed, counted by a line diff, and
+/// that diff, unified with 3 lines of context: the fact a tool that writes
+/// files publishes ([`FilesChanged`](rig_core::tool::FilesChanged)).
+///
+/// ```
+/// use rig_core::tool::ChangeKind;
+/// use rig_tools::fs::file_change;
+///
+/// let created = file_change("a.rs", None, "one\ntwo\n");
+/// assert_eq!((created.kind, created.added, created.removed), (ChangeKind::Created, 2, 0));
+/// let changed = file_change("a.rs", Some("one\ntwo\n"), "one\n2\nthree\n");
+/// assert_eq!((changed.kind, changed.added, changed.removed), (ChangeKind::Modified, 2, 1));
+/// assert_eq!(
+///     changed.diff.as_deref(),
+///     Some("--- a.rs\n+++ a.rs\n@@ -1,2 +1,3 @@\n one\n-two\n+2\n+three\n")
+/// );
+/// ```
+pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange {
+    let diff = similar::TextDiff::from_lines(before.unwrap_or_default(), after);
+    let unified = diff
+        .unified_diff()
+        .context_radius(3)
+        .header(before.map_or("/dev/null", |_| path), path)
+        .to_string();
+    let (mut added, mut removed) = (0, 0);
+    for change in diff.iter_all_changes() {
+        match change.tag() {
+            similar::ChangeTag::Insert => added += 1,
+            similar::ChangeTag::Delete => removed += 1,
+            similar::ChangeTag::Equal => {}
+        }
+    }
+    match before {
+        None => FileChange::created(path, added),
+        Some(_) => FileChange::modified(path, added, removed),
+    }
+    .with_diff(unified)
 }

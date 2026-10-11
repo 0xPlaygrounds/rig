@@ -16,6 +16,7 @@
 //! # Ok::<(), rig_core::providers::registry::RefError>(())
 //! ```
 
+use std::borrow::Cow;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 
@@ -257,7 +258,7 @@ fn key_from_env(
     if required {
         return Err(ConnectError::MissingKey {
             vendor: vendor.to_owned(),
-            tried,
+            tried: tried.into_iter().map(Cow::Borrowed).collect(),
         });
     }
     Ok((String::new(), None))
@@ -312,15 +313,33 @@ enum Kind {
     Registered(Registered),
     /// A provider only the model catalog names.
     CatalogOnly(&'static CatalogOnly),
+    /// A vendor declared at run time ([`ProviderId::declare`]).
+    Declared(&'static str),
+}
+
+/// The vendors declared at run time, each name stored once for the life of
+/// the process, so a declared [`ProviderId`] stays `Copy` and names its
+/// vendor as `&'static str` like a built-in one.
+static DECLARED: std::sync::RwLock<Vec<&'static str>> = std::sync::RwLock::new(Vec::new());
+
+/// The declared vendor named `vendor`, if any.
+fn declared(vendor: &str) -> Option<&'static str> {
+    DECLARED
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .iter()
+        .copied()
+        .find(|name| *name == vendor)
 }
 
 /// Validated vendor and protocol-family pair from this build's dialect tables,
-/// or a catalog-only provider the registry cannot configure. Construction and
-/// deserialization reject unregistered pairs; only
-/// [`ProviderId::catalog`] and the model catalog produce a catalog-only id,
-/// which has no format and no preset. Equality and hashing use the pair, not
-/// dialect options; display emits `vendor/format`, or the vendor alone for a
-/// catalog-only id.
+/// a catalog-only provider the registry cannot configure, or a vendor
+/// declared at run time ([`Self::declare`]). Construction and
+/// deserialization reject unregistered pairs; only [`ProviderId::catalog`],
+/// [`ProviderId::declare`] and the model catalog produce a catalog-only or
+/// declared id, which has no format and no preset. Equality and hashing use
+/// the pair, not dialect options; display emits `vendor/format`, or the
+/// vendor alone for a catalog-only or declared id.
 #[derive(Debug, Clone, Copy)]
 pub struct ProviderId(Kind);
 
@@ -391,14 +410,72 @@ impl ProviderId {
                     .find(|provider| provider.vendor == vendor)
                     .map(|provider| Self(Kind::CatalogOnly(provider)))
             })
+            .or_else(|| declared(vendor).map(|name| Self(Kind::Declared(name))))
     }
 
-    /// Every vendor name [`Self::catalog`] knows, registered or
-    /// catalog-only. A vendor registered in two families appears twice.
+    /// Declare `vendor`, a provider this build has no preset for, such as a
+    /// company gateway (`corp`) or a local server under a name of its own,
+    /// and return the id the catalog files its models under. From then on
+    /// [`Self::catalog`] finds it, so `corp/big` resolves, parses and reads
+    /// back like a built-in reference once the catalog lists the model
+    /// ([`Catalog::insert`]). The registry cannot configure it: whoever
+    /// declares it says how its models are reached, such as with
+    /// [`Connector::provide`](crate::catalog::Connector::provide) or by
+    /// building a [`ProviderConfig`] from a dialect of its own.
+    ///
+    /// Declaring is idempotent and process-wide. A vendor this build already
+    /// knows comes back as [`Self::catalog`] gives it.
+    ///
+    /// ```
+    /// use rig_core::catalog::{Catalog, ModelSpec};
+    /// use rig_core::providers::registry::ProviderId;
+    ///
+    /// let corp = ProviderId::declare("corp")?;
+    /// let mut catalog = Catalog::builtin().clone();
+    /// catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
+    /// assert_eq!(catalog.resolve("corp/big").map_err(|e| e.to_string())?.spec.provider, corp);
+    /// assert_eq!(ProviderId::declare("anthropic")?, ProviderId::catalog("anthropic").ok_or("known")?);
+    /// # Ok::<(), Box<dyn std::error::Error>>(())
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// [`SelectionError::Malformed`] for an empty name, or one with a `/`
+    /// or whitespace, which a `vendor/model` reference could not spell.
+    pub fn declare(vendor: &str) -> Result<Self, SelectionError> {
+        if vendor.is_empty() || vendor.contains('/') || vendor.contains(char::is_whitespace) {
+            return Err(SelectionError::Malformed {
+                selection: vendor.to_owned(),
+            });
+        }
+        if let Some(known) = Self::catalog(vendor) {
+            return Ok(known);
+        }
+        let mut names = DECLARED
+            .write()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let name = match names.iter().copied().find(|name| *name == vendor) {
+            Some(name) => name,
+            None => {
+                let name: &'static str = Box::leak(vendor.to_owned().into_boxed_str());
+                names.push(name);
+                name
+            }
+        };
+        Ok(Self(Kind::Declared(name)))
+    }
+
+    /// Every vendor name [`Self::catalog`] knows, registered, catalog-only
+    /// or declared. A vendor registered in two families appears twice.
     pub(crate) fn catalog_vendors() -> impl Iterator<Item = &'static str> {
+        let declared: Vec<&'static str> = DECLARED
+            .read()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone();
         Self::all()
             .map(|id| id.vendor())
             .chain(CATALOG_ONLY.iter().map(|provider| provider.vendor))
+            .chain(declared)
     }
 
     /// The vendor, spelled as the provider's own descriptor name.
@@ -406,21 +483,29 @@ impl ProviderId {
         match &self.0 {
             Kind::Registered(registered) => registered.vendor(),
             Kind::CatalogOnly(provider) => provider.vendor,
+            Kind::Declared(vendor) => vendor,
         }
     }
 
-    /// The protocol family, or `None` for a catalog-only provider.
+    /// The protocol family, or `None` for a catalog-only or declared
+    /// provider.
     pub fn format(&self) -> Option<Format> {
         match &self.0 {
             Kind::Registered(registered) => Some(registered.format()),
-            Kind::CatalogOnly(_) => None,
+            Kind::CatalogOnly(_) | Kind::Declared(_) => None,
         }
     }
 
     /// Whether the registry can configure this provider. A catalog-only
-    /// provider is served by its companion crate instead.
+    /// provider is served by its companion crate instead, and a declared one
+    /// by whoever declared it.
     pub fn is_registered(&self) -> bool {
         matches!(self.0, Kind::Registered(_))
+    }
+
+    /// Whether this is a vendor declared at run time ([`Self::declare`]).
+    pub fn is_declared(&self) -> bool {
+        matches!(self.0, Kind::Declared(_))
     }
 
     /// Every selection registered for `vendor`, in registration order.
@@ -468,12 +553,12 @@ impl ProviderId {
     }
 
     /// Build this selection's preset with `api_key`, or `None` for a
-    /// catalog-only provider. Copilot requires an exchanged session token,
-    /// not a GitHub OAuth token.
+    /// catalog-only or declared provider. Copilot requires an exchanged
+    /// session token, not a GitHub OAuth token.
     pub fn config(&self, api_key: impl Into<Secret>) -> Option<ProviderConfig> {
         match &self.0 {
             Kind::Registered(registered) => Some(registered.config(api_key)),
-            Kind::CatalogOnly(_) => None,
+            Kind::CatalogOnly(_) | Kind::Declared(_) => None,
         }
     }
 
@@ -481,15 +566,16 @@ impl ProviderId {
     /// dialect's own, then its alternative credential's (Azure's
     /// `AZURE_TOKEN`). An empty value counts as unset. Empty for a
     /// catalog-only provider, whose companion crate reads its own
-    /// credentials.
+    /// credentials, and for a declared one.
     pub fn api_key_envs(&self) -> Vec<&'static str> {
         match &self.0 {
             Kind::Registered(registered) => registered.key_envs(),
-            Kind::CatalogOnly(_) => Vec::new(),
+            Kind::CatalogOnly(_) | Kind::Declared(_) => Vec::new(),
         }
     }
 
-    /// Whether this selection needs a credential at all.
+    /// Whether this selection needs a credential at all. `false` for a
+    /// declared provider: whoever reaches it holds what it needs.
     ///
     /// A local `llama-server` authenticates optionally, so naming its
     /// variable is a hint rather than a requirement.
@@ -497,6 +583,7 @@ impl ProviderId {
         match &self.0 {
             Kind::Registered(registered) => registered.requires_credential(),
             Kind::CatalogOnly(provider) => provider.credential,
+            Kind::Declared(_) => false,
         }
     }
 
@@ -507,6 +594,10 @@ impl ProviderId {
             Kind::CatalogOnly(provider) => Err(ConnectError::CatalogOnly {
                 vendor: provider.vendor.to_owned(),
                 served_by: provider.home,
+            }),
+            Kind::Declared(vendor) => Err(ConnectError::CatalogOnly {
+                vendor: vendor.to_owned(),
+                served_by: "whoever declared it: provide it with `Connector::provide`",
             }),
         }
     }
@@ -571,8 +662,9 @@ impl Serialize for ProviderId {
     }
 }
 
-/// Reads a selection as [`ProviderId::resolve`] does, and a catalog-only
-/// provider by its vendor name, so a catalog id reads back.
+/// Reads a selection as [`ProviderId::resolve`] does, and a catalog-only or
+/// declared provider by its vendor name, so a catalog id reads back. A
+/// declared vendor reads back only once this process declared it.
 impl<'de> Deserialize<'de> for ProviderId {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         let selection = String::deserialize(deserializer)?;
@@ -726,27 +818,33 @@ impl ProviderConfig {
         }
     }
 
-    /// The completion wire for `model`, bound to `http`, erased behind a
-    /// [`ModelAdapter`] labelled `label`.
-    ///
-    /// A handler built from data uses the provider's own completion wire,
-    /// including Copilot's model-dependent routing and request envelope.
-    /// Explicit hosts, routes and typed options are preserved.
+    /// The completion wire for `model`, bound to `http` and encoding and
+    /// pricing with `facts`, erased behind a [`ModelAdapter`] labelled
+    /// `label`: [`Self::completion_model`] as an effect handler.
     pub fn completion_handler(
         &self,
         label: &str,
         model: &str,
         http: DynHttpClient,
+        facts: ModelFacts,
     ) -> ErasedHandler {
         ErasedHandler::new(ModelAdapter::new(
             label,
-            self.completion_model(model, http, ModelFacts::default()),
+            self.completion_model(model, http, facts),
         ))
     }
 
     /// The provider's completion model for `model` on `http`, encoding with
-    /// `facts`, erased.
-    fn completion_model(
+    /// `facts` and pricing its replies by them, erased: how a model the
+    /// catalog lists under a declared vendor ([`ProviderId::declare`]) is
+    /// reached on a gateway of its own, with its catalog prices. Pass
+    /// [`ModelFacts::new`] of the model's spec, or
+    /// [`Catalog::facts`](crate::catalog::Catalog::facts).
+    ///
+    /// The model uses the provider's own completion wire, including
+    /// Copilot's model-dependent routing and request envelope. Explicit
+    /// hosts, routes and typed options are preserved.
+    pub fn completion_model(
         &self,
         model: &str,
         http: DynHttpClient,
@@ -851,14 +949,16 @@ enum Recipe {
 impl ProviderRef {
     /// A reference to a non-empty `model` on a registered selection.
     /// Returns [`RefError::EmptyModel`] for an empty identifier, and
-    /// [`SelectionError::Unknown`] for a catalog-only provider, which the
-    /// registry cannot configure.
+    /// [`SelectionError::Unknown`] for a catalog-only or declared provider,
+    /// which the registry cannot configure.
     pub fn registered(id: ProviderId, model: impl Into<String>) -> Result<Self, RefError> {
         match id.0 {
             Kind::Registered(registered) => Self::new(Recipe::Registered(registered), model.into()),
-            Kind::CatalogOnly(provider) => Err(RefError::Selection(SelectionError::Unknown {
-                vendor: provider.vendor.to_owned(),
-            })),
+            Kind::CatalogOnly(_) | Kind::Declared(_) => {
+                Err(RefError::Selection(SelectionError::Unknown {
+                    vendor: id.vendor().to_owned(),
+                }))
+            }
         }
     }
 
@@ -1186,9 +1286,14 @@ pub enum ConnectError {
     MissingKey {
         /// The vendor.
         vendor: String,
-        /// The variables read, in order.
-        tried: Vec<&'static str>,
+        /// The variables read, in order: built-in names, or names a
+        /// provider reads at run time.
+        tried: Vec<Cow<'static, str>>,
     },
+    /// The provider serving the model failed, in its own words, such as a
+    /// [`Provide`](crate::catalog::Provide) whose gateway is not configured.
+    #[error("{0}")]
+    Provider(String),
     /// A variable the dialect reads is set but unusable.
     #[error(transparent)]
     Env(#[from] EnvError),

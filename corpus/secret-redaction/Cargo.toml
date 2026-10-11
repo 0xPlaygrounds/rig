@@ -1,0 +1,28 @@
+[package]
+name = "corpus-secret-redaction"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 10. Secret redaction"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# A warning when redacted data does not read back.
+bevy_log = { workspace = true }
+# The secret patterns.
+regex = { workspace = true }
+# `AttachSystems`, to redact the files a message names once attached.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

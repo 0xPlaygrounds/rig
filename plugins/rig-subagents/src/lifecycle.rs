@@ -2,13 +2,19 @@
 
 use bevy_ecs::query::QueryData;
 use bevy_ecs::system::SystemParam;
+use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
-use super::{AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered};
+use super::{
+    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
+};
 use rig_harness::prelude::*;
 
 /// The report on a request a restart cut short.
 const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
+
+/// Why a restored subagent's turn is stopped.
+const RESTARTED: &str = "restart";
 
 /// What every report that holds no answer ends with.
 const NO_ANSWER: &str = "No answer will come for this request; send a `message` to carry it on.";
@@ -21,7 +27,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_observer(interrupt_restored);
+        .add_systems(AgentPass, stop_restored.in_set(Stage::Gate));
 }
 
 /// An agent as the subagent tools see it.
@@ -34,6 +40,7 @@ pub(super) struct AgentData {
     pub(super) busy: Has<ActiveTurn>,
     pub(super) lifecycle: Option<&'static Lifecycle>,
     pub(super) family: (Option<&'static Spawned>, Option<&'static SpawnedBy>),
+    effect_parent: Option<&'static EffectParent>,
 }
 
 /// The agents, their open requests and the open `wait` calls: who waits on
@@ -42,10 +49,14 @@ pub(super) struct AgentData {
 pub(super) struct Agents<'w, 's> {
     pub(super) agents: Query<'w, 's, AgentData>,
     pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
-    pub(super) inboxes: Query<'w, 's, &'static mut Inbox>,
+    /// The messages to each agent its model has not read yet: accepted
+    /// (`true`), or on their way.
+    pub(super) inboxes:
+        Query<'w, 's, (&'static mut Incoming, &'static ForAgent, Has<Started>), Without<Outcome>>,
     waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
     awaited_by: Query<'w, 's, &'static AwaitedBy>,
     turns: Query<'w, 's, &'static TurnOf>,
+    wake: Res<'w, Wake>,
     pub(super) commands: Commands<'w, 's>,
 }
 
@@ -120,10 +131,11 @@ impl Agents<'_, '_> {
     }
 
     /// Reports `text` from `agent` on `requests`: one message per asker, in
-    /// the order of each asker's first request, naming its last one. It
-    /// goes with the asker's next model call when the asker waits for
-    /// `agent`; it is a note while another task of its batch is open, and
-    /// otherwise carries the asker on. Returns the askers reported to.
+    /// the order of each asker's first request, naming its last one, and
+    /// marked [`Report`]. It goes with the asker's next model call when the
+    /// asker waits for `agent`; it is a note while another task of its
+    /// batch is open, and otherwise carries the asker on. Returns the
+    /// askers reported to.
     pub(super) fn report(
         &mut self,
         agent: Entity,
@@ -149,20 +161,33 @@ impl Agents<'_, '_> {
             };
             let mut origin = from.clone();
             origin.request = Some(last.id.clone());
-            self.commands
-                .trigger(Deliver::new(asker, text, mode).with_origin(origin));
+            let parent = self.agents.get(asker).ok().and_then(|a| a.effect_parent);
+            self.commands.spawn((
+                Incoming::new(text, mode).with_origin(origin),
+                ForAgent(asker),
+                Effect::child_of(parent.map(|parent| parent.0)),
+                Report,
+            ));
+            self.wake.wake();
             reported.push(asker);
         }
         reported
     }
 }
 
-/// Names a subagent by its task's title, when it is spawned or restored.
-fn name_subagent(inserted: On<Insert<Subtask>>, subtasks: Query<&Subtask>, mut commands: Commands) {
-    if let Ok(subtask) = subtasks.get(inserted.entity) {
-        let name = Name::new(subtask.0.clone());
-        commands.entity(inserted.entity).insert(name);
-    }
+/// Names a subagent or a helper by its title, when it is spawned or
+/// restored.
+fn name_subagent(
+    inserted: On<Insert<(Subtask, Helper)>>,
+    titles: Query<AnyOf<(&Subtask, &Helper)>>,
+    mut commands: Commands,
+) {
+    let title = match titles.get(inserted.entity) {
+        Ok((Some(Subtask(title)), _) | (_, Some(Helper(title)))) => title,
+        _ => return,
+    };
+    let name = Name::new(title.clone());
+    commands.entity(inserted.entity).insert(name);
 }
 
 /// Gives a subagent its role as a prompt section of its own when it is
@@ -182,10 +207,10 @@ fn role(agent: Entity, after: i32, tag: &'static str, text: &str) -> impl Bundle
     (Name::new(tag), section, SectionOf(agent))
 }
 
-/// A spawned agent whose turn starts is [`Lifecycle::Working`].
+/// A subagent whose turn starts is [`Lifecycle::Working`].
 fn work_on_turn_start(
     started: On<Add<ActiveTurn>>,
-    spawned: Query<(), With<SpawnedBy>>,
+    spawned: Query<(), With<Subtask>>,
     mut commands: Commands,
 ) {
     if spawned.contains(started.entity) {
@@ -193,26 +218,37 @@ fn work_on_turn_start(
     }
 }
 
-/// A spawned agent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, else
-/// [`Lifecycle::Finished`] with its answer, or why there is none.
+/// A subagent whose turn ended, and that has not started another, is
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
+/// restart stopped it, else [`Lifecycle::Finished`] with its answer, or
+/// why there is none and what it said last: a turn a plugin stops, such as
+/// for a budget, reports `Stopped: <reason>`.
 fn step_on_turn_end(
-    end: On<TurnEnded>,
-    idle: Query<(), (With<SpawnedBy>, Without<ActiveTurn>)>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    idle: Query<&Conversation, (With<Subtask>, Without<ActiveTurn>)>,
     mut agents: Agents,
 ) {
-    let agent = end.entity;
-    if !idle.contains(agent) {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
-    }
-    let failed = |why: &str| format!("{why} {NO_ANSWER}");
-    let step = match agents.awaited(agent).first() {
+    };
+    let Ok(conversation) = idle.get(agent) else {
+        return;
+    };
+    let said = last_words(conversation).map(|said| format!("\n\nIt had said: {said}\n\n"));
+    let said = said.unwrap_or_else(|| " ".to_owned());
+    let failed = |why: &str| format!("{why}{said}{NO_ANSWER}");
+    // A restart stopped it for good: it waits on no one.
+    let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
+    let step = match agents.awaited(agent).first().filter(|_| !restarted) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
-        None => Lifecycle::Finished(match &end.outcome {
+        None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => final_answer(message)
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
-            TurnOutcome::Stopped => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => failed(INTERRUPTED),
+            TurnOutcome::Stopped(Some(why)) => failed(&format!("Stopped: {why}.")),
         }),
     };
     agents.commands.entity(agent).insert(step);
@@ -252,16 +288,28 @@ fn report_when_finished(
     }
 }
 
-/// Ends the `wait` calls of the agent a message is delivered to that wait
-/// for its sender. The message goes with the model call after them.
-fn end_waits(sent: On<Deliver>, mut agents: Agents) {
-    let Some(from) = sent.origin.from.as_ref() else {
+/// Ends the `wait` calls of the agent that accepted a message that wait
+/// for its sender. The message goes with the model call after them, even
+/// one sent to read after the agent's turn.
+fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
+    let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
         return;
     };
+    let Some(from) = message.origin.from.clone() else {
+        return;
+    };
+    let from = &from;
     let Some(sender) = agents.find(from) else {
         return;
     };
-    for call in agents.wait_calls(sent.entity, sender) {
+    let waits = agents.wait_calls(to, sender);
+    if !waits.is_empty()
+        && let Ok((mut message, ..)) = agents.inboxes.get_mut(accepted.entity)
+        && message.mode == DeliveryMode::Queue
+    {
+        message.mode = DeliveryMode::Steer;
+    }
+    for call in waits {
         let output = answered(format!(
             "`{}` sent you a message; it follows.",
             from.short()
@@ -274,17 +322,46 @@ fn end_waits(sent: On<Deliver>, mut agents: Agents) {
     }
 }
 
-/// After a restart, a restored agent that owed reports answers each as
-/// interrupted and stays idle: nothing it was doing runs again by itself.
-fn interrupt_restored(
-    mut restored: On<Restored>,
+/// After a restart, a restored agent that owed reports stays idle: its
+/// restored turn is stopped before anything of it starts, and its end
+/// reports each request as interrupted.
+pub(super) fn stop_restored(
+    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
     open: Query<&OpenRequests>,
     mut commands: Commands,
 ) {
-    let agent = restored.entity;
-    if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
-        restored.event_mut().resume = false;
-        let interrupted = Lifecycle::Finished(format!("{INTERRUPTED} {NO_ANSWER}"));
-        commands.entity(agent).insert(interrupted);
+    for (turn, &TurnOf(agent)) in &turns {
+        if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
+            let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
+            commands.entity(turn).insert(stopped);
+        }
     }
+}
+
+/// What the model said last in the conversation's last request: the text
+/// of its last message with text since the last message that was not a
+/// tool's result.
+fn last_words(conversation: &Conversation) -> Option<String> {
+    for message in conversation.messages().iter().rev() {
+        match message {
+            Message::Assistant(reply) => {
+                let parts = reply.content.iter().filter_map(|part| match part {
+                    AssistantContent::Text(text) => Some(text.text.trim()),
+                    _ => None,
+                });
+                let text: Vec<&str> = parts.filter(|text| !text.is_empty()).collect();
+                if !text.is_empty() {
+                    return Some(text.join("\n\n"));
+                }
+            }
+            Message::User { content } => {
+                let results = |part: &UserContent| matches!(part, UserContent::ToolResult(_));
+                if !content.iter().all(results) {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+    None
 }

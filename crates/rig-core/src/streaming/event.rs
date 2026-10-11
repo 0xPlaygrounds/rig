@@ -2,11 +2,12 @@
 //! it writes through the reply's part handles
 //! ([`Out`](crate::wire::Out)), and the writer emits each part's start, its
 //! fragments and its end, in that order. A [`Part`] is a part's position in
-//! the response's `choice`; only this crate constructs one in code, so code
-//! outside the writer cannot build an event out of order. An item also reads
-//! back from its serialized form on its own, unchecked, so a client can
-//! decode a relayed stream as it arrives; [`Transcript::parse`] is the one
-//! place a sequence is checked.
+//! the response's `choice`. A stream transform that splits or adds parts
+//! (reasoning a model wrote inside its text, tool calls written as text)
+//! numbers its own with [`Part::new`]. An item also reads back from its
+//! serialized form on its own, unchecked, so a client can decode a relayed
+//! stream as it arrives; [`Transcript::parse`] is the one place a sequence
+//! is checked.
 //!
 //! ```
 //! use rig_core::streaming::{PartKind, StreamEvent, Transcript};
@@ -30,18 +31,23 @@ use crate::message::{AssistantContent, ToolName};
 
 use super::UnknownPayload;
 
-/// A part's position in the response's `choice`. Only this crate constructs
-/// one, though it reads back from its serialized form:
+/// A part's position in the response's `choice`. A transform that rewrites
+/// a stream numbers the parts it emits with [`Self::new`], and keeps the
+/// order [`Transcript::parse`] checks: each part starts, grows and ends, and
+/// parts are numbered in the order they start.
 ///
-/// ```compile_fail,E0423
-/// let part = rig_core::streaming::Part(0);
+/// ```
+/// use rig_core::streaming::Part;
+///
+/// assert_eq!(Part::new(2).index(), 2);
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Part(u32);
 
 impl Part {
-    pub(crate) const fn new(index: u32) -> Self {
+    /// The part at position `index` of the response's `choice`.
+    pub const fn new(index: u32) -> Self {
         Self(index)
     }
 

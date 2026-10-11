@@ -104,6 +104,7 @@ fn provider_encode_failures_classify_as_request_building() {
             name: crate::message::ToolName::new("f").expect("tool name"),
             description: "d".into(),
             parameters: json!({"type": "object"}),
+            annotations: Default::default(),
         })
         .tool_choice(ToolChoice::Specific {
             function_names: vec![crate::message::ToolName::new("f").expect("tool name")],

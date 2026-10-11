@@ -19,11 +19,12 @@ use std::path::{Path, PathBuf};
 
 use syn::{Item, ItemMod, Meta, Token, punctuated::Punctuated};
 
-/// Run the check over every `crates/*/src` and `plugins/*/src` tree under
-/// `workspace`.
+/// Run the check over every `crates/*/src`, `plugins/*/src` and
+/// `corpus/*/src` tree under `workspace`.
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let mut files = source_files(&workspace.join("crates"))?;
     files.extend(source_files(&workspace.join("plugins"))?);
+    files.extend(source_files(&workspace.join("corpus"))?);
     if files.len() < 100 {
         return Err(format!(
             "the source walk found only {} files under crates/; refusing to pass vacuously",

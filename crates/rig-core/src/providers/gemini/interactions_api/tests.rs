@@ -302,6 +302,7 @@ fn encoded_steps(wire: &Interactions, history: Vec<Message>) -> Vec<Value> {
         name: crate::message::ToolName::new("add").expect("tool name"),
         description: "Add two numbers.".to_owned(),
         parameters: json!({"type": "object", "properties": {"x": {"type": "number"}, "y": {"type": "number"}}}),
+        annotations: Default::default(),
     };
     let request = <crate::operation::Completion as crate::wire::Operation>::prepare(
         CompletionRequest::from(history).tools(vec![add]),

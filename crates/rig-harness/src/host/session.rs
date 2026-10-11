@@ -1,12 +1,17 @@
 //! Where this process keeps its session: the directory the launcher names,
 //! the text log, panics routed to that log instead of the terminal, and
-//! the log's warnings and errors as [`Logged`] data.
+//! the log's warnings and errors as [`Logged`] data. A plugin copies the
+//! session into a new one with [`ForkSession`] and removes another with
+//! [`DeleteSession`]; [`SessionForked`] and [`SessionDeleted`] tell every
+//! plugin, such as one keeping files of its own per session. A forked
+//! session names the session it came from ([`ForkedFrom`]).
 
 use std::fmt::{Debug, Write};
-use std::fs::{self, OpenOptions};
+use std::fs::{self, File, OpenOptions, TryLockError};
 use std::ops::Deref;
 use std::sync::Mutex;
 
+use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::tracing::field::{Field, Visit};
@@ -19,8 +24,18 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_cassette::journal::JsonlDirStore;
-use rig_ecs::journal::SessionStore;
+use rig_core::completion::Message;
+use rig_core::message::UserContent;
+use rig_ecs::WriteJournal;
+use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::inbox::OriginKind;
+use rig_ecs::journal::{SessionStore, fork_session};
 use rig_tools::Spill;
+use rig_tools::attach::attached_file;
+use serde::{Deserialize, Serialize};
+
+use super::cli::Cli;
+use crate::services::RigHome;
 
 /// The session's directory: the agent logs the core keeps there through
 /// its [`SessionStore`], the effect log, and the launcher's files.
@@ -44,22 +59,30 @@ impl Deref for SessionPaths {
 }
 
 /// The session the launcher names, or a new one when the agent runs
-/// without it, under the launcher's `RIG_HOME`, with its directory
-/// created.
-pub(crate) fn paths_from_env() -> SessionPaths {
+/// without it, under `home`, with its directory created.
+pub(crate) fn paths_in(home: &Home) -> SessionPaths {
     let id = SessionId::from_env()
         .ok()
         .flatten()
         .unwrap_or_else(SessionId::generate);
-    let dir = Home::from_env().session(&id);
+    let dir = home.session(&id);
     // A directory that cannot be created shows up as a failed log write.
     fs::create_dir_all(dir.path()).ok();
     SessionPaths(dir)
 }
 
+/// The session's paths in the app's home, taken from the environment the
+/// first time.
+fn session_paths(world: &mut World) -> SessionPaths {
+    let home = RigHome::of(world);
+    world
+        .get_resource_or_insert_with(|| paths_in(&home))
+        .clone()
+}
+
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
-/// them already, and the [`SessionStore`] keeping the session there, and
-/// routes panics to the log.
+/// them already, and the [`SessionStore`] keeping the session there,
+/// routes panics to the log, and forks and deletes sessions.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -67,22 +90,273 @@ impl Plugin for SessionPlugin {
         std::panic::set_hook(Box::new(|info| {
             error!("{info}\n{}", std::backtrace::Backtrace::capture());
         }));
-        let paths = app
-            .world_mut()
-            .get_resource_or_insert_with(paths_from_env)
-            .clone();
-        app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
+        let paths = session_paths(app.world_mut());
+        if !app.world().contains_resource::<SessionStore>() {
+            app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
+        }
+        app.init_resource::<Forks>()
+            .add_message::<SessionForked>()
+            .add_message::<SessionDeleted>()
+            .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
+                forks.0.push(fork.before.clone());
+            })
+            .add_observer(delete_session)
+            // A fork copies what the session logged up to this frame.
+            .add_systems(Last, fork_sessions.after(WriteJournal))
+            .add_systems(
+                Last,
+                discard_sessionless
+                    .after(OnAppExitSystems)
+                    .run_if(on_message::<AppExit>),
+            );
     }
+}
+
+/// Removes the session's directory when a sessionless front's run ends
+/// well, once everything was written there.
+fn discard_sessionless(
+    mut exits: MessageReader<AppExit>,
+    cli: Option<Res<Cli>>,
+    paths: Res<SessionPaths>,
+) {
+    let ended_well = exits.read().all(AppExit::is_success);
+    if ended_well && cli.is_some_and(|cli| cli.sessionless()) {
+        fs::remove_dir_all(paths.path()).ok();
+    }
+}
+
+/// Copies this session into a new one: every agent's log, saved state and
+/// stored file, and the directory it works in. With `before`, an agent's
+/// id and a message's `seq` in its conversation, the copy stops at that
+/// message, and every other agent's log at what was logged before it (see
+/// [`fork_session`]). The new session's effect log starts empty.
+/// [`SessionForked`] names it; switching to it is
+/// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
+#[derive(Event, Clone, Debug, Default)]
+pub struct ForkSession {
+    /// Where the copy stops: an agent's id and a message's `seq`.
+    pub before: Option<(AgentId, u64)>,
+}
+
+/// A session forked from this one, in the frame it was written.
+#[derive(Message, Clone, Debug)]
+pub struct SessionForked {
+    /// This session.
+    pub from: SessionId,
+    /// The new session.
+    pub to: SessionId,
+    /// Where the copy stopped, as [`ForkSession`] asked.
+    pub before: Option<(AgentId, u64)>,
+}
+
+/// The session a session was forked from, and where the copy stopped,
+/// as [`ForkSession`] asked, with the text of the message it stopped
+/// before: kept in the forked session's [`SessionDir::parent`], so a view
+/// of a session's family reads no other session's log.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ForkedFrom {
+    /// The session it was copied from.
+    pub session: SessionId,
+    /// Where the copy stopped: an agent's id and a message's `seq`.
+    pub before: Option<(AgentId, u64)>,
+    /// What the user wrote in the message the copy stopped before, its
+    /// text without attached files; `None` without `before`, or for a
+    /// message with no text of the user's.
+    pub text: Option<String>,
+}
+
+/// How [`ForkedFrom`] is written.
+#[derive(Serialize, Deserialize)]
+struct Parent {
+    session: String,
+    before: Option<(AgentId, u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
+}
+
+impl ForkedFrom {
+    /// The session `session` was forked from, if it was.
+    pub fn of(session: &SessionDir) -> Option<Self> {
+        let parent: Parent = serde_json::from_slice(&fs::read(session.parent()).ok()?).ok()?;
+        Some(Self {
+            session: parent.session.parse().ok()?,
+            before: parent.before,
+            text: parent.text,
+        })
+    }
+
+    /// Writes it into `session`.
+    fn write(&self, session: &SessionDir) -> Result<(), String> {
+        let parent = Parent {
+            session: self.session.to_string(),
+            before: self.before.clone(),
+            text: self.text.clone(),
+        };
+        let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
+        fs::write(session.parent(), text).map_err(|failure| failure.to_string())
+    }
+}
+
+/// Removes a saved session's directory: not this one, and not one another
+/// rig runs. [`SessionDeleted`] follows, or an error notice says why not.
+#[derive(Event, Clone, Debug)]
+pub struct DeleteSession(pub SessionId);
+
+/// A session removed with [`DeleteSession`].
+#[derive(Message, Clone, Debug)]
+pub struct SessionDeleted(pub SessionId);
+
+/// The forks asked for this frame.
+#[derive(Resource, Default)]
+struct Forks(Vec<Option<(AgentId, u64)>>);
+
+fn fork_sessions(
+    mut forks: ResMut<Forks>,
+    paths: Res<SessionPaths>,
+    store: Option<Res<SessionStore>>,
+    home: Option<Res<RigHome>>,
+    agents: Query<(&AgentId, &Conversation)>,
+    mut forked: MessageWriter<SessionForked>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for before in forks.0.drain(..) {
+        let home = home
+            .as_ref()
+            .map_or_else(Home::from_env, |home| home.0.clone());
+        let text = before.as_ref().and_then(|before| typed_at(&agents, before));
+        match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
+            Ok((from, to)) => {
+                forked.write(SessionForked { from, to, before });
+            }
+            Err(why) => {
+                notices.write(Notice::error(
+                    None,
+                    format!("Could not fork the session: {why}"),
+                ));
+            }
+        }
+    }
+}
+
+/// What the user wrote in the message of the agent and `seq` named, its
+/// text items of the user's own that are no attached file.
+fn typed_at(
+    agents: &Query<(&AgentId, &Conversation)>,
+    (agent, seq): &(AgentId, u64),
+) -> Option<String> {
+    let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
+    let at = (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(*seq))?;
+    let Some(Message::User { content }) = conversation.messages().get(at) else {
+        return None;
+    };
+    let typed: Vec<&str> = content
+        .iter()
+        .enumerate()
+        .filter_map(|(item, content)| match content {
+            UserContent::Text(text)
+                if conversation
+                    .origin(at, item)
+                    .is_none_or(|origin| origin.kind == OriginKind::User)
+                    && attached_file(&text.text).is_none() =>
+            {
+                Some(text.text.trim())
+            }
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect();
+    (!typed.is_empty()).then(|| typed.join("\n\n"))
+}
+
+/// Copies the session at `paths` into a new session of `home`, as of
+/// `before`, whose message's `text` the copy keeps with its parent.
+fn fork_into(
+    home: &Home,
+    paths: &SessionPaths,
+    store: Option<&SessionStore>,
+    (before, text): (Option<&(AgentId, u64)>, Option<String>),
+) -> Result<(SessionId, SessionId), String> {
+    let from = paths.id().ok_or("this session has no id")?;
+    let store = store.ok_or("this session is not stored")?;
+    // A second fork in the same second takes the next free id.
+    let base = SessionId::generate();
+    let mut to = base.clone();
+    let mut n = 0;
+    while home.session(&to).path().exists() {
+        n += 1;
+        to = format!("{base}-{n}").parse()?;
+    }
+    let target = home.session(&to);
+    fs::create_dir_all(target.path()).map_err(|failure| failure.to_string())?;
+    let parent = ForkedFrom {
+        session: from.clone(),
+        before: before.cloned(),
+        text,
+    };
+    let before = before.map(|(agent, seq)| (agent, *seq));
+    let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
+        .map_err(|failure| failure.to_string())
+        .and_then(|()| parent.write(&target))
+        .and_then(|()| match paths.working_directory() {
+            Some(directory) => {
+                fs::write(target.directory(), directory.to_string_lossy().as_bytes())
+                    .map_err(|failure| failure.to_string())
+            }
+            None => Ok(()),
+        });
+    if let Err(why) = copied {
+        fs::remove_dir_all(target.path()).ok();
+        return Err(why);
+    }
+    Ok((from, to))
+}
+
+fn delete_session(
+    delete: On<DeleteSession>,
+    paths: Res<SessionPaths>,
+    home: Option<Res<RigHome>>,
+    mut deleted: MessageWriter<SessionDeleted>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let home = home.map_or_else(Home::from_env, |home| home.0.clone());
+    let session = home.session(&delete.0);
+    let refusal = if session.path() == paths.path() {
+        Some("it is this session".to_owned())
+    } else if !session.path().is_dir() {
+        Some("there is no such session".to_owned())
+    } else if runs_elsewhere(&session) {
+        Some("another rig runs it".to_owned())
+    } else {
+        fs::remove_dir_all(session.path())
+            .err()
+            .map(|failure| failure.to_string())
+    };
+    match refusal {
+        None => {
+            deleted.write(SessionDeleted(delete.0.clone()));
+        }
+        Some(why) => {
+            notices.write(Notice::error(
+                None,
+                format!("Could not delete session {}: {why}.", delete.0),
+            ));
+        }
+    }
+}
+
+/// Whether a launcher holds `session`'s lock.
+fn runs_elsewhere(session: &SessionDir) -> bool {
+    File::options()
+        .write(true)
+        .open(session.launcher_lock())
+        .is_ok_and(|lock| matches!(lock.try_lock(), Err(TryLockError::WouldBlock)))
 }
 
 /// The `LogPlugin` formatter: plain text appended to the session's log, so
 /// nothing is written to stderr. The log comes before the session's other
 /// plugins, so it takes the session from the environment first.
 pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
-    let paths = app
-        .world_mut()
-        .get_resource_or_insert_with(paths_from_env)
-        .log();
+    let paths = session_paths(app.world_mut()).log();
     let file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -161,3 +435,6 @@ impl Visit for Logged {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

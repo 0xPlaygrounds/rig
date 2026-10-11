@@ -13,11 +13,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 
-use super::editor::Editor;
-use super::view::TuiView;
+use super::editor::TuiInput;
 use rig_core::message::ImageMediaType;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
+use rig_harness::primary::Shown;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
 /// there is none.
@@ -55,14 +55,15 @@ impl Clipboard {
 /// Types `@path` for each image read from the clipboard.
 pub(crate) fn receive_images(
     clipboard: Res<Clipboard>,
-    mut view: ResMut<TuiView>,
+    shown: Res<Shown>,
+    mut input: ResMut<TuiInput>,
     mut notices: MessageWriter<Notice>,
 ) {
     for result in clipboard.results.try_iter() {
         match result {
-            Ok(path) => type_path(&mut view.editor, &path),
+            Ok(path) => type_path(&mut input, &path),
             Err(why) => {
-                notices.write(Notice::info(view.agent, why));
+                notices.write(Notice::info(shown.0, why));
             }
         }
     }
@@ -70,7 +71,7 @@ pub(crate) fn receive_images(
 
 /// Types `@path` at the cursor, after a space when the text before it does
 /// not end in whitespace, so `@path` is a token of its own.
-pub(crate) fn type_path(editor: &mut Editor, path: &Path) {
+pub(crate) fn type_path(editor: &mut TuiInput, path: &Path) {
     let before = editor.text().get(..editor.cursor()).unwrap_or_default();
     let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
         ""

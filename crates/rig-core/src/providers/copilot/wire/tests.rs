@@ -161,6 +161,7 @@ async fn registry_request(
             "copilot",
             reference.model(),
             DynHttpClient::new(transport.clone()),
+            crate::catalog::ModelFacts::default(),
         );
     let mut request = prompt();
     request.chat_history.insert(0, Message::system("be brief"));

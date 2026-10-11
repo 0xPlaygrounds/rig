@@ -25,6 +25,7 @@ fn tool(tool: &str) -> ToolDefinition {
         name: name(tool),
         description: "A tool".to_owned(),
         parameters: json!({"type": "object"}),
+        annotations: Default::default(),
     }
 }
 

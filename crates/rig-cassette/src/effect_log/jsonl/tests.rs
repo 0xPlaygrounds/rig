@@ -6,6 +6,12 @@ use super::*;
 
 fn record(id: u64, key: &str) -> EffectRecord {
     EffectRecord {
+        purpose: None,
+        turn: None,
+        started_ms: None,
+        finished_ms: None,
+        reviewed: None,
+        disposition: Default::default(),
         stream_origin: None,
         tool_output: None,
         parent: None,
@@ -122,6 +128,12 @@ fn completion_of(
 ) -> EffectRecord {
     use rig_core::completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage};
     EffectRecord {
+        purpose: None,
+        turn: None,
+        started_ms: None,
+        finished_ms: None,
+        reviewed: None,
+        disposition: Default::default(),
         stream_origin: None,
         tool_output: None,
         parent: None,

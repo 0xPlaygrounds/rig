@@ -27,3 +27,7 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# The open effect a test spawns.
+serde_json = { workspace = true }

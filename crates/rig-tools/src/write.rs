@@ -1,25 +1,38 @@
 //! The `write` tool.
 
+use std::fs;
 use std::path::Path;
 
-use rig_core::tool::{PortableTool, ToolExecutionError, args_schema};
+use rig_core::completion::ToolAnnotations;
+use rig_core::tool::{FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::blocking;
-use crate::fs::{io_error, write_atomic};
+use crate::fs::{absolute, file_change, io_error, write_atomic};
+use crate::{MAX_FILE_BYTES, blocking};
 
-/// Writes a whole file, creating its parent directories.
+/// Writes a whole file, creating its parent directories. Publishes the file
+/// it changed ([`FilesChanged`]): its absolute path, and the diff.
 pub struct Write;
 
 /// Arguments of [`Write`].
-#[derive(Deserialize, JsonSchema)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct WriteArgs {
     /// The file to write.
-    path: String,
+    pub path: String,
     /// The whole new content.
-    content: String,
+    pub content: String,
+}
+
+impl WriteArgs {
+    /// Write `content` to `path`.
+    pub fn new(path: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            path: path.into(),
+            content: content.into(),
+        }
+    }
 }
 
 impl Write {
@@ -28,7 +41,7 @@ impl Write {
         &["Use `write` for new files and complete rewrites only."];
 }
 
-impl PortableTool for Write {
+impl Tool for Write {
     const NAME: &'static str = "write";
     type Args = WriteArgs;
     type Output = String;
@@ -44,17 +57,43 @@ impl PortableTool for Write {
         args_schema::<WriteArgs>()
     }
 
-    async fn call(&self, args: WriteArgs) -> Result<String, ToolExecutionError> {
-        blocking(move || {
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default()
+            .with_destructive(true)
+            .with_idempotent(true)
+            .with_open_world(false)
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: WriteArgs,
+    ) -> Result<String, ToolExecutionError> {
+        let (output, change) = blocking(move || {
             let path = args.path.as_str();
+            let before = previous(Path::new(path));
             write_atomic(Path::new(path), args.content.as_bytes())
                 .map_err(|error| io_error(path, error))?;
-            Ok(format!(
-                "Wrote {} bytes to {}.",
-                args.content.len(),
-                args.path
-            ))
+            let change = file_change(&absolute(path), before.as_deref(), &args.content);
+            let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
+            Ok::<_, ToolExecutionError>((output, change))
         })
-        .await
+        .await?;
+        context.insert_result(FilesChanged(vec![change]))?;
+        Ok(output)
     }
 }
+
+/// The text `path` held before it is written: `None` when there was no
+/// file; empty when it was too large or not a file to diff.
+fn previous(path: &Path) -> Option<String> {
+    let meta = fs::metadata(path).ok()?;
+    if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
+        return Some(String::new());
+    }
+    let bytes = fs::read(path).unwrap_or_default();
+    Some(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+#[cfg(test)]
+mod tests;

@@ -276,6 +276,8 @@ pub struct MockScript {
     name: String,
     id: Option<String>,
     capabilities: Capabilities,
+    /// The facts its replies are priced by, as a real wire's are.
+    facts: crate::catalog::ModelFacts,
 }
 
 impl MockScript {
@@ -286,6 +288,7 @@ impl MockScript {
             name: name.into(),
             id: None,
             capabilities: Capabilities::default(),
+            facts: crate::catalog::ModelFacts::default(),
         }
     }
 
@@ -299,6 +302,20 @@ impl MockScript {
     pub fn with_capabilities(mut self, capabilities: Capabilities) -> Self {
         self.capabilities = capabilities;
         self
+    }
+
+    /// The same wire answering as `spec`'s model: named as its provider and
+    /// id, and pricing each reply's usage at the spec's prices, as the
+    /// provider's own wire would. A reply whose usage states its cost keeps
+    /// it.
+    pub fn priced_as(self, spec: impl Into<std::sync::Arc<crate::catalog::ModelSpec>>) -> Self {
+        let spec = spec.into();
+        Self {
+            name: spec.provider.vendor().to_owned(),
+            id: Some(spec.id.clone()),
+            facts: crate::catalog::ModelFacts::new(spec),
+            ..self
+        }
     }
 }
 
@@ -385,6 +402,7 @@ impl Wire for MockScript {
         Descriptor::new(&self.name)
             .model(self.id.as_deref())
             .capabilities(self.capabilities)
+            .facts(&self.facts)
             .replay(self)
     }
 
@@ -453,6 +471,14 @@ impl MockCompletionModel {
                 }),
             },
         )
+    }
+
+    /// The same scripted model answering as `spec`'s model and pricing its
+    /// replies at the spec's prices ([`MockScript::priced_as`]), for a test
+    /// of what spending is counted.
+    pub fn priced_as(mut self, spec: impl Into<std::sync::Arc<crate::catalog::ModelSpec>>) -> Self {
+        self.wire = self.wire.priced_as(spec);
+        self
     }
 
     /// Return cloned requests received by this model.

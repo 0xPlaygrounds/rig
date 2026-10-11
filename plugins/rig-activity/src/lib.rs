@@ -1,7 +1,10 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
 //! (its status and its open tool calls), with the default `tui` feature its
 //! status in the terminal view's status line, and the [`MessageFeed`] of
-//! recent deliveries. A view reads them instead of
+//! recent deliveries. The status comes from all of the agent's work
+//! (`AgentWork`), not only its turn: a question waiting for the user's
+//! answer, and a plugin's named effect for the agent, such as a review
+//! after the turn, show too. A view reads them instead of
 //! deriving them from turns and calls; the agent tree is the agents'
 //! [`SpawnedBy`] and [`Spawned`] relationship.
 //!
@@ -12,7 +15,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_ecs::turn::ModelCall;
 use rig_harness::prelude::*;
 
 /// The most deliveries the [`MessageFeed`] keeps.
@@ -69,9 +71,13 @@ pub enum Status {
     Thinking,
     /// Its tools run.
     RunningTools,
-    /// A plugin's call of the turn runs, such as a summary of the older
-    /// conversation; the call's [`Name`], such as `compacting`.
+    /// A plugin's effect for the agent runs, in its turn or after it, such
+    /// as a summary of the older conversation; the effect's [`Name`], such
+    /// as `compacting`.
     Busy(String),
+    /// A question for the user about the agent waits for its answer; the
+    /// [`Ask`]'s title.
+    Asking(String),
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
         /// The retry's number, from 1.
@@ -88,25 +94,28 @@ impl fmt::Display for Status {
             Self::Thinking => f.write_str("thinking"),
             Self::RunningTools => f.write_str("running tools"),
             Self::Busy(what) => f.write_str(what),
+            Self::Asking(title) => write!(f, "asking: {title}"),
             Self::Retrying { attempt, seconds } => write!(f, "retry {attempt} in {seconds}s"),
         }
     }
 }
 
-/// A tool call of the turn without an output yet.
+/// A tool call of the turn without an outcome yet.
 #[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub struct ToolActivity {
     /// The tool's name.
     pub name: String,
     /// Whether it waits for earlier calls of its reply.
-    pub queued: bool,
+    pub waiting: bool,
+    /// Whether a plugin holds it, such as for the user's approval.
+    pub held: bool,
 }
 
 /// Recent deliveries to agents, oldest first: the user's messages (not
-/// their slash commands), messages between agents and plugins' messages,
-/// at most [`FEED_LEN`].
-/// A delivery is recorded when it is sent, whether the agent reads it now
-/// or after its turn.
+/// their slash commands, nor what a plugin took over), messages between
+/// agents and plugins' messages, at most [`FEED_LEN`].
+/// A delivery is recorded when the agent accepts it, whether its model
+/// reads it now or after its turn.
 #[derive(Resource, Reflect, Default, Debug)]
 #[reflect(Resource)]
 pub struct MessageFeed {
@@ -133,15 +142,18 @@ pub struct FedMessage {
     pub text: String,
 }
 
+/// Feeds each message an agent accepted: what reached it, not what was
+/// taken over or ran as a command.
 fn feed_deliveries(
-    delivery: On<Deliver>,
+    accepted: On<Add<Started>>,
+    messages: Query<(&Incoming, &ForAgent)>,
     agents: Query<(Entity, &AgentId), With<Agent>>,
     mut feed: ResMut<MessageFeed>,
 ) {
-    if delivery.command().is_some() {
+    let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
         return;
-    }
-    let from = delivery.origin.from.as_ref().and_then(|from| {
+    };
+    let from = message.origin.from.as_ref().and_then(|from| {
         agents
             .iter()
             .find_map(|(entity, id)| (id == from).then_some(entity))
@@ -150,31 +162,61 @@ fn feed_deliveries(
         feed.entries.pop_front();
     }
     feed.entries.push_back(FedMessage {
-        to: delivery.entity,
+        to,
         from,
-        origin: delivery.origin.clone(),
-        text: delivery.text.chars().take(FEED_CHARS).collect(),
+        origin: message.origin.clone(),
+        text: message.text.chars().take(FEED_CHARS).collect(),
     });
 }
 
-/// Each agent's activity, from its turn's calls.
+/// A plugin's unsettled effect for an agent, which shows by its name.
+type Named = (
+    With<Effect>,
+    Without<TurnCall>,
+    Without<ToolRequest>,
+    Without<Incoming>,
+    Without<Ask>,
+    Without<Settled>,
+);
+
+/// Each agent's activity, from its questions, its turn's calls and its
+/// other work.
 fn update_activity(
-    mut agents: Query<(&mut Activity, Option<&ActiveTurn>), With<Agent>>,
+    mut agents: Query<(&mut Activity, Option<&ActiveTurn>, Option<&AgentWork>), With<Agent>>,
     turns: Query<&Calls>,
-    tools: Query<(&ToolCallRun, Has<Queued>, Has<ToolOutput>)>,
+    tools: Query<(&ToolRequest, Has<Waiting>, Has<Holds>, Has<Outcome>), Without<Settled>>,
+    holds: Query<&Holds>,
     waits: Query<&Backoff>,
-    others: Query<&Name, (Without<ModelCall>, Without<ToolCallRun>, Without<Backoff>)>,
+    others: Query<&Name, Named>,
+    asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
 ) {
-    for (mut activity, turn) in &mut agents {
+    for (mut activity, turn, work) in &mut agents {
+        let work: Vec<Entity> = work.map(|work| work.iter().collect()).unwrap_or_default();
+        let asking = work.iter().find_map(|effect| asks.get(*effect).ok());
+        let asking = asking.map(|ask| Status::Asking(ask.title.clone()));
         let Some(turn) = turn else {
-            activity.set_if_neq(Activity::default());
+            let named = work.iter().find_map(|effect| others.get(*effect).ok());
+            let status = asking
+                .or_else(|| named.map(|name| Status::Busy(name.as_str().to_owned())))
+                .unwrap_or_default();
+            activity.set_if_neq(Activity {
+                status,
+                tools: Vec::new(),
+            });
             continue;
         };
         let calls: Vec<Entity> = turns
             .get(turn.turn())
             .map(|calls| calls.iter().collect())
             .unwrap_or_default();
-        let status = if let Some(wait) = calls.iter().find_map(|call| waits.get(*call).ok()) {
+        // A failed model call waits for its retry, held by its backoff.
+        let backoff = calls
+            .iter()
+            .filter_map(|call| holds.get(*call).ok())
+            .find_map(|held| held.iter().find_map(|hold| waits.get(hold).ok()));
+        let status = if let Some(asking) = asking {
+            asking
+        } else if let Some(wait) = backoff {
             Status::Retrying {
                 attempt: wait.attempt,
                 seconds: wait.seconds_left(),
@@ -189,10 +231,11 @@ fn update_activity(
         let open_tools = calls
             .iter()
             .filter_map(|call| tools.get(*call).ok())
-            .filter(|(_, _, done)| !done)
-            .map(|(run, queued, _)| ToolActivity {
-                name: run.call.function.name.as_str().to_owned(),
-                queued,
+            .filter(|(.., done)| !done)
+            .map(|(request, waiting, held, _)| ToolActivity {
+                name: request.call.function.name.as_str().to_owned(),
+                waiting,
+                held,
             })
             .collect();
         activity.set_if_neq(Activity {
@@ -214,6 +257,7 @@ fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed
     for (activity, mut items) in &mut agents {
         let shown = match &activity.status {
             Status::Idle => STATUS.says("idle", Tone::Green),
+            Status::Asking(title) => STATUS.says(format!("asking: {title}"), Tone::Cyan),
             Status::Retrying { attempt, seconds } => STATUS.says(
                 format!(
                     "retry {attempt}/{} in {seconds}s… (Esc stops)",
@@ -226,3 +270,6 @@ fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed
         items.show(shown);
     }
 }
+
+#[cfg(test)]
+mod tests;

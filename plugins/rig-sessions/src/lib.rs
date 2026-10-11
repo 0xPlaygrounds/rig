@@ -1,7 +1,8 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
-//! [`SessionTitle`], cost and when it was updated), which `/resume` lists
-//! and a resumed session reads its title back from. With the default
+//! [`SessionTitle`], the [`ResumeLabel`]s other plugins add, cost and when
+//! it was updated), which `/resume` lists and a resumed session reads its
+//! title back from. With the default
 //! `tui` feature, `/resume` without arguments is a picker and the terminal
 //! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
@@ -10,6 +11,7 @@
 //! its own directory.
 
 use std::cmp::Reverse;
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -20,20 +22,20 @@ use bevy_log::error;
 use bevy_reflect::prelude::*;
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
-use rig_harness::harness_protocol::{Home, RELOAD_EXIT_CODE, SessionDir, SessionId};
+use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{UsageTotals, dollars_label, tokens_label};
+use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{
-    ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf, primary_order,
-};
-use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
+use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::now_ms;
-use rig_harness::prelude::{SessionPaths, launcher};
-use rig_telemetry::Spending;
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
+use rig_harness::primary::primary_order;
+use rig_telemetry::SessionSpending;
 use rig_tools::attach::attached_file;
 
 #[cfg(feature = "tui")]
@@ -52,6 +54,7 @@ pub struct SessionsPlugin;
 impl Plugin for SessionsPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SessionTitle>()
+            .init_resource::<RigHome>()
             .add_command("new", "Start a new session; this one is kept", new)
             .add_command(
                 "resume",
@@ -70,7 +73,8 @@ impl Plugin for SessionsPlugin {
                 write_meta.in_set(WriteJournal).run_if(
                     any_component_removed::<ActiveTurn>
                         .or_eager(on_message::<AppExit>)
-                        .or_eager(resource_changed::<SessionTitle>),
+                        .or_eager(resource_changed::<SessionTitle>)
+                        .or_eager(labels_changed),
                 ),
             );
         #[cfg(feature = "tui")]
@@ -91,6 +95,30 @@ pub struct SessionTitle {
     pub typed: String,
 }
 
+/// A part of this session's line in `/resume`, such as its goal: spawn
+/// one and keep its `text` current. It is written with the session's
+/// listing cache ([`Meta::labels`]), so `/resume` shows it for sessions
+/// that are not running, after the title, by `tag`; an empty `text`, or
+/// Bevy's `Disabled` on the entity, leaves it out.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default)]
+pub struct ResumeLabel {
+    /// What it is, and what sorts it, such as `goal`.
+    pub tag: String,
+    /// What `/resume` shows.
+    pub text: String,
+}
+
+impl ResumeLabel {
+    /// `text` in this session's line, sorted by `tag`.
+    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            text: text.into(),
+        }
+    }
+}
+
 /// Run another session: the one named, or a new one. Refused while a turn
 /// runs, and without the launcher.
 #[derive(Event, Reflect, Clone, Debug)]
@@ -107,6 +135,8 @@ pub struct Meta {
     /// What it is listed as.
     #[serde(flatten)]
     pub title: SessionTitle,
+    /// The [`ResumeLabel`]s' texts, by tag.
+    pub labels: BTreeMap<String, String>,
     /// What the session's model calls cost, in USD, or `None` when no call
     /// was priced, such as a local or subscription model's.
     pub cost: Option<f64>,
@@ -130,7 +160,8 @@ pub struct SessionEntry {
 }
 
 impl SessionEntry {
-    /// One line: age, name or title, cost, directory.
+    /// One line: age, name or title, the [`ResumeLabel`]s, cost,
+    /// directory.
     pub fn label(&self) -> String {
         let age = age(self.saved.elapsed().unwrap_or_default());
         let title = match (&self.meta.title.name, self.meta.title.typed.as_str()) {
@@ -139,6 +170,9 @@ impl SessionEntry {
             (None, title) => title.to_owned(),
         };
         let mut label = format!("{age:>8}  {title}");
+        for text in self.meta.labels.values() {
+            label.push_str(&format!("  · {text}"));
+        }
         // The cost before the directory, which may be long enough to be
         // cut off.
         match self.meta.cost {
@@ -220,13 +254,23 @@ fn restore_title(paths: Option<Res<SessionPaths>>, mut title: ResMut<SessionTitl
     }
 }
 
+/// Whether a [`ResumeLabel`] changed, came or went.
+fn labels_changed(
+    labels: Query<(), Changed<ResumeLabel>>,
+    mut removed: RemovedComponents<ResumeLabel>,
+) -> bool {
+    removed.read().count() > 0 || !labels.is_empty()
+}
+
 /// Rewrites the session's listing cache, at the end of a turn, on a new
-/// name and on exit, once some agent logged a message; the first time, the
-/// title takes the start of the first message typed.
+/// name or label and on exit, once some agent logged a message; the first
+/// time, the title takes the start of the first message typed.
 fn write_meta(
     paths: Option<Res<SessionPaths>>,
     mut title: ResMut<SessionTitle>,
-    agents: Query<(&AgentId, &Conversation, Option<&Spending>, Has<SpawnedBy>), With<Agent>>,
+    agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
+    labels: Query<&ResumeLabel>,
+    spent: Option<Res<SessionSpending>>,
 ) {
     let Some(paths) = paths.filter(|paths| paths.is_saved()) else {
         return;
@@ -234,21 +278,23 @@ fn write_meta(
     // The agents the user started come first: the title is theirs, not a
     // spawned agent's.
     let mut agents: Vec<_> = agents.iter().collect();
-    agents.sort_by(|a, b| primary_order(a.3, a.0).cmp(&primary_order(b.3, b.0)));
-    let mut spent = UsageTotals::default();
-    agents
-        .iter()
-        .filter_map(|(_, _, each, ..)| *each)
-        .for_each(|Spending(each)| spent.add(each));
+    agents.sort_by(|a, b| primary_order(a.2, a.0).cmp(&primary_order(b.2, b.0)));
     if title.typed.is_empty()
         && let Some(typed) = agents
             .iter()
-            .find_map(|(_, conversation, ..)| first_typed(conversation))
+            .find_map(|(_, conversation, _)| first_typed(conversation))
     {
         title.bypass_change_detection().typed = one_line(&typed);
     }
+    let labels = labels
+        .iter()
+        .filter(|label| !label.text.is_empty())
+        .map(|label| (label.tag.clone(), one_line(&label.text)))
+        .collect();
+    let spent = spent.map(|spent| spent.0.total).unwrap_or_default();
     let meta = Meta {
         title: title.clone(),
+        labels,
         cost: (spent.unpriced < spent.calls).then_some(spent.cost),
         tokens: spent.total_tokens(),
         updated: now_ms(),
@@ -273,7 +319,9 @@ fn first_typed(conversation: &Conversation) -> Option<String> {
             .find_map(|(index, item)| match item {
                 UserContent::Text(text)
                     if !text.text.trim().is_empty()
-                        && conversation.origin(at, index).is_none()
+                        && conversation
+                            .origin(at, index)
+                            .is_none_or(|origin| origin.kind == OriginKind::User)
                         && attached_file(&text.text).is_none() =>
                 {
                     Some(text.text.clone())
@@ -311,14 +359,19 @@ fn new(
 /// lets the user pick one.
 fn resume(
     In(args): In<CommandArgs>,
+    #[cfg(feature = "tui")] home: Res<RigHome>,
     #[cfg(feature = "tui")] paths: Option<Res<SessionPaths>>,
-    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
     #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     if args.args.is_empty() {
         #[cfg(feature = "tui")]
-        tui::pick_session(args.agent, paths.as_deref(), &mut picks, &mut notices);
+        tui::pick_session(
+            args.agent,
+            (&home.0, paths.as_deref()),
+            &mut notices,
+            &mut commands,
+        );
         return;
     }
     commands.trigger(SwitchSession {
@@ -347,56 +400,43 @@ fn name(
     title.name = Some(name);
 }
 
-/// Names the next session for the launcher and exits for it.
+/// Exits to run the session asked for next.
 fn on_switch_session(
     switch: On<SwitchSession>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
-    mut exit: MessageWriter<AppExit>,
+    home: Res<RigHome>,
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    let refusal = if !turns.is_empty() {
-        Some("A turn is running. Press Esc to stop it first.".to_owned())
-    } else if launcher::executable().is_none() {
-        Some("Switching sessions needs the rig launcher: start the agent with `rig`.".to_owned())
-    } else {
-        None
-    };
-    if let Some(refusal) = refusal {
-        notices.write(Notice::info(None, refusal));
+    if !turns.is_empty() {
+        notices.write(Notice::info(
+            None,
+            "A turn is running. Press Esc to stop it first.",
+        ));
         return;
     }
     let Some(paths) = paths else {
         return;
     };
     let target = match &switch.session {
-        None => String::new(),
-        Some(id) => match checked(id, &paths.0) {
-            Ok(id) => id.to_string(),
+        None => None,
+        Some(id) => match checked(id, &home.0, &paths.0) {
+            Ok(id) => Some(id),
             Err(why) => {
                 notices.write(Notice::error(None, why));
                 return;
             }
         },
     };
-    match fs::write(paths.switch(), target) {
-        Ok(()) => {
-            exit.write(AppExit::from_code(RELOAD_EXIT_CODE));
-        }
-        Err(failure) => {
-            notices.write(Notice::error(
-                None,
-                format!("Could not switch sessions: {failure}"),
-            ));
-        }
-    }
+    commands.trigger(Exit(ExitReason::Switch(target)));
 }
 
 /// `id` when it names a session with an agent log other than the running
 /// one.
-fn checked(id: &str, current: &SessionDir) -> Result<SessionId, String> {
+fn checked(id: &str, home: &Home, current: &SessionDir) -> Result<SessionId, String> {
     let id: SessionId = id.trim().parse().map_err(|failure| format!("{failure}."))?;
-    let dir = Home::from_env().session(&id);
+    let dir = home.session(&id);
     if dir.path() == current.path() {
         return Err("That is this session.".to_owned());
     }
@@ -405,3 +445,6 @@ fn checked(id: &str, current: &SessionDir) -> Result<SessionId, String> {
     }
     Ok(id)
 }
+
+#[cfg(test)]
+mod tests;

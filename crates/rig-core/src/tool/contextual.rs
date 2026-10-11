@@ -16,7 +16,7 @@ use std::{future::Future, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{ToolDefinition, message::ToolName},
+    completion::{ToolAnnotations, ToolDefinition, message::ToolName},
     effect::{EffectKind, Outcome},
     serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -59,6 +59,14 @@ pub trait Tool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// What calling the tool does to the world, for the host's policies
+    /// (approval, plan mode, which calls run side by side). Nothing is
+    /// stated by default, which reads as the protocol's defaults
+    /// ([`ToolAnnotations`]).
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default()
+    }
+
     /// Normalize a typed author-facing error for runtime policy and telemetry.
     ///
     /// The default preserves concrete sources for operators and exposes safe
@@ -91,6 +99,10 @@ where
 
     fn parameters(&self) -> serde_json::Value {
         super::PortableTool::parameters(self)
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        super::PortableTool::annotations(self)
     }
 
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
@@ -307,14 +319,16 @@ impl DynamicTool {
             callback,
         ));
         Self {
-            definition: ToolDefinition {
-                name,
-                description,
-                parameters,
-            },
+            definition: ToolDefinition::new(name, description, parameters),
             handler,
             liveness: None,
         }
+    }
+
+    /// The same tool, stating what calling it does to the world.
+    pub fn with_annotations(mut self, annotations: ToolAnnotations) -> Self {
+        self.definition.annotations = annotations;
+        self
     }
 
     /// Attach a liveness probe.
@@ -445,11 +459,8 @@ pub fn tool_name<T: Tool>() -> ToolName {
     ToolName::new_unchecked(T::NAME)
 }
 
-/// A tool's [`ToolDefinition`] from a typed tool.
+/// A tool's [`ToolDefinition`] from a typed tool, with its annotations.
 pub fn tool_definition<T: Tool>(tool: &T) -> ToolDefinition {
-    ToolDefinition {
-        name: tool_name::<T>(),
-        description: tool.description(),
-        parameters: tool.parameters(),
-    }
+    ToolDefinition::new(tool_name::<T>(), tool.description(), tool.parameters())
+        .with_annotations(tool.annotations())
 }

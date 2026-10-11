@@ -65,12 +65,13 @@ fn is_checkout(path: &Path) -> bool {
 /// The rig crates every agent has: rig-harness and the rig crates it
 /// depends on. A plugin may depend on each, and the agent and its plugins
 /// must share them: one copy of each in the agent's dependency graph.
-pub const CORE_CRATES: [&str; 6] = [
+pub const CORE_CRATES: [&str; 7] = [
     "rig",
     "rig-cassette",
     "rig-core",
     "rig-ecs",
     "rig-harness",
+    "rig-reqwest",
     "rig-tools",
 ];
 

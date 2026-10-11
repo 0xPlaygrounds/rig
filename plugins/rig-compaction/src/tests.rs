@@ -8,19 +8,16 @@ use rig_core::completion::Message;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::transcript::final_answer;
-use rig_ecs::commands::RunCommand;
-use rig_ecs::journal::commit_message;
+use rig_harness::commands::RunCommand;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{
+    Ended, app_on, commit_message, connect, log_ended, reply, run_until,
+};
 use rig_telemetry::{Spending, UsagePlugin};
 
-/// What a second `PrepareRequest` observer adds to every request.
+/// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
-
-/// How each turn ended, in order.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
 
 /// The kernel, the compaction and usage plugins on `store`, after the first frame
 /// restored the session, with its loop's wakes.
@@ -29,9 +26,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin, UsagePlugin))
         .init_resource::<Ended>()
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(log_ended);
     app.finish();
     app.update();
     (app, wakes)
@@ -55,7 +50,7 @@ fn agent(
         .next()?;
     world.entity_mut(agent).insert(connection);
     for message in messages {
-        commit_message(world, agent, message);
+        commit_message(world, agent, message).ok()?;
     }
     Some(agent)
 }
@@ -110,12 +105,15 @@ fn sent(model: &MockCompletionModel) -> Vec<String> {
 fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
-    // A second observer of every request, beside the plugin's.
-    app.add_observer(|mut prepare: On<PrepareRequest>| {
-        if let Some(Message::User { content }) = prepare.event_mut().messages.last_mut() {
-            content.push(UserContent::text(INJECTED));
+    // A second Prepare system on every turn's request, beside the plugin's.
+    let inject = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(Message::User { content }) = call.request.chat_history.last_mut() {
+                content.push(UserContent::text(INJECTED));
+            }
         }
-    });
+    };
+    app.add_systems(AgentPass, inject.in_set(Stage::Prepare));
     let mut messages = vec![Message::user("What does the crate do?")];
     messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
     let long = "word ".repeat(4_000);
@@ -155,7 +153,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             .is_some_and(|condensed| condensed.upto > 2)
     );
     // The usage plugin counts the summary's call with the turn's.
-    let spent = app.world().get::<Spending>(agent).map(|spent| spent.0);
+    let spent = app.world().get::<Spending>(agent).map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
     drop(app);
 
@@ -167,7 +165,7 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let Ok(agent) = agent else {
         return;
     };
-    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.0), spent);
+    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.total), spent);
     let restored = world.get::<Condensed>(agent);
     let summary = |condensed: Option<&Condensed>| condensed.map(|kept| kept.summary.clone());
     assert_eq!(summary(restored), summary(condensed.as_ref()));
@@ -241,10 +239,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         return;
     };
     let world = app.world_mut();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "compact keep the sums".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
     world.flush();
     let focus = world
         .query::<&ModelRequest>()
@@ -255,7 +250,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         matches!(focus.as_slice(), [request] if request.contains("Additional focus: keep the sums")),
         "{focus:?}"
     );
-    world.trigger(Interrupt { entity: agent });
+    world.trigger(Interrupt::new(agent));
     world.flush();
     for _ in 0..5 {
         app.update();
@@ -267,9 +262,143 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
     assert!(
         matches!(
             world.resource::<Ended>().0.as_slice(),
-            [TurnOutcome::Stopped]
+            [TurnOutcome::Stopped(None)]
         ),
         "{:?}",
         world.resource::<Ended>().0
+    );
+}
+
+/// `turns` exchanges of about 5,000 tokens each, after a first question.
+fn long_conversation(turns: usize) -> Vec<Message> {
+    let long = "word ".repeat(4_000);
+    let mut messages = vec![Message::user("What does the crate do?")];
+    for turn in 0..turns {
+        messages.push(Message::assistant(format!("{turn}: {long}")));
+        messages.push(Message::user(format!("question {turn}")));
+    }
+    messages.push(Message::assistant("The last answer."));
+    messages
+}
+
+/// The model every turn's call is routed to, by [`route`].
+#[derive(Resource)]
+struct Routed(Connection);
+
+/// Routes every turn's call to the [`Routed`] model.
+fn route(
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>,
+    routed: Res<Routed>,
+) {
+    for mut call in &mut calls {
+        call.connection = Some(routed.0.clone());
+    }
+}
+
+#[test]
+fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    let small = connect(&model).map(|mut small| {
+        small.spec = Arc::new(small.spec.as_ref().clone().with_context_window(40_000));
+        small
+    });
+    assert!(small.is_some(), "the catalog lists the model");
+    let Some(small) = small else {
+        return;
+    };
+    app.insert_resource(Routed(small)).add_systems(
+        AgentPass,
+        route
+            .in_set(Stage::Prepare)
+            .before(CompactionSystems::Prepare),
+    );
+    // The agent's own model has room for the conversation; the call's has not.
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary, then the request: {sent:?}"
+    );
+}
+
+#[test]
+fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    // Rules of about 8,000 tokens: with them, the 20,000-token conversation
+    // would not leave the window's 16k reserve free.
+    let Ok(name) = ToolName::new("notes") else {
+        return;
+    };
+    let definition = rig_core::completion::ToolDefinition {
+        name,
+        description: "Takes notes.".to_owned(),
+        parameters: serde_json::json!({ "type": "object" }),
+        annotations: Default::default(),
+    };
+    app.world_mut()
+        .spawn((ToolDef(definition), ToolRules(vec!["rule ".repeat(6_400)])));
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let agent = agent(&mut app, &model, 40_000, long_conversation(4));
+    let Some(agent) = agent else {
+        return;
+    };
+    let world = app.world_mut();
+    if let Some(mut connection) = world.get_mut::<Connection>(agent) {
+        let mut spec = connection.spec.as_ref().clone();
+        spec.tools = false;
+        connection.spec = Arc::new(spec);
+    }
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [request] if !request.contains("rule rule")),
+        "the request alone, without the rules: {sent:?}"
+    );
+}
+
+#[test]
+fn the_request_is_measured_after_the_default_prompt_went_in() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    // A long default prompt, as rig-basics puts it in, after the plugin's
+    // systems were added.
+    let prompt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        let long = "word ".repeat(8_000);
+        for mut call in &mut calls {
+            match call.system_prompt_mut() {
+                Some(prompt) => prompt.insert_str(0, &long),
+                None => call.request.chat_history.insert(0, Message::system(&long)),
+            }
+        }
+    };
+    app.configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
+        .add_systems(AgentPass, prompt.in_set(ProjectContextSystems));
+    let mut messages = vec![Message::user("What does the crate do?")];
+    let long = "word ".repeat(2_000);
+    for turn in 0..6 {
+        messages.push(Message::assistant(format!("{turn}: {long}")));
+        messages.push(Message::user(format!("question {turn}")));
+    }
+    messages.push(Message::assistant("The last answer."));
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    // The conversation alone fits; with the prompt it nears the window.
+    let agent = agent(&mut app, &model, 40_000, messages);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary, then the request: {sent:?}"
     );
 }

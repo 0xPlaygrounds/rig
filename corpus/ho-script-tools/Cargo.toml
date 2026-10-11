@@ -1,0 +1,26 @@
+[package]
+name = "corpus-ho-script-tools"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (held-out): H08: Tools from shell scripts, live"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+# A script tool's definition, handler and result.
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# Killing a script's process group on timeout or interrupt.
+rig-tools = { path = "../../crates/rig-tools" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+# The built-in `read` a script may not take over.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

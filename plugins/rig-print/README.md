@@ -3,7 +3,9 @@
 `--print` (`PrintPlugin`): one prompt to the primary agent, its answer on
 stdout, and an exit once no agent works. It is the front of every run that is
 not interactive: one with `-p`, or with stdin piped in, which answers what is
-piped in.
+piped in. Nobody answers its questions unless `--answer=ID[,ID…]` gives the
+choices to answer with; other plugins print after the answer with
+`PrintSection`s.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only
 on the public API of the crates it depends on. Its plugin is in the default

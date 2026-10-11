@@ -22,6 +22,8 @@ tui = ["dep:rig-tui"]
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
+# Named by Bevy's derives.
+bevy_reflect = { workspace = true }
 # The local date in the system prompt.
 chrono = { workspace = true, features = ["clock"] }
 rig-ecs = { path = "../../crates/rig-ecs" }
@@ -30,3 +32,9 @@ rig-harness = { path = "../../crates/rig-harness" }
 # The instruction files.
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
+
+[dev-dependencies]
+# The app on a session store and the scripted model the tests run on.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }

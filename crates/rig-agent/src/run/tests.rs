@@ -1442,6 +1442,7 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
         name: rig_core::message::ToolName::new("add").expect("tool name"),
         description: "adds".to_string(),
         parameters: json!({"type": "object"}),
+        annotations: Default::default(),
     }];
     let mut run = AgentRun::from_spec(&spec, "go", None);
     let (_, history, _) = expect_call_model(&mut run);

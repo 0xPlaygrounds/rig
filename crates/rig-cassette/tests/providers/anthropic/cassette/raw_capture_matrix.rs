@@ -103,6 +103,7 @@ fn weather_tool() -> ToolDefinition {
             "properties": { "city": { "type": "string" } },
             "required": ["city"]
         }),
+        annotations: Default::default(),
     }
 }
 

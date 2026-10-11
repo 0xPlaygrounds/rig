@@ -52,6 +52,7 @@ fn record_tool() -> rig::completion::ToolDefinition {
             "properties": { "note": { "type": "string" } },
             "required": ["note"],
         }),
+        annotations: Default::default(),
     }
 }
 

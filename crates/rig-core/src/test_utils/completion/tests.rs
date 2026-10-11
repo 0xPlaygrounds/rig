@@ -223,3 +223,46 @@ fn a_script_is_serde_in_and_serde_out() {
     assert_eq!(model.stream_script(), stream_turns);
     assert!(model.script().is_empty());
 }
+
+/// A scripted model priced as a catalog model prices its replies' usage at
+/// the spec's prices, streamed or not, as the provider's own wire does.
+#[tokio::test]
+async fn a_priced_script_prices_its_usage_like_a_real_wire() {
+    use crate::catalog::{ModelSpec, Pricing};
+    use crate::providers::registry::ProviderId;
+    use crate::test_utils::MockStreamEvent;
+
+    let vendor = ProviderId::catalog("deepseek").expect("a known vendor");
+    let spec = ModelSpec::new(vendor, "scripted").with_pricing(Pricing::new(1.0, 2.0));
+    let usage = Usage::new()
+        .input_tokens(1_000_000)
+        .output_tokens(1_000_000);
+    let unary = MockCompletionModel::from_turns([MockTurn::text("hi").with_usage(usage)])
+        .priced_as(spec.clone());
+    let reply = unary
+        .call(CompletionRequest::new("hello"))
+        .await
+        .expect("a scripted reply");
+    assert_eq!(reply.usage.cost.map(|cost| cost.total), Some(3.0));
+    assert_eq!(reply.origin.provider.as_str(), "deepseek");
+
+    let streamed = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("hi"),
+        MockStreamEvent::final_response(usage),
+    ]])
+    .priced_as(spec);
+    let reply = streamed
+        .stream(CompletionRequest::new("hello"))
+        .expect("a scripted stream")
+        .finish()
+        .await
+        .expect("a streamed reply");
+    assert_eq!(reply.usage.cost.map(|cost| cost.total), Some(3.0));
+    // Unpriced, the same script states no cost.
+    let plain = MockCompletionModel::from_turns([MockTurn::text("hi").with_usage(usage)]);
+    let reply = plain
+        .call(CompletionRequest::new("hello"))
+        .await
+        .expect("a reply");
+    assert_eq!(reply.usage.cost, None);
+}

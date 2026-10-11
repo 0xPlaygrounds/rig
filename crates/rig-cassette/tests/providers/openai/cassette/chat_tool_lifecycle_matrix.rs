@@ -149,6 +149,7 @@ pub(super) fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
         name: rig_core::message::ToolName::new(name).expect("tool name"),
         description: format!("Matrix tool {name}"),
         parameters,
+        annotations: Default::default(),
     }
 }
 

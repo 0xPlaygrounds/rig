@@ -966,9 +966,11 @@ pub enum DeliveryKind {
 /// One recorded exchange: the effect, who served it, and the answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectRecord {
-    /// Explicitly published tool-result metadata, including on errors. Never
-    /// inbound authentication values or runtime scopes. `None` means the tool
-    /// did not publish a context before resolving. The wire field is required:
+    /// Explicitly published result metadata, including on errors: a
+    /// tool's, or the facts any layer of the dispatch published
+    /// ([`PublishedContext`](crate::tool::PublishedContext)). Never
+    /// inbound authentication values or runtime scopes. `None` means nothing
+    /// was published before resolving. The wire field is required:
     /// `null` explicitly records no publication; omission cannot establish
     /// whether an older recorder lost output and is rejected when decoding.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -1000,6 +1002,95 @@ pub struct EffectRecord {
     /// `None` when the dispatcher supplied no scope.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
     pub scope: Option<std::sync::Arc<str>>,
+    /// What the dispatcher made the effect for, such as `"turn"` or
+    /// `"summary"`, from its [`Origin`](crate::serve::Origin). `None` when
+    /// it named no purpose.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub purpose: Option<std::borrow::Cow<'static, str>>,
+    /// The turn of its dispatcher's conversation it was made in, as the
+    /// host numbers turns (the first is `0`). `None` when the host keeps no
+    /// turns or it belongs to none, such as a call made between turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<u64>,
+    /// When a handler started serving it, in milliseconds since the Unix
+    /// epoch. `None` when no handler started it (it was answered before it
+    /// started), or when the recorder keeps no times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub started_ms: Option<u64>,
+    /// When its outcome was known, in milliseconds since the Unix epoch.
+    /// `None` when the recorder keeps no times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_ms: Option<u64>,
+    /// The outcome a reviewer put in place of [`Self::outcome`], which stays
+    /// the handler's (or the early answer's) own. `None` when nothing
+    /// replaced it. A replayer answers with [`Self::outcome`] and lets the
+    /// reviewers run again, as it reruns layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reviewed: Option<Result<Outcome, ErrorReport>>,
+    /// How the outcome came about.
+    #[serde(default, skip_serializing_if = "Disposition::is_ran")]
+    pub disposition: Disposition,
+}
+
+/// How an [`EffectRecord`]'s outcome came about. A recorder of handler
+/// dispatches records [`Ran`](Self::Ran); a host that answers, replaces or
+/// cancels effects itself records the others.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Disposition {
+    /// A handler served it, and the outcome is its answer.
+    #[default]
+    Ran,
+    /// Answered before any handler started it, such as by a policy that
+    /// refused it or a replayer.
+    AnsweredBeforeStart,
+    /// Answered from outside while its handler ran; the handler was
+    /// cancelled.
+    AnsweredWhileRunning,
+    /// Another effect replaced it, and its outcome was never applied.
+    Superseded,
+    /// Cancelled before it had an outcome.
+    Cancelled,
+}
+
+impl EffectRecord {
+    /// The record of effect `id`, `kind`, routed to `key` and answered with
+    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, times,
+    /// tool output, kept items or review, and [`Disposition::Ran`]. A host
+    /// that answers or cancels an effect itself builds its record from this
+    /// and sets what it knows.
+    pub fn new(
+        id: EffectId,
+        key: HandlerKey,
+        kind: EffectKind,
+        outcome: Result<Outcome, ErrorReport>,
+    ) -> Self {
+        Self {
+            tool_output: None,
+            id,
+            key,
+            kind,
+            outcome,
+            events: None,
+            stream_origin: None,
+            parent: None,
+            scope: None,
+            purpose: None,
+            turn: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Disposition::Ran,
+        }
+    }
+}
+
+impl Disposition {
+    /// Whether this is [`Self::Ran`], the default a record leaves out.
+    fn is_ran(&self) -> bool {
+        *self == Self::Ran
+    }
 }
 
 /// Required handler keys and their effect families, ordered by key.

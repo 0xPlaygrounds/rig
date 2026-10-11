@@ -226,7 +226,7 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
 }
 
 #[tokio::test]
-async fn an_error_replacing_a_streamed_answer_follows_its_events() {
+async fn a_replacement_of_a_streamed_answer_ends_it_after_its_events() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let mut policy = Policy::observing("cut", &seen);
     policy.after = Box::new(|_| {
@@ -258,7 +258,37 @@ async fn an_error_replacing_a_streamed_answer_follows_its_events() {
         let outcomes = tap.outcomes.lock().expect("outcomes");
         assert!(matches!(&outcomes[0], Ok(Outcome::Completion(_))));
     }
-    // A replacement answer cannot follow events already delivered.
+    // A replacement completion is the reply's end: the consumer's fold
+    // returns it, after the events delivered as they came; the record keeps
+    // the handler's.
+    let mut policy = Policy::observing("rewrite", &seen);
+    policy.after = Box::new(|outcome| match outcome {
+        Ok(Outcome::Completion(response)) => {
+            let mut response = response.clone();
+            response.choice = vec![crate::message::AssistantContent::text("rewritten")];
+            Verdict::Replace(Ok(Outcome::Completion(response)))
+        }
+        _ => Verdict::Keep,
+    });
+    let tap = Arc::new(Tapped::default());
+    let dispatch = tapped(Dispatch::new(EffectId::from_raw(9), true), &tap);
+    let outcome = ErasedHandler::new(Streamer)
+        .layered(policy)
+        .handle(custom(json!(1)), dispatch)
+        .await
+        .into_outcome()
+        .await;
+    assert!(
+        matches!(&outcome, Ok(Outcome::Completion(response)) if response.text() == "rewritten"),
+        "{outcome:?}"
+    );
+    {
+        let outcomes = tap.outcomes.lock().expect("outcomes");
+        assert!(
+            matches!(&outcomes[0], Ok(Outcome::Completion(response)) if response.text() == "hello")
+        );
+    }
+    // A replacement of another family cannot end a streamed completion.
     let mut policy = Policy::observing("swap", &seen);
     policy.after = Box::new(|_| {
         Verdict::Replace(Ok(Outcome::Custom {

@@ -395,11 +395,15 @@ impl std::fmt::Debug for ToolContext {
     }
 }
 
-/// What a tool published into its dispatch context, handed back beside the
+/// What a dispatch published beside its answer, handed back beside the
 /// sink rather than on the wire: the driver attaches an empty one to the
-/// sink's scope (`Dispatch::with_scope`), the adapter fills it once the
-/// tool ran, the driver reads it after the outcome. One per dispatch; a
-/// second publish replaces the first.
+/// sink's scope (`Dispatch::with_scope`) and reads it after the outcome. A
+/// tool's adapter fills it once the tool ran, with the tool's whole
+/// context; a second publish replaces the first. Any other layer of any
+/// dispatch, such as a model call's stream rewrite
+/// ([`ErasedHandler::map_stream`](crate::serve::ErasedHandler::map_stream)),
+/// adds one fact with [`insert`](Self::insert), such as that it split
+/// reasoning out of a reply. One per dispatch.
 #[derive(Debug, Default)]
 pub struct PublishedContext(std::sync::Mutex<Option<ToolContext>>);
 
@@ -429,6 +433,22 @@ impl PublishedContext {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(context);
+    }
+
+    /// Adds `value` to what is published, beside what is there, as
+    /// [`ToolContext::insert_result`] does, and returns the value it
+    /// replaced. Publish before the dispatch's answer is resolved, as for
+    /// [`publish`](Self::publish).
+    ///
+    /// # Errors
+    ///
+    /// When `value` cannot be encoded; nothing changes then.
+    pub fn insert<T: ContextValue>(&self, value: T) -> Result<Option<T>, ToolContextError> {
+        self.0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get_or_insert_with(ToolContext::new)
+            .insert_result(value)
     }
 
     /// The driver's read: what was published, if anything, leaving nothing.

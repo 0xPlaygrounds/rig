@@ -46,6 +46,28 @@ pub fn shared() -> DynHttpClient {
     DynHttpClient::new(ReqwestClient::default())
 }
 
+/// The tokio runtime this transport drives requests on: the current one
+/// when called inside a runtime, else the process-wide fallback runtime it
+/// starts on first use (one worker thread, I/O and timers enabled), which
+/// runs for the rest of the process. A host that runs no tokio runtime of
+/// its own, such as one on Bevy's task pools, hands this to tokio-based
+/// libraries (an MCP client) instead of starting a second runtime.
+///
+/// ```no_run
+/// let handle = rig_reqwest::runtime()?;
+/// let answer = handle.block_on(async { 6 * 7 });
+/// assert_eq!(answer, 42);
+/// # Ok::<(), rig_http::http_client::Error>(())
+/// ```
+///
+/// # Errors
+///
+/// When there is no current runtime and the fallback could not start.
+#[cfg(not(target_family = "wasm"))]
+pub fn runtime() -> Result<tokio::runtime::Handle> {
+    runtime::context()
+}
+
 /// What building the client produced: the client, or why reqwest refused.
 #[derive(Clone, Debug)]
 enum Built {

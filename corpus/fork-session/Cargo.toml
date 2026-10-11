@@ -1,0 +1,29 @@
+[package]
+name = "corpus-fork-session"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus: 43. Fork and branch sessions"
+
+[lints]
+workspace = true
+
+[features]
+# `/branch --files`: puts the files back as spec 31's checkpoints kept them.
+checkpoints = ["dep:corpus-checkpoint-rewind"]
+
+[dependencies]
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+corpus-checkpoint-rewind = { path = "../checkpoint-rewind", optional = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The sessions' titles and `/resume` labels, and the listing `/tree` walks.
+rig-sessions = { path = "../../plugins/rig-sessions" }
+rig-tools = { path = "../../crates/rig-tools" }
+# The pickers, the input line, and showing the branched agent.
+rig-tui = { path = "../../plugins/rig-tui" }
+
+[dev-dependencies]
+bevy_reflect = { workspace = true }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-core = { workspace = true, features = ["test-utils"] }

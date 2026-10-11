@@ -18,7 +18,13 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
+# The default plugins' systems that edit a request in Prepare, which
+# compaction measures after.
+rig-basics = { path = "../rig-basics", default-features = false }
+rig-coding-tools = { path = "../rig-coding-tools", default-features = false }
 rig-ecs = { path = "../../crates/rig-ecs" }
+# `/compact`, a slash command.
+rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate and the checkpoint compaction decides by.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 serde = { workspace = true, features = ["derive"] }

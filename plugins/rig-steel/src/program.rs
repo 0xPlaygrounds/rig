@@ -367,7 +367,12 @@ impl Host {
                 final_answer(&message).unwrap_or_default().into(),
             )),
             TurnOutcome::Failed(why) => Err(format!("the agent's turn failed: {why}")),
-            TurnOutcome::Stopped => Err("the agent was stopped before it answered".to_owned()),
+            TurnOutcome::Stopped(None) => {
+                Err("the agent was stopped before it answered".to_owned())
+            }
+            TurnOutcome::Stopped(Some(why)) => {
+                Err(format!("the agent was stopped before it answered: {why}"))
+            }
         }
     }
 

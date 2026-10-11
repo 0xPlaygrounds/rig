@@ -223,17 +223,39 @@ fn base(
         takes_mid_conversation_system(&wire.facts, model),
     );
     let ids = WireIds::for_target(&history, wire, model);
+    // The turns the request's cache breakpoint covers; system messages are
+    // placed apart, so the turns are counted alone.
+    let prefix_turns = request.cache_breakpoint.map(|kept| {
+        request
+            .chat_history
+            .iter()
+            .take(kept)
+            .filter(|message| !matches!(message, Message::System { .. }))
+            .count()
+    });
     let mut messages: Vec<Value> = Vec::new();
+    // How many wire messages those turns became.
+    let mut prefix = prefix_turns.filter(|turns| *turns == 0);
+    let mut turns = 0;
     for message in &history {
         messages.extend(message_json(message, wire, &ids)?);
+        if !matches!(message, Message::System { .. }) {
+            turns += 1;
+            if prefix.is_none() && prefix_turns == Some(turns) {
+                prefix = Some(messages.len());
+            }
+        }
     }
     // MiniMax honours a cache through block markers the manual placement
     // writes.
     let placed = input.cache().is_some() && wire.provider.dialect.name == super::wire::MINIMAX.name;
     apply_cache_control(
         wire,
-        placed,
-        top.as_ref(),
+        Markers {
+            placed,
+            top: top.as_ref(),
+            prefix,
+        },
         &mut system,
         &mut messages,
         &mut tools,
@@ -657,17 +679,32 @@ fn top_level_cache_control(marker: Option<&Value>) -> Result<Option<Value>, Enco
     }
 }
 
+/// What asks for cache markers besides the wire's own settings.
+struct Markers<'a> {
+    /// Whether the option mapping asked for block markers.
+    placed: bool,
+    /// The request's top-level marker, if any.
+    top: Option<&'a Value>,
+    /// The wire messages the request's cache breakpoint covers, if it set
+    /// one: `0` for the system prompt alone.
+    prefix: Option<usize>,
+}
+
 /// Place the request's cache breakpoints within Anthropic's budget of four,
 /// one fewer with a top-level marker. Manual prompt caching, or a cache the
 /// mapping `placed`, marks the final non-deferred tool, the system prompt
 /// and the last block of the last user or system message; a static-prefix
-/// TTL alone marks only the first two.
+/// TTL alone marks only the first two. The request's cache breakpoint marks
+/// the end of the prefix it covers when a marker is left for it.
 /// Markers a tool already carries are kept and count toward the budget, and
 /// every one-hour marker must precede the five-minute ones.
 fn apply_cache_control(
     wire: &Messages,
-    placed: bool,
-    top: Option<&Value>,
+    Markers {
+        placed,
+        top,
+        prefix,
+    }: Markers<'_>,
     system: &mut [Value],
     messages: &mut [Value],
     tools: &mut [Value],
@@ -727,6 +764,23 @@ fn apply_cache_control(
             remaining -= 1;
         }
     }
+    if let Some(prefix) = prefix
+        && remaining > 0
+    {
+        let block = match prefix.checked_sub(1) {
+            Some(last) => messages
+                .get_mut(last)
+                .and_then(|message| message.get_mut("content")?.as_array_mut())
+                .and_then(|blocks| blocks.iter_mut().rev().find(|block| takes_marker(block))),
+            None => system.last_mut(),
+        };
+        if let Some(Value::Object(block)) = block
+            && !block.contains_key("cache_control")
+        {
+            block.insert("cache_control".into(), ephemeral(top_ttl.as_ref()));
+            remaining -= 1;
+        }
+    }
     if manual && top.is_none() && remaining > 0 {
         let block = messages
             .last_mut()
@@ -755,6 +809,12 @@ fn apply_cache_control(
         }
     }
     Ok(())
+}
+
+/// Whether a content block can carry a cache marker: any but a thinking
+/// block.
+fn takes_marker(block: &Value) -> bool {
+    !matches!(block.str("type"), Some("thinking" | "redacted_thinking"))
 }
 
 /// Require all object properties, disallow additional properties, and remove

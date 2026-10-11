@@ -5,26 +5,57 @@
 //! [`PromptSection`]s, re-read when a turn starts and by `/context`, so an
 //! edited `AGENTS.md` counts from the next message without a rebuild.
 //! A section only changes when its text does, so the prompt stays cached.
+//! An agent with no [`SystemPrompt`] of its own is told it is rig, a coding
+//! agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its system prompt.
+//! `/context` lists the prompt's sections and what other plugins put in
+//! the context besides, as [`ContextEntry`]s.
 
 use std::path::PathBuf;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_harness::harness_protocol::Home;
+use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
 
-use rig_ecs::agent::{Notice, TurnOf};
-use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
 use rig_ecs::prompt::PromptSection;
+use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
+use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::services::{ProjectRoot, RigHome};
+
+/// What an agent with no [`SystemPrompt`] of its own is told it is.
+pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
+    user's project from their terminal: \
+    you read and search code, edit files and run commands with the tools you are \
+    given, and answer questions about the code.\n\
+    \n\
+    - Work in the working directory named below, unless the user says otherwise.\n\
+    - Read a file before you edit it. Change what was asked, in the style of the \
+    code around it, and nothing else.\n\
+    - After a change, check it when you can: build it, run the tests, or run the \
+    code.\n\
+    - When something fails, read the error and fix the cause. Ask the user when the \
+    request is unclear or you are blocked, rather than guess.\n\
+    - Do not undo changes you did not make, and do not run commands that delete \
+    work, rewrite history or reach outside the project unless the user asked.\n\
+    - Keep answers short. Say what you changed and what is left, and name files by \
+    their path.\n\
+    - Give that answer once, at the end of the turn: no running commentary or \
+    interim summaries between tool calls.";
 
 /// Spawns the project and environment [`PromptSection`]s, re-reads them
-/// when a turn starts, and adds `/context`.
+/// when a turn starts, adds `/context`, and gives an agent with no prompt
+/// of its own rig's ([`DEFAULT_SYSTEM_PROMPT`]).
 #[derive(Default)]
 pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
-        let context = Context::read();
+        app.init_resource::<RigHome>()
+            .init_resource::<ProjectRoot>();
+        let world = app.world();
+        let context = Context::read(world.resource(), world.resource());
         for (name, which) in [
             ("prompt:project", Section::Project),
             ("prompt:environment", Section::Environment),
@@ -37,7 +68,62 @@ impl Plugin for ProjectContextPlugin {
             "Re-read AGENTS.md and the environment, and list what the prompt holds",
             show_context,
         )
-        .add_observer(refresh_on_turn);
+        .add_observer(refresh_on_turn)
+        .configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
+        .add_systems(AgentPass, default_prompt.in_set(ProjectContextSystems));
+    }
+}
+
+/// The system in [`Stage::Prepare`] that puts [`DEFAULT_SYSTEM_PROMPT`] at
+/// the head of the system prompt of an agent with none of its own. A
+/// plugin that edits the system prompt orders against it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProjectContextSystems;
+
+/// Puts [`DEFAULT_SYSTEM_PROMPT`] at the head of the system prompt of each
+/// model call the kernel built from an agent with no prompt of its own,
+/// as its own part of it.
+fn default_prompt(
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+    >,
+    agents: Query<&SystemPrompt>,
+) {
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        if !agents.get(agent).is_ok_and(|own| own.0.is_empty()) {
+            continue;
+        }
+        if let Some(prompt) = call.system_prompt_mut() {
+            *prompt = match prompt.is_empty() {
+                true => DEFAULT_SYSTEM_PROMPT.to_owned(),
+                false => format!("{DEFAULT_SYSTEM_PROMPT}\n\n{prompt}"),
+            };
+        }
+    }
+}
+
+/// What a plugin puts in the context besides the system prompt's
+/// sections, for `/context` to list, such as the rules it adds to tool
+/// results: spawn one and keep its `text` current. Entries are listed
+/// after the sections, by `tag`; an empty `text`, or Bevy's `Disabled` on
+/// the entity, leaves one out.
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[reflect(Component, Clone, Debug, Default)]
+pub struct ContextEntry {
+    /// What it is, such as `nested rules`.
+    pub tag: String,
+    /// What `/context` says about it; it may take several lines.
+    pub text: String,
+}
+
+impl ContextEntry {
+    /// `text` about `tag`.
+    pub fn new(tag: impl Into<String>, text: impl Into<String>) -> Self {
+        Self {
+            tag: tag.into(),
+            text: text.into(),
+        }
     }
 }
 
@@ -59,13 +145,12 @@ struct Context {
 }
 
 impl Context {
-    /// Reads the instruction files and the environment now.
-    fn read() -> Self {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let home = Home::from_env().root().to_path_buf();
+    /// Reads the instruction files of `home` and of `root` and above, and
+    /// the environment, now.
+    fn read(home: &RigHome, root: &ProjectRoot) -> Self {
         Self {
-            instructions: Instructions::discover([home], &cwd),
-            cwd,
+            instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0),
+            cwd: root.0.clone(),
         }
     }
 
@@ -112,9 +197,11 @@ fn refresh_on_turn(
     started: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
     mut sections: Query<(&Section, &mut PromptSection)>,
+    home: Res<RigHome>,
+    root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let context = Context::read();
+    let context = Context::read(&home, &root);
     if !context.apply(&mut sections) {
         return;
     }
@@ -131,15 +218,18 @@ fn refresh_on_turn(
     }
 }
 
-/// `/context`: re-reads the sections now and lists the instruction files
-/// and every section of the system prompt.
+/// `/context`: re-reads the sections now and lists the instruction files,
+/// every section of the system prompt and the [`ContextEntry`]s.
 fn show_context(
     In(args): In<CommandArgs>,
     mut sections: Query<(&Section, &mut PromptSection)>,
     others: Query<&PromptSection, Without<Section>>,
+    entries: Query<&ContextEntry>,
+    home: Res<RigHome>,
+    root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let context = Context::read();
+    let context = Context::read(&home, &root);
     context.apply(&mut sections);
     let mut listed: Vec<&PromptSection> = sections.iter().map(|(_, section)| section).collect();
     listed.extend(&others);
@@ -155,5 +245,16 @@ fn show_context(
         lines.push(format!("  {} ({} bytes)", section.tag, section.text.len()));
     }
     lines.push(context.section(Section::Environment).text);
+    let mut entries: Vec<&ContextEntry> = entries
+        .iter()
+        .filter(|entry| !entry.text.is_empty())
+        .collect();
+    entries.sort_by(|a, b| a.tag.cmp(&b.tag));
+    for entry in entries {
+        lines.push(format!("{}: {}", entry.tag, entry.text));
+    }
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
+
+#[cfg(test)]
+mod tests;

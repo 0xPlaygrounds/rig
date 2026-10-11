@@ -1,16 +1,19 @@
-//! View state, kept apart from the agent core: the focused agent, the input
-//! editor and its completion, scrolling, the open picker and recent
-//! notices.
+//! View state, kept apart from the agent core: the agent shown (the
+//! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
+//! shown, and recent notices.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
 use super::complete::Completion;
-use super::editor::Editor;
+use super::editor::TuiInput;
+use super::keys::KeyPress;
 use super::panel::Focused;
+use super::pick::Choosing;
 use super::transcript::Scroll;
-use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
+use rig_ecs::agent::{Agent, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
+use rig_harness::primary::Shown;
 
 /// Notices kept for display.
 const KEPT_NOTICES: usize = 50;
@@ -24,50 +27,22 @@ pub struct Focus {
     pub entity: Entity,
 }
 
-/// One choice of a [`PickRequest`]: what it shows, and the command line,
-/// without its `/`, that choosing it runs for the agent, such as
-/// `model openai/gpt-5`.
-#[derive(Clone, Debug)]
-pub struct PickItem {
-    /// What it shows.
-    pub label: String,
-    /// The command line it runs.
-    pub command: String,
-}
-
-/// Asks the view to let the user pick one of `items` for the agent; the
-/// view runs the chosen item's command with
-/// [`RunCommand`](rig_ecs::commands::RunCommand). A plugin that also
-/// builds without the terminal view writes it behind a default `tui`
-/// cargo feature, and registers it with `app.add_message::<PickRequest>()`
-/// in case the terminal view is not added.
-#[derive(Message, Clone, Debug)]
-pub struct PickRequest {
-    /// The agent.
-    pub agent: Entity,
-    /// What is picked.
-    pub title: String,
-    /// The choices.
-    pub items: Vec<PickItem>,
-    /// The position of the choice selected at first.
-    pub selected: usize,
-}
-
 /// The terminal view's state. Never saved and never read by the core.
 #[derive(Resource, Default)]
 pub(crate) struct TuiView {
-    /// The agent shown and typed to.
-    pub(crate) agent: Option<Entity>,
-    /// The input being typed, and the prompt history.
-    pub(crate) editor: Editor,
     /// The open `/` or `@` completion list.
     pub(crate) completion: Option<Completion>,
     /// Where the token starts whose completion was closed with Esc.
     pub(crate) dismissed: Option<usize>,
     /// Where the transcript is scrolled.
     pub(crate) scroll: Scroll,
-    /// The picker shown over the transcript, which takes the keys.
-    pub(crate) picker: Option<Picker>,
+    /// The pickers and questions to show, in the order they came; the
+    /// first is shown over the transcript and takes the keys.
+    pub(crate) queue: Vec<Entity>,
+    /// The one shown, with what is typed in it.
+    pub(crate) choosing: Option<Choosing>,
+    /// The keys pressed so far of a binding of several.
+    pub(crate) pending: Vec<KeyPress>,
     /// Recent notices, oldest first.
     pub(crate) notices: Vec<ShownNotice>,
     /// A refused command put back in the input: sent again unchanged, it
@@ -95,65 +70,21 @@ impl ShownNotice {
     }
 }
 
-/// A filterable list to choose one item from.
-pub(crate) struct Picker {
-    /// The agent the choice is for.
-    pub(crate) agent: Entity,
-    /// The title.
-    pub(crate) title: String,
-    /// Every item.
-    items: Vec<PickItem>,
-    /// The filter typed so far.
-    pub(crate) filter: String,
-    /// The selected position among the visible items.
-    pub(crate) selected: usize,
-}
-
-impl Picker {
-    /// The items whose label holds every word of the filter, ignoring case.
-    pub(crate) fn visible(&self) -> Vec<&PickItem> {
-        let filter = self.filter.to_lowercase();
-        self.items
-            .iter()
-            .filter(|item| {
-                let label = item.label.to_lowercase();
-                filter.split_whitespace().all(|word| label.contains(word))
-            })
-            .collect()
-    }
-
-    /// The command line of the selected item.
-    pub(crate) fn chosen(&self) -> Option<String> {
-        self.visible()
-            .get(self.selected)
-            .map(|item| item.command.clone())
-    }
-}
-
-/// Focuses the first agent by id when the focused one is gone, one the
-/// user started before any subagent.
-pub(crate) fn focus_agent(mut view: ResMut<TuiView>, agents: PrimaryQuery) {
-    if view.agent.is_some_and(|agent| agents.contains(agent)) {
-        return;
-    }
-    view.agent = primary(&agents);
-}
-
 /// Keeps [`Focused`] on the agent shown, and on no other.
 pub(crate) fn mark_focused(
-    view: Res<TuiView>,
+    shown: Res<Shown>,
     marked: Query<Entity, With<Focused>>,
     mut commands: Commands,
 ) {
-    if !view.is_changed() {
+    if !shown.is_changed() {
         return;
     }
     for agent in &marked {
-        if Some(agent) != view.agent {
+        if Some(agent) != shown.0 {
             commands.entity(agent).try_remove::<Focused>();
         }
     }
-    if let Some(agent) = view.agent
+    if let Some(agent) = shown.0
         && !marked.contains(agent)
     {
         commands.entity(agent).try_insert(Focused);
@@ -164,27 +95,15 @@ pub(crate) fn mark_focused(
 pub(crate) fn on_focus(
     focus: On<Focus>,
     agents: Query<(), With<Agent>>,
+    mut shown: ResMut<Shown>,
     mut view: ResMut<TuiView>,
 ) {
-    if !agents.contains(focus.entity) || view.agent == Some(focus.entity) {
+    if !agents.contains(focus.entity) || shown.0 == Some(focus.entity) {
         return;
     }
-    view.agent = Some(focus.entity);
+    shown.0 = Some(focus.entity);
     view.scroll.follow();
     view.completion = None;
-}
-
-/// Opens the picker a command asked for.
-pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: ResMut<TuiView>) {
-    for request in requests.read() {
-        view.picker = Some(Picker {
-            agent: request.agent,
-            title: request.title.clone(),
-            items: request.items.clone(),
-            filter: String::new(),
-            selected: request.selected,
-        });
-    }
 }
 
 /// Keeps the latest notices for display, each placed after the messages
@@ -192,6 +111,7 @@ pub(crate) fn open_pickers(mut requests: MessageReader<PickRequest>, mut view: R
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     conversations: Query<&Conversation>,
+    shown: Res<Shown>,
     mut view: ResMut<TuiView>,
 ) {
     if notices.is_empty() {
@@ -200,7 +120,7 @@ pub(crate) fn collect_notices(
     for notice in notices.read() {
         let after = notice
             .agent
-            .or(view.agent)
+            .or(shown.0)
             .and_then(|agent| conversations.get(agent).ok())
             .map_or(0, |conversation| conversation.messages().len());
         view.notices.push(ShownNotice {
@@ -219,10 +139,12 @@ pub(crate) fn collect_notices(
 pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     conversations: Query<&Conversation>,
+    shown: Res<Shown>,
     mut view: ResMut<TuiView>,
+    mut input: ResMut<TuiInput>,
 ) {
     for recalled in recalled.read() {
-        if view.agent != Some(recalled.agent) {
+        if shown.0 != Some(recalled.agent) {
             continue;
         }
         if let Some(why) = &recalled.why {
@@ -236,12 +158,12 @@ pub(crate) fn recall_messages(
             });
             view.refused = Some(recalled.text.clone());
         }
-        let typed = view.editor.take();
+        let typed = input.take();
         let text = if typed.trim().is_empty() {
             recalled.text.clone()
         } else {
             format!("{}\n\n{typed}", recalled.text)
         };
-        view.editor.set(text);
+        input.set(text);
     }
 }

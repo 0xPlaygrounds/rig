@@ -765,6 +765,7 @@ pub fn tools_of(history: &[Message]) -> Vec<rig_core::completion::ToolDefinition
             name,
             description: "a tool the history calls".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         })
         .collect()
 }
@@ -2102,6 +2103,7 @@ pub fn h14_model_identity<F: HistoryFixture>(fixture: &F) {
             name: name("x_rig_new_tool"),
             description: "a tool added since".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         }];
         request.chat_history = vec![
             Message::user("q"),

@@ -30,7 +30,7 @@ struct RuntimeUnavailable(String);
 /// A supplied current runtime must have enabled I/O and timers and remain
 /// driven until its operations finish. A Handle does not keep a Runtime alive
 /// or prove its drivers were enabled; that remains the host's responsibility.
-fn context() -> Result<Handle, Error> {
+pub(crate) fn context() -> Result<Handle, Error> {
     match Handle::try_current() {
         Ok(handle) => Ok(handle),
         Err(_) => RUNTIME

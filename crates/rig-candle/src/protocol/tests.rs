@@ -15,6 +15,7 @@ fn tool(name: &str) -> ToolDefinition {
             },
             "required": ["value"]
         }),
+        annotations: Default::default(),
     }
 }
 

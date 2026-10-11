@@ -11,17 +11,22 @@ changed plugins and restarts in the same session. The
 ## A kernel, a core and plugins
 
 - **The kernel** is rig-ecs: agents, turns and calls as entities, message
-  delivery, tools and slash commands as entities, the session log and its
-  restore.
-- **The core** is this crate: only what the binary needs to run and be
-  relaunched. `HeadlessPlugins` is Bevy's `MinimalPlugins` with the log, a
-  clean exit on signals and a loop that sleeps until there is work;
-  `RigHarnessPlugins` adds the session directory, the kernel and the
-  launcher protocol, with how the agent was started (`Invoked`: its
-  arguments, and whether stdin is a terminal). How it was started picks
-  the front: `rig-tui` runs on an interactive terminal, `rig-print` with
-  `-p` or with stdin piped in; a build without `rig-tui` started on a
-  terminal says so and exits.
+  delivery, tools as entities, the session log and its restore.
+- **The core** is this crate: what the binary needs to run and be
+  relaunched, and the few services every plugin shares. `HeadlessPlugins`
+  is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
+  loop that sleeps until there is work or a wall-clock `WakeAt`;
+  `RigHarnessPlugins` adds the session directory (with forking and
+  deleting sessions), the kernel, the launcher protocol with how the agent
+  was started (`Invoked`: its arguments, the plugins' own options, and
+  whether stdin is a terminal) and why it exits (`ExitReason`), slash
+  commands (`add_command`, run from what the user types), and the shared
+  services: the user's settings for plugins (`settings.toml`), the
+  `RIG_HOME`, project root, child-process policy and tokio runtime, file
+  watches, and questions any front answers (`Ask`). Plugins offer fronts
+  and one takes each run: `rig-tui` on an interactive terminal, `rig-print`
+  with `-p` or with stdin piped in, or a front whose option was given; an
+  interactive run no front takes says so and exits.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
@@ -33,7 +38,7 @@ The default `plugins.toml`, in order:
 
 | Crate | Plugin | What it adds |
 |---|---|---|
-| `rig-basics` | `ProjectContextPlugin` | `AGENTS.md`/`CLAUDE.md` and the environment in the system prompt; `/context` |
+| `rig-basics` | `ProjectContextPlugin` | rig's own prompt for an agent without one, `AGENTS.md`/`CLAUDE.md` and the environment in the system prompt; `/context` |
 | `rig-models` | `ModelsPlugin` | `/model`, `/effort` and the model picker |
 | `rig-login-chatgpt` | `ChatgptLoginPlugin` | `/login` and `/logout` for the ChatGPT plan's models |
 | `rig-models` | `DefaultsPlugin` | a new session starts on the last model and reasoning chosen |

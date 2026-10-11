@@ -1,5 +1,5 @@
 //! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the picker.
+//! completion list, and the picker or question shown.
 
 use std::time::{Duration, Instant};
 
@@ -12,19 +12,24 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
+use unicode_width::UnicodeWidthChar;
 
-use super::complete::{Completion, Kind as CompletionKind};
-use super::editor::Layout as InputLayout;
+use super::complete::Completion;
+use super::editor::{Layout as InputLayout, TuiInput};
+use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
+use super::pick::{Choices, Choosing, Listing, Row};
 use super::renderers::{ToolRenderer, excerpt};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{Picker, ShownNotice, TuiView};
+use super::view::{ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
-use rig_ecs::inbox::Inbox;
+use rig_ecs::inbox::{DeliveryMode, Incoming};
+use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
+use rig_harness::primary::Shown;
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -47,28 +52,30 @@ pub(crate) struct Paced {
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize), an agent's drawn components, a turn's calls, a
+/// key, a notice, a resize, a picker or question), the input and who has
+/// the keys, an agent's drawn components, a turn's calls, a
 /// streaming reply, a status line item (a retry's wait counts down there),
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
 /// most every [`STREAM_FRAME`]; the text that waits is drawn by one of the
-/// frames that [`settle`](rig_ecs::calls::settle) runs after the wake that
-/// brought it, 16 ms apart, under any loop.
+/// frames the kernel runs after the wake that brought it (see
+/// [`Wake`](rig_ecs::calls::Wake)), 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
+    (input, focus, shown): (Res<TuiInput>, Res<KeyFocus>, Res<Shown>),
     changed: Query<
         (),
         Or<(
             Changed<Conversation>,
             Changed<ActiveTurn>,
             Changed<Condensed>,
-            Changed<Inbox>,
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
+    messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     app_status: Option<Res<AppStatus>>,
     mut requests: MessageReader<RequestRedraw>,
     mut removed: (RemovedComponents<TuiPanel>, RemovedComponents<StatusItems>),
@@ -80,8 +87,12 @@ pub(crate) fn needs_redraw(
     let changed = requested
         || removed
         || view.is_changed()
+        || shown.is_changed()
+        || input.is_changed()
+        || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
-        || !changed.is_empty();
+        || !changed.is_empty()
+        || !messages.is_empty();
     paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
@@ -117,7 +128,7 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
 /// in entity order, and the transcript what they leave.
 pub(crate) fn layout(
     tui: Res<Tui>,
-    view: Res<TuiView>,
+    input: Res<TuiInput>,
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
 ) {
@@ -125,7 +136,7 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
-    let rows = view.editor.layout(size.width.saturating_sub(2));
+    let rows = input.layout(size.width.saturating_sub(2));
     let input_height = rows.rows.len().clamp(1, INPUT_LINES);
     let [above, status, input] = Layout::vertical([
         Constraint::Min(1),
@@ -153,11 +164,12 @@ pub(crate) fn layout(
 /// The transcript's parts after the shown agent's messages are laid out:
 /// each message, after the notices that came before it and the summary
 /// sent in place of the messages above; then the notices after the last message, the
-/// reply streaming in and what waits in the inbox. Without an agent, the
-/// app's notices.
+/// reply streaming in and the messages the agent accepted and has not
+/// sent yet. Without an agent, the app's notices.
 fn transcript_parts(
     view: &TuiView,
-    shown: Option<(&Conversation, Option<&Condensed>, &Inbox)>,
+    agent: Option<Entity>,
+    shown: Option<(&Conversation, Option<&Condensed>, &[&Incoming])>,
     partial: Option<&Partial>,
     width: usize,
 ) -> Vec<Part> {
@@ -173,7 +185,7 @@ fn transcript_parts(
     let mut notices = view
         .notices
         .iter()
-        .filter(|notice| notice.is_for(view.agent))
+        .filter(|notice| notice.is_for(agent))
         .peekable();
     for index in 0..conversation.messages().len() {
         let mut extra = Vec::new();
@@ -205,13 +217,14 @@ fn transcript_parts(
 }
 
 /// The hint under the input box.
-fn input_hint(turn_running: bool, empty: bool) -> &'static str {
-    match (turn_running, empty) {
-        (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-        (false, true) => {
+fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running, empty) {
+        (true, ..) => " A panel has the keys · Esc gives them back ",
+        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, false, true) => {
             " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
-        (false, false) => "",
+        (false, false, false) => "",
     }
 }
 
@@ -221,11 +234,17 @@ fn input_hint(turn_running: bool, empty: bool) -> &'static str {
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
+    (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<(&Conversation, Option<&Condensed>, &Inbox)>,
+    agents: Query<(&Conversation, Option<&Condensed>)>,
     changed: Query<(), Changed<Conversation>>,
-    (turns, partials, active): (Query<&Calls>, Query<&Partial>, Query<&ActiveTurn>),
+    (turns, partials, active, accepted): (
+        Query<&Calls>,
+        Query<&Partial>,
+        Query<&ActiveTurn>,
+        Query<(&Effect, &Incoming, &ForAgent), (With<Started>, Without<Outcome>)>,
+    ),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
     renderers: Query<Ref<ToolRenderer>>,
@@ -238,12 +257,18 @@ pub(crate) fn render(
     // Placing the scroll is drawing's own bookkeeping, not a change to
     // redraw for.
     let view = view.bypass_change_detection();
-    let shown = view
-        .agent
-        .and_then(|agent| Some((agent, agents.get(agent).ok()?)));
-    let turn = view.agent.and_then(|agent| active.get(agent).ok());
+    let shown_agent = shown_agent.0;
+    let shown = shown_agent.and_then(|agent| Some((agent, agents.get(agent).ok()?)));
+    let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let mut inbox: Vec<(&Effect, &Incoming)> = accepted
+        .iter()
+        .filter(|(.., to)| Some(to.0) == shown_agent)
+        .map(|(effect, message, _)| (effect, message))
+        .collect();
+    inbox.sort_by_key(|(effect, _)| effect.id());
+    let inbox: Vec<&Incoming> = inbox.into_iter().map(|(_, message)| message).collect();
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
@@ -278,7 +303,7 @@ pub(crate) fn render(
             let layout = input_rows;
             // The input box scrolls to keep the cursor in sight.
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            if let Some((agent, (conversation, ..))) = shown {
+            if let Some((agent, (conversation, _))) = shown {
                 transcript.update(
                     agent,
                     conversation,
@@ -289,7 +314,8 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
-                shown.map(|(_, shown)| shown),
+                shown_agent,
+                shown.map(|(_, (conversation, condensed))| (conversation, condensed, &inbox[..])),
                 partial,
                 usize::from(transcript_area.width.max(1)),
             );
@@ -300,10 +326,10 @@ pub(crate) fn render(
             );
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, below, transcript_area);
-            let agent = view.agent.and_then(|agent| status.0.get(agent).ok());
+            let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
             let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
             let app = status.1.as_deref().map(|app| &app.0);
-            let (mut left, mut right) = status_pieces(view.agent.is_some(), [app, agent, turn]);
+            let (mut left, mut right) = status_pieces(shown_agent.is_some(), [app, agent, turn]);
             fit(&mut left, &mut right, usize::from(status_area.width));
             let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
             let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
@@ -312,7 +338,7 @@ pub(crate) fn render(
                     .areas(status_area);
             frame.render_widget(line, status);
             frame.render_widget(usage, meter);
-            let hint = input_hint(turn.is_some(), view.editor.is_empty());
+            let hint = input_hint(turn.is_some(), typed.is_empty(), focus.0.is_some());
             frame.render_widget(
                 Paragraph::new(layout.rows)
                     .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
@@ -322,8 +348,13 @@ pub(crate) fn render(
             for (.., canvas) in &panels {
                 canvas.copy_to(frame.buffer_mut());
             }
-            match &view.picker {
-                Some(picker) => draw_picker(frame, picker),
+            let shown = view
+                .choosing
+                .as_ref()
+                .and_then(|choosing| Some((choosing, choices.shown(choosing.entity)?)));
+            match shown {
+                Some((choosing, shown)) => draw_choice(frame, choosing, &shown),
+                None if focus.0.is_some() => {}
                 None => {
                     if let Some(completion) = &view.completion {
                         draw_completion(frame, completion, input);
@@ -377,10 +408,7 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
-    let marker = match completion.kind {
-        CompletionKind::Command => "/",
-        CompletionKind::Path => "@",
-    };
+    let marker = completion.kind.marker();
     let items: Vec<Line<'static>> = completion
         .items
         .iter()
@@ -407,19 +435,50 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
 }
 
 /// A piece of the status line, from a [`StatusItem`]. When the line does
-/// not fit, [`fit`] drops the pieces with the lowest `keep` first.
+/// not fit, [`fit`] cuts or drops the pieces with the lowest `keep` first.
 struct Piece {
     keep: u8,
+    /// How narrow it may be cut; 0 for never.
+    min: usize,
     span: Span<'static>,
 }
 
 impl Piece {
     fn new(keep: u8, span: Span<'static>) -> Self {
-        Self { keep, span }
+        Self { keep, min: 0, span }
+    }
+
+    /// The same piece, cut down to no fewer than `min` columns before it
+    /// goes.
+    fn shrinking_to(mut self, min: usize) -> Self {
+        self.min = min;
+        self
     }
 
     fn width(&self) -> usize {
         self.span.width()
+    }
+
+    /// Whether it can still be cut.
+    fn can_shrink(&self) -> bool {
+        self.min > 0 && self.width() > self.min
+    }
+
+    /// Cuts it by `over` columns, to no fewer than its `min`, ending in `…`.
+    fn shrink(&mut self, over: usize) {
+        let target = self.width().saturating_sub(over).max(self.min);
+        let mut text = String::new();
+        let mut width = 0;
+        for character in self.span.content.chars() {
+            let next = width + character.width().unwrap_or(0);
+            if next + 1 > target {
+                break;
+            }
+            text.push(character);
+            width = next;
+        }
+        text.push('…');
+        self.span.content = text.into();
     }
 }
 
@@ -435,34 +494,40 @@ fn joined_width(pieces: &[Piece], gap: &str) -> usize {
     pieces.iter().map(Piece::width).sum::<usize>() + gaps
 }
 
-/// Drops the pieces of `left` and of the meter on the `right` with the
-/// lowest `keep` until both fit `width` with a gap between them. What
-/// keeps `u8::MAX` stays; past that the line is cut at the edge.
+/// Cuts, then drops, the pieces of `left` and of the meter on the `right`
+/// with the lowest `keep` until both fit `width` with a gap between them:
+/// one that may shrink is cut to its `min` before it goes. What keeps
+/// `u8::MAX` stays, cut where it may; past that the line is cut at the
+/// edge.
 fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
     loop {
         let separator = if right.is_empty() { 0 } else { LEFT_GAP.len() };
         let used = joined_width(left, LEFT_GAP) + separator + joined_width(right, RIGHT_GAP);
-        if used <= width {
+        let Some(over) = used.checked_sub(width).filter(|over| *over > 0) else {
             return;
-        }
+        };
         let lowest = |pieces: &[Piece]| {
             pieces
                 .iter()
                 .enumerate()
-                .filter(|(_, piece)| piece.keep < u8::MAX)
+                .filter(|(_, piece)| piece.keep < u8::MAX || piece.can_shrink())
                 .min_by_key(|(_, piece)| piece.keep)
                 .map(|(index, piece)| (piece.keep, index))
         };
-        match (lowest(right.as_slice()), lowest(left.as_slice())) {
+        let (side, index) = match (lowest(right.as_slice()), lowest(left.as_slice())) {
             (Some((on_right, index)), on_left)
                 if on_left.is_none_or(|(on_left, _)| on_right <= on_left) =>
             {
-                right.remove(index);
+                (&mut *right, index)
             }
-            (_, Some((_, index))) => {
-                left.remove(index);
-            }
+            (_, Some((_, index))) => (&mut *left, index),
             (_, None) => return,
+        };
+        match side.get_mut(index) {
+            Some(piece) if piece.can_shrink() => piece.shrink(over),
+            _ => {
+                side.remove(index);
+            }
         }
     }
 }
@@ -505,6 +570,7 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
             Tone::Magenta => Style::new().magenta(),
         };
         Piece::new(item.keep, Span::styled(item.text.clone(), style))
+            .shrinking_to(usize::from(item.min_width))
     };
     let (left, right): (Vec<_>, Vec<_>) =
         items.into_iter().partition(|item| item.side == Side::Left);
@@ -514,26 +580,68 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     )
 }
 
-/// The picker in a centred box over the transcript.
-fn draw_picker(frame: &mut Frame, picker: &Picker) {
-    let popup = frame
-        .area()
-        .centered(Constraint::Ratio(4, 5), Constraint::Ratio(3, 4));
+/// The picker or question in a centred box over the transcript: its body,
+/// what is typed, then the rows it leaves, and for free text, the typed
+/// answer.
+fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
+    let area = frame.area();
+    let width = area.width.saturating_mul(4) / 5;
+    let body = wrap_all(
+        &plain_lines(shown.body, Style::new()),
+        usize::from(width.saturating_sub(2).max(1)),
+    );
+    let rows = shown.rows(&choosing.filter);
+    // Room for the body, the typed line and the rows, up to 3/4 of the
+    // screen.
+    let wanted = body.len() + usize::from(!body.is_empty()) + 1 + rows.len() + 2;
+    let height = u16::try_from(wanted)
+        .unwrap_or(u16::MAX)
+        .min(area.height.saturating_mul(3) / 4)
+        .max(5);
+    let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
     frame.render_widget(Clear, popup);
+    let action = if shown.free_text {
+        "type to filter or answer"
+    } else {
+        "type to filter"
+    };
     let block = Block::bordered().title(format!(
-        " {} · type to filter, Enter picks, Esc closes ",
-        picker.title
+        " {} · {action}, Enter picks, Esc closes ",
+        shown.title
     ));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    let [filter, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
-    frame.render_widget(Line::from(format!("filter: {}▏", picker.filter)), filter);
-    let items: Vec<String> = picker
-        .visible()
-        .into_iter()
-        .map(|item| item.label.clone())
+    let body_height = u16::try_from(body.len())
+        .unwrap_or(u16::MAX)
+        .min(inner.height.saturating_sub(2) / 2);
+    let gap = u16::from(body_height > 0);
+    let [body_area, _, typed, list] = Layout::vertical([
+        Constraint::Length(body_height),
+        Constraint::Length(gap),
+        Constraint::Length(1),
+        Constraint::Min(1),
+    ])
+    .areas(inner);
+    frame.render_widget(Paragraph::new(body), body_area);
+    frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
+    let items: Vec<Line<'static>> = rows
+        .iter()
+        .map(|row| match row {
+            Row::Item(index) => Line::from(
+                shown
+                    .labels
+                    .get(*index)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_owned(),
+            ),
+            Row::Typed if choosing.filter.trim().is_empty() => {
+                Line::from("✎ or type an answer").dim()
+            }
+            Row::Typed => Line::from(format!("✎ {}", choosing.filter.trim())),
+        })
         .collect();
-    let mut state = ListState::default().with_selected(Some(picker.selected));
+    let mut state = ListState::default().with_selected(Some(choosing.selected));
     frame.render_stateful_widget(
         List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
         list,
@@ -556,24 +664,20 @@ fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
     lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
-/// What waits in the agent's inbox, under the transcript.
-fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
+/// The messages the agent accepted and has not sent yet, under the
+/// transcript, in the order they came.
+fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
     if inbox.is_empty() {
         return;
     }
     lines.push(Line::default());
-    let waiting = inbox
-        .steering
-        .iter()
-        .map(|pending| ("steering", &pending.text))
-        .chain(
-            inbox
-                .queued
-                .iter()
-                .map(|pending| ("after this turn", &pending.text)),
-        )
-        .chain(inbox.notes.iter().map(|pending| ("noted", &pending.text)));
-    for (when, text) in waiting {
+    for message in inbox {
+        let when = match message.mode {
+            DeliveryMode::Steer => "steering",
+            DeliveryMode::Queue => "after this turn",
+            DeliveryMode::Note => "noted",
+        };
+        let text = &message.text;
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {
             " …"

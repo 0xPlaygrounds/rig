@@ -51,6 +51,7 @@ async fn required_tool_choice_is_accepted() {
                         },
                         "required": ["x", "y"]
                     }),
+                    annotations: Default::default(),
                 })
                 .tool_choice(ToolChoice::Required);
 
