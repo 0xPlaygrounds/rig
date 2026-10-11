@@ -2123,3 +2123,53 @@ fn a_command_knows_how_its_line_was_sent() {
         Some(DeliveryMode::Queue)
     );
 }
+
+#[test]
+fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("touch", "forbidden"), ("nope", "unknown")]),
+        answer("done"),
+    ]);
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let agent = agent_on(&mut app, &model);
+    let only_look = ToolAccess::Only(vec!["look".to_owned()]);
+    app.world_mut().entity_mut(agent).insert(only_look);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // The model reads the same for both.
+    let results = results_at(&conversation(&app, agent), 2);
+    let texts: Vec<String> = results
+        .iter()
+        .map(|(_, text)| {
+            let text = text.replace("touch", "x").replace("nope", "x");
+            text.replace("forbidden", "id").replace("unknown", "id")
+        })
+        .collect();
+    assert_eq!(texts.len(), 2, "{results:?}");
+    assert_eq!(texts.first(), texts.get(1), "{results:?}");
+    // The record of the forbidden call is a refusal, the other's is not.
+    let refusal = |name: &str| {
+        let record = records(&app).into_iter().find(
+            |record| matches!(&record.kind, EffectKind::ToolCall { name: called, .. } if called == name),
+        );
+        record.and_then(|record| {
+            record
+                .outcome
+                .err()
+                .map(|report| (report.kind, report.refusal))
+        })
+    };
+    assert_eq!(refusal("touch"), Some((ErrorKind::Denied, true)));
+    assert!(matches!(refusal("nope"), Some((ErrorKind::Tool(_), false))));
+    // The message's record reads back as one.
+    let sent = message_record(&app, "go").and_then(|record| MessageRecord::read(&record.kind));
+    assert_eq!(
+        sent,
+        Some(MessageRecord {
+            text: "go".to_owned(),
+            origin: Origin::user(),
+            mode: DeliveryMode::Steer,
+        })
+    );
+}

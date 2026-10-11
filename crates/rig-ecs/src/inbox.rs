@@ -594,20 +594,46 @@ pub(crate) fn recall_on_turn_end(
     });
 }
 
-/// The record's handler key and kind of a message: its text, origin and
-/// mode, without its attachments.
+/// What a message's record says of it, its kind's payload: its text,
+/// origin and mode, without its attachments. The record's kind is the
+/// custom kind `message`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageRecord {
+    /// The text.
+    pub text: String,
+    /// Where it came from.
+    pub origin: Origin,
+    /// When it went to a busy agent's model.
+    pub mode: DeliveryMode,
+}
+
+impl MessageRecord {
+    /// The kind of a message's record.
+    pub const KIND: &str = "message";
+
+    /// The message a record of `kind` is about, if it is a message's.
+    pub fn read(kind: &EffectKind) -> Option<Self> {
+        match kind {
+            EffectKind::Custom { kind, payload } if &**kind == Self::KIND => {
+                serde_json::from_value(payload.clone()).ok()
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The record's handler key and kind of a message.
 pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
-    let mut payload = serde_json::Map::new();
-    payload.insert("text".to_owned(), message.text.clone().into());
-    let origin = serde_json::to_value(&message.origin).unwrap_or_default();
-    payload.insert("origin".to_owned(), origin);
-    let mode = serde_json::to_value(message.mode).unwrap_or_default();
-    payload.insert("mode".to_owned(), mode);
-    let kind = EffectKind::Custom {
-        kind: Arc::from("message"),
-        payload: payload.into(),
+    let record = MessageRecord {
+        text: message.text.clone(),
+        origin: message.origin.clone(),
+        mode: message.mode,
     };
-    (HandlerKey::new("message"), kind)
+    let kind = EffectKind::Custom {
+        kind: Arc::from(MessageRecord::KIND),
+        payload: serde_json::to_value(record).unwrap_or_default(),
+    };
+    (HandlerKey::new(MessageRecord::KIND), kind)
 }
 
 impl Commit<'_, '_> {

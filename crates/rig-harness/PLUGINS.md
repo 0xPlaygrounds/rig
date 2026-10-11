@@ -324,7 +324,9 @@ system reads or replaces each result before it is committed, as
 [above](#how-a-plugin-steps-in-effects-and-stages). The reply's results go
 back in the order the model asked for them, refused ones included. What a
 tool published beside its text, such as rig-tools' `FilesChanged` or
-`ExitStatus`, is the call's `Published` component.
+`ExitStatus`, is the call's `Published` component. A call of a tool the
+agent's `ToolAccess` leaves out is refused at Start (a `Denied` refusal
+in its record), and the model reads it as a tool it does not have.
 
 # Asking the user
 
@@ -451,7 +453,9 @@ anything else goes to the agent, which starts a turn with it or keeps it
 for its running turn as its `mode` says. The messages an agent accepted
 and has not sent yet are its inbox,
 `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`, and
-`On<Add<Started>>` sees each message as it is accepted.
+`On<Add<Started>>` sees each message as it is accepted. A message's record
+in the effect log is the custom kind `message`, and
+`MessageRecord::read(&record.kind)` reads its text, origin and mode back.
 
 A plugin that needs a mark on its own message spawns it:
 `(Incoming::new(text, mode), ForAgent(agent), MyMark)` is all `Deliver`

@@ -415,8 +415,8 @@ pub(crate) struct ToolStarts<'w, 's> {
 impl ToolStarts<'_, '_> {
     /// How `call`, with `handler`, starts for `agent` (its entity and id):
     /// refused when no tool of its name is registered, the agent may not
-    /// use it, or its arguments do not fit the tool's parameters; else run
-    /// through `handler`, or opened for an open tool.
+    /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
+    /// parameters; else run through `handler`, or opened for an open tool.
     pub(crate) fn start(
         &self,
         call: &ToolCall,
@@ -439,12 +439,15 @@ impl ToolStarts<'_, '_> {
             .tools
             .iter()
             .find(|(_, def, _)| def.0.name.as_str() == name);
-        let Some((tool, def, serves)) = tool.filter(|_| allowed) else {
-            return refused(
-                ToolErrorKind::NotFound,
-                format!("no tool named `{name}` is available"),
-            );
+        let missing = format!("no tool named `{name}` is available");
+        let Some((tool, def, serves)) = tool else {
+            return refused(ToolErrorKind::NotFound, missing);
         };
+        if !allowed {
+            // A refusal, recorded as one; the model reads what it reads for
+            // a tool that does not exist.
+            return ToolStart::Refused(ErrorReport::new(ErrorKind::Denied, missing).refused());
+        }
         if let Some(why) = arguments_refusal(&def.0.parameters, call) {
             return refused(ToolErrorKind::InvalidArgs, why);
         }
