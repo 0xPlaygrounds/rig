@@ -44,6 +44,7 @@ fn tool(name: &str) -> ToolDefinition {
         name: crate::message::ToolName::new(name).expect("tool name"),
         description: format!("the {name} tool"),
         parameters: serde_json::json!({"type": "object"}),
+        annotations: Default::default(),
     }
 }
 

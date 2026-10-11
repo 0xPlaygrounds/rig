@@ -82,6 +82,7 @@ fn weather_tool_definition() -> completion::ToolDefinition {
             },
             "required": ["location"]
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -312,6 +313,7 @@ fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
                     "type": "object",
                     "properties": {"q": {"type": "string"}}
                 }),
+                annotations: Default::default(),
             });
 
     let mut request = weather_tool_request();
@@ -712,6 +714,7 @@ fn lookup_tool() -> completion::ToolDefinition {
         name: message::ToolName::new("lookup").expect("tool name"),
         description: "Look something up".to_owned(),
         parameters: json!({"type": "object"}),
+        annotations: Default::default(),
     }
 }
 

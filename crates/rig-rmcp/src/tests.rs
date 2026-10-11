@@ -16,3 +16,23 @@ const _: fn() = || {
     fn assert_send_sync_static<T: Send + Sync + 'static>() {}
     assert_send_sync_static::<crate::McpClientHandler<rig_agent::tool::server::ToolServerHandle>>();
 };
+
+/// An MCP tool's hints become rig's tool annotations, field for field, and
+/// a tool without hints states nothing.
+#[test]
+fn mcp_hints_become_tool_annotations() {
+    use std::sync::Arc;
+
+    use rmcp::model::{Tool, ToolAnnotations};
+
+    let mut tool = Tool::new("read", "Read a file", Arc::new(serde_json::Map::new()));
+    assert!(crate::native::annotations(&tool).is_empty());
+    let mut hints = ToolAnnotations::new();
+    hints.read_only_hint = Some(true);
+    hints.open_world_hint = Some(false);
+    hints.title = Some("Read".to_owned());
+    tool.annotations = Some(hints);
+    let annotations = crate::native::annotations(&tool);
+    assert!(annotations.read_only() && !annotations.open_world() && !annotations.destructive());
+    assert_eq!(annotations.title.as_deref(), Some("Read"));
+}

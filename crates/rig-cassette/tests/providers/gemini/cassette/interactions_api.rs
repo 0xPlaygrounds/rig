@@ -166,6 +166,7 @@ async fn tool_result_roundtrip() {
                     },
                     "required": ["x", "y"]
                 }),
+                annotations: Default::default(),
             };
 
             let initial = model
@@ -389,6 +390,7 @@ fn recorded_interactions_agree_in_both_modes_and_replay_verbatim() {
                     name: call.function.name.clone(),
                     description: String::new(),
                     parameters: serde_json::json!({"type": "object", "properties": {}}),
+                    annotations: Default::default(),
                 })
                 .collect();
             let history = vec![

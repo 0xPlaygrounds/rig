@@ -1837,6 +1837,7 @@ async fn duplicate_call_ids_keep_their_own_results_when_settling_out_of_order() 
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
         }],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");
@@ -5960,6 +5961,7 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
             name: rig_core::message::ToolName::new("add").expect("tool name"),
             description: MockAddTool.description(),
             parameters: MockAddTool.parameters(),
+            annotations: Default::default(),
         }],
     );
     let policy = TurnPolicy::new(["add".to_string()].into(), None, None).expect("policy");

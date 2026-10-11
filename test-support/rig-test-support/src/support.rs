@@ -400,6 +400,7 @@ pub fn zero_arg_tool_definition(name: &str) -> ToolDefinition {
             "properties": {},
             "required": [],
         }),
+        annotations: Default::default(),
     }
 }
 

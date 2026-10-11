@@ -119,6 +119,7 @@ fn tool(name: &str) -> rig::completion::ToolDefinition {
             "required": ["value"],
             "additionalProperties": false
         }),
+        annotations: Default::default(),
     }
 }
 

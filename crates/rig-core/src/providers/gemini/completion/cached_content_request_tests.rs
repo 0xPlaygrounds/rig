@@ -27,6 +27,7 @@ fn request_with(preamble: Option<&str>, tools: bool) -> Map<String, Value> {
             name: crate::message::ToolName::new("probe").expect("tool name"),
             description: "probe".to_owned(),
             parameters: serde_json::json!({"type": "object", "properties": {}}),
+            annotations: Default::default(),
         });
     }
     body_of(

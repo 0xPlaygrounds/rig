@@ -735,6 +735,7 @@ fn determinism_probe_request() -> CompletionRequest {
             },
             "required": [first, second],
         }),
+        annotations: Default::default(),
     };
 
     // Several metadata keys, because `Document::additional_props` is a

@@ -491,6 +491,7 @@ impl TryFrom<McpTool> for DynamicTool {
             .unwrap_or("")
             .to_string();
         let parameters = tool.definition.schema_as_json_value();
+        let annotations = annotations(&tool.definition);
         let liveness_client = tool.client.clone();
         let tool = Arc::new(tool);
         Ok(DynamicTool::new_with_context(
@@ -519,8 +520,23 @@ impl TryFrom<McpTool> for DynamicTool {
                 })
             },
         )
+        .with_annotations(annotations)
         .with_liveness(move || !liveness_client.is_transport_closed()))
     }
+}
+
+/// The hints an MCP server gives about what calling `tool` does, as rig's
+/// tool annotations.
+pub(crate) fn annotations(tool: &rmcp::model::Tool) -> rig_core::completion::ToolAnnotations {
+    let mut annotations = rig_core::completion::ToolAnnotations::default();
+    if let Some(hints) = &tool.annotations {
+        annotations.title = hints.title.clone();
+        annotations.read_only_hint = hints.read_only_hint;
+        annotations.destructive_hint = hints.destructive_hint;
+        annotations.idempotent_hint = hints.idempotent_hint;
+        annotations.open_world_hint = hints.open_world_hint;
+    }
+    annotations
 }
 
 // Compile-time thread-safety contract: an `McpTool` is handed to the agent's

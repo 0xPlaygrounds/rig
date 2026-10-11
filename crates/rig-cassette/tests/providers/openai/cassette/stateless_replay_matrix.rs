@@ -475,6 +475,7 @@ async fn commentary_before_a_tool_call_replays_with_its_phase() {
                         "properties": { "city": { "type": "string" } },
                         "required": ["city"],
                     }),
+                    annotations: Default::default(),
                 };
                 let reply = streamed(
                     &model,

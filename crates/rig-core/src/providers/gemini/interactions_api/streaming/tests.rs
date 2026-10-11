@@ -51,6 +51,7 @@ fn replayed(response: &crate::completion::CompletionResponse) -> Vec<serde_json:
                 name: call.function.name.clone(),
                 description: "A tool.".to_owned(),
                 parameters: json!({"type": "object", "properties": {}}),
+                annotations: Default::default(),
             })
             .collect(),
         _ => Vec::new(),

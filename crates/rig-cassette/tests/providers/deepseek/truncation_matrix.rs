@@ -75,6 +75,7 @@ fn file_report_tool() -> ToolDefinition {
             },
             "required": ["summary"],
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -87,6 +88,7 @@ fn page_oncall_tool() -> ToolDefinition {
             "properties": { "team": { "type": "string" } },
             "required": ["team"],
         }),
+        annotations: Default::default(),
     }
 }
 

@@ -54,6 +54,12 @@ pub trait PortableTool: Sized + WasmCompatSend + WasmCompatSync {
     /// JSON Schema for arguments.
     fn parameters(&self) -> serde_json::Value;
 
+    /// What calling the tool does to the world, for the host's policies;
+    /// nothing stated by default.
+    fn annotations(&self) -> crate::completion::ToolAnnotations {
+        crate::completion::ToolAnnotations::default()
+    }
+
     /// Normalize a concrete failure at the runtime effect boundary.
     fn map_error(&self, error: Self::Error) -> ToolExecutionError {
         ToolExecutionError::from_error(error)

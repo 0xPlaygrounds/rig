@@ -82,6 +82,7 @@ async fn an_image_and_a_tool_reach_the_model_together() {
                         "properties": { "subject": { "type": "string" } },
                         "required": ["subject"],
                     }),
+                    annotations: Default::default(),
                 })
                 .tool_choice(rig::message::ToolChoice::Required)
                 .max_tokens(256)

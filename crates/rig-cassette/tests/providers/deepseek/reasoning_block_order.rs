@@ -45,6 +45,7 @@ fn weather_tool_definition() -> ToolDefinition {
             },
             "required": ["city"],
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -57,6 +58,7 @@ fn air_quality_tool_definition() -> ToolDefinition {
             "properties": { "city": { "type": "string" } },
             "required": ["city"],
         }),
+        annotations: Default::default(),
     }
 }
 

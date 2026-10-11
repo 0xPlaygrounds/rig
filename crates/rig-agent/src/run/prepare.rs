@@ -279,6 +279,7 @@ pub fn prepare_request(
                 .unwrap_or(OUTPUT_TOOL_DESCRIPTION)
                 .to_string(),
             parameters: schema.clone(),
+            annotations: Default::default(),
         });
     }
 

@@ -255,6 +255,7 @@ async fn unicode_arguments_streaming() {
                     },
                     "required": ["message"]
                 }),
+                annotations: Default::default(),
             });
 
             let observation = collect_raw_stream_observation(

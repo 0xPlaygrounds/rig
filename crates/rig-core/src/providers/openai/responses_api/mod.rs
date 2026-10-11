@@ -667,10 +667,12 @@ impl ResponsesToolDefinition {
 
 impl From<completion::ToolDefinition> for ResponsesToolDefinition {
     fn from(value: completion::ToolDefinition) -> Self {
+        // The annotations are the host's: never sent.
         let completion::ToolDefinition {
             name,
             parameters,
             description,
+            annotations: _,
         } = value;
 
         Self::function(name, description, parameters)

@@ -34,6 +34,7 @@ fn lookup() -> ToolDefinition {
             "properties": { "record": { "type": "string" } },
             "required": ["record"]
         }),
+        annotations: Default::default(),
     }
 }
 

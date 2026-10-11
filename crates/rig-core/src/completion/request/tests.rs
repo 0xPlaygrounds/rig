@@ -822,3 +822,58 @@ mod usage_totals {
         assert_eq!(totals.cost_or_tokens(), "$1.25+");
     }
 }
+
+/// A tool's annotations ride on its definition, from the typed tool, are
+/// written only when something is stated, and read back as written.
+#[test]
+fn tool_annotations_ride_on_the_definition_and_are_written_only_when_stated() {
+    use crate::tool::{PortableTool, tool_definition};
+
+    struct Look;
+
+    impl PortableTool for Look {
+        const NAME: &'static str = "look";
+        type Args = serde_json::Value;
+        type Output = String;
+        type Error = std::convert::Infallible;
+
+        fn description(&self) -> String {
+            "Look".to_owned()
+        }
+
+        fn parameters(&self) -> serde_json::Value {
+            serde_json::json!({"type": "object"})
+        }
+
+        fn annotations(&self) -> ToolAnnotations {
+            ToolAnnotations::default()
+                .with_read_only(true)
+                .with_title("Look around")
+        }
+
+        async fn call(&self, _arguments: Self::Args) -> Result<String, Self::Error> {
+            Ok(String::new())
+        }
+    }
+
+    let definition = tool_definition(&Look);
+    assert!(definition.annotations.read_only());
+    let json = serde_json::to_value(&definition).expect("serializes");
+    assert_eq!(
+        json.get("annotations"),
+        Some(&serde_json::json!({"title": "Look around", "readOnlyHint": true}))
+    );
+    assert_eq!(
+        serde_json::from_value::<ToolDefinition>(json).ok(),
+        Some(definition.clone())
+    );
+    let plain = ToolDefinition::new(definition.name, "Look", serde_json::json!({}));
+    let json = serde_json::to_value(&plain).expect("serializes");
+    assert!(json.get("annotations").is_none());
+    let stated = ToolAnnotations::default()
+        .with_destructive(false)
+        .with_idempotent(true)
+        .with_open_world(false);
+    assert!(!stated.read_only() && !stated.destructive() && stated.idempotent());
+    assert!(!stated.open_world());
+}

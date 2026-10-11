@@ -512,6 +512,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 },
                 "required": ["topic"]
             }),
+            annotations: Default::default(),
         },
         ToolDefinition {
             name: rig_core::message::ToolName::new("lookup_cache_fixture").expect("tool name"),
@@ -529,6 +530,7 @@ fn cache_probe_tools_for(label: &str) -> Vec<ToolDefinition> {
                 },
                 "required": ["fixture"]
             }),
+            annotations: Default::default(),
         },
     ]
 }

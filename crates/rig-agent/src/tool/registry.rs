@@ -124,6 +124,7 @@ impl RegisteredTool {
                 name,
                 description,
                 parameters,
+                annotations: Default::default(),
             },
             embedding,
             key: Key::new_unchecked(descriptor.key),

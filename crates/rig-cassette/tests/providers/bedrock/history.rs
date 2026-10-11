@@ -66,6 +66,7 @@ pub(super) fn assert_recorded_history(model: &str, response: &CompletionResponse
             name: call.function.name.clone(),
             description: String::new(),
             parameters: json!({ "type": "object" }),
+            annotations: Default::default(),
         })
         .collect();
     let request = Completion::prepare(request, &wire.describe()).expect("prepares");

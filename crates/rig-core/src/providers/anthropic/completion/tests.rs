@@ -175,6 +175,7 @@ fn generic_tool(name: &str) -> completion::ToolDefinition {
             "type": "object",
             "properties": {}
         }),
+        annotations: Default::default(),
     }
 }
 
@@ -1948,6 +1949,7 @@ fn adversarial_histories_encode_to_requests_anthropic_takes() {
                 name: ToolName::new("lookup").expect("name"),
                 description: "d".into(),
                 parameters: json!({"type": "object", "properties": {}}),
+                annotations: Default::default(),
             }];
             let body = match request_body(Params {
                 model,
