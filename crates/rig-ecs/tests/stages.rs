@@ -16,8 +16,9 @@
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
-//! cutoff; a message taken over in Gate never reaches the agent, and one
-//! accepted carries an answered turn on; a turn a plugin fails starts nothing more; an interrupt ends a
+//! cutoff; a message taken over in Gate never reaches the agent, one
+//! accepted carries an answered turn on, and an accepted note its sender
+//! decides is withdrawn; a turn a plugin fails starts nothing more; an interrupt ends a
 //! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
@@ -1779,6 +1780,47 @@ fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_
     assert!(!has::<ActiveTurn>(&app, agent));
     assert_eq!(model.request_count(), 2);
     assert!(message_record(&app, "!pwd").is_some());
+}
+
+/// A sender takes back a note its busy agent accepted and was not given
+/// yet by deciding it: it leaves the inbox and never reaches the
+/// conversation, though the turn ends without another model call.
+#[test]
+fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Judging>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, hold_answers.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([answer("done")]);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| world.resource::<Judging>().0.is_some();
+    assert!(run_until(&mut app, held));
+    let note = |text: &str| {
+        let note = Incoming::new(text, DeliveryMode::Note).with_origin(Origin::plugin("check"));
+        (note, ForAgent(agent))
+    };
+    let kept = app.world_mut().spawn(note("the docs build")).id();
+    let taken_back = app.world_mut().spawn(note("the tests fail")).id();
+    let accepted = |world: &mut World| {
+        world.get::<Started>(kept).is_some() && world.get::<Started>(taken_back).is_some()
+    };
+    assert!(run_until(&mut app, accepted));
+    if let Some(mut decision) = app.world_mut().get_mut::<Decision>(taken_back) {
+        decision.decide(Outcome::custom("withdrawn"));
+    }
+    app.update();
+    if let Some((_, hold)) = app.world().resource::<Judging>().0 {
+        app.world_mut().despawn(hold);
+    }
+    let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended_once));
+    let said = serde_json::to_string(&conversation(&app, agent)).unwrap_or_default();
+    assert!(
+        said.contains("the docs build") && !said.contains("the tests fail"),
+        "{said}"
+    );
+    assert_eq!(model.request_count(), 1);
 }
 
 /// A reply cut off at the length limit before it answered.
