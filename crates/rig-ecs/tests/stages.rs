@@ -23,8 +23,8 @@
 //! 2 (gate when ready), 3 (refusal order), 4 (the conflict rule), 5
 //! (admission), 6 (review), 7 (turn endings, and an `Incoming` taken over
 //! in Gate is never delivered), 8 (re-entry), 9 (refusal
-//! is not failure), 10 (fail closed) and 11 (interrupt). 12 (restore)
-//! lands with the restore commit, in `src/restore/tests.rs`.
+//! is not failure), 10 (fail closed) and 11 (interrupt). 12 (restore) is
+//! in `src/restore/tests.rs`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

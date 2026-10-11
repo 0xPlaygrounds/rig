@@ -10,6 +10,9 @@ use rig_harness::prelude::*;
 /// The report on a request a restart cut short.
 const INTERRUPTED: &str = "Interrupted: the session restarted before the subagent answered.";
 
+/// Why a restored subagent's turn is stopped.
+const RESTARTED: &str = "restart";
+
 /// What every report that holds no answer ends with.
 const NO_ANSWER: &str = "No answer will come for this request; send a `message` to carry it on.";
 
@@ -21,7 +24,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_observer(interrupt_restored);
+        .add_systems(AgentPass, stop_restored.in_set(Stage::Gate));
 }
 
 /// An agent as the subagent tools see it.
@@ -197,8 +200,9 @@ fn work_on_turn_start(
 }
 
 /// A spawned agent whose turn ended, and that has not started another, is
-/// [`Lifecycle::WaitingOn`] an agent that owes it a report, else
-/// [`Lifecycle::Finished`] with its answer, or why there is none.
+/// [`Lifecycle::WaitingOn`] an agent that owes it a report, unless a
+/// restart stopped it, else [`Lifecycle::Finished`] with its answer, or why
+/// there is none.
 fn step_on_turn_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
@@ -212,13 +216,16 @@ fn step_on_turn_end(
         return;
     }
     let failed = |why: &str| format!("{why} {NO_ANSWER}");
-    let step = match agents.awaited(agent).first() {
+    // A restart stopped it for good: it waits on no one.
+    let restarted = matches!(outcome, TurnOutcome::Stopped(Some(why)) if why == RESTARTED);
+    let step = match agents.awaited(agent).first().filter(|_| !restarted) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
             TurnOutcome::Answered(message) => final_answer(message)
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
             TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),
+            TurnOutcome::Stopped(Some(why)) if why == RESTARTED => failed(INTERRUPTED),
             TurnOutcome::Stopped(Some(why)) => failed(&format!("Stopped: {why}.")),
         }),
     };
@@ -293,17 +300,18 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     }
 }
 
-/// After a restart, a restored agent that owed reports answers each as
-/// interrupted and stays idle: nothing it was doing runs again by itself.
-fn interrupt_restored(
-    mut restored: On<Restored>,
+/// After a restart, a restored agent that owed reports stays idle: its
+/// restored turn is stopped before anything of it starts, and its end
+/// reports each request as interrupted.
+pub(super) fn stop_restored(
+    turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
     open: Query<&OpenRequests>,
     mut commands: Commands,
 ) {
-    let agent = restored.entity;
-    if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
-        restored.event_mut().resume = false;
-        let interrupted = Lifecycle::Finished(format!("{INTERRUPTED} {NO_ANSWER}"));
-        commands.entity(agent).insert(interrupted);
+    for (turn, &TurnOf(agent)) in &turns {
+        if open.get(agent).is_ok_and(|open| !open.0.is_empty()) {
+            let stopped = TurnOutcome::Stopped(Some(RESTARTED.to_owned()));
+            commands.entity(turn).insert(stopped);
+        }
     }
 }

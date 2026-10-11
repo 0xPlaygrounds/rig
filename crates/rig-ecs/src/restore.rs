@@ -7,16 +7,38 @@
 //! request-build repair that answers any call still without a result stays
 //! as the backstop.
 //!
-//! Plugins re-arm their own obligations from their saved components when
-//! [`Restored`] is triggered on each agent, and may keep an agent from
-//! carrying its work on:
+//! A call left without a result whose tool may change something is
+//! answered as interrupted at once; the work an agent carries on is spawned
+//! as ordinary stage entities marked [`Restored`]: a turn, the read-only
+//! calls it runs again and the model call after them, or its model call
+//! when the model owes an answer. They are admitted, prepared and gated
+//! like any work, as nothing held or approved before the restart is kept.
+//! A Gate system keeps an agent idle by stopping its restored turn, and a
+//! plugin re-arms its own obligations from observers of the saved
+//! components the restore inserts (`On<Insert<MyWait>>`, before
+//! [`SessionRestored`] exists):
 //!
-//! ```ignore
-//! fn rearm(mut restored: On<Restored>, waits: Query<&MyWait>) {
-//!     if waits.contains(restored.entity) {
-//!         restored.event_mut().resume = false;
+//! ```
+//! use rig_ecs::prelude::*;
+//!
+//! #[derive(Component)]
+//! struct Paused;
+//!
+//! // A paused agent does not carry its work on after a restart.
+//! fn stay_paused(
+//!     turns: Query<(Entity, &TurnOf), (With<Restored>, Without<TurnOutcome>)>,
+//!     paused: Query<(), With<Paused>>,
+//!     mut commands: Commands,
+//! ) {
+//!     for (turn, &TurnOf(agent)) in &turns {
+//!         if paused.contains(agent) {
+//!             let stopped = TurnOutcome::Stopped(Some("restart".to_owned()));
+//!             commands.entity(turn).insert(stopped);
+//!         }
 //!     }
 //! }
+//!
+//! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
 use std::collections::HashMap;
@@ -25,6 +47,7 @@ use std::error::Error;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
+use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
 use rig_cassette::journal::{JournalStore, load_images};
@@ -41,9 +64,9 @@ use super::journal::{
     AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
     SessionStore,
 };
-use super::stage::ForAgent;
-use super::tools::{Footprint, Serves, ToolDef};
-use super::turn::{TurnCall, spawn_reply};
+use super::stage::{Effect, ForAgent};
+use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::turn::TurnCall;
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
@@ -72,22 +95,14 @@ struct Folded {
 #[derive(Resource)]
 pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
-/// An agent was restored: its conversation with its origins, its settings,
-/// its saved components and the agent that spawned it are back, and the
-/// agents above it were reconciled. Triggered once per agent at startup,
-/// before the core carries it on. Plugins re-arm what they owe from their
-/// own saved components here.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct Restored {
-    /// The agent.
-    pub entity: Entity,
-    /// Whether the core carries the agent on: runs again its calls that
-    /// can run again, and sends a conversation that ends in a message the
-    /// model has not answered to the model. An observer sets it to `false`
-    /// to keep the agent idle; every call left without a result is then
-    /// answered as interrupted, and nothing runs again by itself.
-    pub resume: bool,
-}
+/// On the work a restore carries on for an agent: its turn, the turn's
+/// read-only calls that run again and its model calls. Gate sees each as it
+/// sees new work; a turn stopped there
+/// (`TurnOutcome::Stopped(Some("restart"))`) starts none of it, and its
+/// calls are answered as stopped.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Default)]
+pub struct Restored;
 
 /// Spawns the agents of the session's logs, with their conversations,
 /// condensed summaries and saved components, links each agent to the agent that
@@ -368,38 +383,31 @@ fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Err
 }
 
 /// Settles what the restored agents left half done, parents before the
-/// agents they spawned. Each agent first gets [`Restored`]; then, by
-/// appending records, a tool call without a result starts again when its
-/// tool is an ordinary read-only one, and is answered as interrupted
-/// otherwise; and an agent whose conversation ends in the user's message
-/// that was not halted, or in a full set of tool results, calls its model
-/// again. An agent an observer kept idle only gets the interrupted
-/// results.
+/// agents they spawned: by appending records, a tool call without a
+/// result whose tool may change something is answered as interrupted, and
+/// the agent carries on with [`Restored`] work: a turn that runs again the
+/// calls of read-only tools, or that calls the model when the conversation
+/// ends in the user's message that was not halted, or in a full set of
+/// tool results.
 pub(crate) fn reconcile(world: &mut World) {
     let Some(RestoredAgents(mut agents)) = world.remove_resource::<RestoredAgents>() else {
         return;
     };
     agents.sort_by_key(|&(depth, _)| depth);
     for (_, agent) in agents {
-        let mut restored = Restored {
-            entity: agent,
-            resume: true,
-        };
-        world.trigger_ref(&mut restored);
-        let carry = (agent, restored.resume);
-        if let Err(error) = world.run_system_cached_with(settle, carry) {
+        if let Err(error) = world.run_system_cached_with(settle, agent) {
             warn!("could not reconcile a restored agent: {error}");
         }
     }
 }
 
-/// Settles one restored agent, as [`reconcile`] says: `resume` is what its
-/// [`Restored`] observers left. The calls run again are a reply of a fresh
-/// effect id, as the model call that asked for them is gone.
+/// Settles one restored agent, as [`reconcile`] says. The calls run again
+/// are a reply of a fresh effect id, as the model call that asked for them
+/// is gone.
 fn settle(
-    In((agent, resume)): In<(Entity, bool)>,
+    In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
-    tools: Query<(&ToolDef, &Serves, &Footprint)>,
+    tools: Query<(&ToolDef, &Footprint)>,
     effects: Res<Effects>,
     mut commit: Commit,
     mut commands: Commands,
@@ -407,23 +415,18 @@ fn settle(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    // A call runs again when its tool is an ordinary read-only one.
+    // A call runs again when its tool, of any kind, only reads.
     let reruns = |name: &str| {
-        tools.iter().any(|(def, serves, footprint)| {
-            def.0.name.as_str() == name
-                && matches!(serves, Serves::Handler(_))
-                && *footprint == Footprint::ReadOnly
+        tools.iter().any(|(def, footprint)| {
+            def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
         })
     };
     let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
         .into_iter()
-        .partition(|call| resume && reruns(call.function.name.as_str()));
+        .partition(|call| reruns(call.function.name.as_str()));
     if !interrupted.is_empty() {
         let results = close_pending_with(&interrupted, INTERRUPTED);
         commit.message(agent, &mut conversation, results);
-    }
-    if !resume {
-        return;
     }
     if !reruns.is_empty() {
         let reply = effects.next_id();
@@ -431,11 +434,19 @@ fn settle(
             reply: Some(reply),
             ..Turn::default()
         };
-        let turn = commands.spawn((TurnOf(agent), state)).id();
-        spawn_reply(&mut commands, (agent, turn), reruns, reply);
+        let turn = commands.spawn((TurnOf(agent), state, Restored)).id();
+        for call in reruns {
+            commands.spawn((
+                ToolRequest { call },
+                Effect::child_of(Some(reply)),
+                CallOf(turn),
+                ForAgent(agent),
+                Restored,
+            ));
+        }
     } else if conversation.awaits_model() {
-        let turn = commands.spawn(TurnOf(agent)).id();
-        commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
+        let turn = commands.spawn((TurnOf(agent), Restored)).id();
+        commands.spawn((TurnCall, CallOf(turn), ForAgent(agent), Restored));
     }
 }
 

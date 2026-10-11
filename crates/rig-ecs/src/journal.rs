@@ -35,9 +35,10 @@ use super::{StopTurns, WriteJournal};
 /// `#[reflect(Component, Saved)]` or `#[reflect(Resource, Saved)]`. Each
 /// change of it is logged at the end of the frame by its type path (an
 /// agent's in its log, a resource in the session's [`SESSION`] log, written
-/// once an agent's log is) and restored by reflection, before the agents'
-/// [`Restored`](super::restore::Restored); a value that serializes to
-/// `null` is saved as absent, and so is an agent component removed. A
+/// once an agent's log is) and restored by reflection, inserted on the
+/// agent it was saved with before [`SessionRestored`] exists, so an
+/// `On<Insert<T>>` observer re-arms what it says; a value that serializes
+/// to `null` is saved as absent, and so is an agent component removed. A
 /// resource is restored in place of the one its plugin inserted while the
 /// app was built.
 /// Registration is a runtime fact: a generic type is saved only once

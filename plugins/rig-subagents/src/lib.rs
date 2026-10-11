@@ -1,7 +1,7 @@
 //! Subagents: agents that start, message and wait on other agents, built
 //! only on the kernel's public API: open tools, spawned agents
 //! ([`SpawnedBy`]), [`Deliver`] with an [`Origin`], [`TurnOutcome`],
-//! [`Restored`] and saved components. Leave [`SubagentsPlugin`] out of the
+//! [`Restored`] work and saved components. Leave [`SubagentsPlugin`] out of the
 //! app, or replace it, and there are no subagents.
 //!
 //! `task` spawns a child agent with its own model, reasoning setting and
@@ -9,7 +9,8 @@
 //! peer a request, or an agent that asked the caller its report; `wait`
 //! keeps the caller's turn open until an agent sends it a message. Each
 //! request stays one of the owing agent's [`OpenRequests`], saved with it,
-//! until it reports to the asker; a restart answers each as interrupted.
+//! until it reports to the asker; a restart stops the work it was doing
+//! for them, which reports each as interrupted.
 //! Subagents see the app's [`PromptSection`]s like every agent, and are
 //! told their role in sections of their own ([`SectionOf`]), not in their
 //! saved system prompt, which is their parent's.

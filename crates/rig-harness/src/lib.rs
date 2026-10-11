@@ -5,8 +5,9 @@
 //! reasoning setting, system prompt and tool access; an agent a plugin
 //! spawns for another is one more, [`SpawnedBy`](rig_ecs::agent::SpawnedBy)
 //! that agent. Tools and slash commands are registered by Bevy plugins, and
-//! a plugin re-arms its saved obligations after a restart on
-//! [`Restored`](rig_ecs::restore::Restored). This crate is only what the
+//! a plugin re-arms its saved obligations after a restart from its saved
+//! components, and gates the work a restart carries on
+//! ([`Restored`](rig_ecs::restore::Restored)) like any. This crate is only what the
 //! terminal app needs around the runtime to run and be relaunched: the
 //! session directory and the `rig` launcher protocol, with how the agent
 //! was started ([`Invoked`](host::launcher::Invoked)). Every other part of

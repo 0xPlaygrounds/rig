@@ -269,14 +269,19 @@ fn keep_asides(
 An agent component that derives `Reflect` and says
 `#[reflect(Component, Saved)]` is kept with the session: each change is
 logged, and a restart, `/reload` or `/resume` brings the newest value
-back, before `Restored` is triggered on the agent. A resource that says
+back, inserted on the restored agent before `SessionRestored` exists, so
+an `On<Insert<T>>` observer can re-arm what it says. A resource that says
 `#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
 the whole session; the plugin inserts it in `build`, and the saved value
 replaces it. A tool call is an entity with a `ToolRequest` and the
 agent it works for (`ForAgent`), so `On<Add<ToolRequest>>` sees every
-tool call as the model asks for it. The calls made before the plugin was added are in
-the conversation, which `Restored` lets it count once: an assistant
-message is the tuple variant `Message::Assistant(AssistantMessage)`.
+tool call as the model asks for it; a call a restart runs again is
+marked `Restored`, like all the work a restart carries on. The calls
+made before the plugin was added are in the conversation, which a
+restored agent is spawned with: the observer that sees the plugin's
+component added counts them, and a saved count, if the session has one,
+replaces that right after. An assistant message is the tuple variant
+`Message::Assistant(AssistantMessage)`.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -301,15 +306,12 @@ impl Plugin for ToolCountsPlugin {
     }
 }
 
-/// On the first restart with the plugin, counts the calls already in the
-/// conversation; a saved count is never redone.
-fn count_the_past(restored: On<Restored>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
-    let Ok((conversation, mut counts)) = agents.get_mut(restored.entity) else {
+/// Counts the calls already in an agent's conversation when it gets its
+/// count, as a restored agent does on the first restart with the plugin.
+fn count_the_past(added: On<Add<ToolCounts>>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
+    let Ok((conversation, mut counts)) = agents.get_mut(added.entity) else {
         return;
     };
-    if !counts.0.is_empty() {
-        return;
-    }
     for message in conversation.messages() {
         if let Message::Assistant(assistant) = message {
             for call in assistant.tool_calls() {
@@ -319,9 +321,11 @@ fn count_the_past(restored: On<Restored>, mut agents: Query<(&Conversation, &mut
     }
 }
 
+/// Counts each call as the model asks for it, once: not again when a
+/// restart runs it again.
 fn count(
     call: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent)>,
+    calls: Query<(&ToolRequest, &ForAgent), Without<Restored>>,
     mut counts: Query<&mut ToolCounts>,
 ) {
     if let Ok((request, ForAgent(agent))) = calls.get(call.entity)
