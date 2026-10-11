@@ -1,9 +1,10 @@
-//! Replays a recorded session: the original user messages are sent again
-//! in order, and every model call and tool call is answered from the
-//! recorded effect log instead of the provider or the tool. Each model
-//! request is checked against the recorded one at the same position of the
-//! same agent; the first difference stops the replay, or with
-//! `continue_live` is reported and the run goes on live.
+//! Replays a recorded session: the user's messages are sent again in
+//! order, and every model call, tool call and plugin effect of a kind the
+//! recording has is answered from the recorded effect log before it starts,
+//! in Gate, instead of by the provider or the tool. Each model request is
+//! checked against the recorded one at the same position of the same
+//! agent; the first difference stops the replay, or with `continue_live`
+//! is reported and the run goes on live, its calls left to start as usual.
 //!
 //! The replay is started by a [`ReplaySource`] resource inserted before the
 //! plugin is added, or by the `RIG_REPLAY` environment variable naming a
@@ -15,20 +16,15 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io;
 use std::path::Path;
-use std::sync::mpsc::{Receiver, Sender, channel};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::Arc;
 
-use futures::channel::oneshot;
-use rig_cassette::effect_log::{EffectLog, jsonl};
-use rig_cassette::journal::{EFFECT_LOG, JournalStore, JsonlDirStore};
+use rig_cassette::effect_log::{EffectLog, RecordedAnswers, RequestCheck, jsonl};
+use rig_cassette::journal::EFFECT_LOG;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
-use rig_harness::rig_core::effect::{
-    EffectId, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
-    family::Dynamic,
-};
+use rig_harness::rig_core::completion::CompletionRequest;
+use rig_harness::rig_core::effect::{self, EffectKind, EffectRecord, HandlerKey};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
@@ -57,14 +53,12 @@ impl ReplayFlags {
     }
 }
 
-/// The recorded session to replay: its effect log and its journal, which
-/// holds the user's messages.
+/// The recorded session to replay: its effect log, which holds every
+/// effect its agents settled, the user's messages included.
 #[derive(Resource, Clone)]
 pub struct ReplaySource {
-    /// Every recorded model and tool call.
+    /// Every recorded effect.
     pub effects: EffectLog,
-    /// The recorded session's agent logs.
-    pub journal: Arc<dyn JournalStore>,
     /// How to replay.
     pub flags: ReplayFlags,
 }
@@ -74,7 +68,6 @@ impl ReplaySource {
     pub fn from_dir(dir: &Path, flags: ReplayFlags) -> io::Result<Self> {
         Ok(Self {
             effects: jsonl::read(dir.join(EFFECT_LOG))?,
-            journal: Arc::new(JsonlDirStore::new(dir)),
             flags,
         })
     }
@@ -87,12 +80,13 @@ impl ReplaySource {
     }
 }
 
-/// The first difference between a replayed request and the recorded one.
+/// The first difference between a replayed effect and the recorded one.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Divergence {
     /// The recorded agent's id.
     pub agent: String,
-    /// The position of the request among the agent's model calls, from 0.
+    /// The position of the model call among the agent's, from 0: the
+    /// request that differed, or the one whose reply asked for the effect.
     pub position: usize,
     /// What differs, one line each, such as `system prompt: + line`.
     pub differences: Vec<String>,
@@ -127,123 +121,199 @@ pub enum ReplayStatus {
     Stopped,
 }
 
-/// The replay's state, shared with the handlers that answer calls.
-#[derive(Default)]
-struct Script {
-    /// Each recorded agent's model calls, oldest first.
-    models: HashMap<String, VecDeque<EffectRecord>>,
+/// A user message of the recording, and when it was accepted.
+#[derive(Clone, Debug)]
+struct Said {
+    text: String,
+    at_ms: u64,
+}
+
+/// A recorded message's payload.
+#[derive(Deserialize)]
+struct Delivered {
+    text: String,
+    origin: Origin,
+}
+
+/// The running replay.
+#[derive(Resource)]
+pub struct Replay {
+    flags: ReplayFlags,
+    /// The model calls, answered in recorded order per agent and compared
+    /// here: requests carry values of the session, such as cache keys.
+    models: RecordedAnswers,
+    /// Every other effect, answered by the record its request matches.
+    others: RecordedAnswers,
+    /// The kinds of effect the recording answers, other than model calls.
+    kinds: HashSet<String>,
+    /// The recorded agents, in order of their first effect.
+    scopes: Vec<Option<Arc<str>>>,
+    /// Each replaying agent's recorded agent, mapped at its first effect.
+    agents: HashMap<Entity, Option<Arc<str>>>,
     /// How many model calls of each recorded agent were taken.
-    positions: HashMap<String, usize>,
-    /// The recorded agents in order of their first effect.
-    scopes: Vec<String>,
-    /// The recorded tool calls not replayed yet.
-    tools: Vec<EffectRecord>,
-    /// The recorded model calls replayed, whose tool calls may be replayed.
-    replayed: HashSet<EffectId>,
-    /// Every divergence, first first.
+    positions: HashMap<Option<Arc<str>>, usize>,
+    /// The user messages not sent yet.
+    messages: VecDeque<Said>,
+    primary: Option<Entity>,
+    /// When the last message was sent: originally, and now.
+    last_sent: Option<(u64, Duration)>,
+    status: ReplayStatus,
     divergences: Vec<Divergence>,
     /// Whether the run went live after a divergence.
     live: bool,
-    /// Model and tool calls answered from the record.
+    /// Model calls and other effects answered from the record.
     answered: (usize, usize),
 }
 
-/// What a replayed model call does.
-enum Step {
-    /// Answer from the record.
-    Answer(Reply),
-    /// Fail the call: the replay stops.
-    Refuse(ErrorReport),
-    /// Call the live model; `true` when the run just went live.
-    Live(bool),
-}
-
-impl Script {
-    fn new(effects: &EffectLog) -> Self {
-        let mut script = Self::default();
-        let mut records: Vec<&EffectRecord> = effects.iter().collect();
-        records.sort_by_key(|record| record.id);
-        for record in records {
-            let scope = record.scope.as_deref().unwrap_or_default().to_owned();
-            if !script.scopes.contains(&scope) {
-                script.scopes.push(scope.clone());
-            }
-            match &record.kind {
-                EffectKind::Completion { .. } => {
-                    let calls = script.models.entry(scope).or_default();
-                    calls.push_back(record.clone());
-                }
-                EffectKind::ToolCall { .. } => script.tools.push(record.clone()),
-                _ => {}
+impl Replay {
+    fn new(source: ReplaySource) -> Self {
+        let ReplaySource { mut effects, flags } = source;
+        effects.records.sort_by_key(|record| record.id);
+        let mut scopes = Vec::new();
+        for record in &effects.records {
+            if !scopes.contains(&record.scope) {
+                scopes.push(record.scope.clone());
             }
         }
-        script
+        let primary = scopes.first().cloned().flatten();
+        let messages = effects
+            .records
+            .iter()
+            .filter(|record| record.scope == primary)
+            .filter_map(said)
+            .collect();
+        let (models, others): (Vec<EffectRecord>, Vec<EffectRecord>) = effects
+            .records
+            .into_iter()
+            .filter(|record| !is_message(&record.kind))
+            .partition(|record| matches!(record.kind, EffectKind::Completion { .. }));
+        let kinds = others
+            .iter()
+            .map(|record| record.kind.name().to_owned())
+            .collect();
+        let answers = |records| RecordedAnswers::new(&EffectLog::from_records(records));
+        Self {
+            flags,
+            models: answers(models).checking(RequestCheck::Skip),
+            others: answers(others),
+            kinds,
+            scopes,
+            agents: HashMap::new(),
+            positions: HashMap::new(),
+            messages,
+            primary: None,
+            last_sent: None,
+            status: ReplayStatus::Waiting,
+            divergences: Vec::new(),
+            live: false,
+            answered: (0, 0),
+        }
     }
 
-    /// The next model call of `scope` under `key`, asked as `kind`.
-    fn model(&mut self, scope: &str, key: &HandlerKey, kind: &EffectKind, live: bool) -> Step {
-        if self.live {
-            return Step::Live(false);
+    /// Where the replay is.
+    pub fn status(&self) -> ReplayStatus {
+        self.status
+    }
+
+    /// Every divergence found, first first.
+    pub fn divergences(&self) -> Vec<Divergence> {
+        self.divergences.clone()
+    }
+
+    /// The model calls and the other effects answered from the record.
+    pub fn answered(&self) -> (usize, usize) {
+        self.answered
+    }
+
+    /// The recorded agent `agent` replays, mapped at its first effect to
+    /// the first recorded agent not mapped yet.
+    fn scope_of(&mut self, agent: Entity) -> Option<Arc<str>> {
+        if let Some(scope) = self.agents.get(&agent) {
+            return scope.clone();
         }
-        let position = self.positions.entry(scope.to_owned()).or_default();
+        let taken: HashSet<&Option<Arc<str>>> = self.agents.values().collect();
+        let scope = self
+            .scopes
+            .iter()
+            .find(|scope| !taken.contains(scope))
+            .cloned()
+            .flatten();
+        self.agents.insert(agent, scope.clone());
+        scope
+    }
+
+    /// The answer to the model call `request`, sent to `key`, of the
+    /// recorded agent `scope`, or why it diverged.
+    fn model(
+        &mut self,
+        scope: Option<&str>,
+        (key, request): (&HandlerKey, &CompletionRequest),
+    ) -> Result<EffectRecord, Divergence> {
+        let kind = EffectKind::Completion {
+            request: request.clone(),
+            stream: true,
+        };
+        let position = self.positions.entry(scope.map(Arc::from)).or_default();
         let at = *position;
         *position += 1;
-        let next = self.models.get_mut(scope).and_then(VecDeque::pop_front);
-        let differences = match (&next, kind) {
-            (None, _) => vec!["the recording has no more model calls for this agent".to_owned()],
-            (
-                Some(EffectRecord {
-                    kind: EffectKind::Completion { request: was, .. },
-                    key: was_key,
-                    ..
-                }),
-                EffectKind::Completion { request: now, .. },
-            ) => differences((was_key, was), (key, now)),
-            (Some(_), _) => vec!["a model call arrived where another effect was recorded".into()],
+        let differences = match self.models.answer(scope, &kind) {
+            Ok(record) => match &record.kind {
+                EffectKind::Completion { request: was, .. } => {
+                    let found = differences((&record.key, was), (key, request));
+                    if found.is_empty() {
+                        return Ok(record);
+                    }
+                    found
+                }
+                _ => vec!["a model call arrived where another effect was recorded".to_owned()],
+            },
+            Err(_) => vec!["the recording has no more model calls for this agent".to_owned()],
         };
-        if let Some(record) = next.filter(|_| differences.is_empty()) {
-            self.replayed.insert(record.id);
-            self.answered.0 += 1;
-            return Step::Answer(Reply::Outcome(record.outcome));
-        }
-        let divergence = Divergence {
-            agent: scope.to_owned(),
+        Err(Divergence {
+            agent: scope.unwrap_or_default().to_owned(),
             position: at,
             differences,
-        };
-        let report = ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
-        self.divergences.push(divergence);
-        if live {
-            self.live = true;
-            return Step::Live(true);
-        }
-        Step::Refuse(report)
+        })
     }
 
-    /// The recorded call of the tool `name` with `args` that a replayed
-    /// model call asked for.
-    fn tool(&mut self, name: &str, args: &str) -> Result<Reply, ErrorReport> {
-        let parse = |args: &str| serde_json::from_str::<serde_json::Value>(args).ok();
-        let wanted = parse(args);
-        let found = self.tools.iter().position(|record| {
-            matches!(&record.kind, EffectKind::ToolCall { name: was, args: was_args }
-                if was == name && parse(was_args) == wanted)
-                && record
-                    .parent
-                    .is_some_and(|parent| self.replayed.contains(&parent))
-        });
-        match found {
-            Some(at) => {
-                let record = self.tools.remove(at);
-                self.answered.1 += 1;
-                Ok(Reply::Outcome(record.outcome))
+    /// The answer to `kind`, an effect of the recorded agent `scope` other
+    /// than a model call, or why it diverged.
+    fn other(
+        &mut self,
+        scope: Option<&str>,
+        kind: &EffectKind,
+    ) -> Result<EffectRecord, Divergence> {
+        self.others.answer(scope, kind).map_err(|report| {
+            let made = self.positions.get(&scope.map(Arc::from)).copied();
+            Divergence {
+                agent: scope.unwrap_or_default().to_owned(),
+                position: made.unwrap_or_default().saturating_sub(1),
+                differences: vec![report.message],
             }
-            None => Err(ErrorReport::new(
-                ErrorKind::Divergence,
-                format!("replay divergence: no recorded call of `{name}` with {args}"),
-            )),
-        }
+        })
     }
+}
+
+/// Whether `kind` is a delivered message's.
+fn is_message(kind: &EffectKind) -> bool {
+    matches!(kind, EffectKind::Custom { kind, .. } if &**kind == "message")
+}
+
+/// The user's message `record` holds, if it was delivered.
+fn said(record: &EffectRecord) -> Option<Said> {
+    let EffectKind::Custom { kind, payload } = &record.kind else {
+        return None;
+    };
+    let delivered = matches!(&record.outcome,
+        Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
+    if &**kind != "message" || !delivered {
+        return None;
+    }
+    let message: Delivered = serde_json::from_value(payload.clone()).ok()?;
+    (message.origin.kind == OriginKind::User).then(|| Said {
+        text: message.text,
+        at_ms: record.started_ms.unwrap_or_default(),
+    })
 }
 
 /// What differs between the recorded request and the new one, each sent
@@ -317,151 +387,6 @@ fn split_system(history: &[message::Message]) -> (String, &[message::Message]) {
     (prompt, rest)
 }
 
-/// Locks the script; a panic elsewhere leaves it usable.
-fn lock(script: &Mutex<Script>) -> MutexGuard<'_, Script> {
-    script.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// A request from a handler to the app to put the live tools back, and
-/// the answer once it did.
-type GoLive = oneshot::Sender<()>;
-
-/// Answers one agent's model calls from the record, or from the live
-/// model once the run went live.
-struct ReplayModel {
-    scope: String,
-    script: Arc<Mutex<Script>>,
-    descriptor: HandlerDescriptor,
-    /// The agent's own model, with `continue_live`.
-    live: Option<ErasedHandler>,
-    /// Asks the app to put the live tools back, with replayed tools.
-    go_live: Option<(Sender<GoLive>, Wake)>,
-}
-
-impl Serve for ReplayModel {
-    type Family = Dynamic;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        let step = lock(&self.script).model(
-            &self.scope,
-            &self.descriptor.key,
-            &kind,
-            self.live.is_some(),
-        );
-        let fresh = match step {
-            Step::Answer(reply) => return reply,
-            Step::Refuse(report) => return Reply::Outcome(Err(report)),
-            Step::Live(fresh) => fresh,
-        };
-        if fresh && let Some((sender, wake)) = &self.go_live {
-            let (done, put_back) = oneshot::channel();
-            if sender.send(done).is_ok() {
-                wake.wake();
-                put_back.await.ok();
-            }
-        }
-        match &self.live {
-            Some(live) => live.handle(kind, dispatch).await,
-            None => Reply::Outcome(Err(ErrorReport::new(
-                ErrorKind::Divergence,
-                "replay: no live model to continue with",
-            ))),
-        }
-    }
-}
-
-/// Answers a tool's calls from the record.
-struct ReplayTool {
-    name: String,
-    script: Arc<Mutex<Script>>,
-    descriptor: HandlerDescriptor,
-}
-
-impl Serve for ReplayTool {
-    type Family = Dynamic;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        self.descriptor.clone()
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        let EffectKind::ToolCall { args, .. } = &kind else {
-            let report = ErrorReport::new(ErrorKind::Divergence, "not a tool call");
-            return Reply::Outcome(Err(report));
-        };
-        let answered = lock(&self.script).tool(&self.name, args);
-        answered.unwrap_or_else(|report| Reply::Outcome(Err(report)))
-    }
-}
-
-/// A user message of the recording, and when it was written.
-#[derive(Clone, Debug)]
-struct Said {
-    text: String,
-    at_ms: u64,
-}
-
-/// The running replay.
-#[derive(Resource)]
-pub struct Replay {
-    script: Arc<Mutex<Script>>,
-    flags: ReplayFlags,
-    /// The user messages not sent yet.
-    messages: VecDeque<Said>,
-    /// Each replaying agent's recorded id.
-    agents: HashMap<Entity, String>,
-    primary: Option<Entity>,
-    /// When the last message was sent: originally, and now.
-    last_sent: Option<(u64, Duration)>,
-    status: ReplayStatus,
-    go_live: Sender<GoLive>,
-    requests: Mutex<Receiver<GoLive>>,
-}
-
-impl Replay {
-    /// Where the replay is.
-    pub fn status(&self) -> ReplayStatus {
-        self.status
-    }
-
-    /// Every divergence found, first first.
-    pub fn divergences(&self) -> Vec<Divergence> {
-        lock(&self.script).divergences.clone()
-    }
-
-    /// The model calls and tool calls answered from the record.
-    pub fn answered(&self) -> (usize, usize) {
-        lock(&self.script).answered
-    }
-
-    /// The recorded agent `agent` replays, mapped at its first turn.
-    fn scope_of(&mut self, agent: Entity) -> Option<String> {
-        if let Some(scope) = self.agents.get(&agent) {
-            return Some(scope.clone());
-        }
-        let taken: HashSet<&String> = self.agents.values().collect();
-        let scope = lock(&self.script)
-            .scopes
-            .iter()
-            .find(|scope| !taken.contains(scope))
-            .cloned()?;
-        self.agents.insert(agent, scope.clone());
-        Some(scope)
-    }
-}
-
-/// On a tool replaced by its replay.
-#[derive(Component)]
-struct Replaced;
-
-/// On a tool answered from the record.
-#[derive(Component)]
-struct Replaying;
-
 /// Replays the session a [`ReplaySource`] names.
 #[derive(Default)]
 pub struct SessionReplayPlugin;
@@ -482,108 +407,16 @@ impl Plugin for SessionReplayPlugin {
                 None => return,
             },
         };
-        let script = Script::new(&source.effects);
-        let messages = script
-            .scopes
-            .first()
-            .map(|primary| user_messages(source.journal.as_ref(), primary))
-            .unwrap_or_default();
-        let (go_live, requests) = channel();
-        app.insert_resource(Replay {
-            script: Arc::new(Mutex::new(script)),
-            flags: source.flags,
-            messages: messages.into(),
-            agents: HashMap::new(),
-            primary: None,
-            last_sent: None,
-            status: ReplayStatus::Waiting,
-            go_live,
-            requests: Mutex::new(requests),
-        })
-        .add_systems(
-            Update,
-            (
-                start.run_if(resource_exists::<SessionRestored>),
-                put_live_tools_back.before(PollCalls),
-            ),
-        )
-        .add_systems(AgentPass, route_calls.in_set(Stage::Prepare))
-        .add_observer(next_message);
+        app.insert_resource(Replay::new(source))
+            .add_systems(
+                Update,
+                start
+                    .run_if(resource_exists::<SessionRestored>)
+                    .before(AgentLoop),
+            )
+            .add_systems(AgentPass, answer_from_record.in_set(Stage::Gate))
+            .add_observer(next_message);
     }
-
-    /// Replaces every tool with one answering from the record, unless the
-    /// tools run live.
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let Some(replay) = world.get_resource::<Replay>() else {
-            return;
-        };
-        if replay.flags.live_tools {
-            return;
-        }
-        let script = replay.script.clone();
-        let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
-        let tools: Vec<_> = tools
-            .iter(world)
-            .map(|(tool, def, rules, footprint)| (tool, def.0.clone(), rules.clone(), *footprint))
-            .collect();
-        for (tool, definition, rules, footprint) in tools {
-            world.entity_mut(tool).insert((Disabled, Replaced));
-            let name = definition.name.to_string();
-            let handler = ReplayTool {
-                descriptor: HandlerDescriptor::tool(
-                    &name,
-                    definition.description.clone(),
-                    definition.parameters.clone(),
-                ),
-                name,
-                script: script.clone(),
-            };
-            let rules: Vec<&str> = rules.0.iter().map(String::as_str).collect();
-            let options = ToolOptions {
-                rules: &rules,
-                footprint: Some(footprint),
-            };
-            if let Some(replaying) =
-                world.spawn_tool(definition, ErasedHandler::new(handler), options)
-            {
-                world.entity_mut(replaying).insert(Replaying);
-            }
-        }
-    }
-}
-
-/// The user's own messages in the journal of the recorded agent `scope`,
-/// in order.
-fn user_messages(journal: &dyn JournalStore, scope: &str) -> Vec<Said> {
-    let Ok(log) = journal.read(scope) else {
-        return Vec::new();
-    };
-    let lines = log.split(|byte| *byte == b'\n');
-    let lines = lines.filter_map(|line| serde_json::from_slice::<serde_json::Value>(line).ok());
-    lines
-        .filter(|line| line.get("type").and_then(|kind| kind.as_str()) == Some("message"))
-        .filter(|line| line.get("origin").is_none_or(serde_json::Value::is_null))
-        .filter_map(|line| {
-            let at_ms = line.get("t").and_then(serde_json::Value::as_u64)?;
-            let message = serde_json::from_value(line.get("message")?.clone()).ok()?;
-            let message::Message::User { content } = message else {
-                return None;
-            };
-            let mut texts = Vec::new();
-            for item in content {
-                match item {
-                    UserContent::Text(text) => texts.push(text.text),
-                    UserContent::ToolResult(_) => return None,
-                    _ => {}
-                }
-            }
-            Some(Said {
-                text: texts.join("\n"),
-                at_ms,
-            })
-        })
-        .collect()
 }
 
 /// Sends the first user message once the session is restored.
@@ -626,10 +459,10 @@ fn send_next(
 ) {
     let Some(said) = replay.messages.pop_front() else {
         replay.status = ReplayStatus::Finished;
-        let (models, tools) = replay.answered();
+        let (models, others) = replay.answered();
         notices.write(Notice::info(
             agent,
-            format!("Replay finished: {models} model calls and {tools} tool calls replayed."),
+            format!("Replay finished: {models} model calls and {others} other effects replayed."),
         ));
         return;
     };
@@ -649,67 +482,81 @@ fn send_next(
     }
 }
 
-/// Sends each turn's model call to its agent's replay.
-fn route_calls(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
-    agents: Query<(Option<&Connection>, Option<&ModelChoice>)>,
-    models: Res<Models>,
-    wake: Res<Wake>,
+/// An effect as the replay answers it.
+type Answerable<'a> = (
+    Entity,
+    &'a Effect,
+    &'a ForAgent,
+    Option<&'a ModelRequest>,
+    Option<&'a ToolRequest>,
+    Option<&'a EffectRequest>,
+);
+
+/// Answers each effect about to start from the record, in id order: a
+/// model call with the recorded reply when its request matches, a tool
+/// call (unless tools run live) and a plugin's effect of a recorded kind
+/// with the record its request matches. At a divergence the call is
+/// refused, which stops the replay, or with `continue_live` left to start
+/// live, as is everything after it.
+fn answer_from_record(
+    effects: Query<Answerable, (Undecided, Without<Incoming>)>,
     mut replay: ResMut<Replay>,
+    mut commands: Commands,
 ) {
-    for (mut call, &ForAgent(agent)) in &mut calls {
-        let Ok((connection, choice)) = agents.get(agent) else {
-            continue;
+    let mut ready: Vec<Answerable> = effects.iter().collect();
+    ready.sort_by_key(|(_, effect, ..)| effect.id());
+    for (entity, _, &ForAgent(agent), model, tool, request) in ready {
+        if replay.live {
+            return;
+        }
+        let scope = replay.scope_of(agent);
+        let scope = scope.as_deref();
+        let answer = match (model, tool, request) {
+            (Some(model), ..) => {
+                let key = model.connection.as_ref().map_or_else(
+                    || HandlerKey::new("completion"),
+                    |connection| connection.handler.0.descriptor().key,
+                );
+                let answer = replay.model(scope, (&key, &model.request));
+                replay.answered.0 += usize::from(answer.is_ok());
+                answer
+            }
+            (None, Some(_), _) if replay.flags.live_tools => continue,
+            (None, Some(ToolRequest { call }), _) => {
+                let kind = EffectKind::ToolCall {
+                    name: call.function.name.as_str().to_owned(),
+                    args: call.function.raw_arguments(),
+                };
+                let answer = replay.other(scope, &kind);
+                replay.answered.1 += usize::from(answer.is_ok());
+                answer
+            }
+            (None, None, Some(request)) if replay.kinds.contains(request.kind.name()) => {
+                let answer = replay.other(scope, &request.kind);
+                replay.answered.1 += usize::from(answer.is_ok());
+                answer
+            }
+            _ => continue,
         };
-        if let Some(routed) = replayed(&mut replay, agent, (connection, choice), &models, &wake) {
-            call.connection = Some(routed);
+        let mut answering = commands.entity(entity);
+        match answer {
+            Ok(record) => {
+                if let Some(published) = record.tool_output {
+                    answering.insert(Published(published));
+                }
+                answering.insert_if_new(Outcome(record.outcome));
+            }
+            Err(divergence) => {
+                let report = ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
+                replay.divergences.push(divergence);
+                if replay.flags.continue_live {
+                    replay.live = true;
+                    return;
+                }
+                answering.insert_if_new(Outcome(Err(report)));
+            }
         }
     }
-}
-
-/// The connection that answers `agent`'s model calls from the recording,
-/// with its own model, `connection`, or else its `choice`'s.
-fn replayed(
-    replay: &mut Replay,
-    agent: Entity,
-    (connection, choice): (Option<&Connection>, Option<&ModelChoice>),
-    models: &Models,
-    wake: &Wake,
-) -> Option<Connection> {
-    let scope = replay.scope_of(agent)?;
-    let recorded_key = lock(&replay.script)
-        .models
-        .get(&scope)
-        .and_then(|calls| calls.front().map(|record| record.key.clone()));
-    let (spec, descriptor) = match (connection, choice) {
-        (Some(connection), _) => (connection.spec.clone(), connection.handler.0.descriptor()),
-        (None, Some(choice)) => {
-            let spec = models.0.catalog().resolve(&choice.0).ok()?.shared();
-            let descriptor = HandlerDescriptor {
-                key: recorded_key?,
-                family: FamilyDescriptor::Completion {
-                    model: ModelRef::new(spec.reference()),
-                    capabilities: ProviderCapabilities::default(),
-                },
-                layers: Vec::new(),
-            };
-            (spec, descriptor)
-        }
-        (None, None) => return None,
-    };
-    let continue_live = replay.flags.continue_live;
-    let handler = ReplayModel {
-        scope,
-        script: replay.script.clone(),
-        descriptor,
-        live: connection
-            .filter(|_| continue_live)
-            .map(|connection| connection.handler.0.clone()),
-        go_live: (continue_live && !replay.flags.live_tools)
-            .then(|| (replay.go_live.clone(), wake.clone())),
-    };
-    let handler = rig_harness::rig_ecs::effects::Handler(ErasedHandler::new(handler));
-    Some(Connection { spec, handler })
 }
 
 /// After each turn of the replayed agent, stops at a divergence or sends
@@ -728,8 +575,7 @@ fn next_message(
     if replay.primary != Some(agent) || replay.status != ReplayStatus::Running {
         return;
     }
-    let divergences = replay.divergences();
-    if let Some(first) = divergences.first() {
+    if let Some(first) = replay.divergences.first() {
         notices.write(Notice::error(agent, first.to_string()));
         if !replay.flags.continue_live {
             replay.status = ReplayStatus::Stopped;
@@ -743,34 +589,4 @@ fn next_message(
         &mut commands,
         &mut notices,
     );
-}
-
-/// Puts the live tools back once a replay goes live, before the live
-/// model's reply can call them.
-fn put_live_tools_back(
-    replay: Res<Replay>,
-    replaying: Query<Entity, With<Replaying>>,
-    replaced: Query<Entity, (With<Replaced>, With<Disabled>)>,
-    mut commands: Commands,
-) {
-    let asked: Vec<GoLive> = replay
-        .requests
-        .lock()
-        .unwrap_or_else(PoisonError::into_inner)
-        .try_iter()
-        .collect();
-    if asked.is_empty() {
-        return;
-    }
-    for tool in &replaying {
-        commands.entity(tool).despawn();
-    }
-    for tool in &replaced {
-        commands.entity(tool).remove::<(Disabled, Replaced)>();
-    }
-    // The model call waits for this before it is sent; the tools are back
-    // when this system's commands apply, before any reply is polled.
-    for done in asked {
-        done.send(()).ok();
-    }
 }

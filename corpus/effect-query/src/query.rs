@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 
 use rig_cassette::effect_log::EffectLog;
-use rig_core::effect::{EffectKind, EffectRecord, Outcome};
+use rig_core::effect::{Disposition, EffectKind, EffectRecord, Outcome};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{Message, UserContent};
 use rig_core::tool::ToolErrorKind;
@@ -17,6 +17,9 @@ pub const DETAIL_CHARS: usize = 20_000;
 
 /// The rows listed when no limit is given.
 const DEFAULT_LIMIT: usize = 30;
+
+/// The rows `slowest` lists when no limit is given.
+const SLOWEST: usize = 10;
 
 /// How an effect ended.
 #[derive(Deserialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq)]
@@ -35,6 +38,15 @@ impl Status {
             Self::Error => "error",
             Self::Denied => "denied",
             Self::Interrupted => "interrupted",
+        }
+    }
+
+    /// How `record`'s effect ended: interrupted when it was cancelled,
+    /// else as the answer that applied, a reviewer's when one replaced it.
+    fn of_record(record: &EffectRecord) -> Self {
+        match record.disposition {
+            Disposition::Cancelled => Self::Interrupted,
+            _ => Self::of(record.reviewed.as_ref().unwrap_or(&record.outcome)),
         }
     }
 
@@ -82,6 +94,10 @@ pub struct Filter {
     pub since_turn: Option<u32>,
     /// The most rows, the latest kept (30 by default).
     pub limit: Option<usize>,
+    /// The slowest first, by how long each took, instead of the latest;
+    /// 10 rows unless `limit` says.
+    #[serde(default)]
+    pub slowest: bool,
 }
 
 /// The arguments of `effects_detail`.
@@ -100,6 +116,9 @@ struct Row<'a> {
     kind: String,
     name: String,
     status: Status,
+    /// How long it took, in milliseconds, when its start and end were
+    /// recorded.
+    took_ms: Option<u64>,
 }
 
 /// The effect kind as the filter names it.
@@ -163,7 +182,11 @@ fn rows<'a>(log: &'a EffectLog, names: &HashMap<String, String>) -> Vec<Row<'a>>
             turn,
             kind: kind_label(&record.kind),
             name: name_of(record),
-            status: Status::of(&record.outcome),
+            status: Status::of_record(record),
+            took_ms: record
+                .started_ms
+                .zip(record.finished_ms)
+                .map(|(started, finished)| finished.saturating_sub(started)),
         });
     }
     rows
@@ -203,6 +226,7 @@ impl Filter {
                     filter.since_turn = Some(value.parse().map_err(|_| "a turn is a number")?);
                 }
                 "limit" => filter.limit = Some(value.parse().map_err(|_| "a limit is a number")?),
+                "" if value == "slow" => filter.slowest = true,
                 "" if matches!(value, "ok" | "error" | "denied" | "interrupted") => {
                     filter.status = Some(status()?);
                 }
@@ -221,6 +245,22 @@ fn size(value: &impl serde::Serialize) -> usize {
     serde_json::to_string(value).map_or(0, |text| text.len())
 }
 
+/// The UTC time of day `ms` after the Unix epoch, as `HH:MM:SS`.
+fn clock(ms: u64) -> String {
+    let seconds = (ms / 1_000) % 86_400;
+    format!(
+        "{:02}:{:02}:{:02}",
+        seconds / 3_600,
+        seconds / 60 % 60,
+        seconds % 60
+    )
+}
+
+/// `ms` as seconds, such as `1.25s`.
+fn seconds(ms: u64) -> String {
+    format!("{:.2}s", ms as f64 / 1e3)
+}
+
 fn human(bytes: usize) -> String {
     match bytes {
         0..1_000 => format!("{bytes}B"),
@@ -229,25 +269,32 @@ fn human(bytes: usize) -> String {
     }
 }
 
-/// The effects of `log` that `filter` keeps, the latest `limit`, as a
-/// table.
+/// The effects of `log` that `filter` keeps, the latest `limit` or the
+/// slowest, as a table.
 pub fn table(log: &EffectLog, names: &HashMap<String, String>, filter: &Filter) -> String {
     let all = rows(log, names);
-    let kept: Vec<&Row> = all
+    let mut kept: Vec<&Row> = all
         .iter()
         .filter(|row| filter.keeps(row, row.record.scope.as_deref().unwrap_or("")))
         .collect();
-    let limit = filter.limit.unwrap_or(DEFAULT_LIMIT).max(1);
-    let shown = kept
-        .get(kept.len().saturating_sub(limit)..)
-        .unwrap_or_default();
+    let shown = if filter.slowest {
+        kept.sort_by_key(|row| std::cmp::Reverse(row.took_ms));
+        let limit = filter.limit.unwrap_or(SLOWEST).max(1);
+        kept.get(..limit.min(kept.len())).unwrap_or_default()
+    } else {
+        let limit = filter.limit.unwrap_or(DEFAULT_LIMIT).max(1);
+        kept.get(kept.len().saturating_sub(limit)..)
+            .unwrap_or_default()
+    };
     let mut out = format!(
-        "{} of {} effects match ({} shown). Start times and durations are not recorded.\n",
+        "{} of {} effects match ({} shown). Start times are UTC.\n",
         kept.len(),
         all.len(),
         shown.len()
     );
-    out.push_str("id\tagent\tturn\tkind\tname\tstatus\trequest\tresult\tmodel\tcost\n");
+    out.push_str(
+        "id\tagent\tturn\tkind\tname\tstatus\tstart\tduration\trequest\tresult\tmodel\tcost\n",
+    );
     for row in shown {
         let (model, cost) = match &row.record.outcome {
             Ok(Outcome::Completion(response)) => (
@@ -260,9 +307,11 @@ pub fn table(log: &EffectLog, names: &HashMap<String, String>, filter: &Filter) 
             _ => ("-", "-".to_owned()),
         };
         let (request, result) = (size(&row.record.kind), size(&row.record.outcome));
+        let start = row.record.started_ms.map_or("-".to_owned(), clock);
+        let took = row.took_ms.map_or("-".to_owned(), seconds);
         let _ = writeln!(
             out,
-            "{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}\t{model}\t{cost}",
+            "{}\t{}\t{}\t{}\t{}\t{}\t{start}\t{took}\t{}\t{}\t{model}\t{cost}",
             row.record.id.as_u64(),
             row.agent,
             row.turn,
@@ -300,7 +349,7 @@ pub fn detail(log: &EffectLog, id: u64) -> Option<String> {
         "effect {} ({}, {})\n\nrequest:\n{request}\n\nresult:\n{result}",
         record.id.as_u64(),
         name_of(record),
-        Status::of(&record.outcome).as_str()
+        Status::of_record(record).as_str()
     );
     let mut cut: String = text.chars().take(DETAIL_CHARS).collect();
     if cut.len() < text.len() {

@@ -158,6 +158,12 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
     let row = found.first().cloned().unwrap_or_default();
     assert_eq!(row.get(4), Some(&"read"), "{table}");
     assert_eq!(row.get(5), Some(&"error"), "{table}");
+    // When it started, and how long it took.
+    assert!(row.get(6).is_some_and(|start| start.len() == 8), "{table}");
+    assert!(
+        row.get(7).is_some_and(|took| took.ends_with('s')),
+        "{table}"
+    );
     let failed = row.first().copied().unwrap_or_default().to_owned();
     let read_error = outputs.get("c2").cloned().unwrap_or_default();
     assert!(!read_error.is_empty());
@@ -218,4 +224,16 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
         2,
         "turn 2's two model calls:\n{models}"
     );
+    // `/effects slow` lists the slowest first.
+    let slow = Filter::parse("slow kind=tool");
+    assert!(slow.as_ref().is_ok_and(|filter| filter.slowest));
+    let log = app.world().resource::<LogFile>().read();
+    let slowest = log.map(|log| query::table(&log, &HashMap::new(), &slow.unwrap_or_default()));
+    let slowest = slowest.unwrap_or_default();
+    let took: Vec<f64> = rows(&slowest)
+        .iter()
+        .filter_map(|row| row.get(7)?.strip_suffix('s')?.parse().ok())
+        .collect();
+    assert_eq!(took.len(), 6, "every tool call so far: {slowest}");
+    assert!(took.is_sorted_by(|a, b| a >= b), "{slowest}");
 }

@@ -3904,12 +3904,12 @@ name = "corpus-session-replay"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "futures",
  "rig-cassette",
  "rig-core",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tools",
+ "serde",
  "serde_json",
 ]
 

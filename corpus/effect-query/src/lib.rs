@@ -25,8 +25,9 @@ pub const EFFECTS_TOOL: &str = "effects";
 pub const DETAIL_TOOL: &str = "effects_detail";
 
 const EFFECTS_DESCRIPTION: &str = "List the model and tool calls of this session, every agent's, \
-    from its effect log: id, agent, turn, kind, name, status, request and result sizes, and the \
-    model and cost of model calls. Filters narrow it; the latest `limit` rows are shown.";
+    from its effect log: id, agent, turn, kind, name, status, start time, duration, request and \
+    result sizes, and the model and cost of model calls. Filters narrow it; the latest `limit` \
+    rows are shown, or with `slowest` the slowest.";
 const DETAIL_DESCRIPTION: &str = "Show one effect of `effects` in full: its request and its \
     result or error, cut to 20000 characters.";
 
@@ -48,7 +49,7 @@ impl Plugin for EffectQueryPlugin {
             .add_open_tool(DETAIL_TOOL, DETAIL_DESCRIPTION, read_only(), on_detail)
             .add_command(
                 "effects",
-                "List the session's model and tool calls: /effects [status|kind|name|key=value…]",
+                "List the session's model and tool calls: /effects [slow|status|kind|name|key=value…]",
                 effects_command,
             )
             .add_observer(show_listing);
@@ -159,13 +160,6 @@ fn effects_command(
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
-    if args.args.trim() == "slow" {
-        notices.write(Notice::error(
-            agent,
-            "/effects slow needs each effect's duration, which the effect log does not record.",
-        ));
-        return;
-    }
     let filter = match Filter::parse(&args.args) {
         Ok(filter) => filter,
         Err(why) => {

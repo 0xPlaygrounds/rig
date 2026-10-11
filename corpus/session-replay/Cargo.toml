@@ -11,11 +11,11 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-futures = { workspace = true }
-# The recorded effect log and session journal.
+# The recorded effect log.
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]

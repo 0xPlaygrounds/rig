@@ -1098,7 +1098,9 @@ fn assemble(
         None => {
             let (key, kind) = kind_of(world, entity)?;
             EffectRecord {
-                tool_output: None,
+                tool_output: world
+                    .get::<Published>(entity)
+                    .map(|published| published.0.clone()),
                 id,
                 key,
                 kind,

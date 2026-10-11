@@ -5,6 +5,13 @@
 //! [`Recorded`](super::stage::Recorded) when it settles. A plugin that
 //! keeps an effect log reads those, and continues the ids of the log it
 //! appends to with [`Effects::continue_after`].
+//!
+//! A streamed model call is recorded as the response it ended with, not
+//! its stream items: views follow the stream on the call ([`Partial`]),
+//! and a replay answers the call with its recorded outcome before it
+//! starts, in Gate, so nothing re-emits a stream.
+//!
+//! [`Partial`]: super::agent::Partial
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -28,7 +35,8 @@ pub(crate) type Ran = (Result<Outcome, ErrorReport>, Option<ToolResultContext>);
 pub struct Effects {
     /// The last id taken.
     last: AtomicU64,
-    /// The records of effect entities' dispatches, timed, until they settle.
+    /// The records of effect entities' dispatches, timed, until they settle;
+    /// without stream items.
     buffer: RecordBuffer,
 }
 

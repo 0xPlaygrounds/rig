@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 
-use rig_cassette::effect_log::EffectLogRecorder;
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
@@ -139,15 +138,10 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert_eq!(recorded_conversation.len(), 4, "{recorded_conversation:?}");
     assert_eq!(std::fs::read_to_string(&file).ok().as_deref(), Some("x"));
     std::fs::remove_file(&file).ok();
-    // Every call as it settled, under an empty header.
-    let mut effects = EffectLogRecorder::new().take();
-    effects
-        .records
-        .extend(app.world().resource::<Settles>().0.iter().cloned());
-    effects.records.sort_by_key(|record| record.id);
+    // Every effect as it settled, the user's message too.
+    let settled = app.world().resource::<Settles>().0.clone();
     let recorded = ReplaySource {
-        effects,
-        journal: Arc::new(journal),
+        effects: EffectLog::from_records(settled),
         flags: ReplayFlags::default(),
     };
 
