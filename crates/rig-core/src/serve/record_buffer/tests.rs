@@ -7,7 +7,7 @@ use crate::{
     completion::{CompletionRequest, Message},
     effect::{FamilyDescriptor, family, tool_key},
     operation::Finish,
-    serve::{Dispatch, ErasedHandler, Reply, Serve},
+    serve::{Dispatch, ErasedHandler, OpenRecord, Reply, Serve, cancelled, catch_panics},
     tool::ToolResult,
 };
 
@@ -177,4 +177,72 @@ fn a_unary_dispatch_keeps_no_items() {
     buffer.resolve(id, answer("done"));
     let record = buffer.take(id).expect("resolved");
     assert!(record.events.is_none() && record.stream_origin.is_none());
+}
+
+/// An open record settles once into the buffer, the first outcome standing,
+/// and one dropped unsettled is recorded as cancelled; without a recorder it
+/// only carries its id.
+#[test]
+fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
+    let buffer = RecordBuffer::new();
+    let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
+    let begin = |raw| {
+        let id = EffectId::from_raw(raw);
+        let origin = Origin::default();
+        OpenRecord::begin(Some(recorder.clone()), id, tool_key("t"), tool("t"), origin)
+    };
+    let mut settled = begin(1);
+    settled.settle(answer("first"));
+    settled.settle(answer("second"));
+    drop(settled);
+    drop(begin(2));
+    let unrecorded = OpenRecord::begin(
+        None,
+        EffectId::from_raw(3),
+        tool_key("t"),
+        tool("t"),
+        Origin::default(),
+    );
+    assert_eq!(unrecorded.id(), EffectId::from_raw(3));
+    drop(unrecorded);
+
+    let records = buffer.take_resolved();
+    assert_eq!(ids(&records), [1, 2]);
+    let outcomes: Vec<_> = records.iter().map(|record| json(&record.outcome)).collect();
+    assert_eq!(outcomes.first(), Some(&json(&answer("first"))));
+    assert_eq!(
+        outcomes.get(1),
+        Some(&json(&Err::<Outcome, _>(cancelled())))
+    );
+}
+
+/// Work that panics before it answers.
+async fn boom() -> Result<(), ErrorReport> {
+    explode();
+    Ok(())
+}
+
+fn explode() {
+    panic!("boom")
+}
+
+/// A panic in the work is an internal error, recorded as the dispatch's
+/// outcome when there is a recorder.
+#[test]
+fn a_panic_is_an_internal_error_recorded_as_the_outcome() {
+    let buffer = RecordBuffer::new();
+    let id = EffectId::from_raw(1);
+    buffer.begin(id, tool_key("t"), tool("t"), Origin::default());
+    let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
+    let error = block_on(catch_panics(Some(recorder), id, boom())).expect_err("panicked");
+    assert_eq!(error.kind, crate::error::ErrorKind::Internal);
+    let record = buffer.take(id).expect("resolved");
+    assert_eq!(json(&record.outcome), json(&Err::<Outcome, _>(error)));
+
+    let unrecorded = block_on(catch_panics(None, id, boom()));
+    assert!(unrecorded.is_err_and(|error| error.to_string().contains("panicked: boom")));
+    assert_eq!(
+        block_on(catch_panics(None, id, async { Ok(7) })).ok(),
+        Some(7)
+    );
 }

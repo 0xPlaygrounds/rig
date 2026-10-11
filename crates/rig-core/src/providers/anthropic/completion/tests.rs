@@ -2226,3 +2226,61 @@ fn a_cache_breakpoint_marks_the_end_of_its_prefix() {
     // No breakpoint, no marker of its own.
     assert_eq!(marked(&body(history(), false)), [false, false, false]);
 }
+
+/// A cache breakpoint never marks a block twice, skips a turn of thinking
+/// alone, and places nothing once explicit tool markers spend the budget.
+#[test]
+fn a_cache_breakpoint_respects_markers_thinking_and_the_budget() {
+    let markers = |value: &Value| value.to_string().matches("cache_control").count();
+    let body = |request: CompletionRequest, prompt_caching: bool| {
+        request_body(Params {
+            model: CLAUDE_SONNET_4_6,
+            request,
+            prompt_caching,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+
+    // Manual caching already marked the system prompt the breakpoint ends at.
+    let mut request = completion_request_with_history(
+        vec![message::Message::from("a")],
+        Some("System prompt".to_owned()),
+    );
+    request.cache_breakpoint = Some(1);
+    let value = body(request, true);
+    assert!(system_has_cache_control(&value) && last_message_has_cache_control(&value));
+    assert_eq!(markers(&value), 2);
+
+    // The breakpoint's last turn is thinking alone, which takes no marker.
+    let thinking = json!({"type": "thinking", "thinking": "hm", "signature": "sig-1"});
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let reply =
+        json!({"model": CLAUDE_SONNET_4_6, "stop_reason": "end_turn", "content": [thinking]});
+    let thought = folded_turn(&wire, &hello_request(), reply);
+    let mut request = completion_request_with_history(
+        vec![
+            message::Message::from("a"),
+            message::Message::Assistant(thought),
+            message::Message::from("c"),
+        ],
+        None,
+    );
+    request.cache_breakpoint = Some(2);
+    let value = body(request, false);
+    assert_eq!(value["messages"][1]["content"][0]["type"], "thinking");
+    assert_eq!(markers(&value), 0);
+
+    // Four explicit tool markers leave none for the breakpoint.
+    let tool = |name: &str| {
+        json!({"name": name, "description": "d", "input_schema": {"type": "object"},
+            "cache_control": {"type": "ephemeral"}})
+    };
+    let tools = ["t1", "t2", "t3", "t4"].map(tool);
+    let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": tools})));
+    request.cache_breakpoint = Some(2);
+    let value = body(request, false);
+    assert!(!system_has_cache_control(&value) && !last_message_has_cache_control(&value));
+    assert_eq!(markers(&value), 4);
+}
