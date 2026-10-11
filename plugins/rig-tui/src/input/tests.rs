@@ -2,6 +2,7 @@ use bevy_ecs::system::RunSystemOnce;
 use rig_ecs::prelude::*;
 
 use super::super::editor::TuiInput;
+use super::super::history::Sent;
 use super::super::view::{self, TuiView};
 use super::send;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
@@ -41,6 +42,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
                 }
             },
         )
+        .add_message::<Sent>()
         .init_resource::<TuiView>()
         .init_resource::<Shown>()
         .init_resource::<TuiInput>()

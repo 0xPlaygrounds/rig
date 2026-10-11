@@ -26,13 +26,12 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 
-use super::editor::TuiInput;
 use super::input::{TerminalEvent, TerminalInput};
 use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
+use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -205,12 +204,10 @@ impl Drop for Tui {
 }
 
 /// Opens the terminal and starts reading it at startup, or asks to exit
-/// with code 1 when there is none. The input gets the prompt history.
+/// with code 1 when there is none.
 pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
-    home: Res<RigHome>,
     wake: Res<Wake>,
-    mut typed: ResMut<TuiInput>,
     mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
 ) {
@@ -221,7 +218,6 @@ pub(crate) fn open_terminal(
             if let Ok(size) = tui.terminal.size() {
                 screen.0 = Rect::new(0, 0, size.width, size.height);
             }
-            typed.load_history(home.0.history());
             commands.insert_resource(tui);
             commands.insert_resource(input);
         }

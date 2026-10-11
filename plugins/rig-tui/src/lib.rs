@@ -4,8 +4,8 @@
 //! loop, `PreUpdate` handles what it read, and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
 //!
-//! The input is a multiline editor with the prompt history and `/` and `@`
-//! completion. Answers are drawn as markdown and
+//! The input is a multiline editor with the prompt history
+//! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 //!
@@ -39,6 +39,7 @@ mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
+mod history;
 mod input;
 pub mod keys;
 pub mod markdown;
@@ -61,6 +62,7 @@ use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 pub use complete::{ArgCompletion, Candidate};
 pub use crossterm;
 pub use editor::TuiInput;
+pub use history::{HistorySystems, PromptHistory};
 pub use input::TerminalEvent;
 pub use keys::{
     AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
@@ -94,6 +96,7 @@ impl Plugin for TuiPlugin {
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
+            .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .add_message::<RequestRedraw>()
             .add_message::<TerminalEvent>()
@@ -110,6 +113,10 @@ impl Plugin for TuiPlugin {
                 )
                     .chain()
                     .after(StatusSystems),
+            )
+            .configure_sets(
+                Update,
+                (HistorySystems::Record, HistorySystems::Save).chain(),
             );
         app.add_front(Front::new(FRONT).on_terminal());
     }
@@ -121,6 +128,10 @@ impl Plugin for TuiPlugin {
             return;
         }
         add_view(app);
+        if let Some(home) = app.world().get_resource::<RigHome>() {
+            let history = PromptHistory::load(home.0.history());
+            app.insert_resource(history);
+        }
         app.add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
@@ -135,7 +146,8 @@ impl Plugin for TuiPlugin {
 fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
-    app.init_resource::<RigHome>()
+    app.add_message::<history::Sent>()
+        .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
@@ -162,6 +174,8 @@ fn add_view(app: &mut App) {
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),
+                history::record.in_set(HistorySystems::Record),
+                history::save.in_set(HistorySystems::Save),
             ),
         )
         .add_systems(
