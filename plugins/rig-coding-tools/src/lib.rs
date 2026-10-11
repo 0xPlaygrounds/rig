@@ -1,19 +1,25 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
-//! `write` and `shell` alone. With the `tui` feature (on by default), each
-//! plugin also adds how the terminal view draws its tool's calls.
-//! [`AttachPlugin`] sends the files the user names as `@path` with the
-//! message.
+//! `write` and `shell` alone. A call of an agent with a [`WorkDir`] works
+//! there: its paths resolve from it, a path outside it is refused, and a
+//! command starts in it ([`CodingToolsSystems`]). With the `tui` feature
+//! (on by default), each plugin also adds how the terminal view draws its
+//! tool's calls. [`AttachPlugin`] sends the files the user names as
+//! `@path` with the message.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock};
 
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, ForAgent, Incoming,
-    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Processes, Query, Resource,
-    SessionPaths, Stage, SystemSet, Tool, ToolOptions,
+    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, ForAgent, Incoming,
+    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Processes, Query, Res,
+    Resource, SessionPaths, Stage, SystemSet, Tool, ToolCalls, ToolOptions, ToolRequest, WorkDir,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::serve::adapters::ToolAdapter;
 use rig_harness::rig_core::tool::ToolContext;
+use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::{Cut, Edit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
@@ -39,6 +45,10 @@ pub struct ReadTool;
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Read::default(), options(Read::RULES));
+        work_in_dir(app, |base| Read {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
     }
@@ -51,6 +61,10 @@ pub struct SearchTool;
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Search::default(), options(Search::RULES));
+        work_in_dir(app, |base| Search {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
     }
@@ -63,6 +77,10 @@ pub struct EditTool;
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Edit::default(), options(Edit::RULES));
+        work_in_dir(app, |base| Edit {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
     }
@@ -75,6 +93,10 @@ pub struct WriteTool;
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Write::default(), options(Write::RULES));
+        work_in_dir(app, |base| Write {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
     }
@@ -104,7 +126,13 @@ impl Plugin for ShellTool {
             },
             processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
             output,
+            dir: None,
         };
+        let in_dir = shell.clone();
+        work_in_dir(app, move |dir| SharedShell {
+            dir: Some(dir),
+            ..in_dir.clone()
+        });
         app.add_tool_with(shell, options(Shell::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);
@@ -138,12 +166,15 @@ impl Default for ShellOutput {
     }
 }
 
-/// [`Shell`], starting each command as [`Processes`] say at the time, and
-/// cutting its output as [`ShellOutput`] says.
+/// [`Shell`], starting each command as [`Processes`] say at the time, in
+/// `dir` when set, where a `cwd` outside it is refused, and cutting its
+/// output as [`ShellOutput`] says.
+#[derive(Clone)]
 struct SharedShell {
     shell: Shell,
     processes: Processes,
     output: ShellOutput,
+    dir: Option<PathBuf>,
 }
 
 impl Tool for SharedShell {
@@ -169,12 +200,67 @@ impl Tool for SharedShell {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
+        let launcher = self.processes.launcher();
         let shell = Shell {
-            launcher: self.processes.launcher(),
+            launcher: match &self.dir {
+                Some(dir) => launcher.in_dir(dir),
+                None => launcher,
+            },
             cut: self.output.cut(),
+            confine: self.dir.is_some(),
             ..self.shell.clone()
         };
         shell.call(context, args).await
+    }
+}
+
+/// The system in [`Stage::Prepare`] that gives each call of these tools
+/// whose agent has a [`WorkDir`] a handler working there. It runs before
+/// every other Prepare system: one that wraps or replaces a call's
+/// [`CallHandler`] orders `.after(CodingToolsSystems)`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct CodingToolsSystems;
+
+/// How each of these tools works in a directory, by tool name.
+#[derive(Resource, Default)]
+struct InDir(Vec<(&'static str, Box<dyn Fn(&Path) -> Handler + Send + Sync>)>);
+
+/// Lets `T`'s calls work in their agent's [`WorkDir`], as `make` builds
+/// the tool for a directory.
+fn work_in_dir<T: Tool + 'static>(
+    app: &mut App,
+    make: impl Fn(PathBuf) -> T + Send + Sync + 'static,
+) {
+    if !app.world().contains_resource::<InDir>() {
+        app.init_resource::<InDir>()
+            .configure_sets(AgentPass, CodingToolsSystems.in_set(Stage::Prepare))
+            .add_systems(AgentPass, give_work_dirs.in_set(CodingToolsSystems));
+    }
+    let handler = move |dir: &Path| {
+        Handler(ErasedHandler::new(ToolAdapter::new(make(
+            dir.to_path_buf(),
+        ))))
+    };
+    if let Some(mut tools) = app.world_mut().get_resource_mut::<InDir>() {
+        tools.0.push((T::NAME, Box::new(handler)));
+    }
+}
+
+/// Gives each call of these tools admitted this pass whose agent has a
+/// [`WorkDir`] the handler of its tool working there.
+fn give_work_dirs(
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
+    dirs: Query<&WorkDir>,
+    tools: Res<InDir>,
+) {
+    for (request, &ForAgent(agent), mut handler) in &mut calls {
+        let Ok(WorkDir(dir)) = dirs.get(agent) else {
+            continue;
+        };
+        let name = request.call.function.name.as_str();
+        if let Some((_, make)) = tools.0.iter().find(|(tool, _)| *tool == name) {
+            *handler = CallHandler(make(dir));
+        }
     }
 }
 

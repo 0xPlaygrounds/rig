@@ -30,3 +30,5 @@ rig-tui = { path = "../rig-tui", optional = true }
 [dev-dependencies]
 # Runs a tool's future in its test.
 bevy_tasks = { workspace = true }
+# Calls of an agent's tools, started as its model's reply would.
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
