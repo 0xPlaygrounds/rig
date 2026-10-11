@@ -168,34 +168,33 @@ pub struct SessionEntry {
 }
 
 impl SessionEntry {
-    /// One line: age, name or title, the [`ResumeLabel`]s, cost,
-    /// directory.
+    /// One line: name or title, the [`ResumeLabel`]s, directory.
     pub fn label(&self) -> String {
-        let age = age(self.saved.elapsed().unwrap_or_default());
-        let title = match (&self.meta.title.name, self.meta.title.typed.as_str()) {
+        let mut label = match (&self.meta.title.name, self.meta.title.typed.as_str()) {
             (Some(name), _) => name.clone(),
             (None, "") => format!("session {}", self.id),
             (None, title) => title.to_owned(),
         };
-        let mut label = format!("{age:>8}  {title}");
         for text in self.meta.labels.values() {
             label.push_str(&format!("  · {text}"));
-        }
-        // The cost before the directory, which may be long enough to be
-        // cut off.
-        match self.meta.cost {
-            Some(cost) if cost > 0.0 => {
-                label.push_str(&format!("  · {}", dollars_label(cost)));
-            }
-            _ if self.meta.tokens > 0 => {
-                label.push_str(&format!("  · {} tokens", tokens_label(self.meta.tokens)));
-            }
-            _ => {}
         }
         if let Some(directory) = &self.directory {
             label.push_str(&format!("  · {}", tilde(directory)));
         }
         label
+    }
+
+    /// What it cost, or its tokens, and its age, shown whole beside the
+    /// label.
+    pub fn detail(&self) -> String {
+        let age = age(self.saved.elapsed().unwrap_or_default());
+        match self.meta.cost {
+            Some(cost) if cost > 0.0 => format!("{} · {age}", dollars_label(cost)),
+            _ if self.meta.tokens > 0 => {
+                format!("{} tokens · {age}", tokens_label(self.meta.tokens))
+            }
+            _ => age,
+        }
     }
 }
 

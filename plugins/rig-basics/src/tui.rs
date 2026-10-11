@@ -157,6 +157,7 @@ fn agents(
                 agent.name
             ),
             command: format!("agents {}", agent.id.0),
+            detail: None,
         });
     }
     commands.spawn(Picker {

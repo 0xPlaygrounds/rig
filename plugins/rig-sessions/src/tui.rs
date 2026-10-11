@@ -44,6 +44,7 @@ pub(super) fn pick_session(
         .map(|session| PickItem {
             label: session.label(),
             command: format!("resume {}", session.id),
+            detail: Some(session.detail()),
         })
         .collect();
     if items.is_empty() {

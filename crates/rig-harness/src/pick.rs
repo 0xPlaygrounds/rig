@@ -46,6 +46,10 @@ pub struct PickItem {
     pub label: String,
     /// The command line it runs.
     pub command: String,
+    /// What a front shows beside the label, kept whole where the label is
+    /// shortened to fit, such as a session's age or why a model cannot be
+    /// used.
+    pub detail: Option<String>,
 }
 
 /// A filterable list for the user to choose one item from, on an entity of
@@ -95,6 +99,7 @@ impl Picker {
         self.items.push(PickItem {
             label: label.into(),
             command: command.into(),
+            detail: None,
         });
         self
     }
