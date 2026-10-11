@@ -1047,6 +1047,37 @@ pub enum Disposition {
     Cancelled,
 }
 
+impl EffectRecord {
+    /// The record of effect `id`, `kind`, routed to `key` and answered with
+    /// `outcome`, and nothing else known: no parent, scope, purpose, times,
+    /// tool output, kept items or review, and [`Disposition::Ran`]. A host
+    /// that answers or cancels an effect itself builds its record from this
+    /// and sets what it knows.
+    pub fn new(
+        id: EffectId,
+        key: HandlerKey,
+        kind: EffectKind,
+        outcome: Result<Outcome, ErrorReport>,
+    ) -> Self {
+        Self {
+            tool_output: None,
+            id,
+            key,
+            kind,
+            outcome,
+            events: None,
+            stream_origin: None,
+            parent: None,
+            scope: None,
+            purpose: None,
+            started_ms: None,
+            finished_ms: None,
+            reviewed: None,
+            disposition: Disposition::Ran,
+        }
+    }
+}
+
 impl Disposition {
     /// Whether this is [`Self::Ran`], the default a record leaves out.
     fn is_ran(&self) -> bool {

@@ -544,25 +544,15 @@ fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
     let outcome = Ok(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("raw")),
     });
-    let mut record = EffectRecord {
-        tool_output: None,
-        id: EffectId::from_raw(1),
-        key: tool_key("add"),
-        kind: EffectKind::ToolCall {
+    let mut record = EffectRecord::new(
+        EffectId::from_raw(1),
+        tool_key("add"),
+        EffectKind::ToolCall {
             name: "add".into(),
             args: "{}".into(),
         },
         outcome,
-        events: None,
-        stream_origin: None,
-        parent: None,
-        scope: None,
-        purpose: None,
-        started_ms: None,
-        finished_ms: None,
-        reviewed: None,
-        disposition: Disposition::default(),
-    };
+    );
     let plain = serde_json::to_value(&record).expect("serializes");
     for left_out in [
         "purpose",

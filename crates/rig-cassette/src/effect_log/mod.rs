@@ -1,4 +1,5 @@
-//! Durable effect logs, checkpoints, recorders, and replay handlers.
+//! Durable effect logs, checkpoints, recorders, replay handlers, and
+//! [`RecordedAnswers`], a log as answers a host looks up.
 //!
 //! Replayers validate recorded handler identities and publish saved tool outputs
 //! before resolving outcomes. Callers must reapply executable middleware and
@@ -15,12 +16,14 @@
 //! # Ok::<(), rig_core::error::ErrorReport>(())
 //! ```
 
+mod answers;
 #[cfg(feature = "jsonl")]
 pub mod jsonl;
 mod log;
 mod recorder;
 mod replay;
 
+pub use answers::RecordedAnswers;
 pub use log::{
     CHECKPOINT_FORMAT, Checkpoint, EffectLog, LogHeader, ProgramIdentity, RecordedStreamError,
     canonical_local_ids, stable_hash,
