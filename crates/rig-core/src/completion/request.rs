@@ -1218,6 +1218,14 @@ pub struct CompletionRequest {
     /// provider, above the mapped options and below `additional_params`.
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
+    /// How many leading messages of [`Self::chat_history`] are a stable
+    /// prefix that later requests repeat, so content after it (per-turn
+    /// memory, a reminder) does not cost the cached prefix. A provider that
+    /// takes cache markers (Anthropic's Messages family) marks the prefix's
+    /// end when it has a marker to spare; one that caches prefixes on its
+    /// own sends nothing for it. `None` marks nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_breakpoint: Option<usize>,
 }
 
 impl CompletionRequest {
@@ -1422,6 +1430,7 @@ impl CompletionRequest {
             accept_unknown_finish_reasons: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
+            cache_breakpoint: None,
         }
     }
 

@@ -23,6 +23,7 @@ fn bare(chat_history: Vec<Message>) -> CompletionRequest {
         accept_unknown_finish_reasons: false,
         options: GenerationOptions::default(),
         provider_options: crate::completion::ProviderOptions::default(),
+        cache_breakpoint: Default::default(),
     }
 }
 

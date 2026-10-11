@@ -2162,3 +2162,67 @@ fn a_forced_choice_names_one_tool() {
         .is_err()
     );
 }
+
+/// A request's cache breakpoint marks the end of the prefix it covers: the
+/// last block of the last turn in it, or the system prompt when it covers
+/// only that, beside the markers manual caching places, and never past the
+/// budget.
+#[test]
+fn a_cache_breakpoint_marks_the_end_of_its_prefix() {
+    let history = || {
+        completion_request_with_history(
+            vec![
+                message::Message::from("a"),
+                message::Message::assistant("b"),
+                message::Message::from("c"),
+            ],
+            Some("System prompt".to_owned()),
+        )
+    };
+    let marked = |value: &Value| -> Vec<bool> {
+        value["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| {
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|block| block.get("cache_control").is_some())
+            })
+            .collect()
+    };
+    let body = |request: CompletionRequest, prompt_caching: bool| {
+        request_body(Params {
+            model: "claude-sonnet-4-6",
+            request,
+            prompt_caching,
+            cache: None,
+            static_prefix_cache_ttl: None,
+        })
+        .unwrap()
+    };
+
+    let mut request = history();
+    request.cache_breakpoint = Some(3);
+    let value = body(request, false);
+    assert_eq!(marked(&value), [false, true, false]);
+    assert!(!system_has_cache_control(&value));
+
+    let mut request = history();
+    request.cache_breakpoint = Some(1);
+    let value = body(request, false);
+    assert_eq!(marked(&value), [false, false, false]);
+    assert!(system_has_cache_control(&value));
+
+    // Beside manual caching: the system prompt, the breakpoint, the tail.
+    let mut request = history();
+    request.cache_breakpoint = Some(2);
+    let value = body(request, true);
+    assert_eq!(marked(&value), [true, false, true]);
+    assert!(system_has_cache_control(&value));
+
+    // No breakpoint, no marker of its own.
+    assert_eq!(marked(&body(history(), false)), [false, false, false]);
+}
