@@ -12,8 +12,10 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The session store a restore reads from.
-rig-ecs = { path = "../../crates/rig-ecs" }
+# The summary's origin; the block goes in after the default prompt and
+# before compaction measures the request.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The test/build command pattern.
 regex = { workspace = true }
@@ -22,7 +24,7 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 serde_json = { workspace = true }

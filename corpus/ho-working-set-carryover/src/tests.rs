@@ -128,3 +128,8 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
     assert_eq!(tracked.changed.len(), 1, "restored");
     assert_eq!(tracked.runs.len(), 1, "restored");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(WorkingSetPlugin);
+}

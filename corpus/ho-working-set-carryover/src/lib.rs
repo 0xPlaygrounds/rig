@@ -13,6 +13,8 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
+use rig_basics::ProjectContextSystems;
+use rig_compaction::{CompactionSystems, summary_origin};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
@@ -36,13 +38,20 @@ impl Plugin for WorkingSetPlugin {
             .init_resource::<ProjectRoot>()
             .register_required_components::<Agent, WorkingSet>()
             .add_observer(track)
-            .configure_sets(AgentPass, WorkingSetSystems.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                WorkingSetSystems
+                    .in_set(Stage::Prepare)
+                    .after(ProjectContextSystems)
+                    .before(CompactionSystems::Prepare),
+            )
             .add_systems(AgentPass, carry_over.in_set(WorkingSetSystems));
     }
 }
 
 /// The Prepare system that carries the working set over a compaction, for
-/// another plugin to order against.
+/// another plugin to order against. It runs after the default prompt went
+/// in, and before compaction measures the request it adds to.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WorkingSetSystems;
 
@@ -204,10 +213,10 @@ fn carry_over(
     // What was committed is read before the splice commits more.
     mut committing: ParamSet<(MessageReader<Committed>, Commit)>,
     mut agents: Query<(&mut Conversation, &mut WorkingSet)>,
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     root: Res<ProjectRoot>,
 ) {
-    let summary = Origin::plugin("compaction");
+    let summary = summary_origin();
     let compactions: Vec<Entity> = committing
         .p0()
         .read()
