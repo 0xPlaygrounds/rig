@@ -7,7 +7,8 @@
 //! name back on exit. It rings the bell when a long turn ends or a picker
 //! opens while the terminal is not known to have the user's focus. The
 //! terminal's title is pushed on its title stack at the first write and
-//! popped on exit, a signal's included.
+//! popped as the app exits, whatever asked it to (the first [`ExitRequest`]
+//! effect settling is the exit).
 //!
 //! The escapes go through the terminal view's writer ([`TerminalWrite`]);
 //! a `--print` run writes them to stdout when it is a terminal, and no
@@ -24,8 +25,7 @@ use std::thread::JoinHandle;
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
 use rig_sessions::SessionTitle;
-use rig_tui::crossterm::event::Event;
-use rig_tui::{TerminalEvent, TerminalWrite, TuiSystems};
+use rig_tui::{TerminalFocus, TerminalWrite};
 use serde::Deserialize;
 
 /// How long the spinner shows each of its characters.
@@ -79,6 +79,7 @@ pub enum TitleOutput {
 struct Out<'w> {
     output: Res<'w, TitleOutput>,
     terminal: MessageWriter<'w, TerminalWrite>,
+    focus: Option<Res<'w, TerminalFocus>>,
 }
 
 impl Out<'_> {
@@ -100,8 +101,8 @@ impl Out<'_> {
     }
 
     /// Rings the bell unless the user is known to look at the terminal.
-    fn bell(&mut self, title: &Title) {
-        if title.focus != Some(true) {
+    fn bell(&mut self) {
+        if self.focus.as_deref() != Some(&TerminalFocus(Some(true))) {
             self.write(BELL);
         }
     }
@@ -117,9 +118,8 @@ struct Title {
     working_since: Option<Duration>,
     /// Whether the last top-level turn failed.
     failed: bool,
-    /// Whether the terminal has the user's focus, once it said so.
-    focus: Option<bool>,
-    /// The terminal's title was given back: nothing more is written.
+    /// The app exits: the title was given back, and nothing more is
+    /// written.
     restored: bool,
 }
 
@@ -134,8 +134,7 @@ pub struct TitlePlugin;
 impl Plugin for TitlePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<TitleSettings>("title")
-            .add_message::<TerminalWrite>()
-            .add_message::<TerminalEvent>();
+            .add_message::<TerminalWrite>();
     }
 
     fn finish(&self, app: &mut App) {
@@ -160,31 +159,12 @@ impl Plugin for TitlePlugin {
             .init_resource::<Title>()
             .init_resource::<Processes>()
             .add_systems(Startup, start_tmux)
-            .add_systems(Update, track_focus.before(AgentLoop))
-            .add_systems(
-                PostUpdate,
-                (show_title, restore.run_if(on_message::<AppExit>))
-                    .chain()
-                    // The terminal view writes what it was sent after it
-                    // rendered: the exiting frame's last.
-                    .before(TuiSystems::Render),
-            )
+            .add_systems(PostUpdate, show_title)
+            .add_observer(restore)
             .add_observer(turn_started)
             .add_observer(turn_ended)
             .add_observer(picker_opened)
             .add_observer(asked);
-    }
-}
-
-/// Keeps whether the terminal has the user's focus, from the focus
-/// changes it reports; unknown until it reports one.
-fn track_focus(mut events: MessageReader<TerminalEvent>, mut title: ResMut<Title>) {
-    for TerminalEvent(event) in events.read() {
-        match event {
-            Event::FocusGained => title.focus = Some(true),
-            Event::FocusLost => title.focus = Some(false),
-            _ => {}
-        }
     }
 }
 
@@ -215,16 +195,16 @@ fn turn_ended(
     title.failed = matches!(outcome, TurnOutcome::Failed(_));
     let took = time.elapsed().saturating_sub(*since);
     if took >= Duration::from_secs(settings.bell_seconds) {
-        out.bell(&title);
+        out.bell();
     }
 }
 
-fn picker_opened(_: On<Add<Picker>>, title: Res<Title>, mut out: Out) {
-    out.bell(&title);
+fn picker_opened(_: On<Add<Picker>>, mut out: Out) {
+    out.bell();
 }
 
-fn asked(_: On<Add<Ask>>, title: Res<Title>, mut out: Out) {
-    out.bell(&title);
+fn asked(_: On<Add<Ask>>, mut out: Out) {
+    out.bell();
 }
 
 /// Writes the title when what it says changed.
@@ -290,10 +270,16 @@ fn show_title(
     title.written = Some(text);
 }
 
-/// Gives the terminal its title back, and tmux its window's name, as the
-/// app exits.
-fn restore(mut title: ResMut<Title>, tmux: Option<ResMut<Tmux>>, mut out: Out) {
-    if title.restored {
+/// Gives the terminal its title back, and tmux its window's name, once
+/// the app exits: the first exit effect settled, which nothing undoes.
+fn restore(
+    settled: On<Add<Settled>>,
+    exits: Query<(), With<ExitRequest>>,
+    mut title: ResMut<Title>,
+    tmux: Option<ResMut<Tmux>>,
+    mut out: Out,
+) {
+    if title.restored || !exits.contains(settled.entity) {
         return;
     }
     title.restored = true;
