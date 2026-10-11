@@ -4,7 +4,10 @@
 //! job sent into the world, which runs it in the next frame (the call asks
 //! for one through [`Wake`]) and answers on a oneshot channel. Tool calls
 //! made through it are tool call effects ([`ToolRequest`]), like the
-//! model's own: gated, started and recorded the same way.
+//! model's own: gated, started and recorded the same way. Made for a call
+//! ([`Harness::within`]), they are that call's children (`ChildOf`): they
+//! end with it, so an interrupt that ends the call ends a tool call it held
+//! too, and whatever held it.
 
 use std::collections::HashMap;
 
@@ -12,7 +15,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use crossbeam_channel::{Receiver, Sender};
 use futures::channel::oneshot;
-use rig_core::effect::EffectId;
 use rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_core::tool::ToolResult;
 use rig_ecs::agent::{
@@ -35,7 +37,8 @@ impl Plugin for HarnessPlugin {
             .add_systems(Update, run_jobs.before(PollCalls).before(AgentLoop))
             .add_observer(end_replies)
             .add_observer(drop_replies)
-            .add_observer(answer_call);
+            .add_observer(answer_call)
+            .add_observer(end_with_call);
     }
 }
 
@@ -48,6 +51,9 @@ type Answer<T> = oneshot::Sender<Result<T, String>>;
 /// Why a call failed when the app stopped, or dropped the call, before it
 /// answered.
 const CLOSED: &str = "the app stopped before it answered";
+
+/// Why a tool call was not made for a call that ended.
+const ENDED: &str = "the call it was made for ended";
 
 /// What [`Harness::spawn_agent`] starts. Each setting left out is taken
 /// from the parent, or is the default without one; the effort is the
@@ -71,16 +77,17 @@ pub struct AgentSpec {
 pub struct Harness {
     jobs: Sender<Job>,
     wake: Wake,
-    parent: Option<EffectId>,
+    call: Option<Entity>,
 }
 
 impl Harness {
-    /// This handle with `parent`, such as the open tool call whose work it
-    /// does, as the effect that tool calls through it and the model calls
-    /// of agents it spawns are recorded under.
-    pub fn within(&self, parent: EffectId) -> Self {
+    /// This handle doing the work of `call`, such as an open tool call:
+    /// tool calls through it are its children, recorded under it and ended
+    /// with it, and the model calls of agents it spawns are recorded under
+    /// it.
+    pub fn within(&self, call: Entity) -> Self {
         Self {
-            parent: Some(parent),
+            call: Some(call),
             ..self.clone()
         }
     }
@@ -92,9 +99,9 @@ impl Harness {
         spec: AgentSpec,
         parent: Option<AgentId>,
     ) -> Result<AgentId, String> {
-        let effect = self.parent;
+        let call = self.call;
         self.ask(move |world, answer: Answer<AgentId>| {
-            answer.send(spawn_agent(world, spec, parent, effect)).ok();
+            answer.send(spawn_agent(world, spec, parent, call)).ok();
         })
         .await
     }
@@ -137,10 +144,10 @@ impl Harness {
         name: &str,
         args: serde_json::Value,
     ) -> Result<ToolResult, String> {
-        let effect = self.parent;
+        let call = self.call;
         let name = name.to_owned();
         self.ask(move |world, answer: Answer<ToolResult>| {
-            call_tool(world, &agent, name, args, effect, answer);
+            call_tool(world, &agent, name, args, call, answer);
         })
         .await
     }
@@ -183,7 +190,7 @@ fn insert_harness(jobs: Res<Jobs>, wake: Res<Wake>, mut commands: Commands) {
     commands.insert_resource(Harness {
         jobs: jobs.sender.clone(),
         wake: wake.clone(),
-        parent: None,
+        call: None,
     });
 }
 
@@ -211,8 +218,11 @@ fn spawn_agent(
     world: &mut World,
     spec: AgentSpec,
     parent: Option<AgentId>,
-    effect: Option<EffectId>,
+    call: Option<Entity>,
 ) -> Result<AgentId, String> {
+    let effect = call
+        .and_then(|call| world.get::<Effect>(call))
+        .map(Effect::id);
     let parent = parent.map(|parent| find(world, &parent)).transpose()?;
     let inherited = parent.map(|parent| {
         (
@@ -368,7 +378,7 @@ fn call_tool(
     agent: &AgentId,
     name: String,
     args: serde_json::Value,
-    effect: Option<EffectId>,
+    within: Option<Entity>,
     answer: Answer<ToolResult>,
 ) {
     let name = ToolName::new(name).map_err(|error| error.to_string());
@@ -379,13 +389,26 @@ fn call_tool(
             return;
         }
     };
+    let open = |call: Entity| {
+        world
+            .get_entity(call)
+            .is_ok_and(|call| !call.contains::<Settled>())
+    };
+    if within.is_some_and(|call| !open(call)) {
+        answer.send(Err(ENDED.to_owned())).ok();
+        return;
+    }
     let call = ToolCall::from_wire("", ToolFunction::new(name, args));
-    world.spawn((
+    let call = (
         ToolRequest { call },
         ForAgent(agent),
-        Effect::child_of(effect),
         HarnessCall(Some(answer)),
-    ));
+    );
+    // Spawned with its parent, which its effect takes its parent from.
+    match within {
+        Some(within) => world.spawn((call, ChildOf(within))),
+        None => world.spawn(call),
+    };
 }
 
 /// Answers a [`Harness`] tool call with its result once it settled.
@@ -395,5 +418,21 @@ fn answer_call(settled: On<Add<Settled>>, mut calls: Query<(&Outcome, &mut Harne
     };
     if let Some(answer) = call.0.take() {
         answer.send(Ok(outcome.tool_result())).ok();
+    }
+}
+
+/// Ends the tool calls a call made through a [`Harness`] that are still
+/// open when it settles, such as one a gate holds when an interrupt ends
+/// the call: each is despawned, which records it as cancelled and ends
+/// whatever held it.
+fn end_with_call(
+    settled: On<Add<Settled>>,
+    children: Query<&Children>,
+    open: Query<(), (With<HarnessCall>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    let calls = children.get(settled.entity).into_iter().flatten();
+    for &call in calls.filter(|&&call| open.contains(call)) {
+        commands.entity(call).despawn();
     }
 }

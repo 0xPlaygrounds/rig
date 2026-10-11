@@ -29,8 +29,9 @@
 //! open tool ([`AppToolsExt::add_open_tool`]) whose call is answered by a
 //! [`Running`] task, and its own [`Harness`] handle, whose tool calls are
 //! tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like
-//! the model's own: gated, started and recorded under its `run_steel`
-//! call. It is not in the default `plugins.toml`; add it with
+//! the model's own: gated, started and recorded, and children (`ChildOf`)
+//! of its `run_steel` call, which end with it. It is not in the default
+//! `plugins.toml`; add it with
 //!
 //! ```toml
 //! [[plugin]]
@@ -146,9 +147,9 @@ struct SteelArgs {
 }
 
 /// Starts a `run_steel` call's program as the call's [`Running`] task; its
-/// result becomes the call's `Outcome`, and Esc, which despawns the
-/// call, cancels it. [`SteelPlugin`] inserts the [`Harness`] before any turn
-/// runs.
+/// result becomes the call's `Outcome`, and Esc, which ends the call,
+/// cancels it, and the tool calls it has open. [`SteelPlugin`] inserts the
+/// [`Harness`] before any turn runs.
 fn on_run_steel(
     called: On<ToolCalled<SteelArgs>>,
     harness: Res<Harness>,
@@ -157,7 +158,7 @@ fn on_run_steel(
 ) {
     let program = run_program(
         called.tool_call.id.to_string(),
-        harness.within(called.effect),
+        harness.within(called.call),
         called.caller.clone(),
         called.args.code.clone(),
     );
@@ -338,6 +339,9 @@ pub(crate) fn capped(mut text: String) -> String {
     text.push_str(&format!("\n[output cut at {MAX_OUTPUT_BYTES} bytes]"));
     text
 }
+
+#[cfg(test)]
+mod tests;
 
 /// Waits for `work` on the program's thread, with its clock paused; `None`
 /// when the call is cancelled first.

@@ -32,3 +32,9 @@ serde_json = { workspace = true }
 steel-core = { workspace = true }
 # The ids of requests a program sends.
 uuid = { workspace = true, features = ["v4"] }
+
+[dev-dependencies]
+# The app on a session store and the scripted model the tests run on.
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
