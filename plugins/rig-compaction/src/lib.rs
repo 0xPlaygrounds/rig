@@ -1,14 +1,16 @@
 //! Compaction: when a turn's next request nears the model's context window,
 //! older tool outputs are cleared, and when that is not enough the older
 //! messages are summarized by the model into rig-memory's checkpoint, which
-//! requests send in their place as the agent's [`Condensed`]. The same
-//! happens after the model refused a request as too long, and `/compact
-//! <focus>` does it now. It is stage systems over the turn's model calls
+//! takes their place in the conversation. Both are splices of the
+//! conversation ([`Commit::splice`]), so they are logged, restored and
+//! announced as [`Committed::Splice`]; the summary's content item has the
+//! origin [`summary_origin`]. The same happens after the model refused a
+//! request as too long, and `/compact <focus>` does it now. It is stage systems over the turn's model calls
 //! ([`TurnCall`]): a Prepare system measures each request against the
 //! window, and a Review system takes over a call whose [`RetryVerdict`]
 //! says it overflowed. The summary is a [`ModelRequest`] of the turn, so
 //! interrupting the turn cancels it, that holds the call it compacts for
-//! until the summary is in; a new call built from the condensed
+//! until the summary is in; a new call built from the compacted
 //! conversation then supersedes it. Both systems are in public
 //! [`CompactionSystems`] sets: a plugin that routes a call to another
 //! model or edits its request runs before [`CompactionSystems::Prepare`],
@@ -157,27 +159,59 @@ pub struct Compactions {
 pub struct Summarizing {
     /// Why.
     pub reason: CompactReason,
-    /// The first message the compaction keeps.
-    pub upto: usize,
+    /// Where the summarized messages end.
+    pub until: Until,
     /// The state the summary goes into.
     pub state: SummaryState,
 }
 
-/// An agent as compacting it reads it: its messages, what requests already
-/// leave out, its summary so far, and its model.
+/// Where a compaction's summarized messages end, by message id, as
+/// messages may move while the summary is written.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Until {
+    /// Every message.
+    All,
+    /// The messages before this one, which the compaction keeps. A summary
+    /// that arrives after it was taken out replaces nothing.
+    Before(MessageId),
+}
+
+/// The origin of a compaction's summary in the conversation.
+pub fn summary_origin() -> Origin {
+    Origin::plugin("compaction")
+}
+
+/// An agent as compacting it reads it: its messages, its summary so far,
+/// and its model.
 #[derive(QueryData)]
 #[query_data(mutable)]
 struct Compacting {
     conversation: &'static mut Conversation,
-    condensed: Option<&'static Condensed>,
     summarized: Option<&'static Summarized>,
     connection: Option<&'static Connection>,
 }
 
-/// The first message requests send as it is, after what `condensed`
-/// summarized.
-fn first_live(condensed: Option<&Condensed>) -> usize {
-    condensed.map_or(0, |condensed| condensed.upto)
+/// The messages of `conversation` without the summary it holds, which the
+/// next summary builds on from [`Summarized`] instead of reading it again,
+/// and how many of the first messages held nothing else.
+fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
+    let summary = summary_origin();
+    let mut from = 0;
+    let mut messages = conversation.messages().to_vec();
+    for (at, message) in messages.iter_mut().enumerate() {
+        let Message::User { content } = message else {
+            continue;
+        };
+        let mut item = 0;
+        content.retain(|_| {
+            item += 1;
+            conversation.origin(at, item - 1) != Some(&summary)
+        });
+        if content.is_empty() && from == at {
+            from += 1;
+        }
+    }
+    (messages, from)
 }
 
 /// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
@@ -205,12 +239,31 @@ enum Start {
 }
 
 impl CompactingItem<'_, '_> {
-    /// Clears the older tool outputs of the messages requests send as they
-    /// are.
-    fn clear_old_outputs(&mut self, policy: &CompactionPolicy) -> Cleared {
-        let from = first_live(self.condensed);
-        let live = self.conversation.messages_mut().get_mut(from..);
-        policy.clearing.clear(live.unwrap_or_default())
+    /// Clears the older tool outputs of `agent`'s conversation, by a splice
+    /// of the messages that changed, which keeps their ids.
+    fn clear_old_outputs(
+        &mut self,
+        agent: Entity,
+        policy: &CompactionPolicy,
+        commit: &mut Commit,
+    ) -> Cleared {
+        let mut messages = self.conversation.messages().to_vec();
+        let cleared = policy.clearing.clear(&mut messages);
+        let was = self.conversation.messages();
+        let changed =
+            |(at, message): (usize, &Message)| (was.get(at) != Some(message)).then_some(at);
+        let changed: Vec<usize> = messages.iter().enumerate().filter_map(changed).collect();
+        let (Some(&first), Some(&last)) = (changed.first(), changed.last()) else {
+            return cleared;
+        };
+        let entries = (first..=last).filter_map(|at| {
+            let mut entry = self.conversation.entry(at)?;
+            entry.message = messages.get(at)?.clone();
+            Some(entry)
+        });
+        let entries: Vec<Entry> = entries.collect();
+        commit.splice(agent, &mut self.conversation, first..=last, entries);
+        cleared
     }
 
     /// Starts the summary call of a compaction of `agent` for `reason` on
@@ -226,15 +279,19 @@ impl CompactingItem<'_, '_> {
         let Some(connection) = self.connection else {
             return Start::NoModel;
         };
-        let (messages, spec) = (self.conversation.messages(), &*connection.spec);
-        let from = first_live(self.condensed);
-        let Some(upto) = policy.cut(messages, from, &reason, Some(spec)) else {
+        let spec = &*connection.spec;
+        let (messages, from) = unsummarized(&self.conversation);
+        let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
             return Start::NothingNew;
+        };
+        let until = match self.conversation.id(upto) {
+            Some(kept) => Until::Before(kept),
+            None => Until::All,
         };
         let none = SummaryState::default();
         let planned = policy.plan(
             self.summarized.map_or(&none, |summarized| &summarized.0),
-            messages,
+            &messages,
             from,
             upto,
             spec,
@@ -251,7 +308,7 @@ impl CompactingItem<'_, '_> {
             Name::new("compacting"),
             Summarizing {
                 reason,
-                upto,
+                until,
                 state,
             },
             ModelRequest::new(request),
@@ -359,6 +416,7 @@ fn compact_near_the_window(
     mut turns: Query<&mut Compactions>,
     tools: Query<(&ToolDef, &ToolRules)>,
     policy: Res<Compaction>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -382,7 +440,7 @@ fn compact_near_the_window(
         if !policy.over_threshold(used, spec) {
             continue;
         }
-        let cleared = compacting.clear_old_outputs(policy);
+        let cleared = compacting.clear_old_outputs(agent, policy, &mut commit);
         let left = used.saturating_sub(cleared.tokens as u64);
         if cleared.results > 0 {
             policy.clearing.clear(messages);
@@ -413,6 +471,7 @@ fn recover_from_overflow(
     mut agents: Query<Compacting>,
     mut turns: Query<&mut Compactions>,
     policy: Res<Compaction>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -430,7 +489,7 @@ fn recover_from_overflow(
         let outgrew = "The conversation outgrew the model's context window";
         if !compactions.cleared {
             compactions.cleared = true;
-            let cleared = compacting.clear_old_outputs(policy);
+            let cleared = compacting.clear_old_outputs(agent, policy, &mut commit);
             if cleared.results > 0 {
                 let then = " and sending it again";
                 notices.write(cleared_notice(agent, outgrew, &cleared, then));
@@ -463,16 +522,19 @@ fn recover_from_overflow(
     }
 }
 
-/// Takes a settled summary: the agent's [`Condensed`] now sends it in
-/// place of the summarized messages, which its log records. A failed
-/// summary replaces nothing. Either way the call it held is sent again,
-/// built anew, or the turn ends when the user asked for the compaction.
+/// Takes a settled summary: it replaces the summarized messages in the
+/// conversation, a splice its log records, merged into the first kept
+/// message when that is the user's, so user and model keep taking turns.
+/// A failed summary, or one whose kept message is gone, replaces nothing.
+/// Either way the call it held is sent again, built anew, or the turn ends
+/// when the user asked for the compaction.
 fn take_summary(
     settled: On<Add<Settled>>,
     calls: Query<(&CallOf, &ForAgent, &Summarizing, &Outcome, Option<&HoldOf>)>,
     held: Query<&Effect>,
-    mut agents: Query<(&Conversation, Option<&Condensed>, &mut LastUsage)>,
+    mut agents: Query<(&mut Conversation, &mut LastUsage)>,
     policy: Res<Compaction>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -481,49 +543,50 @@ fn take_summary(
     else {
         return;
     };
-    let Ok((conversation, condensed, mut last)) = agents.get_mut(agent) else {
+    let Ok((mut conversation, mut last)) = agents.get_mut(agent) else {
         return;
     };
-    let summary = match (&outcome.0, outcome.completion()) {
-        (Err(report), _) => Err(report.to_string()),
-        (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
-        (Ok(_), Some(response)) => {
-            Summarizer::summary_text(response).map_err(|why| why.to_string())
-        }
+    let end = match summarizing.until {
+        Until::All => Some(conversation.messages().len()),
+        Until::Before(kept) => conversation.index_of(kept),
+    };
+    let summary = match (&outcome.0, outcome.completion(), end) {
+        (Err(report), ..) => Err(report.to_string()),
+        (Ok(_), None, _) => Err("the model did not answer with a completion".to_owned()),
+        (Ok(_), Some(_), None) => Err("the messages it kept were taken out".to_owned()),
+        (Ok(_), Some(response), Some(end)) => Summarizer::summary_text(response)
+            .map(|summary| (summary, end))
+            .map_err(|why| why.to_string()),
     };
     match summary {
-        Ok(summary) => {
+        Ok((summary, end)) => {
             let messages = conversation.messages();
-            let upto = summarizing.upto;
-            let older = messages.get(first_live(condensed).min(upto)..upto);
-            let kept = messages.get(upto..).unwrap_or_default();
+            let older = messages.get(..end).unwrap_or_default();
+            let (older, older_tokens) = (older.len(), policy.0.estimate(older));
+            let kept = messages.get(end..).unwrap_or_default();
+            let (kept, kept_tokens) = (kept.len(), policy.0.estimate(kept));
             let state = SummaryState {
                 summary,
                 ..summarizing.state.clone()
             };
-            let condensed = Condensed {
-                upto,
-                summary: state.message().unwrap_or_default(),
-            };
-            let left = policy.0.estimate(&condensed.request(messages));
+            let text = Message::user(state.message().unwrap_or_default());
+            let summary = Entry::from(text, summary_origin());
+            commit.splice(agent, &mut conversation, ..end, [summary]);
+            let left = policy.0.estimate(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
-            commands
-                .entity(agent)
-                .insert((condensed, Summarized(state)));
-            let older = older.unwrap_or_default();
+            commands.entity(agent).insert(Summarized(state));
             notices.write(Notice::info(
                 agent,
                 format!(
-                    "Compacted {} messages (about {} tokens) into a summary and kept {} \
+                    "Compacted {older} messages (about {} tokens) into a summary and kept {} \
                      (about {} tokens) as it was; the model now gets about {} tokens of \
                      conversation.",
-                    older.len(),
-                    tokens_label(policy.0.estimate(older)),
-                    match kept.len() {
+                    tokens_label(older_tokens),
+                    match kept {
                         1 => "the newest message".to_owned(),
                         kept => format!("the newest {kept} messages"),
                     },
-                    tokens_label(policy.0.estimate(kept)),
+                    tokens_label(kept_tokens),
                     tokens_label(left)
                 ),
             ));
@@ -533,7 +596,7 @@ fn take_summary(
         }
     }
     match hold {
-        // The call it held is built again, from the condensed conversation.
+        // The call it held is built again, from the compacted conversation.
         Some(&HoldOf(call)) => {
             let parent = held.get(call).ok().and_then(|effect| effect.parent);
             commands.spawn((

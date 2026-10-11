@@ -92,6 +92,32 @@ fn answer(app: &App) -> Option<String> {
     }
 }
 
+/// Every message of `agent`'s conversation with its origins and id.
+fn entries(world: &World, agent: Entity) -> Vec<Entry> {
+    let Some(conversation) = world.get::<Conversation>(agent) else {
+        return Vec::new();
+    };
+    let at = 0..conversation.messages().len();
+    at.filter_map(|at| conversation.entry(at)).collect()
+}
+
+/// Whether `entry` holds a compaction's summary.
+fn holds_summary(entry: &Entry) -> bool {
+    entry
+        .origins
+        .iter()
+        .any(|(_, origin)| *origin == summary_origin())
+}
+
+/// The single agent `app` restored.
+fn restored_agent(app: &mut App) -> Option<Entity> {
+    let world = app.world_mut();
+    world
+        .query_filtered::<Entity, With<Agent>>()
+        .single(world)
+        .ok()
+}
+
 /// Each request `model` got, as JSON.
 fn sent(model: &MockCompletionModel) -> Vec<String> {
     model
@@ -125,17 +151,23 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     let model = MockCompletionModel::from_stream_turns([
         reply("## Goal\nAnswer the user's questions about the crate."),
         reply("done"),
+        reply("## Goal\nAnswer the next question."),
     ]);
     let agent = agent(&mut app, &model, 40_000, messages);
     assert!(agent.is_some(), "the catalog lists the model");
     let Some(agent) = agent else {
         return;
     };
+    let before = entries(app.world(), agent);
     ask(&mut app, &wakes, agent);
     assert_eq!(answer(&app).as_deref(), Some("done"));
-    let sent = sent(&model);
-    assert_eq!(sent.len(), 2, "a summary, then the request: {sent:?}");
-    let [summary, request] = sent.as_slice() else {
+    let requests = sent(&model);
+    assert_eq!(
+        requests.len(),
+        2,
+        "a summary, then the request: {requests:?}"
+    );
+    let [summary, request] = requests.as_slice() else {
         return;
     };
     assert!(
@@ -146,29 +178,52 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
     assert!(request.contains("## Goal"), "{request}");
     assert!(request.contains("<read-files>\\nsrc/lib.rs"), "{request}");
     assert_eq!(request.matches(INJECTED).count(), 1, "{request}");
-    let condensed = app.world().get::<Condensed>(agent).cloned();
+    // The summary stands first, merged into the first kept message when
+    // that is the user's; the kept messages keep their ids.
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
+    let alone = matches!(live.first(), Some(Entry { message: Message::User { content }, .. })
+        if content.len() == 1);
+    let kept = live.get(usize::from(alone));
     assert!(
-        condensed
-            .as_ref()
-            .is_some_and(|condensed| condensed.upto > 2)
+        kept.is_some_and(|kept| before.iter().any(|old| old.id == kept.id)),
+        "{kept:?}"
     );
+    assert!(live.len() < before.len());
     // The usage plugin counts the summary's call with the turn's.
     let spent = app.world().get::<Spending>(agent).map(|spent| spent.total);
     assert_eq!(spent.map(|spent| spent.calls), Some(2));
+
+    // A second compaction builds on the first summary without reading it
+    // again from the conversation.
+    let compact = Compact {
+        entity: agent,
+        focus: String::new(),
+    };
+    app.world_mut().trigger(compact);
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 2
+    });
+    let requests = sent(&model);
+    let again = requests.get(2).map(String::as_str).unwrap_or_default();
+    assert!(again.contains("<previous-summary>"), "{again}");
+    assert_eq!(
+        again.matches("Answer the user's questions").count(),
+        1,
+        "{again}"
+    );
+    let live = entries(app.world(), agent);
     drop(app);
 
-    // A restart starts from the messages the summary kept.
+    // A restart has the conversation as it was.
     let (mut restarted, _wakes) = start(&store);
-    let world = restarted.world_mut();
-    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
-    assert!(agent.is_ok(), "one agent was restored");
-    let Ok(agent) = agent else {
+    let agent = restored_agent(&mut restarted);
+    assert!(agent.is_some(), "one agent was restored");
+    let Some(agent) = agent else {
         return;
     };
-    assert_eq!(world.get::<Spending>(agent).map(|spent| spent.total), spent);
-    let restored = world.get::<Condensed>(agent);
-    let summary = |condensed: Option<&Condensed>| condensed.map(|kept| kept.summary.clone());
-    assert_eq!(summary(restored), summary(condensed.as_ref()));
+    let world = restarted.world();
+    assert_eq!(entries(world, agent), live);
     let tracked = world
         .get::<Summarized>(agent)
         .map(|summarized| &summarized.0.tracked);
@@ -178,6 +233,42 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             .any(|set| set.name == "read-files" && set.values.contains("src/lib.rs"))),
         "{tracked:?}"
     );
+}
+
+#[test]
+fn cleared_outputs_are_logged_and_stay_cleared_after_a_restore() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    // Five reads of 15k tokens each near an 80k window: clearing the
+    // oldest is enough, so no summary is asked for.
+    let big = "x".repeat(60_000);
+    let mut messages = vec![Message::user("Read the five files.")];
+    for (id, path) in [("1", "a"), ("2", "b"), ("3", "c"), ("4", "d"), ("5", "e")] {
+        messages.extend(read(id, path, &big));
+    }
+    messages.push(Message::assistant("Read them."));
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let agent = agent(&mut app, &model, 80_000, messages);
+    let Some(agent) = agent else {
+        return;
+    };
+    let ids = |entries: &[Entry]| entries.iter().map(|entry| entry.id).collect::<Vec<_>>();
+    let before = ids(&entries(app.world(), agent));
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(sent(&model).len(), 1, "no summary");
+    let live = entries(app.world(), agent);
+    let placeholder = "[output cleared to fit the context window";
+    let cleared = serde_json::to_string(&live).unwrap_or_default();
+    assert!(cleared.contains(placeholder));
+    assert_eq!(ids(&live).get(..before.len()), Some(before.as_slice()));
+    drop(app);
+
+    let (mut restarted, _wakes) = start(&store);
+    let Some(agent) = restored_agent(&mut restarted) else {
+        return;
+    };
+    assert_eq!(entries(restarted.world(), agent), live);
 }
 
 #[test]
@@ -220,7 +311,8 @@ fn a_request_too_long_clears_old_outputs_then_summarizes() {
         "{summary}"
     );
     assert!(last.contains("## Goal"), "{last}");
-    assert!(app.world().get::<Condensed>(agent).is_some());
+    let live = entries(app.world(), agent);
+    assert!(live.first().is_some_and(holds_summary), "{live:?}");
 }
 
 #[test]
@@ -256,8 +348,8 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         app.update();
         std::thread::sleep(Duration::from_millis(20));
     }
+    assert!(!entries(app.world(), agent).iter().any(holds_summary));
     let world = app.world_mut();
-    assert!(world.get::<Condensed>(agent).is_none());
     assert_eq!(world.query::<&Summarizing>().iter(world).count(), 0);
     assert!(
         matches!(
