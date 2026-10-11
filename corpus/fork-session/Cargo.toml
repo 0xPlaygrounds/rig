@@ -22,7 +22,6 @@ rig-sessions = { path = "../../plugins/rig-sessions" }
 rig-tools = { path = "../../crates/rig-tools" }
 # The pickers, the input line, and showing the branched agent.
 rig-tui = { path = "../../plugins/rig-tui" }
-serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 bevy_reflect = { workspace = true }

@@ -141,7 +141,10 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         return;
     };
     let parent = ForkedFrom::of(&home.session(&branched));
-    assert_eq!(parent.map(|parent| parent.session), Some(id.clone()));
+    assert_eq!(
+        parent.map(|parent| (parent.session, parent.text)),
+        Some((id.clone(), Some("two".to_owned())))
+    );
 
     // The branch holds turn one and the count as of then; "two" waits in
     // the input.

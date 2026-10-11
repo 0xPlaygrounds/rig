@@ -94,6 +94,10 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
         "{conversation:?}"
     );
 
+    // The split reply told its call so: the model is known to send tags.
+    let sends = &app.world().resource::<SendsTags>().0;
+    assert_eq!(sends.len(), 1, "{sends:?}");
+
     ask(&mut app, &wakes, agent, 2);
     let requests = model.requests();
     let sent = requests
@@ -124,7 +128,7 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
         part: text,
         content: whole.clone(),
     }]);
-    let mut parts = Parts::new(false);
+    let mut parts = Parts::new(false, PublishedContext::new());
     let items: Vec<Relayed> = events
         .flat_map(|event| parts.relay(Relayed::Item(Item::Event(event))))
         .collect();

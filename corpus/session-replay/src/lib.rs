@@ -1,12 +1,16 @@
 //! Replays a recorded session: the user's messages are sent again in
 //! order, and every model call, tool call and replayable plugin effect is
-//! answered from the recorded effect log before it starts, in Gate,
-//! instead of by the provider or the tool. Each request is checked against
-//! the recorded one at the same place of the same agent; the first
-//! difference stops the replay, or with `--continue-live` is reported and
-//! the run goes on live, its calls left to start as usual. With `--speed`
-//! each answer settles after its recorded duration and each user message
-//! after its recorded gap.
+//! answered from the recorded effect log instead of by the provider or the
+//! tool. A model call is answered at the bottom of its connection: the
+//! replay's adapter, first on the call, puts a handler answering from the
+//! record in place of the model's, so the call's other adapters wrap it,
+//! Start fits the request as it would live, and the handler is served
+//! exactly the request the record holds. Tool calls and replayable plugin
+//! effects are answered in Gate. Each request is checked against the
+//! recorded one at the same place of the same agent; the first difference
+//! stops the replay, or with `--continue-live` is reported and the run goes
+//! on live. With `--speed` each answer settles after its recorded duration
+//! and each user message after its recorded gap.
 //!
 //! `rig --replay=DIR` gives the run to the replay's own front, which keeps
 //! no session: it replays the session kept in `DIR`, prints the report and
@@ -18,14 +22,20 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_cassette::effect_log::{EffectLog, RecordedAnswers, RequestCheck, jsonl};
+use rig_cassette::effect_log::{
+    EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
+};
 use rig_cassette::journal::EFFECT_LOG;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::effect::{self, EffectKind, EffectRecord, HandlerKey};
+use rig_harness::rig_core::effect::{
+    self, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, family,
+};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_harness::rig_ecs::effects::Handler;
 use rig_subagents::{SUBAGENT, SpawnedAgent};
 
 #[cfg(test)]
@@ -140,30 +150,115 @@ struct Said {
     at_ms: u64,
 }
 
+/// What the replay's systems and its model handlers, which answer inside
+/// the calls' tasks, share.
+#[derive(Default)]
+struct Answers {
+    /// Every recorded effect but the messages, answered by scope and kind
+    /// in recorded order, each request checked as data.
+    record: RecordedAnswers,
+    /// How many model calls of each recorded agent were taken.
+    positions: HashMap<Option<Arc<str>>, usize>,
+    divergences: Vec<Divergence>,
+    /// Model calls and other effects answered from the record.
+    answered: (usize, usize),
+    /// How long each effect answered from the record ran when recorded,
+    /// kept until Review holds it that long.
+    took: HashMap<EffectId, Duration>,
+}
+
+impl Answers {
+    /// The answer to the model call `kind`, sent as is to the model `key`
+    /// by the recorded agent `scope`, or why it diverged.
+    fn model(
+        &mut self,
+        scope: Option<&str>,
+        key: &HandlerKey,
+        kind: &EffectKind,
+    ) -> Result<EffectRecord, Divergence> {
+        let position = self.positions.entry(scope.map(Arc::from)).or_default();
+        let at = *position;
+        *position += 1;
+        let differences = match self.record.answer(scope, kind) {
+            Ok(record) if record.key == *key => {
+                self.answered.0 += 1;
+                return Ok(record);
+            }
+            Ok(record) => vec![format!("model: recorded `{}`, now `{key}`", record.key)],
+            Err(report) => {
+                // The recorded call next in order, for a readable diff.
+                let mut next = self.record.clone().checking(RequestCheck::Skip);
+                let mut found = vec![report.message];
+                if let (
+                    Ok(EffectRecord {
+                        kind: EffectKind::Completion { request: was, .. },
+                        ..
+                    }),
+                    EffectKind::Completion { request: now, .. },
+                ) = (next.answer(scope, kind), kind)
+                {
+                    found.extend(differences(&was, now));
+                }
+                found
+            }
+        };
+        Err(Divergence {
+            agent: scope.unwrap_or_default().to_owned(),
+            position: at,
+            differences,
+        })
+    }
+
+    /// The answer to `kind`, an effect of the recorded agent `scope` other
+    /// than a model call, or why it diverged.
+    fn other(
+        &mut self,
+        scope: Option<&str>,
+        kind: &EffectKind,
+    ) -> Result<EffectRecord, Divergence> {
+        let answer = self.record.answer(scope, kind).map_err(|report| {
+            let made = self.positions.get(&scope.map(Arc::from)).copied();
+            Divergence {
+                agent: scope.unwrap_or_default().to_owned(),
+                position: made.unwrap_or_default().saturating_sub(1),
+                differences: vec![report.message],
+            }
+        });
+        self.answered.1 += usize::from(answer.is_ok());
+        answer
+    }
+
+    /// Notes how long `record`, the answer to the effect `id`, ran.
+    fn time(&mut self, id: EffectId, record: &EffectRecord) {
+        if let (Some(started), Some(finished)) = (record.started_ms, record.finished_ms) {
+            let took = Duration::from_millis(finished.saturating_sub(started));
+            self.took.insert(id, took);
+        }
+    }
+}
+
+/// The shared answers, locked; a poisoned lock is taken as it is.
+fn lock(answers: &Mutex<Answers>) -> MutexGuard<'_, Answers> {
+    answers.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 /// The running replay.
 #[derive(Resource)]
 pub struct Replay {
     flags: ReplayFlags,
-    /// Every recorded effect but the messages, answered by scope and kind
-    /// in recorded order, each request checked as data.
-    answers: RecordedAnswers,
+    answers: Arc<Mutex<Answers>>,
     /// The recorded agent the primary agent stands for.
     first: Option<Arc<str>>,
     /// The agents each recorded agent spawned, in order.
     spawned: HashMap<Arc<str>, VecDeque<Arc<str>>>,
     /// The recorded agent each replaying agent stands for.
     paired: HashMap<Entity, Arc<str>>,
-    /// How many model calls of each recorded agent were taken.
-    positions: HashMap<Option<Arc<str>>, usize>,
     /// The user messages not sent yet.
     messages: VecDeque<Said>,
     primary: Option<Entity>,
     /// When the last message was sent: originally, and now.
     last_sent: Option<(u64, Duration)>,
     status: ReplayStatus,
-    divergences: Vec<Divergence>,
-    /// Model calls and other effects answered from the record.
-    answered: (usize, usize),
 }
 
 impl Replay {
@@ -190,19 +285,20 @@ impl Replay {
         effects
             .records
             .retain(|record| MessageRecord::read(&record.kind).is_none());
+        let answers = Answers {
+            record: RecordedAnswers::new(&effects),
+            ..Answers::default()
+        };
         Self {
             flags,
-            answers: RecordedAnswers::new(&effects),
+            answers: Arc::new(Mutex::new(answers)),
             first,
             spawned,
             paired: HashMap::new(),
-            positions: HashMap::new(),
             messages,
             primary: None,
             last_sent: None,
             status: ReplayStatus::Waiting,
-            divergences: Vec::new(),
-            answered: (0, 0),
         }
     }
 
@@ -212,69 +308,22 @@ impl Replay {
     }
 
     /// Every divergence found, first first.
-    pub fn divergences(&self) -> &[Divergence] {
-        &self.divergences
+    pub fn divergences(&self) -> Vec<Divergence> {
+        lock(&self.answers).divergences.clone()
     }
 
     /// The model calls and the other effects answered from the record.
     pub fn answered(&self) -> (usize, usize) {
-        self.answered
+        lock(&self.answers).answered
     }
 
-    /// The answer to the model call `request`, sent to `key`, of the
-    /// recorded agent `scope`, or why it diverged.
-    fn model(
-        &mut self,
-        scope: Option<&str>,
-        (key, request): (&HandlerKey, &CompletionRequest),
-    ) -> Result<EffectRecord, Divergence> {
-        let kind = EffectKind::Completion {
-            request: request.clone(),
-            stream: true,
-        };
-        let position = self.positions.entry(scope.map(Arc::from)).or_default();
-        let at = *position;
-        *position += 1;
-        let differences = match self.answers.answer(scope, &kind) {
-            Ok(record) if record.key == *key => return Ok(record),
-            Ok(record) => vec![format!("model: recorded `{}`, now `{key}`", record.key)],
-            Err(report) => {
-                // Nothing is answered after a divergence: the recorded call
-                // next in order is taken for a readable diff of the two.
-                let mut rest = std::mem::take(&mut self.answers).checking(RequestCheck::Skip);
-                let mut found = vec![report.message];
-                if let Ok(EffectRecord {
-                    kind: EffectKind::Completion { request: was, .. },
-                    ..
-                }) = rest.answer(scope, &kind).as_ref()
-                {
-                    found.extend(differences(was, request));
-                }
-                found
-            }
-        };
-        Err(Divergence {
-            agent: scope.unwrap_or_default().to_owned(),
-            position: at,
-            differences,
-        })
-    }
-
-    /// The answer to `kind`, an effect of the recorded agent `scope` other
-    /// than a model call, or why it diverged.
-    fn other(
-        &mut self,
-        scope: Option<&str>,
-        kind: &EffectKind,
-    ) -> Result<EffectRecord, Divergence> {
-        self.answers.answer(scope, kind).map_err(|report| {
-            let made = self.positions.get(&scope.map(Arc::from)).copied();
-            Divergence {
-                agent: scope.unwrap_or_default().to_owned(),
-                position: made.unwrap_or_default().saturating_sub(1),
-                differences: vec![report.message],
-            }
-        })
+    /// The recorded agent an effect for `agent` stands for (none for the
+    /// app's own); an agent the recording does not have goes by its own
+    /// name, which no record answers.
+    fn scope(&self, agent: Option<&ForAgent>) -> Option<Arc<str>> {
+        let &ForAgent(agent) = agent?;
+        let unrecorded = || Arc::from(format!("unrecorded agent {agent}"));
+        Some(self.paired.get(&agent).cloned().unwrap_or_else(unrecorded))
     }
 }
 
@@ -353,6 +402,75 @@ fn split_system(history: &[message::Message]) -> (String, &[message::Message]) {
     (prompt, rest)
 }
 
+/// The adapter's name on a replayed model call.
+const ADAPTER: &str = "replay";
+
+/// Why an effect after a divergence is refused.
+const STOPPED: &str = "the replay stopped at a divergence";
+
+/// A model of a replayed agent: answers each request it is served from the
+/// recorded agent's calls, in order; after a divergence it refuses, or
+/// with `--continue-live` passes the request to the live model.
+struct FromRecord {
+    answers: Arc<Mutex<Answers>>,
+    scope: Option<Arc<str>>,
+    live: ErasedHandler,
+    flags: ReplayFlags,
+}
+
+impl Serve for FromRecord {
+    type Family = family::Dynamic;
+
+    /// The live model's, so the call is recorded as sent to it.
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.live.descriptor()
+    }
+
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
+        let answer = {
+            let mut answers = lock(&self.answers);
+            if !answers.divergences.is_empty() {
+                let stopped = ErrorReport::new(ErrorKind::Divergence, STOPPED);
+                (!self.flags.continue_live).then_some(Err(stopped))
+            } else {
+                let key = self.live.descriptor().key;
+                let answer = answers.model(self.scope.as_deref(), &key, &kind);
+                match answer {
+                    Ok(record) => {
+                        if self.flags.original_timing {
+                            answers.time(dispatch.id(), &record);
+                        }
+                        Some(Ok(record))
+                    }
+                    Err(divergence) => {
+                        let report =
+                            ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
+                        answers.divergences.push(divergence);
+                        (!self.flags.continue_live).then_some(Err(report))
+                    }
+                }
+            }
+        };
+        match answer {
+            // A replayer of this one record streams it as recorded and
+            // publishes its facts.
+            Some(Ok(record)) => {
+                let key = record.key.clone();
+                let log = EffectLog::from_records(vec![record]);
+                match EffectLogReplayer::for_key(&log, &key) {
+                    Ok(replayer) => {
+                        let replayer = replayer.checking(RequestCheck::Skip);
+                        replayer.serve(kind, dispatch).await
+                    }
+                    Err(report) => Reply::Outcome(Err(report)),
+                }
+            }
+            Some(Err(report)) => Reply::Outcome(Err(report)),
+            None => self.live.handle(kind, dispatch).await,
+        }
+    }
+}
+
 /// Replays the session a [`ReplaySource`] or `--replay=DIR` names.
 #[derive(Default)]
 pub struct SessionReplayPlugin;
@@ -399,6 +517,7 @@ impl Plugin for SessionReplayPlugin {
                 None => return,
             }
         };
+        let timed = source.flags.original_timing;
         app.insert_resource(Replay::new(source))
             .add_systems(
                 Update,
@@ -406,7 +525,16 @@ impl Plugin for SessionReplayPlugin {
                     .run_if(resource_exists::<SessionRestored>)
                     .before(AgentLoop),
             )
-            .add_systems(AgentPass, answer_from_record.in_set(Stage::Gate))
+            .add_systems(
+                AgentPass,
+                (
+                    models_from_record.in_set(Stage::Prepare),
+                    answer_from_record.in_set(Stage::Gate),
+                    keep_recorded_timing
+                        .in_set(Stage::Review)
+                        .run_if(move || timed),
+                ),
+            )
             .add_observer(next_message)
             .add_observer(pair_spawned);
     }
@@ -420,10 +548,10 @@ fn report_and_exit(replay: Res<Replay>, mut commands: Commands) {
     ) {
         return;
     }
-    for divergence in &replay.divergences {
+    for divergence in replay.divergences() {
         println!("{divergence}");
     }
-    let (models, others) = replay.answered;
+    let (models, others) = replay.answered();
     let how = match replay.status {
         ReplayStatus::Stopped => "stopped",
         _ => "finished",
@@ -522,37 +650,61 @@ fn send_next(
     }
 }
 
-/// An effect as the replay answers it.
+/// Puts the replay's model first on each model call, whichever model the call goes to: the call's other
+/// adapters wrap it and Start fits the request to them, as live.
+fn models_from_record(
+    mut calls: Query<(&mut ModelRequest, Option<&ForAgent>), Added<Admitted>>,
+    replay: Res<Replay>,
+) {
+    for (mut call, agent) in &mut calls {
+        // A successor cloned from a replayed call has the adapter already.
+        if call.adapters.iter().any(|adapter| adapter.name == ADAPTER) {
+            continue;
+        }
+        let scope = replay.scope(agent);
+        let (answers, flags) = (replay.answers.clone(), replay.flags);
+        let adapter = Adapter::new(ADAPTER, move |mut connection: Connection| {
+            let model = FromRecord {
+                answers: answers.clone(),
+                scope: scope.clone(),
+                live: connection.handler.0,
+                flags,
+            };
+            connection.handler = Handler(ErasedHandler::new(model));
+            connection
+        });
+        call.adapters.insert(0, adapter);
+    }
+}
+
+/// An effect as the replay answers it in Gate.
 type Answerable<'a> = (
     Entity,
     &'a Effect,
     Option<&'a ForAgent>,
-    Option<&'a ModelRequest>,
     Option<&'a ToolRequest>,
     Option<&'a EffectRequest>,
 );
 
-/// Answers each effect about to start from the record, in id order: a
-/// model call with the recorded reply when its request matches, a tool
-/// call (unless tools run live) and a [`Replayable`] plugin effect with
-/// the record its request matches. With `--speed` a hold keeps the answer
-/// from settling for as long as the recorded effect ran. At a divergence
-/// the effect is refused, which stops the replay, or with `continue_live`
-/// left to start live, as is everything after it.
+/// Answers each tool call (unless tools run live) and [`Replayable`]
+/// plugin effect about to start with the record its request matches, in id
+/// order. At a divergence the effect is refused, which stops the replay, or with
+/// `continue_live` left to start live, as is everything after it.
 fn answer_from_record(
-    effects: Query<Answerable, (Undecided, Without<Incoming>)>,
+    effects: Query<Answerable, (Undecided, Without<Incoming>, Without<ModelRequest>)>,
     replayable: Query<&Replayable>,
-    mut replay: ResMut<Replay>,
+    replay: Res<Replay>,
     mut commands: Commands,
 ) {
-    let mut ready: Vec<Answerable> = effects.iter().collect();
+    let mut ready: Vec<_> = effects.iter().collect();
     ready.sort_by_key(|(_, effect, ..)| effect.id());
-    for (entity, _, agent, model, tool, request) in ready {
-        if !replay.divergences.is_empty() {
+    let mut answers = lock(&replay.answers);
+    for (entity, effect, agent, tool, request) in ready {
+        if !answers.divergences.is_empty() {
             if replay.flags.continue_live {
                 return;
             }
-            let stopped = Outcome::refused("the replay stopped at a divergence");
+            let stopped = Outcome::refused(STOPPED);
             commands.entity(entity).insert_if_new(stopped);
             continue;
         }
@@ -560,55 +712,18 @@ fn answer_from_record(
             let name = kind.name();
             replayable.iter().any(|replayable| replayable.0 == name)
         };
-        let answered = model.is_some()
-            || (tool.is_some() && !replay.flags.live_tools)
-            || request.is_some_and(|request| replays(&request.kind));
-        if !answered {
-            continue;
-        }
-        let scope = match agent {
-            Some(&ForAgent(agent)) => replay.paired.get(&agent).cloned().map(Some).ok_or(agent),
-            None => Ok(None),
+        let kind = match (tool, request) {
+            (Some(ToolRequest { call }), _) if !replay.flags.live_tools => EffectKind::ToolCall {
+                name: call.function.name.as_str().to_owned(),
+                args: call.function.raw_arguments(),
+            },
+            (None, Some(request)) if replays(&request.kind) => request.kind.clone(),
+            _ => continue,
         };
-        let answer = match (scope, model, tool, request) {
-            (Err(agent), ..) => Err(Divergence {
-                agent: format!("{agent}"),
-                position: 0,
-                differences: vec!["an agent the recording does not have made an effect".into()],
-            }),
-            (Ok(scope), Some(model), ..) => {
-                let key = model.connection.as_ref().map_or_else(
-                    || HandlerKey::new("completion"),
-                    |connection| connection.handler.0.descriptor().key,
-                );
-                let answer = replay.model(scope.as_deref(), (&key, &model.request));
-                replay.answered.0 += usize::from(answer.is_ok());
-                answer
-            }
-            (Ok(scope), None, Some(ToolRequest { call }), _) => {
-                let kind = EffectKind::ToolCall {
-                    name: call.function.name.as_str().to_owned(),
-                    args: call.function.raw_arguments(),
-                };
-                let answer = replay.other(scope.as_deref(), &kind);
-                replay.answered.1 += usize::from(answer.is_ok());
-                answer
-            }
-            (Ok(scope), None, None, Some(request)) => {
-                let answer = replay.other(scope.as_deref(), &request.kind);
-                replay.answered.1 += usize::from(answer.is_ok());
-                answer
-            }
-            (Ok(_), None, None, None) => continue,
-        };
-        match answer {
+        match answers.other(replay.scope(agent).as_deref(), &kind) {
             Ok(record) => {
-                if replay.flags.original_timing
-                    && let (Some(started), Some(finished)) = (record.started_ms, record.finished_ms)
-                {
-                    let took = Duration::from_millis(finished.saturating_sub(started));
-                    let hold = commands.spawn(HoldOf(entity)).id();
-                    commands.delayed().duration(took).entity(hold).try_despawn();
+                if replay.flags.original_timing {
+                    answers.time(effect.id(), &record);
                 }
                 let mut answering = commands.entity(entity);
                 if let Some(published) = record.tool_output {
@@ -618,12 +733,28 @@ fn answer_from_record(
             }
             Err(divergence) => {
                 let report = ErrorReport::new(ErrorKind::Divergence, divergence.to_string());
-                replay.divergences.push(divergence);
+                answers.divergences.push(divergence);
                 if replay.flags.continue_live {
                     return;
                 }
                 commands.entity(entity).insert_if_new(Outcome(Err(report)));
             }
+        }
+    }
+}
+
+/// With `--speed`, holds each answer from the record as long as the
+/// recorded effect ran.
+fn keep_recorded_timing(
+    answered: Query<(Entity, &Effect), Unreviewed>,
+    replay: Res<Replay>,
+    mut commands: Commands,
+) {
+    let mut answers = lock(&replay.answers);
+    for (entity, effect) in &answered {
+        if let Some(took) = answers.took.remove(&effect.id()) {
+            let hold = commands.spawn(HoldOf(entity)).id();
+            commands.delayed().duration(took).entity(hold).try_despawn();
         }
     }
 }
@@ -644,7 +775,7 @@ fn next_message(
     if replay.primary != Some(agent) || replay.status != ReplayStatus::Running {
         return;
     }
-    if let Some(first) = replay.divergences.first() {
+    if let Some(first) = replay.divergences().first() {
         notices.write(Notice::error(agent, first.to_string()));
         if !replay.flags.continue_live {
             replay.status = ReplayStatus::Stopped;

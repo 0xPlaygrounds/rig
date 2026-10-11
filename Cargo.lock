@@ -4617,7 +4617,6 @@ dependencies = [
  "rig-sessions",
  "rig-tools",
  "rig-tui",
- "serde",
 ]
 
 [[package]]
@@ -5198,6 +5197,7 @@ name = "corpus-think-tag-splitter"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "bevy_reflect",
  "rig-cassette",
  "rig-core",
  "rig-harness",

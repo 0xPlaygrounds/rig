@@ -17,9 +17,11 @@
 //!   debug line. A saved choice of a local model connects once a probe
 //!   finds it (the kernel reconnects when the catalog changes).
 //! - A model without tool support is offered none (the kernel's rule for a
-//!   catalog entry without tools), and its agent's system prompt says so,
-//!   in words that leave room for a plugin that describes tools as text
-//!   (spec 59).
+//!   catalog entry without tools), and the system prompt of each call that
+//!   finally goes to it says so: an adapter pushed at the gate, after every
+//!   Prepare system pushed its own, so it sees the model as the other
+//!   adapters left it. A plugin that gives the model tools as text
+//!   (spec 59) says it takes tools, and the line is left out.
 //! - An agent connected to an Ollama model sends it a small warm-up
 //!   request, so the first turn does not wait for the model to load.
 
@@ -29,26 +31,30 @@ use bevy_log::{debug, warn};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing};
+use rig_harness::rig_core::completion::Message;
+use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::http_client::{
     DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
 };
 use rig_harness::rig_core::operation::Completion;
 use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
-use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ModelAdapter;
+use rig_harness::rig_core::serve::{Decision, ErasedHandler, Intercept, Verdict};
+use rig_harness::rig_ecs::effects::Handler;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 /// The vendor local models are filed under: `local/<name>`.
 pub const VENDOR: &str = "local";
 
-/// The tag of the system prompt's section for a model without tools.
-const TAG: &str = "local_model";
+/// The adapter that tells a local model without tools so, and the tag of
+/// what it adds to the system prompt.
+const NO_TOOLS_TAG: &str = "local_model";
 
 /// What the system prompt says to a model that cannot call tools.
-pub const NO_TOOLS: &str = "This model has no native tool calling, so no tools are offered to \
-                            it as functions. Unless another section describes tools and how to \
-                            call them, answer in text and ask the user to run what needs running.";
+pub const NO_TOOLS: &str = "This model cannot call tools, so none are offered. Answer in text, \
+                            and ask the user to run what needs running.";
 
 /// The kind of local server at an endpoint.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
@@ -196,9 +202,12 @@ impl Plugin for LocalModelsPlugin {
                 models_command,
             )
             .add_systems(Startup, probe_at_startup)
-            .add_systems(AgentPass, refuse_unavailable.in_set(Stage::Gate))
+            .add_systems(
+                AgentPass,
+                (refuse_unavailable, say_no_tools).in_set(Stage::Gate),
+            )
             .add_observer(found)
-            .add_observer(connected);
+            .add_observer(warm_up);
     }
 }
 
@@ -450,33 +459,76 @@ fn refuse_unavailable(
     }
 }
 
-/// An agent connected to a local model without tools is told so in its
-/// system prompt, and one connected to an Ollama model warms it up.
-fn connected(
+/// Gives each model call about to start the adapter that tells a local
+/// model without tools so. Pushed at the gate, it comes after every adapter
+/// Prepare systems pushed, so it sees the model the call finally goes to.
+fn say_no_tools(mut calls: Query<&mut ModelRequest, Undecided>) {
+    for mut call in &mut calls {
+        if call.adapters.iter().all(|it| it.name != NO_TOOLS_TAG) {
+            call.adapters.push(Adapter::new(NO_TOOLS_TAG, no_tools));
+        }
+    }
+}
+
+/// `connection`, when it is a local model that takes no tools, with the
+/// system prompt saying so.
+fn no_tools(mut connection: Connection) -> Connection {
+    let spec = &connection.spec;
+    if spec.tools || spec.provider.vendor() != VENDOR {
+        return connection;
+    }
+    connection.handler = Handler(connection.handler.0.layered(SayNoTools));
+    connection
+}
+
+/// Adds [`NO_TOOLS`] to a completion request's system prompt.
+struct SayNoTools;
+
+impl Intercept for SayNoTools {
+    fn name(&self) -> String {
+        NO_TOOLS_TAG.to_owned()
+    }
+
+    async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
+        let EffectKind::Completion { request, stream } = kind else {
+            return Decision::Proceed;
+        };
+        let mut request = request.clone();
+        let Some(Message::System { content }) = request.chat_history.first_mut() else {
+            return Decision::Proceed;
+        };
+        content.push_str(&format!(
+            "\n\n<{NO_TOOLS_TAG}>\n{NO_TOOLS}\n</{NO_TOOLS_TAG}>"
+        ));
+        Decision::Patch(EffectKind::Completion {
+            request,
+            stream: *stream,
+        })
+    }
+
+    async fn after(
+        &self,
+        _id: EffectId,
+        _kind: &EffectKind,
+        _outcome: &Result<Answered, ErrorReport>,
+    ) -> Verdict {
+        Verdict::Keep
+    }
+}
+
+/// An agent connected to an Ollama model warms it up, so its first turn
+/// does not wait for the model to load.
+fn warm_up(
     inserted: On<Insert<Connection>>,
     agents: Query<&Connection, With<Agent>>,
-    sections: Query<(Entity, &PromptSection, &SectionOf)>,
     local: Res<LocalModels>,
     config: Res<LocalModelsConfig>,
-    mut commands: Commands,
 ) {
-    let agent = inserted.entity;
-    let Ok(connection) = agents.get(agent) else {
-        return;
-    };
-    let model = local.of(&connection.spec);
-    let told = sections
-        .iter()
-        .find(|(_, section, of)| of.0 == agent && section.tag == TAG);
-    match (model.is_some_and(|it| !it.tools), told) {
-        (true, None) => {
-            let section = PromptSection::new(PromptSection::ORDER_ROLE, TAG, NO_TOOLS);
-            commands.spawn((section, SectionOf(agent)));
-        }
-        (false, Some((section, ..))) => commands.entity(section).despawn(),
-        _ => {}
-    }
-    let Some(model) = model else {
+    let Some(model) = agents
+        .get(inserted.entity)
+        .ok()
+        .and_then(|connection| local.of(&connection.spec))
+    else {
         return;
     };
     if config.warm_up && model.available && model.endpoint.server == Server::Ollama {

@@ -12,11 +12,28 @@ use rig_tools::Write;
 
 use super::*;
 
-/// The kernel and the `write` tool, every agent answered by `model`.
+/// Every call goes to its model as to one that calls no tools, so Start
+/// takes the tools and their rules out of the request: what is sent, and
+/// recorded, is not what Gate sees.
+fn without_tools(mut calls: Query<&mut ModelRequest, Added<Admitted>>) {
+    for mut call in &mut calls {
+        let adapter = Adapter::new("no-tools", |mut connection: Connection| {
+            let mut spec = (*connection.spec).clone();
+            spec.tools = false;
+            connection.spec = Arc::new(spec);
+            connection
+        });
+        call.adapters.push(adapter);
+    }
+}
+
+/// The kernel and the `write` tool, every agent answered by `model` as
+/// [`without_tools`] adapts it.
 fn with_agents(app: &mut App, model: &MockCompletionModel) {
     let connection = connect(model);
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin))
+        .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
         .add_tool_with(
             Write,
             ToolOptions {
@@ -57,11 +74,7 @@ fn run_replay(
         })
     });
     let replay = app.world().get_resource::<Replay>()?;
-    Some((
-        replay.status(),
-        replay.divergences().to_vec(),
-        replay.answered(),
-    ))
+    Some((replay.status(), replay.divergences(), replay.answered()))
 }
 
 /// Records one turn that writes `path`, then answers "done", in the session
@@ -108,6 +121,16 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert_eq!(std::fs::read_to_string(&file).ok().as_deref(), Some("x"));
     std::fs::remove_file(&file).ok();
     let recorded_dir = home.session(&recorded_id).path().to_owned();
+    // The calls were recorded as sent, without the tools Gate saw.
+    let log = ReplaySource::from_dir(&recorded_dir, ReplayFlags::default());
+    let sent = log.iter().flat_map(|source| &source.effects.records);
+    let tools: Vec<usize> = sent
+        .filter_map(|record| match &record.kind {
+            EffectKind::Completion { request, .. } => Some(request.tools.len()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tools, [0, 0]);
 
     // `--replay=DIR`, on a model that has no reply: the same conversation,
     // with no model call and no write, in a session that is gone after.

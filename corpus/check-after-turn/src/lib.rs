@@ -417,7 +417,7 @@ fn relative(root: &Path, path: &str) -> Option<PathBuf> {
     (!inside.as_os_str().is_empty()).then(|| inside.to_path_buf())
 }
 
-/// "checking: <name>" in the status line while a check runs.
+/// "checking: `<name>`" in the status line while a check runs.
 #[cfg(feature = "tui")]
 mod status {
     use rig_harness::prelude::*;

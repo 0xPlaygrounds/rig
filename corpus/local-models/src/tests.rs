@@ -1,6 +1,7 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
@@ -22,13 +23,14 @@ const CHAT: &str = concat!(
     "data: [DONE]\n\n",
 );
 
-/// An Ollama daemon on 127.0.0.1 serving `qwen-coder` (32768 tokens), one
-/// connection at a time, recording the paths asked for.
+/// An Ollama daemon on 127.0.0.1 serving `qwen-coder` (32768 tokens) and
+/// `tiny` (no tools), one connection at a time, recording the paths asked
+/// for and the bodies sent to them.
 struct Stub {
     url: String,
     address: SocketAddr,
     stop: Arc<AtomicBool>,
-    asked: Arc<Mutex<Vec<String>>>,
+    asked: Arc<Mutex<Vec<(String, String)>>>,
     thread: Option<JoinHandle<()>>,
 }
 
@@ -62,7 +64,16 @@ impl Stub {
     fn asked(&self, path: &str) -> bool {
         self.asked
             .lock()
-            .is_ok_and(|asked| asked.iter().any(|it| it == path))
+            .is_ok_and(|asked| asked.iter().any(|(it, _)| it == path))
+    }
+
+    /// Whether a chat request told the model it has no tools.
+    fn told_no_tools(&self) -> bool {
+        self.asked.lock().is_ok_and(|asked| {
+            asked
+                .iter()
+                .any(|(path, body)| path == "/v1/chat/completions" && body.contains(NO_TOOLS))
+        })
     }
 
     /// Closes the port.
@@ -82,7 +93,7 @@ impl Drop for Stub {
 }
 
 /// Answers one request as Ollama would.
-fn answer(mut stream: TcpStream, asked: &Mutex<Vec<String>>) -> std::io::Result<()> {
+fn answer(mut stream: TcpStream, asked: &Mutex<Vec<(String, String)>>) -> std::io::Result<()> {
     let mut reader = BufReader::new(stream.try_clone()?);
     let mut first = String::new();
     reader.read_line(&mut first)?;
@@ -106,10 +117,15 @@ fn answer(mut stream: TcpStream, asked: &Mutex<Vec<String>>) -> std::io::Result<
         .nth(1)
         .unwrap_or_default()
         .to_owned();
+    let body = String::from_utf8_lossy(&body).into_owned();
     let (kind, reply) = match path.as_str() {
         "/api/tags" => (
             "application/json",
-            r#"{"models":[{"name":"qwen-coder","model":"qwen-coder"}]}"#.to_owned(),
+            r#"{"models":[{"name":"qwen-coder"},{"name":"tiny"}]}"#.to_owned(),
+        ),
+        "/api/show" if body.contains("tiny") => (
+            "application/json",
+            r#"{"capabilities":["completion"],"model_info":{}}"#.to_owned(),
         ),
         "/api/show" => (
             "application/json",
@@ -120,7 +136,7 @@ fn answer(mut stream: TcpStream, asked: &Mutex<Vec<String>>) -> std::io::Result<
         _ => ("application/json", "{}".to_owned()),
     };
     if let Ok(mut asked) = asked.lock() {
-        asked.push(path);
+        asked.push((path, body));
     }
     write!(
         stream,
@@ -130,10 +146,10 @@ fn answer(mut stream: TcpStream, asked: &Mutex<Vec<String>>) -> std::io::Result<
     stream.flush()
 }
 
-fn qwen_available(world: &World) -> Option<bool> {
+fn available(world: &World, name: &str) -> Option<bool> {
     world
         .resource::<LocalModels>()
-        .get("qwen-coder")
+        .get(name)
         .map(|model| model.available)
 }
 
@@ -144,6 +160,7 @@ struct Seen {
     answer: Option<String>,
     window: Option<u32>,
     warmed_up: bool,
+    told_no_tools: bool,
     /// What the catalog says of the model once its server stopped.
     status_after_stop: Option<ModelStatus>,
     /// Why a turn on the unavailable model failed.
@@ -160,12 +177,27 @@ fn a_local_model_is_found_answers_and_is_marked_unavailable_once_its_server_stop
             answer: Some("hi".to_owned()),
             window: Some(32768),
             warmed_up: true,
+            told_no_tools: false,
             status_after_stop: Some(ModelStatus::Unavailable(format!(
                 "Ollama not running at {url}"
             ))),
             failed_after_stop: Some(format!("Ollama not running at {url}")),
         })
     );
+}
+
+#[test]
+fn a_local_model_without_tools_is_told_so() {
+    let told = Stub::start()
+        .map_err(|error| error.to_string())
+        .and_then(|mut stub| {
+            let (mut app, wakes, agent) = started(&stub)?;
+            choose(&mut app, &wakes, agent, "tiny");
+            say(&mut app, &wakes, agent, "hello", 1);
+            stub.stop();
+            Ok(stub.told_no_tools())
+        });
+    assert_eq!(told, Ok(true));
 }
 
 /// Finds the stub's model, chooses it as `local/qwen-coder`, says hello,
@@ -179,7 +211,8 @@ fn run() -> (Result<Seen, String>, String) {
     (observe(&mut stub), url)
 }
 
-fn observe(stub: &mut Stub) -> Result<Seen, String> {
+/// An app that probes `stub`, once it found its models, and its agent.
+fn started(stub: &Stub) -> Result<(App, Receiver<()>, Entity), String> {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     let settings = format!(
@@ -192,29 +225,44 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         .add_observer(log_ended);
     app.finish();
     app.update();
-
     run_until(&mut app, &wakes, |world| {
-        qwen_available(world) == Some(true)
+        available(world, "tiny") == Some(true)
     });
     let agent = first_agent(app.world_mut()).ok_or("no agent")?;
-    app.world_mut().trigger(Deliver::new(
-        agent,
-        "/model local/qwen-coder",
-        DeliveryMode::Queue,
-    ));
-    let model = |world: &World| {
+    Ok((app, wakes, agent))
+}
+
+/// `/model local/<name>`, until the agent is connected to it.
+fn choose(app: &mut App, wakes: &Receiver<()>, agent: Entity, name: &str) {
+    let line = format!("/model local/{name}");
+    app.world_mut()
+        .trigger(Deliver::new(agent, line, DeliveryMode::Queue));
+    let model = format!("local/{name}");
+    run_until(app, wakes, |world| {
         world
             .get::<Connection>(agent)
-            .map(|connection| connection.spec.reference())
-    };
-    run_until(&mut app, &wakes, |world| model(world).is_some());
-    let model = model(app.world());
-
-    app.world_mut()
-        .trigger(Deliver::new(agent, "hello", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| {
-        !world.resource::<Ended>().0.is_empty()
+            .is_some_and(|connection| connection.spec.reference() == model)
     });
+}
+
+/// Sends `text`, until `turns` turns have ended.
+fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, turns: usize) {
+    app.world_mut()
+        .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() == turns
+    });
+}
+
+fn observe(stub: &mut Stub) -> Result<Seen, String> {
+    let (mut app, wakes, agent) = started(stub)?;
+    choose(&mut app, &wakes, agent, "qwen-coder");
+    let model = app
+        .world()
+        .get::<Connection>(agent)
+        .map(|connection| connection.spec.reference());
+
+    say(&mut app, &wakes, agent, "hello", 1);
     let answer = match app.world().resource::<Ended>().0.as_slice() {
         [TurnOutcome::Answered(message)] => final_answer(message),
         other => return Err(format!("the turn ended as {other:?}")),
@@ -231,7 +279,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
     app.world_mut()
         .trigger(Deliver::new(agent, "/models refresh", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
-        qwen_available(world) == Some(false)
+        available(world, "qwen-coder") == Some(false)
     });
     let models = &app.world().resource::<Models>().0;
     let status_after_stop = models
@@ -240,11 +288,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         .ok()
         .map(|found| models.status(found.spec));
 
-    app.world_mut()
-        .trigger(Deliver::new(agent, "hello again", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0.len() == 2
-    });
+    say(&mut app, &wakes, agent, "hello again", 2);
     let failed_after_stop = match app.world().resource::<Ended>().0.as_slice() {
         [_, TurnOutcome::Failed(why)] => Some(why.clone()),
         _ => None,
@@ -254,6 +298,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         answer,
         window,
         warmed_up,
+        told_no_tools: stub.told_no_tools(),
         status_after_stop,
         failed_after_stop,
     })

@@ -6,7 +6,7 @@
 //! message model is set (`[auto-commit] message_model` in the settings),
 //! the turn's proposed end is held by a model call that writes the
 //! commit's subject from its diff; otherwise, or when that call fails, the
-//! subject is "rig: <first line of the request>". `/undo` takes the last
+//! subject is "rig: `<first line of the request>`". `/undo` takes the last
 //! commit back and tells the agent; `/autocommit on|off` turns it on or
 //! off for the session.
 
@@ -65,7 +65,7 @@ impl Plugin for AutoCommitPlugin {
 #[serde(default, deny_unknown_fields)]
 pub struct AutoCommitConfig {
     /// The catalog model (`vendor/model`) that writes commit subjects;
-    /// none keeps "rig: <first line of the request>".
+    /// none keeps "rig: `<first line of the request>`".
     pub message_model: Option<String>,
     /// How `/undo` takes a commit back.
     pub undo: UndoMode,
