@@ -14,7 +14,7 @@ bevy_ecs = { workspace = true }
 # A script tool's definition, handler and result.
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Killing a script's process group on timeout or interrupt.
+# Running a script under the shared launcher, killed with its group.
 rig-tools = { path = "../../crates/rig-tools" }
 serde_json = { workspace = true }
 

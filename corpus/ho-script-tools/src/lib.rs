@@ -21,13 +21,9 @@
 
 use std::collections::{BTreeMap, HashSet};
 use std::fs;
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{RecvTimeoutError, channel};
-use std::sync::{Arc, Mutex, PoisonError};
-use std::thread;
 
 use rig_core::completion::ToolDefinition;
 use rig_core::message::ToolName;
@@ -35,6 +31,8 @@ use rig_core::serve::ErasedHandler;
 use rig_core::tool::{DynamicTool, ToolExecutionError, ToolOutput};
 use rig_harness::prelude::*;
 use rig_harness::{PluginEntity, ProvidedBy};
+use rig_tools::blocking;
+use rig_tools::process::{KillOnDrop, OutputLine, Process, Spawn};
 use serde_json::{Map, Value, json};
 
 /// How long a script runs when its header names no `# timeout`.
@@ -171,6 +169,8 @@ fn refresh(
     owner: Option<Res<PluginEntity<ScriptToolsPlugin>>>,
     mut commands: Commands,
 ) {
+    // Read at once on startup too, so the first request has them, not
+    // only once the watch's first look comes.
     let changed = changes.read().any(|change| dirs.contains(change.watch));
     if !changed && !dirs.iter().any(|(_, watch)| watch.is_added()) {
         return;
@@ -184,7 +184,7 @@ fn refresh(
         if tools.reported.insert(problem.clone()) {
             let (file, why) = problem;
             let text = format!("Script tool {} skipped: {why}.", file.display());
-            notices.write(Notice::error(None, text));
+            notices.write(Notice::warn(None, text));
         }
     }
 
@@ -236,7 +236,7 @@ fn register(world: &mut World, scripts: Vec<Arc<Script>>, runner: &Runner, owner
                     script.path.display(),
                     script.name
                 );
-                world.write_message(Notice::error(None, text));
+                world.write_message(Notice::warn(None, text));
             }
         }
         let mut tools = world.resource_mut::<ScriptTools>();
@@ -473,95 +473,80 @@ struct Runner {
     copies: PathBuf,
 }
 
-impl Runner {
-    /// Runs `script` with `args`, on a thread of its own; dropping the
-    /// future, as an interrupt does, kills it.
-    async fn run(self, script: Arc<Script>, args: Value) -> Result<ToolOutput, ToolExecutionError> {
-        let env = script.env(&args)?;
-        let leader = Arc::new(Leader::default());
-        let _stop = StopOnDrop(Arc::clone(&leader));
-        let output = blocking(move || self.execute(&script, &args, env, &leader)).await?;
-        Ok(ToolOutput::text(output))
-    }
+/// How long the output of a script that ended may stay open, held by
+/// something that left its process group.
+const PIPE_GRACE: Duration = Duration::from_secs(1);
 
-    fn execute(
-        &self,
-        script: &Script,
-        args: &Value,
-        env: Vec<(String, String)>,
-        leader: &Leader,
-    ) -> Result<String, ToolExecutionError> {
-        let copy = Snapshot::write(&self.copies, script)?;
-        let (program, argument) = script.interpreter();
-        let launcher = self.processes.launcher();
-        let mut command = launcher.command(&program);
-        command.args(argument).arg(&copy.0);
+impl Runner {
+    /// Runs `script` with `args`, waiting on a thread of its own; dropping
+    /// the future, as an interrupt does, kills it.
+    async fn run(self, script: Arc<Script>, args: Value) -> Result<ToolOutput, ToolExecutionError> {
+        let mut launcher = self.processes.launcher();
         if launcher.cwd.is_none() {
-            command.current_dir(&self.project);
+            launcher = launcher.in_dir(&self.project);
         }
-        command
-            .envs(env)
-            .env("RIG_TOOL_FILE", &script.path)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command.spawn().map_err(|error| {
-            ToolExecutionError::other(format!("could not run `{program}`: {error}"))
-        })?;
-        if !leader.start(child.id()) {
-            child.kill().ok();
-            child.wait().ok();
-            return Err(ToolExecutionError::other("stopped"));
+        for (name, value) in script.env(&args)? {
+            launcher = launcher.with_env(name, value);
         }
-        let input = args.to_string();
-        let (stdin, stdout, stderr) =
-            (child.stdin.take(), child.stdout.take(), child.stderr.take());
-        let (status, out, err, timed_out) = thread::scope(|scope| {
-            scope.spawn(move || stdin.map(|mut stdin| stdin.write_all(input.as_bytes())));
-            let out = scope.spawn(move || read_all(stdout));
-            let err = scope.spawn(move || read_all(stderr));
-            let (finished, waiting) = channel::<()>();
-            let watchdog = scope.spawn(move || {
-                let late = waiting.recv_timeout(script.timeout) == Err(RecvTimeoutError::Timeout);
-                late && leader.kill()
-            });
-            let status = child.wait();
-            // What the script left running would keep its output open.
-            leader.kill();
-            drop(finished);
-            let out = out.join().unwrap_or_default();
-            let err = err.join().unwrap_or_default();
-            (status, out, err, watchdog.join().unwrap_or(false))
-        });
-        let status = status.map_err(ToolExecutionError::from_error)?;
-        let err = String::from_utf8_lossy(&err);
-        if timed_out {
-            let secs = script.timeout.as_secs();
-            let why = format!(
-                "`{}` ran past its {secs}s timeout and was killed. {err}",
-                script.name
-            );
-            return Err(ToolExecutionError::timeout(why));
-        }
-        if !status.success() {
-            let how = status.code().map_or_else(
-                || "was killed".to_owned(),
-                |code| format!("exited with {code}"),
-            );
-            let why = format!("`{}` {how}: {}", script.name, err.trim_end());
-            return Err(ToolExecutionError::other(why));
-        }
-        Ok(String::from_utf8_lossy(&out).into_owned())
+        let copy = Snapshot::write(&self.copies, &script)?;
+        let (program, argument) = script.interpreter();
+        let how = Spawn {
+            stdin: Some(args.to_string().into_bytes()),
+            merge_stderr: false,
+        };
+        let process = launcher
+            .with_env("RIG_TOOL_FILE", &script.path)
+            .spawn(
+                &program,
+                argument.iter().map(Path::new).chain([copy.0.as_path()]),
+                how,
+            )
+            .map_err(|error| {
+                ToolExecutionError::other(format!("could not run `{program}`: {error}"))
+            })?;
+        let _stop = KillOnDrop(process.group());
+        let output = blocking(move || finish(&script, process, copy)).await?;
+        Ok(ToolOutput::text(output))
     }
 }
 
-/// Everything `pipe` gives until it closes.
-fn read_all(pipe: Option<impl Read>) -> Vec<u8> {
-    let mut bytes = Vec::new();
-    if let Some(mut pipe) = pipe {
-        pipe.read_to_end(&mut bytes).ok();
+/// Waits for `script`'s `process`, at most its timeout, and gives its
+/// stdout, or why it failed with its stderr.
+fn finish(
+    script: &Script,
+    mut process: Process,
+    copy: Snapshot,
+) -> Result<String, ToolExecutionError> {
+    let ended = process
+        .wait_for(script.timeout)
+        .map_err(ToolExecutionError::from_error)?;
+    // What the script left running would keep its output open.
+    process.kill().ok();
+    drop(copy);
+    let (mut out, mut err) = (String::new(), String::new());
+    while let Ok(line) = process.lines().recv_timeout(PIPE_GRACE) {
+        match line {
+            OutputLine::Out(text) => out.push_str(&text),
+            OutputLine::Err(text) => err.push_str(&text),
+        }
     }
-    bytes
+    let Some(status) = ended else {
+        let secs = script.timeout.as_secs();
+        let why = format!(
+            "`{}` ran past its {secs}s timeout and was killed. {err}",
+            script.name
+        );
+        return Err(ToolExecutionError::timeout(why));
+    };
+    if !status.success() {
+        let how = status.code().map_or_else(
+            || "was killed".to_owned(),
+            |code| format!("exited with {code}"),
+        );
+        let why = format!("`{}` {how}: {}", script.name, err.trim_end());
+        return Err(ToolExecutionError::other(why));
+    }
+    Ok(out)
 }
 
 /// A copy of a script version that one call runs, removed when it ends.
@@ -581,54 +566,6 @@ impl Snapshot {
 impl Drop for Snapshot {
     fn drop(&mut self) {
         fs::remove_file(&self.0).ok();
-    }
-}
-
-/// The process group a call runs, shared by the call, its timeout and its
-/// thread.
-#[derive(Default)]
-struct Leader(Mutex<State>);
-
-#[derive(Default)]
-enum State {
-    #[default]
-    Ready,
-    Running(u32),
-    Over,
-}
-
-impl Leader {
-    /// Records the running process `pid`; `false` when the call was
-    /// stopped before it started.
-    fn start(&self, pid: u32) -> bool {
-        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        if matches!(*state, State::Over) {
-            return false;
-        }
-        *state = State::Running(pid);
-        true
-    }
-
-    /// Kills the process group if it was running; whether it was.
-    fn kill(&self) -> bool {
-        let mut state = self.0.lock().unwrap_or_else(PoisonError::into_inner);
-        let State::Running(pid) = std::mem::replace(&mut *state, State::Over) else {
-            return false;
-        };
-        #[cfg(unix)]
-        rig_tools::process::kill_group_of(pid);
-        #[cfg(not(unix))]
-        let _ = pid;
-        true
-    }
-}
-
-/// Kills a call's script when the call is dropped.
-struct StopOnDrop(Arc<Leader>);
-
-impl Drop for StopOnDrop {
-    fn drop(&mut self) {
-        self.0.kill();
     }
 }
 
