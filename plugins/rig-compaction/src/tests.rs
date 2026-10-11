@@ -267,3 +267,97 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         world.resource::<Ended>().0
     );
 }
+
+/// `turns` exchanges of about 5,000 tokens each, after a first question.
+fn long_conversation(turns: usize) -> Vec<Message> {
+    let long = "word ".repeat(4_000);
+    let mut messages = vec![Message::user("What does the crate do?")];
+    for turn in 0..turns {
+        messages.push(Message::assistant(format!("{turn}: {long}")));
+        messages.push(Message::user(format!("question {turn}")));
+    }
+    messages.push(Message::assistant("The last answer."));
+    messages
+}
+
+/// The model every turn's call is routed to, by [`route`].
+#[derive(Resource)]
+struct Routed(Connection);
+
+/// Routes every turn's call to the [`Routed`] model.
+fn route(
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>,
+    routed: Res<Routed>,
+) {
+    for mut call in &mut calls {
+        call.connection = Some(routed.0.clone());
+    }
+}
+
+#[test]
+fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    let small = connect(&model).map(|mut small| {
+        small.spec = Arc::new(small.spec.as_ref().clone().with_context_window(40_000));
+        small
+    });
+    assert!(small.is_some(), "the catalog lists the model");
+    let Some(small) = small else {
+        return;
+    };
+    app.insert_resource(Routed(small)).add_systems(
+        AgentPass,
+        route
+            .in_set(Stage::Prepare)
+            .before(CompactionSystems::Prepare),
+    );
+    // The agent's own model has room for the conversation; the call's has not.
+    let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary, then the request: {sent:?}"
+    );
+}
+
+#[test]
+fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    // Rules of about 8,000 tokens: with them, the 20,000-token conversation
+    // would not leave the window's 16k reserve free.
+    let Ok(name) = ToolName::new("notes") else {
+        return;
+    };
+    let definition = rig_core::completion::ToolDefinition {
+        name,
+        description: "Takes notes.".to_owned(),
+        parameters: serde_json::json!({ "type": "object" }),
+        annotations: Default::default(),
+    };
+    app.world_mut()
+        .spawn((ToolDef(definition), ToolRules(vec!["rule ".repeat(6_400)])));
+    let model = MockCompletionModel::from_stream_turns([reply("done")]);
+    let agent = agent(&mut app, &model, 40_000, long_conversation(4));
+    let Some(agent) = agent else {
+        return;
+    };
+    let world = app.world_mut();
+    if let Some(mut connection) = world.get_mut::<Connection>(agent) {
+        let mut spec = connection.spec.as_ref().clone();
+        spec.tools = false;
+        connection.spec = Arc::new(spec);
+    }
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [request] if !request.contains("rule rule")),
+        "the request alone, without the rules: {sent:?}"
+    );
+}

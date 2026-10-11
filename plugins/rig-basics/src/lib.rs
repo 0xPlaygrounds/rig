@@ -17,7 +17,9 @@ pub mod project_context;
 #[cfg(feature = "tui")]
 mod tui;
 
-pub use project_context::{ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin};
+pub use project_context::{
+    ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, ProjectContextSystems,
+};
 
 /// Registers the basic commands; with the `tui` feature, `/agents` and the
 /// agent tree it picks from in each agent's status line.

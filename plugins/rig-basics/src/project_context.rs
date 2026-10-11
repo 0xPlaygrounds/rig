@@ -69,9 +69,16 @@ impl Plugin for ProjectContextPlugin {
             show_context,
         )
         .add_observer(refresh_on_turn)
-        .add_systems(AgentPass, default_prompt.in_set(Stage::Prepare));
+        .configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
+        .add_systems(AgentPass, default_prompt.in_set(ProjectContextSystems));
     }
 }
+
+/// The system in [`Stage::Prepare`] that puts [`DEFAULT_SYSTEM_PROMPT`] at
+/// the head of the system prompt of an agent with none of its own. A
+/// plugin that edits the system prompt orders against it.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ProjectContextSystems;
 
 /// Puts [`DEFAULT_SYSTEM_PROMPT`] at the head of the system prompt of each
 /// model call the kernel built from an agent with no prompt of its own,

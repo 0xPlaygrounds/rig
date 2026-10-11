@@ -9,11 +9,19 @@
 //! says it overflowed. The summary is a [`ModelRequest`] of the turn, so
 //! interrupting the turn cancels it, that holds the call it compacts for
 //! until the summary is in; a new call built from the condensed
-//! conversation then supersedes it.
+//! conversation then supersedes it. Both systems are in public
+//! [`CompactionSystems`] sets: a plugin that routes a call to another
+//! model or edits its request runs before [`CompactionSystems::Prepare`],
+//! so the request is measured as it will be sent.
+
+use std::slice;
+use std::sync::Arc;
 
 use bevy_ecs::query::QueryData;
-use rig_core::completion::{Usage, tokens_label};
+use rig_core::catalog::ModelSpec;
+use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
+use rig_ecs::prompt::tool_rules;
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
 };
@@ -43,15 +51,35 @@ impl Plugin for CompactionPlugin {
             },
         )
         .add_observer(on_compact)
+        .configure_sets(
+            AgentPass,
+            (
+                CompactionSystems::Prepare.in_set(Stage::Prepare),
+                CompactionSystems::Recover.in_set(Stage::Review),
+            ),
+        )
         .add_systems(
             AgentPass,
             (
-                compact_near_the_window.in_set(Stage::Prepare),
-                recover_from_overflow.in_set(Stage::Review),
+                compact_near_the_window.in_set(CompactionSystems::Prepare),
+                recover_from_overflow.in_set(CompactionSystems::Recover),
             ),
         )
         .add_observer(take_summary);
     }
+}
+
+/// The compaction plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CompactionSystems {
+    /// In [`Stage::Prepare`]: measures each turn's request against the
+    /// window of the model it goes to, and clears old tool outputs from it
+    /// or holds it for a summary. A system that changes the request or its
+    /// model runs before it.
+    Prepare,
+    /// In [`Stage::Review`]: takes over a turn's call the model refused as
+    /// too long.
+    Recover,
 }
 
 /// How agents are compacted: rig-memory's default policy, tracking the
@@ -266,11 +294,52 @@ fn on_compact(
     notices.write(refusal);
 }
 
+/// The model `model` goes to, as Start will send it: its own connection,
+/// else its agent's `own`, as its adapters change it.
+fn routed(model: &ModelRequest, own: Option<&Connection>) -> Option<Arc<ModelSpec>> {
+    let connection = model.connection.as_ref().or(own)?.clone();
+    let adapters = model.adapters.iter();
+    Some(
+        adapters
+            .fold(connection, |connection, adapter| adapter.apply(connection))
+            .spec,
+    )
+}
+
+/// The policy's estimate of `request` as a model of `spec` gets it: one
+/// that calls no tools gets them taken out at Start, and with them their
+/// rules from the system prompt.
+fn sent_tokens(
+    policy: &CompactionPolicy,
+    request: &CompletionRequest,
+    spec: &ModelSpec,
+    tools: &Query<(&ToolDef, &ToolRules)>,
+) -> u64 {
+    let messages = &request.chat_history;
+    let estimate = policy.estimate(messages);
+    if spec.tools {
+        return estimate;
+    }
+    let carried = request.tools.iter().filter_map(|tool| {
+        let rules = tools.iter().find(|(def, _)| def.0.name == tool.name);
+        rules.map(|(_, rules)| rules)
+    });
+    let rules = tool_rules(carried);
+    match messages.first() {
+        Some(system @ Message::System { content }) if !rules.is_empty() => {
+            let without = Message::system(content.replacen(&rules, "", 1));
+            estimate.saturating_sub(policy.estimate(slice::from_ref(system)))
+                + policy.estimate(&[without])
+        }
+        _ => estimate,
+    }
+}
+
 /// Before a turn's request that leaves less than the reserve of the
-/// model's window free, clears old tool outputs, which costs no model
-/// call, and asks for a summary only when clearing was not enough. The
-/// context in use is the last reply's or the request's estimate, whichever
-/// is larger.
+/// window of the model it goes to free, clears old tool outputs, which
+/// costs no model call, and asks for a summary only when clearing was not
+/// enough. The context in use is the last reply's or the request's
+/// estimate, as that model gets it, whichever is larger.
 fn compact_near_the_window(
     mut calls: Query<
         (Entity, &mut ModelRequest, &CallOf, &ForAgent),
@@ -278,6 +347,7 @@ fn compact_near_the_window(
     >,
     mut agents: Query<(Compacting, &mut LastUsage)>,
     mut turns: Query<&mut Compactions>,
+    tools: Query<(&ToolDef, &ToolRules)>,
     policy: Res<Compaction>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -289,14 +359,16 @@ fn compact_near_the_window(
         let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
             continue;
         };
-        let connection = compacting.connection;
-        let Some(connection) = connection.filter(|_| compactions.summaries < MAX_COMPACTIONS)
-        else {
+        if compactions.summaries >= MAX_COMPACTIONS {
+            continue;
+        }
+        let Some(spec) = routed(&model, compacting.connection) else {
             continue;
         };
-        let (policy, spec) = (&policy.0, &*connection.spec);
+        let (policy, spec) = (&policy.0, &*spec);
+        let sent = sent_tokens(policy, &model.request, spec, &tools);
+        let used = last.context().unwrap_or(0).max(sent);
         let messages = &mut model.request.chat_history;
-        let used = last.context().unwrap_or(0).max(policy.estimate(messages));
         if !policy.over_threshold(used, spec) {
             continue;
         }
