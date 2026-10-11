@@ -27,8 +27,9 @@ use super::log::canonical_tool_args;
 use super::{EffectLog, canonical_local_ids, stable_hash};
 
 /// Selects request comparison by payload or [`stable_hash`], or none.
-/// Payload diagnostics name the first differing field path; hash diagnostics
-/// include both hashes. Records retain the full request in every mode.
+/// Every comparison leaves out what a new session issues afresh: rig's tool
+/// call ids, and a completion's prompt-cache key. Payload diagnostics name
+/// the first differing field path; hash diagnostics include both hashes. Records retain the full request in every mode.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum RequestCheck {
@@ -38,7 +39,7 @@ pub enum RequestCheck {
     /// Compare their stable hashes.
     Hash,
     /// Compare nothing: answer in recorded order, for a host whose requests
-    /// carry values that differ in every session (new ids, cache keys).
+    /// carry other values that differ in every session.
     Skip,
 }
 
@@ -380,16 +381,19 @@ pub(super) fn divergence_under(
     }
 }
 
-/// The effect with a tool call's arguments in canonical key order and its
-/// rig-issued call ids renamed in order of appearance, so a replay does not
-/// diverge on key order or on the ids rig issued afresh alone.
+/// The effect with a tool call's arguments in canonical key order, its
+/// rig-issued call ids renamed in order of appearance, and a completion's
+/// prompt-cache key left out, so a replay does not diverge on key order or
+/// on the ids and cache keys a new session issues afresh alone.
 fn with_canonical_args(kind: &EffectKind) -> EffectKind {
     let mut kind = serde_json::to_value(kind)
         .map(canonical_local_ids)
         .and_then(serde_json::from_value)
         .unwrap_or_else(|_| kind.clone());
-    if let EffectKind::ToolCall { args, .. } = &mut kind {
-        *args = canonical_tool_args(args);
+    match &mut kind {
+        EffectKind::ToolCall { args, .. } => *args = canonical_tool_args(args),
+        EffectKind::Completion { request, .. } => request.options.cache_key = None,
+        _ => {}
     }
     kind
 }

@@ -112,3 +112,38 @@ fn a_call_takes_the_first_record_it_matches() {
             .is_err()
     );
 }
+
+/// A completion made again in a new session matches its record though its
+/// prompt-cache key (per agent, so new) differs, by payload and by hash;
+/// any other difference still diverges.
+#[test]
+fn a_new_cache_key_alone_does_not_diverge() {
+    let completion = |key: &str, prompt: &str| {
+        let mut request = rig_core::completion::CompletionRequest::new(prompt);
+        request.options.cache_key = Some(key.to_owned());
+        EffectKind::Completion {
+            request,
+            stream: true,
+        }
+    };
+    for check in [RequestCheck::Payload, RequestCheck::Hash] {
+        let log = EffectLog::from_records(vec![record(
+            0,
+            Some("lead"),
+            completion("agent-1", "hi"),
+            "hello",
+        )]);
+        let mut answers = RecordedAnswers::new(&log).checking(check);
+        assert!(
+            answers
+                .answer(Some("lead"), &completion("agent-2", "bye"))
+                .is_err_and(|report| report.kind == ErrorKind::Divergence),
+            "{check:?}"
+        );
+        assert_eq!(
+            answered(answers.answer(Some("lead"), &completion("agent-2", "hi"))).as_deref(),
+            Some("hello"),
+            "{check:?}"
+        );
+    }
+}
