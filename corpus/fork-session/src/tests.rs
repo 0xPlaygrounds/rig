@@ -1,6 +1,7 @@
 use std::fs;
 use std::sync::mpsc::Receiver;
 
+use rig_core::message::Message;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::rig_ecs::journal::JournalPlugin;
@@ -125,13 +126,13 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         entity: picker,
         chosen: Some(Chosen::Item(two)),
     });
-    // The fork is written at the frame's end, its seed the next frame.
+    // The fork is written at the frame's end.
     let branched = || {
         fs::read_dir(home.sessions())
             .into_iter()
             .flatten()
             .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
-            .find(|session| home.session(session).path().join(SEED).exists())
+            .find(|session| ForkedFrom::of(&home.session(session)).is_some())
     };
     run_until(&mut app, &wakes, |_| branched().is_some());
     drop(app);
@@ -154,10 +155,10 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
         (vec!["one".to_owned(), "r1".to_owned()], Some(1))
     );
     assert_eq!(app.world().resource::<TuiInput>().text(), "two");
-    assert!(
-        !home.session(&branched).path().join(SEED).exists(),
-        "seeded once"
-    );
+    drop(app);
+    // Only its first start fills the input.
+    let (app, _) = start(&home, &branched);
+    assert_eq!(app.world().resource::<TuiInput>().text(), "");
     drop(app);
 
     // The original, reloaded from its log, still has all three turns.

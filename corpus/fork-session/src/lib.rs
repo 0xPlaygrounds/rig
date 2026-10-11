@@ -13,20 +13,9 @@
 //! kept them.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-use rig_harness::rig_ecs::inbox::OriginKind;
-use rig_harness::rig_ecs::journal::now_ms;
-use rig_sessions::{Meta, ResumeLabel, SessionTitle, SessionsPlugin, list};
-use rig_tools::attach::attached_file;
-use rig_tools::fs::write_json;
+use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::shorten;
 use rig_tui::{Focus, TuiInput};
-use std::fs;
-
-/// The empty file a branch made by `/branch` starts with: its first start
-/// puts the message it was branched before in the input line and removes
-/// it, so a later start leaves the input alone.
-pub const SEED: &str = "fork-seed";
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -77,35 +66,12 @@ struct Asked {
     files: Option<String>,
 }
 
-/// The messages the user typed in `conversation`, by index, as text, as
-/// [`ForkedFrom::text`] keeps them.
-fn typed(conversation: &Conversation) -> Vec<(usize, String)> {
-    let mut typed = Vec::new();
-    for (at, message) in conversation.messages().iter().enumerate() {
-        let Message::User { content } = message else {
-            continue;
-        };
-        let texts: Vec<&str> = content
-            .iter()
-            .enumerate()
-            .filter_map(|(item, content)| match content {
-                UserContent::Text(text)
-                    if !text.text.trim().is_empty()
-                        && conversation
-                            .origin(at, item)
-                            .is_none_or(|origin| origin.kind == OriginKind::User)
-                        && attached_file(&text.text).is_none() =>
-                {
-                    Some(text.text.trim())
-                }
-                _ => None,
-            })
-            .collect();
-        if !texts.is_empty() {
-            typed.push((at, texts.join("\n\n")));
-        }
-    }
-    typed
+/// The messages the user typed in `conversation`, as [`ForkedFrom::text`]
+/// keeps them.
+fn typed_messages(conversation: &Conversation) -> Vec<(MessageId, String)> {
+    (0..conversation.messages().len())
+        .filter_map(|at| Some((conversation.id(at)?, typed(conversation, at)?)))
+        .collect()
 }
 
 fn one_line(text: &str) -> String {
@@ -147,7 +113,7 @@ fn fork(
     pending.0 = Some(Asked {
         agent: args.agent,
         before: None,
-        name: (!name.is_empty()).then(|| one_line(name)),
+        name: (!name.is_empty()).then(|| name.to_owned()),
         files: None,
     });
     commands.trigger(ForkSession::default());
@@ -180,7 +146,10 @@ fn branch(
             return;
         }
     };
-    let typed = conversations.get(agent).map(typed).unwrap_or_default();
+    let typed = conversations
+        .get(agent)
+        .map(typed_messages)
+        .unwrap_or_default();
     if typed.is_empty() {
         notices.write(Notice::info(agent, "No message of yours to branch from."));
         return;
@@ -192,7 +161,7 @@ fn branch(
     let selected = picker.items.len().saturating_sub(1);
     commands.spawn(Picker { selected, ..picker }).observe(
         move |picked: On<Picked>,
-              agents: Query<(&AgentId, &Conversation)>,
+              ids: Query<&AgentId>,
               snapshots: Snapshots<'_, '_>,
               mut pending: ResMut<Pending>,
               mut commands: Commands,
@@ -200,11 +169,7 @@ fn branch(
             let Some(Chosen::Item(index)) = picked.chosen else {
                 return;
             };
-            let (Some((at, _)), Ok((id, conversation))) = (typed.get(index), agents.get(agent))
-            else {
-                return;
-            };
-            let Some(message) = conversation.id(*at) else {
+            let (Some(&(message, _)), Ok(id)) = (typed.get(index), ids.get(agent)) else {
                 return;
             };
             let files = match files.then(|| restore_files(&snapshots, agent, message)) {
@@ -254,12 +219,10 @@ fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<Strin
     Err("/branch --files needs spec 31's checkpoints.".to_owned())
 }
 
-/// Names or seeds each fork this plugin asked for, then switches to it.
+/// Names each fork this plugin asked for, then switches to it.
 fn forked(
     mut forks: MessageReader<SessionForked>,
     mut pending: ResMut<Pending>,
-    home: Res<RigHome>,
-    title: Res<SessionTitle>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -267,27 +230,11 @@ fn forked(
         let Some(asked) = pending.0.take_if(|asked| asked.before == fork.before) else {
             continue;
         };
-        let session = home.0.session(&fork.to);
-        let seeded = match asked.before {
-            // A fork is listed by its name and its parent's title, where
-            // `/resume` and the fork's start read them.
-            None => {
-                let meta = Meta {
-                    title: SessionTitle {
-                        name: asked.name,
-                        typed: title.typed.clone(),
-                    },
-                    updated: now_ms(),
-                    ..Meta::default()
-                };
-                write_json(&session.meta(), &meta)
-            }
-            Some(_) => fs::write(session.path().join(SEED), ""),
-        };
-        if let Err(failure) = seeded {
-            let why = format!("Could not seed session {}: {failure}", fork.to);
-            notices.write(Notice::error(asked.agent, why));
-            continue;
+        if let Some(name) = asked.name {
+            commands.trigger(NameSession {
+                session: fork.to.clone(),
+                name,
+            });
         }
         if let Some(line) = asked.files {
             commands.trigger(RunCommand::new(asked.agent, line));
@@ -308,11 +255,12 @@ fn how(parent: &ForkedFrom) -> String {
     }
 }
 
-/// A fork's start: says where it came from in `/resume`, and the first
-/// start of a `/branch` puts the message it was branched before in the
+/// A fork's start: says where it came from in `/resume`, and its first
+/// start, of a branch, puts the message it was branched before in the
 /// input line, showing its agent.
 fn arrive(
     paths: Option<Res<SessionPaths>>,
+    first: Option<Res<FirstStart>>,
     agents: PrimaryQuery,
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
@@ -325,11 +273,7 @@ fn arrive(
     };
     let label = format!("{} of {}", how(&parent), parent.session);
     commands.spawn(ResumeLabel::new("family", label));
-    // Once: a later start of the session leaves its input alone.
-    if fs::remove_file(paths.path().join(SEED)).is_err() {
-        return;
-    }
-    let (Some((agent, _)), Some(text)) = (parent.before, parent.text) else {
+    let (Some(_), Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| **id == agent);
