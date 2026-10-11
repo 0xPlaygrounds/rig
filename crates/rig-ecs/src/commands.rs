@@ -4,6 +4,9 @@
 //! one with [`AppCommandsExt::add_command`], a system that reads the
 //! [`CommandArgs`], such as one that triggers an event.
 //!
+//! What the user types that starts with `/` runs as a command: the
+//! kernel's delivery of a user's [`Deliver`](super::inbox::Deliver) turns
+//! it into a [`RunCommand`] ([`Deliver::command`](super::inbox::Deliver::command)).
 //! [`RunCommand`] runs a line at once, with everything it triggers. The
 //! notices written meanwhile are its reply. An unknown command, or an
 //! error notice about the agent, such as one refusing arguments, refuses

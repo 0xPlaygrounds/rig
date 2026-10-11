@@ -18,6 +18,16 @@
 //! message headed by a line naming where it came from. A message may carry
 //! [`Attachment`]s its sender read, such as images, which go before its
 //! text when the agent's model reads them.
+//!
+//! What the user types is a [`Deliver`] from [`Origin::user`]. A plugin's
+//! observer of it (`app.add_observer`) may edit it before it is delivered:
+//! rewrite its text, add attachments, or take it over by emptying its
+//! text. The kernel delivers from an observer on the agent's entity, which
+//! Bevy runs after every global observer of the event
+//! (`EntityTrigger`, bevy_ecs 0.20 `event/trigger.rs`). Observers of one
+//! event run in no fixed order otherwise, so each does its own part and
+//! none depends on another. A user's text that starts with `/` then runs
+//! as a slash command ([`Deliver::command`]) instead of being sent.
 
 use std::collections::VecDeque;
 
@@ -30,6 +40,7 @@ use serde::{Deserialize, Serialize};
 
 use super::agent::{ActiveTurn, Agent, AgentId, Conversation, Halt, Notice, TurnOf};
 use super::calls::Wake;
+use super::commands::RunCommand;
 use super::journal::Commit;
 use super::model::Connection;
 use super::turn::{CallModel, Exiting};
@@ -168,7 +179,8 @@ pub struct Attachment {
 }
 
 /// Put `text` in the agent's conversation, from `origin`, as `mode` says,
-/// after its `attachments`. Empty text is ignored.
+/// after its `attachments`. Empty text is ignored. Observers may edit it
+/// first (see the [module](self)).
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Deliver {
@@ -183,6 +195,9 @@ pub struct Deliver {
     /// What goes before the text.
     #[reflect(ignore)]
     pub attachments: Vec<Attachment>,
+    /// Whether the user's text goes to the model as it is even when it
+    /// starts with `/`, such as a refused command sent again.
+    pub literal: bool,
 }
 
 impl Deliver {
@@ -195,12 +210,30 @@ impl Deliver {
             origin: Origin::user(),
             mode,
             attachments: Vec::new(),
+            literal: false,
         }
     }
 
     /// This message, from `origin`.
     pub fn with_origin(self, origin: Origin) -> Self {
         Self { origin, ..self }
+    }
+
+    /// This message sent [`literal`](Self::literal)ly.
+    pub fn literal(self) -> Self {
+        Self {
+            literal: true,
+            ..self
+        }
+    }
+
+    /// The slash command line, without its `/`, that this delivery runs
+    /// instead of being sent: the user's text that starts with `/`, unless
+    /// it is [`literal`](Self::literal).
+    pub fn command(&self) -> Option<&str> {
+        let user = self.origin.kind == OriginKind::User && !self.literal;
+        user.then(|| self.text.trim_start().strip_prefix('/'))
+            .flatten()
     }
 }
 
@@ -255,10 +288,17 @@ pub struct Recalled {
     pub why: Option<String>,
 }
 
-/// Starts a turn of an idle agent with the message, or keeps it in a busy
-/// one's inbox. A note to an idle agent goes in its conversation, logged
-/// as halted, for its next turn.
-pub(crate) fn on_deliver(
+/// Gives each agent the observer that delivers to it, [`on_deliver`]. It
+/// watches that agent alone, so Bevy runs it after the global observers
+/// that may edit the delivery.
+pub(crate) fn watch_deliveries(added: On<Add<Agent>>, mut commands: Commands) {
+    commands.entity(added.entity).observe(on_deliver);
+}
+
+/// Runs a user's slash command, or starts a turn of an idle agent with the
+/// message, or keeps it in a busy one's inbox. A note to an idle agent
+/// goes in its conversation, logged as halted, for its next turn.
+fn on_deliver(
     deliver: On<Deliver>,
     mut agents: Query<
         (
@@ -276,6 +316,13 @@ pub(crate) fn on_deliver(
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = deliver.entity;
+    if let Some(line) = deliver.command() {
+        commands.trigger(RunCommand {
+            entity: agent,
+            line: line.to_owned(),
+        });
+        return;
+    }
     let Ok((mut inbox, mut conversation, connection, active)) = agents.get_mut(agent) else {
         return;
     };

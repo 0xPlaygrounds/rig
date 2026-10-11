@@ -149,7 +149,7 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
-            .add_observer(inbox::on_deliver)
+            .add_observer(inbox::watch_deliveries)
             .add_observer(commands::on_run_command)
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)

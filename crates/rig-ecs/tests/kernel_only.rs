@@ -514,3 +514,62 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         sent.is_some_and(|request| request.tools.is_empty() && request.options.seed == Some(7))
     );
 }
+
+/// The command lines `/echo` ran with.
+#[derive(Resource, Default)]
+struct Echoed(Vec<String>);
+
+#[test]
+fn observers_edit_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
+    let (mut app, _) = kernel(&MemoryStore::default());
+    app.init_resource::<Echoed>()
+        .add_command(
+            "echo",
+            "Echoes",
+            |In(args): In<CommandArgs>, mut echoed: ResMut<Echoed>| echoed.0.push(args.args),
+        )
+        .add_observer(|mut typed: On<Deliver>| {
+            if typed.origin.kind != OriginKind::User {
+                return;
+            }
+            if typed.text == "hi" {
+                typed.text = "/echo hello".to_owned();
+            }
+            // Taken over: nothing is sent.
+            if typed.text.starts_with('!') {
+                typed.text.clear();
+            }
+        });
+    let agent = app.world_mut().spawn(Agent).id();
+    app.update();
+    let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
+    for typed in [
+        note("hi"),
+        note("!ls"),
+        note("/echo typed"),
+        note("/echo sent").literal(),
+        note("/echo reported").with_origin(Origin::plugin("p")),
+    ] {
+        app.world_mut().trigger(typed);
+    }
+    app.update();
+    assert_eq!(app.world().resource::<Echoed>().0, ["hello", "typed"]);
+    let sent: Vec<String> = messages(&app, agent)
+        .iter()
+        .flat_map(|message| match message {
+            Message::User { content } => content.to_vec(),
+            _ => Vec::new(),
+        })
+        .filter_map(|content| match content {
+            UserContent::Text(text) => Some(text.text),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        sent,
+        [
+            "/echo sent",
+            "[Output of plugin p, not the user's words]\n/echo reported"
+        ]
+    );
+}
