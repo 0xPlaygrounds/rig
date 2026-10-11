@@ -702,7 +702,7 @@ fn fall_back(
 Every model call streams, a turn's and a plugin's own alike. Each fragment
 of text or reasoning is a `StreamDelta { effect, agent, kind, text }`
 message, written in `Arrive` in the order it came, before the call's
-outcome is applied; Bevy keeps a message two frames, so a reader in
+outcome is applied; Bevy keeps a message at least two frames, so a reader in
 `PostUpdate` gets the last fragments of a reply that settled in the same
 frame. A turn's call also adds them up in its `Partial`, which is gone
 once the reply is in the conversation. When a call's stream sends its

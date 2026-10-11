@@ -254,7 +254,7 @@ pub enum DeltaKind {
 
 /// A fragment of text or reasoning a model call streamed, any model call,
 /// written in [`Stage::Arrive`] in the order it came, before the call's
-/// outcome is applied. Bevy keeps a message two frames, so a reader in
+/// outcome is applied. Bevy keeps a message at least two frames, so a reader in
 /// `PostUpdate` sees the last fragments of a reply that settled this
 /// frame. A [`TurnCall`]'s fragments also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
