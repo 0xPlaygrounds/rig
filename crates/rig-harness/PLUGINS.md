@@ -14,7 +14,7 @@ types, such as the terminal view's panels from `rig_tui`.
 - [Saved state](#saved-state-counting-every-tool-call), [time](#time), [the process: project, files and child processes](#the-process-project-files-and-child-processes), [sessions and exiting](#sessions-and-exiting)
 - [Adding to another plugin's lists](#adding-to-another-plugins-lists): `/model`, `/resume`, `/context`, `/agents`, `/usage`, `--print`; spending and budgets
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
-- [A front](#a-front), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [a window](#a-window)
+- [A front](#a-front), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [keys, the input and pickers](#keys-the-input-and-pickers-in-the-terminal-view), [a window](#a-window)
 
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a
 crate that depends on `rig-harness`. The agent is a Bevy app, and its
@@ -64,8 +64,8 @@ The prelude holds Bevy's app, ECS, reflection and time preludes, the agent
 runtime's components, stages and registries (`rig_harness::rig_ecs`), and
 the harness's services. rig-core is `rig_harness::rig_core`, and each
 default plugin's types are in its crate: the terminal view's panels, tool
-renderers, status line and pickers in `rig_tui` (ratatui is
-`rig_tui::ratatui`), what agents do in `rig_activity`, `/reload`'s state in
+renderers, status line, key bindings, input and pickers in `rig_tui`
+(ratatui is `rig_tui::ratatui`, crossterm `rig_tui::crossterm`), what agents do in `rig_activity`, `/reload`'s state in
 `rig_reload`, and so on for each crate `plugins.toml` names.
 
 What every plugin shares lives in rig-harness, never in another plugin:
@@ -1202,7 +1202,8 @@ a system in `StatusSystems` that runs when what it shows changed:
 place of the one there, and an empty item clears the place. A plugin that
 should also build without the terminal view puts this behind a default
 `tui` cargo feature, as the default plugins do, and one that writes
-`AppStatus` or a `PickRequest` (a picker over the transcript) registers it
+`AppStatus` or a `PickRequest` (the short form of a
+[picker](#keys-the-input-and-pickers-in-the-terminal-view)) registers it
 with `app.init_resource::<AppStatus>()` or
 `app.add_message::<PickRequest>()`, since the view may not be added. The
 default plugins' places, and how long each item stays when the line is too
@@ -1326,6 +1327,127 @@ fn draw(
     for mut canvas in &mut panels {
         canvas.render(Paragraph::new(lines.join("\n")).block(Block::bordered().title("agents")));
     }
+}
+```
+
+# Keys, the input and pickers in the terminal view
+
+The terminal view (`rig_tui`) takes part in the input as data a plugin
+reads and changes, as it does for panels:
+
+- **Keys.** Every key the view acts on is a `KeyBinding` entity, its own
+  editing keys included, in the input's `KeyScope`. A plugin binds a key
+  or a sequence (`ctrl+x ctrl+e`) with `app.add_key_binding(binding,
+  observer)`: the observer hears `KeyPressed` on the binding (and, for one
+  `with_releases()`, the key let go), and `run_command("compact")` is an
+  observer that runs a slash command. As with commands, the first binding
+  of a key stays: a binding that another of an overlapping scope takes,
+  starts, or is started by, is refused with a warning, and `Disabled` on a
+  binding frees its keys, in `Plugin::finish`. `Keys` parse from text
+  (`"alt+m".parse()`), for keys from the user's settings.
+- **A panel's keys.** `KeyFocus(Some(panel))` gives a panel the keys: its
+  bindings in `KeyScope::Panel(panel)` and the global ones apply, not the
+  input's, and Esc it does not bind gives the keys back.
+- **The input.** `TuiInput` is the draft: `text()`, `cursor()`, `set`,
+  `insert`, `take`, `set_cursor`; `is_changed()` says it was edited. Enter
+  sends it to the agent shown (`Focused`).
+- **The terminal.** `TerminalEvent` messages are what the terminal
+  reported, keys and pastes; a plugin may read them, and write some. A
+  `RunInTerminal(command)` entity runs a program with the terminal (the
+  view steps aside and draws again after), and gets its `TerminalExit`.
+- **Pickers and questions.** A `Picker` entity is a filterable list the
+  view shows over the transcript, one at a time in the order they came,
+  with every agent's open [`Ask`](#asking-the-user); the view answers those
+  too. Inserting a new `Picker` replaces what it shows; despawning it
+  closes it. When the user picks, the view runs the item's command, if it
+  has one, triggers `Picked` on the entity (`Chosen::Item(index)`, or
+  `Chosen::Text` for a `free_text` picker; `None` when closed), and
+  despawns it.
+
+These are there in any run, and inert without the terminal view's run.
+This plugin writes the draft in `$EDITOR` on Ctrl+E, which the view binds
+to the line's end, and offers a few prompts on Ctrl+T:
+
+```rust,no_run
+use std::path::PathBuf;
+use std::process::Command;
+
+use rig_harness::prelude::*;
+use rig_tui::{
+    AppKeyBindingsExt, Chosen, KeyBinding, KeyPress, KeyPressed, Keys, Picked, Picker,
+    RunInTerminal, TerminalExit, TuiInput,
+};
+
+#[derive(Default)]
+pub struct DraftKeysPlugin;
+
+/// A program writing the draft in this file.
+#[derive(Component)]
+struct Draft(PathBuf);
+
+const PROMPTS: [&str; 2] = ["Explain this code: ", "Write a test for "];
+
+impl Plugin for DraftKeysPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(Update, take_draft);
+    }
+
+    /// Once every plugin was built, the view's Ctrl+E is there to free.
+    fn finish(&self, app: &mut App) {
+        let ctrl_e = Keys::from(KeyPress::ctrl('e'));
+        let world = app.world_mut();
+        let mut bindings = world.query::<(Entity, &KeyBinding)>();
+        let taken: Vec<Entity> = bindings
+            .iter(world)
+            .filter(|(_, binding)| binding.keys == ctrl_e)
+            .map(|(entity, _)| entity)
+            .collect();
+        for binding in taken {
+            world.entity_mut(binding).insert(Disabled);
+        }
+        app.add_key_binding(KeyBinding::new(ctrl_e, "Write the draft in $EDITOR"), edit)
+            .add_key_binding(KeyBinding::new(KeyPress::ctrl('t'), "Start from a prompt"), prompts);
+    }
+}
+
+fn edit(_: On<KeyPressed>, input: Res<TuiInput>, mut commands: Commands) {
+    let path = std::env::temp_dir().join("rig-draft.md");
+    if std::fs::write(&path, input.text()).is_err() {
+        return;
+    }
+    let mut editor = Command::new(std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_owned()));
+    editor.arg(&path);
+    commands.spawn((RunInTerminal(editor), Draft(path)));
+}
+
+/// The draft as the editor left it, unless the editor failed.
+fn take_draft(
+    done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
+    mut input: ResMut<TuiInput>,
+    mut commands: Commands,
+) {
+    for (run, exit, Draft(path)) in &done {
+        if let (true, Ok(text)) = (exit.success(), std::fs::read_to_string(path)) {
+            input.set(text.trim_end());
+        }
+        commands.entity(run).despawn();
+    }
+}
+
+fn prompts(_: On<KeyPressed>, mut commands: Commands) {
+    let picker = PROMPTS
+        .iter()
+        .fold(Picker::new("Prompt"), |picker, prompt| picker.item(*prompt, ""));
+    commands.spawn(picker).observe(
+        |picked: On<Picked>, mut input: ResMut<TuiInput>| {
+            if let Some(Chosen::Item(index)) = picked.chosen
+                && let Some(prompt) = PROMPTS.get(index)
+            {
+                input.set_cursor(0);
+                input.insert(prompt);
+            }
+        },
+    );
 }
 ```
 
