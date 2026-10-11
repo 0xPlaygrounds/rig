@@ -34,6 +34,7 @@ impl Plugin for SummarizeToolOutputPlugin {
             .set(None);
         app.add_setting::<SummarizeOutputs>("summarize_outputs")
             .init_resource::<ProjectRoot>()
+            .add_observer(follow_successor::<Summarizing>)
             .configure_sets(AgentPass, SummarizeSystems.in_set(Stage::Review))
             .add_systems(
                 AgentPass,
@@ -159,16 +160,16 @@ fn reads_saved(call: &ToolCall, root: &Path, dir: &Path) -> bool {
 /// holds the call with a summary call on the cheap model, or cuts it when
 /// there is none.
 fn summarize(
-    calls: Query<
+    mut calls: Query<
         (
             Entity,
             &ToolRequest,
-            &Outcome,
+            &mut Outcome,
             &Effect,
             &ForAgent,
             Option<&CallOf>,
         ),
-        (Unreviewed, Without<Summarized>),
+        (Unreviewed, ToolCalls, Without<Summarized>),
     >,
     config: Res<SummarizeOutputs>,
     root: Res<ProjectRoot>,
@@ -176,7 +177,7 @@ fn summarize(
     mut commands: Commands,
 ) {
     let dir = root.0.join(&config.dir);
-    for (call, request, outcome, effect, &ForAgent(agent), turn) in &calls {
+    for (call, request, mut outcome, effect, &ForAgent(agent), turn) in &mut calls {
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
         };
@@ -210,7 +211,7 @@ fn summarize(
         let connection = match connection {
             Ok(connection) => connection,
             Err(why) => {
-                commands.entity(call).insert(about.truncated(result, &why));
+                *outcome = about.truncated(result, &why);
                 continue;
             }
         };
@@ -250,15 +251,19 @@ fn summarize(
         commands
             .delayed()
             .duration(Duration::from_secs(secs))
-            .entity(summary)
-            .try_insert_if_new(Outcome(Err(late)));
+            .queue(move |world: &mut World| {
+                if let Some(mut decision) = world.get_mut::<Decision>(summary) {
+                    decision.decide(Outcome(Err(late)));
+                }
+            });
     }
 }
 
 /// Puts each finished summary in its tool call's result, or the output's
 /// head and tail when the summarizer failed, and lets the call go.
 fn take_summaries(
-    summaries: Query<(Entity, &Summarizing, &Outcome), (Unreviewed, With<HoldOf>)>,
+    summaries: Query<(Entity, &Summarizing, &Outcome), (Unreviewed, ModelCalls, With<HoldOf>)>,
+    mut calls: Query<&mut Outcome, ToolCalls>,
     mut commands: Commands,
 ) {
     for (
@@ -277,7 +282,9 @@ fn take_summaries(
             (Ok(_), Some(text)) if !text.trim().is_empty() => about.summary(result, &text),
             (Ok(_), _) => about.truncated(result, "the summarizer answered nothing"),
         };
-        commands.entity(*call).try_insert(output);
+        if let Ok(mut held) = calls.get_mut(*call) {
+            *held = output;
+        }
         commands.entity(summary).remove::<HoldOf>();
     }
 }
