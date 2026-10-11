@@ -16,6 +16,7 @@
 pub mod adapters;
 mod handler;
 mod layer;
+mod map;
 mod record_buffer;
 mod recorder;
 mod writer;

@@ -149,6 +149,25 @@ impl ErasedHandler {
         Self::new(super::Layer::new(self, intercept))
     }
 
+    /// Rewrite this handler's completion streams: every item of each reply
+    /// passes through a fresh `make()` in order, and the items it returns
+    /// go on in its place. It sees the [`Relayed::Done`](crate::streaming::Relayed::Done)
+    /// too, so a rewrite of the events also rewrites the response the reply
+    /// ends with. A unary completion is rewritten as its events, so both
+    /// delivery modes answer alike; other outcomes and errors pass as they
+    /// are. `name` joins the descriptor's layers.
+    ///
+    /// Unlike a [`Layer`](super::Layer), the rewrite is recorded: the
+    /// record of a dispatch is the reply the consumer receives, so a replay
+    /// of it does not rewrite twice.
+    pub fn map_stream<M, F>(self, name: impl Into<String>, make: M) -> Self
+    where
+        M: Fn() -> F + WasmCompatSend + WasmCompatSync + 'static,
+        F: FnMut(Relayed) -> Vec<Relayed> + WasmCompatSend + 'static,
+    {
+        Self::new(super::map::MapStream::new(self, name.into(), make))
+    }
+
     /// What the erased handler is.
     pub fn descriptor(&self) -> HandlerDescriptor {
         self.0.descriptor()
@@ -554,6 +573,22 @@ impl Dispatch {
     /// [`Self::inner`]).
     pub(crate) fn attribution(&self) -> Attribution {
         Attribution(self.replaced_by.clone())
+    }
+
+    /// A dispatch of the same effect for a wrapped handler whose reply the
+    /// wrapper rewrites and is recorded at: the observer and the fold stay
+    /// with this dispatch, so they see the rewritten reply.
+    pub(crate) fn unobserved(&self) -> Self {
+        Self {
+            id: self.id,
+            streaming: self.streaming,
+            adapter_context: self.adapter_context.clone(),
+            adapter_context_explicit: self.adapter_context_explicit,
+            scopes: self.scopes.clone(),
+            observer: None,
+            replaced_by: self.replaced_by.clone(),
+            folded: None,
+        }
     }
 
     pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
