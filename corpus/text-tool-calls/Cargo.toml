@@ -11,11 +11,15 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
+# Compaction measures a call once the plugin adapted it.
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The `[text_tools]` settings table.
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }

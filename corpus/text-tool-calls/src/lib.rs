@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
@@ -50,15 +51,27 @@ pub struct TextTools {
 #[derive(Default)]
 pub struct TextToolCallsPlugin;
 
+/// The plugin's stage system, in [`Stage::Prepare`] before
+/// [`CompactionSystems::Prepare`], which measures the adapted call: it
+/// gives each model call the `text-tools` adapter.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextToolCallsSystems;
+
 impl Plugin for TextToolCallsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<TextTools>("text_tools")
-            .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
+            .configure_sets(
+                AgentPass,
+                TextToolCallsSystems
+                    .in_set(Stage::Prepare)
+                    .before(CompactionSystems::Prepare),
+            )
+            .add_systems(AgentPass, adapt.in_set(TextToolCallsSystems));
     }
 }
 
 /// Gives each model call admitted this pass the `text-tools` adapter.
-fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, settings: Res<TextTools>) {
+fn adapt(mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>, settings: Res<TextTools>) {
     let models = Arc::new(settings.models.clone());
     for mut adapters in &mut calls {
         let models = models.clone();
