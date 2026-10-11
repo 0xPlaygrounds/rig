@@ -1,18 +1,18 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 //! Public facade for Rig.
 //!
-//! Re-exports `rig_core` at `rig::...` paths and, under the `agent` feature,
-//! the runtime from `rig_agent` at `rig::agent`. `rig::tool` then carries the
-//! agent's tool registry alongside the contextual and portable contracts, which
-//! are always available. `use rig::prelude::*;` brings in [`Model`],
-//! [`DynModel`] and, with `agent`, the common agent types.
+//! Re-exports `rig_core` at `rig::...` paths and, under the default `agent`
+//! feature, the runtime from `rig_agent` at `rig::agent`. `rig::tool` then
+//! carries the agent's tool registry alongside the contextual and portable
+//! contracts, which are always available. `use rig::prelude::*;` brings in
+//! [`Model`], [`DynModel`] and, with `agent`, the common agent types.
 //!
 //! Companion provider and vector-store crates are feature-gated modules, named
 //! after their features wherever module naming allows:
 //!
 //! ```toml
 //! [dependencies]
-//! rig = { version = "*", features = ["agent", "lancedb", "fastembed"] }
+//! rig = { version = "*", features = ["lancedb", "fastembed"] }
 //! ```
 //!
 //! Depend on `rig-core` directly to skip this facade's companion integrations.
