@@ -470,6 +470,7 @@ fn relay_notices(mut notices: MessageReader<Notice>, mut events: Events) {
     for notice in notices.read() {
         let level = match notice.level {
             NoticeLevel::Info => "info",
+            NoticeLevel::Warn => "warn",
             NoticeLevel::Error => "error",
         };
         let event = json!({

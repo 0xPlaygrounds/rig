@@ -280,6 +280,7 @@ fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
     for notice in notices.read() {
         let level = match notice.level {
             NoticeLevel::Info => "info",
+            NoticeLevel::Warn => "warn",
             NoticeLevel::Error => "error",
         };
         let fields = json!({ "level": level, "text": notice.text });

@@ -9,7 +9,8 @@
 //! slash command, such as `/login`, runs without a model. The exit code is
 //! 0 when the turn ended with an answer, 2 for an empty prompt or a refused
 //! slash command (unknown, or arguments it does not take), 1 otherwise,
-//! such as an error notice about the agent and no answer.
+//! such as an error notice about the agent and no answer. A warning
+//! notice never fails it.
 //!
 //! ```
 //! use rig_harness::headless::{AppHeadlessExt, HeadlessEnded};

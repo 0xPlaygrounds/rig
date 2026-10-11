@@ -93,6 +93,30 @@ fn the_prompt_is_answered_and_the_run_ends_beside_an_open_stream() {
 }
 
 #[test]
+fn a_warning_about_the_agent_does_not_fail_the_run_and_an_error_does() {
+    let exits = [NoticeLevel::Warn, NoticeLevel::Error].map(|level| {
+        // A reply without text: nothing answers, so only the notice decides.
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let ends = run("hi", true, |world, primary| {
+            if let Some(connection) = connection(&model) {
+                world.entity_mut(primary).insert(connection);
+            }
+            world.add_observer(move |_: On<Add<TurnOf>>, mut commands: Commands| {
+                commands.write_message(Notice {
+                    agent: Some(primary),
+                    text: "key 2 refused; using key 3".to_owned(),
+                    level,
+                });
+            });
+        });
+        ends.into_iter().map(|ended| ended.exit).collect::<Vec<_>>()
+    });
+    assert_eq!(exits, [vec![AppExit::Success], vec![AppExit::from_code(1)]]);
+}
+
+#[test]
 fn a_restored_model_that_cannot_be_used_fails_the_run_once() {
     let mut agent = None;
     let ends = run("hi", false, |world, primary| {

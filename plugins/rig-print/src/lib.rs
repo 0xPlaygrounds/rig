@@ -182,7 +182,7 @@ fn print_notices(
         }
         for notice in notices.read() {
             match notice.level {
-                NoticeLevel::Error => eprintln!("rig: {}", notice.text),
+                NoticeLevel::Warn | NoticeLevel::Error => eprintln!("rig: {}", notice.text),
                 _ if command => eprintln!("{}", notice.text),
                 _ => {}
             }

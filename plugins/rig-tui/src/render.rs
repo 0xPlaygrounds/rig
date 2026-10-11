@@ -694,6 +694,7 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
 fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
     let style = match notice.level {
         NoticeLevel::Info => Style::new().fg(Color::Magenta),
+        NoticeLevel::Warn => Style::new().fg(Color::Yellow),
         NoticeLevel::Error => Style::new().fg(Color::Red),
     };
     lines.extend(plain_lines(&notice.text, style));

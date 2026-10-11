@@ -481,6 +481,10 @@ pub enum NoticeLevel {
     /// Information.
     #[default]
     Info,
+    /// Something went wrong that did not stop anything, such as a refused
+    /// key with another one used instead: shown like an error, but never a
+    /// failure.
+    Warn,
     /// Something failed or was refused.
     Error,
 }
@@ -492,7 +496,7 @@ pub struct Notice {
     pub agent: Option<Entity>,
     /// The text.
     pub text: String,
-    /// Whether it reports a failure.
+    /// Whether it informs, warns or reports a failure.
     pub level: NoticeLevel,
 }
 
@@ -504,6 +508,12 @@ impl Notice {
     /// Information about `agent`, or about the whole app with `None`.
     pub fn info(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
         Self::new(agent.into(), text.into(), NoticeLevel::Info)
+    }
+
+    /// A warning about `agent`, or about the whole app with `None`:
+    /// something went wrong, but nothing failed.
+    pub fn warn(agent: impl Into<Option<Entity>>, text: impl Into<String>) -> Self {
+        Self::new(agent.into(), text.into(), NoticeLevel::Warn)
     }
 
     /// A failure or refusal concerning `agent`, or the whole app with
