@@ -97,10 +97,6 @@ impl Piece {
             (_, next) => Some(next),
         }
     }
-
-    fn is_user(&self) -> bool {
-        matches!(self, Self::User(_))
-    }
 }
 
 /// The messages of `conversation` from `from` on.
@@ -177,7 +173,6 @@ struct Surgery<'w, 's> {
         's,
         (
             &'static mut Conversation,
-            Option<&'static Condensed>,
             Has<ActiveTurn>,
             Option<&'static mut LastUsage>,
         ),
@@ -197,7 +192,7 @@ impl Surgery<'_, '_> {
         command: &str,
         plan: impl FnOnce(&Conversation, usize, Option<&Edit>) -> Result<Plan, String>,
     ) {
-        let Ok((mut conversation, condensed, busy, usage)) = self.agents.get_mut(agent) else {
+        let Ok((mut conversation, busy, usage)) = self.agents.get_mut(agent) else {
             return;
         };
         if busy {
@@ -207,10 +202,7 @@ impl Surgery<'_, '_> {
             self.notices.write(Notice::error(agent, why));
             return;
         }
-        let first = condensed.map_or(0, |condensed| condensed.upto);
-        let plan = plan(&conversation, first, self.edits.0.get(&agent))
-            .and_then(|plan| joins_compacted(&conversation, first, &plan).map_or(Ok(plan), Err));
-        let plan = match plan {
+        let plan = match plan(&conversation, 0, self.edits.0.get(&agent)) {
             Ok(plan) => plan,
             Err(why) => {
                 self.notices
@@ -221,7 +213,7 @@ impl Surgery<'_, '_> {
         let from = plan.from;
         let before = pieces(&conversation, from);
         let old = estimate(conversation.messages().get(from..).unwrap_or_default());
-        self.commit.truncate(agent, &mut conversation, from);
+        self.commit.splice(agent, &mut conversation, from.., []);
         for piece in plan.after {
             commit_piece(&mut self.commit, agent, &mut conversation, piece);
         }
@@ -252,22 +244,6 @@ impl Surgery<'_, '_> {
     }
 }
 
-/// Why `plan` cannot be made: it would change or join a message a summary
-/// replaced, which requests no longer send.
-fn joins_compacted(conversation: &Conversation, first: usize, plan: &Plan) -> Option<String> {
-    if plan.from < first {
-        return Some(format!(
-            "message {} was compacted; requests no longer send it",
-            plan.from + 1
-        ));
-    }
-    let previous = plan.from.checked_sub(1).filter(|_| plan.from == first)?;
-    let previous = conversation.messages().get(previous)?;
-    let next = plan.after.first()?;
-    let same = matches!(previous, Message::User { .. }) == next.is_user();
-    same.then(|| "the edit would join a compacted message".to_owned())
-}
-
 /// Commits `piece` to `agent`'s conversation, a user message's items with
 /// where they came from.
 fn commit_piece(commit: &mut Commit, agent: Entity, conversation: &mut Conversation, piece: Piece) {
@@ -293,21 +269,19 @@ fn commit_piece(commit: &mut Commit, agent: Entity, conversation: &mut Conversat
 /// `/history`.
 fn history(
     In(args): In<CommandArgs>,
-    agents: Query<(&Conversation, Option<&Condensed>)>,
+    agents: Query<&Conversation>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((conversation, condensed)) = agents.get(args.agent) else {
+    let Ok(conversation) = agents.get(args.agent) else {
         return;
     };
-    let compacted = condensed.map_or(0, |condensed| condensed.upto);
     let counter = HeuristicTokenCounter::default();
     let mut lines = vec![format!("{} messages:", conversation.messages().len())];
     for (at, message) in conversation.messages().iter().enumerate() {
         let (role, items) = describe(message);
         let tokens = u64::try_from(counter.count(message)).unwrap_or(u64::MAX);
-        let mark = if at < compacted { "  (compacted)" } else { "" };
         lines.push(format!(
-            "{:>4}  {role:<9}  ~{:<5} {}{mark}",
+            "{:>4}  {role:<9}  ~{:<5} {}",
             at + 1,
             tokens_label(tokens),
             items.join(", ")

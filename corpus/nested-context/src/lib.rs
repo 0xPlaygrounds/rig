@@ -36,7 +36,7 @@ impl Plugin for NestedContextPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .register_required_components::<Agent, NestedLoaded>()
-            .add_observer(forget_on_condense)
+            .add_systems(Update, forget_compacted.after(AgentLoop))
             .configure_sets(AgentPass, NestedContextSystems.in_set(Stage::Review))
             .add_systems(AgentPass, add_rules.in_set(NestedContextSystems))
             .add_systems(Update, list_loaded);
@@ -162,15 +162,35 @@ fn file_name(key: &str) -> &str {
         .unwrap_or(key)
 }
 
-/// A condensed conversation drops the results it summarized: the agent is
-/// given each file again on its next access. A restore inserts the
-/// summary before the saved components, so what was given then comes back.
-fn forget_on_condense(insert: On<Insert<Condensed>>, mut agents: Query<&mut NestedLoaded>) {
-    if let Ok(mut loaded) = agents.get_mut(insert.entity)
-        && !loaded.0.is_empty()
-    {
-        loaded.0.clear();
+/// A conversation compacted into a summary drops the results it
+/// summarized: the agent is given each file again on its next access.
+fn forget_compacted(
+    mut committed: MessageReader<Committed>,
+    mut agents: Query<(&Conversation, &mut NestedLoaded)>,
+) {
+    for change in committed.read() {
+        if let Committed::Splice {
+            agent,
+            removed,
+            changed,
+        } = change
+            && let Ok((conversation, mut loaded)) = agents.get_mut(*agent)
+            && compacted(conversation, removed, changed)
+            && !loaded.0.is_empty()
+        {
+            loaded.0.clear();
+        }
     }
+}
+
+/// Whether a splice that took out messages put a compaction's summary in
+/// one of the `changed` messages of `conversation`.
+fn compacted(conversation: &Conversation, removed: &[MessageId], changed: &[MessageId]) -> bool {
+    let summary = Origin::plugin("compaction");
+    let changed = changed.iter().filter_map(|id| conversation.index_of(*id));
+    let mut entries = changed.filter_map(|at| conversation.entry(at));
+    !removed.is_empty()
+        && entries.any(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
 }
 
 /// Keeps the `/context` line current: the nested files each agent holds.

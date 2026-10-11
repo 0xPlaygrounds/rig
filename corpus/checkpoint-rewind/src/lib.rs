@@ -35,10 +35,8 @@ pub struct Checkpoint {
     pub reference: String,
     /// The files, as a git tree.
     pub tree: String,
-    /// The position of the user's message in the conversation.
-    pub message: usize,
-    /// The log record of the message, which a restore does not move.
-    pub seq: Option<u64>,
+    /// The user's message, by id, which splices and a restore keep.
+    pub message: MessageId,
     /// The message's text.
     pub text: String,
     /// The files the user changed since the turn before ended.
@@ -93,8 +91,7 @@ struct Snapshotted;
 struct Snapshot {
     agent: Entity,
     turn: u64,
-    message: usize,
-    seq: Option<u64>,
+    message: MessageId,
     text: String,
 }
 
@@ -175,22 +172,21 @@ fn snapshot(
         };
         commands.entity(turn_entity).insert(Snapshotted);
         let message = turn.first_message;
-        let Some(text) = user_text(conversation, message) else {
+        let Some(text) = user_text(conversation, conversation.start_of(message)) else {
             continue;
         };
-        let seq = conversation.seq(message);
         // A retried or restored turn answers a message that has one.
-        if checkpoints.list.last().is_some_and(|last| match seq {
-            Some(_) => last.seq == seq,
-            None => last.message == message,
-        }) {
+        if checkpoints
+            .list
+            .last()
+            .is_some_and(|last| last.message == message)
+        {
             continue;
         }
         let job = Snapshot {
             agent,
             turn: turn.index,
             message,
-            seq,
             text,
         };
         commands.spawn((job, Waiting, HoldOf(call)));
@@ -246,7 +242,6 @@ fn taken(
                     reference: snap.reference.clone(),
                     tree: snap.tree.clone(),
                     message: job.message,
-                    seq: job.seq,
                     text: job.text.clone(),
                     user_edits: snap.user_edits.clone(),
                 });
@@ -414,13 +409,7 @@ impl Rewinder<'_, '_> {
         let Some(target) = checkpoints.list.get(at).cloned() else {
             return;
         };
-        let message = match target.seq {
-            Some(seq) => {
-                (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(seq))
-            }
-            None => Some(target.message),
-        };
-        let Some(message) = message.filter(|&at| at < conversation.messages().len()) else {
+        let Some(message) = conversation.index_of(target.message) else {
             self.refuse(agent, "That message is no longer in the conversation.");
             return;
         };
@@ -456,7 +445,7 @@ impl Rewinder<'_, '_> {
         }
         if asked.chat {
             let before = joined(&conversation, message);
-            self.commit.truncate(agent, &mut conversation, message);
+            self.commit.splice(agent, &mut conversation, message.., []);
             // What the user's message was joined to, such as a stopped
             // turn's tool results, stays, stopped as it was.
             for (item, origin) in before.items {

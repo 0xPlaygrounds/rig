@@ -102,12 +102,7 @@ struct EditableBrief(bool);
 /// the agent's own. Refused while a turn runs.
 fn handoff(
     In(args): In<CommandArgs>,
-    agents: Query<(
-        &Conversation,
-        Option<&Condensed>,
-        Option<&Connection>,
-        Has<ActiveTurn>,
-    )>,
+    agents: Query<(&Conversation, Option<&Connection>, Has<ActiveTurn>)>,
     settings: Res<HandoffSettings>,
     models: Res<Models>,
     mut commands: Commands,
@@ -123,7 +118,7 @@ fn handoff(
         notices.write(Notice::error(agent, "/handoff needs the next goal."));
         return;
     }
-    let Ok((conversation, condensed, own, busy)) = agents.get(agent) else {
+    let Ok((conversation, own, busy)) = agents.get(agent) else {
         return;
     };
     if busy {
@@ -142,10 +137,7 @@ fn handoff(
         notices.write(Notice::no_model(agent));
         return;
     };
-    let messages = match condensed {
-        Some(condensed) => condensed.request(conversation.messages()),
-        None => conversation.messages().to_vec(),
-    };
+    let messages = conversation.messages().to_vec();
     if messages.is_empty() {
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;

@@ -318,7 +318,7 @@ fn commit_turn(
         || {
             clip(&format!(
                 "rig: {}",
-                request(conversation, turn.first_message)
+                request(conversation, conversation.start_of(turn.first_message))
             ))
         },
         |subject| subject.0.clone(),

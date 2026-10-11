@@ -110,7 +110,7 @@ fn keep_built(
 fn keep_sent(
     started: On<Add<Started>>,
     calls: Query<(&ModelRequest, Option<&Built>, &ForAgent), With<TurnCall>>,
-    agents: Query<(&SystemPrompt, Option<&Connection>, Option<&Condensed>)>,
+    agents: Query<(&SystemPrompt, Option<&Connection>, &Conversation)>,
     sections: Query<(
         &PromptSection,
         Option<&SectionOf>,
@@ -124,7 +124,7 @@ fn keep_sent(
     let Ok((call, built, &ForAgent(agent))) = calls.get(started.entity) else {
         return;
     };
-    let Ok((prompt, own, condensed)) = agents.get(agent) else {
+    let Ok((prompt, own, conversation)) = agents.get(agent) else {
         return;
     };
     let connection = call.connection.as_ref().or(own);
@@ -151,9 +151,27 @@ fn keep_sent(
         role: system_prompt(&prompt.0, "", []),
         rules: tool_rules(rules),
         sections,
-        summary: condensed.map(|condensed| condensed.summary.clone()),
+        summary: summary_text(conversation),
     };
     commands.entity(agent).try_insert(last);
+}
+
+/// The text of the compaction summary that stands first in `conversation`,
+/// in place of the messages it replaced, if any.
+fn summary_text(conversation: &Conversation) -> Option<String> {
+    let summary = Origin::plugin("compaction");
+    let Some(Message::User { content }) = conversation.messages().first() else {
+        return None;
+    };
+    content
+        .iter()
+        .enumerate()
+        .find_map(|(item, content)| match content {
+            UserContent::Text(text) if conversation.origin(0, item) == Some(&summary) => {
+                Some(text.text.clone())
+            }
+            _ => None,
+        })
 }
 
 /// `/context --last` is `/why`.

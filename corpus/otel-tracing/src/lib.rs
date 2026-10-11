@@ -343,10 +343,10 @@ fn end_turn(
         return;
     };
     let span = context.span();
-    let asked = conversations
-        .get(agent)
-        .ok()
-        .and_then(|conversation| conversation.messages().get(turn.first_message));
+    let asked = conversations.get(agent).ok().and_then(|conversation| {
+        let asked = conversation.start_of(turn.first_message);
+        conversation.messages().get(asked)
+    });
     if let Some(message::Message::User { content }) = asked {
         let len: usize = content
             .iter()

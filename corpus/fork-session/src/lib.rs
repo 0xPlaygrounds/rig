@@ -70,7 +70,7 @@ struct Pending(Option<Asked>);
 
 struct Asked {
     agent: Entity,
-    before: Option<(AgentId, u64)>,
+    before: Option<(AgentId, MessageId)>,
     /// The name `/fork` gave it.
     name: Option<String>,
     /// The command that puts the files back, for `/branch --files`.
@@ -204,11 +204,10 @@ fn branch(
             else {
                 return;
             };
-            let Some(seq) = conversation.seq(*at) else {
-                notices.write(Notice::error(agent, "That message is not saved yet."));
+            let Some(message) = conversation.id(*at) else {
                 return;
             };
-            let files = match files.then(|| restore_files(&snapshots, agent, seq)) {
+            let files = match files.then(|| restore_files(&snapshots, agent, message)) {
                 Some(Err(why)) => {
                     notices.write(Notice::error(agent, why));
                     return;
@@ -216,7 +215,7 @@ fn branch(
                 Some(Ok(line)) => Some(line),
                 None => None,
             };
-            let before = Some((id.clone(), seq));
+            let before = Some((id.clone(), message));
             pending.0 = Some(Asked {
                 agent,
                 before: before.clone(),
@@ -235,19 +234,23 @@ type Snapshots<'w, 's> = Query<'w, 's, &'static corpus_checkpoint_rewind::Checkp
 type Snapshots<'w, 's> = ();
 
 /// The command of spec 31's plugin that puts the files back as they were
-/// before the message logged as `seq`.
+/// before `message`.
 #[cfg(feature = "checkpoints")]
-fn restore_files(snapshots: &Snapshots<'_, '_>, agent: Entity, seq: u64) -> Result<String, String> {
+fn restore_files(
+    snapshots: &Snapshots<'_, '_>,
+    agent: Entity,
+    message: MessageId,
+) -> Result<String, String> {
     snapshots
         .get(agent)
         .ok()
-        .and_then(|kept| kept.list.iter().find(|kept| kept.seq == Some(seq)))
+        .and_then(|kept| kept.list.iter().find(|kept| kept.message == message))
         .map(|checkpoint| format!("rewind --files-only {}", checkpoint.turn))
         .ok_or_else(|| "No checkpoint of the files before that message.".to_owned())
 }
 
 #[cfg(not(feature = "checkpoints"))]
-fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: u64) -> Result<String, String> {
+fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<String, String> {
     Err("/branch --files needs spec 31's checkpoints.".to_owned())
 }
 

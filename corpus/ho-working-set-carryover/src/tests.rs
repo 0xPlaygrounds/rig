@@ -81,7 +81,15 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
         focus,
     });
     until_ended(&mut app, &wakes, 2);
-    assert!(app.world().get::<Condensed>(agent).is_some(), "compacted");
+    let summary = Origin::plugin("compaction");
+    let compacted = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| {
+            let entry = conversation.entry(0)?;
+            Some(entry.origins.iter().any(|(_, origin)| *origin == summary))
+        });
+    assert_eq!(compacted, Some(true), "compacted");
     let next = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
     app.world_mut().trigger(next);
     until_ended(&mut app, &wakes, 3);

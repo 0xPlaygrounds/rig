@@ -270,7 +270,9 @@ fn route(
         let Ok((Routing(true), conversation, last, label)) = agents.get(agent) else {
             continue;
         };
-        let first = turns.get(turn).map_or(0, |turn| turn.first_message);
+        let first = turns
+            .get(turn)
+            .map_or(0, |turn| conversation.start_of(turn.first_message));
         let this_turn = conversation.messages().get(first..).unwrap_or_default();
         let read_only = |name: &str| {
             tools.iter().any(|(def, footprint)| {

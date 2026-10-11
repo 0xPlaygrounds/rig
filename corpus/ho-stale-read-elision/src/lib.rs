@@ -235,7 +235,8 @@ fn elide(
         let (Ok(turn), Ok(conversation)) = (turns.get(turn), agents.get(agent)) else {
             continue;
         };
-        let before = conversation.messages().get(..turn.first_message);
+        let first = conversation.start_of(turn.first_message);
+        let before = conversation.messages().get(..first);
         let eligible = answered(before.unwrap_or_default());
         let elided = elide_stale(&mut call.request.chat_history, &eligible);
         commands.entity(agent).try_insert(elided);

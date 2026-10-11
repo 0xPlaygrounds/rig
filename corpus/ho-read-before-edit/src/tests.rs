@@ -6,6 +6,8 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 use serde_json::json;
 
+use bevy_ecs::system::RunSystemOnce;
+
 use super::*;
 
 /// An app on `store` with the file tools and the plugin, its agent talking
@@ -116,10 +118,17 @@ fn edits_need_a_read_of_the_file_as_it_is() {
     assert!(result.contains("1 replacement"), "{result}");
     assert_eq!(last, "four");
 
-    // A condensed conversation forgets what its agent read.
-    let world = second.world_mut();
+    // A conversation compacted into a summary forgets what its agent read.
     let remembered = |world: &World| world.get::<ReadFiles>(agent).map(|read| read.0.len());
-    assert_eq!(remembered(world), Some(2), "a.txt and new.txt");
-    world.entity_mut(agent).insert(Condensed::default());
-    assert_eq!(remembered(world), Some(0));
+    assert_eq!(remembered(second.world()), Some(2), "a.txt and new.txt");
+    let compact = move |mut agents: Query<&mut Conversation>, mut commit: Commit| {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            let summary = message::Message::user("The files were read.");
+            let summary = Entry::from(summary, Origin::plugin("compaction"));
+            commit.splice(agent, &mut conversation, ..2, [summary]);
+        }
+    };
+    assert!(second.world_mut().run_system_once(compact).is_ok());
+    second.update();
+    assert_eq!(remembered(second.world()), Some(0));
 }

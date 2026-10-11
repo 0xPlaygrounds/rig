@@ -52,8 +52,8 @@ impl Plugin for RetryWithModelPlugin {
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Alternatives {
-    /// The index of the user message the last turn answered.
-    pub turn: Option<usize>,
+    /// The user message the last turn answered.
+    pub turn: Option<MessageId>,
     /// The model of the answer the conversation holds.
     pub model: String,
     /// What that answer's tool calls changed.
@@ -160,7 +160,9 @@ fn note_turn(
     let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let asked = conversation.messages().get(turn.first_message);
+    let asked = conversation
+        .messages()
+        .get(conversation.start_of(turn.first_message));
     if !matches!(outcome, TurnOutcome::Answered(_)) || !matches!(asked, Some(Message::User { .. }))
     {
         return;
@@ -225,7 +227,7 @@ fn complete(
 /// The index of the last turn's user message, when the conversation still
 /// holds it.
 fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
-    let turn = alternatives.turn?;
+    let turn = conversation.index_of(alternatives.turn?)?;
     matches!(
         conversation.messages().get(turn),
         Some(Message::User { .. })
@@ -306,7 +308,7 @@ fn retry_with(
     if !current.messages.is_empty() {
         alternatives.kept.push(current);
     }
-    commit.truncate(agent, &mut conversation, turn + 1);
+    commit.splice(agent, &mut conversation, turn + 1.., []);
     notices.write(Notice::info(
         agent,
         format!("Retrying the last turn on {}.", connection.spec.reference()),
@@ -380,7 +382,7 @@ fn pick(
         return;
     };
     let chosen = std::mem::replace(slot, current);
-    commit.truncate(agent, &mut conversation, turn + 1);
+    commit.splice(agent, &mut conversation, turn + 1.., []);
     for message in chosen.messages {
         commit.message(agent, &mut conversation, message);
     }

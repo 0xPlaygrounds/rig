@@ -7,7 +7,7 @@
 //! Gate system judges each `edit`, and each `write` over an existing file,
 //! when it is about to run: a file the agent never read, or one whose
 //! content changed on disk since, is refused, and the model reads why. A
-//! conversation condensed ([`Condensed`]) forgets what its agent read.
+//! conversation compacted into a summary forgets what its agent read.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,7 @@ impl Plugin for ReadBeforeEditPlugin {
             .configure_sets(AgentPass, ReadBeforeEditSystems.in_set(Stage::Gate))
             .add_systems(AgentPass, refuse_unread.in_set(ReadBeforeEditSystems))
             .add_observer(remember)
-            .add_observer(forget);
+            .add_systems(Update, forget.after(AgentLoop));
     }
 }
 
@@ -139,12 +139,34 @@ fn remember(
     }
 }
 
-/// Forgets what an agent read once its conversation is condensed: its
-/// model no longer holds the files' content.
-fn forget(condensed: On<Insert<Condensed>>, mut agents: Query<&mut ReadFiles>) {
-    if let Ok(mut read) = agents.get_mut(condensed.entity) {
-        read.0.clear();
+/// Forgets what an agent read once its conversation is compacted into a
+/// summary: its model no longer holds the files' content.
+fn forget(
+    mut committed: MessageReader<Committed>,
+    mut agents: Query<(&Conversation, &mut ReadFiles)>,
+) {
+    for change in committed.read() {
+        if let Committed::Splice {
+            agent,
+            removed,
+            changed,
+        } = change
+            && let Ok((conversation, mut read)) = agents.get_mut(*agent)
+            && compacted(conversation, removed, changed)
+        {
+            read.0.clear();
+        }
     }
+}
+
+/// Whether a splice that took out messages put a compaction's summary in
+/// one of the `changed` messages of `conversation`.
+fn compacted(conversation: &Conversation, removed: &[MessageId], changed: &[MessageId]) -> bool {
+    let summary = Origin::plugin("compaction");
+    let changed = changed.iter().filter_map(|id| conversation.index_of(*id));
+    let mut entries = changed.filter_map(|at| conversation.entry(at));
+    !removed.is_empty()
+        && entries.any(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
 }
 
 #[cfg(test)]
