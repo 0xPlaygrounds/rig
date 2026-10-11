@@ -362,3 +362,43 @@ fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
         "the request alone, without the rules: {sent:?}"
     );
 }
+
+#[test]
+fn the_request_is_measured_after_the_default_prompt_went_in() {
+    let store = MemoryStore::default();
+    let (mut app, wakes) = start(&store);
+    // A long default prompt, as rig-basics puts it in, after the plugin's
+    // systems were added.
+    let prompt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        let long = "word ".repeat(8_000);
+        for mut call in &mut calls {
+            match call.system_prompt_mut() {
+                Some(prompt) => prompt.insert_str(0, &long),
+                None => call.request.chat_history.insert(0, Message::system(&long)),
+            }
+        }
+    };
+    app.configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
+        .add_systems(AgentPass, prompt.in_set(ProjectContextSystems));
+    let mut messages = vec![Message::user("What does the crate do?")];
+    let long = "word ".repeat(2_000);
+    for turn in 0..6 {
+        messages.push(Message::assistant(format!("{turn}: {long}")));
+        messages.push(Message::user(format!("question {turn}")));
+    }
+    messages.push(Message::assistant("The last answer."));
+    let model = MockCompletionModel::from_stream_turns([reply("## Goal\nAnswer."), reply("done")]);
+    // The conversation alone fits; with the prompt it nears the window.
+    let agent = agent(&mut app, &model, 40_000, messages);
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    let sent = sent(&model);
+    assert!(
+        matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
+        "a summary, then the request: {sent:?}"
+    );
+}

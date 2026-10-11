@@ -239,7 +239,7 @@ sets:
 |---|---|---|---|---|
 | `AttachSystems` | `rig_coding_tools` | Prepare | reads the files a user's message names (`@path`) into its `attachments` | `.after` it to see or change the attached text |
 | `ProjectContextSystems` | `rig_basics` | Prepare | puts the default system prompt at the head of a request whose agent has none of its own | `.after` it to see the whole prompt |
-| `CompactionSystems::Prepare` | `rig_compaction` | Prepare | measures each turn's request against the window of the model it goes to; clears old tool outputs or holds the call for a summary | `.before` it to route a call or change its request, so what it measures is what is sent |
+| `CompactionSystems::Prepare` | `rig_compaction` | Prepare | measures each turn's request against the window of the model it goes to, after the two sets above; clears old tool outputs or holds the call for a summary | `.before` it to route a call or change its request, so what it measures is what is sent |
 | `CompactionSystems::Recover` | `rig_compaction` | Review | takes over a turn's call the model refused as too long | `.before` or `.after` it to take a failed call over first or last |
 
 ```rust,no_run

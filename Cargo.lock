@@ -15028,7 +15028,9 @@ version = "0.44.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "rig-basics",
  "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
  "rig-ecs",
  "rig-harness",

@@ -18,6 +18,8 @@ use std::slice;
 use std::sync::Arc;
 
 use bevy_ecs::query::QueryData;
+use rig_basics::ProjectContextSystems;
+use rig_coding_tools::AttachSystems;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
@@ -55,7 +57,13 @@ impl Plugin for CompactionPlugin {
         .configure_sets(
             AgentPass,
             (
-                CompactionSystems::Prepare.in_set(Stage::Prepare),
+                // It measures the request as it goes out: after the
+                // files a message names were attached and the default
+                // prompt went in.
+                CompactionSystems::Prepare
+                    .in_set(Stage::Prepare)
+                    .after(AttachSystems)
+                    .after(ProjectContextSystems),
                 CompactionSystems::Recover.in_set(Stage::Review),
             ),
         )
@@ -75,7 +83,8 @@ impl Plugin for CompactionPlugin {
 pub enum CompactionSystems {
     /// In [`Stage::Prepare`]: measures each turn's request against the
     /// window of the model it goes to, and clears old tool outputs from it
-    /// or holds it for a summary. A system that changes the request or its
+    /// or holds it for a summary, after [`AttachSystems`] and
+    /// [`ProjectContextSystems`]. A system that changes the request or its
     /// model runs before it.
     Prepare,
     /// In [`Stage::Review`]: takes over a turn's call the model refused as
