@@ -1,11 +1,15 @@
 use std::fs::File;
 
+use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{Home, SessionId};
 use rig_cassette::journal::{JournalStore, JsonlDirStore};
-use rig_ecs::agent::Notice;
-use rig_ecs::journal::SessionStore;
+use rig_core::completion::Message;
+use rig_ecs::AgentPlugin;
+use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::journal::{JournalPlugin, SessionStore};
+use rig_harness_test_support::{commit_message, first_agent};
 
 use super::{
     DeleteSession, ForkSession, ForkedFrom, SessionDeleted, SessionForked, SessionPaths,
@@ -72,6 +76,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     let parent = ForkedFrom {
         session: id.clone(),
         before: None,
+        text: None,
     };
     assert_eq!(ForkedFrom::of(&copy), Some(parent));
     assert_eq!(ForkedFrom::of(&session), None);
@@ -90,6 +95,58 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     assert_eq!(seen.deleted, [to]);
     assert!(!copy.path().exists());
     assert_eq!(seen.notices.len(), 2, "{:?}", seen.notices);
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A branch before a message keeps what the user wrote in it with its
+/// parent, so a view of the family reads no other log.
+#[test]
+fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
+    let root = std::env::temp_dir().join(format!("rig-fork-text-{}", std::process::id()));
+    let home = Home::at(&root);
+    let id: SessionId = "1700000000-2"
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.init_resource::<Seen>()
+        .insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .insert_resource(SessionStore::new(JsonlDirStore::new(session.path())))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins(SessionPlugin)
+        .add_systems(Last, watch.after(super::fork_sessions));
+    app.update();
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "the app has an agent");
+    let Some(agent) = agent else { return };
+    for message in [
+        Message::user("one"),
+        Message::assistant("ok"),
+        Message::user("  two  "),
+    ] {
+        let added = commit_message(app.world_mut(), agent, message);
+        assert!(added.is_ok(), "{added:?}");
+    }
+    app.update();
+    let world = app.world();
+    let agent_id = world.get::<AgentId>(agent).cloned();
+    let seq = world
+        .get::<Conversation>(agent)
+        .and_then(|conversation| conversation.seq(2));
+    let before = agent_id.zip(seq);
+    assert!(before.is_some(), "the message was logged");
+    app.world_mut().trigger(ForkSession {
+        before: before.clone(),
+    });
+    app.update();
+    let forked = app.world().resource::<Seen>().forked.first().cloned();
+    let parent = forked.and_then(|forked| ForkedFrom::of(&home.session(&forked.to)));
+    let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
+    assert_eq!(text, Some("two"), "{parent:?}");
+    assert_eq!(parent.and_then(|parent| parent.before), before);
+    drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();
 }
 

@@ -1564,7 +1564,9 @@ what to run; any exit's reason is the `ExitReason` resource from then on,
 for code on the way out in Bevy's `OnAppExitSystems` (a background job
 kept across a reload, stopped on a quit). `ForkSession { before }` copies
 this session into a new one (`SessionForked` names it; the copy names
-its parent, `ForkedFrom::of(&dir)`), and
+its parent and where it was cut, with the text the user wrote in the
+message it stopped before, `ForkedFrom::of(&dir)`, so a view of a
+session's family reads no other session's log), and
 `DeleteSession(id)` removes another (`SessionDeleted`), for plugins that
 keep files of their own per session.
 

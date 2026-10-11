@@ -24,10 +24,14 @@ use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
 use rig_cassette::journal::JsonlDirStore;
+use rig_core::completion::Message;
+use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Notice};
+use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::{SessionStore, fork_session};
 use rig_tools::Spill;
+use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
 
 use super::cli::Cli;
@@ -146,14 +150,19 @@ pub struct SessionForked {
 }
 
 /// The session a session was forked from, and where the copy stopped,
-/// as [`ForkSession`] asked: kept in the forked session's
-/// [`SessionDir::parent`].
+/// as [`ForkSession`] asked, with the text of the message it stopped
+/// before: kept in the forked session's [`SessionDir::parent`], so a view
+/// of a session's family reads no other session's log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForkedFrom {
     /// The session it was copied from.
     pub session: SessionId,
     /// Where the copy stopped: an agent's id and a message's `seq`.
     pub before: Option<(AgentId, u64)>,
+    /// What the user wrote in the message the copy stopped before, its
+    /// text without attached files; `None` without `before`, or for a
+    /// message with no text of the user's.
+    pub text: Option<String>,
 }
 
 /// How [`ForkedFrom`] is written.
@@ -161,6 +170,8 @@ pub struct ForkedFrom {
 struct Parent {
     session: String,
     before: Option<(AgentId, u64)>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    text: Option<String>,
 }
 
 impl ForkedFrom {
@@ -170,6 +181,7 @@ impl ForkedFrom {
         Some(Self {
             session: parent.session.parse().ok()?,
             before: parent.before,
+            text: parent.text,
         })
     }
 
@@ -178,6 +190,7 @@ impl ForkedFrom {
         let parent = Parent {
             session: self.session.to_string(),
             before: self.before.clone(),
+            text: self.text.clone(),
         };
         let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
         fs::write(session.parent(), text).map_err(|failure| failure.to_string())
@@ -202,6 +215,7 @@ fn fork_sessions(
     paths: Res<SessionPaths>,
     store: Option<Res<SessionStore>>,
     home: Option<Res<RigHome>>,
+    agents: Query<(&AgentId, &Conversation)>,
     mut forked: MessageWriter<SessionForked>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -209,7 +223,8 @@ fn fork_sessions(
         let home = home
             .as_ref()
             .map_or_else(Home::from_env, |home| home.0.clone());
-        match fork_into(&home, &paths, store.as_deref(), before.as_ref()) {
+        let text = before.as_ref().and_then(|before| typed_at(&agents, before));
+        match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
             Ok((from, to)) => {
                 forked.write(SessionForked { from, to, before });
             }
@@ -223,12 +238,43 @@ fn fork_sessions(
     }
 }
 
-/// Copies the session at `paths` into a new session of `home`.
+/// What the user wrote in the message of the agent and `seq` named, its
+/// text items of the user's own that are no attached file.
+fn typed_at(
+    agents: &Query<(&AgentId, &Conversation)>,
+    (agent, seq): &(AgentId, u64),
+) -> Option<String> {
+    let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
+    let at = (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(*seq))?;
+    let Some(Message::User { content }) = conversation.messages().get(at) else {
+        return None;
+    };
+    let typed: Vec<&str> = content
+        .iter()
+        .enumerate()
+        .filter_map(|(item, content)| match content {
+            UserContent::Text(text)
+                if conversation
+                    .origin(at, item)
+                    .is_none_or(|origin| origin.kind == OriginKind::User)
+                    && attached_file(&text.text).is_none() =>
+            {
+                Some(text.text.trim())
+            }
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+        .collect();
+    (!typed.is_empty()).then(|| typed.join("\n\n"))
+}
+
+/// Copies the session at `paths` into a new session of `home`, as of
+/// `before`, whose message's `text` the copy keeps with its parent.
 fn fork_into(
     home: &Home,
     paths: &SessionPaths,
     store: Option<&SessionStore>,
-    before: Option<&(AgentId, u64)>,
+    (before, text): (Option<&(AgentId, u64)>, Option<String>),
 ) -> Result<(SessionId, SessionId), String> {
     let from = paths.id().ok_or("this session has no id")?;
     let store = store.ok_or("this session is not stored")?;
@@ -245,6 +291,7 @@ fn fork_into(
     let parent = ForkedFrom {
         session: from.clone(),
         before: before.cloned(),
+        text,
     };
     let before = before.map(|(agent, seq)| (agent, *seq));
     let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
