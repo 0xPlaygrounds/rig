@@ -12,6 +12,10 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+# The default prompt goes in, and compaction measures the request, around
+# the plugin's edit of the tools offered.
+rig-basics = { path = "../../plugins/rig-basics" }
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The supervisor is a helper agent spawned through SpawnSubagent.
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
@@ -20,6 +24,8 @@ schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }

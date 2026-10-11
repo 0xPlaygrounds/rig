@@ -14,6 +14,8 @@
 //! and so is its conversation, so it remembers its earlier checks.
 //! `/supervise off` retires it.
 
+use rig_basics::ProjectContextSystems;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
@@ -54,6 +56,17 @@ const PROMPT: &str = "You supervise another coding agent, the worker, on behalf 
     harmful or far outside the goal.\n\
     - The worker keeps working while you think: judge the trend, not one step.";
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SupervisorSystems {
+    /// In [`Stage::Prepare`], after [`ProjectContextSystems`] and before
+    /// [`CompactionSystems::Prepare`]: offers `verdict` to supervisors only.
+    Prepare,
+    /// In [`Stage::Review`], after [`CompactionSystems::Recover`]: marks a
+    /// hired supervisor, and sends a check every so many tool calls.
+    Review,
+}
+
 /// Adds `/supervise`, the `verdict` tool and the checks.
 #[derive(Default)]
 pub struct SupervisorPlugin;
@@ -73,11 +86,23 @@ impl Plugin for SupervisorPlugin {
             .add_command("supervise", HELP, supervise)
             .add_observer(arm_clock)
             .add_observer(check_by_time)
+            .configure_sets(
+                AgentPass,
+                (
+                    SupervisorSystems::Prepare
+                        .in_set(Stage::Prepare)
+                        .after(ProjectContextSystems)
+                        .before(CompactionSystems::Prepare),
+                    SupervisorSystems::Review
+                        .in_set(Stage::Review)
+                        .after(CompactionSystems::Recover),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    verdict_for_supervisors.in_set(Stage::Prepare),
-                    (hired, count_calls).in_set(Stage::Review),
+                    verdict_for_supervisors.in_set(SupervisorSystems::Prepare),
+                    (hired, count_calls).in_set(SupervisorSystems::Review),
                 ),
             );
     }
@@ -95,8 +120,8 @@ pub struct Supervisor {
     pub every_calls: u32,
     /// Minutes between checks; 0 checks by calls only.
     pub every_minutes: u32,
-    /// The messages of the worker's conversation it has seen.
-    pub seen: usize,
+    /// The last message of the worker's conversation it has seen.
+    pub seen: Option<MessageId>,
     /// The worker's tool calls since the last check.
     pub calls: u32,
     /// The checks it was sent.
@@ -111,7 +136,7 @@ struct Hire(Supervisor);
 #[serde(deny_unknown_fields)]
 struct VerdictArgs {
     /// `continue`, `steer` or `stop`.
-    decision: Decision,
+    decision: Ruling,
     /// For `steer`, what the worker should do; for `stop`, why it stops.
     #[serde(default)]
     message: Option<String>,
@@ -119,7 +144,7 @@ struct VerdictArgs {
 
 #[derive(Deserialize, JsonSchema, Clone, Copy)]
 #[serde(rename_all = "snake_case")]
-enum Decision {
+enum Ruling {
     Continue,
     Steer,
     Stop,
@@ -201,7 +226,7 @@ fn supervise(
         goal: goal.clone(),
         every_calls,
         every_minutes,
-        seen: conversation.messages().len(),
+        seen: last_message(conversation),
         calls: 0,
         checks: 0,
     };
@@ -244,7 +269,10 @@ fn supervise(
 /// Makes each helper spawned for a `/supervise` its worker's supervisor,
 /// or tells the user why none was.
 fn hired(
-    requests: Query<(&Hire, &Outcome, Option<&SpawnedAgent>, &ForAgent), Added<Outcome>>,
+    requests: Query<
+        (&Hire, &Outcome, Option<&SpawnedAgent>, &ForAgent),
+        (Added<Outcome>, PluginEffects),
+    >,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -326,11 +354,25 @@ fn check_by_time(
         return;
     };
     if let Ok(conversation) = workers.get(worker)
-        && conversation.messages().len() > settings.seen
+        && unseen(conversation, settings.seen) < conversation.messages().len()
     {
         send_check(&mut commands, supervisor, &mut settings, conversation);
     }
     commands.entity(supervisor).insert(minutes(&settings));
+}
+
+/// The id of the last message of `conversation`.
+fn last_message(conversation: &Conversation) -> Option<MessageId> {
+    let last = conversation.messages().len().checked_sub(1)?;
+    conversation.id(last)
+}
+
+/// Where the messages after `seen` begin in `conversation`: at the start
+/// when an edit took `seen` out, as a compaction's summary then stands for
+/// what came before.
+fn unseen(conversation: &Conversation, seen: Option<MessageId>) -> usize {
+    seen.and_then(|seen| conversation.index_of(seen))
+        .map_or(0, |at| at + 1)
 }
 
 /// Sends `supervisor` the goal and what the worker did since the last
@@ -342,19 +384,23 @@ fn send_check(
     conversation: &Conversation,
 ) {
     let messages = conversation.messages();
-    let text = digest(&settings.goal, messages, settings.seen);
+    let text = digest(
+        &settings.goal,
+        messages,
+        unseen(conversation, settings.seen),
+    );
     let check = Deliver::new(supervisor, text, DeliveryMode::Queue);
     commands.trigger(check.with_origin(Origin::plugin(NAME)));
     settings.checks += 1;
-    settings.seen = messages.len();
+    settings.seen = last_message(conversation);
     settings.calls = 0;
 }
 
 /// The text of a check: the goal, the worker's activity in `messages` from
-/// `seen` on, and its last text.
-fn digest(goal: &str, messages: &[message::Message], seen: usize) -> String {
+/// `from` on, and its last text.
+fn digest(goal: &str, messages: &[message::Message], from: usize) -> String {
     let mut lines = Vec::new();
-    for message in messages.get(seen.min(messages.len())..).unwrap_or_default() {
+    for message in messages.get(from.min(messages.len())..).unwrap_or_default() {
         match message {
             message::Message::User { content } => lines.extend(content.iter().filter_map(asked)),
             message::Message::Assistant(reply) => {
@@ -435,7 +481,7 @@ fn clip(text: &str, max: usize) -> String {
 /// `verdict` is offered to supervisors only: every other agent may use
 /// every tool.
 fn verdict_for_supervisors(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     supervisors: Query<(), With<Supervisor>>,
 ) {
     for (mut call, &ForAgent(agent)) in &mut calls {
@@ -456,16 +502,18 @@ fn on_verdict(
     called: On<ToolCalled<VerdictArgs>>,
     supervisors: Query<&SpawnedBy, With<Supervisor>>,
     workers: Query<&ActiveTurn>,
+    mut decisions: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let call = called.call;
     let mut answer = |said: Result<&str, &str>| {
         let outcome = match said {
             Ok(said) => Outcome::from(ToolResult::success(said.to_owned().into())),
             Err(why) => Outcome::refused(why),
         };
-        commands.entity(call).insert_if_new(outcome);
+        if let Ok(mut decision) = decisions.get_mut(called.call) {
+            decision.decide(outcome);
+        }
     };
     let Ok(&SpawnedBy(worker)) = supervisors.get(called.agent) else {
         answer(Err("Only a supervisor gives verdicts."));
@@ -477,13 +525,13 @@ fn on_verdict(
         called.args.decision,
         message.filter(|text| !text.is_empty()),
     ) {
-        (Decision::Continue, _) => answer(Ok("Noted: the worker carries on.")),
-        (Decision::Steer | Decision::Stop, None) => {
+        (Ruling::Continue, _) => answer(Ok("Noted: the worker carries on.")),
+        (Ruling::Steer | Ruling::Stop, None) => {
             answer(Err(
                 "`steer` and `stop` need a `message`; nothing was done.",
             ));
         }
-        (Decision::Steer, Some(text)) => {
+        (Ruling::Steer, Some(text)) => {
             // A worker whose turn ended reads it with its next turn's
             // request; it starts none.
             let mode = match turn {
@@ -494,7 +542,7 @@ fn on_verdict(
             answer(Ok("Sent; the worker reads it with its next model call."));
             commands.trigger(Deliver::new(worker, text, mode).with_origin(origin));
         }
-        (Decision::Stop, Some(reason)) => {
+        (Ruling::Stop, Some(reason)) => {
             answer(Ok("The worker's turn is stopped and the user told why."));
             // Its calls that have not started never start, the others are
             // told why they stopped, and the turn ends.
