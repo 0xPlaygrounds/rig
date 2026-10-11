@@ -18,13 +18,13 @@ use super::editor::Layout as InputLayout;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::renderers::{ToolRenderer, excerpt};
+use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
 use rig_ecs::inbox::Inbox;
-use rig_harness::front::{AppStatus, Side, StatusItem, StatusItems, Tone};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;

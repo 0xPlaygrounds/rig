@@ -1,17 +1,15 @@
-//! The `reload` tool: the agent rebuilds and restarts its own harness, to
-//! apply its own plugin changes. Also the system prompt's section on what
-//! the agent is, made from its world: the build's plugins, commands and
-//! tools, and how the agent extends itself.
+//! The `reload` tool, with which the model rebuilds and restarts its own
+//! agent to apply its own plugin changes, and the system prompt's section
+//! on what the agent is, made from its world: the build's plugins,
+//! commands and tools, and how the agent extends itself.
 
 use std::path::Path;
 
-use rig_ecs::commands::SlashCommand;
-use rig_ecs::tools::ToolDef;
-use rig_harness::harness_protocol::Home;
+use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use rig_harness::prelude::*;
+use crate::ReloadStatus;
 
 /// The tool's name.
 pub const RELOAD_TOOL: &str = "reload";
@@ -26,24 +24,19 @@ const RELOAD_DESCRIPTION: &str = "Rebuild the agent with the plugins in plugins.
 /// Offers the model the `reload` tool when the launcher started the
 /// agent, since only then can it rebuild itself, and spawns the system
 /// prompt's section on what the agent is.
-#[derive(Default)]
-pub struct ReloadTool;
-
-impl Plugin for ReloadTool {
-    fn build(&self, app: &mut App) {
-        app.add_systems(Startup, describe);
-        if launcher::executable().is_some() {
-            app.add_open_tool(
-                RELOAD_TOOL,
-                RELOAD_DESCRIPTION,
-                ToolOptions {
-                    rules: &[],
-                    // Never run again after the restart it causes.
-                    footprint: Footprint::Independent,
-                },
-                on_reload_tool,
-            );
-        }
+pub(crate) fn add(app: &mut App) {
+    app.add_systems(Startup, describe);
+    if launcher::executable().is_some() {
+        app.add_open_tool(
+            RELOAD_TOOL,
+            RELOAD_DESCRIPTION,
+            ToolOptions {
+                rules: &[],
+                // Never run again after the restart it causes.
+                footprint: Footprint::Independent,
+            },
+            on_reload_tool,
+        );
     }
 }
 
@@ -136,6 +129,3 @@ fn describe(
         PromptSection::new(PromptSection::ORDER_PROJECT - 100, "rig_harness", text),
     ));
 }
-
-#[cfg(test)]
-mod tests;

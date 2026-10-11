@@ -9,15 +9,19 @@
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 //!
+//! It runs when someone sits at the terminal
+//! ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
+//! no `--print` and stdin a terminal.
+//!
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, [`Focused`]; and the [`TuiScreen`]'s size. These are
-//! there in every run, also one with another front such as `--print`,
-//! which never draws a frame. The status line shows the app's
-//! [`StatusItem`](rig_harness::front::StatusItem)s and those of the agent
-//! shown, and [`ratatui`] is re-exported so a plugin draws with the same
-//! version.
+//! the agent shown, [`Focused`], and showing another, [`Focus`]; a choice
+//! for the user, [`PickRequest`]; the status line's items
+//! ([`StatusItems`], [`AppStatus`]); and the [`TuiScreen`]'s size. These
+//! are there in every run, also one with another front such as `--print`,
+//! which never draws a frame. [`ratatui`] is re-exported so a plugin draws
+//! with the same version.
 
 mod clipboard;
 mod complete;
@@ -28,6 +32,7 @@ pub mod markdown;
 pub mod panel;
 mod render;
 mod renderers;
+mod status;
 mod terminal;
 mod transcript;
 mod view;
@@ -35,13 +40,15 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig_harness::front::{Front, RunMode, StatusSystems};
+use rig_harness::prelude::Invoked;
 
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
 pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
+pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
+pub use view::{Focus, PickItem, PickRequest};
 
 /// Owns the terminal and draws the focused agent.
 #[derive(Default)]
@@ -51,9 +58,11 @@ impl Plugin for TuiPlugin {
     fn build(&self, app: &mut App) {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
+        status::add(app);
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .add_message::<RequestRedraw>()
+            .add_message::<PickRequest>()
             .configure_sets(
                 PostUpdate,
                 (
@@ -65,17 +74,16 @@ impl Plugin for TuiPlugin {
                     .chain()
                     .after(StatusSystems),
             );
-        // A print run has stdout for its own output.
-        let world = app.world();
-        if world.contains_resource::<Front>()
-            || world
-                .get_resource::<RunMode>()
-                .is_some_and(RunMode::is_headless)
+        // Anything else, such as a print run, has stdout for its own
+        // output.
+        if !app
+            .world()
+            .get_resource::<Invoked>()
+            .is_some_and(Invoked::interactive)
         {
             return;
         }
-        app.insert_resource(Front("tui".to_owned()))
-            .init_resource::<view::TuiView>()
+        app.init_resource::<view::TuiView>()
             .init_resource::<complete::FileIndex>()
             .init_resource::<clipboard::Clipboard>()
             .add_systems(Startup, terminal::open_terminal)

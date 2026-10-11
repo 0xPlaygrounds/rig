@@ -31,7 +31,6 @@ use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
 use rig_ecs::calls::{Done, PollCalls, Running, Wake};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
-use rig_harness::front::Busy;
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` takes.
@@ -98,11 +97,10 @@ impl SignIn for ChatGptSignIn {
 }
 
 /// A sign-in waiting for the user, on an entity of its own whose
-/// [`Running`] task is the flow, [`Busy`] until it ends as a
-/// [`Done<SignedInResult>`].
-/// Despawning it cancels the flow.
+/// [`Running`] task is the flow until it ends as a
+/// [`Done<SignedInResult>`]; `--print` waits for it as for any `Running`
+/// task. Despawning it cancels the flow.
 #[derive(Component)]
-#[require(Busy)]
 pub struct PendingLogin {
     /// The agent that asked.
     pub agent: Entity,

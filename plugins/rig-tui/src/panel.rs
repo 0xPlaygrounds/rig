@@ -38,7 +38,7 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::widgets::Widget;
 
 /// The terminal view's steps in `PostUpdate`, in order, after the
-/// [`StatusSystems`](rig_harness::front::StatusSystems).
+/// [`StatusSystems`](crate::StatusSystems).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TuiSystems {
     /// Before the frame is laid out: a plugin updates what it shows and

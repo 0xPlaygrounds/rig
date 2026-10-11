@@ -22,8 +22,8 @@ use super::renderers::{
 use super::wrap::wrap_all;
 use rig_ecs::agent::{Conversation, STOPPED};
 use rig_ecs::inbox::{Origin, OriginKind};
-use rig_harness::front::attached_file;
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
+use rig_tools::attach::attached_file;
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;

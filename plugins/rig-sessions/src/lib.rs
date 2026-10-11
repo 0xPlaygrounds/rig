@@ -1,8 +1,9 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
 //! [`SessionTitle`], cost and when it was updated), which `/resume` lists
-//! and a resumed session reads its title back from. The status line shows
-//! the session's name. Running another
+//! and a resumed session reads its title back from. With the default
+//! `tui` feature, `/resume` without arguments is a picker and the terminal
+//! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
 //! process: it names the next session in [`SessionDir::switch`] and exits
 //! with the reload code, as `/reload` does, and the launcher starts it in
@@ -31,19 +32,17 @@ use rig_ecs::agent::{
 };
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::journal::now_ms;
-use rig_harness::front::{
-    AppStatus, PickItem, PickRequest, Side, StatusItem, StatusSystems, Tone, attached_file,
-};
 use rig_harness::prelude::{SessionPaths, launcher};
 use rig_telemetry::Spending;
+use rig_tools::attach::attached_file;
+
+#[cfg(feature = "tui")]
+mod tui;
 
 /// Most characters of a session's title.
 const TITLE_CHARS: usize = 60;
 /// Most sessions `/resume` lists.
 const LISTED: usize = 200;
-/// Where the session's name is in the status line: first, and gone before
-/// what the session spends when the line is too narrow.
-const NAME: StatusItem = StatusItem::at(Side::Left, 10, 2);
 
 /// `/new`, `/resume`, `/name`, and the listing cache written at the end of
 /// each turn.
@@ -67,12 +66,6 @@ impl Plugin for SessionsPlugin {
             .add_observer(on_switch_session)
             .add_systems(PreStartup, restore_title)
             .add_systems(
-                PostUpdate,
-                show_name
-                    .in_set(StatusSystems)
-                    .run_if(resource_changed::<SessionTitle>),
-            )
-            .add_systems(
                 Last,
                 write_meta.in_set(WriteJournal).run_if(
                     any_component_removed::<ActiveTurn>
@@ -80,12 +73,9 @@ impl Plugin for SessionsPlugin {
                         .or_eager(resource_changed::<SessionTitle>),
                 ),
             );
+        #[cfg(feature = "tui")]
+        tui::add(app);
     }
-}
-
-fn show_name(title: Res<SessionTitle>, mut status: ResMut<AppStatus>) {
-    let name = title.name.clone().unwrap_or_default();
-    status.show(NAME.says(name, Tone::Cyan));
 }
 
 /// What the session is listed as: the name `/name` gave it, else the start
@@ -317,39 +307,23 @@ fn new(
     commands.trigger(SwitchSession { session: None });
 }
 
+/// `/resume <id>` runs that session; without arguments, the terminal view
+/// lets the user pick one.
 fn resume(
     In(args): In<CommandArgs>,
-    paths: Option<Res<SessionPaths>>,
+    #[cfg(feature = "tui")] paths: Option<Res<SessionPaths>>,
+    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
+    #[cfg(feature = "tui")] mut notices: MessageWriter<Notice>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
-    mut notices: MessageWriter<Notice>,
 ) {
     if args.args.is_empty() {
-        let Some(paths) = paths else {
-            return;
-        };
-        let items: Vec<PickItem> = list(&Home::from_env(), paths.path())
-            .into_iter()
-            .map(|session| PickItem {
-                label: session.label(),
-                command: format!("resume {}", session.id),
-            })
-            .collect();
-        if items.is_empty() {
-            notices.write(Notice::info(args.agent, "No earlier session to resume."));
-            return;
-        }
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: "Resume a session".to_owned(),
-            items,
-            selected: 0,
-        });
-    } else {
-        commands.trigger(SwitchSession {
-            session: Some(args.args),
-        });
+        #[cfg(feature = "tui")]
+        tui::pick_session(args.agent, paths.as_deref(), &mut picks, &mut notices);
+        return;
     }
+    commands.trigger(SwitchSession {
+        session: Some(args.args),
+    });
 }
 
 fn name(

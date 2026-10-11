@@ -13,6 +13,13 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The `/resume` picker and the session's name in the terminal view's status
+# line. An app without the terminal view leaves it out with
+# `default-features = false`.
+tui = ["dep:rig-tui", "rig-telemetry/tui"]
+
 [dependencies]
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
@@ -23,6 +30,7 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 # What a session cost, in its metadata.
-rig-telemetry = { path = "../rig-telemetry" }
+rig-telemetry = { path = "../rig-telemetry", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
+rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }

@@ -1,25 +1,22 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
-//! `write` and `shell` alone. [`ReloadTool`] adds the `reload` tool, with
-//! which the agent rebuilds itself, and the system prompt's section on what
-//! the agent is. With the `tui` feature (on by default), each plugin also
-//! adds how the terminal view draws its tool's calls.
+//! `write` and `shell` alone. With the `tui` feature (on by default), each
+//! plugin also adds how the terminal view draws its tool's calls.
+//! [`AttachPlugin`] sends the files the user names as `@path` with the
+//! message.
 
-use bevy_app::prelude::*;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::PortableTool;
+use rig_harness::prelude::{
+    App, AppToolsExt, Attachment, Deliver, Footprint, MessageWriter, Notice, On, OriginKind,
+    Plugin, SessionPaths, ToolOptions,
+};
 use rig_tools::{Edit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolOptions};
-use rig_harness::prelude::SessionPaths;
-
 #[cfg(feature = "tui")]
 mod looks;
-pub mod reload;
-
-pub use reload::ReloadTool;
 
 /// Options for a tool that runs alone.
 fn alone(rules: &'static [&'static str]) -> ToolOptions<'static> {
@@ -105,4 +102,34 @@ impl Plugin for ShellTool {
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);
     }
+}
+
+/// Files the user names as `@path` go with the message, before its text,
+/// and the `@path` stays in the text so the model knows which file it is
+/// ([`rig_tools::attach`]): an image as an image, which the core sends
+/// only to a model that reads images, telling the user otherwise; any
+/// other file as its text, numbered and capped the way `read` shows it.
+#[derive(Default)]
+pub struct AttachPlugin;
+
+impl Plugin for AttachPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_observer(attach);
+    }
+}
+
+/// Reads the files a user's message names into its attachments, with a
+/// notice about each that could not be.
+fn attach(mut typed: On<Deliver>, mut notices: MessageWriter<Notice>) {
+    if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+        return;
+    }
+    let (attachments, notes) = rig_tools::attach::attachments(&typed.text);
+    for note in notes {
+        notices.write(Notice::info(typed.entity, note));
+    }
+    let attachments = attachments
+        .into_iter()
+        .map(|(label, content)| Attachment { label, content });
+    typed.attachments.extend(attachments);
 }

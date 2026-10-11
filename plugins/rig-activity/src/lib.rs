@@ -1,6 +1,7 @@
 //! What the agents are doing, kept for views: every agent's [`Activity`]
-//! (its status and its open tool calls), its status in the status line
-//! ([`StatusItem`]), and the [`MessageFeed`] of recent deliveries. A view reads them instead of
+//! (its status and its open tool calls), with the default `tui` feature its
+//! status in the terminal view's status line, and the [`MessageFeed`] of
+//! recent deliveries. A view reads them instead of
 //! deriving them from turns and calls; the agent tree is the agents'
 //! [`SpawnedBy`] and [`Spawned`] relationship.
 //!
@@ -11,7 +12,7 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_ecs::turn::{ModelCall, RETRY};
+use rig_ecs::turn::ModelCall;
 use rig_harness::prelude::*;
 
 /// The most deliveries the [`MessageFeed`] keeps.
@@ -27,21 +28,17 @@ impl Plugin for ActivityPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Activity>()
             .init_resource::<MessageFeed>()
-            .configure_sets(PostUpdate, ActivitySystems.before(StatusSystems))
-            .add_systems(
-                PostUpdate,
-                (
-                    update_activity.in_set(ActivitySystems),
-                    show_status.in_set(StatusSystems),
-                ),
-            )
+            .add_systems(PostUpdate, update_activity.in_set(ActivitySystems))
             .add_observer(feed_deliveries);
+        #[cfg(feature = "tui")]
+        app.configure_sets(PostUpdate, ActivitySystems.before(rig_tui::StatusSystems))
+            .add_systems(PostUpdate, show_status.in_set(rig_tui::StatusSystems));
     }
 }
 
 /// The system in `PostUpdate` that updates each agent's [`Activity`],
-/// before [`StatusSystems`]. A view that reads it in `PostUpdate` runs
-/// after it.
+/// before the terminal view's status line. A view that reads it in
+/// `PostUpdate` runs after it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ActivitySystems;
 
@@ -105,8 +102,9 @@ pub struct ToolActivity {
     pub queued: bool,
 }
 
-/// Recent deliveries to agents, oldest first: the user's messages,
-/// messages between agents and plugins' messages, at most [`FEED_LEN`].
+/// Recent deliveries to agents, oldest first: the user's messages (not
+/// their slash commands), messages between agents and plugins' messages,
+/// at most [`FEED_LEN`].
 /// A delivery is recorded when it is sent, whether the agent reads it now
 /// or after its turn.
 #[derive(Resource, Reflect, Default, Debug)]
@@ -140,6 +138,9 @@ fn feed_deliveries(
     agents: Query<(Entity, &AgentId), With<Agent>>,
     mut feed: ResMut<MessageFeed>,
 ) {
+    if delivery.command().is_some() {
+        return;
+    }
     let from = delivery.origin.from.as_ref().and_then(|from| {
         agents
             .iter()
@@ -202,18 +203,21 @@ fn update_activity(
 }
 
 /// Where an agent's status is in the status line.
-const STATUS: StatusItem = StatusItem::at(Side::Left, 50, u8::MAX);
+#[cfg(feature = "tui")]
+const STATUS: rig_tui::StatusItem = rig_tui::StatusItem::at(rig_tui::Side::Left, 50, u8::MAX);
 
 /// Each agent's status, in its status line: green when idle, yellow at
 /// work, red waiting to retry.
-fn show_status(mut agents: Query<(&Activity, &mut StatusItems), Changed<Activity>>) {
+#[cfg(feature = "tui")]
+fn show_status(mut agents: Query<(&Activity, &mut rig_tui::StatusItems), Changed<Activity>>) {
+    use rig_tui::Tone;
     for (activity, mut items) in &mut agents {
         let shown = match &activity.status {
             Status::Idle => STATUS.says("idle", Tone::Green),
             Status::Retrying { attempt, seconds } => STATUS.says(
                 format!(
                     "retry {attempt}/{} in {seconds}s… (Esc stops)",
-                    RETRY.max_retries
+                    rig_ecs::turn::RETRY.max_retries
                 ),
                 Tone::Red,
             ),

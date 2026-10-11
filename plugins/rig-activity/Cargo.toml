@@ -13,10 +13,17 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# Each agent's status in the terminal view's status line. An app without
+# the terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
-# Its status line item.
+# The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
+rig-tui = { path = "../rig-tui", optional = true }

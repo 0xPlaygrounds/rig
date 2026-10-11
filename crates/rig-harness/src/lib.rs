@@ -6,18 +6,18 @@
 //! spawns for another is one more, [`SpawnedBy`](rig_ecs::agent::SpawnedBy)
 //! that agent. Tools and slash commands are registered by Bevy plugins, and
 //! a plugin re-arms its saved obligations after a restart on
-//! [`Restored`](rig_ecs::restore::Restored). This crate adds what the
+//! [`Restored`](rig_ecs::restore::Restored). This crate is only what the
 //! terminal app needs around the runtime to run and be relaunched: the
-//! session directory, the launcher protocol and `/reload`. Every other part
-//! of the agent, the terminal view, `--print`, sign-in and the built-in
-//! tools and commands included, is a plugin crate in the repository's
-//! `plugins/` folder, built only on this crate's public API.
+//! session directory and the `rig` launcher protocol, with how the agent
+//! was started ([`Invoked`](host::launcher::Invoked)). Every other part of
+//! the agent, `/reload`, the terminal view, `--print`, sign-in and the
+//! built-in tools and commands included, is a plugin crate in the
+//! repository's `plugins/` folder, built only on this crate's public API.
 //!
 //! [`RigHarnessPlugins`] is what the binary needs to run and be
-//! relaunched: the session, the run mode and what fronts share
-//! ([`front`]), the agent core and the session logs, the launcher protocol
-//! and `/reload`. It adds none of Bevy's own plugins, so it sits next to
-//! `DefaultPlugins` in a windowed app. [`HeadlessPlugins`] is what a
+//! relaunched: the session, the agent core and the session logs, and the
+//! launcher protocol. It adds none of Bevy's own plugins, so it sits next
+//! to `DefaultPlugins` in a windowed app. [`HeadlessPlugins`] is what a
 //! terminal app needs from Bevy instead: Bevy's `MinimalPlugins` (task
 //! pools, frame count, clock) with the log, a clean exit on signals, and a
 //! loop that sleeps until there is work. Everything else is a plugin listed
@@ -49,7 +49,6 @@
 //! timers, and a window beside the terminal ([`windowed`]). The `rig`
 //! launcher makes a plugin crate with `rig plugin new <name>`.
 
-pub mod front;
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod host;
@@ -86,21 +85,16 @@ pub use rig_ecs;
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
 /// prelude (Bevy's app and ECS preludes, the agent components and
 /// requests, and the tool and command registries), what agents say, the
-/// app's session, its log's warnings and launcher, what fronts share and
-/// the plugin groups. A plugin crate's own types come from that crate,
-/// such as the terminal view's panels from `rig-tui`.
+/// app's session, its log's warnings and launcher, and the plugin groups.
+/// A plugin crate's own types come from that crate, such as the terminal
+/// view's panels and status line from `rig-tui`.
 pub mod prelude {
     pub use rig_ecs::prelude::*;
 
     pub use std::time::Duration;
 
-    pub use crate::front::{
-        AppStatus, Busy, Focus, Front, Input, PickItem, PickRequest, RunMode, Side, StatusItem,
-        StatusItems, StatusSystems, Tone, send_input, send_message,
-    };
     pub use crate::harness_protocol::Home;
-    pub use crate::host::launcher;
-    pub use crate::host::reload::{CancelReload, ReloadStatus};
+    pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{LogEvents, Logged, SessionPaths};
     pub use crate::{HeadlessPlugins, PluginSource, ProvidedBy, Provides, RigHarnessPlugins};
     pub use rig_core::transcript::final_answer;
@@ -109,20 +103,18 @@ pub mod prelude {
 }
 
 /// What the binary needs to run and be relaunched: the session and its
-/// log, the [`RunMode`](front::RunMode), the agent core and the session
-/// logs, the launcher protocol and `/reload`. Everything else is a plugin `plugins.toml`
-/// lists, which can leave it out.
+/// log, the agent core and the session logs, and the launcher protocol.
+/// Everything else is a plugin `plugins.toml` lists, which can leave it
+/// out.
 pub struct RigHarnessPlugins;
 
 impl PluginGroup for RigHarnessPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(host::session::SessionPlugin)
-            .add(front::FrontPlugin)
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
             .add(host::launcher::LauncherPlugin)
-            .add(host::reload::ReloadPlugin)
     }
 }
 

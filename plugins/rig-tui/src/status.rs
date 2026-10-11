@@ -1,14 +1,14 @@
-//! The status line: what a view shows beside the agent it shows. Each
-//! agent, and its running turn, has its [`StatusItems`], and the app its
-//! [`AppStatus`]; a plugin sets its items there in [`StatusSystems`]. The
-//! plugin guide has an example and the default plugins' places.
+//! The status line: what the view shows under the transcript of the agent
+//! it shows. Each agent, and its running turn, has its [`StatusItems`], and
+//! the app its [`AppStatus`]; a plugin sets its items there in
+//! [`StatusSystems`]. A plugin that also builds without the terminal view
+//! does it behind a default `tui` cargo feature. The plugin guide has an
+//! example and the default plugins' places.
 
-use bevy::prelude::{Deref, DerefMut};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
-use crate::host::reload::ReloadStatus;
 use rig_ecs::agent::{Agent, TurnOf};
 
 /// One piece of the status line: what it says, how, and its place.
@@ -74,10 +74,12 @@ impl StatusItems {
     }
 }
 
-/// The app's status line items, shown with every agent.
-#[derive(Resource, Reflect, Clone, Debug, Default, Deref, DerefMut)]
+/// The app's status line items, shown with every agent: a plugin shows
+/// one with `status.0.show(item)`.
+#[derive(Resource, Reflect, Clone, Debug, Default)]
 #[reflect(Resource, Clone, Debug, Default)]
 pub struct AppStatus(pub StatusItems);
+
 /// The side of the status line a [`StatusItem`] is on.
 #[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Side {
@@ -115,35 +117,10 @@ pub enum Tone {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StatusSystems;
 
-/// Where the rebuild of `/reload` is.
-const RELOAD: StatusItem = StatusItem::at(Side::Left, 90, 16);
-
 /// Gives every agent and turn its [`StatusItems`], and the app its
-/// [`AppStatus`] with how a `/reload` goes.
-pub(super) fn add(app: &mut App) {
+/// [`AppStatus`].
+pub(crate) fn add(app: &mut App) {
     app.register_required_components::<Agent, StatusItems>()
         .register_required_components::<TurnOf, StatusItems>()
-        .init_resource::<AppStatus>()
-        .add_systems(
-            PostUpdate,
-            show_reload
-                .in_set(StatusSystems)
-                .run_if(resource_exists_and_changed::<ReloadStatus>),
-        );
-}
-
-fn show_reload(reload: Res<ReloadStatus>, mut status: ResMut<AppStatus>) {
-    let text = match &*reload {
-        ReloadStatus::Idle | ReloadStatus::Failed => String::new(),
-        ReloadStatus::Queued { .. } => {
-            "Reload queued: once no turn runs (/reload cancel)".to_owned()
-        }
-        ReloadStatus::Ready => "Reloading: restarting…".to_owned(),
-        // The launcher's phase, then cargo's latest line.
-        ReloadStatus::Building { latest } => format!(
-            "Reloading: {} (Esc cancels)",
-            latest.as_deref().unwrap_or("Resolving dependencies…")
-        ),
-    };
-    status.show(RELOAD.says(text, Tone::Cyan));
+        .init_resource::<AppStatus>();
 }

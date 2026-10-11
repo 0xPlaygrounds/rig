@@ -35,7 +35,7 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, every plugin crate of `plugins/`, and their
 /// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 17] = [
+pub(crate) const HARNESS_PACKAGES: [&str; 18] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
@@ -47,6 +47,7 @@ pub(crate) const HARNESS_PACKAGES: [&str; 17] = [
     "rig-login-chatgpt",
     "rig-models",
     "rig-print",
+    "rig-reload",
     "rig-sessions",
     "rig-steel",
     "rig-subagents",
@@ -141,6 +142,11 @@ pub(super) fn all() -> Vec<Check> {
                 harness(
                     &["clippy", "--locked"],
                     &["--all-targets", "--", "-D", "warnings"],
+                ),
+                // And their plugins without the terminal view (`tui`).
+                harness(
+                    &["clippy", "--locked", "--no-default-features"],
+                    &["--", "-D", "warnings"],
                 ),
             ],
         ),

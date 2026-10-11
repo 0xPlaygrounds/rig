@@ -1,4 +1,3 @@
-use rig_harness::harness_protocol::Invocation;
 use rig_harness::prelude::*;
 
 use super::*;
@@ -12,10 +11,7 @@ fn a_panel_plugin_is_inert_in_a_print_run() {
     let mut app = App::new();
     // A system that cannot run fails the test.
     app.set_error_handler(rig_harness::error::panic)
-        .insert_resource(RunMode(Invocation {
-            print: Some(String::new()),
-            model: None,
-        }))
+        .insert_resource(Invoked::default())
         .add_plugins(TuiPlugin)
         .init_resource::<Drawn>()
         .add_systems(Update, |mut redraw: MessageWriter<RequestRedraw>| {
@@ -29,5 +25,5 @@ fn a_panel_plugin_is_inert_in_a_print_run() {
     app.update();
     let world = app.world();
     assert_eq!(world.resource::<Drawn>().0, 0);
-    assert!(!world.contains_resource::<Front>());
+    assert!(!world.contains_resource::<view::TuiView>());
 }

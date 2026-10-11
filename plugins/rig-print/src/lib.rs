@@ -8,47 +8,34 @@
 //! The agent uses `--model`, else the model its restored session chose,
 //! else the first model the environment has a key for.
 //!
-//! It is the front of a `--print` run, and of any run no other front took,
-//! such as an agent built without the terminal view: that run answers what
-//! is piped in.
+//! It is the front of every run that is not interactive
+//! ([`Invoked::interactive`]): one with `--print`, or with stdin piped in,
+//! which answers what is piped in.
 
 use std::io::{IsTerminal, Read as _};
 
-use bevy_app::prelude::*;
-use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
-
-use rig_core::transcript::final_answer;
-use rig_ecs::agent::{ActiveTurn, Agent, Conversation, Notice, NoticeLevel, PrimaryQuery, primary};
-use rig_ecs::inbox::{DeliveryMode, Recalled};
-use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
-use rig_harness::front::{Busy, Front, RunMode, send_input};
+use rig_harness::prelude::*;
 
 /// Sends the prompt and exits when the turn ends.
 #[derive(Default)]
 pub struct PrintPlugin;
 
 impl Plugin for PrintPlugin {
-    fn build(&self, _: &mut App) {}
-
-    /// Takes the run once every plugin is built, unless another front did.
-    fn cleanup(&self, app: &mut App) {
-        if app.world().contains_resource::<Front>() {
+    fn build(&self, app: &mut App) {
+        let invoked = app.world().get_resource::<Invoked>().cloned();
+        if invoked.as_ref().is_some_and(Invoked::interactive) {
             return;
         }
-        let prompt = app
-            .world()
-            .get_resource::<RunMode>()
-            .and_then(|mode| mode.0.print.clone())
-            .unwrap_or_default();
-        app.insert_resource(Front("print".to_owned()))
-            .insert_resource(PrintRun {
-                prompt,
-                step: Step::Start,
-                failed: false,
-                refused: false,
-            })
-            .add_systems(Update, (print_notices, drive).chain());
+        let args = invoked.map(|invoked| invoked.args).unwrap_or_default();
+        app.insert_resource(PrintRun {
+            prompt: args.print.unwrap_or_default(),
+            model: args.model.is_some(),
+            step: Step::Start,
+            failed: false,
+            refused: false,
+        })
+        .add_systems(Update, (print_notices, drive).chain());
     }
 }
 
@@ -56,6 +43,8 @@ impl Plugin for PrintPlugin {
 #[derive(Resource)]
 struct PrintRun {
     prompt: String,
+    /// Whether `--model` named the model, which rig-models chooses.
+    model: bool,
     step: Step,
     /// Whether an error notice about the agent came while it ran.
     failed: bool,
@@ -99,16 +88,15 @@ struct Agents<'w, 's> {
     primary: PrimaryQuery<'w, 's>,
     choices: Query<'w, 's, (Option<&'static ModelChoice>, Has<Connection>)>,
     conversations: Query<'w, 's, &'static Conversation>,
-    /// Agents in a turn.
-    working: Query<'w, 's, (), (With<Agent>, With<ActiveTurn>)>,
-    /// Other work a front waits for, such as a sign-in.
-    busy: Query<'w, 's, (), With<Busy>>,
+    /// Running turns.
+    turns: Query<'w, 's, (), With<TurnOf>>,
+    /// Work in progress, such as a sign-in.
+    running: Query<'w, 's, (), With<Running>>,
 }
 
 /// Chooses the model, sends the prompt, and exits after the turn.
 fn drive(
     mut run: ResMut<PrintRun>,
-    mode: Res<RunMode>,
     agents: Agents,
     models: Res<Models>,
     mut commands: Commands,
@@ -124,11 +112,11 @@ fn drive(
             let Ok((chosen, _)) = agents.choices.get(agent) else {
                 return;
             };
-            let model = match (&mode.0.model, chosen) {
-                // The front chose it, or the restored session did, and it
+            let model = match (run.model, chosen) {
+                // `--model` chose it, or the restored session did, and it
                 // was connected, or refused with a notice, already.
-                (Some(_), _) | (None, Some(_)) => None,
-                (None, None) => match models.0.reachable().first() {
+                (true, _) | (false, Some(_)) => None,
+                (false, None) => match models.0.reachable().first() {
                     Some(spec) => Some(spec.reference()),
                     None if command => None,
                     None => {
@@ -173,14 +161,14 @@ fn drive(
                 .conversations
                 .get(agent)
                 .map_or(0, |conversation| conversation.messages().len());
-            send_input(&mut commands, agent, text, DeliveryMode::Steer);
+            commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
             run.step = Step::Sent { agent, before };
         }
         Step::Sent { agent, before } => {
             // The turn starts with the request; a command may start none,
             // or other work, such as a sign-in. A subagent's answer starts
             // another turn of the agent that started it.
-            if !agents.working.is_empty() || !agents.busy.is_empty() {
+            if !agents.turns.is_empty() || !agents.running.is_empty() {
                 return;
             }
             let answer = agents

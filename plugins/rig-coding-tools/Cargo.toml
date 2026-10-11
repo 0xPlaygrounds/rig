@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "rig-harness plugins: the coding tools of rig-tools (read, edit, write, search, shell), and the reload tool with which the agent rebuilds itself."
+description = "rig-harness plugins: the coding tools of rig-tools (read, edit, write, search, shell), and the files the user names as @path sent with the message."
 repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
 publish = false
@@ -20,12 +20,7 @@ default = ["tui"]
 tui = ["dep:rig-tui"]
 
 [dependencies]
-bevy_app = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
-# The reload tool's parameters, derived from its arguments type.
-schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }

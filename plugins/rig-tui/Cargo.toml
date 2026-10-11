@@ -36,8 +36,3 @@ serde_json = { workspace = true }
 [target.'cfg(unix)'.dependencies]
 # The terminal view sends stray stdout and stderr to the session log.
 libc = { workspace = true }
-
-[dev-dependencies]
-# The commands the input tests run.
-rig-basics = { path = "../rig-basics" }
-rig-models = { path = "../rig-models" }
