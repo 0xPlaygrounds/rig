@@ -3,8 +3,10 @@ use rig_core::message::ToolName;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
 use rig_harness::harness_protocol::SessionId;
+use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{app_in, first_agent, scratch_home};
-use rig_tui::{KeyBinding, KeyPressed, TuiInput};
+use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+use rig_tui::{KeyBinding, KeyFocus, KeyPressed, TerminalEvent, TuiInput};
 
 use super::*;
 use crate::tui::Palette;
@@ -40,10 +42,10 @@ impl PortableTool for ZzRuntime {
 }
 
 /// The kernel, the palette and the test's commands on a session of `home`,
-/// after the first frame, with its agent.
+/// after the first frame, with its agent shown.
 fn start(home: &Home) -> (App, Entity) {
     let (mut app, _wakes) = app_in(home, &SessionId::generate());
-    app.add_plugins((AgentPlugin, JournalPlugin, CommandPalettePlugin))
+    app.add_plugins((AgentPlugin, JournalPlugin, PickPlugin, CommandPalettePlugin))
         .init_resource::<Striped>()
         .add_command("zebra-stripes", "Paint the stripes", stripe)
         .add_command("gone", "Gone soon", |_: In<CommandArgs>| {});
@@ -53,16 +55,16 @@ fn start(home: &Home) -> (App, Entity) {
     (app, agent)
 }
 
-/// Presses the keys of the binding labelled `label` with `agent` shown.
-fn press(app: &mut App, label: &str, agent: Entity) {
+/// Presses Ctrl-P, the palette's binding, with `agent` shown.
+fn open_palette(app: &mut App, agent: Entity) {
     let world = app.world_mut();
     let mut bindings = world.query::<(Entity, &KeyBinding)>();
     let found: Vec<Entity> = bindings
         .iter(world)
-        .filter(|(_, binding)| binding.label == label)
+        .filter(|(_, binding)| binding.label == "Command palette")
         .map(|(entity, _)| entity)
         .collect();
-    assert_eq!(found.len(), 1, "{label}");
+    assert_eq!(found.len(), 1);
     for entity in found {
         world.trigger(KeyPressed {
             entity,
@@ -73,16 +75,26 @@ fn press(app: &mut App, label: &str, agent: Entity) {
     app.update();
 }
 
-/// Types `filter` in the open palette.
-fn type_filter(app: &mut App, filter: &str) -> Vec<String> {
-    app.world_mut().resource_mut::<TuiInput>().set(filter);
+/// The terminal reports `keys` in one batch; the palette's rows after it.
+fn type_keys(app: &mut App, keys: &[KeyCode]) -> Vec<String> {
+    let world = app.world_mut();
+    for &code in keys {
+        world.write_message(TerminalEvent(Event::Key(KeyEvent::new(
+            code,
+            KeyModifiers::NONE,
+        ))));
+    }
     app.update();
-    let palette = app.world().resource::<Palette>();
-    palette
-        .rows
-        .iter()
-        .map(|entry| entry.label.clone())
+    let world = app.world_mut();
+    let mut open = world.query::<&Palette>();
+    open.iter(world)
+        .flat_map(|palette| palette.rows.iter().map(|entry| entry.label.clone()))
         .collect()
+}
+
+/// `text` as typed keys.
+fn chars(text: &str) -> Vec<KeyCode> {
+    text.chars().map(KeyCode::Char).collect()
 }
 
 fn first(world: &mut World, filter: &str) -> Option<String> {
@@ -98,10 +110,11 @@ fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
     let (mut app, agent) = start(&home);
     app.world_mut().resource_mut::<TuiInput>().set("my draft");
 
-    // Opened, the palette ranks what exists whenever its filter changes.
-    press(&mut app, "Command palette", agent);
-    assert_eq!(app.world().resource::<TuiInput>().text(), "");
-    let shown = type_filter(&mut app, "zst");
+    // Opened, the palette has the keys and ranks what exists as its filter
+    // changes; the draft stays in the input.
+    open_palette(&mut app, agent);
+    assert!(app.world().resource::<KeyFocus>().0.is_some());
+    let shown = type_keys(&mut app, &chars("zst"));
     assert_eq!(
         shown.first().map(String::as_str),
         Some("/zebra-stripes"),
@@ -130,19 +143,24 @@ fn ranks_live_entries_runs_a_pick_and_lists_it_first_next_time() {
     if let Some(gone) = gone {
         world.entity_mut(gone).insert(Disabled);
     }
-    let shown = type_filter(&mut app, "zz_r");
+    let mut keys = vec![KeyCode::Backspace; 3];
+    keys.extend(chars("zz_r"));
+    let shown = type_keys(&mut app, &keys);
     assert!(shown.contains(&"zz_runtime".to_owned()), "{shown:?}");
-    let everything = ranked(app.world_mut(), "");
-    assert!(everything.iter().all(|entry| entry.label != "/gone"));
     assert!(
-        ranked(app.world_mut(), "gone")
+        ranked(app.world_mut(), "")
             .iter()
+            .chain(&ranked(app.world_mut(), "gone"))
             .all(|entry| entry.label != "/gone")
     );
 
-    // Enter runs the first row, and gives the draft back.
-    type_filter(&mut app, "zst");
-    press(&mut app, "Pick the palette's entry", agent);
+    // Typed in one batch, Enter picks for the filter typed before it: it
+    // runs the first row and leaves the draft as it was.
+    let mut keys = vec![KeyCode::Backspace; 4];
+    keys.extend(chars("zst"));
+    keys.push(KeyCode::Enter);
+    assert!(type_keys(&mut app, &keys).is_empty());
+    app.update();
     assert!(app.world().resource::<Striped>().0);
     assert_eq!(app.world().resource::<TuiInput>().text(), "my draft");
     assert_eq!(
