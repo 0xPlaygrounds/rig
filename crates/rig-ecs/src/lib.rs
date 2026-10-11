@@ -74,8 +74,8 @@ pub mod prelude {
         WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Backoff, BuildFrom, DeltaKind, ModelRequest, Recovery, RetryVerdict, SentTo,
-        StreamDelta, Streamed, TurnCall,
+        Adapter, Adapters, Backoff, BuildFrom, DeltaKind, ModelRequest, Recovery, RetryVerdict,
+        SentTo, StreamDelta, Streamed, TurnCall,
     };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};

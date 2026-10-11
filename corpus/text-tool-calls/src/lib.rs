@@ -58,11 +58,11 @@ impl Plugin for TextToolCallsPlugin {
 }
 
 /// Gives each model call admitted this pass the `text-tools` adapter.
-fn adapt(mut calls: Query<&mut ModelRequest, Added<Admitted>>, settings: Res<TextTools>) {
+fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, settings: Res<TextTools>) {
     let models = Arc::new(settings.models.clone());
-    for mut call in &mut calls {
+    for mut adapters in &mut calls {
         let models = models.clone();
-        call.adapters.push(Adapter::new(NAME, move |connection| {
+        adapters.0.push(Adapter::new(NAME, move |connection| {
             as_text(connection, &models)
         }));
     }

@@ -93,17 +93,18 @@ impl Plugin for ThinkTagSplitterPlugin {
 
 /// Puts the split on each new model call, for whichever model it goes to.
 fn adapt(
-    mut calls: Query<&mut ModelRequest, Added<Admitted>>,
+    mut calls: Query<&mut Adapters, Added<Admitted>>,
     tags: Res<ThinkTags>,
     sends: Res<SendsTags>,
 ) {
     if !tags.detect && tags.models.is_empty() && sends.0.is_empty() {
         return;
     }
-    for mut call in &mut calls {
+    for mut adapters in &mut calls {
         let tags = tags.clone();
         let sends = sends.0.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 let model = connection.spec.reference();
                 let always = tags.models.contains(&model);

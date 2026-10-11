@@ -22,10 +22,11 @@ struct Read {
 
 /// Puts a counter under the cutter on every call, so it sees what was
 /// pulled from the provider.
-fn count_reads(mut calls: Query<&mut ModelRequest, Added<Admitted>>, read: Res<Read>) {
-    for mut call in &mut calls {
+fn count_reads(mut calls: Query<&mut Adapters, Added<Admitted>>, read: Res<Read>) {
+    for mut adapters in &mut calls {
         let read = read.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new("count", move |mut connection: Connection| {
                 let read = read.clone();
                 let count = move |_| {

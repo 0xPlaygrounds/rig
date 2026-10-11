@@ -221,12 +221,7 @@ struct RawFile {
 /// call that supersedes a recorded one is its next attempt, in its file.
 fn tap_model_calls(
     mut calls: Query<
-        (
-            Entity,
-            &mut ModelRequest,
-            Option<&CallOf>,
-            Option<&Supersedes>,
-        ),
+        (Entity, &mut Adapters, Option<&CallOf>, Option<&Supersedes>),
         Added<Admitted>,
     >,
     recorded: Query<&RawFile>,
@@ -238,7 +233,7 @@ fn tap_model_calls(
     let Some(writer) = writer.filter(|_| log.on) else {
         return;
     };
-    for (call, mut request, of, supersedes) in &mut calls {
+    for (call, mut adapters, of, supersedes) in &mut calls {
         let earlier = supersedes.and_then(|&Supersedes(earlier)| recorded.get(earlier).ok());
         let raw = match earlier {
             Some(earlier) => RawFile {
@@ -255,9 +250,7 @@ fn tap_model_calls(
                 }
             }
         };
-        request
-            .adapters
-            .insert(0, tap(raw.clone(), writer.lines.clone()));
+        adapters.0.insert(0, tap(raw.clone(), writer.lines.clone()));
         commands.entity(call).insert(raw);
     }
 }

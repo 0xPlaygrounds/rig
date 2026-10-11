@@ -116,14 +116,15 @@ impl ContextValue for Cut {
 }
 
 /// Puts the cutter on each new model call, for whichever model it goes to.
-fn adapt(mut calls: Query<&mut ModelRequest, Added<Admitted>>, settings: Res<StreamCutter>) {
+fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, settings: Res<StreamCutter>) {
     if settings.models.is_empty() {
         return;
     }
     let rules = Arc::new(Rules::from(&*settings));
-    for mut call in &mut calls {
+    for mut adapters in &mut calls {
         let rules = rules.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 if rules.settings.watches(&connection.spec.reference()) {
                     let rules = rules.clone();

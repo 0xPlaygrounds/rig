@@ -728,12 +728,12 @@ fn stand_in_models(
 /// Puts the replay's model first on each model call, whichever model the call goes to: the call's other
 /// adapters wrap it and Start fits the request to them, as live.
 fn models_from_record(
-    mut calls: Query<(&mut ModelRequest, Option<&ForAgent>), Added<Admitted>>,
+    mut calls: Query<(&mut Adapters, Option<&ForAgent>), Added<Admitted>>,
     replay: Res<Replay>,
 ) {
-    for (mut call, agent) in &mut calls {
+    for (mut adapters, agent) in &mut calls {
         // A successor cloned from a replayed call has the adapter already.
-        if call.adapters.iter().any(|adapter| adapter.name == ADAPTER) {
+        if adapters.0.iter().any(|adapter| adapter.name == ADAPTER) {
             continue;
         }
         let scope = replay.scope(agent);
@@ -748,7 +748,7 @@ fn models_from_record(
             connection.handler = Handler(ErasedHandler::new(model));
             connection
         });
-        call.adapters.insert(0, adapter);
+        adapters.0.insert(0, adapter);
     }
 }
 

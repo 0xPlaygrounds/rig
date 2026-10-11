@@ -173,12 +173,12 @@ struct TurnStalls(u32);
 
 /// Gives each model call, as it is admitted, a tap that notes each item
 /// its stream sends, whichever model it goes to.
-fn tap(mut calls: Query<(Entity, &mut ModelRequest), Added<Admitted>>, mut commands: Commands) {
-    for (call, mut request) in &mut calls {
+fn tap(mut calls: Query<(Entity, &mut Adapters), Added<Admitted>>, mut commands: Commands) {
+    for (call, mut adapters) in &mut calls {
         let pulse = Pulse::default();
         let beats = pulse.clone();
-        request
-            .adapters
+        adapters
+            .0
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 let beats = beats.clone();
                 let tapped = connection.handler.0.map_stream(NAME, move |_| {

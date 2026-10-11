@@ -322,10 +322,11 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>, secrets:
 
 /// Every model call, whichever model it goes to, is sent with placeholders
 /// and streams its reply with them.
-fn adapt_model_calls(mut calls: Query<&mut ModelRequest, Added<Admitted>>, secrets: Res<Secrets>) {
-    for mut call in &mut calls {
+fn adapt_model_calls(mut calls: Query<&mut Adapters, Added<Admitted>>, secrets: Res<Secrets>) {
+    for mut adapters in &mut calls {
         let secrets = secrets.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 let secrets = secrets.clone();
                 let sent = connection.handler.0.layered(RedactRequest(secrets.clone()));

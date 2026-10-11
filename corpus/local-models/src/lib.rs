@@ -468,10 +468,10 @@ fn refuse_unavailable(
 /// Gives each model call about to start the adapter that tells a local
 /// model without tools so. Pushed at the gate, it comes after every adapter
 /// Prepare systems pushed, so it sees the model the call finally goes to.
-fn say_no_tools(mut calls: Query<&mut ModelRequest, Undecided>) {
-    for mut call in &mut calls {
-        if call.adapters.iter().all(|it| it.name != NO_TOOLS_TAG) {
-            call.adapters.push(Adapter::new(NO_TOOLS_TAG, no_tools));
+fn say_no_tools(mut calls: Query<&mut Adapters, Undecided>) {
+    for mut adapters in &mut calls {
+        if adapters.0.iter().all(|it| it.name != NO_TOOLS_TAG) {
+            adapters.0.push(Adapter::new(NO_TOOLS_TAG, no_tools));
         }
     }
 }

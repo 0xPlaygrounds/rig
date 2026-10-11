@@ -76,9 +76,10 @@ use super::tools::{
     tool_kind,
 };
 use super::turn::{
-    ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
-    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
-    keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
+    Adapters, ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
+    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
+    judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
+    wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -926,7 +927,7 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, kind) = match models.start(&mut model, agent) {
+            let (connection, kind) = match models.start(&mut model, item.adapters, agent) {
                 ModelStart::Run(connection, kind) => (connection, kind),
                 ModelStart::Refused(report) => {
                     started.try_insert_if_new(Outcome(Err(report)));
@@ -1011,6 +1012,7 @@ struct StartItem {
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
     model: Option<&'static mut ModelRequest>,
+    adapters: Option<&'static Adapters>,
     turn_call: Has<TurnCall>,
     message: Has<Incoming>,
     handler: Option<&'static CallHandler>,

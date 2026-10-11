@@ -107,10 +107,10 @@ impl Backoff {
 
 /// A model call: an effect entity whose request is `request`, sent to
 /// `connection`, else to the model of the agent it is [`ForAgent`], as its
-/// `adapters` change that model. Its [`Outcome`] is rig-core's
+/// [`Adapters`] change that model. Its [`Outcome`] is rig-core's
 /// `Outcome::Completion` (see [`Outcome::completion`]). Prepare may change
 /// the request, the connection and the adapters; Start then takes the
-/// model it goes to, applies the adapters to it in order, fits the request
+/// model it goes to, applies the adapters to it, fits the request
 /// to the result (an option the model cannot take is left out, as
 /// none) and sends it streamed, recording on the call where it went
 /// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
@@ -118,16 +118,13 @@ impl Backoff {
 /// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
-#[require(Effect)]
+#[require(Effect, Adapters)]
 pub struct ModelRequest {
     /// The request.
     pub request: CompletionRequest,
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
-    /// What changes the model it goes to, whichever that is, applied in
-    /// order at Start, such as a wrap that sends tools as text.
-    pub adapters: Vec<Adapter>,
     /// The tool rules the kernel wrote in the system prompt when it built
     /// the request, swapped at Start for those of the tools it carries.
     rules: Option<String>,
@@ -139,7 +136,6 @@ impl ModelRequest {
         Self {
             request,
             connection: None,
-            adapters: Vec::new(),
             rules: None,
         }
     }
@@ -174,7 +170,25 @@ impl ModelRequest {
 #[derive(Component, Clone)]
 pub struct SentTo(pub Connection);
 
-/// A change to the model a call goes to, on its [`ModelRequest`]: Start
+/// The adapters of a model call, applied to its final [`Connection`] at
+/// Start: those placed [`outermost`](Adapter::outermost) last, each group
+/// in the order pushed. Its own component beside the [`ModelRequest`], so
+/// pushing an adapter and editing the request are different data: push in
+/// Prepare, `Query<&mut Adapters, Added<Admitted>>`.
+#[derive(Component, Clone, Default, Debug)]
+pub struct Adapters(pub Vec<Adapter>);
+
+impl Adapters {
+    /// `connection`, as these adapters change it.
+    pub fn apply(&self, connection: Connection) -> Connection {
+        let placed = |outermost| self.0.iter().filter(move |it| it.outermost == outermost);
+        placed(false)
+            .chain(placed(true))
+            .fold(connection, |connection, adapter| adapter.apply(connection))
+    }
+}
+
+/// A change to the model a call goes to, in its [`Adapters`]: Start
 /// applies it to the call's final [`Connection`], after every Prepare edit,
 /// so routing a call (its `connection`) and adapting it commute. It may
 /// wrap the handler, such as with a stream transform, and change the spec
@@ -184,6 +198,7 @@ pub struct SentTo(pub Connection);
 pub struct Adapter {
     /// What it does, for readers, such as `text-tools`.
     pub name: Cow<'static, str>,
+    outermost: bool,
     apply: Arc<dyn Fn(Connection) -> Connection + Send + Sync>,
 }
 
@@ -195,7 +210,19 @@ impl Adapter {
     ) -> Self {
         Self {
             name: name.into(),
+            outermost: false,
             apply: Arc::new(apply),
+        }
+    }
+
+    /// This adapter, applied after every adapter not placed outermost: it
+    /// sees what every other adapter made of the model, such as a local
+    /// model's wrap or a recording that replaces the adapted handler.
+    #[must_use]
+    pub fn outermost(self) -> Self {
+        Self {
+            outermost: true,
+            ..self
         }
     }
 
@@ -689,7 +716,6 @@ fn build(
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
-        adapters: Vec::new(),
         rules: Some(rules),
     }
 }
@@ -715,15 +741,19 @@ impl ModelStarts<'_, '_> {
     /// agent's model, as its adapters change it, its request fitted to
     /// that and, when the kernel built it, with the rules of the tools it
     /// carries; refused without a model.
-    pub(crate) fn start(&self, model: &mut ModelRequest, agent: Option<Entity>) -> ModelStart {
+    pub(crate) fn start(
+        &self,
+        model: &mut ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> ModelStart {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(connection) = model.connection.as_ref().or(own).cloned() else {
+        let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
             return ModelStart::Refused(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
-        let connection = model
-            .adapters
-            .iter()
-            .fold(connection, |connection, adapter| adapter.apply(connection));
+        if let Some(adapters) = adapters {
+            connection = adapters.apply(connection);
+        }
         let spec = &connection.spec;
         let request = &mut model.request;
         if !spec.tools {

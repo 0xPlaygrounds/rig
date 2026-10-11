@@ -20,15 +20,15 @@ use super::*;
 /// Every call goes to its model as to one that calls no tools, so Start
 /// takes the tools and their rules out of the request: what is sent, and
 /// recorded, is not what Gate sees.
-fn without_tools(mut calls: Query<&mut ModelRequest, Added<Admitted>>) {
-    for mut call in &mut calls {
+fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
+    for mut adapters in &mut calls {
         let adapter = Adapter::new("no-tools", |mut connection: Connection| {
             let mut spec = (*connection.spec).clone();
             spec.tools = false;
             connection.spec = Arc::new(spec);
             connection
         });
-        call.adapters.push(adapter);
+        adapters.0.push(adapter);
     }
 }
 

@@ -2305,10 +2305,11 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     // What the adapter was given: whether that model calls tools.
     let given = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (seen, wrap) = (Arc::clone(&given), adapted.clone());
-    let adapt = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
+    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
             let (seen, wrap) = (Arc::clone(&seen), wrap.clone());
-            call.adapters
+            adapters
+                .0
                 .push(Adapter::new("wrap", move |connection: Connection| {
                     if let Ok(mut seen) = seen.lock() {
                         seen.push(connection.spec.tools);
@@ -2353,6 +2354,59 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
 }
 
 #[test]
+fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("own")]);
+    let adapted = MockCompletionModel::from_stream_turns([answer("adapted")]);
+    // Each adapter as it was applied, and whether the model it got calls
+    // tools.
+    let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (seen, wrap) = (Arc::clone(&applied), adapted.clone());
+    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
+            let outer = Arc::clone(&seen);
+            adapters.0.push(
+                Adapter::new("outer", move |connection: Connection| {
+                    if let Ok(mut applied) = outer.lock() {
+                        applied.push(("outer", connection.spec.tools));
+                    }
+                    connection
+                })
+                .outermost(),
+            );
+            let (inner, wrap) = (Arc::clone(&seen), wrap.clone());
+            adapters
+                .0
+                .push(Adapter::new("inner", move |connection: Connection| {
+                    if let Ok(mut applied) = inner.lock() {
+                        applied.push(("inner", connection.spec.tools));
+                    }
+                    let mut spec = (*connection.spec).clone();
+                    spec.tools = false;
+                    let model = ModelAdapter::<Completion>::new(spec.reference(), wrap.clone());
+                    Connection {
+                        spec: Arc::new(spec),
+                        handler: Handler(ErasedHandler::new(model)),
+                    }
+                }));
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
+    agent_on(&mut app, &own);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // The outer adapter got what the inner one made: a model that calls no
+    // tools, on the inner one's handler.
+    assert_eq!(
+        applied.lock().map(|applied| applied.clone()).ok(),
+        Some(vec![("inner", true), ("outer", false)])
+    );
+    assert_eq!((own.request_count(), adapted.request_count()), (0, 1));
+}
+
+#[test]
 fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
@@ -2383,9 +2437,10 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("hi")]);
     // Says the model calls no tools, and tells the call it saw the reply.
-    let adapt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
-            call.adapters
+    let adapt = |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
+            adapters
+                .0
                 .push(Adapter::new("plain", |connection: Connection| {
                     let mut spec = (*connection.spec).clone();
                     spec.tools = false;

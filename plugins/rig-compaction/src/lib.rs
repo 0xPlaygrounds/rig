@@ -362,15 +362,14 @@ fn on_compact(
 }
 
 /// The model `model` goes to, as Start will send it: its own connection,
-/// else its agent's `own`, as its adapters change it.
-fn routed(model: &ModelRequest, own: Option<&Connection>) -> Option<Arc<ModelSpec>> {
+/// else its agent's `own`, as its `adapters` change it.
+fn routed(
+    model: &ModelRequest,
+    adapters: &Adapters,
+    own: Option<&Connection>,
+) -> Option<Arc<ModelSpec>> {
     let connection = model.connection.as_ref().or(own)?.clone();
-    let adapters = model.adapters.iter();
-    Some(
-        adapters
-            .fold(connection, |connection, adapter| adapter.apply(connection))
-            .spec,
-    )
+    Some(adapters.apply(connection).spec)
 }
 
 /// The policy's estimate of `request` as a model of `spec` gets it: one
@@ -409,7 +408,7 @@ fn sent_tokens(
 /// estimate, as that model gets it, whichever is larger.
 fn compact_near_the_window(
     mut calls: Query<
-        (Entity, &mut ModelRequest, &CallOf, &ForAgent),
+        (Entity, &mut ModelRequest, &Adapters, &CallOf, &ForAgent),
         (Added<Admitted>, With<TurnCall>),
     >,
     mut agents: Query<(Compacting, &mut LastUsage)>,
@@ -420,7 +419,7 @@ fn compact_near_the_window(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, mut model, &CallOf(turn), &ForAgent(agent)) in &mut calls {
+    for (call, mut model, adapters, &CallOf(turn), &ForAgent(agent)) in &mut calls {
         let Ok(mut compactions) = turns.get_mut(turn) else {
             continue;
         };
@@ -430,7 +429,7 @@ fn compact_near_the_window(
         if compactions.summaries >= MAX_COMPACTIONS {
             continue;
         }
-        let Some(spec) = routed(&model, compacting.connection) else {
+        let Some(spec) = routed(&model, adapters, compacting.connection) else {
             continue;
         };
         let (policy, spec) = (&policy.0, &*spec);

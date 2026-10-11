@@ -421,7 +421,7 @@ fn provide(
 /// other adapters wrap the keyed model: whichever model the call finally
 /// goes to, it goes on the current key of that model's pool, if pooled.
 fn route(
-    mut calls: Query<(Entity, &mut ModelRequest), Added<Admitted>>,
+    mut calls: Query<(Entity, &mut Adapters), Added<Admitted>>,
     mut pools: ResMut<Pools>,
     keys: Res<Keys>,
     models: Res<Models>,
@@ -432,7 +432,7 @@ fn route(
         return;
     }
     let now = time.elapsed();
-    for (call, mut request) in &mut calls {
+    for (call, mut adapters) in &mut calls {
         let picked: Vec<(String, usize)> = pools
             .0
             .iter_mut()
@@ -455,8 +455,8 @@ fn route(
                 _ => connection,
             }
         });
-        request.adapters.retain(|adapter| adapter.name != ADAPTER);
-        request.adapters.insert(0, adapter);
+        adapters.0.retain(|adapter| adapter.name != ADAPTER);
+        adapters.0.insert(0, adapter);
         commands.entity(call).insert(OnKey(picked));
     }
 }

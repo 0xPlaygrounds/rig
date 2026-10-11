@@ -133,12 +133,12 @@ struct Done {
 /// Every model call gets its tally, and a tap on its stream that counts
 /// its tool arguments' characters, which no `StreamDelta` carries.
 fn tap_arguments(
-    mut calls: Query<(Entity, &mut ModelRequest), Added<Admitted>>,
+    mut calls: Query<(Entity, &mut Adapters), Added<Admitted>>,
     mut commands: Commands,
 ) {
-    for (call, mut request) in &mut calls {
+    for (call, mut adapters) in &mut calls {
         let arguments = Arc::new(AtomicU64::new(0));
-        request.adapters.push(tap(arguments.clone()));
+        adapters.0.push(tap(arguments.clone()));
         commands.entity(call).insert(Tally {
             chars: 0,
             arguments,

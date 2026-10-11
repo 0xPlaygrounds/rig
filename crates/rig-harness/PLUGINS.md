@@ -752,7 +752,8 @@ fn keep_asides(
 A model call is an effect entity with a `ModelRequest`: the rig-core
 `CompletionRequest` it sends (system prompt as its first message, the
 messages, the tools offered, the options), the `connection` it goes to,
-else its agent's model (`Models::connect` makes one), and its `adapters`.
+else its agent's model (`Models::connect` makes one); its `Adapters` are a
+component beside it.
 A turn's own call is a `TurnCall`, whose request the kernel builds from
 its agent when it is admitted (an `On<Add<Admitted>>` observer runs
 before that; a Prepare system sees it built); a call built from an agent outside its
@@ -771,7 +772,9 @@ prompt cache.
   `connection`.
 - **Adapting** the model, whichever it is, such as wrapping its handler so
   it reads tools as text or so its stream is rewritten, is an `Adapter`
-  pushed on the call's `adapters`. Start applies the adapters in order to
+  pushed on the call's `Adapters` (`Query<&mut Adapters, Added<Admitted>>`,
+  so it never conflicts with a request edit). Start applies the adapters
+  in the order pushed, those placed `outermost()` last, to
   the connection the call finally goes to, after every Prepare edit, then
   fits the request to the adapted spec: a router and an adapter never undo
   each other, and neither needs to come after the other. An adapter wraps
@@ -902,9 +905,9 @@ fn read_from_text(
 
 /// Every turn's call goes to its model with the tools as text, when that
 /// model calls none, whichever model a router picks.
-fn tools_as_text(mut calls: NewTurnCalls) {
-    for (mut call, _) in &mut calls {
-        call.adapters.push(Adapter::new("text-tools", |mut connection: Connection| {
+fn tools_as_text(mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>) {
+    for mut adapters in &mut calls {
+        adapters.0.push(Adapter::new("text-tools", |mut connection: Connection| {
             if !connection.spec.tools {
                 let mut spec = (*connection.spec).clone();
                 spec.tools = true;
