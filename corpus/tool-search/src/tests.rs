@@ -162,3 +162,8 @@ fn a_deferred_tool_is_offered_once_tool_search_found_or_the_model_called_it() {
     let (mut app, _) = start(&store);
     assert_eq!(count_tools(&mut app), counted, "saved with the session");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ToolSearchPlugin);
+}

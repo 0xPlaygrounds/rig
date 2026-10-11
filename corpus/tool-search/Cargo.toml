@@ -14,7 +14,10 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 # Name globs of the deferred tools.
 glob = { workspace = true }
-# Ordering: the deferred tools leave a request before compaction measures it.
+# Ordering: the deferred tools leave a request after the default prompt went
+# in, which the count of deferred tools joins, and before compaction
+# measures it.
+rig-basics = { path = "../../plugins/rig-basics" }
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # `tool_search`'s parameters, and the settings table.
@@ -22,6 +25,8 @@ schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
