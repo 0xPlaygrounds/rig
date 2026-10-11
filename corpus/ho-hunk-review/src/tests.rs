@@ -138,3 +138,8 @@ fn a_hunk_changed_since_the_turn_is_a_conflict() {
     app.update();
     assert_eq!(pickers(&mut app).len(), 1);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(HunkReviewPlugin);
+}
