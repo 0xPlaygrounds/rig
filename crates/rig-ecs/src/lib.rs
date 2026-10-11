@@ -33,6 +33,7 @@ pub mod journal;
 pub mod model;
 pub mod prompt;
 pub mod restore;
+pub mod stage;
 pub mod tools;
 pub mod turn;
 
@@ -64,6 +65,11 @@ pub mod prelude {
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::Restored;
+    pub use crate::stage::{
+        Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
+        Outcome, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
+        Unreviewed, record_of,
+    };
     pub use crate::tools::{
         AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, WorldToolsExt,
     };
@@ -163,6 +169,7 @@ impl Plugin for AgentPlugin {
             .add_observer(model::connect)
             .add_observer(model::check_effort)
             .add_observer(model::on_set_effort);
+        stage::build(app);
     }
 
     fn finish(&self, app: &mut App) {

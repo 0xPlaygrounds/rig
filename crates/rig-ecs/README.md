@@ -20,6 +20,14 @@ What it holds, by module:
   (after a call a retry does not fix) and `ModelRequest` calls of their
   own; a `Connection` on a turn or call sends it to another model than the
   agent's. `Condensed` sends a summary in place of older messages.
+- `stage`: effects as entities. An effect's components are its request
+  and its outcome, and each frame the `AgentPass` schedule runs its stages
+  (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
+  moves. A plugin steps in with a system in a stage: it edits a request in
+  Prepare, holds (`HoldOf`) or answers (`Outcome`) it in Gate, and reads or
+  replaces the outcome in Review. Every settled effect is `Recorded`, with
+  its raw and reviewed outcome. A failing Prepare, Gate or Review system
+  closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens; `KeepAwake` keeps it running for a
   timer.

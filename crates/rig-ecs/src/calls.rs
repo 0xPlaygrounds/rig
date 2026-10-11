@@ -10,9 +10,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryFilter;
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{ConditionalSendFuture, Task, TaskPool};
+use rig_core::effect::Outcome;
+use rig_core::error::ErrorReport;
+
+use super::stage::{self, Effect};
 
 /// Frames run right after a woken one (see [`settle`]).
 const SETTLE_FRAMES: u32 = 4;
@@ -136,13 +141,35 @@ impl Running {
         wake: &Wake,
         work: impl ConditionalSendFuture<Output = T> + 'static,
     ) -> Self {
+        Self::finishing(pool, wake, work, |mut entity, output| {
+            entity.insert(C::from(output));
+        })
+    }
+
+    /// Spawns `work`, an effect's handler, on `pool`; it ends as the
+    /// effect's [`stage::Outcome`], unless something answered it first.
+    pub(crate) fn answering(
+        pool: &TaskPool,
+        wake: &Wake,
+        work: impl ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static,
+    ) -> Self {
+        Self::finishing(pool, wake, work, |mut entity, output| {
+            entity.insert_if_new(stage::Outcome(output));
+        })
+    }
+
+    /// Spawns `work` on `pool`; `finish` puts its output on the entity.
+    fn finishing<T: Send + 'static>(
+        pool: &TaskPool,
+        wake: &Wake,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
+        finish: fn(EntityWorldMut, T),
+    ) -> Self {
         let wake = wake.clone();
         Self(pool.spawn(async move {
             let output = work.await;
             wake.wake();
-            Box::new(move |mut entity: EntityWorldMut| {
-                entity.insert(C::from(output));
-            }) as Finish
+            Box::new(move |entity: EntityWorldMut| finish(entity, output)) as Finish
         }))
     }
 
@@ -167,8 +194,20 @@ impl<T: Send + Sync + 'static> From<T> for Done<T> {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PollCalls;
 
-/// Replaces each finished [`Running`] task with its output.
-pub fn poll_calls(mut calls: Query<(Entity, &mut Running)>, mut commands: Commands) {
+/// Replaces each finished [`Running`] task with its output, but an
+/// effect's, which the kernel takes in [`Stage::Arrive`](stage::Stage::Arrive).
+pub fn poll_calls(calls: Query<(Entity, &mut Running), Without<Effect>>, commands: Commands) {
+    finish(calls, commands);
+}
+
+/// Replaces each finished effect's [`Running`] task with its outcome, in
+/// [`Stage::Arrive`](stage::Stage::Arrive).
+pub(crate) fn arrive(calls: Query<(Entity, &mut Running), With<Effect>>, commands: Commands) {
+    finish(calls, commands);
+}
+
+/// Replaces each finished task among `calls` with its output.
+fn finish<F: QueryFilter>(mut calls: Query<(Entity, &mut Running), F>, mut commands: Commands) {
     for (entity, mut running) in &mut calls {
         if let Some(finish) = check_ready(&mut running.bypass_change_detection().0) {
             commands.entity(entity).remove::<Running>().queue(finish);

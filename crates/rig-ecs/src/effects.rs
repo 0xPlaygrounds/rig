@@ -3,24 +3,42 @@
 //! open tool call, which no handler answers, gets its id when it is opened.
 //! A plugin that keeps an effect log, such as rig-harness's, inserts
 //! [`Effects::recorded_by`] its recorder, which then sees every effect with
-//! rig-core's effect types; without one nothing is recorded.
+//! rig-core's effect types; without one nothing is recorded. An effect
+//! entity's dispatch ([`stage`](super::stage)) is recorded in the kernel's own
+//! [`RecordBuffer`] instead, and its record written as a
+//! [`Recorded`](super::stage::Recorded) when it settles.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
+use rig_core::effect::Outcome;
 use rig_core::effect::{EffectId, EffectKind, tool_key};
 use rig_core::error::ErrorReport;
-use rig_core::serve::{Dispatch, ErasedHandler, OpenRecord, Origin, Recorder, Reply, catch_panics};
+use rig_core::serve::{
+    Dispatch, ErasedHandler, OpenRecord, Origin, RecordBuffer, Recorder, Reply, catch_panics,
+};
 
 use bevy_tasks::ConditionalSendFuture;
 
 /// The effect ids, and the recorder of every effect, if any.
-#[derive(Resource, Default)]
+#[derive(Resource)]
 pub struct Effects {
     recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     /// The last id taken.
     last: AtomicU64,
+    /// The records of effect entities' dispatches, timed, until they settle.
+    buffer: RecordBuffer,
+}
+
+impl Default for Effects {
+    fn default() -> Self {
+        Self {
+            recorder: None,
+            last: AtomicU64::new(0),
+            buffer: RecordBuffer::new().timed(),
+        }
+    }
 }
 
 impl Effects {
@@ -31,6 +49,7 @@ impl Effects {
         Self {
             recorder: Some(recorder),
             last: AtomicU64::new(last.map_or(0, EffectId::as_u64)),
+            ..Self::default()
         }
     }
 
@@ -82,8 +101,30 @@ impl Effects {
         )
     }
 
+    /// Runs `kind` through `handler` as the effect `id` of an entity, from
+    /// `origin`, recorded in the kernel's buffer. A panic in the handler or
+    /// its stream becomes an internal error, recorded as its outcome.
+    pub(crate) fn run(
+        &self,
+        id: EffectId,
+        origin: Origin,
+        handler: ErasedHandler,
+        kind: EffectKind,
+    ) -> impl ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static {
+        let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
+        recorder.begin(id, handler.descriptor().key, kind.clone(), origin);
+        let dispatch = Dispatch::new(id, kind.streams()).recorded_by(recorder.clone());
+        let work = async move { handler.handle(kind, dispatch).await.into_outcome().await };
+        catch_panics(Some(recorder), id, work)
+    }
+
+    /// The records of effect entities' dispatches.
+    pub(crate) fn buffer(&self) -> &RecordBuffer {
+        &self.buffer
+    }
+
     /// Takes the next effect id.
-    fn next_id(&self) -> EffectId {
+    pub(crate) fn next_id(&self) -> EffectId {
         EffectId::from_raw(self.last.fetch_add(1, Ordering::Relaxed) + 1)
     }
 
