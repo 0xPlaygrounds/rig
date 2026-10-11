@@ -76,3 +76,61 @@ fn the_model_and_status_always_stay() {
         "deepseek/deepseek-flash  thinking… (Esc stops)"
     );
 }
+
+#[test]
+fn a_question_shows_its_body_choices_and_typed_answer() {
+    use ratatui::Terminal;
+    use ratatui::backend::TestBackend;
+    use ratatui::layout::Position;
+
+    use super::super::pick::{Choosing, Row, Shown};
+    use super::draw_choice;
+
+    let shown = Shown {
+        title: "Allow `rm -rf build`?",
+        body: "It matches `rm -rf`.\nType a reason to deny it with.",
+        labels: vec!["Deny", "Allow once", "Allow for this session"],
+        free_text: true,
+        selected: 0,
+    };
+    let choosing = Choosing {
+        entity: bevy_ecs::entity::Entity::PLACEHOLDER,
+        filter: "allow".to_owned(),
+        selected: 0,
+    };
+    // What is typed filters the choices and is an answer of its own.
+    assert_eq!(
+        shown.rows(&choosing.filter),
+        [Row::Item(1), Row::Item(2), Row::Typed]
+    );
+    let Ok(mut terminal) = Terminal::new(TestBackend::new(60, 20));
+    assert!(
+        terminal
+            .draw(|frame| draw_choice(frame, &choosing, &shown))
+            .is_ok()
+    );
+    let buffer = terminal.backend().buffer();
+    let screen: Vec<String> = (0..buffer.area.height)
+        .map(|y| {
+            (0..buffer.area.width)
+                .filter_map(|x| {
+                    buffer
+                        .cell(Position::new(x, y))
+                        .map(|cell| cell.symbol().to_owned())
+                })
+                .collect()
+        })
+        .collect();
+    let screen = screen.join("\n");
+    for shown in [
+        "Allow `rm -rf build`?",
+        "It matches `rm -rf`.",
+        "› allow",
+        "Allow once",
+        "Allow for this session",
+        "✎ allow",
+    ] {
+        assert!(screen.contains(shown), "{shown} not in\n{screen}");
+    }
+    assert!(!screen.contains("Deny"), "{screen}");
+}

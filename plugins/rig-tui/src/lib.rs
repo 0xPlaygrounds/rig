@@ -17,20 +17,28 @@
 //! A plugin adds to the view without touching it: a [`TuiPanel`] beside
 //! the transcript or over the screen, drawn by the plugin's own system in
 //! [`TuiSystems::Draw`] (see [`panel`]); a [`RequestRedraw`] for a frame;
-//! the agent shown, [`Focused`], and showing another, [`Focus`]; a choice
-//! for the user, [`PickRequest`]; the status line's items
-//! ([`StatusItems`], [`AppStatus`]); and the [`TuiScreen`]'s size. These
-//! are there in every run, also one with another front such as `--print`,
-//! which never draws a frame. [`ratatui`] is re-exported so a plugin draws
-//! with the same version.
+//! the agent shown, [`Focused`], and showing another, [`Focus`]; the
+//! status line's items ([`StatusItems`], [`AppStatus`]); and the
+//! [`TuiScreen`]'s size. It takes part in the input too: a key binding
+//! ([`keys`]: the view's own keys are bindings as well), the keys for a
+//! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
+//! terminal's events ([`TerminalEvent`]), a program run with the terminal
+//! ([`RunInTerminal`]), and a choice for the user, its own [`Picker`]
+//! ([`pick`]). The view answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
+//! one picker or question at a time. These are there in every run, also
+//! one with another front such as `--print`, which never draws a frame.
+//! [`ratatui`] and [`crossterm`] are re-exported so a plugin uses the same
+//! versions.
 
 mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
 mod input;
+pub mod keys;
 pub mod markdown;
 pub mod panel;
+pub mod pick;
 mod render;
 mod renderers;
 mod status;
@@ -41,16 +49,25 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
-use rig_harness::prelude::{AppCliExt, Front, RigHome};
+use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome};
 
+pub use crossterm;
+pub use editor::TuiInput;
+pub use input::TerminalEvent;
+pub use keys::{
+    AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, run_command,
+};
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
+pub use pick::{Chosen, PickItem, PickRequest, Picked, Picker};
 pub use ratatui;
 pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
-pub use view::{Focus, PickItem, PickRequest};
+pub use terminal::{RunInTerminal, TerminalExit};
+pub use view::Focus;
 
 /// The terminal view's name as a front.
 pub const FRONT: &str = "tui";
@@ -66,10 +83,14 @@ impl Plugin for TuiPlugin {
         // What other plugins use is there in any run; without the
         // terminal, no frame is ever due.
         status::add(app);
+        // Spawned in `build`, so a plugin's `finish` may disable one.
+        keys::add_built_in(app);
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
+            .init_resource::<TuiInput>()
             .add_message::<RequestRedraw>()
             .add_message::<PickRequest>()
+            .add_message::<TerminalEvent>()
             .configure_sets(
                 PostUpdate,
                 (
@@ -90,50 +111,72 @@ impl Plugin for TuiPlugin {
         if !app.runs_front(FRONT) {
             return;
         }
-        app.init_resource::<RigHome>()
-            .init_resource::<view::TuiView>()
-            .init_resource::<complete::FileIndex>()
-            .init_resource::<clipboard::Clipboard>()
-            .add_systems(Startup, terminal::open_terminal)
-            .add_systems(
-                PreUpdate,
-                (
-                    input::read_input.run_if(resource_exists::<input::TerminalInput>),
-                    complete::receive_paths,
-                    clipboard::receive_images,
-                )
-                    .chain(),
-            )
-            .add_systems(
-                Update,
-                (
-                    (view::focus_agent, view::mark_focused).chain(),
-                    // A picker that cannot open writes a notice instead.
-                    // A command typed this frame runs in the agent loop, so
-                    // its notices and a refusal come back in this frame.
-                    (view::open_pickers, view::collect_notices)
-                        .chain()
-                        .after(AgentLoop),
-                    view::recall_messages.after(AgentLoop),
-                ),
-            )
-            .add_systems(
-                PostUpdate,
-                (
-                    render::layout
-                        .in_set(TuiSystems::Layout)
-                        .run_if(resource_exists::<terminal::Tui>.and_then(render::needs_redraw)),
-                    render::render
-                        .in_set(TuiSystems::Render)
-                        .run_if(resource_exists::<terminal::Tui>),
-                ),
-            )
+        add_view(app);
+        app.add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
                 terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),
-            )
-            .add_observer(view::on_focus);
+            );
     }
+}
+
+/// Everything of the view but the terminal itself, which
+/// [`terminal::open_terminal`] opens: the view's tests run it on the
+/// events they write.
+fn add_view(app: &mut App) {
+    app.world_mut()
+        .spawn((Name::new("answerer:tui"), Answerer::default()));
+    app.init_resource::<RigHome>()
+        .init_resource::<view::TuiView>()
+        .init_resource::<complete::FileIndex>()
+        .init_resource::<clipboard::Clipboard>()
+        .add_systems(
+            PreUpdate,
+            (
+                input::receive_events.run_if(resource_exists::<input::TerminalInput>),
+                input::read_input,
+                complete::receive_paths,
+                clipboard::receive_images,
+            )
+                .chain(),
+        )
+        .add_systems(
+            Update,
+            (
+                (view::focus_agent, view::mark_focused).chain(),
+                // A command typed this frame runs in the agent loop, so
+                // its picker, its notices and a refusal come back in this
+                // frame, and so does a question asked there.
+                (
+                    pick::open_requests,
+                    pick::queue_choices,
+                    view::collect_notices,
+                )
+                    .chain()
+                    .after(AgentLoop),
+                view::recall_messages.after(AgentLoop),
+            ),
+        )
+        .add_systems(
+            PostUpdate,
+            (
+                terminal::run_in_terminal
+                    .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
+                    .before(TuiSystems::Layout),
+                (
+                    complete::follow_input,
+                    render::layout
+                        .run_if(resource_exists::<terminal::Tui>.and_then(render::needs_redraw)),
+                )
+                    .chain()
+                    .in_set(TuiSystems::Layout),
+                (terminal::report_releases, render::render)
+                    .chain()
+                    .in_set(TuiSystems::Render)
+                    .run_if(resource_exists::<terminal::Tui>),
+            ),
+        )
+        .add_observer(view::on_focus);
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use bevy_ecs::system::RunSystemOnce;
 use rig_ecs::prelude::*;
 
+use super::super::editor::TuiInput;
 use super::super::view::{self, TuiView};
 use super::send;
 
@@ -12,9 +13,9 @@ struct Delivered(Vec<String>);
 fn enter(app: &mut App, text: &str) {
     let text = text.to_owned();
     let sent = app.world_mut().run_system_once(
-        move |mut view: ResMut<TuiView>, mut commands: Commands| {
-            view.editor.set(text.clone());
-            send(&mut view, &mut commands, false);
+        move |mut view: ResMut<TuiView>, mut input: ResMut<TuiInput>, mut commands: Commands| {
+            input.set(text.clone());
+            send(&mut view, &mut input, &mut commands, false);
         },
     );
     assert!(sent.is_ok());
@@ -36,6 +37,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
             },
         )
         .init_resource::<TuiView>()
+        .init_resource::<TuiInput>()
         .init_resource::<Delivered>()
         .add_observer(
             |accepted: On<Add<Started>>,
@@ -64,12 +66,13 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
     for (typed, why) in refused {
         enter(&mut app, typed);
         let view = app.world().resource::<TuiView>();
+        let input = app.world().resource::<TuiInput>();
         let shown: Vec<&str> = view
             .notices
             .iter()
             .map(|notice| notice.text.as_str())
             .collect();
-        assert_eq!(view.editor.text(), typed);
+        assert_eq!(input.text(), typed);
         assert!(
             matches!(shown.as_slice(), [.., last] if last.starts_with(why)),
             "{shown:?}"

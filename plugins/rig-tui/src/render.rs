@@ -1,5 +1,5 @@
 //! Draws the focused agent: transcript, status line, input editor with its
-//! completion list, and the picker.
+//! completion list, and the picker or question shown.
 
 use std::time::{Duration, Instant};
 
@@ -14,14 +14,16 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 
 use super::complete::{Completion, Kind as CompletionKind};
-use super::editor::Layout as InputLayout;
+use super::editor::{Layout as InputLayout, TuiInput};
+use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
+use super::pick::{Choices, Choosing, Row, Shown};
 use super::renderers::{ToolRenderer, excerpt};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{Picker, ShownNotice, TuiView};
+use super::view::{ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
@@ -48,7 +50,8 @@ pub(crate) struct Paced {
 }
 
 /// Whether anything drawn changed since the last frame: the view state (a
-/// key, a notice, a resize), an agent's drawn components, a turn's calls, a
+/// key, a notice, a resize, a picker or question), the input and who has
+/// the keys, an agent's drawn components, a turn's calls, a
 /// streaming reply, a status line item (a retry's wait counts down there),
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
@@ -57,6 +60,7 @@ pub(crate) struct Paced {
 /// brought it, 16 ms apart, under any loop.
 pub(crate) fn needs_redraw(
     view: Res<TuiView>,
+    (input, focus): (Res<TuiInput>, Res<KeyFocus>),
     changed: Query<
         (),
         Or<(
@@ -81,6 +85,8 @@ pub(crate) fn needs_redraw(
     let changed = requested
         || removed
         || view.is_changed()
+        || input.is_changed()
+        || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || !changed.is_empty()
         || !messages.is_empty();
@@ -119,7 +125,7 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
 /// in entity order, and the transcript what they leave.
 pub(crate) fn layout(
     tui: Res<Tui>,
-    view: Res<TuiView>,
+    input: Res<TuiInput>,
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
 ) {
@@ -127,7 +133,7 @@ pub(crate) fn layout(
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
-    let rows = view.editor.layout(size.width.saturating_sub(2));
+    let rows = input.layout(size.width.saturating_sub(2));
     let input_height = rows.rows.len().clamp(1, INPUT_LINES);
     let [above, status, input] = Layout::vertical([
         Constraint::Min(1),
@@ -207,13 +213,14 @@ fn transcript_parts(
 }
 
 /// The hint under the input box.
-fn input_hint(turn_running: bool, empty: bool) -> &'static str {
-    match (turn_running, empty) {
-        (true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
-        (false, true) => {
+fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str {
+    match (panel_keys, turn_running, empty) {
+        (true, ..) => " A panel has the keys · Esc gives them back ",
+        (false, true, _) => " Enter steers this turn · Tab sends after it · Esc stops ",
+        (false, false, true) => {
             " Enter sends · Shift+Enter or Ctrl+J new line · Ctrl+V image · / commands · @ files "
         }
-        (false, false) => "",
+        (false, false, false) => "",
     }
 }
 
@@ -223,6 +230,7 @@ fn input_hint(turn_running: bool, empty: bool) -> &'static str {
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
     mut view: ResMut<TuiView>,
+    (typed, focus, choices): (Res<TuiInput>, Res<KeyFocus>, Choices),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
     agents: Query<(&Conversation, Option<&Condensed>)>,
@@ -326,7 +334,7 @@ pub(crate) fn render(
                     .areas(status_area);
             frame.render_widget(line, status);
             frame.render_widget(usage, meter);
-            let hint = input_hint(turn.is_some(), view.editor.is_empty());
+            let hint = input_hint(turn.is_some(), typed.is_empty(), focus.0.is_some());
             frame.render_widget(
                 Paragraph::new(layout.rows)
                     .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
@@ -336,8 +344,13 @@ pub(crate) fn render(
             for (.., canvas) in &panels {
                 canvas.copy_to(frame.buffer_mut());
             }
-            match &view.picker {
-                Some(picker) => draw_picker(frame, picker),
+            let shown = view
+                .choosing
+                .as_ref()
+                .and_then(|choosing| Some((choosing, choices.shown(choosing.entity)?)));
+            match shown {
+                Some((choosing, shown)) => draw_choice(frame, choosing, &shown),
+                None if focus.0.is_some() => {}
                 None => {
                     if let Some(completion) = &view.completion {
                         draw_completion(frame, completion, input);
@@ -528,26 +541,68 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
     )
 }
 
-/// The picker in a centred box over the transcript.
-fn draw_picker(frame: &mut Frame, picker: &Picker) {
-    let popup = frame
-        .area()
-        .centered(Constraint::Ratio(4, 5), Constraint::Ratio(3, 4));
+/// The picker or question in a centred box over the transcript: its body,
+/// what is typed, then the rows it leaves, and for free text, the typed
+/// answer.
+fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Shown<'_>) {
+    let area = frame.area();
+    let width = area.width.saturating_mul(4) / 5;
+    let body = wrap_all(
+        &plain_lines(shown.body, Style::new()),
+        usize::from(width.saturating_sub(2).max(1)),
+    );
+    let rows = shown.rows(&choosing.filter);
+    // Room for the body, the typed line and the rows, up to 3/4 of the
+    // screen.
+    let wanted = body.len() + usize::from(!body.is_empty()) + 1 + rows.len() + 2;
+    let height = u16::try_from(wanted)
+        .unwrap_or(u16::MAX)
+        .min(area.height.saturating_mul(3) / 4)
+        .max(5);
+    let popup = area.centered(Constraint::Length(width), Constraint::Length(height));
     frame.render_widget(Clear, popup);
+    let action = if shown.free_text {
+        "type to filter or answer"
+    } else {
+        "type to filter"
+    };
     let block = Block::bordered().title(format!(
-        " {} · type to filter, Enter picks, Esc closes ",
-        picker.title
+        " {} · {action}, Enter picks, Esc closes ",
+        shown.title
     ));
     let inner = block.inner(popup);
     frame.render_widget(block, popup);
-    let [filter, list] = Layout::vertical([Constraint::Length(1), Constraint::Min(1)]).areas(inner);
-    frame.render_widget(Line::from(format!("filter: {}▏", picker.filter)), filter);
-    let items: Vec<String> = picker
-        .visible()
-        .into_iter()
-        .map(|item| item.label.clone())
+    let body_height = u16::try_from(body.len())
+        .unwrap_or(u16::MAX)
+        .min(inner.height.saturating_sub(2) / 2);
+    let gap = u16::from(body_height > 0);
+    let [body_area, _, typed, list] = Layout::vertical([
+        Constraint::Length(body_height),
+        Constraint::Length(gap),
+        Constraint::Length(1),
+        Constraint::Min(1),
+    ])
+    .areas(inner);
+    frame.render_widget(Paragraph::new(body), body_area);
+    frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
+    let items: Vec<Line<'static>> = rows
+        .iter()
+        .map(|row| match row {
+            Row::Item(index) => Line::from(
+                shown
+                    .labels
+                    .get(*index)
+                    .copied()
+                    .unwrap_or_default()
+                    .to_owned(),
+            ),
+            Row::Typed if choosing.filter.trim().is_empty() => {
+                Line::from("✎ or type an answer").dim()
+            }
+            Row::Typed => Line::from(format!("✎ {}", choosing.filter.trim())),
+        })
         .collect();
-    let mut state = ListState::default().with_selected(Some(picker.selected));
+    let mut state = ListState::default().with_selected(Some(choosing.selected));
     frame.render_stateful_widget(
         List::new(items).highlight_style(Style::new().add_modifier(Modifier::REVERSED)),
         list,

@@ -1,6 +1,8 @@
 //! The input editor: multiline text with a cursor, emacs-style editing
 //! keys and the prompt history, which is kept in `RIG_HOME` across
-//! sessions. Up and Down move between lines and, from the first or last
+//! sessions. It is the [`TuiInput`] resource, so a plugin reads and edits
+//! the draft as the keys do (a template, a dictated message, the text an
+//! editor wrote), and `is_changed` on it says the draft was edited. Up and Down move between lines and, from the first or last
 //! line, through the history, saving the draft as pi's editor does
 //! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
 
@@ -8,7 +10,9 @@ use std::fs;
 use std::io::Write as _;
 use std::path::PathBuf;
 
+use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use bevy_reflect::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
@@ -19,9 +23,12 @@ const HISTORY: usize = 500;
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
 
-/// The text being typed and the prompts typed before.
-#[derive(Default)]
-pub(crate) struct Editor {
+/// The terminal view's input: the text being typed, with its cursor, and
+/// the prompts typed before. It is there in any run, empty unless the view
+/// runs. Enter sends what it holds to the agent shown.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Default)]
+pub struct TuiInput {
     text: String,
     /// A byte offset in `text`, on a character boundary.
     cursor: usize,
@@ -42,31 +49,49 @@ pub(crate) struct Layout {
     pub(crate) cursor_column: usize,
 }
 
-impl Editor {
-    /// An empty editor with the history kept in `file`.
-    pub(crate) fn with_history(file: PathBuf) -> Self {
-        let history = load_history(&file);
-        Self {
-            history,
-            file: Some(file),
-            ..Self::default()
-        }
+impl TuiInput {
+    /// Reads the prompt history kept in `file`, which sent prompts are
+    /// added to.
+    pub(crate) fn load_history(&mut self, file: PathBuf) {
+        self.history = load_history(&file);
+        self.file = Some(file);
     }
 
-    pub(crate) fn text(&self) -> &str {
+    /// The text.
+    pub fn text(&self) -> &str {
         &self.text
     }
 
-    pub(crate) fn cursor(&self) -> usize {
+    /// The cursor: a byte offset in [`Self::text`], on a character
+    /// boundary.
+    pub fn cursor(&self) -> usize {
         self.cursor
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    /// Whether nothing is typed.
+    pub fn is_empty(&self) -> bool {
         self.text.is_empty()
     }
 
     /// Replaces the text, with the cursor at its end.
-    pub(crate) fn set(&mut self, text: String) {
+    pub fn set(&mut self, text: impl Into<String>) {
+        self.browsing = None;
+        self.show(text.into());
+    }
+
+    /// Puts the cursor at byte `offset`, or the nearest character boundary
+    /// before it.
+    pub fn set_cursor(&mut self, offset: usize) {
+        let mut offset = offset.min(self.text.len());
+        while !self.text.is_char_boundary(offset) {
+            offset -= 1;
+        }
+        self.cursor = offset;
+    }
+
+    /// Shows `text`, with the cursor at its end, keeping the history's
+    /// place.
+    fn show(&mut self, text: String) {
         self.text = text;
         self.cursor = self.text.len();
     }
@@ -78,14 +103,15 @@ impl Editor {
         self.browsing = None;
     }
 
-    /// Takes the text out, leaving the editor empty.
-    pub(crate) fn take(&mut self) -> String {
+    /// Takes the text out, leaving the input empty.
+    pub fn take(&mut self) -> String {
         self.cursor = 0;
         self.browsing = None;
         std::mem::take(&mut self.text)
     }
 
-    pub(crate) fn insert(&mut self, text: &str) {
+    /// Types `text` at the cursor, which ends up after it.
+    pub fn insert(&mut self, text: &str) {
         let text = text.replace("\r\n", "\n").replace('\r', "\n");
         self.text.insert_str(self.cursor, &text);
         self.cursor += text.len();
@@ -303,7 +329,7 @@ impl Editor {
         };
         self.browsing = Some(index);
         let text = self.history.get(index).cloned().unwrap_or_default();
-        self.set(text);
+        self.show(text);
     }
 
     fn history_forward(&mut self) {
@@ -317,7 +343,7 @@ impl Editor {
             self.browsing = None;
             std::mem::take(&mut self.draft)
         };
-        self.set(text);
+        self.show(text);
     }
 
     /// Adds a sent prompt to the history and its file, unless it repeats

@@ -11,6 +11,7 @@ use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use crossbeam_channel::Receiver;
 
+use super::editor::TuiInput;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
 use rig_ecs::commands::SlashCommand;
@@ -164,11 +165,12 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str)> {
 /// changed. A list closed with Esc stays closed until the token moves.
 pub(crate) fn update(
     view: &mut TuiView,
+    input: &TuiInput,
     index: &mut FileIndex,
     commands: &Query<(&Name, &SlashCommand)>,
     wake: &Wake,
 ) {
-    let found = token(view.editor.text(), view.editor.cursor());
+    let found = token(input.text(), input.cursor());
     let Some((kind, start, query)) = found else {
         view.completion = None;
         view.dismissed = None;
@@ -253,13 +255,28 @@ fn path_items(paths: &[String], query: &str) -> Vec<Item> {
 pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
+    input: Res<TuiInput>,
     commands: Query<(&Name, &SlashCommand)>,
     wake: Res<Wake>,
 ) {
     if index.walking.is_none() || !index.receive() {
         return;
     }
-    update(&mut view, &mut index, &commands, &wake);
+    update(&mut view, &input, &mut index, &commands, &wake);
+}
+
+/// Brings the completion up to date with the input once it changed, by a
+/// key or a plugin.
+pub(crate) fn follow_input(
+    mut index: ResMut<FileIndex>,
+    mut view: ResMut<TuiView>,
+    input: Res<TuiInput>,
+    commands: Query<(&Name, &SlashCommand)>,
+    wake: Res<Wake>,
+) {
+    if input.is_changed() {
+        update(&mut view, &input, &mut index, &commands, &wake);
+    }
 }
 
 /// Where `query` first appears in `text`, ignoring case, or `None`.
