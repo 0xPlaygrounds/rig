@@ -6,6 +6,7 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::world::DeferredWorld;
 use rig_core::effect::{EffectId, EffectKind};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, TASK, WAIT};
 use super::{Helper, Lifecycle, OpenRequests, Peers, Request, Subtask, answered, refused};
@@ -51,6 +52,14 @@ pub struct SpawnSubagent {
     /// For a task: it may `message` and `wait` for its siblings started with
     /// `peers`, and they for it.
     pub peers: bool,
+    /// For a helper: it does one job ([`once`](Self::once)).
+    #[serde(default)]
+    pub once: bool,
+    /// What other plugins carry on the request, such as the arguments they
+    /// added to `task`'s parameters (`ToolDef`), which a `task` call puts
+    /// here by name; read it in Prepare or Review. Recorded with the rest.
+    #[serde(default, skip_serializing_if = "Map::is_empty")]
+    pub extra: Map<String, Value>,
 }
 
 /// What a spawned agent is to its parent.
@@ -79,6 +88,8 @@ impl SpawnSubagent {
             tools: None,
             system_prompt: None,
             peers: false,
+            once: false,
+            extra: Map::new(),
         }
     }
 
@@ -99,6 +110,16 @@ impl SpawnSubagent {
         }
     }
 
+    /// The same request for a helper that does one job: it retires when
+    /// its first turn ends, so it is despawned and a restart does not
+    /// bring it back. Read its answer in an `On<Add<Settled>>` observer of
+    /// that turn. A [`Role::Task`] subagent ignores it: it lives on for
+    /// its parent's follow-ups.
+    #[must_use]
+    pub fn once(self) -> Self {
+        Self { once: true, ..self }
+    }
+
     /// The same request, with the system prompt `prompt`.
     #[must_use]
     pub fn system_prompt(self, prompt: impl Into<String>) -> Self {
@@ -108,6 +129,11 @@ impl SpawnSubagent {
         }
     }
 }
+
+/// On a helper that does one job ([`SpawnSubagent::once`]).
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Saved, Default, Clone, Debug)]
+pub(super) struct Once;
 
 /// On an answered [`SpawnSubagent`]: the agent it spawned.
 #[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]
@@ -154,6 +180,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(spawn_requested)
         .add_observer(answer_task)
         .add_observer(end_with_call)
+        .add_observer(retire_once)
         .add_systems(AgentPass, refuse_too_deep.in_set(Stage::Gate));
 }
 
@@ -350,6 +377,7 @@ fn spawn_requested(
         }
         Role::Helper => {
             child.insert(Helper(title));
+            child.insert_if(Once, || request.once);
         }
     }
     let child = child.id();
@@ -411,5 +439,19 @@ fn end_with_call(
     let requests = children.get(settled.entity).into_iter().flatten();
     for &request in requests.filter(|&&request| open.contains(request)) {
         commands.entity(request).despawn();
+    }
+}
+
+/// Retires a helper that does one job when its turn ends.
+fn retire_once(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<Turn>>,
+    once: Query<(), With<Once>>,
+    mut commit: Commit,
+) {
+    if let Ok(&ForAgent(agent)) = turns.get(settled.entity)
+        && once.contains(agent)
+    {
+        commit.retire(agent);
     }
 }

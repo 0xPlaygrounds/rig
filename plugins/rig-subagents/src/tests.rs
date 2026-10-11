@@ -276,34 +276,32 @@ fn read_only() -> ToolOptions<'static> {
     }
 }
 
-/// On a `task` call: the profile it named, which a plugin took off its
-/// arguments.
-#[derive(Component)]
-struct Profile(String);
+/// Adds the argument `name` to `task`'s parameters, as a plugin's
+/// `finish` would.
+fn add_task_argument(world: &mut World, name: &str) {
+    let mut tools = world.query::<&mut ToolDef>();
+    for mut tool in tools.iter_mut(world) {
+        let tool = &mut tool.0;
+        if tool.name.as_str() == TASK
+            && let Some(properties) = tool.parameters.get_mut("properties")
+            && let Some(properties) = properties.as_object_mut()
+        {
+            properties.insert(name.to_owned(), json!({ "type": "string" }));
+        }
+    }
+}
 
 #[test]
 fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it() {
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&MemoryStore::default(), Some(&model));
-    // A plugin's own `task` argument, `profile`, is taken off the call when
-    // it is admitted, and picks the request's tools and system prompt; the
-    // agent spawned gets the profile's prompt section.
-    let take_profile = |mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
-                        mut commands: Commands| {
-        for (call, mut request) in &mut calls {
-            let profile = request.call.function.arguments.shift_remove("profile");
-            if let Some(profile) = profile.as_ref().and_then(|profile| profile.as_str()) {
-                commands.entity(call).insert(Profile(profile.to_owned()));
-            }
-        }
-    };
-    let apply = |mut requests: Query<(&mut SpawnSubagent, &ChildOf), Added<Admitted>>,
-                 profiles: Query<&Profile>| {
-        for (mut request, of) in &mut requests {
-            if profiles
-                .get(of.parent())
-                .is_ok_and(|profile| profile.0 == "reviewer")
-            {
+    // A plugin's own `task` argument, `profile`, reaches the request, and
+    // picks its tools and system prompt; the agent spawned gets the
+    // profile's prompt section.
+    add_task_argument(session.app.world_mut(), "profile");
+    let apply = |mut requests: Query<&mut SpawnSubagent, Added<Admitted>>| {
+        for mut request in &mut requests {
+            if request.extra.get("profile") == Some(&json!("reviewer")) {
                 request.tools = Some(vec!["look".to_owned()]);
                 request.system_prompt = Some("You review.".to_owned());
             }
@@ -318,10 +316,7 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
     };
     session.app.add_systems(
         AgentPass,
-        (
-            (take_profile, apply).in_set(Stage::Prepare),
-            section.in_set(Stage::Review),
-        ),
+        (apply.in_set(Stage::Prepare), section.in_set(Stage::Review)),
     );
     let args = json!({ "description": "Review", "prompt": "Review src.", "profile": "reviewer" });
     let said = session.call(session.parent, TASK, "t1", args);
@@ -356,6 +351,10 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
         });
     let (request, answer, parent) = spawn.unwrap_or_default();
     assert_eq!(request.get("tools"), Some(&json!(["look"])));
+    assert_eq!(
+        request.get("extra"),
+        Some(&json!({ "profile": "reviewer" }))
+    );
     let agent = answer.get("agent").and_then(|agent| agent.as_str());
     assert_eq!(agent.map(str::to_owned), id);
     let call = world.get::<EffectParent>(child).map(|parent| parent.0);
@@ -572,4 +571,65 @@ fn a_helper_works_only_for_its_plugin_and_a_stopped_subagent_reports_why() {
     assert_eq!(child_model.request_count(), 1);
     let read = format!("{:?}", parent.requests());
     assert!(read.contains("[report] Stopped: over budget."), "{read}");
+}
+
+/// The answers of the turns of helpers, as they ended.
+#[derive(Resource, Default)]
+struct HelperAnswers(Vec<Option<String>>);
+
+#[test]
+fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
+    let store = MemoryStore::default();
+    let parent = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut session = Session::new(&store, Some(&parent));
+    // The plugin reads the answer as the helper's turn ends.
+    session.app.init_resource::<HelperAnswers>().add_observer(
+        |settled: On<Add<Settled>>,
+         turns: Query<(&ForAgent, &TurnOutcome)>,
+         helpers: Query<(), With<Helper>>,
+         mut answers: ResMut<HelperAnswers>| {
+            if let Ok((&ForAgent(agent), outcome)) = turns.get(settled.entity)
+                && helpers.contains(agent)
+            {
+                let answer = match outcome {
+                    TurnOutcome::Answered(message) => final_answer(message),
+                    _ => None,
+                };
+                answers.0.push(answer);
+            }
+        },
+    );
+    let job = SpawnSubagent::helper("summarizer")
+        .brief("Sum up the session.")
+        .once();
+    let request = session
+        .app
+        .world_mut()
+        .spawn((job, ForAgent(session.parent)))
+        .id();
+    session.passes(|world| world.get::<Settled>(request).is_some());
+    let helper = session
+        .app
+        .world()
+        .get::<SpawnedAgent>(request)
+        .map(|a| a.0);
+    let helper = helper.unwrap_or(Entity::PLACEHOLDER);
+    let model = MockCompletionModel::from_stream_turns([reply("A short session.")]);
+    session.answer_by(helper, &model);
+    run_until(&mut session.app, &session.wakes, |world| {
+        world.get_entity(helper).is_err()
+    });
+    let answers = &session.app.world().resource::<HelperAnswers>().0;
+    assert_eq!(answers, &[Some("A short session.".to_owned())]);
+    assert!(session.app.world().get_entity(helper).is_err(), "retired");
+    session.app.update();
+    drop(session);
+
+    let mut session = Session::new(&store, None);
+    let world = session.app.world_mut();
+    let agents = world
+        .query_filtered::<(), With<Agent>>()
+        .iter(world)
+        .count();
+    assert_eq!(agents, 1, "only the parent comes back");
 }

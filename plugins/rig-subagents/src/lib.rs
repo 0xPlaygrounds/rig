@@ -22,11 +22,14 @@
 //! Other plugins decide how agents are spawned with ordinary stage systems,
 //! since every agent is spawned through a [`SpawnSubagent`] request, an
 //! effect: a Prepare system edits it (a `task` call's own arguments are the
-//! call's, the request's parent), a Gate system refuses it or holds it until,
+//! call's, the request's parent, and an argument a plugin added to `task`'s
+//! parameters is in its `extra`), a Gate system refuses it or holds it until,
 //! say, a slot frees, and a Review system reads the agent spawned
 //! ([`SpawnedAgent`]) to add components of its own. [`SubagentPolicy`] says
 //! how deep agents nest. A plugin spawns a [`Role::Helper`] of its own the
-//! same way, which reports to no one and `message` cannot reach. Reports
+//! same way, which reports to no one and `message` cannot reach, and one
+//! for a single job with [`SpawnSubagent::once`], which retires when its
+//! first turn ends. Reports
 //! are messages like any to edit or take over, and a subagent whose turn a
 //! plugin stops reports the reason and what it had said.
 //!

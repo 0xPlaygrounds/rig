@@ -82,9 +82,11 @@ pub(super) fn add(app: &mut App) {
         .add_systems(Update, send_briefs.before(AgentLoop));
 }
 
-/// The arguments of a `task` call.
+/// The arguments of a `task` call. Any argument besides these is one
+/// another plugin added to the tool's parameters (the kernel refuses one
+/// they do not declare), and goes to the request's
+/// [`extra`](SpawnSubagent::extra).
 #[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 struct TaskArgs {
     /// A short title for the task, 3 to 6 words, shown to the user.
     description: String,
@@ -105,6 +107,10 @@ struct TaskArgs {
     /// that asked. Off when absent.
     #[serde(default)]
     peers: bool,
+    /// The arguments another plugin added.
+    #[serde(flatten)]
+    #[schemars(skip)]
+    extra: serde_json::Map<String, serde_json::Value>,
 }
 
 /// The arguments of a `message` call.
@@ -138,6 +144,8 @@ fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
         tools: args.tools.clone(),
         system_prompt: None,
         peers: args.peers,
+        once: false,
+        extra: args.extra.clone(),
     };
     commands.spawn((
         request,
