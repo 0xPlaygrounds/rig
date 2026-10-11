@@ -103,17 +103,33 @@ impl Plugin for MapReducePlugin {
             .add_observer(on_spawned)
             .add_observer(on_worker_end)
             .add_observer(on_job_end)
+            .configure_sets(
+                AgentPass,
+                (
+                    MapReduceSystems::Prepare.in_set(Stage::Prepare),
+                    MapReduceSystems::Gate.in_set(Stage::Gate),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    limit_model_calls.in_set(Stage::Prepare),
-                    keep_to_file.in_set(Stage::Gate),
+                    limit_model_calls.in_set(MapReduceSystems::Prepare),
+                    keep_to_file.in_set(MapReduceSystems::Gate),
                 ),
             )
             .add_systems(Update, retire_orphans.before(AgentLoop));
         #[cfg(feature = "tui")]
         app.add_systems(PostUpdate, show_progress.in_set(rig_tui::StatusSystems));
     }
+}
+
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum MapReduceSystems {
+    /// Prepare: fails a worker's turn past its model call limit.
+    Prepare,
+    /// Gate: refuses a worker's call that could change another file.
+    Gate,
 }
 
 /// On a `map_files` call: its files, its workers' answers and what it does
@@ -206,6 +222,7 @@ fn on_map(
     called: On<ToolCalled<MapArgs>>,
     access: Query<&ToolAccess>,
     tools: Query<&ToolDef>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     config: Res<MapConfig>,
     mut commands: Commands,
 ) {
@@ -219,7 +236,9 @@ fn on_map(
         Ok(files) => files,
         Err(why) => {
             let why = format!("{why} Nothing ran; fix the call and send it again.");
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            if let Ok(mut decision) = calls.get_mut(call) {
+                decision.decide(Outcome::refused(why));
+            }
             return;
         }
     };
@@ -287,50 +306,50 @@ impl MapJob {
     }
 
     /// Takes a worker's `result`: a file's, which may start the next
-    /// worker or the reducer, or the reducer's, which ends the call.
+    /// worker or the reducer, or the reducer's, which ends the call. The
+    /// call's answer once the job is done.
     fn settle(
         &mut self,
         job: Entity,
         path: Option<PathBuf>,
         result: Result<String, String>,
         commands: &mut Commands,
-    ) {
+    ) -> Option<Outcome> {
         self.running = self.running.saturating_sub(1);
         let Some(path) = path else {
             let combined = match result {
                 Ok(answer) => format!("{}\n\n{answer}", self.tally()),
                 Err(why) => format!("{}\nThe reduce step failed: {why}", self.report()),
             };
-            self.end(job, combined, commands);
-            return;
+            return Some(self.end(combined));
         };
         self.results.push((path, result));
         self.fill(job, commands);
         if self.running > 0 {
-            return;
+            return None;
         }
         let answers = self.answers();
         match self.reduce.clone() {
             Some(how) if !answers.is_empty() => {
                 let text = format!("{how}\n\nThe answers, one line per file:\n{answers}");
                 self.ask_for(job, None, text, commands);
+                None
             }
             _ => {
                 let report = self.report();
-                self.end(job, report, commands);
+                Some(self.end(report))
             }
         }
     }
 
-    /// Answers the call with `text`: a failure when no file succeeded.
-    fn end(&mut self, job: Entity, text: String, commands: &mut Commands) {
+    /// The call's answer, `text`: a failure when no file succeeded.
+    fn end(&mut self, text: String) -> Outcome {
         self.finished = true;
-        let output = if self.results.iter().any(|(_, result)| result.is_ok()) {
+        if self.results.iter().any(|(_, result)| result.is_ok()) {
             Outcome::from(ToolResult::success(text.into()))
         } else {
             Outcome::refused(text)
-        };
-        commands.entity(job).try_insert_if_new(output);
+        }
     }
 
     /// "4 of 5 succeeded; failed: c.txt (reason)".
@@ -377,7 +396,7 @@ fn short(why: &str) -> String {
 fn on_spawned(
     settled: On<Add<Settled>>,
     requests: Query<(&MapRequest, &Outcome, Option<&SpawnedAgent>)>,
-    mut jobs: Query<&mut MapJob>,
+    mut jobs: Query<(&mut MapJob, &mut Decision), ToolCalls>,
     mut commit: Commit,
     mut commands: Commands,
 ) {
@@ -385,7 +404,8 @@ fn on_spawned(
         return;
     };
     let (job, path) = (*job, path.clone());
-    let Some(mut map) = jobs.get_mut(job).ok().filter(|map| !map.finished) else {
+    let Some((mut map, mut decision)) = jobs.get_mut(job).ok().filter(|(map, _)| !map.finished)
+    else {
         if let Some(&SpawnedAgent(agent)) = spawned {
             commit.retire(agent);
         }
@@ -393,13 +413,14 @@ fn on_spawned(
     };
     let worker = match (spawned, &outcome.0) {
         (Some(&SpawnedAgent(agent)), Ok(_)) => agent,
-        (_, Err(report)) => {
-            let why = format!("not started: {}", short(&report.message));
-            map.settle(job, path, Err(why), &mut commands);
-            return;
-        }
-        (None, Ok(_)) => {
-            map.settle(job, path, Err("not started".to_owned()), &mut commands);
+        (_, outcome) => {
+            let why = match outcome {
+                Err(report) => format!("not started: {}", short(&report.message)),
+                Ok(_) => "not started".to_owned(),
+            };
+            if let Some(answer) = map.settle(job, path, Err(why), &mut commands) {
+                decision.decide(answer);
+            }
             return;
         }
     };
@@ -430,7 +451,7 @@ fn on_worker_end(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     workers: Query<(&MapWorker, &WorkerOf)>,
-    mut jobs: Query<&mut MapJob>,
+    mut jobs: Query<(&mut MapJob, &mut Decision), ToolCalls>,
     mut commands: Commands,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -439,7 +460,7 @@ fn on_worker_end(
     let Ok((MapWorker { path, .. }, &WorkerOf(job))) = workers.get(agent) else {
         return;
     };
-    let Ok(mut map) = jobs.get_mut(job) else {
+    let Ok((mut map, mut decision)) = jobs.get_mut(job) else {
         return;
     };
     let result = match outcome {
@@ -450,7 +471,9 @@ fn on_worker_end(
         TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
         TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
     };
-    map.settle(job, path.clone(), result, &mut commands);
+    if let Some(answer) = map.settle(job, path.clone(), result, &mut commands) {
+        decision.decide(answer);
+    }
 }
 
 /// A `map_files` call settled, answered or interrupted: the workers it
@@ -479,7 +502,7 @@ fn on_job_end(
 /// Fails a worker's turn once it asks its model more than
 /// [`MapConfig::per_file_turn_limit`] times: the call is never sent.
 fn limit_model_calls(
-    calls: Query<(&ForAgent, &CallOf), (With<TurnCall>, Added<Admitted>)>,
+    calls: Query<(&ForAgent, &CallOf), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     mut workers: Query<&mut MapWorker>,
     config: Res<MapConfig>,
     mut commands: Commands,
@@ -500,30 +523,46 @@ fn limit_model_calls(
 }
 
 /// Refuses a map worker's call that could change something, unless its
-/// `path` names the worker's own file. Reading stays open.
+/// footprint writes only the worker's own file. Reading stays open.
 fn keep_to_file(
-    calls: Query<(Entity, &ToolRequest, &ForAgent, &Footprint), Undecided>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
     workers: Query<&MapWorker>,
-    mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent), footprint) in &calls {
+    for (request, &ForAgent(agent), Footprint(touches), mut decision) in &mut calls {
         let Ok(worker) = workers.get(agent) else {
             continue;
         };
-        if footprint.0.reads_only() {
+        if touches.reads_only() {
             continue;
         }
-        let named = request.call.function.arguments.get("path");
-        let named = named.and_then(|path| path.as_str()).unwrap_or_default();
-        let why = match &worker.allowed {
-            Some(allowed) if same_file(Path::new(named), allowed) => continue,
-            Some(allowed) => format!(
-                "You may change only {}; `{named}` was not changed.",
-                allowed.display()
-            ),
-            None => "A reducer changes no file.".to_owned(),
+        let Some(allowed) = &worker.allowed else {
+            decision.decide(Outcome::refused("A reducer changes no file."));
+            continue;
         };
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        let why = match touches {
+            Touches::Writes(Scope::Paths(paths))
+                if paths.iter().all(|path| same_file(path, allowed)) =>
+            {
+                continue;
+            }
+            Touches::Writes(Scope::Paths(paths)) => {
+                let named: Vec<String> = paths
+                    .iter()
+                    .map(|path| path.display().to_string())
+                    .collect();
+                format!(
+                    "You may change only {}; `{}` was not changed.",
+                    allowed.display(),
+                    named.join("`, `")
+                )
+            }
+            _ => format!(
+                "You may change only {}; `{}` could change any file, so it did not run.",
+                allowed.display(),
+                request.call.function.name
+            ),
+        };
+        decision.decide(Outcome::refused(why));
     }
 }
 
