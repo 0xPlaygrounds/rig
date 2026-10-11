@@ -72,7 +72,8 @@ use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::{SessionLog, millis, now_ms};
 use super::tools::{
-    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, tool_kind,
+    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
+    tool_kind,
 };
 use super::turn::{
     ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
@@ -401,8 +402,8 @@ pub struct Recorded(pub EffectRecord);
 
 /// On a call of a model's reply that waits for an earlier call of that
 /// reply it must not run beside ([`Footprint`]) to settle. The kernel sets
-/// and clears it in [`Stage::Admit`], so Gate sees each call when it is
-/// about to run.
+/// and clears it when [`Stage::Gate`] opens, from the calls as Prepare left
+/// them, so Gate sees each call when it is about to run.
 #[derive(Component, Reflect, Debug, Default)]
 #[component(storage = "SparseSet", on_remove = moved::<Waiting>)]
 #[reflect(Component, Default)]
@@ -554,16 +555,16 @@ pub(crate) fn build(app: &mut App) {
                 )
                     .chain()
                     .in_set(Stage::Commit),
-                (
-                    complete_calls,
-                    admit,
-                    carry_on_called,
-                    build_requests,
-                    wait_in_order,
-                )
+                (complete_calls, admit, carry_on_called, build_requests)
                     .chain()
                     .in_set(Stage::Admit),
-                answer_unprepared.in_set(Enter(Stage::Gate)),
+                (
+                    answer_unprepared,
+                    compute_footprints.run_if(moved_since_quiet),
+                    wait_in_order.run_if(moved_since_quiet),
+                )
+                    .chain()
+                    .in_set(Enter(Stage::Gate)),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
                     .chain()
@@ -894,7 +895,10 @@ fn start(
     // Before a call that may change something, the reply that asked for
     // it is on disk.
     let changes = ready.iter().any(|item| {
-        item.tool.is_some() && item.footprint.copied().unwrap_or_default() != Footprint::ReadOnly
+        item.tool.is_some()
+            && !item
+                .footprint
+                .is_some_and(|footprint| footprint.0.reads_only())
     });
     if changes {
         log.flush();

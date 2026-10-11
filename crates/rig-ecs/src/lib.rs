@@ -79,7 +79,9 @@ pub mod prelude {
     };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
-    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
+    pub use rig_core::tool::{
+        PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
+    };
 }
 
 use bevy_app::prelude::*;

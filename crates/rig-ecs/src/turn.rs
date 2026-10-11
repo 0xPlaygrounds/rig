@@ -4,9 +4,9 @@
 //! call is a [`TurnCall`]: the kernel builds its [`ModelRequest`] from the
 //! agent when it is admitted, plugins edit it in Prepare, and Start fits
 //! it to the model it goes to and sends it. Its reply's tool calls are
-//! [`ToolRequest`] effects; a reply's read-only calls run side by side and
-//! the others alone, in order, as their [`Footprint`]s say ([`Waiting`]),
-//! and once every one settled their results go back in call order and the
+//! [`ToolRequest`] effects; a reply's calls run side by side unless an
+//! earlier one writes what a later one touches, as their [`Footprint`]s
+//! say ([`Waiting`]), and once every one settled their results go back in call order and the
 //! next [`TurnCall`] is spawned. rig-core's turn-failure rule decides when
 //! a reply ends the turn instead. A model call that failed gets the
 //! [`RETRY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
@@ -1283,23 +1283,28 @@ fn reply_calls<'a>(
     asked
 }
 
-/// Marks each call of a running reply [`Waiting`] while an earlier call it
-/// must not run beside is not settled, and takes the mark off once none
-/// is, in [`Stage::Admit`](super::stage::Stage::Admit). A held call holds
-/// back the calls after it; a refused one, once it settled, does not.
+/// Marks each call of a running reply [`Waiting`] while an earlier call
+/// whose [`Footprint`] conflicts with its own is not settled, and takes
+/// the mark off once none is, when [`Stage::Gate`](super::stage::Stage::Gate)
+/// opens. A held call holds back the calls after it that conflict with it;
+/// a refused one, once it settled, does not. A call not yet admitted may
+/// change anything.
 pub(crate) fn wait_in_order(
     turns: Query<(&Turn, &Calls)>,
     replies: Query<ReplyCall>,
     mut commands: Commands,
 ) {
+    let anything = Footprint::default();
     for (state, calls) in &turns {
         let Some(reply) = state.reply else {
             continue;
         };
-        let mut earlier: Vec<Footprint> = Vec::new();
+        let mut earlier: Vec<&Footprint> = Vec::new();
         for call in reply_calls(reply, calls, &replies) {
-            let footprint = call.footprint.copied().unwrap_or_default();
-            let waits = earlier.iter().any(|&before| footprint.waits_for(before));
+            let footprint = call.footprint.unwrap_or(&anything);
+            let waits = earlier
+                .iter()
+                .any(|before| footprint.0.conflicts_with(&before.0));
             let open = !call.started && call.outcome.is_none() && !call.settled;
             if open && waits != call.waiting {
                 let mut entity = commands.entity(call.entity);

@@ -1,10 +1,11 @@
 //! The tool registry and tool calls. A tool is an entity holding its
-//! definition, its [`ToolRules`] and its [`Footprint`], and, for an
-//! ordinary tool, its effect handler; plugins add tools with
+//! definition, its [`ToolRules`] and its default [`Footprint`], and, for
+//! an ordinary tool, its effect handler; plugins add tools with
 //! [`AppToolsExt::add_tool`]. A tool call is an effect entity with a
-//! [`ToolRequest`]: the kernel completes it with its tool's [`Footprint`]
-//! and [`CallHandler`] when it is admitted, so Prepare may change them, and
-//! starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
+//! [`ToolRequest`]: the kernel completes it with its tool's [`CallHandler`]
+//! when it is admitted, so Prepare may change the call or its handler,
+//! gives it the [`Footprint`] of the call as it stands when Gate opens,
+//! and starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
 //! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
 //! and stays open until any system decides it
 //! ([`Decision`](super::stage::Decision)).
@@ -28,7 +29,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{Tool, ToolErrorKind, args_schema, tool_definition};
+use rig_core::tool::{Scope, Tool, ToolErrorKind, Touches, args_schema, tool_definition};
 use rig_core::transcript::arguments_refusal;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -37,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
 use super::prompt::ToolRules;
-use super::stage::{Admitted, Effect, Settled};
+use super::stage::{Admitted, Effect, Settled, Started};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -100,8 +101,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<
 
 /// A tool call: an effect entity, as the model's reply or a plugin spawns
 /// it, `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn.
-/// Admitted, it gets its tool's [`Footprint`] and [`CallHandler`] unless it
-/// has its own; Prepare may change the call, the footprint or the handler.
+/// Admitted, it gets its tool's [`CallHandler`] unless it has its own;
+/// Prepare may change the call or the handler, and Gate sees the
+/// [`Footprint`] of the call as Prepare left it.
 /// Start refuses a call of a tool that is not registered or that the agent
 /// may not use, or whose arguments its tool does not declare, then runs
 /// its handler, or opens it for an open tool. Its [`Outcome`] is its
@@ -149,48 +151,44 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
     pub args: A,
 }
 
-/// Whether a tool's calls may run beside the other calls of one reply, on
-/// the tool's entity.
-#[derive(
-    Component, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize,
-)]
-#[reflect(Component, Clone, Debug, Default, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum Footprint {
-    /// May change anything: a call waits for every earlier call of its
-    /// reply and holds back every later one. The default, right for
-    /// `write`, `edit`, `shell` and any tool that does not say.
-    #[default]
-    Exclusive,
-    /// Changes nothing: calls run side by side with every call that is
-    /// not exclusive, and a call a restart cut short runs again.
-    ReadOnly,
-    /// Changes nothing the reply's other calls see, such as handing work
-    /// to another agent: runs side by side like [`ReadOnly`](Self::ReadOnly),
-    /// but is never run again after a restart.
-    Independent,
-}
+/// What a tool call may read and change ([`Touches`]), so the calls of one
+/// reply that touch different things run side by side. On a tool's entity,
+/// what its calls touch when they cannot say more; on a call, what it
+/// touches as Gate sees it, computed by the kernel when Gate opens: what
+/// its handler says of its final arguments, else its tool's. A call waits
+/// while an earlier call of its reply that conflicts with it is not
+/// settled ([`Waiting`](super::stage::Waiting)).
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[reflect(opaque, Component, Clone, Debug, Default, PartialEq)]
+#[serde(transparent)]
+pub struct Footprint(pub Touches);
 
-impl Footprint {
-    /// Whether a call of this footprint must wait for an earlier call of
-    /// its reply with footprint `earlier`.
-    pub fn waits_for(self, earlier: Self) -> bool {
-        self == Self::Exclusive || earlier == Self::Exclusive
+impl Default for Footprint {
+    /// May change anything, right for any tool that does not say.
+    fn default() -> Self {
+        Self(Touches::Writes(Scope::Anything))
     }
 }
 
+/// On a tool registered with a [`ToolOptions::footprint`]: that footprint
+/// is each of its calls', whatever its handler says.
+#[derive(Component)]
+pub(crate) struct Declared;
+
 /// How a tool is registered with [`AppToolsExt::add_tool_with`].
-#[derive(Clone, Copy, Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct ToolOptions<'a> {
     /// Lines of the system prompt of every agent the tool is offered to,
     /// on how to use it, such as "Use `read` to look at files, not `cat` in
     /// `shell`". The tool's description says what it does; its rules say
     /// when to pick it.
     pub rules: &'a [&'a str],
-    /// Whether its calls run beside others. `None` takes it from the tool's
-    /// annotations: [`Footprint::ReadOnly`] for a tool that says it only
-    /// reads, else [`Footprint::Exclusive`].
-    pub footprint: Option<Footprint>,
+    /// What every call of it touches, whatever its handler says. `None`
+    /// asks each call's handler (rig-core's `Tool::footprint`), and for a
+    /// call it cannot say, such as an open tool's, takes it from the tool's
+    /// annotations: `Reads(Anything)` for a tool that says it only reads,
+    /// else `Writes(Anything)`.
+    pub footprint: Option<Touches>,
 }
 
 /// Registers tools on an [`App`].
@@ -221,12 +219,12 @@ pub trait AppToolsExt {
     }
 
     /// [`add_tool`](Self::add_tool), with the rules on how to use it and
-    /// whether its calls run beside others:
+    /// what its calls touch:
     ///
     /// ```ignore
     /// app.add_tool_with(Outline, ToolOptions {
     ///     rules: &["Use `outline` before reading a large file."],
-    ///     footprint: Some(Footprint::ReadOnly),
+    ///     footprint: Some(Touches::Reads(Scope::Anything)),
     /// });
     /// ```
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
@@ -336,13 +334,11 @@ fn register_tool(
         warn!("tool not registered: `{name}` exists; insert `Disabled` on it to replace it");
         return None;
     }
+    let declared = options.footprint.is_some();
     let footprint = options
         .footprint
-        .unwrap_or(match definition.annotations.read_only() {
-            true => Footprint::ReadOnly,
-            false => Footprint::Exclusive,
-        });
-    let entity = world.spawn((
+        .unwrap_or_else(|| Touches::from_annotations(&definition.annotations));
+    let mut entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition),
         ToolRules(
@@ -352,9 +348,12 @@ fn register_tool(
                 .map(|rule| (*rule).to_owned())
                 .collect(),
         ),
-        footprint,
+        Footprint(footprint),
         serves,
     ));
+    if declared {
+        entity.insert(Declared);
+    }
     Some(entity.id())
 }
 
@@ -366,24 +365,68 @@ pub(crate) fn tool_kind(call: &ToolCall) -> EffectKind {
     }
 }
 
+/// What `call` touches, run by `handler`, of the tool `tool` (its default
+/// footprint, and whether that was declared): the declared one, else what
+/// the handler says of the call, else the tool's default. A call of a tool
+/// that is not registered may change anything.
+pub(crate) fn footprint_of(
+    call: &ToolCall,
+    handler: Option<&Handler>,
+    tool: Option<(&Footprint, bool)>,
+) -> Footprint {
+    match tool {
+        Some((footprint, true)) => footprint.clone(),
+        _ => handler
+            .and_then(|handler| handler.0.footprint(&tool_kind(call)))
+            .map(Footprint)
+            .or_else(|| tool.map(|(footprint, _)| footprint.clone()))
+            .unwrap_or_default(),
+    }
+}
+
 /// Completes each tool call about to be admitted with its tool's
-/// [`Footprint`] and [`CallHandler`], and a [`Name`], where it has none of
-/// its own. A call of a tool that is not registered may change anything.
+/// [`CallHandler`], and a [`Name`], where it has none of its own.
 pub(crate) fn complete_calls(
     calls: Query<(Entity, &ToolRequest), (Without<Admitted>, Without<Settled>)>,
-    tools: Query<(&ToolDef, &Serves, &Footprint)>,
+    tools: Query<(&ToolDef, &Serves)>,
     mut commands: Commands,
 ) {
     for (entity, ToolRequest { call }) in &calls {
         let name = call.function.name.as_str();
-        let tool = tools.iter().find(|(def, ..)| def.0.name.as_str() == name);
+        let tool = tools.iter().find(|(def, _)| def.0.name.as_str() == name);
         let mut completed = commands.entity(entity);
-        completed.try_insert_if_new((
-            Name::new(format!("tool call {name}")),
-            tool.map_or_else(Footprint::default, |(.., &footprint)| footprint),
-        ));
-        if let Some((_, Serves::Handler(handler), _)) = tool {
+        completed.try_insert_if_new(Name::new(format!("tool call {name}")));
+        if let Some((_, Serves::Handler(handler))) = tool {
             completed.try_insert_if_new(CallHandler(handler.clone()));
+        }
+    }
+}
+
+/// Gives each admitted tool call that has not started the [`Footprint`]
+/// of the call as it stands, when Gate opens: after every Prepare edit of
+/// its arguments or handler.
+pub(crate) fn compute_footprints(
+    calls: Query<
+        (
+            Entity,
+            &ToolRequest,
+            Option<&CallHandler>,
+            Option<&Footprint>,
+        ),
+        (With<Admitted>, Without<Started>, Without<Settled>),
+    >,
+    tools: Query<(&ToolDef, &Footprint, Has<Declared>)>,
+    mut commands: Commands,
+) {
+    for (entity, ToolRequest { call }, handler, had) in &calls {
+        let name = call.function.name.as_str();
+        let tool = tools
+            .iter()
+            .find(|(def, ..)| def.0.name.as_str() == name)
+            .map(|(_, footprint, declared)| (footprint, declared));
+        let footprint = footprint_of(call, handler.map(|handler| &handler.0), tool);
+        if had != Some(&footprint) {
+            commands.entity(entity).try_insert(footprint);
         }
     }
 }

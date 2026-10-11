@@ -45,6 +45,7 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
 use rig_cassette::journal::{JournalStore, LogLines};
+use rig_core::message::ToolCall;
 use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::de::DeserializeSeed;
 use serde_json::Value;
@@ -56,7 +57,7 @@ use super::journal::{
     fold, load_images,
 };
 use super::stage::{Effect, ForAgent};
-use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::tools::{Declared, Footprint, Serves, ToolDef, ToolRequest, footprint_of};
 use super::turn::TurnCall;
 
 /// The result of a call that may change something and was running when
@@ -292,7 +293,7 @@ pub(crate) fn reconcile(world: &mut World) {
 fn settle(
     In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
-    tools: Query<(&ToolDef, &Footprint)>,
+    tools: Query<(&ToolDef, &Footprint, Has<Declared>, &Serves)>,
     effects: Res<Effects>,
     mut commit: Commit,
     mut commands: Commands,
@@ -300,15 +301,20 @@ fn settle(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    // A call runs again when its tool, of any kind, only reads.
-    let reruns = |name: &str| {
-        tools.iter().any(|(def, footprint)| {
-            def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
-        })
+    // A call runs again when it only reads, as its tool says of it.
+    let reruns = |call: &ToolCall| {
+        let name = call.function.name.as_str();
+        let tool = tools.iter().find(|(def, ..)| def.0.name.as_str() == name);
+        let handler = tool.and_then(|(.., serves)| match serves {
+            Serves::Handler(handler) => Some(handler),
+            Serves::Open(_) => None,
+        });
+        let tool = tool.map(|(_, footprint, declared, _)| (footprint, declared));
+        footprint_of(call, handler, tool).0.reads_only()
     };
     let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
         .into_iter()
-        .partition(|call| reruns(call.function.name.as_str()));
+        .partition(reruns);
     if !interrupted.is_empty() {
         let results = close_pending_with(&interrupted, INTERRUPTED);
         commit.message(agent, &mut conversation, results);

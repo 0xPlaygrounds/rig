@@ -26,7 +26,7 @@ use crate::journal::{
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::{INTERRUPTED, Restored};
 use crate::stage::{AgentPass, HoldOf, Settled, Stage, Undecided, Unreviewed};
-use crate::tools::{AppToolsExt, Footprint, ToolOptions, ToolRequest};
+use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
 use rig_core::catalog::Catalog;
 use rig_core::error::retry::Verdict;
@@ -34,7 +34,7 @@ use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_core::tool::{PortableTool, ToolExecutionError};
+use rig_core::tool::{PortableTool, Scope, ToolExecutionError, Touches};
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -352,7 +352,8 @@ fn a_failed_log_write_leaves_the_session_restored() {
     assert!(app.world().contains_resource::<SessionRestored>());
 }
 
-/// Reads, so a restart runs its unanswered calls again.
+/// Reads one file, as each call says, so a restart runs its unanswered
+/// calls again.
 struct Look;
 
 impl PortableTool for Look {
@@ -367,6 +368,11 @@ impl PortableTool for Look {
 
     fn parameters(&self) -> serde_json::Value {
         serde_json::json!({ "type": "object" })
+    }
+
+    /// Each call reads one file, whatever its tool's annotations say.
+    fn footprint(&self, _: &serde_json::Value) -> Touches {
+        Touches::Reads(Scope::Paths(vec!["/work/a.rs".into()]))
     }
 
     async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
@@ -437,16 +443,12 @@ fn tools_app(
         let handler = Handler(ErasedHandler::new(handler));
         Connection { spec, handler }
     });
-    let read_only = ToolOptions {
-        footprint: Some(Footprint::ReadOnly),
-        ..ToolOptions::default()
-    };
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
         .insert_resource(SessionStore::new(store.clone()))
         .init_resource::<Gated>()
         .init_resource::<Ended>()
-        .add_tool_with(Look, read_only)
+        .add_tool(Look)
         .add_tool(Touch)
         .add_systems(AgentPass, note_gated.in_set(Stage::Gate))
         .add_observer(move |added: On<Add<Agent>>, mut commands: Commands| {

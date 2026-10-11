@@ -7,8 +7,9 @@
 //! place in their order and the record keeps the raw one, a failing stage system
 //! closes its stage, and every way an effect ends is recorded. A reply's
 //! calls start, and their results go back, in the frames they arrive; a
-//! gate sees each call when it is about to run; a refusal answers in call
-//! order and is recorded as one. A model call that gave up is superseded
+//! gate sees each call when it is about to run; a held call holds back
+//! only the later calls that touch what it writes, as Prepare left them; a
+//! refusal answers in call order and is recorded as one. A model call that gave up is superseded
 //! on another model and the turn goes on; a retry waits on a hold that an
 //! interrupt takes away; a refused model call ends its turn and keeps the
 //! message. A side call is built from its agent like a turn's and leaves
@@ -28,6 +29,7 @@
 //! in `src/restore/tests.rs`.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -801,7 +803,7 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         .resolve("deepseek/deepseek-flash")
         .map(|spec| spec.shared());
     let read_only = ToolOptions {
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
         ..ToolOptions::default()
     };
     app.add_tool_with(Look, read_only)
@@ -1003,6 +1005,161 @@ fn a_gate_sees_each_call_when_it_is_about_to_run() {
     let refusal = app.world().resource::<Refusal>();
     assert!(refusal.answered.is_some(), "the gate refused");
     assert_eq!(refusal.started, refusal.answered);
+}
+
+/// The file a call names.
+#[derive(Deserialize)]
+struct PathArgs {
+    path: PathBuf,
+}
+
+/// Reads the file its call names, and touches nothing else.
+struct ReadFile;
+
+impl PortableTool for ReadFile {
+    const NAME: &'static str = "read";
+    type Args = PathArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Reads a file.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    }
+
+    fn footprint(&self, args: &PathArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![args.path.clone()]))
+    }
+
+    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+        Ok("read".to_owned())
+    }
+}
+
+/// Changes the file its call names, and touches nothing else.
+struct EditFile;
+
+impl PortableTool for EditFile {
+    const NAME: &'static str = "edit";
+    type Args = PathArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Edits a file.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    }
+
+    fn footprint(&self, args: &PathArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![args.path.clone()]))
+    }
+
+    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+        Ok("edited".to_owned())
+    }
+}
+
+/// Hands work on; registered as independent of the reply's other calls.
+struct Task;
+
+impl PortableTool for Task {
+    const NAME: &'static str = "task";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Hands work on.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        Ok("handed on".to_owned())
+    }
+}
+
+/// In Prepare, points the call `moved` at `/work/a`.
+fn move_to_a(mut calls: Query<&mut ToolRequest, Added<Admitted>>) {
+    for mut request in &mut calls {
+        if request.call.id.to_string() == "moved" {
+            let path = serde_json::json!("/work/a");
+            request.call.function.arguments.insert("path".into(), path);
+        }
+    }
+}
+
+#[test]
+fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
+    let mut app = app();
+    let path = |tool: &str, id: &str, path: &str| {
+        MockStreamEvent::tool_call(id, tool, serde_json::json!({ "path": path }))
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            path("edit", "held", "/work/a"),
+            path("read", "rb", "/work/b"),
+            path("read", "ra", "/work/a"),
+            MockStreamEvent::tool_call("t", "task", serde_json::json!({})),
+            path("read", "moved", "/work/b"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("done"),
+    ]);
+    let independent = ToolOptions {
+        footprint: Some(Touches::Independent),
+        ..ToolOptions::default()
+    };
+    app.add_tool(ReadFile)
+        .add_tool(EditFile)
+        .add_tool_with(Task, independent)
+        .init_resource::<Gated>()
+        .add_systems(
+            AgentPass,
+            (move_to_a.in_set(Stage::Prepare), gate.in_set(Stage::Gate)),
+        );
+    let agent = agent_on(&mut app, &model);
+    let held = run_until(&mut app, |world| world.resource::<Gated>().hold.is_some());
+    assert!(held, "the gate held the edit");
+    for _ in 0..3 {
+        app.update();
+    }
+    // The read of another file ran past the held edit; the read of its
+    // file, the read Prepare moved onto it and the hand-off wait.
+    let world = app.world_mut();
+    let [rb, ra, t, moved] =
+        ["rb", "ra", "t", "moved"].map(|id| call_named(world, id).unwrap_or(Entity::PLACEHOLDER));
+    assert!(has::<Started>(&app, rb));
+    for waiting in [ra, t, moved] {
+        assert!(has::<Waiting>(&app, waiting) && !has::<Started>(&app, waiting));
+    }
+    if let Some(hold) = app.world().resource::<Gated>().hold {
+        app.world_mut().despawn(hold);
+    }
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let seen = &app.world().resource::<Gated>().seen;
+    let gated_after = |id: &str| {
+        seen.iter()
+            .filter(|(call, _)| call == id)
+            .all(|(_, settled)| settled.iter().any(|done| done == "held"))
+    };
+    assert!(
+        ["ra", "t", "moved"].into_iter().all(gated_after),
+        "{seen:?}"
+    );
 }
 
 #[test]
@@ -1283,8 +1440,8 @@ fn a_tools_annotations_give_its_footprint_and_what_it_publishes_lands_on_its_cal
     let footprint = tools
         .iter(world)
         .find(|(def, _)| def.0.name.as_str() == "probe")
-        .map(|(_, footprint)| *footprint);
-    assert_eq!(footprint, Some(Footprint::ReadOnly));
+        .map(|(_, footprint)| footprint.0.clone());
+    assert_eq!(footprint, Some(Touches::Reads(Scope::Anything)));
     assert_eq!(app.world().resource::<Facts>().0, [ExitStatus::Exited(0)]);
     let probe = records(&app).into_iter().find(
         |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "probe"),
@@ -2296,7 +2453,7 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     let mut app = app();
     let model = MockCompletionModel::from_stream_turns([reply(&[("look", "l1")]), answer("done")]);
     let read_only = ToolOptions {
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
         ..ToolOptions::default()
     };
     let parents = |calls: Query<&Effect, (Added<Admitted>, With<TurnCall>)>,
