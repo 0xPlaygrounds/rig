@@ -60,7 +60,7 @@ use rig_core::effect::{
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Origin, Recorder, Reply, cancelled};
-use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
 use web_time::SystemTime;
 
 use super::agent::Notice;
@@ -70,11 +70,10 @@ use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::{SessionLog, millis, now_ms};
 use super::tools::{
-    CallHandler, Footprint, Published, ToolRequest, ToolStart, ToolStarts, complete_calls,
-    tool_kind,
+    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, tool_kind,
 };
 use super::turn::{
-    ModelRequest, ModelStart, ModelStarts, StreamDelta, TurnCall, back_off, build_requests,
+    ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
     carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
     keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
 };
@@ -295,6 +294,15 @@ impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
         Self(outcome)
     }
 }
+
+/// What a handler published beside its answer, on its effect once
+/// answered, and recorded with it: a tool's facts, such as rig-core's
+/// `FilesChanged` and `ExitStatus`, or a fact a layer of a model call's
+/// handler published about the reply, such as an adapter's stream rewrite
+/// ([`PublishedContext::insert`](rig_core::tool::PublishedContext::insert)).
+/// Read a value with `published.0.get::<FilesChanged>()`.
+#[derive(Component, Clone, Debug)]
+pub struct Published(pub ToolResultContext);
 
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
@@ -831,21 +839,23 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (handler, kind, reference) = match models.start(&mut model, agent) {
-                ModelStart::Run(handler, kind, reference) => (handler, kind, reference),
+            let (connection, kind) = match models.start(&mut model, agent) {
+                ModelStart::Run(connection, kind) => (connection, kind),
                 ModelStart::Refused(report) => {
                     started.try_insert_if_new(Outcome(Err(report)));
                     continue;
                 }
             };
+            let reference = connection.spec.reference();
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
             let (sender, feed) = feed();
             let wake_up = wake.clone();
             let consume = move |reply| stream_reply(reply, sender, wake_up);
-            let work = effects.run(effect.id, origin, handler.0, kind, consume);
+            let handler = connection.handler.0.clone();
+            let work = effects.run(effect.id, origin, handler, kind, consume);
             let running = Running::finishing(model_pool(), &wake, work.instrument(span), answer);
-            started.try_insert((Started { at }, running, feed));
+            started.try_insert((Started { at }, running, feed, SentTo(connection)));
             continue;
         }
         let (handler, kind) = match (item.request, item.tool) {

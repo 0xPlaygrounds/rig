@@ -150,19 +150,25 @@ impl ErasedHandler {
     }
 
     /// Rewrite this handler's completion streams: every item of each reply
-    /// passes through a fresh `make()` in order, and the items it returns
-    /// go on in its place. It sees the [`Relayed::Done`](crate::streaming::Relayed::Done)
+    /// passes through a fresh `make(published)` in order, and the items it
+    /// returns go on in its place. It sees the [`Relayed::Done`](crate::streaming::Relayed::Done)
     /// too, so a rewrite of the events also rewrites the response the reply
     /// ends with. A unary completion is rewritten as its events, so both
     /// delivery modes answer alike; other outcomes and errors pass as they
     /// are. `name` joins the descriptor's layers.
+    ///
+    /// `published` is the dispatch's
+    /// [`PublishedContext`](crate::tool::PublishedContext): a fact the
+    /// rewrite inserts there before it passes the `Done` on, such as that
+    /// it split reasoning out of this reply, comes back to the driver beside
+    /// the reply and is recorded with it.
     ///
     /// Unlike a [`Layer`](super::Layer), the rewrite is recorded: the
     /// record of a dispatch is the reply the consumer receives, so a replay
     /// of it does not rewrite twice.
     pub fn map_stream<M, F>(self, name: impl Into<String>, make: M) -> Self
     where
-        M: Fn() -> F + WasmCompatSend + WasmCompatSync + 'static,
+        M: Fn(Arc<crate::tool::PublishedContext>) -> F + WasmCompatSend + WasmCompatSync + 'static,
         F: FnMut(Relayed) -> Vec<Relayed> + WasmCompatSend + 'static,
     {
         Self::new(super::map::MapStream::new(self, name.into(), make))

@@ -966,9 +966,11 @@ pub enum DeliveryKind {
 /// One recorded exchange: the effect, who served it, and the answer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectRecord {
-    /// Explicitly published tool-result metadata, including on errors. Never
-    /// inbound authentication values or runtime scopes. `None` means the tool
-    /// did not publish a context before resolving. The wire field is required:
+    /// Explicitly published result metadata, including on errors: a
+    /// tool's, or the facts any layer of the dispatch published
+    /// ([`PublishedContext`](crate::tool::PublishedContext)). Never
+    /// inbound authentication values or runtime scopes. `None` means nothing
+    /// was published before resolving. The wire field is required:
     /// `null` explicitly records no publication; omission cannot establish
     /// whether an older recorder lost output and is rejected when decoding.
     #[serde(deserialize_with = "Option::deserialize")]

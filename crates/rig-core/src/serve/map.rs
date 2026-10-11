@@ -1,17 +1,21 @@
 //! A handler whose completion streams are rewritten item by item, and
 //! recorded as rewritten: [`ErasedHandler::map_stream`].
 
+use std::sync::Arc;
+
 use futures::StreamExt;
 
 use crate::{
     effect::{EffectKind, HandlerDescriptor, Outcome, family},
     streaming::Relayed,
+    tool::PublishedContext,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 
 use super::{Dispatch, ErasedHandler, Reply, Serve};
 
-/// `inner`, its replies' items passed through a fresh `make()` each.
+/// `inner`, its replies' items passed through a fresh `make(published)`
+/// each.
 pub(crate) struct MapStream<M> {
     inner: ErasedHandler,
     name: String,
@@ -26,7 +30,7 @@ impl<M> MapStream<M> {
 
 impl<M, F> Serve for MapStream<M>
 where
-    M: Fn() -> F + WasmCompatSend + WasmCompatSync + 'static,
+    M: Fn(Arc<PublishedContext>) -> F + WasmCompatSend + WasmCompatSync + 'static,
     F: FnMut(Relayed) -> Vec<Relayed> + WasmCompatSend + 'static,
 {
     type Family = family::Dynamic;
@@ -43,7 +47,9 @@ where
             completion @ Reply::Outcome(Ok(Outcome::Completion(_))) => completion.into_stream(),
             other => return other,
         };
-        let mut map = (self.make)();
+        // A driver that reads no facts attached none: they go nowhere.
+        let published = dispatch.scope::<PublishedContext>().unwrap_or_default();
+        let mut map = (self.make)(published);
         Reply::Stream(Box::pin(events.flat_map(move |item| {
             futures::stream::iter(match item {
                 Ok(relayed) => map(relayed).into_iter().map(Ok).collect(),

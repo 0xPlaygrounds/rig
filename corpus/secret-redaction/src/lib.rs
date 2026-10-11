@@ -329,7 +329,7 @@ fn adapt_model_calls(mut calls: Query<&mut ModelRequest, Added<Admitted>>, secre
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 let secrets = secrets.clone();
                 let sent = connection.handler.0.layered(RedactRequest(secrets.clone()));
-                let streamed = sent.map_stream(NAME, move || redact_stream(secrets.clone()));
+                let streamed = sent.map_stream(NAME, move |_| redact_stream(secrets.clone()));
                 connection.handler = Handler(streamed);
                 connection
             }));

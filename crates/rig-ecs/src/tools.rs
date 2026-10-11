@@ -28,7 +28,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{Tool, ToolErrorKind, ToolResultContext, args_schema, tool_definition};
+use rig_core::tool::{Tool, ToolErrorKind, args_schema, tool_definition};
 use rig_core::transcript::arguments_refusal;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -192,12 +192,6 @@ pub struct ToolOptions<'a> {
     /// reads, else [`Footprint::Exclusive`].
     pub footprint: Option<Footprint>,
 }
-
-/// What a tool published beside its result, on its call once answered,
-/// such as rig-core's `FilesChanged` and `ExitStatus`: read a value with
-/// `published.0.get::<FilesChanged>()`. It is recorded with the call.
-#[derive(Component, Clone, Debug)]
-pub struct Published(pub ToolResultContext);
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {

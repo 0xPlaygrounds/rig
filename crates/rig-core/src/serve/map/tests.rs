@@ -7,6 +7,7 @@ use crate::{
     operation::Finish,
     serve::{Origin, RecordBuffer, Recorder},
     streaming::{Item, StreamEvent},
+    tool::PublishedContext,
 };
 
 /// Streams two text deltas and a terminal, or answers them as one
@@ -59,9 +60,25 @@ fn completion(stream: bool) -> EffectKind {
     }
 }
 
-/// Upper-cases the text deltas and the response's text.
-fn shout() -> impl FnMut(Relayed) -> Vec<Relayed> {
-    |relayed| {
+/// What a rewrite tells its driver about a reply.
+#[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+struct Shouted(usize);
+
+impl crate::tool::ContextValue for Shouted {
+    const KEY: &'static str = "shouted";
+}
+
+/// Upper-cases the text deltas and the response's text, and publishes how
+/// many deltas it changed once the reply is done.
+fn shout(published: Arc<PublishedContext>) -> impl FnMut(Relayed) -> Vec<Relayed> {
+    let mut deltas = 0;
+    move |relayed| {
+        if let Relayed::Item(Item::Event(StreamEvent::Text { .. })) = &relayed {
+            deltas += 1;
+        }
+        if let Relayed::Done(_) = &relayed {
+            published.insert(Shouted(deltas)).ok();
+        }
         vec![match relayed {
             Relayed::Item(Item::Event(StreamEvent::Text { part, text })) => {
                 Relayed::Item(Item::Event(StreamEvent::Text {
@@ -84,7 +101,7 @@ fn shout() -> impl FnMut(Relayed) -> Vec<Relayed> {
 
 /// A rewrite of the events also rewrites the response the reply ends with,
 /// and the record keeps the rewritten reply, events and answer, under the
-/// rewriter's name.
+/// rewriter's name, with what the rewrite published beside it.
 #[tokio::test]
 async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
     let handler = ErasedHandler::new(Streamer).map_stream("shout", shout);
@@ -98,7 +115,10 @@ async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
         completion(true),
         Origin::default(),
     );
-    let dispatch = Dispatch::new(id, true).recorded_by(recorder);
+    let published = PublishedContext::new();
+    let dispatch = Dispatch::new(id, true)
+        .with_scope(published.clone())
+        .recorded_by(recorder);
     let items: Vec<_> = handler
         .handle(completion(true), dispatch)
         .await
@@ -126,6 +146,13 @@ async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
         events.contains("\"HEL\"") && !events.contains("\"hel\""),
         "{events}"
     );
+    // The fact comes back beside the reply, and in its record.
+    let fact = |context: Option<crate::tool::ToolResultContext>| {
+        context.and_then(|context| context.get::<Shouted>().ok().flatten())
+    };
+    assert_eq!(fact(record.tool_output), Some(Shouted(2)));
+    let back = published.take().map(|context| context.result_context());
+    assert_eq!(fact(back), Some(Shouted(2)));
 }
 
 /// A unary completion is rewritten too; another outcome passes untouched.

@@ -704,6 +704,16 @@ prompt cache.
   request and answer) or `map_stream` (rewrite each streamed item and the
   response the reply ends with, recorded as rewritten), and says what the
   wrapped model takes on `connection.spec`.
+- **What a call was sent as.** From `Start` on, a model call has
+  `SentTo(connection)`: the model it went to with every adapter applied,
+  whose spec says what that model finally takes, and its
+  `ModelRequest.request` is the request as sent. A plugin that must know
+  what the other adapters made of a call reads these in `Review` (or on
+  `Add<Settled>`) instead of guessing from the order adapters were pushed
+  in. A `map_stream` closure is given the call's `PublishedContext`: a
+  fact it inserts about the reply, such as that it read tool calls from
+  text, is on the call as `Published` once it is answered, as a tool's
+  facts are, and recorded with it.
 - **Tools.** The kernel offers an agent the tools its `ToolAccess` allows
   and leaves taking them away to the model the call goes to: a call routed
   from a model that calls no tools to one that does is sent its tools. A
@@ -729,10 +739,14 @@ every agent's prompt, or with a `SectionOf(agent)` in that agent's
 alone, despawned with it.
 
 ```rust,no_run
+use std::sync::Arc;
+
 use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::streaming::Relayed;
+use rig_harness::rig_core::tool::{ContextValue, PublishedContext};
 use rig_harness::rig_ecs::effects::Handler;
+use serde::{Deserialize, Serialize};
 
 /// The model a turn falls back to when its own gave up.
 const FALLBACK: &str = "deepseek/deepseek-flash";
@@ -752,16 +766,45 @@ impl Plugin for ModelRequestsPlugin {
                 (add_the_time, plan_only, tools_as_text)
                     .in_set(Stage::Prepare)
                     .before(CompactionSystems::Prepare),
-                fall_back.in_set(Stage::Review),
+                (fall_back, read_from_text).in_set(Stage::Review),
             ),
         );
     }
 }
 
+/// What the text-tools rewrite tells a call about its reply: how many tool
+/// calls it read from the text.
+#[derive(Serialize, Deserialize)]
+struct ReadAsText(usize);
+
+impl ContextValue for ReadAsText {
+    const KEY: &'static str = "read-as-text";
+}
+
 /// Reads the tool calls a model writes as text into calls, item by item
-/// (the plugin's own parser; here it passes each item on).
-fn read_calls() -> impl FnMut(Relayed) -> Vec<Relayed> {
-    |item| vec![item]
+/// (the plugin's own parser; here it passes each item on), and tells the
+/// call how many it read once the reply is done.
+fn read_calls(published: Arc<PublishedContext>) -> impl FnMut(Relayed) -> Vec<Relayed> {
+    move |item| {
+        if let Relayed::Done(_) = &item {
+            published.insert(ReadAsText(0)).ok();
+        }
+        vec![item]
+    }
+}
+
+/// Says when a reply's tool calls were read from its text, naming the
+/// model the call finally went to.
+fn read_from_text(
+    calls: Query<(&SentTo, &Published, &ForAgent), (Unreviewed, With<TurnCall>)>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (sent, published, &ForAgent(agent)) in &calls {
+        if let Ok(Some(ReadAsText(calls))) = published.0.get::<ReadAsText>() {
+            let model = &sent.0.spec.display_name;
+            notices.write(Notice::info(agent, format!("{model} wrote {calls} tool calls as text.")));
+        }
+    }
 }
 
 /// Every turn's call goes to its model with the tools as text, when that

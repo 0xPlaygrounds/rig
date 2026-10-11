@@ -85,7 +85,7 @@ fn adapt(mut calls: Query<&mut ModelRequest, Added<Admitted>>, tags: Res<ThinkTa
                 if !(always || tags.detect) {
                     return connection;
                 }
-                let split = move || {
+                let split = move |_| {
                     let mut parts = Parts::new(always);
                     move |relayed| parts.relay(relayed)
                 };

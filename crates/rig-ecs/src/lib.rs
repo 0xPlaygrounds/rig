@@ -65,16 +65,16 @@ pub mod prelude {
     pub use crate::restore::Restored;
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
-        Outcome, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
+        Outcome, Published, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
         Unreviewed, Waiting,
     };
     pub use crate::tools::{
-        AppToolsExt, CallHandler, Footprint, Published, ToolCalled, ToolDef, ToolOptions,
-        ToolRequest, WorldToolsExt,
+        AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
+        WorldToolsExt,
     };
     pub use crate::turn::{
         Adapter, Backoff, BuildFrom, DeltaKind, FirstChunk, ModelRequest, Recovery, RetryVerdict,
-        StreamDelta, TurnCall,
+        SentTo, StreamDelta, TurnCall,
     };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};

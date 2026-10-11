@@ -55,7 +55,6 @@ use super::agent::{
     TurnOutcome, TurnsStarted,
 };
 use super::calls::{Running, Wake};
-use super::effects::Handler;
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
 use super::journal::{Commit, SessionLog, now_ms};
 use super::model::{Connection, Effort};
@@ -113,8 +112,8 @@ impl Backoff {
 /// the request, the connection and the adapters; Start then takes the
 /// model it goes to, applies the adapters to it in order, fits the request
 /// to the result (an option the model cannot take is left out, as
-/// rig-core's `ModelSpec::fit` says, and the tools of a model that calls
-/// none) and sends it streamed. A [`TurnCall`] or [`BuildFrom`] has its
+/// none) and sends it streamed, recording on the call where it went
+/// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
 /// request built by the kernel when it is admitted; a plugin's own call,
 /// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
@@ -163,6 +162,17 @@ impl ModelRequest {
         }
     }
 }
+
+/// On a model call the kernel started: the model it went to, its adapters
+/// applied, which its request was fitted to. Its spec says what that model
+/// finally takes, such as tools another adapter made it read as text, and
+/// its handler is the adapted one. From Start on, the call's
+/// [`ModelRequest::request`] is the request as sent to that handler (a
+/// layer of the handler may still change what the provider gets). Read it
+/// in Review, or once the call settled, to learn what every adapter made
+/// of the call rather than guess.
+#[derive(Component, Clone)]
+pub struct SentTo(pub Connection);
 
 /// A change to the model a call goes to, on its [`ModelRequest`]: Start
 /// applies it to the call's final [`Connection`], after every Prepare edit,
@@ -675,8 +685,8 @@ fn build(
 
 /// How Start starts a model call.
 pub(crate) enum ModelStart {
-    /// The kernel sends `kind` to the handler, of the model named.
-    Run(Handler, EffectKind, String),
+    /// The kernel sends `kind` to the adapted connection.
+    Run(Connection, EffectKind),
     /// Refused before it was sent.
     Refused(ErrorReport),
 }
@@ -726,7 +736,7 @@ impl ModelStarts<'_, '_> {
             request: request.clone(),
             stream: true,
         };
-        ModelStart::Run(connection.handler.clone(), kind, spec.reference())
+        ModelStart::Run(connection, kind)
     }
 }
 

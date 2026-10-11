@@ -83,7 +83,7 @@ fn as_text(mut connection: Connection, models: &[String]) -> Connection {
     }
     // The request rewrite outermost, so the record holds the request as
     // sent and the reply as rewritten.
-    let reads_calls = connection.handler.0.clone().map_stream(NAME, || {
+    let reads_calls = connection.handler.0.clone().map_stream(NAME, |_| {
         let mut relay = Relay::default();
         move |item| relay.relay(item)
     });

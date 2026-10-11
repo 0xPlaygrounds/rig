@@ -48,12 +48,12 @@ use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::tool::{ExitStatus, ToolContext};
+use rig_core::tool::{ContextValue, ExitStatus, ToolContext};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
 use rig_ecs::turn::RETRY;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// How long a test waits for a tool to answer.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -2008,6 +2008,77 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let (tools, rules) = offered(own.requests().first());
     assert!(tools.is_empty(), "{tools:?}");
     assert!(!rules);
+}
+
+/// What an adapter's stream rewrite says of a reply.
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct Rewritten(bool);
+
+impl ContextValue for Rewritten {
+    const KEY: &'static str = "rewritten";
+}
+
+/// What a reviewer saw on each model call: whether the model it went to
+/// calls tools, the tools the request carried, and the adapter's fact.
+#[derive(Resource, Default)]
+struct SentCalls(Vec<(bool, usize, Option<Rewritten>)>);
+
+#[test]
+fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("hi")]);
+    // Says the model calls no tools, and tells the call it saw the reply.
+    let adapt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            call.adapters
+                .push(Adapter::new("plain", |connection: Connection| {
+                    let mut spec = (*connection.spec).clone();
+                    spec.tools = false;
+                    let handler = connection.handler.0.map_stream("plain", |published| {
+                        move |item: Relayed| {
+                            if let Relayed::Done(_) = &item {
+                                published.insert(Rewritten(true)).ok();
+                            }
+                            vec![item]
+                        }
+                    });
+                    Connection {
+                        spec: Arc::new(spec),
+                        handler: Handler(handler),
+                    }
+                }));
+        }
+    };
+    let review = |calls: Query<(&ModelRequest, &SentTo, Option<&Published>), Unreviewed>,
+                  mut seen: ResMut<SentCalls>| {
+        for (call, sent, published) in &calls {
+            let fact = published.and_then(|published| published.0.get::<Rewritten>().ok());
+            let sent = (sent.0.spec.tools, call.request.tools.len(), fact.flatten());
+            seen.0.push(sent);
+        }
+    };
+    app.init_resource::<Ended>()
+        .init_resource::<SentCalls>()
+        .add_observer(log_ended)
+        .add_systems(
+            AgentPass,
+            (adapt.in_set(Stage::Prepare), review.in_set(Stage::Review)),
+        );
+    agent_on(&mut app, &own);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // The agent's model calls tools; the adapted one does not, so the
+    // request went without them.
+    assert_eq!(
+        app.world().resource::<SentCalls>().0,
+        [(false, 0, Some(Rewritten(true)))]
+    );
+    let recorded = model_records(&app)
+        .into_iter()
+        .filter_map(|record| record.tool_output)
+        .map(|output| output.get::<Rewritten>().ok().flatten())
+        .collect::<Vec<_>>();
+    assert_eq!(recorded, [Some(Rewritten(true))]);
 }
 
 /// A plugin's mark on the message it sends.
