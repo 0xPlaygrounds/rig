@@ -45,3 +45,100 @@ fn a_program_runs_with_the_terminal_and_its_exit_comes_back() {
     app.update();
     assert!(!draft.exists());
 }
+
+/// A terminal that answers nothing: it counts the cells drawn and notes a
+/// question about the cursor, which a real one answers on stdin.
+#[derive(Default)]
+struct Probe {
+    asked: bool,
+    drawn: usize,
+}
+
+const PROBE: ratatui::layout::Size = ratatui::layout::Size::new(6, 2);
+
+impl Write for Probe {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl ratatui::backend::Backend for Probe {
+    type Error = io::Error;
+
+    fn draw<'a, I>(&mut self, content: I) -> io::Result<()>
+    where
+        I: Iterator<Item = (u16, u16, &'a ratatui::buffer::Cell)>,
+    {
+        self.drawn += content.count();
+        Ok(())
+    }
+
+    fn hide_cursor(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn show_cursor(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn get_cursor_position(&mut self) -> io::Result<ratatui::layout::Position> {
+        self.asked = true;
+        Err(io::Error::other("no answer"))
+    }
+
+    fn set_cursor_position<P: Into<ratatui::layout::Position>>(&mut self, _: P) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn clear(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn clear_region(&mut self, _: ratatui::backend::ClearType) -> io::Result<()> {
+        Ok(())
+    }
+
+    fn size(&self) -> io::Result<ratatui::layout::Size> {
+        Ok(PROBE)
+    }
+
+    fn window_size(&mut self) -> io::Result<ratatui::backend::WindowSize> {
+        Ok(ratatui::backend::WindowSize {
+            columns_rows: PROBE,
+            pixels: ratatui::layout::Size::default(),
+        })
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Taking the screen (at startup, and back from a program) asks the
+/// terminal nothing, and the next frame is drawn whole even when it is
+/// the frame drawn before.
+#[test]
+fn taking_the_screen_asks_nothing_and_the_next_frame_is_whole() {
+    let terminal = Terminal::new(Probe::default());
+    assert!(terminal.is_ok());
+    let Ok(mut terminal) = terminal else { return };
+    let frame = |terminal: &mut Terminal<Probe>| {
+        let drawn = terminal.draw(|frame| {
+            frame.render_widget(ratatui::widgets::Paragraph::new("rig"), frame.area());
+        });
+        assert!(drawn.is_ok());
+        std::mem::take(&mut terminal.backend_mut().drawn)
+    };
+    let whole = frame(&mut terminal);
+    assert_eq!(whole, "rig".len());
+    assert_eq!(frame(&mut terminal), 0, "an unchanged frame draws nothing");
+    for releases in [false, true] {
+        assert!(take_screen(&mut terminal, releases).is_ok());
+        assert!(!terminal.backend().asked);
+        assert_eq!(frame(&mut terminal), whole);
+    }
+}

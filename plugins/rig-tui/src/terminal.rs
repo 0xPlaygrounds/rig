@@ -135,25 +135,10 @@ impl Tui {
         Ok(tui)
     }
 
-    /// Takes the screen: raw mode, the alternate screen cleared (after a
-    /// reload it still shows the previous build's frame), pastes reported
-    /// whole, focus changes reported, no cursor, and a whole frame drawn
-    /// next.
+    /// Takes the screen: raw mode, then [`take_screen`].
     fn enter(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
-        let backend = self.terminal.backend_mut();
-        execute!(
-            backend,
-            EnterAlternateScreen,
-            EnableBracketedPaste,
-            EnableFocusChange,
-            Clear(ClearType::All)
-        )?;
-        if self.releases {
-            execute!(backend, PushKeyboardEnhancementFlags(RELEASES)).ok();
-        }
-        self.terminal.hide_cursor()?;
-        self.terminal.clear()
+        take_screen(&mut self.terminal, self.releases)
     }
 
     /// Gives the screen back as the shell had it, leaving the alternate
@@ -189,6 +174,34 @@ impl Tui {
             error!("could not ask the terminal about key releases: {failure}");
         }
     }
+}
+
+/// The alternate screen cleared (after a reload it still shows the previous
+/// build's frame), pastes reported whole, focus changes reported, no cursor,
+/// and a whole frame drawn next. The terminal is asked nothing: its answer
+/// would come on stdin, but stdout may be the session's log by now
+/// (`Terminal::clear` asks for the cursor position).
+fn take_screen<B>(terminal: &mut Terminal<B>, releases: bool) -> io::Result<()>
+where
+    B: ratatui::backend::Backend<Error = io::Error> + Write,
+{
+    let backend = terminal.backend_mut();
+    execute!(
+        backend,
+        EnterAlternateScreen,
+        EnableBracketedPaste,
+        EnableFocusChange,
+        Clear(ClearType::All)
+    )?;
+    if releases {
+        execute!(backend, PushKeyboardEnhancementFlags(RELEASES)).ok();
+    }
+    terminal.hide_cursor()?;
+    // Each swap resets the buffer it makes current: both are blank, as the
+    // screen is, so the next draw writes every cell.
+    terminal.swap_buffers();
+    terminal.swap_buffers();
+    Ok(())
 }
 
 impl Drop for Tui {
