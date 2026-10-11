@@ -143,6 +143,13 @@ impl Conversation {
             .map(|(.., origin)| origin)
     }
 
+    /// Why the user's last message is left unanswered, if it was halted:
+    /// stopped by the user, or kept for the next turn. Cleared when a
+    /// message is added or taken out.
+    pub fn halted(&self) -> Option<Halt> {
+        self.halted
+    }
+
     /// The messages, to change in place, such as clearing old tool outputs.
     /// Nothing can be added or taken out through it, and nothing changed
     /// through it is logged: a restored session has the messages as they
