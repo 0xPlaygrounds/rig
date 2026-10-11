@@ -74,9 +74,9 @@ use super::tools::{
     tool_kind,
 };
 use super::turn::{
-    ModelRequest, ModelStart, ModelStarts, TurnCall, back_off, build_requests, carry_on_called,
-    commit_replies, commit_turn_calls, end_turns, feed, judge_failures, keeps_settled, model_pool,
-    stop_calls, stream_reply, wait_in_order,
+    ModelRequest, ModelStart, ModelStarts, StreamDelta, TurnCall, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
+    keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -94,9 +94,10 @@ pub struct AgentLoop;
 /// The stages of a pass, run in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
-    /// The kernel: finished tasks become their effects' [`Outcome`]s, and
-    /// a model call whose handler failed gets its
-    /// [`RetryVerdict`](super::turn::RetryVerdict).
+    /// The kernel: finished tasks become their effects' [`Outcome`]s,
+    /// what model calls streamed is read ([`StreamDelta`],
+    /// [`FirstChunk`](super::turn::FirstChunk)), and a model call whose
+    /// handler failed gets its [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, replace (`insert`) or hold an [`Outcome`]
     /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`].
@@ -421,6 +422,7 @@ thread_local! {
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<Passes>()
         .add_message::<Recorded>()
+        .add_message::<StreamDelta>()
         .edit_schedule(AgentPass, |pass| {
             pass.set_executor(SingleThreadedExecutor::new());
             if cfg!(debug_assertions) {
@@ -467,7 +469,9 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(
             AgentPass,
             (
-                (arrive, judge_failures).chain().in_set(Stage::Arrive),
+                (arrive, stream_partials, judge_failures)
+                    .chain()
+                    .in_set(Stage::Arrive),
                 (
                     stop_calls,
                     back_off,
@@ -853,15 +857,12 @@ fn start(
             };
             let span =
                 info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
-            let (sender, feed) = item.turn_call.then(feed).unzip();
+            let (sender, feed) = feed();
             let wake_up = wake.clone();
             let consume = move |reply| stream_reply(reply, sender, wake_up);
             let work = effects.run(effect.id, origin, handler.0, kind, consume);
             let running = Running::finishing(model_pool(), &wake, work.instrument(span), answer);
-            started.try_insert((Started { at }, running));
-            if let Some(feed) = feed {
-                started.try_insert(feed);
-            }
+            started.try_insert((Started { at }, running, feed));
             continue;
         }
         let (handler, kind) = match (item.request, item.tool) {

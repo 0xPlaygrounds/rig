@@ -607,6 +607,53 @@ fn fall_back(
 }
 ```
 
+# What a model streams
+
+Every model call streams, a turn's and a plugin's own alike. Each fragment
+of text or reasoning is a `StreamDelta { effect, agent, kind, text }`
+message, written in `Arrive` in the order it came, before the call's
+outcome is applied; Bevy keeps a message two frames, so a reader in
+`PostUpdate` gets the last fragments of a reply that settled in the same
+frame. A turn's call also adds them up in its `Partial`, which is gone
+once the reply is in the conversation. When a call's stream sends its
+first item of any kind, text or a tool call, the call gets a
+`FirstChunk { at }`, beside its `Started { at }`.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct StreamTapPlugin;
+
+impl Plugin for StreamTapPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(PostUpdate, print_text).add_observer(time_to_first);
+    }
+}
+
+/// Prints every model call's answer text as it comes.
+fn print_text(mut deltas: MessageReader<StreamDelta>) {
+    for delta in deltas.read() {
+        if delta.kind == DeltaKind::Text {
+            print!("{}", delta.text);
+        }
+    }
+}
+
+/// Says how long each model call took to start answering.
+fn time_to_first(
+    first: On<Add<FirstChunk>>,
+    calls: Query<(&FirstChunk, &Started, Option<&ForAgent>)>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Ok((first, started, agent)) = calls.get(first.entity) {
+        let waited = first.at.duration_since(started.at).unwrap_or_default();
+        let text = format!("First token after {} ms.", waited.as_millis());
+        notices.write(Notice::info(agent.map(|agent| agent.0), text));
+    }
+}
+```
+
 # How a turn ends
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among

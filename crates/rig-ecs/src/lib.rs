@@ -74,7 +74,10 @@ pub mod prelude {
         AppToolsExt, CallHandler, Footprint, Published, ToolCalled, ToolDef, ToolOptions,
         ToolRequest, WorldToolsExt,
     };
-    pub use crate::turn::{Backoff, BuildFrom, ModelRequest, Recovery, RetryVerdict, TurnCall};
+    pub use crate::turn::{
+        Backoff, BuildFrom, DeltaKind, FirstChunk, ModelRequest, Recovery, RetryVerdict,
+        StreamDelta, TurnCall,
+    };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
@@ -143,10 +146,7 @@ impl Plugin for AgentPlugin {
             .add_systems(Startup, spawn_first_agent)
             // A reply that came in this frame has its calls started in it.
             .configure_sets(Update, PollCalls.before(stage::AgentLoop))
-            .add_systems(
-                Update,
-                (poll_calls, turn::stream_partials).in_set(PollCalls),
-            )
+            .add_systems(Update, poll_calls.in_set(PollCalls))
             .add_systems(
                 Last,
                 (

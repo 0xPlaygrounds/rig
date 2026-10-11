@@ -65,8 +65,7 @@ impl Plugin for JsonStreamPlugin {
         if !app.world().contains_resource::<JsonSink>() {
             app.insert_resource(JsonSink::new(std::io::stdout()));
         }
-        app.register_required_components::<TurnCall, Streamed>()
-            .add_observer(turn_started)
+        app.add_observer(turn_started)
             .add_observer(started)
             .add_observer(settled)
             .add_observer(picker_opened)
@@ -74,10 +73,10 @@ impl Plugin for JsonStreamPlugin {
                 Update,
                 (
                     session_started.run_if(resource_added::<SessionRestored>),
-                    stream_deltas.after(PollCalls).before(AgentLoop),
                     notices,
                 ),
-            );
+            )
+            .add_systems(AgentPass, stream_deltas.in_set(Stage::Review));
         if rpc {
             app.world_mut().spawn(Answerer::default());
             if !app.world().contains_resource::<RpcInput>() {
@@ -109,13 +108,6 @@ impl Plugin for JsonStreamPlugin {
             );
         }
     }
-}
-
-/// What a turn's model call has sent out of its [`Partial`], in bytes.
-#[derive(Component, Default)]
-struct Streamed {
-    text: usize,
-    reasoning: usize,
 }
 
 /// Writes lines, each naming its agent and the agent's parent.
@@ -278,28 +270,22 @@ fn settled(
     }
 }
 
-/// Sends what each turn's model call streamed since the last frame, before
-/// the loop commits a finished reply and takes its [`Partial`] away.
+/// Sends what each turn's model call streamed, in Review right after the
+/// kernel read it, so it goes out before the reply's settling events.
 fn stream_deltas(
-    mut calls: Query<(&Partial, &mut Streamed, &ForAgent), Changed<Partial>>,
+    mut deltas: MessageReader<StreamDelta>,
+    turn_calls: Query<(), With<TurnCall>>,
     mut out: Out,
 ) {
-    for (partial, mut streamed, &ForAgent(agent)) in &mut calls {
-        let streamed = &mut *streamed;
-        let parts = [
-            (&partial.text, &mut streamed.text, "text_delta"),
-            (
-                &partial.reasoning,
-                &mut streamed.reasoning,
-                "reasoning_delta",
-            ),
-        ];
-        for (full, sent, kind) in parts {
-            if let Some(new) = full.get(*sent..).filter(|new| !new.is_empty()) {
-                out.emit(kind, Some(agent), json!({ "text": new }));
-                *sent = full.len();
-            }
+    for delta in deltas.read() {
+        if !turn_calls.contains(delta.effect) {
+            continue;
         }
+        let kind = match delta.kind {
+            DeltaKind::Text => "text_delta",
+            DeltaKind::Reasoning => "reasoning_delta",
+        };
+        out.emit(kind, delta.agent, json!({ "text": delta.text }));
     }
 }
 

@@ -186,14 +186,51 @@ pub struct BuildFrom(pub Entity);
 #[derive(Component, Clone, Debug)]
 pub struct RetryVerdict(pub Verdict);
 
-/// The feed of a [`TurnCall`]'s streamed text, into its [`Partial`].
+/// The feed of a model call's stream, read in [`Stage::Arrive`].
 #[derive(Component)]
-pub(crate) struct Feed(Receiver<Delta>);
+pub(crate) struct Feed(Receiver<Fed>);
 
-/// A streamed fragment for [`Partial`].
-pub(crate) enum Delta {
-    Text(String),
-    Reasoning(String),
+/// What a model call's stream feeds its entity.
+pub(crate) enum Fed {
+    /// The stream's first item came, of any kind.
+    First(web_time::SystemTime),
+    /// A fragment of text or reasoning.
+    Delta(DeltaKind, String),
+}
+
+/// What a [`StreamDelta`] streamed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DeltaKind {
+    /// Answer text.
+    Text,
+    /// Reasoning text.
+    Reasoning,
+}
+
+/// A fragment of text or reasoning a model call streamed, any model call,
+/// written in [`Stage::Arrive`] in the order it came, before the call's
+/// outcome is applied. Bevy keeps a message two frames, so a reader in
+/// `PostUpdate` sees the last fragments of a reply that settled this
+/// frame. A [`TurnCall`]'s fragments also add up in its [`Partial`].
+#[derive(Message, Clone, Debug)]
+pub struct StreamDelta {
+    /// The model call.
+    pub effect: Entity,
+    /// The agent it is [`ForAgent`], if any.
+    pub agent: Option<Entity>,
+    /// What it is.
+    pub kind: DeltaKind,
+    /// The text.
+    pub text: String,
+}
+
+/// When a model call's stream sent its first item of any kind, such as
+/// text or a tool call: the time to the first token, beside its
+/// [`Started`]. It stays on the call until it is despawned.
+#[derive(Component, Clone, Copy, Debug)]
+pub struct FirstChunk {
+    /// The wall-clock time.
+    pub at: web_time::SystemTime,
 }
 
 /// Model calls wait on the network: they run on the IO pool.
@@ -658,49 +695,77 @@ impl ModelStarts<'_, '_> {
     }
 }
 
-/// Streams the reply, feeding text and reasoning to `feed`, if any, and
-/// waking the loop for each, and returns the response the provider ended
-/// it with.
+/// Streams the reply, feeding `feed` when its first item comes and with
+/// its text and reasoning, waking the loop for each, and returns the
+/// response the provider ended it with.
 pub(crate) async fn stream_reply(
     reply: Reply,
-    feed: Option<Sender<Delta>>,
+    feed: Sender<Fed>,
     wake: Wake,
 ) -> Result<effect::Outcome, ErrorReport> {
     let mut events = reply.into_stream();
+    let mut first = true;
     while let Some(item) = events.next().await {
+        if first && item.is_ok() {
+            first = false;
+            // The call may be gone; the reply still finishes.
+            feed.send(Fed::First(web_time::SystemTime::now())).ok();
+        }
         let delta = match item {
             Ok(Relayed::Done(response)) => return Ok(effect::Outcome::Completion(*response)),
             Err(report) => return Err(report),
-            Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => Delta::Text(text),
+            Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => {
+                Fed::Delta(DeltaKind::Text, text)
+            }
             Ok(Relayed::Item(Item::Event(StreamEvent::Reasoning { text, .. }))) => {
-                Delta::Reasoning(text)
+                Fed::Delta(DeltaKind::Reasoning, text)
             }
             Ok(_) => continue,
         };
-        if let Some(feed) = &feed {
-            // The view may be gone; the reply still finishes.
-            feed.send(delta).ok();
-            wake.wake();
-        }
+        feed.send(delta).ok();
+        wake.wake();
     }
     Err(stream_truncated())
 }
 
-/// The channel a [`TurnCall`] streams into: the sender for its task, and
+/// The channel a model call streams into: the sender for its task, and
 /// the [`Feed`] for its entity.
-pub(crate) fn feed() -> (Sender<Delta>, Feed) {
+pub(crate) fn feed() -> (Sender<Fed>, Feed) {
     let (sender, receiver) = crossbeam_channel::unbounded();
     (sender, Feed(receiver))
 }
 
-/// Moves streamed text and reasoning into each model call's [`Partial`].
-pub(crate) fn stream_partials(mut calls: Query<(&Feed, &mut Partial)>) {
-    for (feed, mut partial) in &mut calls {
-        for delta in feed.0.try_iter() {
-            match delta {
-                Delta::Text(text) => partial.text.push_str(&text),
-                Delta::Reasoning(text) => partial.reasoning.push_str(&text),
+/// Reads what each model call streamed, in [`Stage::Arrive`] after the
+/// finished calls' outcomes, so a reply that finished has fed it all: its
+/// [`FirstChunk`], a [`StreamDelta`] per fragment, in order, and the
+/// fragments into its [`Partial`], if it has one.
+pub(crate) fn stream_partials(
+    mut calls: Query<(Entity, &Feed, Option<&mut Partial>, Option<&ForAgent>)>,
+    mut deltas: MessageWriter<StreamDelta>,
+    mut commands: Commands,
+) {
+    for (effect, feed, mut partial, agent) in &mut calls {
+        for fed in feed.0.try_iter() {
+            let (kind, text) = match fed {
+                Fed::First(at) => {
+                    commands.entity(effect).try_insert(FirstChunk { at });
+                    continue;
+                }
+                Fed::Delta(kind, text) => (kind, text),
+            };
+            if let Some(partial) = partial.as_mut() {
+                match kind {
+                    DeltaKind::Text => partial.text.push_str(&text),
+                    DeltaKind::Reasoning => partial.reasoning.push_str(&text),
+                }
             }
+            let agent = agent.map(|agent| agent.0);
+            deltas.write(StreamDelta {
+                effect,
+                agent,
+                kind,
+                text,
+            });
         }
     }
 }

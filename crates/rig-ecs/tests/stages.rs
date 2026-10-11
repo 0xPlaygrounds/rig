@@ -1762,3 +1762,75 @@ fn an_agent_retired_as_its_turn_ends_goes_with_the_turn() {
     let turns = world.query_filtered::<(), With<Turn>>().iter(world).count();
     assert_eq!(turns, 0, "the turn went with its agent");
 }
+
+/// What model calls streamed, as a `PostUpdate` reader saw it, and the
+/// calls whose first item came.
+#[derive(Resource, Default)]
+struct Streamed {
+    deltas: Vec<(Entity, DeltaKind, String)>,
+    first: Vec<Entity>,
+}
+
+#[test]
+fn every_streamed_fragment_reaches_a_late_reader_in_order() {
+    let mut app = app();
+    let thought = MockStreamEvent::ReasoningDelta {
+        id: "r".to_owned(),
+        reasoning: "hm".to_owned(),
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("look", "l1")]),
+        vec![
+            thought,
+            MockStreamEvent::text("Hel"),
+            MockStreamEvent::text("lo"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+    ]);
+    app.init_resource::<Streamed>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_observer(
+            |first: On<Add<FirstChunk>>,
+             calls: Query<(), With<TurnCall>>,
+             mut seen: ResMut<Streamed>| {
+                if calls.contains(first.entity) {
+                    seen.first.push(first.entity);
+                }
+            },
+        )
+        .add_systems(
+            PostUpdate,
+            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streamed>| {
+                let read = deltas
+                    .read()
+                    .map(|delta| (delta.effect, delta.kind, delta.text.clone()));
+                seen.deltas.extend(read);
+            },
+        );
+    let agent = agent_on(&mut app, &model);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let seen = app.world().resource::<Streamed>();
+    let fragments: Vec<(DeltaKind, &str)> = seen
+        .deltas
+        .iter()
+        .map(|(_, kind, text)| (*kind, text.as_str()))
+        .collect();
+    assert_eq!(
+        fragments,
+        [
+            (DeltaKind::Reasoning, "hm"),
+            (DeltaKind::Text, "Hel"),
+            (DeltaKind::Text, "lo")
+        ]
+    );
+    // Both calls, the one that only called a tool too, got their first
+    // item; the fragments are the second's.
+    assert_eq!(seen.first.len(), 2, "{:?}", seen.first);
+    let text = seen.first.get(1);
+    assert!(seen.first.first() != text);
+    assert!(seen.deltas.iter().all(|(call, ..)| Some(call) == text));
+    let said = conversation(&app, agent);
+    assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
+}
