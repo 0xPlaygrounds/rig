@@ -58,6 +58,7 @@ impl Plugin for CheckAfterTurnPlugin {
             .add_observer(check_after_turn)
             .add_observer(run_check)
             .add_observer(check_done)
+            .add_observer(follow_successor::<CheckRun>)
             .add_observer(cancel_on_user)
             .add_observer(cancel_on_interrupt);
         #[cfg(feature = "tui")]
