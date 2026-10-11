@@ -274,7 +274,7 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
 fn read_only() -> ToolOptions<'static> {
     ToolOptions {
         rules: &[],
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
     }
 }
 

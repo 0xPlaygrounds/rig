@@ -65,7 +65,7 @@ impl Plugin for AskUserPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: &[RULE],
-            footprint: Some(Footprint::Exclusive),
+            footprint: Some(Touches::Writes(Scope::Anything)),
         };
         app.add_setting::<AskUserSettings>("ask_user")
             .add_open_tool("ask_user", DESCRIPTION, options, ask)

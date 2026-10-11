@@ -66,7 +66,7 @@ impl Plugin for RecallPlugin {
     fn build(&self, app: &mut App) {
         let options = || ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
         };
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
@@ -84,7 +84,7 @@ impl Plugin for RecallPlugin {
                 "Show a longer excerpt of a past session around a message `recall` found.",
                 ToolOptions {
                     rules: &[],
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
                 },
                 open,
             )

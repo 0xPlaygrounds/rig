@@ -84,7 +84,7 @@ impl Plugin for CancellableRunPlugin {
                          depend on each other in one call. When the user cancels one, decide \
                          from its output so far whether to go on.",
                     ],
-                    footprint: Some(Footprint::Independent),
+                    footprint: Some(Touches::Independent),
                 },
                 start,
             )

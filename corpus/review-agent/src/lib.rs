@@ -4,7 +4,7 @@
 //! talks to changed, and the agent addresses the findings.
 //!
 //! - Before a turn's first call that may change files (an
-//!   [`Footprint::Exclusive`] tool call), the call is held while a git
+//!   [`Touches::Writes`] tool call), the call is held while a git
 //!   snapshot of the working tree is taken ([`Baseline`], on the turn).
 //! - When such a turn proposes to end with an answer, a review effect
 //!   ([`Review`], named "reviewing", which the agent's status shows) holds
@@ -246,7 +246,7 @@ fn snapshot_before_changes(
     }
     for (call, footprint, &CallOf(turn), &ForAgent(agent)) in &calls {
         let first = turns.contains(turn) && agents.contains(agent);
-        if *footprint != Footprint::Exclusive || !first {
+        if !matches!(footprint.0, Touches::Writes(_)) || !first {
             continue;
         }
         commands.entity(turn).insert(Baseline(None));
@@ -357,7 +357,7 @@ fn diff_taken(
     };
     let allowed = settings.tools.clone().unwrap_or_else(|| {
         let reads = tools.iter().filter(|(def, footprint)| {
-            **footprint == Footprint::ReadOnly && access.allows(def.0.name.as_str())
+            footprint.0.reads_only() && access.allows(def.0.name.as_str())
         });
         reads.map(|(def, _)| def.0.name.to_string()).collect()
     });

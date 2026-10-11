@@ -96,7 +96,7 @@ impl Plugin for MapReducePlugin {
         }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Exclusive),
+            footprint: Some(Touches::Writes(Scope::Anything)),
         };
         app.add_setting::<MapConfig>("map_reduce")
             .add_open_tool(MAP_FILES, DESCRIPTION, options, on_map)
@@ -510,7 +510,7 @@ fn keep_to_file(
         let Ok(worker) = workers.get(agent) else {
             continue;
         };
-        if *footprint == Footprint::ReadOnly {
+        if footprint.0.reads_only() {
             continue;
         }
         let named = request.call.function.arguments.get("path");

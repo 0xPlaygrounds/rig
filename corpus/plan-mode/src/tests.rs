@@ -76,7 +76,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     };
     let independent = ToolOptions {
         rules: &[],
-        footprint: Some(Footprint::Independent),
+        footprint: Some(Touches::Independent),
     };
     app.add_open_tool("schedule", "Run a prompt later.", independent, scheduled);
     let mut agent = app.world_mut().spawn(Agent);

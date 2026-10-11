@@ -37,7 +37,7 @@ impl Plugin for EffectQueryPlugin {
     fn build(&self, app: &mut App) {
         let read_only = || ToolOptions {
             rules: &[],
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_open_tool(EFFECTS_TOOL, EFFECTS_DESCRIPTION, read_only(), on_effects)
             .add_open_tool(DETAIL_TOOL, DETAIL_DESCRIPTION, read_only(), on_detail)

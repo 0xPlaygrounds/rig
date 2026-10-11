@@ -130,7 +130,7 @@ fn note_change(
     let files = published.and_then(|published| published.0.get::<FilesChanged>().ok().flatten());
     match files {
         Some(files) => changed.0.extend(files.paths().map(str::to_owned)),
-        None if *footprint == Footprint::Exclusive => {
+        None if matches!(footprint.0, Touches::Writes(_)) => {
             changed.0.push(format!(
                 "whatever `{}` changed",
                 request.call.function.name.as_str()

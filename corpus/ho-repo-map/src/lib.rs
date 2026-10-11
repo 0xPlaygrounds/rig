@@ -63,7 +63,7 @@ impl Plugin for RepoMapPlugin {
                  symbols and their lines; with `symbol`, the files and lines that define it.",
                 ToolOptions {
                     rules: RULES,
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 answer,
             )

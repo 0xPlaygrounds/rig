@@ -65,7 +65,7 @@ impl Plugin for SupervisorPlugin {
         }
         let options = ToolOptions {
             rules: &["Answer every check with one `verdict` call."],
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         let describe = "Give your verdict on the worker's progress: continue, steer it with a \
                         message, or stop its turn with a reason.";

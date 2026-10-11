@@ -1,10 +1,10 @@
 //! Plan mode (corpus spec `09-plan-mode.md`). `/plan` lets the shown agent
 //! read but not change anything: a Prepare system offers its model calls
-//! only the read-only tools ([`Footprint::ReadOnly`], which a tool's
+//! only the read-only tools ([`Touches::Reads`], which a tool's
 //! read-only annotation gives it) and tells the model to plan, and a Gate
 //! system refuses, with its own reason, any other call, of the agent or
 //! of an agent it spawned. A tool that changes nothing its reply's other
-//! calls see ([`Footprint::Independent`]: starting a subagent, scheduling
+//! calls see ([`Touches::Independent`]: starting a subagent, scheduling
 //! a job, a reload) still acts, so it waits until the plan is approved. The answer that ends
 //! a planning turn is the plan: it is written to `.rig/plan.md` and the
 //! user is asked whether to execute it, keep planning or discard it. The
@@ -130,7 +130,7 @@ fn plan_only(
 ) {
     let reads: Vec<&str> = tools
         .iter()
-        .filter(|(_, footprint)| **footprint == Footprint::ReadOnly)
+        .filter(|(_, footprint)| footprint.0.reads_only())
         .map(|(def, _)| def.0.name.as_str())
         .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
@@ -154,7 +154,7 @@ fn no_changes(
     mut commands: Commands,
 ) {
     for (call, footprint, &ForAgent(agent)) in &calls {
-        if *footprint != Footprint::ReadOnly && plans(agent, &planning, &parents) {
+        if !footprint.0.reads_only() && plans(agent, &planning, &parents) {
             commands
                 .entity(call)
                 .insert_if_new(Outcome::refused(REFUSED));

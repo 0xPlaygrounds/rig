@@ -21,8 +21,10 @@ use rig_tui::AppToolRenderersExt;
 #[cfg(feature = "tui")]
 mod looks;
 
-/// Options with `rules`; whether a tool's calls run beside others comes
-/// from its annotations: `read` and `search` only read.
+/// Options with `rules`; what each call touches, so calls on different
+/// files run side by side, the tool says: `read` and `search` read the
+/// path they name, `edit` and `write` write it, `shell` may change
+/// anything.
 fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
     ToolOptions {
         rules,

@@ -216,8 +216,8 @@ fn refresh(
 fn register(world: &mut World, scripts: Vec<Arc<Script>>, runner: &Runner, owner: Option<Entity>) {
     for script in scripts {
         let footprint = match script.readonly {
-            true => Footprint::ReadOnly,
-            false => Footprint::Exclusive,
+            true => Touches::Reads(Scope::Anything),
+            false => Touches::Writes(Scope::Anything),
         };
         let options = ToolOptions {
             rules: &[],

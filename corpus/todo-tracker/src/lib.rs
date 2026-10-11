@@ -46,7 +46,7 @@ impl Plugin for TodoPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         app.register_required_components::<Agent, Todos>()
             .register_required_components::<Agent, Nudged>()

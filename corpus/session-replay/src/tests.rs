@@ -42,7 +42,7 @@ fn with_agents(app: &mut App, connection: Option<Connection>) {
             Write::default(),
             ToolOptions {
                 rules: Write::RULES,
-                footprint: Some(Footprint::Exclusive),
+                footprint: Some(Touches::Writes(Scope::Anything)),
             },
         )
         .add_observer(move |agent: On<Add<Agent>>, mut commands: Commands| {

@@ -95,7 +95,7 @@ impl Plugin for SubmitResultPlugin {
         }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_open_tool(TOOL, DESCRIPTION, options, submit);
         let world = app.world_mut();

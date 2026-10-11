@@ -45,7 +45,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
             "Reads a file.",
             ToolOptions {
                 rules: &[],
-                footprint: Some(Footprint::ReadOnly),
+                footprint: Some(Touches::Reads(Scope::Anything)),
             },
             |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
                 let output = ToolResult::success("pub fn answer() -> u32 { 42 }".into());

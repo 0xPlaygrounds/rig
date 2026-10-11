@@ -8,7 +8,7 @@
 //! overlay runs but answers with the overlay's content. `shell` runs only a
 //! read-only command (`ls`, `cat`, `git status`, `git diff`, `rg`, …), and
 //! any other tool only when it changes nothing ([`Footprint`] not
-//! `Exclusive`); the rest are answered "(dry run: not executed)".
+//! [`Touches::Writes`]); the rest are answered "(dry run: not executed)".
 //!
 //! `/dry-run apply` writes the overlay to disk file by file, refusing (and
 //! naming) a file changed on disk since it was previewed; `/dry-run
@@ -192,7 +192,7 @@ fn preview(
     overlay: Res<Overlay>,
     mut commands: Commands,
 ) {
-    for (call, request, &footprint, &ForAgent(agent)) in &calls {
+    for (call, request, footprint, &ForAgent(agent)) in &calls {
         if !dry.contains(agent) {
             continue;
         }
@@ -210,7 +210,7 @@ fn preview(
                 commands.entity(call).insert_if_new(Outcome::from(skipped));
                 continue;
             }
-            _ if footprint != Footprint::Exclusive => continue,
+            _ if !matches!(footprint.0, Touches::Writes(_)) => continue,
             _ => {
                 let skipped = ToolResult::skipped(NOT_EXECUTED);
                 commands.entity(call).insert_if_new(Outcome::from(skipped));

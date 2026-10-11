@@ -118,7 +118,7 @@ impl Plugin for InspectPlugin {
                 DESCRIPTION,
                 ToolOptions {
                     rules: &[],
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 on_inspect,
             )

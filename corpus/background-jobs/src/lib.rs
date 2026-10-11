@@ -234,26 +234,26 @@ impl Plugin for BackgroundJobsPlugin {
                          servers, watchers or slow test suites, then keep working; check them \
                          with `job_output` and stop them with `job_kill`.",
                     ],
-                    Footprint::Exclusive,
+                    Touches::Writes(Scope::Anything),
                 ),
                 on_start,
             )
             .add_open_tool(
                 "job_output",
                 "The last lines a background job printed.",
-                options(&[], Footprint::ReadOnly),
+                options(&[], Touches::Reads(Scope::Anything)),
                 on_output,
             )
             .add_open_tool(
                 "job_kill",
                 "Kill a background job and its child processes.",
-                options(&[], Footprint::Exclusive),
+                options(&[], Touches::Writes(Scope::Anything)),
                 on_kill,
             )
             .add_open_tool(
                 "job_list",
                 "List your background jobs.",
-                options(&[], Footprint::ReadOnly),
+                options(&[], Touches::Reads(Scope::Anything)),
                 on_list,
             )
             .add_command("jobs", "List the background jobs", list_command)

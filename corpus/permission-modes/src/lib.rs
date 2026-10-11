@@ -152,10 +152,10 @@ impl Default for Permissions {
 
 impl Permissions {
     /// The class of the tool `name` whose calls have `footprint`.
-    fn class(&self, name: &str, footprint: Footprint) -> ToolClass {
-        self.tools.get(name).copied().unwrap_or(match footprint {
-            Footprint::Exclusive => ToolClass::Other,
-            Footprint::ReadOnly | Footprint::Independent => ToolClass::Read,
+    fn class(&self, name: &str, footprint: &Footprint) -> ToolClass {
+        self.tools.get(name).copied().unwrap_or(match footprint.0 {
+            Touches::Writes(_) => ToolClass::Other,
+            Touches::Reads(_) | Touches::Independent => ToolClass::Read,
         })
     }
 
@@ -239,7 +239,7 @@ fn offer(
             continue;
         }
         let reads = |name: &str| {
-            tools.iter().any(|(def, &footprint)| {
+            tools.iter().any(|(def, footprint)| {
                 def.0.name.as_str() == name && settings.class(name, footprint) == ToolClass::Read
             })
         };
@@ -262,7 +262,7 @@ fn ask(
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, request, &footprint, &ForAgent(agent)) in &calls {
+    for (call, request, footprint, &ForAgent(agent)) in &calls {
         let Ok((name, mode, always, sub)) = agents.get(agent) else {
             continue;
         };

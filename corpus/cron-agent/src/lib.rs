@@ -54,7 +54,7 @@ impl Plugin for CronPlugin {
         }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         app.world_mut().spawn(CronTimer);
         app.init_resource::<CronJobs>()

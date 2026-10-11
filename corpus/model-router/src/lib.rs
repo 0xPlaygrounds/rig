@@ -275,9 +275,9 @@ fn route(
             .map_or(0, |turn| conversation.start_of(turn.first_message));
         let this_turn = conversation.messages().get(first..).unwrap_or_default();
         let read_only = |name: &str| {
-            tools.iter().any(|(def, footprint)| {
-                def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
-            })
+            tools
+                .iter()
+                .any(|(def, footprint)| def.0.name.as_str() == name && footprint.0.reads_only())
         };
         let request = Request::of(this_turn, read_only);
         let chosen = config.rules.iter().find_map(|rule| {

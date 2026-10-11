@@ -292,11 +292,11 @@ pub struct PathGuardCounts {
 /// What a call of the tool `name` is checked for: the built-in file tools
 /// as they use their paths; any other for reading, and for writing too
 /// unless it changes nothing.
-fn accesses(name: &str, footprint: Footprint) -> &'static [Access] {
+fn accesses(name: &str, footprint: Option<&Footprint>) -> &'static [Access] {
     match name {
         "read" | SEARCH => &[Access::Read],
         "write" => &[Access::Write],
-        _ if footprint == Footprint::ReadOnly => &[Access::Read],
+        _ if footprint.is_some_and(|footprint| footprint.0.reads_only()) => &[Access::Read],
         _ => &[Access::Read, Access::Write],
     }
 }
@@ -390,7 +390,7 @@ fn guard(
 ) {
     for (call, ToolRequest { call: request }, footprint, restored) in &calls {
         let name = request.function.name.as_str();
-        let accesses = accesses(name, footprint.copied().unwrap_or_default());
+        let accesses = accesses(name, footprint);
         let named = named_paths(&request.function.arguments, name == SEARCH);
         let denied = named.into_iter().find_map(|raw| {
             accesses

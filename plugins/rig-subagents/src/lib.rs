@@ -42,7 +42,7 @@
 //!     mut requests: Query<&mut SpawnSubagent, Added<Admitted>>,
 //!     tools: Query<(&ToolDef, &Footprint)>,
 //! ) {
-//!     let reading = tools.iter().filter(|(_, footprint)| **footprint == Footprint::ReadOnly);
+//!     let reading = tools.iter().filter(|(_, footprint)| footprint.0.reads_only());
 //!     let reading: Vec<String> = reading.map(|(def, _)| def.0.name.to_string()).collect();
 //!     for mut request in requests.iter_mut().filter(|request| request.role == Role::Task) {
 //!         request.tools = Some(reading.clone());

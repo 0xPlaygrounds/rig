@@ -67,7 +67,7 @@ impl Plugin for CodeSearchPlugin {
                  path, line range, score and snippet.",
                 ToolOptions {
                     rules: RULES,
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 search,
             )

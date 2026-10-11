@@ -48,11 +48,11 @@ impl Plugin for BlackboardPlugin {
     fn build(&self, app: &mut App) {
         let post = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         let read = ToolOptions {
             rules: &[],
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.init_resource::<Board>()
             .register_required_components::<Agent, Subscriptions>()

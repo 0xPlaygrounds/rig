@@ -105,9 +105,9 @@ nothing moves, so an effect goes as far as it can in the frame:
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
 | `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, edit in place, hold, or take a failure over; a turn's proposed end |
 | `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
-| `Admit` | kernel | `Admitted` on every new effect; builds turn requests; `Waiting` on a call behind a conflicting one |
+| `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once |
-| `Gate` | plugins | what is about to start (`Undecided`): hold it or decide it (`Decision`) |
+| `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`Undecided`): hold it or decide it (`Decision`) |
 | `Start` | kernel | applies the decisions as `Outcome`s, then starts what is admitted, unheld and unanswered |
 
 **A hook is an ordinary system in a stage** that queries stage data:
@@ -320,9 +320,12 @@ fn redact_prompts(mut calls: Query<&mut ModelRequest, Added<Admitted>>) {
 # A tool
 
 Any `PortableTool` (or `rig_core::tool::Tool`). Its rules go into the
-system prompt of every agent it is offered to; `Footprint::ReadOnly` lets
-its calls run beside others (a tool whose annotations say it only reads
-is read-only unless `footprint` says otherwise). Blocking work goes in `blocking`, on a thread
+system prompt of every agent it is offered to. What each call touches
+lets calls on different things run side by side: the tool says it per
+call (`Tool::footprint`, as rig-tools' `read` says it reads the path it
+names), else `footprint` says it for every call, else the tool's
+annotations do (`Reads(Anything)` for one that says it only reads,
+`Writes(Anything)` otherwise). Blocking work goes in `blocking`, on a thread
 of its own. `args_schema` derives the parameters from the arguments type,
 whose field doc comments describe them.
 
@@ -340,7 +343,7 @@ impl Plugin for WordCountPlugin {
             WordCount,
             ToolOptions {
                 rules: &["Use `word_count` to count a file's words."],
-                footprint: Some(Footprint::ReadOnly),
+                footprint: Some(Touches::Reads(Scope::Anything)),
             },
         );
     }
@@ -412,16 +415,18 @@ fn build(app: &mut App) {
 
 # Gating and reviewing tool calls
 
-A tool call is an effect with a `ToolRequest` (the model's `ToolCall`),
-its tool's `Footprint` and the `CallHandler` that will run it, all on the
-call's entity. A Prepare system edits them as the call is admitted: the
-arguments, the footprint, or the handler, wrapped with
+A tool call is an effect with a `ToolRequest` (the model's `ToolCall`)
+and the `CallHandler` that will run it, on the call's entity. A Prepare
+system edits them as the call is admitted: the arguments, or the
+handler, wrapped with
 `ErasedHandler::layered` so the call runs through it (to give it a secret
 the model never sees, say). Replacing a call's `CallHandler` runs that one call another way, such
 as one agent's `shell` calls in their own directory or sandbox (below),
-while `Processes` stays the way every other call starts. A Gate system
-sees each call when it is about to run: a call that conflicts with an earlier one of the same reply
-(`Footprint::waits_for`) is `Waiting` until that one settles, so a gate
+while `Processes` stays the way every other call starts. When Gate
+opens, the kernel gives each call the `Footprint` of the call as Prepare
+left it. A Gate system sees each call when it is about to run: a call
+that conflicts with an earlier one of the same reply
+(`Touches::conflicts_with`) is `Waiting` until that one settles, so a gate
 judges it with the earlier calls' effects done. It decides it with
 `Outcome::refused(why)`, which the model reads as the tool's refusal, or
 with any `Outcome` (a cached result), or holds it. A Review
@@ -467,28 +472,32 @@ fn sandbox(
 
 ## A held call holds back the later calls of its reply
 
-A tool's `Footprint` says whether its calls may run beside the other
-calls of one reply: an `Exclusive` call (the default: `write`, `edit`,
-`shell`) waits for every earlier call of its reply and holds back every
-later one; `ReadOnly` and `Independent` calls run side by side. A held call
-is not settled, so it holds back what comes after it like a running one.
-Say the model's reply asks for four calls, and a gate holds the `shell`
-call with a question:
+A call's `Footprint` says what it may read and change (`Touches`):
+`Reads` or `Writes` some paths (a directory covers what is under it) or
+`Anything`, or `Independent`, which changes nothing the reply's other
+calls see, such as starting a subagent. A call waits for an earlier call
+of its reply when one of them writes what the other touches; an
+`Independent` call counts as reading anything. A held call is not
+settled, so it holds back what conflicts with it like a running one.
+Say the model's reply asks for five calls, and a permission gate holds
+the `edit`:
 
 | # | Call | Footprint | Runs |
 |---|---|---|---|
-| 1 | `read src/lib.rs` | `ReadOnly` | at once |
-| 2 | `shell rm -rf build/` | `Exclusive` | once 1 settled, and the user said yes |
-| 3 | `read README.md` | `ReadOnly` | once 2 settled: it ran, or was refused |
-| 4 | `search TODO` | `ReadOnly` | with 3 |
+| 1 | `edit src/a.rs` | `Writes([src/a.rs])` | once the user said yes |
+| 2 | `read src/b.rs` | `Reads([src/b.rs])` | at once |
+| 3 | `search docs/` | `Reads([docs])` | at once |
+| 4 | `read src/a.rs` | `Reads([src/a.rs])` | once 1 settled: it ran, or was refused |
+| 5 | `task` | `Independent` | once 1 settled |
 
-Calls 3 and 4 wait for the user's answer, though they only read. That is
-on purpose: the model wrote its calls in order, and a later call may
-depend on what an earlier one changes (`mkdir x` then `ls x`, `git stash`
-then `git checkout`). Running it first would change what the reply means,
-and only the tool knows that its calls change nothing, which its
-`Footprint` says. So a gate that cannot get an answer refuses at once
-rather than holding: a refused call settles, and the next ones run.
+A `search` without a path reads the working directory, and `shell` may
+change anything (`Writes(Anything)`), so every call after a held `shell`
+call waits, reads too. That is on purpose: the model wrote its calls in
+order, and a later call may depend on what an earlier one changes
+(`mkdir x` then `ls x`, `git stash` then `git checkout`), and only the
+tool knows what its calls touch. So a gate that cannot get an answer
+refuses at once rather than holding: a refused call settles, and the
+next ones run.
 
 # Asking the user: questions and pickers
 
