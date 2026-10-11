@@ -5,11 +5,13 @@
 //! [`Origin`], kept with the conversation and its log; text that is not
 //! the user's own goes to the model headed by a line naming its sender.
 //!
-//! At Start the kernel accepts what is left, in the order it was sent: a
-//! user's `/` line runs as a slash command; an idle agent takes a message
-//! into its conversation and starts a turn with it, unless it is a
-//! [`DeliveryMode::Note`]; a busy agent keeps it until the turn's next
-//! call ([`DeliveryMode::Steer`]) or its end ([`DeliveryMode::Queue`]).
+//! At Start the kernel accepts what is left, in the order it was sent: an
+//! idle agent takes a message into its conversation and starts a turn with
+//! it, unless it is a [`DeliveryMode::Note`]; a busy agent keeps it until
+//! the turn's next call ([`DeliveryMode::Steer`]) or its end
+//! ([`DeliveryMode::Queue`]). A user's `/` line ([`Incoming::command`]) is
+//! text to the kernel: an app that has slash commands, such as
+//! rig-harness, takes it over in Gate and runs it.
 //! A message delivered into a turn gets [`DeliveredIn`] that turn. An
 //! agent's inbox is the messages it accepted that are not answered yet.
 //!
@@ -39,7 +41,6 @@ use super::agent::{
     TurnOutcome,
 };
 use super::calls::Wake;
-use super::commands::RunCommand;
 use super::journal::Commit;
 use super::model::Connection;
 use super::stage::{
@@ -239,9 +240,9 @@ impl Incoming {
         }
     }
 
-    /// The slash command line, without its `/`, that this message runs
-    /// instead of being sent: the user's text that starts with `/`, unless
-    /// it is [`literal`](Self::literal).
+    /// The slash command line, without its `/`, that an app with slash
+    /// commands runs instead of sending this message: the user's text that
+    /// starts with `/`, unless it is [`literal`](Self::literal).
     pub fn command(&self) -> Option<&str> {
         let user = self.origin.kind == OriginKind::User && !self.literal;
         user.then(|| self.text.trim_start().strip_prefix('/'))
@@ -345,16 +346,15 @@ fn sent(mut world: DeferredWorld, context: HookContext) {
     }
 }
 
-/// How the kernel answered a message it took: `delivered`, `command`,
-/// `recalled` or `empty`.
+/// How the kernel answered a message it took: `delivered`, `recalled` or
+/// `empty`.
 fn handled(how: &'static str) -> Outcome {
     Outcome::custom(how)
 }
 
 /// Accepts each message about to start, in the order they were sent,
-/// unless a Gate system failed this pass, in [`Stage::Start`]: runs a
-/// user's slash command; gives an idle agent the message at once and
-/// starts a turn with it, with every message accepted with it, unless it
+/// unless a Gate system failed this pass, in [`Stage::Start`]: gives an
+/// idle agent the message at once and starts a turn with it, with every message accepted with it, unless it
 /// is a note, which is kept for the next turn; and keeps it, [`Started`],
 /// for a busy agent.
 pub(crate) fn accept(
@@ -381,16 +381,6 @@ pub(crate) fn accept(
             commands.entity(entity).try_insert_if_new(Outcome(Err(why)));
             continue;
         };
-        if let Some(line) = message.command() {
-            commands.trigger(RunCommand {
-                mode: message.mode,
-                ..RunCommand::new(agent, line)
-            });
-            commands
-                .entity(entity)
-                .try_insert_if_new(handled("command"));
-            continue;
-        }
         if message.text.trim().is_empty() {
             commands.entity(entity).try_insert_if_new(handled("empty"));
             continue;

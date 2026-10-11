@@ -18,10 +18,10 @@ use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
 
 use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
-use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::prompt::PromptSection;
 use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome};
 
 /// What an agent with no [`SystemPrompt`] of its own is told it is.

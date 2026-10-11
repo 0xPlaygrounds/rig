@@ -58,6 +58,7 @@
 pub mod plugin_guide {}
 pub mod ask;
 pub mod clock;
+pub mod commands;
 pub mod headless;
 pub mod host;
 mod load;
@@ -97,7 +98,7 @@ pub use rig_ecs;
 
 /// What a plugin needs, so a typical one imports only this: rig-ecs's
 /// prelude (Bevy's app and ECS preludes, the agent components and
-/// requests, and the tool and command registries), what agents say, the
+/// requests, and the tool registry), slash commands, what agents say, the
 /// app's session, its log's warnings and launcher, and the plugin groups.
 /// A plugin crate's own types come from that crate, such as the terminal
 /// view's panels and status line from `rig-tui`.
@@ -108,6 +109,9 @@ pub mod prelude {
 
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, Choice};
     pub use crate::clock::{Due, KeepAwake, WakeAt};
+    pub use crate::commands::{
+        AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
+    };
     pub use crate::harness_protocol::Home;
     pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
@@ -133,7 +137,8 @@ pub mod prelude {
 /// plugin shares: the process's home, project, child processes and tokio
 /// runtime ([`services`]), the session and its log, the agent core and the
 /// session logs, the launcher protocol with the plugins' options and
-/// fronts ([`host`]), why the app exits, wall-clock wakes ([`clock`]),
+/// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
+/// wall-clock wakes ([`clock`]),
 /// file watches ([`watch`]), questions for the user ([`ask`]) and pickers
 /// with the agent the user looks at ([`pick`]).
 /// Everything else is a plugin `plugins.toml` lists, which can leave it
@@ -147,6 +152,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(host::session::SessionPlugin)
             .add(rig_ecs::AgentPlugin)
             .add(rig_ecs::journal::JournalPlugin)
+            .add(commands::CommandPlugin)
             .add(host::launcher::LauncherPlugin)
             .add(host::exit::ExitPlugin)
             .add(clock::ClockPlugin)

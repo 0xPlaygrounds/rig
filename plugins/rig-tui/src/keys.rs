@@ -42,7 +42,7 @@ use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use rig_ecs::commands::RunCommand;
+use rig_harness::commands::RunCommand;
 
 /// One key with its modifiers, as the terminal reports it. A character
 /// carries its case instead of Shift (`A` is Shift+a); Shift+Tab is

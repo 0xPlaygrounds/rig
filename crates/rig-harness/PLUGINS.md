@@ -530,10 +530,16 @@ A command is a one-shot system, `app.add_command(name, help, system)`,
 taking `In<CommandArgs>`: the `agent` it was typed for, the `args` after
 its name, and the `mode` its line was sent with (`Queue` when the user
 queued it; `Steer` from a key or a picker), for a command that sends text
-on. `RunCommand::new(agent, line)` runs one. An error notice about the agent while the command runs,
-from it or from what it triggers, refuses it: the line goes back in the
-input with the error, and Enter then sends it to the model as it is (a
-`literal` `Deliver`).
+on. `RunCommand::new(agent, line)` runs one. An error notice about the
+agent while the command runs, from it or from what it triggers, refuses
+it: the line goes back in the input with the error, and Enter then sends
+it to the model as it is (a `literal` `Deliver`).
+
+Commands are the harness's, not the kernel's: a `Gate` system in the
+public set `CommandSystems` takes over a user's line that starts with `/`
+(`incoming.command()` is its line, unless it is `literal`) and runs it,
+in the pass it is sent. A plugin that takes some `/` lines over itself
+orders its `Gate` system `.before(CommandSystems)`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -571,11 +577,11 @@ moves through the stages like a tool call. A `Prepare` system may change
 it before it is sent (`Added<Admitted>`): rewrite its `text`, add
 `attachments` (the `rig-coding-tools` plugin reads `@path` files this
 way). A `Gate` system may take it over by answering it, such as with
-`Outcome::custom(..)`, and then it never reaches the agent. At `Start` the
-kernel accepts what is left: a user's text that starts with `/` runs as a
-command (`incoming.command()` is its line, unless it is `literal`);
-anything else goes to the agent, which starts a turn with it or keeps it
-for its running turn as its `mode` says. The messages an agent accepted
+`Outcome::custom(..)`, and then it never reaches the agent; the harness
+takes a user's `/` line over this way and runs it as a command (see
+above). At `Start` the kernel accepts what is left: it goes to the agent,
+which starts a turn with it or keeps it for its running turn as its
+`mode` says. The messages an agent accepted
 and has not sent yet are its inbox,
 `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`, and
 `On<Add<Started>>` sees each message as it is accepted. A message's record

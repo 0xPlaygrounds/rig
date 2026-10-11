@@ -17,7 +17,7 @@ use crossbeam_channel::Receiver;
 use super::editor::TuiInput;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_ecs::commands::SlashCommand;
+use rig_harness::commands::SlashCommand;
 
 /// Items a completion lists.
 const SHOWN: usize = 50;

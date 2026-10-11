@@ -2101,32 +2101,6 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
 }
 
-/// How the last command was sent.
-#[derive(Resource, Default)]
-struct SentAs(Option<DeliveryMode>);
-
-#[test]
-fn a_command_knows_how_its_line_was_sent() {
-    let mut app = app();
-    app.init_resource::<SentAs>().add_command(
-        "how",
-        "Says how it was sent",
-        |In(args): In<CommandArgs>, mut sent: ResMut<SentAs>| sent.0 = Some(args.mode),
-    );
-    let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next()
-        .unwrap_or(Entity::PLACEHOLDER);
-    world.trigger(Deliver::new(agent, "/how", DeliveryMode::Queue));
-    app.update();
-    assert_eq!(
-        app.world().resource::<SentAs>().0,
-        Some(DeliveryMode::Queue)
-    );
-}
-
 #[test]
 fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
     let mut app = app();

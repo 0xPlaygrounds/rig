@@ -3,11 +3,11 @@
 //! prompt and tool access; a running turn is an entity of its agent, and
 //! its model and tool calls are entities of the turn that run on Bevy's
 //! task pools. Every call goes through one effect dispatch path, recorded
-//! as it settles ([`effects`]). Tools and commands are registered by
-//! plugins, and the session journal is kept in the
-//! [`journal::SessionStore`] the app inserts. Time is Bevy's: a retried
-//! model call waits on a delayed command, and plugins that animate or poll
-//! run on `on_real_timer`, instead of threads of their own.
+//! as it settles ([`effects`]). Tools are registered by plugins, and the
+//! session journal is kept in the [`journal::SessionStore`] the app
+//! inserts. Time is Bevy's: a retried model call waits on a delayed
+//! command, and plugins that animate or poll run on `on_real_timer`,
+//! instead of threads of their own.
 //!
 //! The runtime depends on no view and no file system: the app fills in
 //! what it needs, such as the store (one of rig-cassette's
@@ -25,7 +25,6 @@
 
 pub mod agent;
 pub mod calls;
-pub mod commands;
 pub mod effects;
 pub mod inbox;
 pub mod journal;
@@ -38,7 +37,7 @@ pub mod turn;
 
 /// What a plugin needs: Bevy's app, ECS, reflection and time preludes
 /// with the time run conditions and `Disabled`, the agent components and
-/// requests, the tool and command registries, and rig-core's message types
+/// requests, the tool registry, and rig-core's message types
 /// (`message::Message` is the conversation's message; the prelude's own
 /// `Message` is Bevy's message trait).
 pub mod prelude {
@@ -56,7 +55,6 @@ pub mod prelude {
         SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
-    pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessageRecord, Origin,
         OriginKind, Recalled, RequestId,
@@ -106,7 +104,7 @@ pub struct StopTurns;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct WriteJournal;
 
-/// Agents, their turn loop, effects, and the tool and command registries.
+/// Agents, their turn loop, effects, and the tool registry.
 /// Spawns one agent at startup when the restored session has none. Its
 /// [`SessionLog`] logs to the app's [`journal::SessionStore`], if any, once
 /// [`journal::JournalPlugin`] restored the session from it. It adds Bevy's `TimePlugin` unless the app has it, for the
@@ -160,7 +158,6 @@ impl Plugin for AgentPlugin {
                 ),
             )
             .add_observer(inbox::on_deliver)
-            .add_observer(commands::on_run_command)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
             .add_observer(inbox::recall_on_turn_end)

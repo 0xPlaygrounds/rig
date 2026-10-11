@@ -30,10 +30,10 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_ecs::commands::RunCommand;
 use rig_ecs::stage::{Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
+use crate::commands::RunCommand;
 use crate::primary::{Shown, keep_shown};
 
 /// One choice of a picker: what it shows, and the command line, without

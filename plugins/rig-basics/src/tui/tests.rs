@@ -1,6 +1,6 @@
 use rig_ecs::agent::Agent;
-use rig_ecs::commands::RunCommand;
 use rig_ecs::prelude::*;
+use rig_harness::commands::RunCommand;
 
 use crate::{AgentColumn, BasicCommandsPlugin, ColumnOf};
 

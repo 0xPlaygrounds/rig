@@ -9,15 +9,18 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::stage::{ForAgent, Outcome, Recorded, Started};
 
 use super::{Answer, Answerer, Answerers, Ask, AskPlugin};
+use crate::commands::CommandPlugin;
 
 /// The kernel's records, frame after frame.
 #[derive(Resource, Default)]
 struct Records(Vec<rig_core::effect::EffectRecord>);
 
-/// A kernel app with the question plugin and its first agent.
+/// A kernel app with the question plugin, slash commands and its first
+/// agent.
 fn app() -> (App, Entity) {
     let mut app = App::new();
-    app.add_plugins((TaskPoolPlugin::default(), rig_ecs::AgentPlugin, AskPlugin))
+    let harness = (AskPlugin, CommandPlugin);
+    app.add_plugins((TaskPoolPlugin::default(), rig_ecs::AgentPlugin, harness))
         .insert_resource(SessionStore::new(MemoryStore::default()))
         .init_resource::<Records>()
         .add_systems(

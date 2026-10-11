@@ -14533,6 +14533,7 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-ecs",
+ "rig-harness",
  "rig-harness-test-support",
  "rig-memory",
  "rig-telemetry",

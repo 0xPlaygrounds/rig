@@ -22,6 +22,7 @@ use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_ecs::prompt::tool_rules;
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
 };

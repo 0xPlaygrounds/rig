@@ -29,8 +29,8 @@ use rig_harness::harness_protocol::Home;
 
 use rig_ecs::agent::{ActiveTurn, Agent, Interrupt, Notice};
 use rig_ecs::calls::{Done, PollCalls, Running, Wake};
-use rig_ecs::commands::{AppCommandsExt, CommandArgs};
 use rig_ecs::model::{Connection, ModelChoice, Models, SetModel};
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 
 /// The provider `/login` signs in to: the ChatGPT plan, the catalog's
 /// `chatgpt` vendor, which is also what `/login` takes.

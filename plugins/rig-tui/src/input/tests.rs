@@ -4,6 +4,7 @@ use rig_ecs::prelude::*;
 use super::super::editor::TuiInput;
 use super::super::view::{self, TuiView};
 use super::send;
+use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::primary::Shown;
 
 /// The texts agents accepted.

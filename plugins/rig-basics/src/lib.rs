@@ -11,7 +11,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
 use rig_ecs::agent::{Notice, Retry};
-use rig_ecs::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
 
 pub mod project_context;
 #[cfg(feature = "tui")]

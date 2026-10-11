@@ -37,15 +37,15 @@ What it holds, by module:
   failing Prepare, Gate or Review system closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens.
-- `tools`, `commands`, `prompt`: tools, slash commands and system prompt
-  sections are entities that plugins register (`AppToolsExt`,
-  `AppCommandsExt`, `PromptSection`, for every agent or, `SectionOf` one,
-  that agent alone); tools can also come and go while the app runs
-  (`WorldToolsExt`).
+- `tools`, `prompt`: tools and system prompt sections are entities that
+  plugins register (`AppToolsExt`, `PromptSection`, for every agent or,
+  `SectionOf` one, that agent alone); tools can also come and go while the
+  app runs (`WorldToolsExt`).
 - `inbox`: a message to an agent is an effect too (`Incoming`, spawned by
-  `Deliver`): plugins edit it in Prepare and take it over in Gate; the
-  kernel accepts it at Start, runs a user's `/` line as a slash command,
-  and an agent's accepted, unanswered messages are its inbox.
+  `Deliver`): plugins edit it in Prepare and take it over in Gate, as
+  rig-harness does to run a user's `/` line as a slash command; the kernel
+  accepts it at Start, and an agent's accepted, unanswered messages are its
+  inbox.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer

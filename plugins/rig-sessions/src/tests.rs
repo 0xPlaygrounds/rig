@@ -78,7 +78,7 @@ fn resume_picks_from_the_sessions_of_the_apps_home() {
     };
     let world = app.world_mut();
     let agent = world.spawn(Agent).id();
-    world.trigger(rig_ecs::commands::RunCommand::new(
+    world.trigger(rig_harness::commands::RunCommand::new(
         agent,
         "resume".to_owned(),
     ));

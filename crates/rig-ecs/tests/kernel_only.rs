@@ -401,7 +401,7 @@ fn a_plugin_task_ends_as_done_and_the_exit_cancels_it() {
     assert!(app.world().get::<Running>(stuck).is_none());
 }
 
-/// The entity of the registered tool, command or prompt section that
+/// The entity of the registered tool or prompt section that
 /// `is` picks.
 fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> {
     let mut found = app.world_mut().query::<(Entity, &D)>();
@@ -410,25 +410,18 @@ fn find<D: Component>(app: &mut App, is: impl Fn(&D) -> bool) -> Option<Entity> 
 }
 
 /// What another plugin added is turned off by inserting Bevy's
-/// `Disabled` on its entity, which frees its name: a tool, a command and
-/// a prompt section give way to their replacements, the tool one
-/// registered while the app runs, as an MCP plugin would.
+/// `Disabled` on its entity, which frees its name: a tool and a prompt
+/// section give way to their replacements, the tool one registered while
+/// the app runs, as an MCP plugin would.
 #[test]
-fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
+fn a_disabled_tool_or_section_gives_way_to_its_replacement() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
     let (old, new) = (Arc::new(AtomicU32::new(0)), Arc::new(AtomicU32::new(0)));
-    let say = |text: &'static str| {
-        move |In(args): In<CommandArgs>, mut notices: MessageWriter<Notice>| {
-            notices.write(Notice::info(args.agent, text));
-        }
-    };
-    app.add_tool(Add(old.clone()))
-        .add_command("hi", "Says hi", say("old"));
+    app.add_tool(Add(old.clone()));
     app.world_mut()
         .spawn(PromptSection::new(200, "rules", "the old rules"));
     let picked = [
         find::<ToolDef>(&mut app, |def| def.0.name.as_str() == "add"),
-        find::<Name>(&mut app, |name| name.as_str() == "/hi"),
         find::<PromptSection>(&mut app, |section| section.tag == "rules"),
     ];
     for entity in picked.into_iter().flatten() {
@@ -443,7 +436,6 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
     // From a system: `commands.queue(move |world: &mut World| { .. })`.
     let world = app.world_mut();
     world.spawn_tool(definition, handler, ToolOptions::default());
-    app.add_command("hi", "Says hi", say("new"));
     app.world_mut()
         .spawn(PromptSection::new(200, "rules", "the new rules"));
     let add = MockStreamEvent::tool_call("call-1", "add", serde_json::json!({ "a": 2, "b": 3 }));
@@ -468,15 +460,6 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
         prompt.contains("the new rules") && !prompt.contains("the old rules"),
         "{prompt}"
     );
-    app.world_mut()
-        .trigger(RunCommand::new(agent, "hi".to_owned()));
-    app.world_mut().flush();
-    let notices = app.world().resource::<Messages<Notice>>();
-    let said: Vec<&str> = notices
-        .iter_current_update_messages()
-        .map(|n| n.text.as_str())
-        .collect();
-    assert_eq!(said, ["new"]);
 }
 
 /// A Prepare system changes the system prompt, the tools and the options,
@@ -532,17 +515,13 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         && request.options.reasoning.is_none()));
 }
 
-/// The command lines `/echo` ran with.
-#[derive(Resource, Default)]
-struct Echoed(Vec<String>);
-
 #[test]
-fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
+fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let (mut app, _) = kernel(&MemoryStore::default());
     let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
         for mut typed in &mut typed {
             if typed.origin.kind == OriginKind::User && typed.text == "hi" {
-                typed.text = "/echo hello".to_owned();
+                typed.text = "hello".to_owned();
             }
         }
     };
@@ -556,30 +535,18 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered_or_run_a
             }
         }
     };
-    app.init_resource::<Echoed>()
-        .add_command(
-            "echo",
-            "Echoes",
-            |In(args): In<CommandArgs>, mut echoed: ResMut<Echoed>| echoed.0.push(args.args),
-        )
-        .add_systems(
-            AgentPass,
-            (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),
-        );
+    app.add_systems(
+        AgentPass,
+        (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),
+    );
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
     let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);
-    for typed in [
-        note("hi"),
-        note("!ls"),
-        note("/echo typed"),
-        note("/echo sent").literal(),
-        note("/echo reported").with_origin(Origin::plugin("p")),
-    ] {
+    // The kernel has no slash commands: a `/` line is text to it.
+    for typed in [note("hi"), note("!ls"), note("/echo typed")] {
         app.world_mut().trigger(typed);
     }
     app.update();
-    assert_eq!(app.world().resource::<Echoed>().0, ["hello", "typed"]);
     let sent: Vec<String> = messages(&app, agent)
         .iter()
         .flat_map(|message| match message {
@@ -591,11 +558,5 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered_or_run_a
             _ => None,
         })
         .collect();
-    assert_eq!(
-        sent,
-        [
-            "/echo sent",
-            "[Output of plugin p, not the user's words]\n/echo reported"
-        ]
-    );
+    assert_eq!(sent, ["hello", "/echo typed"]);
 }

@@ -3,6 +3,7 @@ use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
+use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
 
 use super::{

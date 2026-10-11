@@ -19,6 +19,8 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
+# `/compact`, a slash command.
+rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate and the checkpoint compaction decides by.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
 serde = { workspace = true, features = ["derive"] }

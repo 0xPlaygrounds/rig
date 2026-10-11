@@ -4,6 +4,7 @@ use rig_ecs::prelude::*;
 
 use super::*;
 use crate::ask::AskPlugin;
+use crate::commands::{AppCommandsExt, CommandArgs};
 
 /// The command lines run, with the agent each ran for, and what each
 /// picker reported.

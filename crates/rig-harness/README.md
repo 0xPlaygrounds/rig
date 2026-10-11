@@ -11,8 +11,7 @@ changed plugins and restarts in the same session. The
 ## A kernel, a core and plugins
 
 - **The kernel** is rig-ecs: agents, turns and calls as entities, message
-  delivery, tools and slash commands as entities, the session log and its
-  restore.
+  delivery, tools as entities, the session log and its restore.
 - **The core** is this crate: what the binary needs to run and be
   relaunched, and the few services every plugin shares. `HeadlessPlugins`
   is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
@@ -20,8 +19,9 @@ changed plugins and restarts in the same session. The
   `RigHarnessPlugins` adds the session directory (with forking and
   deleting sessions), the kernel, the launcher protocol with how the agent
   was started (`Invoked`: its arguments, the plugins' own options, and
-  whether stdin is a terminal) and why it exits (`ExitReason`), and the
-  shared services: the user's settings for plugins (`settings.toml`), the
+  whether stdin is a terminal) and why it exits (`ExitReason`), slash
+  commands (`add_command`, run from what the user types), and the shared
+  services: the user's settings for plugins (`settings.toml`), the
   `RIG_HOME`, project root, child-process policy and tokio runtime, file
   watches, and questions any front answers (`Ask`). Plugins offer fronts
   and one takes each run: `rig-tui` on an interactive terminal, `rig-print`

@@ -4,27 +4,28 @@
 //! one with [`AppCommandsExt::add_command`], a system that reads the
 //! [`CommandArgs`], such as one that triggers an event.
 //!
-//! What the user types that starts with `/` runs as a command: when the
-//! kernel accepts a user's [`Incoming`](super::inbox::Incoming) message at
-//! Start, it triggers a [`RunCommand`] with its line
-//! ([`Incoming::command`](super::inbox::Incoming::command)) instead.
-//! [`RunCommand`] runs a line at once, with everything it triggers. The
-//! notices written meanwhile are its reply. An unknown command, or an
-//! error notice about the agent, such as one refusing arguments, refuses
-//! the line: it comes back whole as [`Recalled`] with the reason, in place
-//! of that notice, so nothing typed is lost.
+//! What the user types that starts with `/` runs as a command: a Gate
+//! system in [`CommandSystems`] takes the user's line over
+//! ([`Incoming::command`]) and triggers a [`RunCommand`] with it. A plugin
+//! that takes such a line over itself orders its Gate system
+//! `.before(CommandSystems)`. [`RunCommand`] runs a line at once, with
+//! everything it triggers; the notices written meanwhile are its reply. An
+//! unknown command, or an error notice about the agent, such as one
+//! refusing arguments, refuses the line: it comes back whole as
+//! [`Recalled`] with the reason, in place of that notice, so nothing typed
+//! is lost.
 
 use std::mem;
 
-use bevy_app::App;
+use bevy_app::prelude::*;
 use bevy_ecs::message::Messages;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
-
-use super::agent::{Notice, NoticeLevel};
-use super::inbox::{DeliveryMode, Recalled};
+use rig_ecs::agent::{Notice, NoticeLevel};
+use rig_ecs::inbox::{DeliveryMode, Incoming, Recalled};
+use rig_ecs::stage::{AgentPass, Effect, ForAgent, Outcome, Stage, Undecided};
 
 /// What a command system receives: the agent the command was typed for,
 /// the text after the command name, and how its line was sent.
@@ -48,9 +49,69 @@ pub struct SlashCommand {
     pub help: String,
 }
 
-/// Registers slash commands on an [`App`]. A name already registered is
-/// refused with a warning: to replace another plugin's command, insert
-/// Bevy's `Disabled` on its entity first, which frees its name.
+/// Runs slash commands: what the user types as one, and each
+/// [`RunCommand`]. Registering a command adds it too.
+pub struct CommandPlugin;
+
+impl Plugin for CommandPlugin {
+    fn build(&self, app: &mut App) {
+        runner(app);
+    }
+}
+
+/// The Gate system that runs the user's `/` lines.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CommandSystems;
+
+/// That the app runs commands.
+#[derive(Resource)]
+struct Runner;
+
+/// Makes the app run commands, once.
+fn runner(app: &mut App) {
+    if app.world().contains_resource::<Runner>() {
+        return;
+    }
+    app.insert_resource(Runner)
+        .configure_sets(AgentPass, CommandSystems.in_set(Stage::Gate))
+        .add_systems(AgentPass, run_typed.in_set(CommandSystems))
+        .add_observer(on_run_command);
+}
+
+/// Takes each user's `/` line about to start over, in the order they were
+/// sent, and runs it for its agent, sent as it was.
+fn run_typed(
+    typed: Query<(Entity, &Effect, &Incoming, &ForAgent), Undecided>,
+    mut commands: Commands,
+) {
+    let mut lines: Vec<_> = typed
+        .iter()
+        .filter_map(|(entity, effect, message, agent)| {
+            Some((
+                effect.id(),
+                entity,
+                message.command()?,
+                message.mode,
+                agent.0,
+            ))
+        })
+        .collect();
+    lines.sort_unstable_by_key(|(id, ..)| *id);
+    for (_, message, line, mode, agent) in lines {
+        commands.trigger(RunCommand {
+            mode,
+            ..RunCommand::new(agent, line)
+        });
+        commands
+            .entity(message)
+            .insert_if_new(Outcome::custom("command"));
+    }
+}
+
+/// Registers slash commands on an [`App`], which then runs them
+/// ([`CommandPlugin`]). A name already registered is refused with a
+/// warning: to replace another plugin's command, insert Bevy's `Disabled`
+/// on its entity first, which frees its name.
 pub trait AppCommandsExt {
     /// Register `/name`, described by `help`, that runs `system` with the
     /// [`CommandArgs`] of each use.
@@ -69,6 +130,7 @@ impl AppCommandsExt for App {
         help: &str,
         system: impl IntoSystem<In<CommandArgs>, (), M> + 'static,
     ) -> &mut Self {
+        runner(self);
         let name = format!("/{name}");
         if find(self.world_mut(), &name).is_some() {
             warn!("command not registered: {name} exists; insert `Disabled` on it to replace it");
@@ -117,7 +179,7 @@ impl RunCommand {
 }
 
 /// Runs the command a [`RunCommand`] names, with everything it triggers.
-pub(crate) fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
+fn on_run_command(run: On<RunCommand>, mut commands: Commands) {
     let (agent, line, mode) = (run.entity, run.line.clone(), run.mode);
     commands.queue(move |world: &mut World| run_command(world, agent, line, mode));
 }
@@ -171,3 +233,6 @@ fn swap_notices(world: &mut World, notices: Messages<Notice>) -> Messages<Notice
         None => notices,
     }
 }
+
+#[cfg(test)]
+mod tests;
