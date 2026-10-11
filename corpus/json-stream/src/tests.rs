@@ -195,3 +195,14 @@ fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
 fn at<'a>(line: &'a Value, key: &str) -> &'a Value {
     line.get(key).unwrap_or(&Value::Null)
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(|app: &mut App| {
+        if let Some(mut invoked) = app.world_mut().get_resource_mut::<Invoked>() {
+            invoked.args.flags.push((FRONT.to_owned(), None));
+        }
+        app.insert_resource(JsonSink::new(std::io::sink()))
+            .add_plugins(JsonStreamPlugin);
+    });
+}

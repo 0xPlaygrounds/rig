@@ -42,6 +42,11 @@ impl RpcInput {
     }
 }
 
+/// The front's Review system, which writes what each turn's model call
+/// streamed, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct JsonStreamSystems;
+
 /// The JSON event stream and RPC front.
 #[derive(Default)]
 pub struct JsonStreamPlugin;
@@ -78,7 +83,8 @@ impl Plugin for JsonStreamPlugin {
                     notices,
                 ),
             )
-            .add_systems(AgentPass, stream_deltas.in_set(Stage::Review));
+            .configure_sets(AgentPass, JsonStreamSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, stream_deltas.in_set(JsonStreamSystems));
         if !rpc {
             // Nobody answers questions: with no `Answerer`, plugins refuse.
             if let Some(prompt) = prompt {
