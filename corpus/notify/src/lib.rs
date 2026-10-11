@@ -145,7 +145,7 @@ struct Sender<'w> {
 
 impl Sender<'_> {
     fn send(&mut self, text: &str) {
-        if self.settings.on && !(self.view.0 && self.focus.0) {
+        if self.settings.on && !(self.view.0 && self.focus.0.unwrap_or(true)) {
             self.notifier.0.notify(text, &mut self.terminal);
         }
     }

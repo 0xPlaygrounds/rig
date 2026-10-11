@@ -132,12 +132,12 @@ fn the_terminal_says_when_it_has_the_users_focus() {
     let (mut app, _) = view_app();
     assert_eq!(
         *app.world().resource::<TerminalFocus>(),
-        TerminalFocus(true)
+        TerminalFocus(None)
     );
     for (event, focused) in [(Event::FocusLost, false), (Event::FocusGained, true)] {
         app.world_mut().write_message(TerminalEvent(event));
         app.update();
         let focus = *app.world().resource::<TerminalFocus>();
-        assert_eq!(focus, TerminalFocus(focused));
+        assert_eq!(focus, TerminalFocus(Some(focused)));
     }
 }

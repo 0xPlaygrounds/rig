@@ -61,7 +61,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     app.finish();
     // The terminal view is the front, and the user is in another window.
     app.insert_resource(TerminalView(true))
-        .insert_resource(TerminalFocus(false));
+        .insert_resource(TerminalFocus(Some(false)));
     app.update();
     for agent in [parent, child] {
         let ask = Deliver::new(agent, "Go.", DeliveryMode::Queue);
@@ -98,7 +98,7 @@ fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_an_answered_questi
     assert_eq!(recording.sent(), sent);
 
     // Back at the terminal, a picker waiting does not notify.
-    app.insert_resource(TerminalFocus(true));
+    app.insert_resource(TerminalFocus(Some(true)));
     app.world_mut().spawn(Picker::new("Allow `git push`?"));
     app.update();
     advance(&mut app, Duration::from_secs(3));

@@ -61,16 +61,10 @@ impl TerminalExit {
 }
 
 /// Whether the terminal has the user's focus, as the terminal reports it
-/// where it can; `true` until it says otherwise, and in a run without the
+/// where it can: `None` until its first report, and in a run without the
 /// terminal view.
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TerminalFocus(pub bool);
-
-impl Default for TerminalFocus {
-    fn default() -> Self {
-        Self(true)
-    }
-}
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TerminalFocus(pub Option<bool>);
 
 /// Bytes for the terminal itself, such as an escape code that shows a
 /// desktop notification (OSC 9 or 777): the view writes them after its
@@ -256,8 +250,8 @@ pub(crate) fn track_focus(
 ) {
     for TerminalEvent(event) in events.read() {
         match event {
-            Event::FocusGained => focus.set_if_neq(TerminalFocus(true)),
-            Event::FocusLost => focus.set_if_neq(TerminalFocus(false)),
+            Event::FocusGained => focus.set_if_neq(TerminalFocus(Some(true))),
+            Event::FocusLost => focus.set_if_neq(TerminalFocus(Some(false))),
             _ => false,
         };
     }
