@@ -275,6 +275,7 @@ fn run_check(
     let shell = Shell {
         launcher,
         spill: None,
+        confine: false,
         cut: Some(Cut {
             lines: TAIL_LINES,
             bytes: MAX_BYTES,

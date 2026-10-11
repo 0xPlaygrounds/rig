@@ -14,6 +14,7 @@ use rig_core::tool::{ExitStatus, Tool, ToolContext, ToolExecutionError, args_sch
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use crate::fs::place;
 use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::{Cut, Spill, blocking};
 
@@ -42,6 +43,10 @@ pub struct Shell {
     /// to the 10 MB the command is killed at, for a host that cuts output
     /// itself.
     pub cut: Option<Cut>,
+    /// Whether a `cwd` that resolves outside the launcher's directory is
+    /// refused. What the command itself does is not confined: it may still
+    /// `cd` anywhere.
+    pub confine: bool,
 }
 
 impl Default for Shell {
@@ -52,6 +57,7 @@ impl Default for Shell {
             launcher: Launcher::default(),
             spill: None,
             cut: Some(Cut::default()),
+            confine: false,
         }
     }
 }
@@ -177,6 +183,9 @@ impl Shell {
     fn start(&self, args: &ShellArgs) -> Result<Process, ToolExecutionError> {
         let launcher = match &args.cwd {
             Some(dir) => {
+                if self.confine {
+                    place(self.launcher.cwd.as_deref(), true, dir)?;
+                }
                 let base = self.launcher.cwd.as_deref().unwrap_or(Path::new(""));
                 self.launcher.clone().in_dir(base.join(dir))
             }

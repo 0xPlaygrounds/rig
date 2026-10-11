@@ -17,7 +17,7 @@ use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
 use rig_harness::rig_core::tool::Tool;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
-use rig_tools::fs::absolute;
+use rig_tools::fs::resolve;
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde_json::{Map, Value};
 
@@ -126,7 +126,7 @@ fn file_result(result: &ToolResult, arguments: &Map<String, Value>) -> Option<Fi
     };
     Some(FileResult {
         call: result.call.clone(),
-        file: absolute(&path),
+        file: resolve(None, &path).to_string_lossy().into_owned(),
         path,
         access,
     })

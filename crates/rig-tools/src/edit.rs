@@ -8,7 +8,7 @@
 
 use std::fmt::Write as _;
 use std::ops::Range;
-use std::path::Path;
+use std::path::PathBuf;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -17,15 +17,24 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{absolute, file_change, io_error, read_text, write_atomic};
+use crate::fs::{file_change, io_error, place, read_text, write_atomic};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
 
 /// Replaces text in a file. Publishes the file it changed
-/// ([`FilesChanged`]): its absolute path, and the whole diff.
-pub struct Edit;
+/// ([`FilesChanged`]): its [resolved](crate::fs::resolve) path, and the
+/// whole diff.
+#[derive(Clone, Debug, Default)]
+pub struct Edit {
+    /// The directory a relative path is edited in; `None` is this
+    /// process's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is read.
+    pub confine: bool,
+}
 
 /// Arguments of [`Edit`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -119,18 +128,18 @@ impl Tool for Edit {
         context: &mut ToolContext,
         args: EditArgs,
     ) -> Result<String, ToolExecutionError> {
-        let (output, change) = blocking(move || edit(args)).await?;
+        let path = place(self.base.as_deref(), self.confine, &args.path)?;
+        let (output, change) = blocking(move || edit(path, args)).await?;
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
     }
 }
 
-fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
-    let path = absolute(&args.path);
-    let raw = read_text(&args.path)?;
+fn edit(resolved: PathBuf, args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
+    let path = resolved.to_string_lossy();
+    let raw = read_text(&path)?;
     let applied = apply(&path, &raw, &args.edits)?;
-    write_atomic(Path::new(&args.path), applied.text.as_bytes())
-        .map_err(|error| io_error(&args.path, error))?;
+    write_atomic(&resolved, applied.text.as_bytes()).map_err(|error| io_error(&path, error))?;
     let replaced = applied.replaced;
     let mut out = format!(
         "Edited {}: {replaced} replacement{}.",

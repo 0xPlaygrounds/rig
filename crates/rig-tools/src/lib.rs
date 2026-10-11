@@ -8,7 +8,8 @@
 //! ([`SearchHits`]), the files they changed, with their diffs
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
 //! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). The file tools name
-//! files by their absolute paths ([`fs::absolute`]). Their arguments are
+//! files by their resolved paths ([`fs::resolve`]), from an optional base
+//! directory they can be confined to. Their arguments are
 //! plain data with public fields, to build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:

@@ -36,7 +36,7 @@ pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Read, options(Read::RULES));
+        app.add_tool_with(Read::default(), options(Read::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
     }
@@ -48,7 +48,7 @@ pub struct SearchTool;
 
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Search, options(Search::RULES));
+        app.add_tool_with(Search::default(), options(Search::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
     }
@@ -60,7 +60,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Edit, options(Edit::RULES));
+        app.add_tool_with(Edit::default(), options(Edit::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
     }
@@ -72,7 +72,7 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Write, options(Write::RULES));
+        app.add_tool_with(Write::default(), options(Write::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
     }

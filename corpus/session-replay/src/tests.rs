@@ -39,7 +39,7 @@ fn with_agents(app: &mut App, connection: Option<Connection>) {
         .add_plugins((AgentPlugin, JournalPlugin))
         .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
         .add_tool_with(
-            Write,
+            Write::default(),
             ToolOptions {
                 rules: Write::RULES,
                 footprint: Some(Footprint::Exclusive),

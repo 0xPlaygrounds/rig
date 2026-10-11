@@ -1,18 +1,28 @@
 //! The `read` tool.
 
+use std::path::PathBuf;
+
 use rig_core::tool::{FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{absolute, read_text};
+use crate::fs::{place, read_text};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines. Publishes the file it read
-/// ([`FilesRead`]), by its absolute path.
-pub struct Read;
+/// ([`FilesRead`]), by its [resolved](crate::fs::resolve) path.
+#[derive(Clone, Debug, Default)]
+pub struct Read {
+    /// The directory a relative path is read from; `None` is this
+    /// process's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is read.
+    pub confine: bool,
+}
 
 /// Arguments of [`Read`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -98,15 +108,17 @@ impl Tool for Read {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = absolute(&args.path);
-        let output = blocking(move || read(args)).await?;
+        let path = place(self.base.as_deref(), self.confine, &args.path)?
+            .to_string_lossy()
+            .into_owned();
+        let output = blocking({
+            let path = path.clone();
+            move || Ok::<_, ToolExecutionError>(args.show(&read_text(&path)?))
+        })
+        .await?;
         context.insert_result(FilesRead(vec![path]))?;
         Ok(output)
     }
-}
-
-fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
-    Ok(args.show(&read_text(&args.path)?))
 }
 
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows

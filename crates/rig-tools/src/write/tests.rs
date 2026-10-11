@@ -8,8 +8,12 @@ use crate::{Edit, EditArgs, Replacement};
 /// removed, each with its diff.
 #[test]
 fn writes_and_edits_publish_the_files_they_changed() {
+    let write_tool = Write::default();
+    let edit_tool = Edit::default();
     let dir = std::env::temp_dir().join(format!("rig-tools-changes-{}", std::process::id()));
-    let path = dir.join("a.txt").to_string_lossy().into_owned();
+    let path = crate::fs::resolve(Some(&dir), "a.txt")
+        .to_string_lossy()
+        .into_owned();
     let changed = |context: &ToolContext| {
         context
             .result::<FilesChanged>()
@@ -19,7 +23,11 @@ fn writes_and_edits_publish_the_files_they_changed() {
     };
 
     let mut context = ToolContext::new();
-    let written = Tool::call(&Write, &mut context, WriteArgs::new(&path, "one\ntwo\n"));
+    let written = Tool::call(
+        &write_tool,
+        &mut context,
+        WriteArgs::new(&path, "one\ntwo\n"),
+    );
     assert!(futures::executor::block_on(written).is_ok());
     assert_eq!(
         changed(&context).0,
@@ -30,7 +38,7 @@ fn writes_and_edits_publish_the_files_they_changed() {
 
     let mut context = ToolContext::new();
     let rewritten = Tool::call(
-        &Write,
+        &write_tool,
         &mut context,
         WriteArgs::new(&path, "one\n2\nthree\n"),
     );
@@ -46,7 +54,7 @@ fn writes_and_edits_publish_the_files_they_changed() {
         Replacement::new("one", "1"),
         Replacement::new("three", "3").all(),
     ];
-    let edited = Tool::call(&Edit, &mut context, EditArgs::new(&path, edits));
+    let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
     assert!(futures::executor::block_on(edited).is_ok());
     let change = changed(&context).0.into_iter().next();
     assert_eq!(

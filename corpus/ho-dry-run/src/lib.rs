@@ -23,7 +23,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
-use rig_tools::fs::{absolute, file_change, write_atomic};
+use rig_tools::fs::{file_change, resolve, write_atomic};
 use rig_tools::{EditArgs, MAX_BYTES, MAX_LINES, ReadArgs, Replacement, ShellArgs, WriteArgs};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::de::DeserializeOwned;
@@ -246,7 +246,7 @@ fn parse<A: DeserializeOwned>(arguments: &Map<String, Value>) -> Result<A, ToolE
 fn written(arguments: &Map<String, Value>) -> Result<Previewed, ToolExecutionError> {
     let args = parse::<WriteArgs>(arguments)?;
     Ok(Previewed {
-        path: absolute(&args.path),
+        path: resolve(None, &args.path).to_string_lossy().into_owned(),
         content: args.content,
         base: None,
     })
@@ -258,7 +258,7 @@ fn edited(
     arguments: &Map<String, Value>,
 ) -> Result<Previewed, ToolExecutionError> {
     let args = parse::<EditArgs>(arguments)?;
-    let path = absolute(&args.path);
+    let path = resolve(None, &args.path).to_string_lossy().into_owned();
     let Some(text) = overlay.current(&path) else {
         return Err(ToolExecutionError::not_found(format!(
             "{path}: no such file"
@@ -359,7 +359,7 @@ fn read_overlay(
         let Ok(args) = parse::<ReadArgs>(&request.call.function.arguments) else {
             continue;
         };
-        let Some(content) = overlay.content(&absolute(&args.path)) else {
+        let Some(content) = overlay.content(&resolve(None, &args.path).to_string_lossy()) else {
             continue;
         };
         let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);

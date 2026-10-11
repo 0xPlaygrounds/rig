@@ -62,8 +62,8 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
     let args = SearchArgs::new("todo").in_path(dir.to_string_lossy());
 
     let mut context = ToolContext::new();
-    let text =
-        futures::executor::block_on(Tool::call(&Search, &mut context, args)).unwrap_or_default();
+    let text = futures::executor::block_on(Tool::call(&Search::default(), &mut context, args))
+        .unwrap_or_default();
     let hits = context
         .result::<SearchHits>()
         .ok()
@@ -80,7 +80,7 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
 
     let mut context = ToolContext::new();
     let none = SearchArgs::new("nowhere").in_path(dir.to_string_lossy());
-    let text = futures::executor::block_on(Tool::call(&Search, &mut context, none));
+    let text = futures::executor::block_on(Tool::call(&Search::default(), &mut context, none));
     assert_eq!(text.ok().as_deref(), Some("No matches."));
     assert_eq!(context.result::<FilesRead>().ok().flatten(), None);
     std::fs::remove_dir_all(dir).ok();

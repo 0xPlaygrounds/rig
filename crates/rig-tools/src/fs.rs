@@ -3,7 +3,7 @@
 
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _, Write as _};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rig_core::tool::{FileChange, ToolExecutionError};
@@ -170,24 +170,63 @@ pub fn io_error(path: &str, error: io::Error) -> ToolExecutionError {
     }
 }
 
-/// `path` made absolute against this process's working directory, where
-/// the file tools open a relative path, as the facts they publish name it
-/// ([`FilesRead`](rig_core::tool::FilesRead), [`FileChange::path`]). `..`
-/// is kept and links are not followed. A path that cannot be made absolute
-/// (no working directory) stays as it is.
+/// `path` as the file tools open it: made absolute against `base` (`None`:
+/// this process's working directory), with every symbolic link of its
+/// longest existing part followed (the file's own too, when it exists) and
+/// `..` folded. Two spellings of one file resolve alike, so this is how the
+/// facts the tools publish ([`FilesRead`](rig_core::tool::FilesRead),
+/// [`FileChange::path`]) and their footprints name files. A path that
+/// cannot be made absolute (no working directory) stays relative.
 ///
 /// ```
-/// use rig_tools::fs::absolute;
+/// use std::path::Path;
+/// use rig_tools::fs::resolve;
 ///
-/// let here = std::env::current_dir()?;
-/// assert_eq!(absolute("src/lib.rs"), here.join("src/lib.rs").to_string_lossy());
-/// assert_eq!(absolute("/etc/hosts"), "/etc/hosts");
+/// let here = std::fs::canonicalize(".")?;
+/// assert_eq!(resolve(None, "src/../Cargo.toml"), here.join("Cargo.toml"));
+/// assert_eq!(resolve(Some(&here), "gone/../new.rs"), here.join("new.rs"));
+/// assert_eq!(resolve(Some(Path::new("/nowhere")), "/nowhere/a/../b"), Path::new("/nowhere/b"));
 /// # Ok::<(), std::io::Error>(())
 /// ```
-pub fn absolute(path: &str) -> String {
-    std::path::absolute(path)
-        .map(|path| path.to_string_lossy().into_owned())
-        .unwrap_or_else(|_| path.to_owned())
+pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
+    let joined = base.map_or_else(|| PathBuf::from(path), |base| base.join(path));
+    let joined = std::path::absolute(&joined).unwrap_or(joined);
+    let real = joined.ancestors().find_map(|ancestor| {
+        let real = fs::canonicalize(ancestor).ok()?;
+        Some((real, joined.strip_prefix(ancestor).ok()?))
+    });
+    let (mut out, rest) = real.unwrap_or((PathBuf::new(), &joined));
+    for component in rest.components() {
+        match component {
+            Component::ParentDir => {
+                out.pop();
+            }
+            Component::CurDir => {}
+            other => out.push(other),
+        }
+    }
+    out
+}
+
+/// `path` [`resolve`]d against `base`, as a file tool opens it; with
+/// `confine`, refused before any I/O when it lies outside `base` (`None`:
+/// the working directory).
+pub(crate) fn place(
+    base: Option<&Path>,
+    confine: bool,
+    path: &str,
+) -> Result<PathBuf, ToolExecutionError> {
+    let resolved = resolve(base, path);
+    if confine {
+        let root = resolve(base, ".");
+        if !resolved.starts_with(&root) {
+            return Err(ToolExecutionError::permission_denied(format!(
+                "{path} is outside {}, the only directory this tool works in",
+                root.display()
+            )));
+        }
+    }
+    Ok(resolved)
 }
 
 /// What turning `before` (`None`: there was no file) into `after` did to the
@@ -229,3 +268,6 @@ pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange 
     }
     .with_diff(unified)
 }
+
+#[cfg(test)]
+mod tests;

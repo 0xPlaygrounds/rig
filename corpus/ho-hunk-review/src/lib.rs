@@ -19,7 +19,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use rig_harness::prelude::*;
-use rig_tools::fs::{absolute, write_atomic};
+use rig_tools::fs::{resolve, write_atomic};
 use rig_tools::{Edit, Shell, Write};
 use similar::{Algorithm, DiffTag, TextDiff, capture_diff_slices};
 
@@ -130,7 +130,7 @@ fn snapshot(
                 let Some(path) = argument("path") else {
                     continue;
                 };
-                let path = absolute(path);
+                let path = resolve(None, path).to_string_lossy().into_owned();
                 review
                     .files
                     .entry(path)

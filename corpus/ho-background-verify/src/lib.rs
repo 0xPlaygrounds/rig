@@ -247,6 +247,7 @@ fn run_check(
     let shell = Shell {
         launcher,
         spill: None,
+        confine: false,
         cut: None,
     };
     let args = ShellArgs::new(command.clone()).timeout_secs(TIMEOUT_SECS);

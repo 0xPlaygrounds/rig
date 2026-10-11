@@ -11,7 +11,7 @@ use rig_core::tool::{ContextValue, FilesRead, Tool, ToolContext, ToolExecutionEr
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::absolute;
+use crate::fs::{place, resolve};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
 /// Most matches a search returns.
@@ -20,8 +20,18 @@ const MAX_LINE: usize = 300;
 
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`. Publishes what it found ([`SearchHits`]) and the files it
-/// found matches in ([`FilesRead`]), by their absolute paths.
-pub struct Search;
+/// found matches in ([`FilesRead`]), by their [resolved](crate::fs::resolve)
+/// paths.
+#[derive(Clone, Debug, Default)]
+pub struct Search {
+    /// The directory searched, and a relative path is searched from;
+    /// `None` is this process's working directory. Hits under a base are
+    /// shown by their paths joined onto it.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is searched.
+    pub confine: bool,
+}
 
 /// Arguments of [`Search`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -94,12 +104,14 @@ pub struct Found {
 }
 
 impl Found {
-    /// The files with hits, each once, in walk order, by their absolute
-    /// paths.
+    /// The files with hits, each once, in walk order, by their
+    /// [resolved](crate::fs::resolve) paths.
     pub fn files(&self) -> Vec<String> {
         let mut files: Vec<String> = Vec::new();
         for hit in &self.hits {
-            let file = absolute(&hit.path.to_string_lossy());
+            let file = resolve(None, &hit.path.to_string_lossy())
+                .to_string_lossy()
+                .into_owned();
             if files.last() != Some(&file) {
                 files.push(file);
             }
@@ -150,8 +162,13 @@ impl Tool for Search {
     async fn call(
         &self,
         context: &mut ToolContext,
-        args: SearchArgs,
+        mut args: SearchArgs,
     ) -> Result<String, ToolExecutionError> {
+        let path = args.path.as_deref().unwrap_or(".");
+        place(self.base.as_deref(), self.confine, path)?;
+        if let Some(base) = &self.base {
+            args.path = Some(base.join(path).to_string_lossy().into_owned());
+        }
         let found = blocking(move || find(&args, is_hidden)).await?;
         let files = found.files();
         if !files.is_empty() {

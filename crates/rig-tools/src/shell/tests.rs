@@ -90,8 +90,11 @@ fn cut_output_is_read_back_by_its_handle() {
             .map(|(path, _)| path.to_owned())
             .unwrap_or_default();
         let args = crate::ReadArgs::new(handle).lines(lines / 2, 1);
-        let read =
-            futures::executor::block_on(Tool::call(&crate::Read, &mut ToolContext::new(), args));
+        let read = futures::executor::block_on(Tool::call(
+            &crate::Read::default(),
+            &mut ToolContext::new(),
+            args,
+        ));
         let wanted = format!("{}\t{}\n[", lines / 2, lines / 2);
         assert!(
             matches!(&read, Ok(text) if text.contains(&wanted)),
