@@ -5,7 +5,9 @@ use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
 use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
-use super::{Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered, refused};
+use super::{
+    Awaits, Lifecycle, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered, refused,
+};
 use rig_harness::prelude::*;
 
 /// The tool that starts a subagent.
@@ -133,7 +135,11 @@ struct WaitArgs {
 
 /// Asks for the subagent of a `task` call: a [`SpawnSubagent`], a child of
 /// the call, which answers the call once it settled.
-fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
+fn on_task(
+    called: On<ToolCalled<TaskArgs>>,
+    me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    mut commands: Commands,
+) {
     let args = &called.args;
     let request = SpawnSubagent {
         title: args.description.clone(),
@@ -147,7 +153,7 @@ fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
         once: false,
         extra: args.extra.clone(),
     };
-    commands.spawn((
+    let mut spawned = commands.spawn((
         request,
         ForAgent(called.agent),
         ChildOf(called.call),
@@ -157,6 +163,9 @@ fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
             batch: called.parent,
         },
     ));
+    if let Some(me) = me {
+        spawned.insert(ProvidedBy(me.entity()));
+    }
 }
 
 /// Sends each subagent started since it last ran its task, naming its

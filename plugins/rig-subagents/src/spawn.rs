@@ -10,7 +10,8 @@ use serde_json::{Map, Value};
 
 use super::tools::{MESSAGE, TASK, WAIT};
 use super::{
-    Helper, Lifecycle, OpenRequests, Peers, Request, SubagentSystems, Subtask, answered, refused,
+    Helper, Lifecycle, OpenRequests, Peers, Request, SubagentSystems, SubagentsPlugin, Subtask,
+    answered, refused,
 };
 use rig_harness::prelude::*;
 
@@ -181,6 +182,8 @@ pub(super) struct Brief(pub(super) Deliver);
 pub(super) fn add(app: &mut App) {
     app.add_setting::<SubagentPolicy>("subagents")
         .add_observer(spawn_requested)
+        .add_observer(follow_successor::<SpawnSubagent>)
+        .add_observer(follow_successor::<TaskCall>)
         .add_observer(answer_task)
         .add_observer(end_with_call)
         .add_observer(retire_once)
@@ -315,6 +318,7 @@ fn spawn_requested(
     lineage: Query<&SpawnedBy>,
     tools: Query<&ToolDef>,
     (models, policy, wake): (Res<Models>, Res<SubagentPolicy>, Res<Wake>),
+    me: Option<Res<PluginEntity<SubagentsPlugin>>>,
     mut commands: Commands,
 ) {
     let entity = started.entity;
@@ -388,6 +392,9 @@ fn spawn_requested(
             child.insert(Helper(title));
             child.insert_if(Once, || request.once);
         }
+    }
+    if let Some(me) = me {
+        child.insert(ProvidedBy(me.entity()));
     }
     let child = child.id();
     wake.wake();
