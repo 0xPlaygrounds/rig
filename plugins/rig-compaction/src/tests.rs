@@ -20,13 +20,19 @@ use rig_telemetry::{Spending, UsagePlugin};
 const INJECTED: &str = "Context from another plugin.";
 
 /// The kernel, the compaction and usage plugins on `store`, after the first frame
-/// restored the session, with its loop's wakes.
+/// restored the session, with its loop's wakes. The compaction plugin is
+/// loaded as `plugins.toml` loads it.
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
-        .add_plugins((AgentPlugin, JournalPlugin, CompactionPlugin, UsagePlugin))
+        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
+    rig_harness::load::<CompactionPlugin>(
+        &mut app,
+        "rig-compaction",
+        "path plugins/rig-compaction",
+    );
     app.finish();
     app.update();
     (app, wakes)
@@ -232,6 +238,57 @@ fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored(
             .iter()
             .any(|set| set.name == "read-files" && set.values.contains("src/lib.rs"))),
         "{tracked:?}"
+    );
+}
+
+/// The summaries sent again, and whether each was the plugin's.
+#[derive(Resource, Default)]
+struct Resent(Vec<bool>);
+
+/// Sends the first summary again once it is answered, before it settles.
+fn resend_first_summary(
+    answered: Query<(Entity, Has<ProvidedBy>), (With<Summarizing>, Unreviewed)>,
+    mut resent: ResMut<Resent>,
+    mut commands: Commands,
+) {
+    for (summary, provided) in &answered {
+        if resent.0.is_empty() {
+            resent.0.push(provided);
+            commands.queue(rig_harness::successor::resend(summary));
+        }
+    }
+}
+
+#[test]
+fn a_summary_sent_again_mid_flight_is_taken_from_its_successor() {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.init_resource::<Resent>()
+        .add_systems(AgentPass, resend_first_summary.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe stale summary."),
+        reply("## Goal\nThe fresh summary."),
+        reply("done"),
+    ]);
+    let agent = agent(&mut app, &model, 40_000, long_conversation(6));
+    assert!(agent.is_some(), "the catalog lists the model");
+    let Some(agent) = agent else {
+        return;
+    };
+    ask(&mut app, &wakes, agent);
+    assert_eq!(answer(&app).as_deref(), Some("done"));
+    assert_eq!(app.world().resource::<Resent>().0, [true], "the plugin's");
+    let requests = sent(&model);
+    let turn_requests = requests
+        .iter()
+        .filter(|request| !request.contains("You summarize a conversation"));
+    assert_eq!(turn_requests.count(), 1, "{requests:?}");
+    let live = entries(app.world(), agent);
+    let summary = live.first().map(|entry| format!("{:?}", entry.message));
+    assert!(
+        summary
+            .as_deref()
+            .is_some_and(|summary| summary.contains("fresh") && !summary.contains("stale")),
+        "{summary:?}"
     );
 }
 

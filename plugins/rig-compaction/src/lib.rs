@@ -27,6 +27,8 @@ use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_ecs::prompt::tool_rules;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
+use rig_harness::successor::follow_successor;
+use rig_harness::{PluginEntity, ProvidedBy};
 use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
 };
@@ -76,7 +78,9 @@ impl Plugin for CompactionPlugin {
                 recover_from_overflow.in_set(CompactionSystems::Recover),
             ),
         )
-        .add_observer(take_summary);
+        .add_observer(take_summary)
+        .add_observer(follow_successor::<Summarizing>)
+        .add_observer(provided_by_compaction);
     }
 }
 
@@ -154,7 +158,10 @@ pub struct Compactions {
 }
 
 /// The summary call of a compaction, a [`ModelRequest`] of the turn, and
-/// a hold ([`HoldOf`]) on the model call it compacts for, if any.
+/// a hold ([`HoldOf`]) on the model call it compacts for, if any; it is
+/// [`ProvidedBy`] this plugin, when loaded as one. Sent again
+/// ([`resend`](rig_harness::successor::resend)), it moves to the
+/// successor with its hold, whose summary is the one taken.
 #[derive(Component, Clone, Debug)]
 pub struct Summarizing {
     /// Why.
@@ -518,6 +525,19 @@ fn recover_from_overflow(
                 ));
             }
         }
+    }
+}
+
+/// Marks each summary call as this plugin's.
+fn provided_by_compaction(
+    added: On<Add<Summarizing>>,
+    me: Option<Res<PluginEntity<CompactionPlugin>>>,
+    mut commands: Commands,
+) {
+    if let Some(me) = me {
+        commands
+            .entity(added.entity)
+            .try_insert_if_new(ProvidedBy(me.entity()));
     }
 }
 
