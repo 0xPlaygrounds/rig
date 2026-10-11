@@ -148,3 +148,8 @@ fn a_session_without_turns_exits_without_a_note() {
     assert!(model.requests().is_empty(), "no summary call");
     std::fs::remove_dir_all(root).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ExitNotesPlugin);
+}
