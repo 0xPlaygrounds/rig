@@ -12,6 +12,7 @@ types, such as the terminal view's panels from `rig_tui`.
 - [Effects of a plugin's own](#effects-of-a-plugins-own)
 - [Settings and command-line options](#settings-and-command-line-options)
 - [Saved state](#saved-state-counting-every-tool-call), [time](#time), [the process: project, files and child processes](#the-process-project-files-and-child-processes), [sessions and exiting](#sessions-and-exiting)
+- [Adding to another plugin's lists](#adding-to-another-plugins-lists): `/model`, `/resume`, `/context`, `/agents`, `/usage`, `--print`; spending and budgets
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
 - [A front](#a-front), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [a window](#a-window)
 
@@ -978,6 +979,124 @@ fn switch(mut forked: MessageReader<SessionForked>, mut commands: Commands) {
 fn build(app: &mut App) {
     app.add_command("fork", "Continue in a copy of this session", fork)
         .add_systems(Update, switch);
+}
+```
+
+# Adding to another plugin's lists
+
+A plugin that owns a list builds it from a query over entities other
+plugins spawn, the way the system prompt is built from `PromptSection`s:
+spawn one with your text and keep its text current (`set_if_neq` when it
+is a field you change in place). An empty text, or Bevy's `Disabled`,
+leaves it out, and despawning it takes it back. Never replace another
+plugin's command to add a line to it.
+
+| List | Spawn | Crate |
+|---|---|---|
+| `/model` and its picker: a choice that is no catalog model, run by name | `ModelItem::new(name, label, command)`; an agent's `ModelLabel` says what its model is in the status line | `rig_models` |
+| `/resume`: a part of this session's line, kept with it | `ResumeLabel::new(tag, text)` | `rig_sessions` |
+| `/context`: what you put in the context besides prompt sections | `ContextEntry::new(tag, text)` | `rig_basics` |
+| `/agents`: a column of one agent's line | `(AgentColumn::new(tag, text), ColumnOf(agent))`, despawned with the agent | `rig_basics` |
+| `/usage`: a line after the usage | `UsageRow::new(tag, text)` | `rig_telemetry` |
+| `--print`: text printed after the answer | `PrintSection::new(tag, text)` | `rig_print` |
+
+Models a provider plugin connects are catalog models: it declares its
+vendor and adds its models to the catalog in `Models` (rig-core's
+`ProviderId::declare`, `Connector::provide` and `catalog_mut`), so
+`--model`, `/model`, its picker, the remembered default and subagents
+take them like any other.
+
+Spending is data too. rig-telemetry adds each settled model call's
+reported usage to its agent's `Spending`, to the session's
+`SessionSpending` (both saved with the session) and to its turn's
+`TurnSpending`; a `Spending` keeps the total and its split per model and
+per purpose (`turn`, `compaction`, a plugin's `Effect::with_purpose`).
+A budget reads it; a plugin that pays for work that is no model request
+`record`s it in both.
+
+A `--print` run has nobody to answer questions: it is no `Answerer`, so a
+plugin applies its policy for a run nobody answers, and a question asked
+anyway is refused with why on stderr. `--answer=ID[,ID…]` answers each one
+with the first of those choices it offers.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_print::PrintSection;
+use rig_telemetry::{SessionSpending, UsageRow};
+
+/// What the session may spend, in USD.
+const CAP: f64 = 5.0;
+
+/// Refuses the turns' model calls once the session spent `CAP`, and says
+/// what is left in `/usage` and after a `--print` answer.
+#[derive(Default)]
+pub struct BudgetPlugin;
+
+impl Plugin for BudgetPlugin {
+    fn build(&self, app: &mut App) {
+        app.world_mut()
+            .spawn((UsageRow::new("budget", ""), PrintSection::new("budget", "")));
+        app.add_systems(AgentPass, refuse_over_budget.in_set(Stage::Gate))
+            .add_systems(
+                Update,
+                show_budget.run_if(resource_exists_and_changed::<SessionSpending>),
+            );
+    }
+}
+
+fn refuse_over_budget(
+    calls: Query<Entity, (With<TurnCall>, Undecided)>,
+    spent: Option<Res<SessionSpending>>,
+    mut commands: Commands,
+) {
+    if spent.is_none_or(|spent| spent.0.total.cost < CAP) {
+        return;
+    }
+    for call in &calls {
+        let why = format!("The session spent its ${CAP:.2} budget.");
+        commands.entity(call).insert_if_new(Outcome::refused(why));
+    }
+}
+
+fn show_budget(
+    spent: Res<SessionSpending>,
+    mut shown: Query<(&mut UsageRow, &mut PrintSection)>,
+) {
+    let left = (CAP - spent.0.total.cost).max(0.0);
+    let text = format!("Budget: ${left:.2} of ${CAP:.2} left.");
+    for (mut row, mut section) in &mut shown {
+        row.text.clone_from(&text);
+        section.text.clone_from(&text);
+    }
+}
+```
+
+A choice in `/model` that is no catalog model, and what an agent on it
+shows:
+
+```rust,no_run
+use rig_basics::{AgentColumn, ColumnOf};
+use rig_harness::prelude::*;
+use rig_models::{ModelItem, ModelLabel};
+
+/// `/model router` (or its picker item) runs `/route on`.
+#[derive(Default)]
+pub struct RouterPlugin;
+
+impl Plugin for RouterPlugin {
+    fn build(&self, app: &mut App) {
+        let item = ModelItem::new("router", "router  the cheapest model that fits", "route on");
+        app.world_mut().spawn(item);
+        app.add_command("route", "Pick the model per request: /route on", route);
+    }
+}
+
+fn route(In(args): In<CommandArgs>, mut commands: Commands) {
+    if args.args == "on" {
+        let router = ModelLabel("router".to_owned());
+        commands.entity(args.agent).insert(router);
+        commands.spawn((AgentColumn::new("route", "routed"), ColumnOf(args.agent)));
+    }
 }
 ```
 

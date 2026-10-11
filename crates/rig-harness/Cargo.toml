@@ -45,6 +45,11 @@ toml = "1"
 [dev-dependencies]
 # The terminal panel of the plugin guide's examples.
 rig-activity = { path = "../../plugins/rig-activity" }
+# The lists of the plugin guide's examples.
+rig-basics = { path = "../../plugins/rig-basics" }
+rig-models = { path = "../../plugins/rig-models" }
+rig-print = { path = "../../plugins/rig-print" }
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
 rig-tui = { path = "../../plugins/rig-tui" }
 # Tool parameters derived from their arguments types, as the guide's
 # plugins write them.
