@@ -182,7 +182,8 @@ fn anthropic_custom_dialects_are_executable_but_not_lossily_persisted() {
         let config =
             ProviderConfig::Anthropic(anthropic::wire::AnthropicConfig::with_key(&dialect, ""));
         assert!(serde_json::to_value(&config).is_err());
-        let _handler = config.completion_handler("custom", "model", transport());
+        let _handler =
+            config.completion_handler("custom", "model", transport(), ModelFacts::default());
     }
 }
 
@@ -554,7 +555,12 @@ fn a_gateway_absent_from_the_old_vocabulary_is_materializable() {
     assert_eq!(reference.to_string(), "venice/venice-uncensored");
     let config = reference.config("vk-test");
     assert!(!config.is_unauthenticated(), "the host rehydrated it");
-    let handler = config.completion_handler("default", reference.model(), transport());
+    let handler = config.completion_handler(
+        "default",
+        reference.model(),
+        transport(),
+        ModelFacts::default(),
+    );
     let descriptor = handler.descriptor();
     assert!(
         format!("{descriptor:?}").contains("default"),
@@ -579,11 +585,21 @@ fn equivalent_reference_and_configuration_describe_themselves_alike() {
     assert_eq!(registered.id(), configured.id());
     let from_reference = registered
         .config("k")
-        .completion_handler("default", registered.model(), transport())
+        .completion_handler(
+            "default",
+            registered.model(),
+            transport(),
+            ModelFacts::default(),
+        )
         .descriptor();
     let from_config = configured
         .config("k")
-        .completion_handler("default", configured.model(), transport())
+        .completion_handler(
+            "default",
+            configured.model(),
+            transport(),
+            ModelFacts::default(),
+        )
         .descriptor();
     assert_eq!(from_reference, from_config);
 }
@@ -1084,4 +1100,81 @@ fn connect_options_never_show_the_key() {
     let shown = format!("{options:?}");
     assert!(!shown.contains("sk-do-not-leak"), "{shown}");
     assert!(shown.contains("OpenAi"), "{shown}");
+}
+
+/// A vendor declared at run time is a catalog vendor like any other: the
+/// catalog files models under it, its id reads back, and the registry
+/// refuses to configure it, since whoever declared it reaches it.
+#[test]
+fn a_declared_vendor_is_filed_and_read_back_but_never_configured() {
+    let corp = ProviderId::declare("registry-test-corp").expect("a valid name");
+    assert_eq!(ProviderId::declare("registry-test-corp"), Ok(corp));
+    assert_eq!(ProviderId::catalog("registry-test-corp"), Some(corp));
+    assert_eq!(
+        ProviderId::declare("openai").ok(),
+        ProviderId::catalog("openai")
+    );
+    for malformed in ["", "a/b", "a b"] {
+        assert!(matches!(
+            ProviderId::declare(malformed),
+            Err(SelectionError::Malformed { .. })
+        ));
+    }
+    assert_eq!(corp.to_string(), "registry-test-corp");
+    assert_eq!(
+        (
+            corp.format(),
+            corp.is_registered(),
+            corp.requires_credential()
+        ),
+        (None, false, false)
+    );
+    assert!(corp.config("key").is_none() && corp.api_key_envs().is_empty());
+    assert!(ProviderId::catalog_vendors().any(|vendor| vendor == "registry-test-corp"));
+
+    let spec = ModelSpec::new(corp, "big");
+    let json = serde_json::to_value(&spec).expect("a spec serializes");
+    assert_eq!(
+        serde_json::from_value::<ModelSpec>(json).ok(),
+        Some(spec.clone())
+    );
+    assert!(ProviderRef::registered(corp, "big").is_err());
+    assert!(matches!(
+        Catalog::builtin().connect_with(&spec, ConnectOptions::new().api_key("key")),
+        Err(ConnectError::CatalogOnly { .. })
+    ));
+}
+
+/// A declared vendor reached on its own gateway prices its replies at the
+/// prices its spec lists, when the model is built with the spec's facts.
+#[tokio::test]
+async fn a_model_built_with_facts_prices_its_replies() {
+    let corp = ProviderId::declare("registry-priced-corp").expect("a valid name");
+    let spec = ModelSpec::new(corp, "big").with_pricing(crate::catalog::Pricing::new(1.0, 2.0));
+    let dialect =
+        openai::wire::Dialect::gateway(corp.vendor(), "https://corp.invalid/v1", "CORP_KEY");
+    let reply = serde_json::json!({
+        "id": "reply", "object": "chat.completion", "created": 0, "model": "big",
+        "choices": [{"index": 0, "finish_reason": "stop",
+                     "message": {"role": "assistant", "content": "hi"}}],
+        "usage": {"prompt_tokens": 1_000_000, "completion_tokens": 1_000_000,
+                  "total_tokens": 2_000_000}
+    });
+    let http = RecordingHttpClient::new(reply.to_string());
+    let model = ProviderConfig::OpenAi(openai::wire::OpenAIConfig::with_key(&dialect, "key"))
+        .completion_model(
+            "big",
+            crate::http_client::DynHttpClient::new(http.clone()),
+            ModelFacts::new(spec),
+        );
+    let response = model
+        .call(crate::completion::CompletionRequest::new("hi"))
+        .await
+        .expect("the reply decodes");
+    assert_eq!(response.usage.cost.map(|cost| cost.total), Some(3.0));
+    assert!(
+        http.requests()
+            .first()
+            .is_some_and(|request| request.uri.starts_with("https://corp.invalid/v1"))
+    );
 }
