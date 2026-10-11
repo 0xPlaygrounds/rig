@@ -47,8 +47,10 @@ pub enum CallState {
     /// Held from starting, or from settling once answered: the holds'
     /// [`Name`]s, which say why, such as `waiting for lease on src/a.rs`.
     Held(Vec<String>),
-    /// Running.
-    Running,
+    /// Running, with its [`ToolProgress`] line once its owner keeps one.
+    ///
+    /// [`ToolProgress`]: rig_harness::prelude::ToolProgress
+    Running(Option<String>),
     /// Answered.
     Done,
 }
@@ -99,10 +101,11 @@ impl ToolCallView<'_> {
     }
 
     /// Up to `limit` lines of the result under a `⎿`, red for an error,
-    /// and how many more there are. A unified diff is coloured.
+    /// and how many more there are. A unified diff is coloured. Before the
+    /// result, a running call's progress line.
     pub fn result_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
-            return Vec::new();
+            return self.progress_lines();
         };
         if !self.failed()
             && let Some(lines) = diff::unified_lines(&text, DIFF_LINES)
@@ -114,10 +117,11 @@ impl ToolCallView<'_> {
 
     /// The last `limit` lines of the result, where a command's errors and
     /// summary are, after a count of the earlier ones; a cut marker before
-    /// them names the file with all of it.
+    /// them names the file with all of it. Before the result, a running
+    /// call's progress line.
     pub fn tail_lines(&self, limit: usize) -> Vec<Line<'static>> {
         let Some(text) = self.result_text() else {
-            return Vec::new();
+            return self.progress_lines();
         };
         let mut output = text.lines().peekable();
         let marker = output.next_if(|first| is_cut_marker(first));
@@ -132,6 +136,16 @@ impl ToolCallView<'_> {
             .enumerate()
             .map(|(index, line)| result_line(index == 0, line, style))
             .collect()
+    }
+
+    /// A running call's progress line (its first line) under a `⎿`,
+    /// where its result goes once it answers; none without one.
+    pub fn progress_lines(&self) -> Vec<Line<'static>> {
+        let CallState::Running(Some(progress)) = &self.state else {
+            return Vec::new();
+        };
+        let line = progress.lines().next().unwrap_or_default();
+        vec![result_line(true, line, Style::new().yellow())]
     }
 
     /// The look of a tool with no renderer: the name and arguments, then

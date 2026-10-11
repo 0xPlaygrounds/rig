@@ -62,7 +62,7 @@ impl Look<'_> {
         match self.calls.get(call) {
             Some(state) => state.clone(),
             None if result.is_some() => CallState::Done,
-            None => CallState::Running,
+            None => CallState::Running(None),
         }
     }
 

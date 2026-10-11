@@ -59,7 +59,7 @@ fn a_tool_keeps_its_first_renderer_until_that_one_is_disabled() {
     let view = ToolCallView {
         call: &call,
         result: None,
-        state: CallState::Running,
+        state: CallState::Running(None),
     };
     let drawn = |app: &mut App| -> Vec<String> {
         let world = app.world_mut();

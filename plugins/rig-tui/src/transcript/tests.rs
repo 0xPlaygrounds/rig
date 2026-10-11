@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap};
+use std::time::SystemTime;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
@@ -7,8 +8,9 @@ use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
 use rig_ecs::agent::Conversation;
-use rig_ecs::stage::HoldOf;
+use rig_ecs::stage::{HoldOf, Started};
 use rig_ecs::tools::ToolRequest;
+use rig_harness::prelude::ToolProgress;
 use serde_json::json;
 
 use super::{Below, Look, Part, Renderers, Scroll, Transcript};
@@ -97,7 +99,7 @@ fn drawn(
 }
 
 #[test]
-fn a_held_call_names_its_holds_and_is_drawn_again_when_they_go() {
+fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let Ok(name) = ToolName::new("edit") else {
         return;
     };
@@ -131,4 +133,20 @@ fn a_held_call_names_its_holds_and_is_drawn_again_when_they_go() {
     assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
     let shown = drawn(&mut transcript, &conversation, &waiting);
     assert!(!shown.contains("held:"), "{shown}");
+
+    let started = Started {
+        at: SystemTime::now(),
+    };
+    let progress = ToolProgress("12 of 40 files".to_owned());
+    world.entity_mut(effect).insert((started, progress));
+    let running = states(&mut world);
+    let line = Some("12 of 40 files".to_owned());
+    assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
+    let shown = drawn(&mut transcript, &conversation, &running);
+    assert!(shown.contains("⎿ 12 of 40 files"), "{shown}");
+    world
+        .entity_mut(effect)
+        .insert(ToolProgress("13 of 40 files".to_owned()));
+    let shown = drawn(&mut transcript, &conversation, &states(&mut world));
+    assert!(shown.contains("⎿ 13 of 40 files"), "{shown}");
 }

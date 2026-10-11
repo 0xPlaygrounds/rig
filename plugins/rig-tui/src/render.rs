@@ -33,6 +33,7 @@ use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
 use rig_ecs::tools::ToolRequest;
+use rig_harness::prelude::ToolProgress;
 use rig_harness::primary::Shown;
 
 /// Most lines the input box shows.
@@ -56,7 +57,7 @@ pub(crate) struct Paced {
 /// Whether anything drawn changed since the last frame: the view state (a
 /// key, a notice, a resize, a picker or question), the input and who has
 /// the keys, an agent's drawn components, a turn's calls and where a tool
-/// call stands (held, waiting, started, answered), a
+/// call stands (held, waiting, started, its progress, answered), a
 /// streaming reply, a status line item (a retry's wait counts down there),
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
@@ -82,7 +83,12 @@ pub(crate) fn needs_redraw(
         (),
         (
             With<ToolRequest>,
-            Or<(Added<Started>, Added<Outcome>, Changed<Holds>)>,
+            Or<(
+                Added<Started>,
+                Added<Outcome>,
+                Changed<Holds>,
+                Changed<ToolProgress>,
+            )>,
         ),
     >,
     app_status: Option<Res<AppStatus>>,
@@ -91,13 +97,17 @@ pub(crate) fn needs_redraw(
         RemovedComponents<TuiPanel>,
         RemovedComponents<StatusItems>,
         RemovedComponents<Holds>,
+        RemovedComponents<ToolProgress>,
     ),
     mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
-    let removed =
-        removed.0.read().count() + removed.1.read().count() + removed.2.read().count() > 0;
+    let removed = removed.0.read().count()
+        + removed.1.read().count()
+        + removed.2.read().count()
+        + removed.3.read().count()
+        > 0;
     let changed = requested
         || removed
         || view.is_changed()
@@ -187,6 +197,7 @@ pub(crate) struct CallStates<'w, 's> {
             Option<&'static Holds>,
             Has<Started>,
             Has<Outcome>,
+            Option<&'static ToolProgress>,
         ),
     >,
     names: Query<'w, 's, &'static Name>,
@@ -194,8 +205,8 @@ pub(crate) struct CallStates<'w, 's> {
 
 impl CallStates<'_, '_> {
     /// Where each tool call of `calls` stands, by its id: held while it
-    /// has holds, else done once answered, running once started, else
-    /// waiting.
+    /// has holds, else done once answered, running (with its progress
+    /// line) once started, else waiting.
     pub(crate) fn of(
         &self,
         calls: impl IntoIterator<Item = Entity>,
@@ -204,13 +215,15 @@ impl CallStates<'_, '_> {
             .into_iter()
             .filter_map(|call| self.calls.get(call).ok());
         found
-            .map(|(request, holds, started, answered)| {
+            .map(|(request, holds, started, answered, progress)| {
                 let state = match holds {
                     Some(holds) => {
                         CallState::Held(holds.iter().map(|hold| self.name(hold)).collect())
                     }
                     None if answered => CallState::Done,
-                    None if started => CallState::Running,
+                    None if started => {
+                        CallState::Running(progress.map(|ToolProgress(line)| line.clone()))
+                    }
                     None => CallState::Waiting,
                 };
                 (request.call.id.clone(), state)
