@@ -26,10 +26,11 @@ const MOST_PATHS: usize = 50_000;
 /// How long a walk's paths are used before the next `@` walks again.
 const FRESH: Duration = Duration::from_secs(30);
 
-/// Candidates for the argument of a slash command, such as `/model`'s
-/// models, on an entity of the plugin's: a word typed after the command
-/// completes to the ones it matches. Several for one command add up; keep
-/// one current by inserting it again.
+/// Candidates for an argument of a slash command, such as `/model`'s
+/// models, on an entity of the plugin's: the word typed at the argument's
+/// position, the first after the command unless [`ArgCompletion::at`] says
+/// otherwise, completes to the ones it matches. Several for one command
+/// add up; keep one current by inserting it again.
 ///
 /// ```
 /// use rig_harness::prelude::*;
@@ -46,6 +47,9 @@ pub struct ArgCompletion {
     pub command: String,
     /// The candidates, in the order they are listed when they match alike.
     pub candidates: Vec<Candidate>,
+    /// The argument they complete, from 0 for the first word after the
+    /// command.
+    pub position: usize,
 }
 
 impl ArgCompletion {
@@ -54,7 +58,14 @@ impl ArgCompletion {
         Self {
             command: command.into(),
             candidates: Vec::new(),
+            position: 0,
         }
+    }
+
+    /// The same, completing the argument at `position` (from 0) instead.
+    pub fn at(mut self, position: usize) -> Self {
+        self.position = position;
+        self
     }
 
     /// The same, also offering `text`, described by `detail` (may be
@@ -67,9 +78,10 @@ impl ArgCompletion {
         self
     }
 
-    /// Whether it completes the argument of `command` (without its `/`).
-    fn is_for(&self, command: &str) -> bool {
-        self.command.trim_start_matches('/') == command
+    /// Whether it completes argument `position` of `command` (without its
+    /// `/`).
+    fn is_for(&self, command: &str, position: usize) -> bool {
+        self.command.trim_start_matches('/') == command && self.position == position
     }
 }
 
@@ -78,8 +90,9 @@ impl ArgCompletion {
 pub(crate) enum Kind {
     /// A command name after a leading `/`.
     Command,
-    /// An argument of the command at the start, `/name`.
-    Arg,
+    /// The argument at this position (from 0) of the command at the
+    /// start, `/name`.
+    Arg(usize),
     /// A path after `@`.
     Path,
 }
@@ -136,7 +149,7 @@ impl Kind {
     pub(crate) fn marker(self) -> &'static str {
         match self {
             Self::Command => "/",
-            Self::Arg => "",
+            Self::Arg(_) => "",
             Self::Path => "@",
         }
     }
@@ -205,7 +218,7 @@ fn walk() -> Vec<String> {
 }
 
 /// The `/command`, argument or `@path` token that ends at the cursor, if
-/// any; an argument's with the command's name.
+/// any; an argument's with the command's name and its position.
 fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
     let before = text.get(..cursor)?;
     let start = before
@@ -222,7 +235,8 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
         return Some((Kind::Path, start, query, ""));
     }
     let command = text.strip_prefix('/')?.split_whitespace().next()?;
-    (start > 0).then_some((Kind::Arg, start, word, command))
+    let position = before.get(..start)?.split_whitespace().count().checked_sub(1)?;
+    Some((Kind::Arg(position), start, word, command))
 }
 
 /// What completion lists: the slash commands, and the candidates plugins
@@ -284,11 +298,11 @@ pub(crate) fn update(
                 })
                 .collect()
         }
-        Kind::Arg => {
+        Kind::Arg(position) => {
             let candidates = sources
                 .arguments
                 .iter()
-                .filter(|completion| completion.is_for(command))
+                .filter(|completion| completion.is_for(command, position))
                 .flat_map(|completion| &completion.candidates);
             let mut ranked: Vec<(usize, &Candidate)> = candidates
                 .filter_map(|item| Some((match_at(query, &item.text)?, item)))
@@ -368,3 +382,6 @@ pub(crate) fn follow_input(
 fn match_at(query: &str, text: &str) -> Option<usize> {
     text.to_lowercase().find(&query.to_lowercase())
 }
+
+#[cfg(test)]
+mod tests;
