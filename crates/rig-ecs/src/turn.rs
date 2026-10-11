@@ -476,10 +476,7 @@ fn take_running(world: &mut World, cancelling: &mut Cancelling) {
         if let Ok(mut call) = world.get_entity_mut(call)
             && let Some(running) = call.take::<Running>()
         {
-            let task = running.into_task();
-            cancelling.push(Box::pin(async move {
-                task.cancel().await;
-            }));
+            cancelling.push(Box::pin(running.cancel()));
         }
     }
 }

@@ -1866,3 +1866,35 @@ fn a_chosen_model_the_catalog_lists_only_later_connects_then() {
     let connected = connected.map(|connection| connection.spec.reference());
     assert_eq!(connected.as_deref(), Some("later/big"));
 }
+
+/// The items a stream put on its entity, in order.
+#[derive(Resource, Default)]
+struct Items(Vec<u32>);
+
+#[test]
+fn a_streams_items_arrive_in_order_and_wake_the_loop() {
+    let mut app = app();
+    let woken = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counter = Arc::clone(&woken);
+    let wake = Wake::new(move || {
+        counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    });
+    app.insert_resource(wake.clone())
+        .init_resource::<Items>()
+        .add_observer(
+            |item: On<Insert<Done<u32>>>, done: Query<&Done<u32>>, mut items: ResMut<Items>| {
+                items.0.extend(done.get(item.entity).map(|done| done.0));
+            },
+        );
+    let pool = bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let items = futures::stream::iter([1_u32, 2, 3]);
+    let source = app
+        .world_mut()
+        .spawn(Running::stream(pool, &wake, items))
+        .id();
+    let ended = |world: &mut World| world.get::<Running>(source).is_none();
+    assert!(run_until(&mut app, ended));
+    assert_eq!(app.world().resource::<Items>().0, [1, 2, 3]);
+    let woken = woken.load(std::sync::atomic::Ordering::Relaxed);
+    assert!(woken >= 3, "woken {woken} times");
+}

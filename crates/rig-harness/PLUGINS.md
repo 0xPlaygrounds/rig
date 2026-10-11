@@ -970,6 +970,11 @@ them with `processes.launcher().command(program)`. An entity with a
 path. `TokioRuntime` is rig's own tokio runtime, for a library that needs
 tokio. A plugin that should also run in an app without the harness's
 plugins inits the ones it reads (`app.init_resource::<ProjectRoot>()`).
+A long-lived source, such as a socket, a server's notifications or a
+thread's channel, is a `Running::stream(pool, &wake, items)` on an
+entity: each item is inserted on it as a `Done<T>`, in order, and wakes
+the loop, and the `Running` goes once the stream ended. Several items may
+come in one frame, so the reader observes `Insert<Done<T>>`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -995,6 +1000,28 @@ fn reload(
 /// Runs every child process under `nice`.
 fn be_nice(processes: Res<Processes>) {
     processes.set(processes.launcher().wrapped(["nice", "-n", "10"]));
+}
+
+/// The lines a chat bridge receives, here a fixed list.
+#[derive(Component)]
+struct Received;
+
+fn listen(mut commands: Commands, wake: Res<Wake>) {
+    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let lines = ["hello", "are you there?"].map(str::to_owned);
+    let lines = bevy_tasks::futures_lite::stream::iter(lines);
+    commands.spawn((Received, Running::stream(pool, &wake, lines)));
+}
+
+/// Shows each line as it comes.
+fn show(
+    line: On<Insert<Done<String>>>,
+    lines: Query<&Done<String>, With<Received>>,
+    mut notices: MessageWriter<Notice>,
+) {
+    if let Ok(Done(text)) = lines.get(line.entity) {
+        notices.write(Notice::info(None, format!("Received: {text}")));
+    }
 }
 ```
 
