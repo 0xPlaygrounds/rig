@@ -41,7 +41,7 @@ use rig_core::completion::Message;
 use rig_core::transcript::final_answer;
 use rig_ecs::prelude::*;
 
-use crate::host::exit::{Exit, ExitReason};
+use crate::host::exit::{Exit, ExitReason, ExitRequest};
 use crate::host::launcher::Invoked;
 use crate::primary::{PrimaryQuery, primary};
 
@@ -126,13 +126,29 @@ struct Agents<'w, 's> {
     running: Query<'w, 's, &'static Running>,
     /// Messages on their way to an agent, such as the prompt itself.
     messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
+    /// Effects not started yet, such as one held at Gate, or answered and
+    /// not settled, such as one held for review; not an exit.
+    held: Query<
+        'w,
+        's,
+        (),
+        (
+            With<Effect>,
+            Without<Settled>,
+            Without<ExitRequest>,
+            Or<(Without<Started>, With<Outcome>)>,
+        ),
+    >,
 }
 
 impl Agents<'_, '_> {
-    /// Whether no agent works: no turn, task or message on its way.
+    /// Whether no agent works: no turn, task, held effect or message on its
+    /// way. An open effect that started and waits on the world outside,
+    /// such as a question nobody answers, is no work.
     fn idle(&self) -> bool {
         self.turns.is_empty()
             && self.messages.is_empty()
+            && self.held.is_empty()
             && self.running.iter().all(Running::is_stream)
     }
 }

@@ -190,3 +190,70 @@ fn an_empty_prompt_says_why() {
         .collect();
     assert_eq!(codes, [(ExitReason::Failed(2), true)]);
 }
+
+/// Whether the hold of [`the_run_waits_for_held_effects`] was released.
+#[derive(Resource, Default)]
+struct Released(bool);
+
+/// The hold on the effect the run waits for.
+#[derive(Component)]
+struct TestHold;
+
+/// Releases the hold a few frames after the turn ended.
+fn release_late(
+    turns: Query<(), With<TurnOf>>,
+    holds: Query<Entity, With<TestHold>>,
+    mut idle_frames: Local<u32>,
+    mut released: ResMut<Released>,
+    mut commands: Commands,
+) {
+    if !turns.is_empty() {
+        return;
+    }
+    *idle_frames += 1;
+    if *idle_frames > 5 {
+        for hold in &holds {
+            commands.entity(hold).despawn();
+            released.0 = true;
+        }
+    }
+}
+
+#[test]
+fn the_run_waits_for_held_effects() {
+    // A plugin's effect held at Gate, then one answered and held for
+    // review.
+    for answered in [false, true] {
+        let model = MockCompletionModel::from_stream_turns([vec![
+            MockStreamEvent::text("hello"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]]);
+        let ends = run("hi", true, |world, primary| {
+            if let Some(connection) = connection(&model) {
+                world.entity_mut(primary).insert(connection);
+            }
+            let kind = rig_core::effect::EffectKind::Custom {
+                kind: "note".into(),
+                payload: serde_json::Value::Null,
+            };
+            let mut effect = world.spawn(EffectRequest {
+                kind,
+                handler: None,
+            });
+            if answered {
+                effect.insert(Outcome::custom("noted"));
+            }
+            let effect = effect.id();
+            world.spawn((TestHold, HoldOf(effect)));
+            world.init_resource::<Released>();
+            world
+                .resource_mut::<Schedules>()
+                .add_systems(Update, release_late);
+            world.add_observer(|_: On<HeadlessEnded>, released: Res<Released>| {
+                assert!(released.0, "the run ended while an effect was held");
+            });
+        });
+        let exits: Vec<_> = ends.into_iter().map(|ended| ended.exit).collect();
+        assert_eq!(exits, [ExitReason::Quit], "answered: {answered}");
+    }
+}
