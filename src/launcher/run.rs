@@ -14,7 +14,8 @@
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
 //! headless run (`--print`, or stdin piped in, which the agent answers as
-//! `--print` does) is not restarted on the reload code.
+//! `--print` does) is not restarted on the reload code, nor run again on
+//! the previous build when its new build is rolled back.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
@@ -175,6 +176,10 @@ fn launch(
             log.display()
         );
         eprintln!("{message}");
+        // A one-shot run is not run twice: its output is already out.
+        if headless {
+            return Ok(exit_code(status));
+        }
         notice = Some(message);
     }
 }
