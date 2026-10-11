@@ -1,9 +1,10 @@
 //! The turn loop. A user message spawns a turn entity, [`TurnOf`] its
 //! agent; the turn's model call and tool calls are entities [`CallOf`] the
-//! turn, and observers of their [`Done`] outputs and [`ToolOutput`]s carry
-//! the turn on. A reply's read-only tool calls run side by side and the
-//! others alone, in order, as their tools' [`Footprint`]s say; their
-//! results go back in call order. rig-core's turn-failure
+//! turn. An observer of the model call's [`Done`] output spawns the
+//! reply's tool calls, [`ToolRequest`] effects that move through the
+//! stages; a reply's read-only calls run side by side and the others
+//! alone, in order, as their [`Footprint`]s say ([`Waiting`]), and once
+//! every one settled their results go back in call order. rig-core's turn-failure
 //! rule decides when a reply ends the turn instead. A failed model call is
 //! retried after a [`Backoff`] or recovered from as rig-core's [`RETRY`]
 //! policy decides; each turn counts its attempts in its [`Recovery`].
@@ -18,12 +19,11 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::query::QueryData;
-use bevy_ecs::system::SystemParam;
 use bevy_log::tracing::Instrument;
 use bevy_log::{info, info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
-use bevy_tasks::{AsyncComputeTaskPool, ConditionalSendFuture, IoTaskPool, TaskPool};
+use bevy_tasks::{ConditionalSendFuture, IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
@@ -31,7 +31,6 @@ use rig_core::completion::message::turn_failure;
 use rig_core::completion::{
     CompletionRequest, CompletionResponse, GenerationOptions, Message, ToolDefinition,
 };
-use rig_core::effect::Outcome;
 use rig_core::effect::family::Completion;
 use rig_core::effect::{EffectId, EffectKind, Family};
 use rig_core::error::retry::{RetryPolicy, Verdict};
@@ -39,25 +38,26 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
-use rig_core::tool::{ToolErrorKind, ToolExecutionError, ToolResult};
-use rig_core::transcript::{arguments_refusal, close_pending_with};
+use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::transcript::close_pending_with;
 use serde::{Deserialize, Serialize};
 use web_time::Instant;
 
 use super::agent::{
     ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Ending, Halt,
-    Interrupt, LastUsage, Notice, Partial, Queued, Retry, SystemPrompt, ToolAccess, ToolCallRun,
-    TurnEnded, TurnOf, TurnOutcome,
+    Interrupt, LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnEnded,
+    TurnOf, TurnOutcome,
 };
 use super::calls::{Done, Running, Wake};
 use super::effects::Effects;
 use super::inbox::{Inbox, Pending};
-use super::journal::{Commit, SessionLog, commit_message};
+use super::journal::{Commit, SessionLog};
 use super::model::{Connection, Effort};
 use super::prompt::{
     PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
 };
-use super::tools::{Footprint, OpenCall, Serves, ToolDef, ToolOutput, run_tool_call};
+use super::stage::{Effect, ForAgent, Outcome, Settled, Started, SupersededBy, Waiting};
+use super::tools::{Footprint, ToolDef, ToolRequest};
 
 /// The notice when the agent has no model to call.
 pub(crate) const NO_MODEL: &str = "No model is connected; pick one first.";
@@ -193,12 +193,6 @@ fn model_pool() -> &'static IoTaskPool {
     IoTaskPool::get_or_init(TaskPool::default)
 }
 
-/// Tool calls run on the async compute pool; their blocking work runs on
-/// threads of its own (see `rig_tools::blocking`).
-fn tool_pool() -> &'static AsyncComputeTaskPool {
-    AsyncComputeTaskPool::get_or_init(TaskPool::default)
-}
-
 /// Sends the conversation to the model again as it stands, when it ends
 /// in a message the model has not answered, also a halted one.
 pub(crate) fn on_retry(
@@ -272,8 +266,8 @@ fn end_turn(commands: &mut Commands, turn: Entity, outcome: TurnOutcome) {
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&mut Conversation, &ActiveTurn)>,
-    turns: Query<&Calls>,
-    runs: Query<(&ToolCallRun, Option<&ToolOutput>)>,
+    turns: Query<(&Turn, Option<&Calls>)>,
+    replies: Query<ReplyCall>,
     partials: Query<&Partial, With<ModelCall>>,
     mut commit: Commit,
     log: Res<SessionLog>,
@@ -285,22 +279,21 @@ pub(crate) fn on_interrupt(
         return;
     };
     let turn = active.turn();
-    let calls: Vec<Entity> = turns
+    let (reply, calls) = turns
         .get(turn)
-        .map(|calls| calls.iter().collect())
-        .unwrap_or_default();
+        .map_or((None, None), |(state, calls)| (state.reply, calls));
     let aborted: String = partials
-        .iter_many(calls.iter().copied())
+        .iter_many(calls.into_iter().flat_map(Calls::iter))
         .flatten()
         .map(|partial| partial.text.as_str())
         .collect();
     if !aborted.trim().is_empty() {
         commit.message(agent, &mut conversation, Message::assistant(aborted));
     }
-    if let Some(results) = stopped_results(
-        runs.iter_many(calls.iter().copied()).flatten(),
-        "interrupted by the user",
-    ) {
+    let reply = reply
+        .zip(calls)
+        .map(|(reply, calls)| reply_calls(reply, calls, &replies));
+    if let Some(results) = stopped_results(reply.unwrap_or_default(), "interrupted by the user") {
         commit.message(agent, &mut conversation, results);
     }
     commit.halt(agent, &mut conversation, Halt::Stopped);
@@ -310,17 +303,17 @@ pub(crate) fn on_interrupt(
 }
 
 /// The results of a stopped reply's tool calls, in call order: each
-/// finished call's result, and an error saying `why` for the others. `None`
+/// answered call's result, and an error saying `why` for the others. `None`
 /// when the reply made no calls.
-fn stopped_results<'a>(
-    runs: impl Iterator<Item = (&'a ToolCallRun, Option<&'a ToolOutput>)>,
-    why: &str,
-) -> Option<Message> {
+fn stopped_results(calls: Vec<ReplyCallItem>, why: &str) -> Option<Message> {
     let why = ToolResult::failed(ToolExecutionError::other(why));
-    let results: Vec<_> = runs
-        .map(|(run, done)| {
-            run.call
-                .answer(done.map_or(&why, |ToolOutput(result)| result))
+    let results: Vec<_> = calls
+        .into_iter()
+        .map(|call| {
+            let result = call
+                .outcome
+                .map_or_else(|| why.clone(), Outcome::tool_result);
+            call.request.call.answer(&result)
         })
         .collect();
     (!results.is_empty()).then(|| Message::tool_results(results))
@@ -358,28 +351,41 @@ pub(crate) fn stop_turns_on_exit(world: &mut World) {
         #[cfg(not(target_family = "wasm"))]
         std::thread::sleep(Duration::from_millis(2));
     }
-    let turns: Vec<(Entity, Entity)> = world
-        .query::<(Entity, &TurnOf)>()
+    if let Err(error) = world.run_system_cached(log_answered_results) {
+        warn!("could not log the results of stopped turns: {error}");
+    }
+    let turns: Vec<Entity> = world
+        .query_filtered::<Entity, With<TurnOf>>()
         .iter(world)
-        .map(|(turn, of)| (turn, of.0))
         .collect();
-    let mut outputs = world.query::<(&ToolCallRun, &ToolOutput)>();
-    for (turn, agent) in turns {
-        let calls: Vec<Entity> = world
-            .get::<Calls>(turn)
-            .map(|calls| calls.iter().collect())
-            .unwrap_or_default();
-        let results: Vec<_> = outputs
-            .iter_many(world, calls)
-            .flatten()
-            .map(|(run, ToolOutput(result))| run.call.answer(result))
-            .collect();
-        if !results.is_empty() {
-            commit_message(world, agent, Message::tool_results(results));
-        }
+    for turn in turns {
         world.despawn(turn);
     }
     world.flush();
+}
+
+/// Logs the results the running replies' calls got so far, in call order,
+/// for the restart, which answers the rest.
+fn log_answered_results(
+    turns: Query<(&TurnOf, &Turn, &Calls)>,
+    replies: Query<ReplyCall>,
+    mut agents: Query<&mut Conversation>,
+    mut commit: Commit,
+) {
+    for (&TurnOf(agent), state, calls) in &turns {
+        let Some(reply) = state.reply else {
+            continue;
+        };
+        let results: Vec<_> = reply_calls(reply, calls, &replies)
+            .into_iter()
+            .filter_map(|call| Some(call.request.call.answer(&call.outcome?.tool_result())))
+            .collect();
+        if let Ok(mut conversation) = agents.get_mut(agent)
+            && !results.is_empty()
+        {
+            commit.message(agent, &mut conversation, Message::tool_results(results));
+        }
+    }
 }
 
 /// Takes every [`Running`] task off its entity, a plugin's too, to be
@@ -452,7 +458,14 @@ fn request(world: &mut World, turn: Entity, messages: Vec<Message>) -> Result<()
     world.trigger_ref(&mut prepare);
     // The observers' calls exist once their commands are applied.
     world.flush();
-    if world.get::<Calls>(turn).is_some() {
+    let calls = world
+        .get::<Calls>(turn)
+        .into_iter()
+        .flat_map(|calls| calls.iter());
+    if calls
+        .into_iter()
+        .any(|call| world.get::<Settled>(call).is_none())
+    {
         return Ok(());
     }
     let sent = world.run_system_cached_with(send_request, (prepare, rules));
@@ -711,15 +724,13 @@ pub(crate) struct Answered {
 
 /// Takes a finished reply: appends it, then lets rig-core's turn-failure
 /// rule decide. A failed reply runs none of its tool calls and ends the
-/// turn; a reply without tool calls ends it too; otherwise each of its
-/// tool calls starts that no earlier call holds back, and the rest are
-/// [`Queued`].
+/// turn; a reply without tool calls ends it too; otherwise its tool calls
+/// are spawned, all at once, and become the turn's [`Turn::reply`].
 pub(crate) fn on_model_done(
     done: On<Add<Done<ModelReply>>>,
     calls: Query<(&CallOf, &ModelCall, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut Recovery)>,
+    mut turns: Query<(&TurnOf, &mut Recovery, &mut Turn)>,
     mut agents: Query<Answered>,
-    starter: ToolStarter,
     mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -729,7 +740,7 @@ pub(crate) fn on_model_done(
         return;
     };
     commands.entity(call).despawn();
-    let Ok((&TurnOf(agent), mut recovery)) = turns.get_mut(turn) else {
+    let Ok((&TurnOf(agent), mut recovery, mut state)) = turns.get_mut(turn) else {
         return;
     };
     let Ok(mut answered) = agents.get_mut(agent) else {
@@ -807,8 +818,27 @@ pub(crate) fn on_model_done(
         end_turn(&mut commands, turn, outcome);
         return;
     }
-    let parent = Some(model_call.effect);
-    starter.spawn_calls(&mut commands, (agent, turn), tool_calls, parent);
+    state.reply = Some(model_call.effect);
+    spawn_reply(&mut commands, (agent, turn), tool_calls, model_call.effect);
+}
+
+/// Spawns a call of `turn`, for `agent`, for each of `calls`, in order,
+/// asked for by the model call `reply`. Every call exists before any is
+/// gated.
+pub(crate) fn spawn_reply(
+    commands: &mut Commands,
+    (agent, turn): (Entity, Entity),
+    calls: Vec<ToolCall>,
+    reply: EffectId,
+) {
+    for call in calls {
+        commands.spawn((
+            ToolRequest { call },
+            Effect::child_of(Some(reply)),
+            CallOf(turn),
+            ForAgent(agent),
+        ));
+    }
 }
 
 /// Carries the turn of `agent` on after its model call failed for
@@ -904,222 +934,129 @@ fn fail_turn(
     end_turn(&mut commands, turn, TurnOutcome::Failed(why));
 }
 
-/// Takes a tool call's [`ToolOutput`], however it came: records it as an
-/// open call's outcome, and cancels the tool's own work if it still runs.
-/// Then starts each queued call of the reply that no earlier unfinished
-/// call holds back, or, once every call finished, appends their results in
-/// call order and calls the model again.
-pub(crate) fn on_tool_done(
-    done: On<Add<ToolOutput>>,
-    mut ended: Query<(&ToolOutput, Option<&mut OpenCall>)>,
-    of: Query<&CallOf>,
-    turns: Query<(&TurnOf, &Calls)>,
+/// A call of a model's reply, as the stages find it.
+#[derive(QueryData)]
+pub(crate) struct ReplyCall {
+    effect: &'static Effect,
+    request: &'static ToolRequest,
+    outcome: Option<&'static Outcome>,
+    successor: Option<&'static SupersededBy>,
+    footprint: Option<&'static Footprint>,
+    settled: Has<Settled>,
+    started: Has<Started>,
+    waiting: Has<Waiting>,
+    entity: Entity,
+}
+
+/// The calls of the reply `reply` among `calls`, in the reply's order:
+/// for each call the model asked for, the last effect that superseded it.
+fn reply_calls<'a>(
+    reply: EffectId,
+    calls: &Calls,
+    replies: &'a Query<ReplyCall>,
+) -> Vec<ReplyCallItem<'a, 'a>> {
+    let mut asked: Vec<ReplyCallItem<'a, 'a>> = Vec::new();
+    for call in calls.iter() {
+        let Ok(mut call) = replies.get(call) else {
+            continue;
+        };
+        let first = |at: &ReplyCallItem| at.request.call.id == call.request.call.id;
+        if call.effect.parent != Some(reply) || asked.iter().any(first) {
+            continue;
+        }
+        for _ in 0..calls.len() {
+            match call
+                .successor
+                .and_then(|by| replies.get(by.successor()).ok())
+            {
+                Some(successor) => call = successor,
+                None => break,
+            }
+        }
+        asked.push(call);
+    }
+    asked
+}
+
+/// Marks each call of a running reply [`Waiting`] while an earlier call it
+/// must not run beside is not settled, and takes the mark off once none
+/// is, in [`Stage::Admit`](super::stage::Stage::Admit). A held call holds
+/// back the calls after it; a refused one, once it settled, does not.
+pub(crate) fn wait_in_order(
+    turns: Query<(&Turn, &Calls)>,
+    replies: Query<ReplyCall>,
+    mut commands: Commands,
+) {
+    for (state, calls) in &turns {
+        let Some(reply) = state.reply else {
+            continue;
+        };
+        let mut earlier: Vec<Footprint> = Vec::new();
+        for call in reply_calls(reply, calls, &replies) {
+            let footprint = call.footprint.copied().unwrap_or_default();
+            let waits = earlier.iter().any(|&before| footprint.waits_for(before));
+            let open = !call.started && call.outcome.is_none() && !call.settled;
+            if open && waits != call.waiting {
+                let mut entity = commands.entity(call.entity);
+                match waits {
+                    true => entity.try_insert(Waiting),
+                    false => entity.try_remove::<Waiting>(),
+                };
+            }
+            if !call.settled {
+                earlier.push(footprint);
+            }
+        }
+    }
+}
+
+/// Once every call of a turn's running reply settled, appends their
+/// results in call order and calls the model again, in
+/// [`Stage::Commit`](super::stage::Stage::Commit), after the kernel settled
+/// that pass's effects.
+pub(crate) fn commit_replies(
+    mut turns: Query<(Entity, &TurnOf, &mut Turn, &Calls)>,
+    replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
-    runs: Query<(&ToolCallRun, Option<&ToolOutput>, Has<Queued>)>,
-    starter: ToolStarter,
     mut commit: Commit,
     mut commands: Commands,
 ) {
-    if let Ok((ToolOutput(result), Some(mut open))) = ended.get_mut(done.entity) {
-        let result = result.clone();
-        open.0.settle(Ok(Outcome::ToolResult { result }));
-    }
-    commands
-        .entity(done.entity)
-        .try_remove::<(OpenCall, Running)>();
-    let Ok(&CallOf(turn)) = of.get(done.entity) else {
-        return;
-    };
-    let Ok((&TurnOf(agent), calls)) = turns.get(turn) else {
-        return;
-    };
-    let Ok(mut conversation) = agents.get_mut(agent) else {
-        return;
-    };
-    // The calls not finished yet, in call order, each holding back the
-    // later ones it must not run beside.
-    let mut unfinished: Vec<Footprint> = Vec::new();
-    let mut results = Vec::new();
-    for call in calls.iter() {
-        let Ok((run, output, queued)) = runs.get(call) else {
+    for (turn, &TurnOf(agent), mut state, calls) in &mut turns {
+        let Some(reply) = state.reply else {
             continue;
         };
-        if let Some(ToolOutput(result)) = output {
-            results.push(run.call.answer(result));
+        let calls = reply_calls(reply, calls, &replies);
+        if calls.iter().any(|call| !call.settled) {
             continue;
         }
-        if queued
-            && unfinished
-                .iter()
-                .all(|&before| !run.footprint.waits_for(before))
-        {
-            commands.entity(call).remove::<Queued>();
-            starter.start(&mut commands, call, agent, run);
-        }
-        unfinished.push(run.footprint);
-    }
-    if !unfinished.is_empty() {
-        return;
-    }
-    commit.message(agent, &mut conversation, Message::tool_results(results));
-    commands.entity(turn).despawn_related::<Calls>();
-    commands.trigger(CallModel { entity: turn });
-}
-
-/// Starts tool calls on the one dispatch path: what that reads, the
-/// registered tools and the calling agent. A plugin that calls a tool
-/// outside a turn spawns the call's entity with a [`ToolCallRun`] from
-/// [`run`](Self::run) and [`start`](Self::start)s it; it ends with a
-/// [`ToolOutput`] like a model's call.
-#[derive(SystemParam)]
-pub struct ToolStarter<'w, 's> {
-    tools: Query<
-        'w,
-        's,
-        (
-            Entity,
-            &'static ToolDef,
-            &'static Serves,
-            &'static Footprint,
-        ),
-    >,
-    agents: Query<'w, 's, (&'static AgentId, &'static ToolAccess)>,
-    effects: Res<'w, Effects>,
-    log: Res<'w, SessionLog>,
-    wake: Res<'w, Wake>,
-}
-
-impl ToolStarter<'_, '_> {
-    /// The registered tool `name`.
-    fn tool(&self, name: &str) -> Option<(Entity, &ToolDef, &Serves, &Footprint)> {
-        self.tools
-            .iter()
-            .find(|(_, def, ..)| def.0.name.as_str() == name)
-    }
-
-    /// The run of `call`, asked for by the effect `parent`. A tool that is
-    /// not registered runs on its own.
-    pub fn run(&self, call: ToolCall, parent: Option<EffectId>) -> ToolCallRun {
-        let tool = self.tool(call.function.name.as_str());
-        ToolCallRun {
-            footprint: tool.map_or_else(Footprint::default, |(.., &footprint)| footprint),
-            call,
-            parent,
-        }
-    }
-
-    /// Whether a call of the tool `name` left without a result by a restart
-    /// starts again: an ordinary read-only tool. Any other such call is
-    /// answered as interrupted.
-    pub(crate) fn reruns(&self, name: &str) -> bool {
-        self.tool(name).is_some_and(|(_, _, serves, footprint)| {
-            matches!(serves, Serves::Handler(_)) && *footprint == Footprint::ReadOnly
-        })
-    }
-
-    /// Spawns a call entity of `turn`, of `agent`, for each of `calls`,
-    /// asked for by the effect `parent`, then starts each that no earlier
-    /// call holds back; the rest are [`Queued`]. Every call exists before
-    /// any starts: an open call may end at once.
-    pub(crate) fn spawn_calls(
-        &self,
-        commands: &mut Commands,
-        (agent, turn): (Entity, Entity),
-        calls: Vec<ToolCall>,
-        parent: Option<EffectId>,
-    ) {
-        let mut earlier: Vec<Footprint> = Vec::with_capacity(calls.len());
-        let mut ready = Vec::new();
-        for call in calls {
-            let run = self.run(call, parent);
-            let waits = earlier
-                .iter()
-                .any(|&before| run.footprint.waits_for(before));
-            earlier.push(run.footprint);
-            let mut entity = commands.spawn((tool_name(&run), CallOf(turn), run.clone()));
-            if waits {
-                entity.insert(Queued);
-            } else {
-                ready.push((entity.id(), run));
-            }
-        }
-        for (entity, run) in ready {
-            self.start(commands, entity, agent, &run);
-        }
-    }
-
-    /// Starts `run`, the call entity `call` of `agent`. An ordinary tool's
-    /// call runs on the one dispatch path, and its [`ToolOutput`] is
-    /// inserted when it finishes. An open tool's call is recorded as
-    /// started and its tool's observer gets [`ToolCalled`] with the parsed
-    /// arguments. A call to a tool that is not registered, that the agent
-    /// may not use, or with arguments that do not fit, is recorded like any
-    /// other and answered with an error. Before a call
-    /// that may change something, the session log is written, so the reply
-    /// that asked for it is on disk first.
-    ///
-    /// [`ToolCalled`]: super::tools::ToolCalled
-    pub fn start(&self, commands: &mut Commands, call: Entity, agent: Entity, run: &ToolCallRun) {
-        let Ok((id, access)) = self.agents.get(agent) else {
-            return;
+        let Ok(mut conversation) = agents.get_mut(agent) else {
+            continue;
         };
-        let name = run.call.function.name.as_str();
-        let tool = self.tool(name).filter(|_| access.allows(name));
-        if !tool.is_some_and(|(.., footprint)| *footprint == Footprint::ReadOnly) {
-            self.log.flush();
+        state.reply = None;
+        let unanswered = || ToolResult::failed(ToolExecutionError::other("the call had no result"));
+        let results: Vec<_> = calls
+            .into_iter()
+            .map(|call| {
+                let result = call.outcome.map_or_else(unanswered, Outcome::tool_result);
+                call.request.call.answer(&result)
+            })
+            .collect();
+        if !results.is_empty() {
+            commit.message(agent, &mut conversation, Message::tool_results(results));
         }
-        let refused = |kind, why| Err(ErrorReport::new(ErrorKind::Tool(kind), why));
-        let opened = match tool {
-            None => refused(
-                ToolErrorKind::NotFound,
-                format!("no tool named `{name}` is available"),
-            ),
-            Some((tool, def, serves, _)) => {
-                match (arguments_refusal(&def.0.parameters, &run.call), serves) {
-                    (Some(why), _) => refused(ToolErrorKind::InvalidArgs, why),
-                    (None, Serves::Open(open)) => open(&run.call)
-                        .map(|trigger| (tool, trigger))
-                        .or_else(|why| refused(ToolErrorKind::InvalidArgs, why)),
-                    (None, Serves::Handler(handler)) => {
-                        let work = run_tool_call(&self.effects, &id.0, run, handler.0.clone());
-                        let running =
-                            Running::spawn_into::<ToolOutput, _>(tool_pool(), &self.wake, work);
-                        commands.entity(call).insert(running);
-                        return;
-                    }
-                }
-            }
-        };
-        // A call no handler runs is recorded as opened, and settled at
-        // once when it is refused.
-        let args = run.call.function.raw_arguments();
-        let mut effect = self.effects.open(&id.0, run.parent, name, args);
-        let (tool, trigger) = match opened {
-            Ok(opened) => opened,
-            Err(report) => {
-                let output = ToolOutput(ToolResult::failed(report.clone().into()));
-                effect.settle(Err(report));
-                commands.entity(call).insert(output);
-                return;
-            }
-        };
-        let (caller, id, run) = (id.clone(), effect.id(), run.clone());
-        commands
-            .entity(call)
-            .queue_silenced(move |mut entity: EntityWorldMut| {
-                if entity.world().get_entity(agent).is_ok() {
-                    entity.insert(OpenCall(effect));
-                    entity.world_scope(|world| {
-                        trigger(world, [tool, call, agent], caller, id, run);
-                    });
-                }
-            });
+        commands.trigger(CallModel { entity: turn });
     }
 }
 
-/// The [`Name`] of a tool call's entity.
-pub fn tool_name(run: &ToolCallRun) -> Name {
-    Name::new(format!("tool call {}", run.call.function.name.as_str()))
+/// Whether the settled effect `entity` stays past its frame: a call of a
+/// reply whose other calls still run, which keeps its result for them.
+pub(crate) fn keeps_settled(world: &World, entity: Entity) -> bool {
+    let reply = world
+        .get::<CallOf>(entity)
+        .and_then(|of| world.get::<Turn>(of.0))
+        .and_then(|turn| turn.reply);
+    let parent = world.get::<Effect>(entity).and_then(|effect| effect.parent);
+    reply.is_some() && parent == reply && world.get::<ToolRequest>(entity).is_some()
 }
 
 /// The wall clock as std's `SystemTime`, which rig-core's retry policy

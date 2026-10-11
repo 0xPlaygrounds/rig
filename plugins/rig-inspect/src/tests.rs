@@ -17,13 +17,13 @@ fn start(app: &mut App, agent: Entity, method: &str, params: Value) -> Option<En
 /// The output of `call`, once it has one.
 fn output(app: &mut App, call: Option<Entity>) -> String {
     let (started, call) = (Instant::now(), call.unwrap_or(Entity::PLACEHOLDER));
-    while app.world().get::<ToolOutput>(call).is_none() && started.elapsed().as_secs() < 10 {
+    while app.world().get::<Outcome>(call).is_none() && started.elapsed().as_secs() < 10 {
         app.update();
         std::thread::sleep(Duration::from_millis(2));
     }
-    let output = app.world().get::<ToolOutput>(call);
+    let output = app.world().get::<Outcome>(call);
     output
-        .map(|output| output.0.output().render())
+        .map(|output| output.tool_result().output().render())
         .unwrap_or_default()
 }
 

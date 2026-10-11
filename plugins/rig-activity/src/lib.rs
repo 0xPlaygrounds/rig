@@ -93,13 +93,15 @@ impl fmt::Display for Status {
     }
 }
 
-/// A tool call of the turn without an output yet.
+/// A tool call of the turn without an outcome yet.
 #[derive(Reflect, Clone, Debug, PartialEq, Eq)]
 pub struct ToolActivity {
     /// The tool's name.
     pub name: String,
     /// Whether it waits for earlier calls of its reply.
-    pub queued: bool,
+    pub waiting: bool,
+    /// Whether a plugin holds it, such as for the user's approval.
+    pub held: bool,
 }
 
 /// Recent deliveries to agents, oldest first: the user's messages (not
@@ -161,9 +163,9 @@ fn feed_deliveries(
 fn update_activity(
     mut agents: Query<(&mut Activity, Option<&ActiveTurn>), With<Agent>>,
     turns: Query<&Calls>,
-    tools: Query<(&ToolCallRun, Has<Queued>, Has<ToolOutput>)>,
+    tools: Query<(&ToolRequest, Has<Waiting>, Has<Holds>, Has<Outcome>), Without<Settled>>,
     waits: Query<&Backoff>,
-    others: Query<&Name, (Without<ModelCall>, Without<ToolCallRun>, Without<Backoff>)>,
+    others: Query<&Name, (Without<ModelCall>, Without<ToolRequest>, Without<Backoff>)>,
 ) {
     for (mut activity, turn) in &mut agents {
         let Some(turn) = turn else {
@@ -189,10 +191,11 @@ fn update_activity(
         let open_tools = calls
             .iter()
             .filter_map(|call| tools.get(*call).ok())
-            .filter(|(_, _, done)| !done)
-            .map(|(run, queued, _)| ToolActivity {
-                name: run.call.function.name.as_str().to_owned(),
-                queued,
+            .filter(|(.., done)| !done)
+            .map(|(request, waiting, held, _)| ToolActivity {
+                name: request.call.function.name.as_str().to_owned(),
+                waiting,
+                held,
             })
             .collect();
         activity.set_if_neq(Activity {

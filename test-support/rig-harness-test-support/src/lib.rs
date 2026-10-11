@@ -15,7 +15,6 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
-use rig_ecs::turn::ToolStarter;
 
 /// How long a test waits for its agents.
 const DEADLINE: Duration = Duration::from_secs(10);
@@ -71,9 +70,9 @@ pub fn calls(id: &str, tool: &str, args: serde_json::Value) -> Vec<MockStreamEve
     ]
 }
 
-/// Starts `agent`'s call `id` of `tool` with `args`, as its model call 1
-/// asked, and returns the call's entity, which gets the call's
-/// `ToolOutput`.
+/// Spawns `agent`'s call `id` of `tool` with `args`, as its model call 1
+/// asked, and returns the call's entity, which gets the call's `Outcome`.
+/// The next frame starts it.
 pub fn start_call(
     world: &mut World,
     agent: Entity,
@@ -82,12 +81,10 @@ pub fn start_call(
 ) -> Option<Entity> {
     let name = ToolName::new(tool).ok()?;
     let call = ToolCall::from_wire(id, ToolFunction::new(name, args));
-    let start = move |starter: ToolStarter, mut commands: Commands| {
-        let run = starter.run(call.clone(), Some(EffectId::from_raw(1)));
-        let entity = commands.spawn(run.clone()).id();
-        starter.start(&mut commands, entity, agent, &run);
-        entity
-    };
-    let start = world.register_system(start);
-    world.run_system(start).ok()
+    let parent = Effect::child_of(Some(EffectId::from_raw(1)));
+    Some(
+        world
+            .spawn((ToolRequest { call }, parent, ForAgent(agent)))
+            .id(),
+    )
 }

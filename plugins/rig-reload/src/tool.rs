@@ -77,7 +77,7 @@ fn on_reload_tool(
     };
     commands
         .entity(called.call)
-        .insert_if_new(ToolOutput(output));
+        .insert_if_new(Outcome::from(output));
 }
 
 /// Spawns the system prompt's section on what this agent is: its plugins,

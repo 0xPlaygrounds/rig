@@ -33,12 +33,14 @@ use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
 
-use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, TurnOf};
+use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, Turn, TurnOf};
+use super::effects::Effects;
 use super::journal::{
     AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
     SessionStore,
 };
-use super::turn::{CallModel, ToolStarter};
+use super::tools::{Footprint, Serves, ToolDef};
+use super::turn::{CallModel, spawn_reply};
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
@@ -389,20 +391,30 @@ pub(crate) fn reconcile(world: &mut World) {
 }
 
 /// Settles one restored agent, as [`reconcile`] says: `resume` is what its
-/// [`Restored`] observers left.
+/// [`Restored`] observers left. The calls run again are a reply of a fresh
+/// effect id, as the model call that asked for them is gone.
 fn settle(
     In((agent, resume)): In<(Entity, bool)>,
     mut agents: Query<&mut Conversation>,
-    starter: ToolStarter,
+    tools: Query<(&ToolDef, &Serves, &Footprint)>,
+    effects: Res<Effects>,
     mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
+    // A call runs again when its tool is an ordinary read-only one.
+    let reruns = |name: &str| {
+        tools.iter().any(|(def, serves, footprint)| {
+            def.0.name.as_str() == name
+                && matches!(serves, Serves::Handler(_))
+                && *footprint == Footprint::ReadOnly
+        })
+    };
     let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
         .into_iter()
-        .partition(|call| resume && starter.reruns(call.function.name.as_str()));
+        .partition(|call| resume && reruns(call.function.name.as_str()));
     if !interrupted.is_empty() {
         let results = close_pending_with(&interrupted, INTERRUPTED);
         commit.message(agent, &mut conversation, results);
@@ -411,8 +423,10 @@ fn settle(
         return;
     }
     if !reruns.is_empty() {
-        let turn = commands.spawn(TurnOf(agent)).id();
-        starter.spawn_calls(&mut commands, (agent, turn), reruns, None);
+        let reply = effects.next_id();
+        let state = Turn { reply: Some(reply) };
+        let turn = commands.spawn((TurnOf(agent), state)).id();
+        spawn_reply(&mut commands, (agent, turn), reruns, reply);
     } else if conversation.awaits_model() {
         let turn = commands.spawn(TurnOf(agent)).id();
         commands.trigger(CallModel { entity: turn });

@@ -21,14 +21,15 @@ struct Outputs(HashMap<String, String>);
 struct Ended(u32);
 
 fn keep_output(
-    output: On<Insert<ToolOutput>>,
-    calls: Query<(&ToolCallRun, &ToolOutput)>,
+    output: On<Insert<Outcome>>,
+    calls: Query<(&ToolRequest, &Outcome)>,
     mut outputs: ResMut<Outputs>,
 ) {
-    if let Ok((run, ToolOutput(result))) = calls.get(output.entity) {
+    if let Ok((request, outcome)) = calls.get(output.entity) {
+        let result = outcome.tool_result();
         outputs
             .0
-            .insert(run.call.id.to_string(), result.output().render());
+            .insert(request.call.id.to_string(), result.output().render());
     }
 }
 

@@ -202,7 +202,7 @@ fn on_todo(
     };
     commands
         .entity(called.call)
-        .insert_if_new(ToolOutput(output));
+        .insert_if_new(Outcome::from(output));
 }
 
 /// A turn the model ended with an answer while items are open carries on

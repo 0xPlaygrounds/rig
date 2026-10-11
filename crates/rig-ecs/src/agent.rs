@@ -5,13 +5,12 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_core::completion::{Message, Usage};
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolCall, UserContent};
+use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
 use super::inbox::{Inbox, Origin};
 use super::journal::ReflectSaved;
 use super::model::Effort;
-use super::tools::Footprint;
 use super::turn::NO_MODEL;
 use super::turn::Recovery;
 
@@ -360,8 +359,19 @@ impl ToolAccess {
 #[derive(Component, Reflect, Debug)]
 #[reflect(Component)]
 #[relationship(relationship_target = ActiveTurn)]
-#[require(Recovery, Name = Name::new("turn"))]
+#[require(Recovery, Turn, Name = Name::new("turn"))]
 pub struct TurnOf(pub Entity);
+
+/// Where a turn stands, on the turn: the kernel keeps it.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Default)]
+pub struct Turn {
+    /// The model call whose reply's tool calls run now, their effects'
+    /// parent, until their results are committed. Other calls of the turn
+    /// keep it open but are never committed as tool results.
+    #[reflect(ignore)]
+    pub reply: Option<EffectId>,
+}
 
 /// On a turn about to be despawned: how it ended. A turn despawned without
 /// one, such as by [`Interrupt`] or on exit, ended [`TurnOutcome::Stopped`].
@@ -404,30 +414,6 @@ pub struct Partial {
     /// Reasoning text.
     pub reasoning: String,
 }
-
-/// A tool call of the model's last reply. It is [`Queued`] while an
-/// earlier call of the reply holds it back (see
-/// [`Footprint`]), then runs as a [`Running`](super::calls::Running) task,
-/// or stays open for an open tool, and ends with a
-/// [`ToolOutput`](super::tools::ToolOutput).
-/// Read-only calls run side by side; every other call runs alone, in order.
-#[derive(Component, Reflect, Clone, Serialize, Deserialize)]
-#[reflect(opaque, Component, Clone, Serialize, Deserialize)]
-pub struct ToolCallRun {
-    /// The call.
-    pub call: ToolCall,
-    /// The effect id of the model call that asked for it; `None` for a
-    /// call that a restart runs again.
-    pub parent: Option<EffectId>,
-    /// Whether it runs beside others, from its tool.
-    pub(crate) footprint: Footprint,
-}
-
-/// A tool call waiting for earlier calls of its reply to finish.
-#[derive(Component, Reflect, Default)]
-#[component(storage = "SparseSet")]
-#[reflect(Component, Default)]
-pub struct Queued;
 
 /// Send the agent's conversation to its model again as it stands: after a
 /// turn that failed on a transient error and kept the user's message, or

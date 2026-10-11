@@ -51,12 +51,14 @@ impl Session {
     }
 
     /// `agent` calls `tool` with `args` in call `id`, as the model call 1
-    /// asked, and gets its output once it has one.
+    /// asked, started by one pass of the stages and nothing else of a
+    /// frame, and gets its output once it has one.
     fn call(&mut self, agent: Entity, tool: &str, id: &str, args: serde_json::Value) -> String {
         let started = start_call(self.app.world_mut(), agent, (tool, id), args);
-        let output = started.and_then(|call| self.app.world().get::<ToolOutput>(call));
+        self.app.world_mut().run_schedule(AgentPass);
+        let output = started.and_then(|call| self.app.world().get::<Outcome>(call));
         output
-            .map(|output| output.0.output().render())
+            .map(|output| output.tool_result().output().render())
             .unwrap_or_default()
     }
 

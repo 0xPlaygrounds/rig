@@ -1,27 +1,24 @@
 //! Plugin corpus: 01. Confirm destructive shell commands (spec
 //! `01-confirm-destructive.md`).
 //!
-//! The kernel starts an ordinary tool's call the moment the model asks for
-//! it, so a `shell` command cannot be held back from outside. The plugin
-//! therefore puts an open tool in place of `rig-coding-tools`' `shell`
-//! (same name, description, rules and parameters): a command that matches
-//! no [`DestructivePatterns`] runs at once with rig-tools' [`Shell`], one
-//! that matches waits, [`AwaitingApproval`], for the user's answer in a
-//! picker (`/confirm`), and is denied at once when nobody sits at the
-//! terminal. "Allow for this session" keeps the pattern in the saved
-//! [`SessionAllowances`].
+//! A Gate system sees each `shell` call when it is about to run. A command
+//! that matches no [`DestructivePatterns`], or a pattern the user allowed
+//! for the session ([`SessionAllowances`]), runs as the `shell` tool's
+//! call. One that matches is held by an [`AwaitingApproval`] entity until
+//! the user answers in a picker (`/confirm`), and is refused at once when
+//! nobody sits at the terminal.
 
 use std::fs;
 use std::io::ErrorKind;
 
 use bevy_log::warn;
-use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use regex::Regex;
-use rig_core::tool::IntoToolOutput;
 use rig_harness::prelude::*;
-use rig_tools::{Shell, ShellArgs};
 use rig_tui::{PickItem, PickRequest};
 use serde::Deserialize;
+
+/// The tool whose calls are checked.
+pub const SHELL: &str = "shell";
 
 /// The commands asked about unless `RIG_HOME/confirm.toml` adds more.
 pub const BUILT_IN: &[&str] = &[
@@ -102,8 +99,9 @@ struct ConfirmFile {
 #[reflect(Resource, Saved, Default)]
 pub struct SessionAllowances(pub Vec<String>);
 
-/// A `shell` call waiting for the user's answer, on the call's entity.
-/// Interrupting the turn despawns the call, and the question with it.
+/// A hold on a `shell` call waiting for the user's answer: an entity
+/// [`HoldOf`] the call. Interrupting the turn despawns the call, and this
+/// hold and its question with it.
 #[derive(Component, Clone, Debug)]
 pub struct AwaitingApproval {
     /// The calling agent.
@@ -118,9 +116,9 @@ pub struct AwaitingApproval {
 }
 
 impl AwaitingApproval {
-    /// The picker asking about the call `call`, with "Deny" selected.
-    fn picker(&self, call: Entity) -> PickRequest {
-        let key = call.to_bits();
+    /// The picker asking about the hold `hold`, with "Deny" selected.
+    fn picker(&self, hold: Entity) -> PickRequest {
+        let key = hold.to_bits();
         let item = |label: &str, answer: &str| PickItem {
             label: label.to_owned(),
             command: format!("confirm {key} {answer}"),
@@ -139,9 +137,10 @@ impl AwaitingApproval {
     }
 }
 
-/// The `shell` tool that runs a command once it is allowed.
-#[derive(Resource, Clone)]
-struct RealShell(Shell);
+/// On a `shell` call the user allowed: the gate lets it run.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Approved;
 
 /// Asks before a `shell` command matching a [`DestructivePatterns`] runs.
 #[derive(Default)]
@@ -152,17 +151,9 @@ impl Plugin for ConfirmDestructivePlugin {
         if !app.world().contains_resource::<DestructivePatterns>() {
             app.insert_resource(DestructivePatterns::from_home());
         }
-        // As `rig_coding_tools::ShellTool` builds it.
-        let shell = Shell {
-            unset_env: &rig_harness::harness_protocol::env::AGENT_ONLY,
-            spill: app
-                .world()
-                .get_resource::<SessionPaths>()
-                .map(SessionPaths::spill),
-        };
         app.add_message::<PickRequest>()
             .init_resource::<SessionAllowances>()
-            .insert_resource(RealShell(shell))
+            .add_systems(AgentPass, gate.in_set(Stage::Gate))
             .add_command(
                 "confirm",
                 "Answer a shell command waiting for approval; alone, asks again",
@@ -171,142 +162,90 @@ impl Plugin for ConfirmDestructivePlugin {
             .add_observer(take_reason)
             .add_observer(ask_next);
     }
-
-    /// Puts the gate in place of the `shell` tool, once every plugin added
-    /// its tools; without a `shell` tool there is nothing to guard.
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let mut tools = world.query::<(Entity, &ToolDef, &ToolRules)>();
-        let shell = tools
-            .iter(world)
-            .find(|(_, def, _)| def.0.name.as_str() == <Shell as PortableTool>::NAME)
-            .map(|(tool, def, rules)| (tool, def.0.description.clone(), rules.0.clone()));
-        let Some((tool, description, rules)) = shell else {
-            return;
-        };
-        world.entity_mut(tool).insert(Disabled);
-        let rules: Vec<&str> = rules.iter().map(String::as_str).collect();
-        let options = ToolOptions {
-            rules: &rules,
-            footprint: Footprint::Exclusive,
-        };
-        app.add_open_tool(<Shell as PortableTool>::NAME, &description, options, gate);
-    }
 }
 
-/// Runs a `shell` call, holds it for the user, or denies it with nobody to
-/// ask.
+/// Holds each destructive `shell` call about to run for the user, or
+/// refuses it with nobody to ask; any other runs.
 fn gate(
-    called: On<ToolCalled<ShellArgs>>,
+    calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Approved>)>,
     patterns: Res<DestructivePatterns>,
     allowed: Res<SessionAllowances>,
     invoked: Option<Res<Invoked>>,
-    shell: Res<RealShell>,
-    wake: Res<Wake>,
     waiting: Query<(), With<AwaitingApproval>>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
 ) {
-    let arguments = &called.run.call.function.arguments;
-    let command = arguments
-        .get("command")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or_default();
-    let pattern = patterns
-        .matching(command)
-        .map(|pattern| pattern.as_str().to_owned())
-        .filter(|pattern| !allowed.0.contains(pattern));
-    let Some(pattern) = pattern else {
-        run(&mut commands, called.call, &shell.0, arguments, &wake);
-        return;
-    };
-    if !invoked.is_some_and(|invoked| invoked.interactive()) {
-        let why = format!("`{command}` {HEADLESS}");
-        let denied = ToolResult::failed(ToolExecutionError::refused(why));
-        commands.entity(called.call).insert(ToolOutput(denied));
-        return;
-    }
-    let awaiting = AwaitingApproval {
-        agent: called.agent,
-        command: command.to_owned(),
-        pattern,
-        reason_asked: false,
-    };
+    let interactive = invoked.is_some_and(|invoked| invoked.interactive());
     // One question at a time: the next is asked once this one is answered.
-    if waiting.is_empty() {
-        picks.write(awaiting.picker(called.call));
-    }
-    commands.entity(called.call).insert(awaiting);
-}
-
-/// Runs the call `call` with `arguments` on the real `shell` tool; its
-/// output ends the call.
-fn run(
-    commands: &mut Commands,
-    call: Entity,
-    shell: &Shell,
-    arguments: &serde_json::Map<String, serde_json::Value>,
-    wake: &Wake,
-) {
-    let arguments = serde_json::Value::Object(arguments.clone());
-    let (shell, args) = (
-        shell.clone(),
-        serde_json::from_value::<ShellArgs>(arguments),
-    );
-    let args = args.map_err(ToolExecutionError::from_error);
-    let work = async move {
-        let output = match args {
-            Ok(args) => PortableTool::call(&shell, args)
-                .await
-                .map_err(|error| PortableTool::map_error(&shell, error)),
-            Err(error) => Err(error),
+    let mut asking = !waiting.is_empty();
+    for (call, ToolRequest { call: request }, &ForAgent(agent)) in &calls {
+        if request.function.name.as_str() != SHELL {
+            continue;
+        }
+        let command = request
+            .function
+            .arguments
+            .get("command")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        let pattern = patterns
+            .matching(command)
+            .map(|pattern| pattern.as_str().to_owned())
+            .filter(|pattern| !allowed.0.contains(pattern));
+        let Some(pattern) = pattern else {
+            continue;
         };
-        output
-            .and_then(IntoToolOutput::into_tool_output)
-            .map_or_else(ToolResult::failed, ToolResult::success)
-    };
-    let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    commands
-        .entity(call)
-        .insert(Running::spawn_into::<ToolOutput, _>(pool, wake, work));
+        if !interactive {
+            let refused = Outcome::refused(format!("`{command}` {HEADLESS}"));
+            commands.entity(call).insert_if_new(refused);
+            continue;
+        }
+        let awaiting = AwaitingApproval {
+            agent,
+            command: command.to_owned(),
+            pattern,
+            reason_asked: false,
+        };
+        let hold = commands.spawn((awaiting.clone(), HoldOf(call))).id();
+        if !asking {
+            asking = true;
+            picks.write(awaiting.picker(hold));
+        }
+    }
 }
 
-/// Ends the waiting call `call` as denied, for `reason` if given.
-fn deny(commands: &mut Commands, call: Entity, reason: Option<&str>) {
+/// Refuses the held call of `hold` as denied, for `reason` if given, and
+/// releases it.
+fn deny(commands: &mut Commands, (hold, call): (Entity, Entity), reason: Option<&str>) {
     let why = match reason.map(str::trim).filter(|reason| !reason.is_empty()) {
         Some(reason) => format!("{DENIED}: {reason}"),
         None => format!("{DENIED}."),
     };
-    let denied = ToolResult::failed(ToolExecutionError::refused(why));
-    commands
-        .entity(call)
-        .remove::<AwaitingApproval>()
-        .insert(ToolOutput(denied));
+    commands.entity(call).insert_if_new(Outcome::refused(why));
+    commands.entity(hold).despawn();
 }
 
-/// `/confirm <call> allow|session|deny [reason]|reason`, as the picker
+/// `/confirm <hold> allow|session|deny [reason]|reason`, as the picker
 /// runs it; `/confirm` alone asks about the first waiting call again, such
 /// as after the picker was closed.
 fn confirm(
     In(args): In<CommandArgs>,
-    mut waiting: Query<(Entity, &ToolCallRun, &mut AwaitingApproval)>,
+    mut waiting: Query<(Entity, &HoldOf, &mut AwaitingApproval)>,
     mut allowed: ResMut<SessionAllowances>,
-    shell: Res<RealShell>,
-    wake: Res<Wake>,
     mut commands: Commands,
     mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
     let mut words = args.args.splitn(3, char::is_whitespace);
     let (key, answer, reason) = (words.next(), words.next(), words.next());
-    let call = key
+    let hold = key
         .filter(|key| !key.is_empty())
         .and_then(|key| key.parse().ok())
         .and_then(Entity::try_from_bits);
-    let Some(call) = call else {
+    let Some(hold) = hold else {
         match waiting.iter().next() {
-            Some((call, _, awaiting)) => {
-                picks.write(awaiting.picker(call));
+            Some((hold, _, awaiting)) => {
+                picks.write(awaiting.picker(hold));
             }
             None => {
                 notices.write(Notice::info(args.agent, "No shell command waits."));
@@ -314,7 +253,7 @@ fn confirm(
         }
         return;
     };
-    let Ok((call, run_of, mut awaiting)) = waiting.get_mut(call) else {
+    let Ok((hold, &HoldOf(call), mut awaiting)) = waiting.get_mut(hold) else {
         notices.write(Notice::error(
             args.agent,
             "That shell command no longer waits.",
@@ -326,11 +265,10 @@ fn confirm(
             if answer == Some("session") && !allowed.0.contains(&awaiting.pattern) {
                 allowed.0.push(awaiting.pattern.clone());
             }
-            commands.entity(call).remove::<AwaitingApproval>();
-            let arguments = &run_of.call.function.arguments;
-            run(&mut commands, call, &shell.0, arguments, &wake);
+            commands.entity(call).insert(Approved);
+            commands.entity(hold).despawn();
         }
-        "deny" => deny(&mut commands, call, reason),
+        "deny" => deny(&mut commands, (hold, call), reason),
         "reason" => {
             awaiting.reason_asked = true;
             notices.write(Notice::info(
@@ -354,7 +292,7 @@ fn confirm(
 /// denies the call and goes nowhere else.
 fn take_reason(
     mut typed: On<Deliver>,
-    waiting: Query<(Entity, &AwaitingApproval)>,
+    waiting: Query<(Entity, &HoldOf, &AwaitingApproval)>,
     mut commands: Commands,
 ) {
     if typed.origin.kind != OriginKind::User || typed.command().is_some() {
@@ -363,10 +301,10 @@ fn take_reason(
     let agent = typed.entity;
     let asked = waiting
         .iter()
-        .find(|(_, awaiting)| awaiting.agent == agent && awaiting.reason_asked);
-    if let Some((call, _)) = asked {
+        .find(|(.., awaiting)| awaiting.agent == agent && awaiting.reason_asked);
+    if let Some((hold, &HoldOf(call), _)) = asked {
         let reason = std::mem::take(&mut typed.text);
-        deny(&mut commands, call, Some(&reason));
+        deny(&mut commands, (hold, call), Some(&reason));
     }
 }
 
@@ -378,9 +316,9 @@ fn ask_next(
 ) {
     let next = waiting
         .iter()
-        .find(|(call, awaiting)| *call != answered.entity && !awaiting.reason_asked);
-    if let Some((call, awaiting)) = next {
-        picks.write(awaiting.picker(call));
+        .find(|(hold, awaiting)| *hold != answered.entity && !awaiting.reason_asked);
+    if let Some((hold, awaiting)) = next {
+        picks.write(awaiting.picker(hold));
     }
 }
 

@@ -177,7 +177,7 @@ fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands:
     names.retain(|name| allowed(name));
     names.sort();
     let method = called.args.method.trim();
-    let failed = |why: String| ToolOutput(ToolResult::failed(ToolExecutionError::refused(why)));
+    let failed = |why: String| Outcome::from(ToolResult::failed(ToolExecutionError::refused(why)));
     let mut call = commands.entity(called.call);
     if !allowed(method) {
         call.insert(failed(format!(
@@ -215,16 +215,12 @@ fn on_inspect(called: On<ToolCalled<InspectArgs>>, remote: Remote, mut commands:
     let listed = (method == RPC_DISCOVER_METHOD).then_some(names);
     let (registry, spill) = (remote.registry.clone(), remote.answers.0.clone());
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    call.insert(Running::spawn_into::<ToolOutput, _>(
-        pool,
-        wake,
-        async move {
-            let reply = replied.recv().await.ok();
-            blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
-                .await
-                .unwrap_or_else(ToolResult::failed)
-        },
-    ));
+    call.insert(Running::answering(pool, wake, async move {
+        let reply = replied.recv().await.ok();
+        blocking(move || Ok(answer(reply, listed, &registry, spill.as_ref())))
+            .await
+            .unwrap_or_else(ToolResult::failed)
+    }));
 }
 
 /// The tool's output for Bevy's `reply`: the methods `listed`, for

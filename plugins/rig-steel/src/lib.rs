@@ -26,11 +26,11 @@
 //! Steel has no memory limit.
 //!
 //! The plugin is written only against rig-ecs's public primitives: an
-//! open tool ([`AppToolsExt::add_open_tool`]) whose call is completed by a
-//! [`Running`] task, and its own [`Harness`] handle over the core's
-//! [`ToolStarter`](rig_ecs::turn::ToolStarter), so the calls a
-//! program makes go through the one recorded dispatch and are recorded
-//! under its `run_steel` call. It is not in the default `plugins.toml`; add it with
+//! open tool ([`AppToolsExt::add_open_tool`]) whose call is answered by a
+//! [`Running`] task, and its own [`Harness`] handle, whose tool calls are
+//! tool call effects ([`ToolRequest`](rig_ecs::tools::ToolRequest)) like
+//! the model's own: gated, started and recorded under its `run_steel`
+//! call. It is not in the default `plugins.toml`; add it with
 //!
 //! ```toml
 //! [[plugin]]
@@ -54,7 +54,7 @@ use futures_timer::Delay;
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions, ToolOutput};
+use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
@@ -146,7 +146,7 @@ struct SteelArgs {
 }
 
 /// Starts a `run_steel` call's program as the call's [`Running`] task; its
-/// result becomes the call's `ToolOutput`, and Esc, which despawns the
+/// result becomes the call's `Outcome`, and Esc, which despawns the
 /// call, cancels it. [`SteelPlugin`] inserts the [`Harness`] before any turn
 /// runs.
 fn on_run_steel(
@@ -156,18 +156,16 @@ fn on_run_steel(
     mut commands: Commands,
 ) {
     let program = run_program(
-        called.run.call.id.to_string(),
+        called.tool_call.id.to_string(),
         harness.within(called.effect),
         called.caller.clone(),
         called.args.code.clone(),
     );
-    commands
-        .entity(called.call)
-        .insert(Running::spawn_into::<ToolOutput, _>(
-            AsyncComputeTaskPool::get_or_init(TaskPool::default),
-            &wake,
-            program,
-        ));
+    commands.entity(called.call).insert(Running::answering(
+        AsyncComputeTaskPool::get_or_init(TaskPool::default),
+        &wake,
+        program,
+    ));
 }
 
 /// Runs `code` on a thread of its own and waits for its end, stopping it

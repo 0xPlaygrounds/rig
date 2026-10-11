@@ -225,9 +225,9 @@ fn on_task(
         }
     };
     let (task, id) = (args.description.trim().to_owned(), AgentId::default());
-    let request = RequestId(called.run.call.id.to_string());
+    let request = RequestId(called.tool_call.id.to_string());
     // A call a restart runs again has no reply to batch with.
-    let batch = called.run.parent;
+    let batch = called.parent;
     let mut child = commands.spawn_empty();
     // Before the model choice, so connecting it keeps this connection.
     if let Some(connection) = connection.filter(|_| model == Some(&choice)) {
@@ -396,7 +396,7 @@ impl Agents<'_, '_> {
     /// the report on its request; to any other, as a new request, unless
     /// that agent waits on the caller's own report and not for this
     /// message.
-    fn send(&mut self, called: &ToolCalled<MessageArgs>, target: Reachable) -> ToolOutput {
+    fn send(&mut self, called: &ToolCalled<MessageArgs>, target: Reachable) -> Outcome {
         let (caller, text) = (called.agent, called.args.text.trim());
         let waiting = !self.wait_calls(target.entity, caller).is_empty();
         let said = if let Some(request) = &target.asked {
@@ -414,7 +414,7 @@ impl Agents<'_, '_> {
                 target.id.short()
             ));
         } else {
-            let request = RequestId(called.run.call.id.to_string());
+            let request = RequestId(called.tool_call.id.to_string());
             let asked = Request {
                 id: request.clone(),
                 asker: called.caller.clone(),

@@ -1,11 +1,10 @@
-//! The one dispatch path. Every model call and tool call goes through
-//! [`Effects::dispatch`] under the agent's stable id and an effect id; an
-//! open tool call, which no handler answers, gets its id when it is opened.
-//! A plugin that keeps an effect log, such as rig-harness's, inserts
-//! [`Effects::recorded_by`] its recorder, which then sees every effect with
-//! rig-core's effect types; without one nothing is recorded. An effect
-//! entity's dispatch ([`stage`](super::stage)) is recorded in the kernel's own
-//! [`RecordBuffer`] instead, and its record written as a
+//! The one dispatch path. Every model call goes through
+//! [`Effects::dispatch`] under the agent's stable id and an effect id. A
+//! plugin that keeps an effect log, such as rig-harness's, inserts
+//! [`Effects::recorded_by`] its recorder, which then sees those calls with
+//! rig-core's effect types; without one they are not recorded. An effect
+//! entity ([`stage`](super::stage)), such as a tool call, is recorded in
+//! the kernel's own [`RecordBuffer`] instead, and its record written as a
 //! [`Recorded`](super::stage::Recorded) when it settles.
 
 use std::sync::Arc;
@@ -13,10 +12,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
 use rig_core::effect::Outcome;
-use rig_core::effect::{EffectId, EffectKind, tool_key};
+use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::serve::{
-    Dispatch, ErasedHandler, OpenRecord, Origin, RecordBuffer, Recorder, Reply, catch_panics,
+    Dispatch, ErasedHandler, Origin, RecordBuffer, Recorder, Reply, catch_panics,
 };
 
 use bevy_tasks::ConditionalSendFuture;
@@ -75,30 +74,6 @@ impl Effects {
             dispatch = dispatch.recorded_by(recorder.clone());
         }
         (id, async move { handler.handle(kind, dispatch).await })
-    }
-
-    /// Records the call of the tool `name` with `args`, under `scope` and
-    /// `parent` as [`dispatch`](Self::dispatch) does, for a call no handler
-    /// answers: its outcome is recorded when the returned [`OpenRecord`] is
-    /// settled, or as cancelled when it is dropped first.
-    pub(crate) fn open(
-        &self,
-        scope: &str,
-        parent: Option<EffectId>,
-        name: &str,
-        args: String,
-    ) -> OpenRecord {
-        let kind = EffectKind::ToolCall {
-            name: name.to_owned(),
-            args,
-        };
-        OpenRecord::begin(
-            self.recorder.clone(),
-            self.next_id(),
-            tool_key(name),
-            kind,
-            origin(scope, parent),
-        )
     }
 
     /// Runs `kind` through `handler` as the effect `id` of an entity, from

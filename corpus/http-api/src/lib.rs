@@ -322,31 +322,30 @@ fn turn_ended(ended: On<TurnEnded>, ids: Query<&AgentId>, mut subscribers: ResMu
 }
 
 fn tool_started(
-    started: On<Add<ToolCallRun>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
+    started: On<Add<Started>>,
+    calls: Query<(&ToolRequest, &ForAgent)>,
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    if let Ok((run, of)) = calls.get(started.entity) {
-        let data = json!({ "agent": agent_of(of, &turns, &ids), "call": run.call });
+    if let Ok((request, ForAgent(agent))) = calls.get(started.entity) {
+        let agent = ids.get(*agent).ok().map(|id| id.0.clone());
+        let data = json!({ "agent": agent, "call": request.call });
         subscribers.send("tool_start", &data);
     }
 }
 
 fn tool_ended(
-    ended: On<Add<ToolOutput>>,
-    calls: Query<(&ToolCallRun, &CallOf, &ToolOutput)>,
-    turns: Query<&TurnOf>,
+    ended: On<Add<Settled>>,
+    calls: Query<(&ToolRequest, &ForAgent, &Outcome)>,
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    if let Ok((run, of, output)) = calls.get(ended.entity) {
+    if let Ok((request, ForAgent(agent), outcome)) = calls.get(ended.entity) {
         let data = json!({
-            "agent": agent_of(of, &turns, &ids),
-            "id": run.call.id,
-            "name": run.call.function.name.as_str(),
-            "result": output,
+            "agent": ids.get(*agent).ok().map(|id| id.0.clone()),
+            "id": request.call.id,
+            "name": request.call.function.name.as_str(),
+            "result": outcome.tool_result(),
         });
         subscribers.send("tool_end", &data);
     }

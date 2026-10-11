@@ -1,28 +1,23 @@
-//! Protected paths (corpus spec 02): the built-in file tools never read
-//! secrets nor write outside the project or into `.git/`.
+//! Protected paths (corpus spec 02): the file tools never read secrets
+//! nor write outside the project or into `.git/`.
 //!
 //! The rules are `deny_read` and `deny_write` globs: defaults, then
-//! `RIG_HOME/paths.toml`, then `<project>/.rig/paths.toml`. Every path a
-//! call names is resolved first (`~`, `..` and symbolic links), so none
-//! sneaks past. The kernel has no hook between a model's tool call and its
-//! run, so the plugin replaces the built-in `read`, `edit`, `write` and
-//! `search` tools (in `finish`, as the plugin guide shows) with open tools
-//! of the same name, schema, rules and footprint, which check the call and
-//! then run rig-tools' own tool. `/paths` lists the rules and what each
-//! blocked.
+//! `RIG_HOME/paths.toml`, then `<project>/.rig/paths.toml`. A Gate system
+//! checks every path a tool call names (its `path`, `file` and `paths`
+//! arguments) when the call is about to run, resolved first (`~`, `..` and
+//! symbolic links) so none sneaks past, and refuses a denied one. A Review
+//! system takes the matches in read-protected files out of `search`
+//! results. `/paths` lists the rules and what each blocked.
 
 use std::collections::HashMap;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use glob::{MatchOptions, Pattern};
-use rig_core::tool::{IntoToolOutput, ToolOutput as Output};
+use rig_core::effect;
+use rig_core::tool::ToolOutput as Output;
 use rig_harness::prelude::*;
-use rig_tools::{Edit, Read, Search, Write};
-use schemars::JsonSchema;
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
 
 #[cfg(test)]
 mod tests;
@@ -33,6 +28,9 @@ const DEFAULT_WRITE: &[&str] = &[".git/**"];
 
 /// The arguments that name paths, in any tool's schema.
 const PATH_ARGUMENTS: &[&str] = &["path", "file", "paths"];
+
+/// The tool whose results name files, `path:line: text`.
+const SEARCH: &str = "search";
 
 /// Adds the path guard and `/paths`.
 #[derive(Default)]
@@ -47,31 +45,18 @@ impl Plugin for ProtectedPathsPlugin {
             app.insert_resource(PathPolicy::load(&root, &[home, project]));
         }
         app.init_resource::<PathGuardCounts>()
-            .init_resource::<Unguarded>()
-            .add_observer(finish_guarded)
+            .add_systems(
+                AgentPass,
+                (
+                    guard.in_set(Stage::Gate),
+                    hide_matches.in_set(Stage::Review),
+                ),
+            )
             .add_command(
                 "paths",
                 "List the protected-path rules and what each blocked",
                 list_rules,
             );
-    }
-
-    fn finish(&self, app: &mut App) {
-        guard(app, Read, &[Access::Read], false);
-        guard(app, Search, &[Access::Read], true);
-        guard(app, Edit, &[Access::Read, Access::Write], false);
-        guard(app, Write, &[Access::Write], false);
-        // Any other tool naming a path cannot be guarded: its handler is
-        // the kernel's alone.
-        let world = app.world_mut();
-        let names: Vec<String> = world
-            .query::<&ToolDef>()
-            .iter(world)
-            .filter(|def| names_a_path(&def.0.parameters))
-            .map(|def| def.0.name.as_str().to_owned())
-            .filter(|name| !matches!(name.as_str(), "read" | "search" | "edit" | "write"))
-            .collect();
-        world.resource_mut::<Unguarded>().0 = names;
     }
 }
 
@@ -338,20 +323,16 @@ pub struct PathGuardCounts {
     pub hidden: HashMap<String, u32>,
 }
 
-/// The tools that name a path but that the guard cannot check.
-#[derive(Resource, Default)]
-struct Unguarded(Vec<String>);
-
-/// Whether a tool's parameters name a path argument.
-fn names_a_path(parameters: &serde_json::Value) -> bool {
-    parameters
-        .get("properties")
-        .and_then(serde_json::Value::as_object)
-        .is_some_and(|properties| {
-            PATH_ARGUMENTS
-                .iter()
-                .any(|name| properties.contains_key(*name))
-        })
+/// What a call of the tool `name` is checked for: the built-in file tools
+/// as they use their paths; any other for reading, and for writing too
+/// unless it changes nothing.
+fn accesses(name: &str, footprint: Footprint) -> &'static [Access] {
+    match name {
+        "read" | SEARCH => &[Access::Read],
+        "write" => &[Access::Write],
+        _ if footprint == Footprint::ReadOnly => &[Access::Read],
+        _ => &[Access::Read, Access::Write],
+    }
 }
 
 /// The paths a call's arguments name; a `search` without a path searches
@@ -378,94 +359,63 @@ fn named_paths(
     paths
 }
 
-/// A guarded call's result and the read rules that hid `search` matches.
+/// A `search` result and the read rules that hid its matches.
 struct Guarded {
     result: ToolResult,
     hidden: Vec<String>,
 }
 
-/// Replaces the registered tool named `T::NAME`, if any, with an open tool
-/// of the same schema, description, rules and footprint that checks each
-/// call's paths for `accesses`, then runs `tool`; `filter` drops output
-/// lines (`path:line: text`) of read-protected files.
-fn guard<T>(app: &mut App, tool: T, accesses: &'static [Access], filter: bool)
-where
-    T: PortableTool + 'static,
-    T::Args: DeserializeOwned + JsonSchema,
-{
-    let world = app.world_mut();
-    let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
-    let Some((entity, description, rules, footprint)) = tools
-        .iter(world)
-        .find(|(_, def, ..)| def.0.name.as_str() == T::NAME)
-        .map(|(entity, def, rules, footprint)| {
-            (
-                entity,
-                def.0.description.clone(),
-                rules.0.clone(),
-                *footprint,
-            )
-        })
-    else {
-        return;
-    };
-    world.entity_mut(entity).insert(Disabled);
-    let rules: Vec<&str> = rules.iter().map(String::as_str).collect();
-    let options = ToolOptions {
-        rules: &rules,
-        footprint,
-    };
-    let tool = Arc::new(tool);
-    let observer = move |called: On<ToolCalled<T::Args>>,
-                         policy: Res<PathPolicy>,
-                         mut counts: ResMut<PathGuardCounts>,
-                         wake: Res<Wake>,
-                         mut commands: Commands| {
-        let arguments = &called.run.call.function.arguments;
-        let denied = named_paths(arguments, filter).into_iter().find_map(|raw| {
+/// Refuses each tool call about to run that names a path a rule denies to
+/// it.
+fn guard(
+    calls: Query<(Entity, &ToolRequest, Option<&Footprint>), Undecided>,
+    policy: Res<PathPolicy>,
+    mut counts: ResMut<PathGuardCounts>,
+    mut commands: Commands,
+) {
+    for (call, ToolRequest { call: request }, footprint) in &calls {
+        let name = request.function.name.as_str();
+        let accesses = accesses(name, footprint.copied().unwrap_or_default());
+        let named = named_paths(&request.function.arguments, name == SEARCH);
+        let denied = named.into_iter().find_map(|raw| {
             accesses
                 .iter()
                 .find_map(|&access| policy.check(access, &raw))
         });
         if let Some(denied) = denied {
             *counts.blocked.entry(denied.rule.label()).or_default() += 1;
-            let refusal = ToolResult::failed(ToolExecutionError::refused(denied.message()));
-            commands.entity(called.call).insert(ToolOutput(refusal));
-            return;
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::refused(denied.message()));
         }
-        let args = match T::Args::deserialize(arguments) {
-            Ok(args) => args,
-            Err(error) => {
-                let why = ToolExecutionError::invalid_args(error.to_string());
-                commands
-                    .entity(called.call)
-                    .insert(ToolOutput(ToolResult::failed(why)));
-                return;
-            }
+    }
+}
+
+/// Takes the matches in read-protected files out of each `search` result,
+/// counting them. A result with none is left as it is, so reviewing it again
+/// changes nothing.
+fn hide_matches(
+    calls: Query<(Entity, &ToolRequest, &Outcome), Unreviewed>,
+    policy: Res<PathPolicy>,
+    mut counts: ResMut<PathGuardCounts>,
+    mut commands: Commands,
+) {
+    for (call, request, outcome) in &calls {
+        let Ok(effect::Outcome::ToolResult { result }) = &outcome.0 else {
+            continue;
         };
-        let (tool, policy) = (tool.clone(), policy.clone());
-        let work = async move {
-            let result = match tool.call(args).await {
-                Ok(output) => match output.into_tool_output() {
-                    Ok(output) => ToolResult::success(output),
-                    Err(error) => ToolResult::failed(error),
-                },
-                Err(error) => ToolResult::failed(tool.map_error(error)),
-            };
-            match filter {
-                true => hide_protected(result, &policy),
-                false => Guarded {
-                    result,
-                    hidden: Vec::new(),
-                },
-            }
-        };
-        let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-        commands
-            .entity(called.call)
-            .insert(Running::spawn(pool, &wake, work));
-    };
-    app.add_open_tool(T::NAME, &description, options, observer);
+        if request.call.function.name.as_str() != SEARCH {
+            continue;
+        }
+        let guarded = hide_protected(result.clone(), &policy);
+        if guarded.hidden.is_empty() {
+            continue;
+        }
+        for rule in guarded.hidden {
+            *counts.hidden.entry(rule).or_default() += 1;
+        }
+        commands.entity(call).insert(Outcome::from(guarded.result));
+    }
 }
 
 /// Drops the `path:line: text` lines of read-protected files from a
@@ -515,33 +465,11 @@ fn match_path(line: &str) -> Option<&str> {
     })
 }
 
-/// A guarded call's result becomes its `ToolOutput`, its hidden matches
-/// counted.
-fn finish_guarded(
-    done: On<Add<Done<Guarded>>>,
-    mut calls: Query<&mut Done<Guarded>>,
-    mut counts: ResMut<PathGuardCounts>,
-    mut commands: Commands,
-) {
-    let Ok(mut guarded) = calls.get_mut(done.entity) else {
-        return;
-    };
-    for rule in guarded.0.hidden.drain(..) {
-        *counts.hidden.entry(rule).or_default() += 1;
-    }
-    let result = guarded.0.result.clone();
-    commands
-        .entity(done.entity)
-        .remove::<Done<Guarded>>()
-        .insert(ToolOutput(result));
-}
-
 /// `/paths`: the rules, what each blocked, and what is not guarded.
 fn list_rules(
     In(args): In<CommandArgs>,
     policy: Res<PathPolicy>,
     counts: Res<PathGuardCounts>,
-    unguarded: Res<Unguarded>,
     mut notices: MessageWriter<Notice>,
 ) {
     let mut lines = vec![format!("Protected paths in {}:", policy.0.root.display())];
@@ -557,13 +485,7 @@ fn list_rules(
     for problem in &policy.0.problems {
         lines.push(format!("  not loaded: {problem}"));
     }
-    lines.push("Guarded tools: read, edit, write, search.".to_owned());
-    if !unguarded.0.is_empty() {
-        lines.push(format!(
-            "Not guarded, though they take a path: {}.",
-            unguarded.0.join(", ")
-        ));
-    }
+    lines.push("Guarded: the `path`, `file` and `paths` arguments of every tool.".to_owned());
     lines.push(
         "`shell` commands are not parsed: a command can still read or write any path.".to_owned(),
     );

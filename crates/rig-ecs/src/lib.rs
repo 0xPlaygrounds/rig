@@ -53,8 +53,8 @@ pub mod prelude {
     pub use crate::AgentPlugin;
     pub use crate::agent::{
         ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent,
-        Interrupt, LastUsage, Notice, NoticeLevel, Partial, Queued, Retry, Spawned, SpawnedBy,
-        SystemPrompt, ToolAccess, ToolCallRun, TurnEnded, TurnOf, TurnOutcome,
+        Interrupt, LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
+        SystemPrompt, ToolAccess, Turn, TurnEnded, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
@@ -68,10 +68,11 @@ pub mod prelude {
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
         Outcome, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
-        Unreviewed, record_of,
+        Unreviewed, Waiting, record_of,
     };
     pub use crate::tools::{
-        AppToolsExt, Footprint, ToolCalled, ToolDef, ToolOptions, ToolOutput, WorldToolsExt,
+        AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
+        WorldToolsExt,
     };
     pub use crate::turn::{
         Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
@@ -141,6 +142,8 @@ impl Plugin for AgentPlugin {
                     .in_set(bevy_app::OnAppExitSystems),
             )
             .add_systems(Startup, spawn_first_agent)
+            // A reply that came in this frame has its calls started in it.
+            .configure_sets(Update, PollCalls.before(stage::AgentLoop))
             .add_systems(
                 Update,
                 (poll_calls, turn::stream_partials).in_set(PollCalls),
@@ -159,7 +162,6 @@ impl Plugin for AgentPlugin {
             .add_observer(commands::on_run_command)
             .add_observer(turn::on_call_model)
             .add_observer(turn::on_model_done)
-            .add_observer(turn::on_tool_done)
             .add_observer(turn::on_model_request)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)

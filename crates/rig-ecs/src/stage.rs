@@ -46,9 +46,11 @@ use bevy_app::prelude::*;
 use bevy_ecs::error::{BevyError, ErrorContext, ErrorHandler, FallbackErrorHandler};
 use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::QueryData;
 use bevy_ecs::schedule::{LogLevel, ScheduleBuildSettings, ScheduleLabel, SingleThreadedExecutor};
 use bevy_ecs::world::DeferredWorld;
-use bevy_log::warn;
+use bevy_log::tracing::Instrument;
+use bevy_log::{info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
@@ -57,11 +59,17 @@ use rig_core::effect::{
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Origin, Recorder, cancelled};
+use rig_core::tool::{ToolExecutionError, ToolResult};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{AgentId, Notice};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler};
+use super::journal::SessionLog;
+use super::tools::{
+    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, tool_kind,
+};
+use super::turn::{commit_replies, keeps_settled, wait_in_order};
 
 /// One pass over the stages. Plugins add their systems to it in a
 /// [`Stage`]: `app.add_systems(AgentPass, gate.in_set(Stage::Gate))`.
@@ -84,17 +92,24 @@ pub enum Stage {
     /// ([`Unreviewed`]).
     Review,
     /// The kernel settles the answered effects nothing holds, and the
-    /// superseded ones, and writes their [`Recorded`].
+    /// superseded ones, and writes their [`Recorded`]; once every call of
+    /// a model's reply settled, it commits their results and calls the
+    /// model again.
     Commit,
-    /// The kernel admits the effects spawned since the last pass.
+    /// The kernel admits the effects spawned since the last pass, gives
+    /// each tool call its tool's [`Footprint`] and [`CallHandler`], and
+    /// marks the calls of a reply that must wait for an earlier one
+    /// [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`).
     Prepare,
     /// Plugins hold ([`HoldOf`]) or answer ([`Outcome`]) what is about to
     /// start ([`Undecided`]).
     Gate,
-    /// The kernel starts what is admitted, unheld and unanswered. An
-    /// effect it does not run stays open, [`Started`], until answered.
+    /// The kernel starts what is admitted, unheld and unanswered: it runs
+    /// handlers, refuses a tool call its agent cannot make, and opens an
+    /// open tool's call. An effect it does not run stays open,
+    /// [`Started`], until answered.
     Start,
 }
 
@@ -212,15 +227,42 @@ pub struct Started {
 /// The effect's answer. The first one wins: a gate or an answering system
 /// inserts it with `insert_if_new`. A reviewer replaces it with `insert`,
 /// and the record keeps the first as its outcome and the last as the
-/// reviewed one. Inserted on a running effect, it cancels the handler.
+/// reviewed one. Inserted on a running effect, it cancels the handler. A
+/// tool call's answer is its result: `Outcome::from(ToolResult)`.
 #[derive(Component, Clone, Debug)]
 #[component(on_insert = answered, on_discard = keep_raw)]
 pub struct Outcome(pub Result<effect::Outcome, ErrorReport>);
 
 impl Outcome {
-    /// A refusal for `why`, decided before the effect ran.
+    /// A refusal for `why`, decided before the effect ran. A tool call's
+    /// refusal reaches the model as the tool's refusal.
     pub fn refused(why: impl Into<String>) -> Self {
-        Self(Err(ErrorReport::new(ErrorKind::Denied, why)))
+        Self(Err(ErrorReport::new(ErrorKind::Denied, why).refused()))
+    }
+
+    /// What a tool call answered this way returns to the model: its
+    /// result, or the failure as an error result.
+    pub fn tool_result(&self) -> ToolResult {
+        match &self.0 {
+            Ok(effect::Outcome::ToolResult { result }) => result.clone(),
+            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
+                "the tool answered with a {} outcome",
+                other.family()
+            ))),
+            Err(report) => ToolResult::failed(report.clone().into()),
+        }
+    }
+}
+
+impl From<ToolResult> for Outcome {
+    fn from(result: ToolResult) -> Self {
+        Self(Ok(effect::Outcome::ToolResult { result }))
+    }
+}
+
+impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
+    fn from(outcome: Result<effect::Outcome, ErrorReport>) -> Self {
+        Self(outcome)
     }
 }
 
@@ -276,10 +318,20 @@ pub struct Settled;
 #[derive(Message, Clone, Debug)]
 pub struct Recorded(pub EffectRecord);
 
-/// Effects about to start: admitted, not started, unanswered, unheld and
-/// not superseded. A gate's filter.
+/// On a call of a model's reply that waits for an earlier call of that
+/// reply it must not run beside ([`Footprint`]) to settle. The kernel sets
+/// and clears it in [`Stage::Admit`], so Gate sees each call when it is
+/// about to run.
+#[derive(Component, Reflect, Debug, Default)]
+#[component(storage = "SparseSet", on_remove = moved::<Waiting>)]
+#[reflect(Component, Default)]
+pub struct Waiting;
+
+/// Effects about to start: admitted, not waiting, not started, unanswered,
+/// unheld and not superseded. A gate's filter.
 pub type Undecided = (
     With<Admitted>,
+    Without<Waiting>,
     Without<Started>,
     Without<Outcome>,
     Without<Holds>,
@@ -375,8 +427,10 @@ pub(crate) fn build(app: &mut App) {
             AgentPass,
             (
                 arrive.in_set(Stage::Arrive),
-                settle.in_set(Stage::Commit),
-                admit.in_set(Stage::Admit),
+                (settle, commit_replies).chain().in_set(Stage::Commit),
+                (complete_calls, admit, wait_in_order)
+                    .chain()
+                    .in_set(Stage::Admit),
                 answer_unprepared.in_set(Enter(Stage::Gate)),
                 start.in_set(Stage::Start),
             ),
@@ -403,11 +457,14 @@ fn moved_since_quiet(passes: Res<Passes>) -> bool {
     passes.moved != passes.quiet_at
 }
 
-/// Despawns what settled last frame, then runs passes until one moves
-/// nothing, with zero time steps after the first, and the kernel's error
-/// handler in place of the app's.
+/// Despawns what settled last frame, but the calls of a reply still
+/// running, then runs passes until one moves nothing, with zero time steps
+/// after the first, and the kernel's error handler in place of the app's.
 fn run_passes(world: &mut World, settled: &mut QueryState<Entity, With<Settled>>) {
-    let done: Vec<Entity> = settled.iter(world).collect();
+    let done: Vec<Entity> = settled
+        .iter(world)
+        .filter(|&entity| !keeps_settled(world, entity))
+        .collect();
     for entity in done {
         // A settled effect may go with its parent.
         world.try_despawn(entity).ok();
@@ -676,12 +733,15 @@ fn answer_unprepared(
 
 /// Starts every admitted, unheld, unanswered effect, unless a Gate system
 /// failed this pass: an effect request with a handler is dispatched on the
-/// kernel's recorded path, and one without stays open.
+/// kernel's recorded path, a tool call as [`ToolStarts`] says, and any
+/// other effect stays open.
 fn start(
-    ready: Query<(Entity, &Effect, Option<&EffectRequest>, Option<&ForAgent>), Undecided>,
+    ready: Query<StartItem, Undecided>,
     agents: Query<&AgentId>,
+    tools: ToolStarts,
     effects: Res<Effects>,
     wake: Res<Wake>,
+    log: Res<SessionLog>,
     mut passes: ResMut<Passes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -694,28 +754,80 @@ fn start(
         return;
     }
     let at = SystemTime::now();
-    for (entity, effect, request, agent) in &ready {
-        let mut started = commands.entity(entity);
-        let Some(EffectRequest {
-            kind,
-            handler: Some(handler),
-        }) = request
-        else {
-            started.try_insert(Started { at });
-            continue;
-        };
-        let scope = agent
-            .and_then(|agent| agents.get(agent.0).ok())
-            .map(|id| Arc::from(id.0.as_str()));
+    // Before a call that may change something, the reply that asked for
+    // it is on disk.
+    let changes = ready.iter().any(|item| {
+        item.tool.is_some() && item.footprint.copied().unwrap_or_default() != Footprint::ReadOnly
+    });
+    if changes {
+        log.flush();
+    }
+    for item in &ready {
+        let (entity, effect) = (item.entity, item.effect);
+        let agent = item.agent.map(|agent| agent.0);
+        let caller = agent.and_then(|agent| agents.get(agent).ok());
         let origin = Origin {
             parent: effect.parent,
-            scope,
+            scope: caller.map(|id| Arc::from(id.0.as_str())),
             purpose: effect.purpose.clone(),
         };
-        let work = effects.run(effect.id, origin, handler.0.clone(), kind.clone());
-        let running = Running::answering(effect_pool(), &wake, work);
+        let mut started = commands.entity(entity);
+        let (handler, kind) = match (item.request, item.tool) {
+            (
+                Some(EffectRequest {
+                    kind,
+                    handler: Some(handler),
+                }),
+                _,
+            ) => (handler.clone(), kind.clone()),
+            (_, Some(ToolRequest { call })) => {
+                match tools.start(call, item.handler, agent.zip(caller)) {
+                    ToolStart::Run(handler, kind) => (handler, kind),
+                    ToolStart::Open(open) => {
+                        started.try_insert(Started { at });
+                        let parent = effect.parent;
+                        let (id, call) = (effect.id, call.clone());
+                        commands.queue(move |world: &mut World| {
+                            if world.get_entity(entity).is_ok() {
+                                open(world, entity, id, parent, call);
+                            }
+                        });
+                        continue;
+                    }
+                    ToolStart::Refused(report) => {
+                        started.try_insert_if_new(Outcome(Err(report)));
+                        continue;
+                    }
+                }
+            }
+            _ => {
+                started.try_insert(Started { at });
+                continue;
+            }
+        };
+        let span = match &kind {
+            EffectKind::ToolCall { name, .. } => {
+                let agent = origin.scope.as_deref().unwrap_or_default();
+                info_span!("tool_call", agent, tool = name.as_str(), parent = ?effect.parent)
+            }
+            other => info_span!("effect", kind = other.name()),
+        };
+        let work = effects.run(effect.id, origin, handler.0, kind);
+        let running = Running::answering(effect_pool(), &wake, work.instrument(span));
         started.try_insert((Started { at }, running));
     }
+}
+
+/// An effect as Start finds it.
+#[derive(QueryData)]
+struct StartItem {
+    entity: Entity,
+    effect: &'static Effect,
+    request: Option<&'static EffectRequest>,
+    tool: Option<&'static ToolRequest>,
+    handler: Option<&'static CallHandler>,
+    footprint: Option<&'static Footprint>,
+    agent: Option<&'static ForAgent>,
 }
 
 /// Plugin effects run on the async compute pool, as tool calls do.
@@ -873,6 +985,13 @@ fn assemble(
 
 /// The handler key and kind of an effect the kernel knows.
 fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
+    if let Some(ToolRequest { call }) = world.get::<ToolRequest>(entity) {
+        let name = call.function.name.as_str();
+        let key = world
+            .get::<CallHandler>(entity)
+            .map_or_else(|| tool_key(name), |handler| handler.0.0.descriptor().key);
+        return Some((key, tool_kind(call)));
+    }
     let request = world.get::<EffectRequest>(entity)?;
     let key = match &request.handler {
         Some(handler) => handler.0.descriptor().key,

@@ -25,9 +25,11 @@ What it holds, by module:
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
   moves. A plugin steps in with a system in a stage: it edits a request in
   Prepare, holds (`HoldOf`) or answers (`Outcome`) it in Gate, and reads or
-  replaces the outcome in Review. Every settled effect is `Recorded`, with
-  its raw and reviewed outcome. A failing Prepare, Gate or Review system
-  closes its stage for that pass.
+  replaces the outcome in Review. A tool call is such an effect
+  (`ToolRequest`): Gate sees a reply's call when it is about to run, once
+  every earlier call it must not run beside settled (`Waiting`). Every
+  settled effect is `Recorded`, with its raw and reviewed outcome. A
+  failing Prepare, Gate or Review system closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens; `KeepAwake` keeps it running for a
   timer.
@@ -39,8 +41,8 @@ What it holds, by module:
 - `inbox`: `Deliver`, the one way a message reaches an agent.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
-- `effects`: one dispatch path for every model and tool call, which a
-  plugin may record.
+- `effects`: one dispatch path for every model call, which a plugin may
+  record; effect entities record into the kernel's own buffer.
 - `journal`, `restore`: the append-only session log and its restore. Every
   conversation change goes through `Commit` and is seen as a `Committed`
   message; a component that says `#[reflect(Component, Saved)]`, or a

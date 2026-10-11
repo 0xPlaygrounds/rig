@@ -115,13 +115,13 @@ pub struct Awaits(pub Entity);
 pub struct AwaitedBy(Vec<Entity>);
 
 /// A call's answer.
-fn answered(text: String) -> ToolOutput {
-    ToolOutput(ToolResult::success(text.into()))
+fn answered(text: String) -> Outcome {
+    ToolResult::success(text.into()).into()
 }
 
 /// A call's refusal.
-fn refused(why: String) -> ToolOutput {
-    ToolOutput(ToolResult::failed(ToolExecutionError::other(why)))
+fn refused(why: String) -> Outcome {
+    ToolResult::failed(ToolExecutionError::other(why)).into()
 }
 
 #[cfg(test)]

@@ -1,9 +1,10 @@
 //! The effect log: every model and tool call the agents make, recorded
 //! with rig-core's effect types into the session directory's
-//! [`EFFECT_LOG`], so rig-cassette's replayer replays the session. Its
-//! header describes the tools and the models the agents connect to. Ids
-//! continue after the highest one the log already holds, so a resumed
-//! session keeps adding to the same log.
+//! [`EFFECT_LOG`], so rig-cassette's replayer replays the session: model
+//! calls by the recorder, and effect entities, such as tool calls, by
+//! their [`Recorded`] records. Its header describes the tools and the
+//! models the agents connect to. Ids continue after the highest one the
+//! log already holds, so a resumed session keeps adding to the same log.
 
 use std::sync::Arc;
 
@@ -73,19 +74,24 @@ fn describe_model(
     }
 }
 
-/// Writes the effects resolved by the end of the frame. A failure is shown
-/// once.
+/// Writes the effects resolved or settled by the end of the frame, in id
+/// order. A failure is shown once.
 fn write_effects(
     mut log: ResMut<EffectLog>,
+    mut recorded: MessageReader<Recorded>,
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
+    let settled: Vec<_> = recorded.read().map(|recorded| recorded.0.clone()).collect();
     // Taking copies the header, tools' schemas and all, every frame.
-    if log.recorder.resolved() == 0 {
+    if log.recorder.resolved() == 0 && settled.is_empty() {
         return;
     }
     let EffectLog { recorder, writer } = &mut *log;
-    if let Err(failure) = writer.append(&recorder.take())
+    let mut taken = recorder.take();
+    taken.records.extend(settled);
+    taken.records.sort_by_key(|record| record.id);
+    if let Err(failure) = writer.append(&taken)
         && !*failed
     {
         *failed = true;

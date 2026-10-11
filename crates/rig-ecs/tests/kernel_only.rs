@@ -17,7 +17,7 @@ use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning, ToolDefinition};
-use rig_core::effect::{EffectId, HandlerKey, tool_key};
+use rig_core::effect::{EffectId, EffectRecord, HandlerKey, tool_key};
 use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
@@ -69,6 +69,10 @@ impl PortableTool for Add {
 #[derive(Resource, Default)]
 struct Ended(Vec<TurnOutcome>);
 
+/// The records of the effects that settled, such as tool calls.
+#[derive(Resource, Default)]
+struct Settles(Vec<EffectRecord>);
+
 /// A headless kernel app on `store`, with its loop's wakes.
 fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
@@ -80,6 +84,15 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
         .insert_resource(SessionStore::new(store.clone()))
         .add_plugins((AgentPlugin, JournalPlugin))
         .init_resource::<Ended>()
+        .init_resource::<Settles>()
+        .add_systems(
+            Last,
+            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
+                settles
+                    .0
+                    .extend(recorded.read().map(|record| record.0.clone()));
+            },
+        )
         .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
             log.0.push(ended.outcome.clone());
         });
@@ -242,10 +255,12 @@ fn a_new_app_on_the_store_restores_the_conversation() {
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
     // Both model calls and both tool calls, the refused one too, were
-    // recorded, numbered after the given id.
-    let log = recorder.log();
+    // recorded, numbered after the given id: the model calls by the
+    // recorder, the tool calls, effect entities, as they settled.
+    let mut log = recorder.log().records;
+    log.extend(app.world().resource::<Settles>().0.iter().cloned());
+    log.sort_by_key(|record| record.id);
     let recorded: Vec<_> = log
-        .records
         .iter()
         .map(|record| (record.id.as_u64(), &record.key, record.outcome.is_ok()))
         .collect();

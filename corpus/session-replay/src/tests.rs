@@ -10,6 +10,10 @@ use rig_tools::Write;
 
 use super::*;
 
+/// The records of the effects that settled, such as tool calls.
+#[derive(Resource, Default)]
+struct Settles(Vec<EffectRecord>);
+
 /// The kernel and the `write` tool on `store`, every agent answered by
 /// `model`.
 fn app(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) {
@@ -17,6 +21,15 @@ fn app(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>) 
     let connection = connect(model);
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin))
+        .init_resource::<Settles>()
+        .add_systems(
+            Last,
+            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
+                settles
+                    .0
+                    .extend(recorded.read().map(|record| record.0.clone()));
+            },
+        )
         .add_tool_with(
             Write,
             ToolOptions {
@@ -129,8 +142,14 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert_eq!(recorded_conversation.len(), 4, "{recorded_conversation:?}");
     assert_eq!(std::fs::read_to_string(&file).ok().as_deref(), Some("x"));
     std::fs::remove_file(&file).ok();
+    // Model calls come from the recorder, tool calls as they settled.
+    let mut effects = recorder.take();
+    effects
+        .records
+        .extend(app.world().resource::<Settles>().0.iter().cloned());
+    effects.records.sort_by_key(|record| record.id);
     let recorded = ReplaySource {
-        effects: recorder.take(),
+        effects,
         journal: Arc::new(journal),
         flags: ReplayFlags::default(),
     };

@@ -3,8 +3,8 @@
 //! them requests, awaits their replies and calls their tools. Each call is a
 //! job sent into the world, which runs it in the next frame (the call asks
 //! for one through [`Wake`]) and answers on a oneshot channel. Tool calls
-//! made through it go through the one recorded dispatch path
-//! ([`ToolStarter`]), like the model's own.
+//! made through it are tool call effects ([`ToolRequest`]), like the
+//! model's own: gated, started and recorded the same way.
 
 use std::collections::HashMap;
 
@@ -21,8 +21,8 @@ use rig_ecs::agent::{
 use rig_ecs::calls::{PollCalls, Wake};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
 use rig_ecs::model::{Effort, ModelChoice, Models};
-use rig_ecs::tools::ToolOutput;
-use rig_ecs::turn::{ToolStarter, tool_name};
+use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled};
+use rig_ecs::tools::ToolRequest;
 
 /// The [`Harness`] resource and the jobs, replies and tool calls behind it.
 pub(crate) struct HarnessPlugin;
@@ -32,7 +32,7 @@ impl Plugin for HarnessPlugin {
         app.init_resource::<Jobs>()
             .init_resource::<Replies>()
             .add_systems(PreStartup, insert_harness)
-            .add_systems(Update, run_jobs.before(PollCalls))
+            .add_systems(Update, run_jobs.before(PollCalls).before(AgentLoop))
             .add_observer(end_replies)
             .add_observer(drop_replies)
             .add_observer(answer_call);
@@ -373,37 +373,20 @@ fn call_tool(
         }
     };
     let call = ToolCall::from_wire("", ToolFunction::new(name, args));
-    // A failure drops `answer`, which the caller reads as closed.
-    world
-        .run_system_cached_with(start_call, (agent, call, effect, answer))
-        .ok();
+    world.spawn((
+        ToolRequest { call },
+        ForAgent(agent),
+        Effect::child_of(effect),
+        HarnessCall(Some(answer)),
+    ));
 }
 
-/// Starts a [`Harness`] tool call as an entity of its own, outside any
-/// turn, on the path a model's call takes.
-fn start_call(
-    In((agent, call, parent, answer)): In<(Entity, ToolCall, Option<EffectId>, Answer<ToolResult>)>,
-    starter: ToolStarter,
-    mut commands: Commands,
-) {
-    let run = starter.run(call, parent);
-    let entity = commands
-        .spawn((tool_name(&run), run.clone(), HarnessCall(Some(answer))))
-        .id();
-    starter.start(&mut commands, entity, agent, &run);
-}
-
-/// Answers a [`Harness`] tool call with its output, then despawns it.
-fn answer_call(
-    done: On<Add<ToolOutput>>,
-    mut calls: Query<(&ToolOutput, &mut HarnessCall)>,
-    mut commands: Commands,
-) {
-    let Ok((ToolOutput(result), mut call)) = calls.get_mut(done.entity) else {
+/// Answers a [`Harness`] tool call with its result once it settled.
+fn answer_call(settled: On<Add<Settled>>, mut calls: Query<(&Outcome, &mut HarnessCall)>) {
+    let Ok((outcome, mut call)) = calls.get_mut(settled.entity) else {
         return;
     };
     if let Some(answer) = call.0.take() {
-        answer.send(Ok(result.clone())).ok();
+        answer.send(Ok(outcome.tool_result())).ok();
     }
-    commands.entity(done.entity).try_despawn();
 }

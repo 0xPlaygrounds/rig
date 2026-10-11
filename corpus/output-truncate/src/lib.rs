@@ -3,19 +3,18 @@
 //!
 //! A tool result longer than [`TruncateConfig::max_lines`] or
 //! [`TruncateConfig::max_bytes`] is cut to its first and last lines around
-//! a marker naming a spill file, which holds the whole text. The cut
-//! happens as the call's [`ToolOutput`] is added, before the turn commits
-//! it, so the model, the conversation and the transcript all see the same
-//! cut result, and an error stays an error.
+//! a marker naming a spill file, which holds the whole text. A Review
+//! system cuts the call's [`Outcome`] before the turn commits it, so the
+//! model, the conversation and the transcript all see the same cut
+//! result, and an error stays an error.
 
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::DeferredWorld;
 use bevy_log::warn;
+use rig_core::effect;
 use rig_core::tool::ToolOutput as Output;
 use rig_ecs::prelude::*;
 
@@ -77,38 +76,34 @@ pub struct OutputTruncatePlugin;
 impl Plugin for OutputTruncatePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<TruncateConfig>()
-            .add_systems(Startup, sweep_old_spills);
-        // The kernel's turn takes a call's result in an observer of
-        // `Add<ToolOutput>`; a component's add hook runs before any such
-        // observer, so the result is cut before it is committed.
-        let hooks = app.world_mut().register_component_hooks::<ToolOutput>();
-        if hooks.try_on_add(cut_on_add).is_none() {
-            warn!("another plugin set ToolOutput's add hook: long tool results are not cut");
+            .add_systems(Startup, sweep_old_spills)
+            .add_systems(AgentPass, cut_long_results.in_set(Stage::Review));
+    }
+}
+
+/// On a call whose result was cut, so it is not cut again: the cut may
+/// still be over the byte limit by its marker.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Cut;
+
+/// Replaces each long result of a covered tool by its cut.
+fn cut_long_results(
+    calls: Query<(Entity, &ToolRequest, &Outcome), (Unreviewed, Without<Cut>)>,
+    config: Res<TruncateConfig>,
+    mut commands: Commands,
+) {
+    for (call, ToolRequest { call: request }, outcome) in &calls {
+        let Ok(effect::Outcome::ToolResult { result }) = &outcome.0 else {
+            continue;
+        };
+        if !config.tools.covers(request.function.name.as_str()) {
+            continue;
+        }
+        if let Some(cut) = shorten(result, &request.id.wire(), &config) {
+            commands.entity(call).insert((Outcome::from(cut), Cut));
         }
     }
-}
-
-/// Replaces a long result, as its call ends, by its cut.
-fn cut_on_add(mut world: DeferredWorld, context: HookContext) {
-    let entity = context.entity;
-    let Some(cut) = cut_of(&world, entity) else {
-        return;
-    };
-    if let Some(mut output) = world.get_mut::<ToolOutput>(entity) {
-        output.0 = cut;
-    }
-}
-
-/// The cut of the call `entity`'s result, when its tool's results are cut
-/// and it is too long.
-fn cut_of(world: &World, entity: Entity) -> Option<ToolResult> {
-    let config = world.get_resource::<TruncateConfig>()?;
-    let run = world.get::<ToolCallRun>(entity)?;
-    if !config.tools.covers(run.call.function.name.as_str()) {
-        return None;
-    }
-    let ToolOutput(result) = world.get::<ToolOutput>(entity)?;
-    shorten(result, &run.call.id.wire(), config)
 }
 
 /// `result` cut around a marker, with its whole text written to the spill

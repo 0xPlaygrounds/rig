@@ -1,30 +1,39 @@
-//! The stage rules on their own: plugin effects ([`EffectRequest`]) on a
-//! headless kernel app, with stage systems as plugins write them. Effects
-//! chain within the frame their outcomes arrive in, the first answer wins,
-//! holds add up, every Prepare and Gate system sees a late spawn before it
-//! starts, a review keeps the raw outcome in the record, a failing stage
-//! system closes its stage, and every way an effect ends is recorded.
+//! The stage rules on their own: plugin effects ([`EffectRequest`]) and a
+//! scripted model's tool calls ([`ToolRequest`]) on a headless kernel app,
+//! with stage systems as plugins write them. Effects chain within the
+//! frame their outcomes arrive in, the first answer wins, holds add up,
+//! every Prepare and Gate system sees a late spawn before it starts, a
+//! review keeps the raw outcome in the record, a failing stage system
+//! closes its stage, and every way an effect ends is recorded. A reply's
+//! calls start, and their results go back, in the frames they arrive; a
+//! gate sees each call when it is about to run; a refusal answers in call
+//! order and is recorded as one.
 //!
-//! Of the design's twelve rule tests (design.md §5), the generic ones land
-//! here: 1 (single-frame chaining, with a plugin effect), 4 (the conflict
-//! rule), 5 (admission), 6 (review) and 10 (fail closed). The rest need the
-//! kernel's own effect kinds and land with them: 2 (gate when ready) and 3
-//! (refusal order) with tool calls, 1 again for a reply's calls; 8
-//! (re-entry) and 9 (refusal is not failure) with model calls; 7 (turn
-//! endings) and 11 (interrupt) with turn endings; 12 (restore) with the
-//! restore commit, in `src/restore/tests.rs`.
+//! Of the design's twelve rule tests (design.md §5), these land here: 1
+//! (single-frame chaining, with a plugin effect and with a reply's calls),
+//! 2 (gate when ready), 3 (refusal order), 4 (the conflict rule), 5
+//! (admission), 6 (review) and 10 (fail closed). The rest land with the
+//! kernel's other effect kinds: 8 (re-entry) and 9 (refusal is not
+//! failure) with model calls; 7 (turn endings) and 11 (interrupt) with
+//! turn endings; 12 (restore) with the restore commit, in
+//! `src/restore/tests.rs`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
 use bevy_time::TimeUpdateStrategy;
+use rig_core::catalog::Catalog;
 use rig_core::effect::{Disposition, EffectKind, EffectRecord};
 use rig_core::error::ErrorKind;
+use rig_core::message::Message;
+use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ToolAdapter;
+use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
+use rig_ecs::turn::ModelCall;
 use serde::Deserialize;
 
 /// How long a test waits for a tool to answer.
@@ -601,5 +610,323 @@ fn every_way_an_effect_ends_is_recorded() {
     assert_eq!(
         disposition("dropped").map(|(how, _)| how),
         Some(Disposition::Cancelled)
+    );
+}
+
+/// Answers at once; changes nothing, so its calls run side by side.
+struct Look;
+
+impl PortableTool for Look {
+    const NAME: &'static str = "look";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Looks.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        Ok("seen".to_owned())
+    }
+}
+
+/// Answers at once; may change anything, so its calls run alone.
+struct Touch;
+
+impl PortableTool for Touch {
+    const NAME: &'static str = "touch";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Touches.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        Ok("touched".to_owned())
+    }
+}
+
+/// A model reply calling `look` or `touch` once for each of `calls`, by
+/// call id.
+fn reply(calls: &[(&str, &str)]) -> Vec<MockStreamEvent> {
+    let calls = calls
+        .iter()
+        .map(|(tool, id)| MockStreamEvent::tool_call(*id, *tool, serde_json::json!({})));
+    calls
+        .chain([MockStreamEvent::final_response_with_default_usage()])
+        .collect()
+}
+
+fn answer(text: &str) -> Vec<MockStreamEvent> {
+    vec![
+        MockStreamEvent::text(text),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]
+}
+
+/// The app's agent on `model`, with `look` and `touch`, asked to go; frames
+/// are counted from 1 in `Frame`.
+fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
+    let spec = Catalog::builtin()
+        .resolve("deepseek/deepseek-flash")
+        .map(|spec| spec.shared());
+    let read_only = ToolOptions {
+        footprint: Footprint::ReadOnly,
+        ..ToolOptions::default()
+    };
+    app.add_tool_with(Look, read_only)
+        .add_tool(Touch)
+        .init_resource::<Frame>()
+        .add_systems(First, |mut frame: ResMut<Frame>| frame.0 += 1);
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    if let Ok(spec) = spec {
+        let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+        let handler = Handler(ErasedHandler::new(handler));
+        world.entity_mut(agent).insert(Connection { spec, handler });
+    }
+    world.trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    agent
+}
+
+fn conversation(app: &App, agent: Entity) -> Vec<Message> {
+    let conversation = app.world().get::<Conversation>(agent);
+    conversation.map_or_else(Vec::new, |conversation| conversation.messages().to_vec())
+}
+
+/// The calls named by id, with the call ids as the model sent them.
+fn call_named(world: &mut World, id: &str) -> Option<Entity> {
+    let mut calls = world.query::<(Entity, &ToolRequest)>();
+    calls
+        .iter(world)
+        .find(|(_, request)| request.call.id.to_string() == id)
+        .map(|(call, _)| call)
+}
+
+/// The tool results of the conversation's message `at`, in order: whether
+/// each is an error, and how it reads.
+fn results_at(messages: &[Message], at: usize) -> Vec<(bool, String)> {
+    match messages.get(at) {
+        Some(Message::User { content }) => content
+            .iter()
+            .filter_map(|item| match item {
+                UserContent::ToolResult(result) => Some((result.is_error, format!("{result:?}"))),
+                _ => None,
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+#[test]
+fn a_replys_calls_start_and_their_results_go_back_in_the_frames_they_arrive() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("look", "l1"), ("look", "l2"), ("look", "l3")]),
+        answer("done"),
+    ]);
+    let agent = agent_on(&mut app, &model);
+    // The frame each step was first seen in, after the update.
+    let (mut replied, mut started, mut answered, mut asked) = (None, None, None, None);
+    let done = run_until(&mut app, |world| {
+        let frame = world.resource::<Frame>().0;
+        let said = world
+            .get::<Conversation>(agent)
+            .map_or(0, |c| c.messages().len());
+        let mut calls = world.query_filtered::<(), (With<ToolRequest>, With<Started>)>();
+        let running = calls.iter(world).count();
+        let mut models = world.query_filtered::<(), With<ModelCall>>();
+        let calling = models.iter(world).count() > 0;
+        replied = replied.or((said >= 2).then_some(frame));
+        started = started.or((running == 3).then_some(frame));
+        answered = answered.or((said >= 3).then_some(frame));
+        asked = asked.or((answered.is_some() && calling).then_some(frame));
+        said == 4
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    assert!(replied.is_some() && answered.is_some());
+    assert_eq!(started, replied, "the calls started in the reply's frame");
+    assert_eq!(asked, answered, "the model was asked in the results' frame");
+    let results = results_at(&conversation(&app, agent), 2);
+    assert_eq!(results.len(), 3, "{results:?}");
+}
+
+/// What the gate saw: each call it was asked about, with the calls settled
+/// by then.
+#[derive(Resource, Default)]
+struct Gated {
+    seen: Vec<(String, Vec<String>)>,
+    hold: Option<Entity>,
+    held_once: bool,
+}
+
+/// Holds `held` once and refuses `refused`; logs every call it sees.
+fn gate(
+    calls: Query<(Entity, &ToolRequest), Undecided>,
+    settled: Query<&ToolRequest, With<Settled>>,
+    mut gated: ResMut<Gated>,
+    mut commands: Commands,
+) {
+    for (call, request) in &calls {
+        let id = request.call.id.to_string();
+        let done = settled.iter().map(|done| done.call.id.to_string());
+        gated.seen.push((id.clone(), done.collect()));
+        match id.as_str() {
+            "held" if !gated.held_once => {
+                gated.held_once = true;
+                gated.hold = Some(commands.spawn(HoldOf(call)).id());
+            }
+            "refused" => {
+                commands
+                    .entity(call)
+                    .insert_if_new(Outcome::refused("not this one"));
+            }
+            _ => {}
+        }
+    }
+}
+
+/// The frames the `refused` call was answered and `l2` started in.
+#[derive(Resource, Default)]
+struct Refusal {
+    answered: Option<u32>,
+    started: Option<u32>,
+}
+
+#[test]
+fn a_gate_sees_each_call_when_it_is_about_to_run() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("touch", "a"), ("touch", "b")]),
+        reply(&[("touch", "held"), ("look", "l1")]),
+        reply(&[("touch", "refused"), ("look", "l2")]),
+        answer("done"),
+    ]);
+    app.init_resource::<Gated>()
+        .init_resource::<Refusal>()
+        .add_systems(AgentPass, gate.in_set(Stage::Gate))
+        .add_observer(
+            |answered: On<Add<Outcome>>,
+             calls: Query<&ToolRequest>,
+             frame: Res<Frame>,
+             mut refusal: ResMut<Refusal>| {
+                if calls
+                    .get(answered.entity)
+                    .is_ok_and(|call| call.call.id.to_string() == "refused")
+                {
+                    refusal.answered = Some(frame.0);
+                }
+            },
+        )
+        .add_observer(
+            |started: On<Add<Started>>,
+             calls: Query<&ToolRequest>,
+             frame: Res<Frame>,
+             mut refusal: ResMut<Refusal>| {
+                if calls
+                    .get(started.entity)
+                    .is_ok_and(|call| call.call.id.to_string() == "l2")
+                {
+                    refusal.started = Some(frame.0);
+                }
+            },
+        );
+    let agent = agent_on(&mut app, &model);
+    let held = run_until(&mut app, |world| world.resource::<Gated>().hold.is_some());
+    assert!(held, "the gate held a call");
+    for _ in 0..3 {
+        app.update();
+    }
+    // The held call holds back the read-only call after it.
+    let world = app.world_mut();
+    let l1 = call_named(world, "l1").unwrap_or(Entity::PLACEHOLDER);
+    assert!(has::<Waiting>(&app, l1) && !has::<Started>(&app, l1));
+    if let Some(hold) = app.world().resource::<Gated>().hold {
+        app.world_mut().despawn(hold);
+    }
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .map_or(0, |c| c.messages().len())
+            == 8
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+
+    // `b` was gated once `a` had settled, and `l1` once `held` had.
+    let seen = &app.world().resource::<Gated>().seen;
+    let gated_after = |id: &str, earlier: &str| {
+        seen.iter()
+            .filter(|(call, _)| call == id)
+            .all(|(_, settled)| settled.iter().any(|done| done == earlier))
+    };
+    assert!(seen.iter().any(|(call, _)| call == "b"), "{seen:?}");
+    assert!(
+        gated_after("b", "a") && gated_after("l1", "held"),
+        "{seen:?}"
+    );
+    // A refused call holds nothing back: `l2` started in the refusal's frame.
+    let refusal = app.world().resource::<Refusal>();
+    assert!(refusal.answered.is_some(), "the gate refused");
+    assert_eq!(refusal.started, refusal.answered);
+}
+
+#[test]
+fn a_refused_call_answers_in_call_order_and_is_recorded_as_refused() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([
+        reply(&[("touch", "refused"), ("look", "l2")]),
+        answer("done"),
+    ]);
+    app.init_resource::<Gated>()
+        .add_systems(AgentPass, gate.in_set(Stage::Gate));
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .map_or(0, |c| c.messages().len())
+            == 4
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    // One message answers both calls, in the reply's order.
+    let results = results_at(&conversation(&app, agent), 2);
+    assert!(
+        matches!(results.as_slice(), [(true, refused), (false, ran)]
+            if refused.contains("not this one") && ran.contains("seen")),
+        "{results:?}"
+    );
+    let records = records(&app);
+    let record = |name: &str| {
+        records
+            .iter()
+            .find(|record| matches!(&record.kind, EffectKind::ToolCall { name: called, .. } if called == name))
+    };
+    let refused = record("touch");
+    assert!(
+        refused.is_some_and(
+            |record| record.disposition == Disposition::AnsweredBeforeStart
+                && record.started_ms.is_none()
+                && matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Denied)
+        ),
+        "{refused:?}"
+    );
+    let ran = record("look");
+    assert!(
+        ran.is_some_and(|record| record.disposition == Disposition::Ran && record.outcome.is_ok()),
+        "{ran:?}"
     );
 }

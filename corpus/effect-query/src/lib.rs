@@ -106,7 +106,7 @@ fn answer_call(
     let pool = AsyncComputeTaskPool::get_or_init(Default::default);
     commands
         .entity(call)
-        .insert(Running::spawn_into::<ToolOutput, _>(pool, wake, work));
+        .insert(Running::answering(pool, wake, work));
 }
 
 fn on_effects(

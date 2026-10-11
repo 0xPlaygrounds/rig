@@ -1,7 +1,9 @@
-//! Work that runs off the main thread: a [`Running`] task on a call entity
-//! becomes a [`Done`] component when it finishes, or a tool call's
-//! [`ToolOutput`](super::tools::ToolOutput), through one `poll_calls`
-//! system, so observers of that component carry the turn on.
+//! Work that runs off the main thread: a [`Running`] task on an entity
+//! becomes a [`Done`] component when it finishes, through one `poll_calls`
+//! system, so observers of that component carry on; on an effect, such as
+//! an open tool call, it becomes the effect's
+//! [`Outcome`](super::stage::Outcome) in
+//! [`Stage::Arrive`](super::stage::Stage::Arrive).
 //! Each finished task also calls [`Wake`], so a loop that sleeps while
 //! nothing happens runs a frame for it.
 
@@ -14,8 +16,6 @@ use bevy_ecs::query::QueryFilter;
 use bevy_reflect::prelude::*;
 use bevy_tasks::futures::check_ready;
 use bevy_tasks::{ConditionalSendFuture, Task, TaskPool};
-use rig_core::effect::Outcome;
-use rig_core::error::ErrorReport;
 
 use super::stage::{self, Effect};
 
@@ -134,8 +134,7 @@ impl Running {
     }
 
     /// [`Running::spawn`], ending as the component `C` made from the
-    /// output, such as a tool call's
-    /// [`ToolOutput`](super::tools::ToolOutput).
+    /// output.
     pub fn spawn_into<C: Component + From<T>, T: Send + 'static>(
         pool: &TaskPool,
         wake: &Wake,
@@ -146,15 +145,17 @@ impl Running {
         })
     }
 
-    /// Spawns `work`, an effect's handler, on `pool`; it ends as the
-    /// effect's [`stage::Outcome`], unless something answered it first.
-    pub(crate) fn answering(
+    /// Spawns `work` on `pool` for the effect it goes on, such as an open
+    /// tool call's `ToolResult`; it ends as the effect's
+    /// [`stage::Outcome`], unless something answered it first.
+    pub fn answering<T: Into<stage::Outcome> + Send + 'static>(
         pool: &TaskPool,
         wake: &Wake,
-        work: impl ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static,
+        work: impl ConditionalSendFuture<Output = T> + 'static,
     ) -> Self {
         Self::finishing(pool, wake, work, |mut entity, output| {
-            entity.insert_if_new(stage::Outcome(output));
+            let outcome: stage::Outcome = output.into();
+            entity.insert_if_new(outcome);
         })
     }
 

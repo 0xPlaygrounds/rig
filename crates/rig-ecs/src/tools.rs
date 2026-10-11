@@ -1,39 +1,43 @@
-//! The tool registry and how tool calls end. A tool is an entity holding
-//! its definition, its [`ToolRules`] and its [`Footprint`], and, for an
+//! The tool registry and tool calls. A tool is an entity holding its
+//! definition, its [`ToolRules`] and its [`Footprint`], and, for an
 //! ordinary tool, its effect handler; plugins add tools with
-//! [`AppToolsExt::add_tool`]. A tool call is an entity too, and inserting a
-//! [`ToolOutput`] on it is the one way it ends: an ordinary tool's output
-//! is inserted when its future resolves, and an open tool's call stays
-//! open until any system or observer inserts one.
+//! [`AppToolsExt::add_tool`]. A tool call is an effect entity with a
+//! [`ToolRequest`]: the kernel completes it with its tool's [`Footprint`]
+//! and [`CallHandler`] when it is admitted, so Prepare may change them, and
+//! starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
+//! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
+//! and stays open until any system inserts its
+//! [`Outcome`](super::stage::Outcome).
 //!
 //! ```ignore
 //! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
 //! app.add_open_tool("wait", "Waits for a signal.", ToolOptions::default(),
 //!     |called: On<ToolCalled<Wait>>, mut commands: Commands| {
-//!         // Keep `called.call`; insert its `ToolOutput` once `called.args.signal` comes.
+//!         // Keep `called.call`; insert its `Outcome` once `called.args.signal` comes.
 //!     });
 //! ```
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use bevy_ecs::system::IntoObserverSystem;
-use bevy_log::tracing::Instrument;
-use bevy_log::{info_span, warn};
+use bevy_ecs::system::{IntoObserverSystem, SystemParam};
+use bevy_log::warn;
 use bevy_reflect::prelude::*;
-use bevy_tasks::ConditionalSendFuture;
 use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_core::effect::{EffectId, EffectKind};
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
+use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{ErasedHandler, OpenRecord};
-use rig_core::tool::{Tool, ToolExecutionError, ToolResult, args_schema};
+use rig_core::tool::{Tool, ToolErrorKind, args_schema};
+use rig_core::transcript::arguments_refusal;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{AgentId, ToolCallRun};
-use super::effects::{Effects, Handler};
+use super::agent::{AgentId, ToolAccess};
+use super::effects::Handler;
 use super::prompt::ToolRules;
+use super::stage::{Admitted, Effect, Settled};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -52,56 +56,78 @@ pub(crate) enum Serves {
     Open(fn(&ToolCall) -> Result<Opened, String>),
 }
 
-/// Triggers [`ToolCalled`] with an open call's parsed arguments.
-pub(crate) type Opened =
-    Box<dyn FnOnce(&mut World, [Entity; 3], AgentId, EffectId, ToolCallRun) + Send>;
+/// Triggers [`ToolCalled`] for an open call, its arguments parsed.
+pub(crate) type Opened = Box<dyn FnOnce(&mut World, Opening) + Send>;
+
+/// An open call as its [`ToolCalled`] names it, but its arguments.
+pub(crate) struct Opening {
+    tool: Entity,
+    call: Entity,
+    agent: Entity,
+    caller: AgentId,
+    effect: EffectId,
+    parent: Option<EffectId>,
+    tool_call: ToolCall,
+}
 
 /// Parses `call`'s arguments into `A`, or says why they do not fit.
 fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<Opened, String> {
     let args = A::deserialize(&call.function.arguments).map_err(|error| {
         format!("The arguments do not fit: {error}. Nothing ran; fix the call and send it again.")
     })?;
-    Ok(Box::new(
-        move |world, [entity, call, agent], caller, effect, run| {
-            world.trigger(ToolCalled {
-                entity,
-                call,
-                agent,
-                caller,
-                effect,
-                run,
-                args,
-            });
-        },
-    ))
+    Ok(Box::new(move |world, opening: Opening| {
+        let Opening {
+            tool,
+            call,
+            agent,
+            caller,
+            effect,
+            parent,
+            tool_call,
+        } = opening;
+        world.trigger(ToolCalled {
+            entity: tool,
+            call,
+            agent,
+            caller,
+            effect,
+            parent,
+            tool_call,
+            args,
+        });
+    }))
 }
 
-/// What a tool call did, inserted on the call entity: the one way a call
-/// ends, such as `ToolOutput(ToolResult::success("Done.".into()))`. Insert
-/// it once, with [`EntityCommands::insert_if_new`] when another system may
-/// answer the same call; the first one counts. Work off the main thread
-/// ends with one as a `Running::spawn_into::<ToolOutput, _>` task
-/// ([`Running`](super::calls::Running)). The turn then starts the
-/// calls that waited for this one and, once every call of the reply has
-/// one, sends their results to the model.
-#[derive(Component, Reflect, Clone, Debug, Serialize, Deserialize)]
-#[reflect(opaque, Component, Clone, Debug, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ToolOutput(pub ToolResult);
-
-impl From<ToolResult> for ToolOutput {
-    fn from(result: ToolResult) -> Self {
-        Self(result)
-    }
+/// A tool call: an effect entity, as the model's reply or a plugin spawns
+/// it, `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn.
+/// Admitted, it gets its tool's [`Footprint`] and [`CallHandler`] unless it
+/// has its own; Prepare may change the call, the footprint or the handler.
+/// Start refuses a call of a tool that is not registered or that the agent
+/// may not use, or whose arguments its tool does not declare, then runs
+/// its handler, or opens it for an open tool. Its [`Outcome`] is its
+/// result.
+///
+/// [`CallOf`]: super::agent::CallOf
+/// [`Outcome`]: super::stage::Outcome
+#[derive(Component, Clone, Debug)]
+#[require(Effect)]
+pub struct ToolRequest {
+    /// The call as the model sent it.
+    pub call: ToolCall,
 }
+
+/// The handler that answers a tool call, on the call: its tool's, which a
+/// Prepare system may wrap (rig-core's `ErasedHandler::layered`) or
+/// replace. A call without one is opened for its open tool.
+#[derive(Component, Clone)]
+pub struct CallHandler(pub Handler);
 
 /// A call of an open tool started, its arguments parsed into `A`: triggered
-/// on the tool's entity, while the call and the calling agent exist, so the
-/// observer [`AppToolsExt::add_open_tool`] registered handles it. The call
-/// entity is usually a [`CallOf`](super::agent::CallOf) the turn of
-/// `agent`; it stays open until a [`ToolOutput`] is inserted on it, and
-/// despawning it, as an [`Interrupt`](super::agent::Interrupt) does,
-/// cancels it.
+/// on the tool's entity, so the observer [`AppToolsExt::add_open_tool`]
+/// registered handles it. The call stays open until an
+/// [`Outcome`](super::stage::Outcome) is inserted on it, such as
+/// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
+/// an [`Interrupt`](super::agent::Interrupt) does, cancels it.
 #[derive(EntityEvent, Clone)]
 pub struct ToolCalled<A: Send + Sync + 'static> {
     /// The tool.
@@ -114,16 +140,14 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
     pub caller: AgentId,
     /// The call's effect, which work done for it is recorded under.
     pub effect: EffectId,
-    /// The call as the model sent it, and the model call that asked for it.
-    pub run: ToolCallRun,
+    /// The effect that asked for the call, such as the model call whose
+    /// reply it is.
+    pub parent: Option<EffectId>,
+    /// The call as the model sent it.
+    pub tool_call: ToolCall,
     /// The call's arguments.
     pub args: A,
 }
-
-/// The effect record of an open tool call, settled with the call's
-/// [`ToolOutput`].
-#[derive(Component)]
-pub(crate) struct OpenCall(pub(crate) OpenRecord);
 
 /// Whether a tool's calls may run beside the other calls of one reply, on
 /// the tool's entity.
@@ -149,8 +173,8 @@ pub enum Footprint {
 
 impl Footprint {
     /// Whether a call of this footprint must wait for an earlier call of
-    /// the reply with footprint `earlier`.
-    pub(crate) fn waits_for(self, earlier: Self) -> bool {
+    /// its reply with footprint `earlier`.
+    pub fn waits_for(self, earlier: Self) -> bool {
         self == Self::Exclusive || earlier == Self::Exclusive
     }
 }
@@ -171,7 +195,7 @@ pub struct ToolOptions<'a> {
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
     /// Make `tool` available to every agent whose
-    /// [`ToolAccess`](crate::agent::ToolAccess) allows its name. A
+    /// [`ToolAccess`] allows its name. A
     /// name already registered is refused with a warning: to replace
     /// another plugin's tool, insert Bevy's `Disabled` on its entity first,
     /// which frees its name (in `Plugin::finish`, once every plugin's
@@ -209,9 +233,9 @@ pub trait AppToolsExt {
     /// Make the open tool `name` available, its parameters derived from
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
     /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
-    /// watches, and ends when a [`ToolOutput`] is inserted on the call, at
-    /// once or much later; any other is refused. Its calls are recorded in
-    /// the effect log like any other, with that output as the outcome.
+    /// watches, and ends when an [`Outcome`](super::stage::Outcome) is
+    /// inserted on the call, at once or much later; any other is refused.
+    /// Its calls are recorded like any other.
     fn add_open_tool<A, M>(
         &mut self,
         name: &str,
@@ -343,30 +367,113 @@ fn register_tool(
     Some(entity.id())
 }
 
-/// Runs `run` through `handler` on the one dispatch path, recorded for the
-/// agent `scope` with the model call that asked for it (unknown for a call
-/// a restart runs again) as its parent. A failure or a panic becomes an
-/// error result for the model.
-pub(crate) fn run_tool_call(
-    effects: &Effects,
-    scope: &str,
-    run: &ToolCallRun,
-    handler: ErasedHandler,
-) -> impl ConditionalSendFuture<Output = ToolResult> + 'static {
-    let (name, parent) = (run.call.function.name.as_str(), run.parent);
-    let span = info_span!("tool_call", agent = scope, tool = name, parent = ?parent);
-    let (name, args) = (name.to_owned(), run.call.function.raw_arguments());
-    let (id, reply) = effects.dispatch(scope, parent, handler, EffectKind::ToolCall { name, args });
-    let outcome = effects.caught(id, async { reply.await.into_outcome().await });
-    async move {
-        match outcome.await {
-            Ok(Outcome::ToolResult { result }) => result,
-            Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-                "the tool answered with a {} outcome",
-                other.family()
-            ))),
-            Err(report) => ToolResult::failed(report.into()),
+/// The kind of effect a tool call is.
+pub(crate) fn tool_kind(call: &ToolCall) -> EffectKind {
+    EffectKind::ToolCall {
+        name: call.function.name.as_str().to_owned(),
+        args: call.function.raw_arguments(),
+    }
+}
+
+/// Completes each tool call about to be admitted with its tool's
+/// [`Footprint`] and [`CallHandler`], and a [`Name`], where it has none of
+/// its own. A call of a tool that is not registered may change anything.
+pub(crate) fn complete_calls(
+    calls: Query<(Entity, &ToolRequest), (Without<Admitted>, Without<Settled>)>,
+    tools: Query<(&ToolDef, &Serves, &Footprint)>,
+    mut commands: Commands,
+) {
+    for (entity, ToolRequest { call }) in &calls {
+        let name = call.function.name.as_str();
+        let tool = tools.iter().find(|(def, ..)| def.0.name.as_str() == name);
+        let mut completed = commands.entity(entity);
+        completed.try_insert_if_new((
+            Name::new(format!("tool call {name}")),
+            tool.map_or_else(Footprint::default, |(.., &footprint)| footprint),
+        ));
+        if let Some((_, Serves::Handler(handler), _)) = tool {
+            completed.try_insert_if_new(CallHandler(handler.clone()));
         }
     }
-    .instrument(span)
+}
+
+/// How Start starts a tool call.
+pub(crate) enum ToolStart {
+    /// The kernel runs `kind` through the handler.
+    Run(Handler, EffectKind),
+    /// The open call is started: this triggers its [`ToolCalled`] with the
+    /// call's entity, effect, parent and call.
+    Open(Box<dyn FnOnce(&mut World, Entity, EffectId, Option<EffectId>, ToolCall) + Send>),
+    /// Refused before it started.
+    Refused(ErrorReport),
+}
+
+/// What starting a tool call reads: the registered tools and the agents'
+/// access to them.
+#[derive(SystemParam)]
+pub(crate) struct ToolStarts<'w, 's> {
+    tools: Query<'w, 's, (Entity, &'static ToolDef, &'static Serves)>,
+    access: Query<'w, 's, &'static ToolAccess>,
+}
+
+impl ToolStarts<'_, '_> {
+    /// How `call`, with `handler`, starts for `agent` (its entity and id):
+    /// refused when no tool of its name is registered, the agent may not
+    /// use it, or its arguments do not fit the tool's parameters; else run
+    /// through `handler`, or opened for an open tool.
+    pub(crate) fn start(
+        &self,
+        call: &ToolCall,
+        handler: Option<&CallHandler>,
+        agent: Option<(Entity, &AgentId)>,
+    ) -> ToolStart {
+        let name = call.function.name.as_str();
+        let refused = |kind, why| ToolStart::Refused(ErrorReport::new(ErrorKind::Tool(kind), why));
+        let Some((agent, caller)) = agent else {
+            return refused(
+                ToolErrorKind::NotFound,
+                "a tool call needs an agent".to_owned(),
+            );
+        };
+        let allowed = self
+            .access
+            .get(agent)
+            .is_ok_and(|access| access.allows(name));
+        let tool = self
+            .tools
+            .iter()
+            .find(|(_, def, _)| def.0.name.as_str() == name);
+        let Some((tool, def, serves)) = tool.filter(|_| allowed) else {
+            return refused(
+                ToolErrorKind::NotFound,
+                format!("no tool named `{name}` is available"),
+            );
+        };
+        if let Some(why) = arguments_refusal(&def.0.parameters, call) {
+            return refused(ToolErrorKind::InvalidArgs, why);
+        }
+        match (handler, serves) {
+            (Some(CallHandler(handler)), _) | (None, Serves::Handler(handler)) => {
+                ToolStart::Run(handler.clone(), tool_kind(call))
+            }
+            (None, Serves::Open(open)) => match open(call) {
+                Ok(opened) => {
+                    let caller = caller.clone();
+                    ToolStart::Open(Box::new(move |world, call, effect, parent, tool_call| {
+                        let opening = Opening {
+                            tool,
+                            call,
+                            agent,
+                            caller,
+                            effect,
+                            parent,
+                            tool_call,
+                        };
+                        opened(world, opening);
+                    }))
+                }
+                Err(why) => refused(ToolErrorKind::InvalidArgs, why),
+            },
+        }
+    }
 }

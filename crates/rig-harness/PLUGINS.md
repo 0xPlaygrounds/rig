@@ -143,8 +143,9 @@ A tool the plugin answers itself, later, is an open tool:
 `app.add_open_tool(name, description, options, observer)` parses each
 call's arguments into the type the observer takes and triggers
 `ToolCalled<Args>` with the call's entity (`call`), the calling `agent`
-and the `args`. The call ends when the plugin inserts a `ToolOutput` on
-it, such as `ToolOutput(ToolResult::success("Done.".into()))`. A tool
+and the `args`. The call ends when the plugin inserts its `Outcome`,
+such as `Outcome::from(ToolResult::success("Done.".into()))`, with
+`insert_if_new`: the first answer counts. A tool
 found while the agent runs, such as one an MCP server lists, is
 registered from a system with
 `commands.queue(move |world: &mut World| { world.spawn_tool(definition, handler, options); })`:
@@ -243,9 +244,9 @@ logged, and a restart, `/reload` or `/resume` brings the newest value
 back, before `Restored` is triggered on the agent. A resource that says
 `#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
 the whole session; the plugin inserts it in `build`, and the saved value
-replaces it. `On<Add<CallOf>>` sees
-every model and tool call of every turn as it starts; a tool call also
-has a `ToolCallRun`. The calls made before the plugin was added are in
+replaces it. A tool call is an entity with a `ToolRequest` and the
+agent it works for (`ForAgent`), so `On<Add<ToolRequest>>` sees every
+tool call as the model asks for it. The calls made before the plugin was added are in
 the conversation, which `Restored` lets it count once: an assistant
 message is the tuple variant `Message::Assistant(AssistantMessage)`.
 
@@ -291,19 +292,14 @@ fn count_the_past(restored: On<Restored>, mut agents: Query<(&Conversation, &mut
 }
 
 fn count(
-    call: On<Add<CallOf>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
+    call: On<Add<ToolRequest>>,
+    calls: Query<(&ToolRequest, &ForAgent)>,
     mut counts: Query<&mut ToolCounts>,
 ) {
-    // A model call has no `ToolCallRun`.
-    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
-        return;
-    };
-    if let Ok(TurnOf(agent)) = turns.get(*turn)
+    if let Ok((request, ForAgent(agent))) = calls.get(call.entity)
         && let Ok(mut counts) = counts.get_mut(*agent)
     {
-        let name = run.call.function.name.as_str().to_owned();
+        let name = request.call.function.name.as_str().to_owned();
         *counts.0.entry(name).or_default() += 1;
     }
 }
