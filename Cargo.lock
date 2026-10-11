@@ -4672,310 +4672,498 @@ dependencies = [
 name = "corpus-ho-api-key-pool"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "http 1.4.2",
+ "rig-compaction",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
 name = "corpus-ho-auto-session-name"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_log",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tools",
+ "serde",
 ]
 
 [[package]]
 name = "corpus-ho-background-verify"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_tasks",
+ "glob",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-best-of-n"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tools",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-blackboard"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "chrono",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-cancellable-run"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "libc",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-print",
+ "rig-tui",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-command-palette"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_reflect",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "rig-tui",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-command-provider"
 version = "0.0.0"
 dependencies = [
- "rig-core",
- "rig-ecs",
+ "bevy_ecs",
+ "futures",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml",
 ]
 
 [[package]]
 name = "corpus-ho-conversation-surgery"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-memory",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-degenerate-stream-cutter"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-dry-run"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "rig-tools",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-exit-notes"
 version = "0.0.0"
 dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_reflect",
+ "chrono",
+ "rig-basics",
+ "rig-cassette",
+ "rig-coding-tools",
+ "rig-compaction",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-file-lease"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-history-and-drafts"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "regex",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
 name = "corpus-ho-hunk-review"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "serde_json",
+ "similar",
 ]
 
 [[package]]
 name = "corpus-ho-inline-shell"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_tasks",
+ "futures-timer",
+ "rig-basics",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "rig-tui",
+ "serde",
 ]
 
 [[package]]
 name = "corpus-ho-raw-stream-log"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "regex",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-read-before-edit"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "serde_json",
+ "sha2 0.10.9",
 ]
 
 [[package]]
 name = "corpus-ho-relay-pipeline"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "regex",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "serde",
+ "serde_json",
+ "toml",
 ]
 
 [[package]]
 name = "corpus-ho-repo-map"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-script-tools"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tools",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-session-recall"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_log",
+ "bevy_tasks",
+ "chrono",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-socket-attach"
 version = "0.0.0"
 dependencies = [
+ "async-channel",
+ "bevy_ecs",
+ "bevy_tasks",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-spend-by-origin"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-subagents",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-stale-read-elision"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "rig-cassette",
+ "rig-coding-tools",
+ "rig-compaction",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-memory",
+ "rig-tools",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-stall-watchdog"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_tasks",
+ "futures",
+ "futures-timer",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-submit-result"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-print",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-terminal-title"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_time",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-sessions",
+ "rig-tui",
+ "serde",
 ]
 
 [[package]]
 name = "corpus-ho-throughput-item"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_time",
+ "rig-cassette",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "rig-tui",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-tool-arg-repair"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_log",
  "rig-core",
- "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "corpus-ho-working-set-carryover"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "regex",
+ "rig-cassette",
+ "rig-coding-tools",
+ "rig-compaction",
  "rig-core",
  "rig-ecs",
  "rig-harness",
  "rig-harness-test-support",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

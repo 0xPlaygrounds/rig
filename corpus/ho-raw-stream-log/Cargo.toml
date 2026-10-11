@@ -9,9 +9,20 @@ description = "Plugin corpus (held-out): H26: Raw provider stream log"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# The writer thread's lines in, its events back out as a stream.
+async-channel = { workspace = true }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# The pool the writer's events stream on.
+bevy_tasks = { workspace = true }
+# Tapping a reply's stream as it passes.
+futures = { workspace = true }
+# The secret patterns.
+regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

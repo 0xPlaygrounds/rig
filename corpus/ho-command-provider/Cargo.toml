@@ -9,9 +9,17 @@ description = "Plugin corpus (held-out): H29: Any program as a model"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+# The channels between a model call and the process serving it.
+futures = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# The child processes, on rig's own tokio runtime (`TokioRuntime`).
+tokio = { workspace = true, features = ["rt", "process", "io-util"] }
+# `command-models.toml` (already in the lock file through rig-harness).
+toml = "1"
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

@@ -9,9 +9,19 @@ description = "Plugin corpus (held-out): H01: Refuse edits to files the agent ha
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The names of the file tools whose calls are judged.
+rig-tools = { path = "../../crates/rig-tools" }
+serde_json = { workspace = true }
+# Already in Cargo.lock: a content hash that stays the same across builds,
+# since it is saved with the session.
+sha2 = { workspace = true }
 
 [dev-dependencies]
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

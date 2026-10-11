@@ -9,9 +9,17 @@ description = "Plugin corpus (held-out): H28: Stall watchdog"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The status item of a tool past its soft limit.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
 
 [dev-dependencies]
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+futures-timer = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

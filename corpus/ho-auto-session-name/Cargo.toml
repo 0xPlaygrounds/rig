@@ -9,9 +9,16 @@ description = "Plugin corpus (held-out): H19: Name sessions automatically"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
+bevy_log = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The session's name, the one `/name` sets.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+# Telling an attached file from what the user typed.
+rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

@@ -9,9 +9,17 @@ description = "Plugin corpus (held-out): H22: Terminal title and attention bell"
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by Bevy's derives.
+bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The session's name.
+rig-sessions = { path = "../../plugins/rig-sessions" }
+# The terminal view: its front, its events and its writer.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+bevy_time = { workspace = true }

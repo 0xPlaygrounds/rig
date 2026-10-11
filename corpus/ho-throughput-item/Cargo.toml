@@ -9,9 +9,17 @@ description = "Plugin corpus (held-out): H25: Live model speed in the status lin
 workspace = true
 
 [dependencies]
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The status line item.
+rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
+# The clock the test moves by hand.
+bevy_time = { workspace = true }
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }
