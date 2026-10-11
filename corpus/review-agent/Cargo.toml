@@ -8,19 +8,21 @@ description = "Plugin corpus: 35. Review agent"
 [lints]
 workspace = true
 
-[features]
-default = ["tui"]
-# "reviewing" in the terminal view's status line.
-tui = ["dep:rig-tui"]
-
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The pool the git snapshots run on.
+# The pool the git commands wait on.
 bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tui = { path = "../../plugins/rig-tui", optional = true }
+# `Processes` hands out its `Launcher`, which the git commands start from.
+rig-tools = { path = "../../crates/rig-tools" }
+# The reviewer is a helper agent spawned with `SpawnSubagent`.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The `[review]` settings table.
+serde = { workspace = true, features = ["derive"] }
+# The review effect's record.
+serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
@@ -28,4 +30,3 @@ rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
-serde_json = { workspace = true }

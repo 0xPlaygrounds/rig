@@ -3,7 +3,8 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{Receiver, Sender, channel};
 
 use rig_cassette::journal::MemoryStore;
-use rig_harness_test_support::{app_on, run_until};
+use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
+use rig_models::ModelsPlugin;
 use rig_telemetry::{Spending, UsagePlugin};
 
 use super::*;
@@ -57,12 +58,8 @@ fn answer(mut stream: TcpStream, heads: &Sender<String>) -> std::io::Result<()> 
     stream.flush()
 }
 
-/// How each turn ended.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
-
-/// The kernel, the usage plugin and the plugin with `config` on `store`,
-/// after the first frame restored the session, and its first agent.
+/// The kernel, `/model`, the usage plugin and the plugin with `config` on
+/// `store`, after the first frame restored the session, and its agent.
 fn start(store: &MemoryStore, config: &str) -> (App, Receiver<()>, Option<Entity>) {
     let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
@@ -70,13 +67,12 @@ fn start(store: &MemoryStore, config: &str) -> (App, Receiver<()>, Option<Entity
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            ModelsPlugin,
             UsagePlugin,
             CustomProviderPlugin,
         ))
         .init_resource::<Ended>()
-        .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-            log.0.push(ended.outcome.clone());
-        });
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -87,14 +83,14 @@ fn start(store: &MemoryStore, config: &str) -> (App, Receiver<()>, Option<Entity
     (app, wakes, agent)
 }
 
-/// The agent's configured model and its connected context window.
-fn chosen(app: &App, agent: Entity) -> (Option<String>, Option<u32>, bool) {
+/// The agent's model choice and its connected context window.
+fn chosen(app: &App, agent: Entity) -> (Option<String>, Option<u32>) {
     let world = app.world();
-    let model = world.get::<CustomModel>(agent).map(|model| model.0.clone());
+    let model = world.get::<ModelChoice>(agent).map(|model| model.0.clone());
     let window = world
         .get::<Connection>(agent)
         .and_then(|connection| connection.spec.context_window);
-    (model, window, world.get::<ModelChoice>(agent).is_some())
+    (model, window)
 }
 
 #[test]
@@ -120,6 +116,15 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         id = "big"
         context_window = 64000
         price = {{ input = 1.0, output = 2.0 }}
+
+        [[provider]]
+        name = "keyless"
+        base_url = "http://{address}/v1"
+        api = "anthropic"
+        key_env = "CORPUS_CUSTOM_PROVIDER_UNSET_KEY"
+
+        [[provider.models]]
+        id = "small"
         "#
     );
     let store = MemoryStore::default();
@@ -128,6 +133,14 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     let Some(agent) = agent else {
         return;
     };
+    // The keyless model is listed in `/model`, marked.
+    let world = app.world_mut();
+    let items: Vec<String> = world
+        .query::<&ModelItem>()
+        .iter(world)
+        .map(|item| item.label.clone())
+        .collect();
+    assert_eq!(items, ["keyless/small  (no key)"]);
 
     app.world_mut().trigger(RunCommand {
         entity: agent,
@@ -136,7 +149,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     app.update();
     assert_eq!(
         chosen(&app, agent),
-        (Some("corp/big".to_owned()), Some(64_000), false)
+        (Some("corp/big".to_owned()), Some(64_000))
     );
 
     app.world_mut()
@@ -154,18 +167,31 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     assert!(head.contains("x-corp-team: rig"), "{head}");
     assert!(head.contains("authorization: bearer corp-token"), "{head}");
     // 1000 tokens in at $1 and 500 out at $2 per million.
-    let spent = app.world().get::<Spending>(agent).map(|spent| spent.0);
-    let cost = spent.map(|spent| ((spent.cost - 0.002).abs() < 1e-9, spent.unpriced));
+    let spent = app.world().get::<Spending>(agent);
+    let cost = spent
+        .and_then(|spent| spent.models.get("corp/big"))
+        .map(|spent| ((spent.cost - 0.002).abs() < 1e-9, spent.unpriced));
     assert_eq!(cost, Some((true, 0)), "{spent:?}");
 
     drop(app);
-    let (app, _wakes, restored) = start(&store, &config);
+    let (mut app, _wakes, restored) = start(&store, &config);
     assert!(restored.is_some(), "the session's agent is restored");
     let Some(restored) = restored else {
         return;
     };
     assert_eq!(
         chosen(&app, restored),
-        (Some("corp/big".to_owned()), Some(64_000), false)
+        (Some("corp/big".to_owned()), Some(64_000))
+    );
+
+    // Choosing the keyless model is refused when it connects.
+    app.world_mut().trigger(RunCommand {
+        entity: restored,
+        line: "model keyless/small".to_owned(),
+    });
+    app.update();
+    assert_eq!(
+        chosen(&app, restored),
+        (Some("keyless/small".to_owned()), None)
     );
 }

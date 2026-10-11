@@ -2,57 +2,52 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_coding_tools::{ShellTool, WriteTool};
+use rig_coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 use super::*;
 
-/// The turns that ended and the notices written, in order.
+/// The notices written, in order.
 #[derive(Resource, Default)]
-struct Seen {
-    turns: usize,
-    notices: Vec<String>,
-}
+struct Notices(Vec<String>);
 
-fn collect(mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>) {
-    seen.notices
+fn collect(mut notices: MessageReader<Notice>, mut seen: ResMut<Notices>) {
+    seen.0
         .extend(notices.read().map(|notice| notice.text.clone()));
 }
 
-/// A fresh directory for `name`, under the build's target directory.
-fn scratch(name: &str) -> Option<PathBuf> {
+/// A fresh project for `name`, under the build's target directory, with
+/// `checks` as its `.rig/checks.toml`.
+fn project(name: &str, checks: &str) -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?.join(format!(
         "corpus-check-after-turn-{name}-{}",
         std::process::id()
     ));
     std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok()?;
+    std::fs::create_dir_all(dir.join(".rig")).ok()?;
+    std::fs::write(dir.join(".rig/checks.toml"), checks).ok()?;
     Some(dir)
 }
 
-/// The kernel with `write`, `shell` and the checks of `toml` for `root`,
-/// its agent answered by `model`, after the first frame.
-fn start(
-    store: &MemoryStore,
-    root: &Path,
-    toml: &str,
-    model: &MockCompletionModel,
-) -> Option<(App, Receiver<()>, Entity)> {
-    let checks = Checks::parse(root.to_path_buf(), toml).ok()?;
-    let (mut app, wakes) = app_on(store);
-    app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(checks)
-        .add_plugins((
-            AgentPlugin,
-            JournalPlugin,
-            WriteTool,
-            ShellTool,
-            CheckAfterTurnPlugin,
-        ))
-        .init_resource::<Seen>()
-        .add_observer(|_: On<TurnEnded>, mut seen: ResMut<Seen>| seen.turns += 1)
+/// A turn that writes `content` to `root/out.txt`, then says it is done.
+fn writes(id: &str, root: &Path, content: &str) -> [Vec<MockStreamEvent>; 2] {
+    let path = root.join("out.txt").display().to_string();
+    let args = serde_json::json!({ "path": path, "content": content });
+    [calls(id, "write", args), reply("Done.")]
+}
+
+/// Runs a user message to an agent in the project `root`, answered by
+/// `model`, until a notice has `until`, and a few frames more, in case
+/// anything else would start; returns the app.
+fn run(store: &MemoryStore, root: &Path, model: &MockCompletionModel, until: &str) -> Option<App> {
+    let (mut app, wakes): (App, Receiver<()>) = app_on(store);
+    app.insert_resource(ProjectRoot(root.to_path_buf()))
+        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, CheckAfterTurnPlugin))
+        .init_resource::<Ended>()
+        .init_resource::<Notices>()
+        .add_observer(log_ended)
         .add_systems(Last, collect);
     app.finish();
     app.update();
@@ -62,56 +57,39 @@ fn start(
         .iter(world)
         .next()?;
     world.entity_mut(agent).insert(connect(model)?);
-    Some((app, wakes, agent))
-}
-
-/// A turn that writes `content` to `path`, then says it is done.
-fn writes(id: &str, path: &Path, content: &str) -> [Vec<MockStreamEvent>; 2] {
-    let args = serde_json::json!({ "path": path.display().to_string(), "content": content });
-    [calls(id, "write", args), reply("Done.")]
-}
-
-/// Asks `agent` for the file, then runs until a notice has `until`, and a
-/// few frames more, in case anything else would start.
-fn run(app: &mut App, wakes: &Receiver<()>, agent: Entity, until: &str) {
-    let ask = Deliver::new(agent, "Make out.txt.", DeliveryMode::Steer);
-    app.world_mut().trigger(ask);
-    run_until(app, wakes, |world| {
-        let seen = world.resource::<Seen>();
-        seen.notices.iter().any(|notice| notice.contains(until))
+    world.trigger(Deliver::new(agent, "Make out.txt.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        let notices = &world.resource::<Notices>().0;
+        notices.iter().any(|notice| notice.contains(until))
     });
     for _ in 0..20 {
         app.update();
     }
+    Some(app)
 }
 
 #[test]
 fn a_failing_check_starts_a_fix_turn_until_it_passes() {
-    let store = MemoryStore::default();
-    let dir = scratch("fix");
-    assert!(dir.is_some(), "a scratch directory");
+    let toml = "[[check]]\nname = \"has-ok\"\ncommand = \"grep -q ok out.txt\"\nwhen = \"*.txt\"\n";
+    let dir = project("fix", toml);
+    assert!(dir.is_some(), "a scratch project");
     let Some(dir) = dir else { return };
-    let out = dir.join("out.txt");
-    let toml = format!(
-        "[[check]]\nname = \"has-ok\"\ncommand = \"grep -q ok '{}'\"\nwhen = \"*.txt\"\n",
-        out.display()
-    );
-    let [bad, done] = writes("1", &out, "bad");
-    let [good, fixed] = writes("2", &out, "ok");
+    let [bad, done] = writes("1", &dir, "bad");
+    let [good, fixed] = writes("2", &dir, "ok");
     let model = MockCompletionModel::from_stream_turns([bad, done, good, fixed]);
-    let started = start(&store, &dir, &toml, &model);
-    assert!(started.is_some(), "the app starts");
-    let Some((mut app, wakes, agent)) = started else {
-        return;
-    };
-    run(&mut app, &wakes, agent, "checks passed");
+    let app = run(&MemoryStore::default(), &dir, &model, "checks passed");
+    assert!(app.is_some(), "the app starts");
+    let Some(app) = app else { return };
 
-    let seen = app.world().resource::<Seen>();
-    assert_eq!(seen.turns, 2, "the user's turn and one fix turn");
+    assert_eq!(
+        app.world().resource::<Ended>().0.len(),
+        2,
+        "the user's turn and one fix turn"
+    );
+    let notices = &app.world().resource::<Notices>().0;
     assert!(
-        seen.notices.iter().any(|notice| notice == "checks passed"),
-        "{:?}",
-        seen.notices
+        notices.iter().any(|notice| notice == "checks passed"),
+        "{notices:?}"
     );
     let sent: Vec<String> = model
         .requests()
@@ -121,7 +99,7 @@ fn a_failing_check_starts_a_fix_turn_until_it_passes() {
     assert_eq!(sent.len(), 4, "two model calls per turn");
     let fix = sent.get(2).map(String::as_str).unwrap_or_default();
     assert!(
-        fix.contains("has-ok") && fix.contains("failed") && fix.contains("[exit code 1]"),
+        fix.contains("has-ok") && fix.contains("failed") && fix.contains("exit code 1"),
         "the fix turn's first request names the check and its failure: {fix}"
     );
     std::fs::remove_dir_all(&dir).ok();
@@ -129,31 +107,29 @@ fn a_failing_check_starts_a_fix_turn_until_it_passes() {
 
 #[test]
 fn a_check_that_keeps_failing_stops_after_max_rounds() {
-    let store = MemoryStore::default();
-    let dir = scratch("rounds");
-    assert!(dir.is_some(), "a scratch directory");
-    let Some(dir) = dir else { return };
-    let out = dir.join("out.txt");
     let toml =
         "max_rounds = 2\n[[check]]\nname = \"never\"\ncommand = \"false\"\nwhen = \"*.txt\"\n";
-    let script = (1..=3).flat_map(|turn| writes(&turn.to_string(), &out, "x"));
+    let dir = project("rounds", toml);
+    assert!(dir.is_some(), "a scratch project");
+    let Some(dir) = dir else { return };
+    let script = (1..=3).flat_map(|turn| writes(&turn.to_string(), &dir, "x"));
     let model = MockCompletionModel::from_stream_turns(script);
-    let started = start(&store, &dir, toml, &model);
-    assert!(started.is_some(), "the app starts");
-    let Some((mut app, wakes, agent)) = started else {
-        return;
-    };
-    run(&mut app, &wakes, agent, "still failing");
+    let app = run(&MemoryStore::default(), &dir, &model, "still failing");
+    assert!(app.is_some(), "the app starts");
+    let Some(app) = app else { return };
 
-    let seen = app.world().resource::<Seen>();
-    assert_eq!(seen.turns, 3, "the user's turn and two fix rounds");
+    assert_eq!(
+        app.world().resource::<Ended>().0.len(),
+        3,
+        "the user's turn and two fix rounds"
+    );
     assert_eq!(model.request_count(), 6);
+    let notices = &app.world().resource::<Notices>().0;
     assert!(
-        seen.notices
+        notices
             .iter()
             .any(|notice| notice == "checks still failing after 2 rounds"),
-        "{:?}",
-        seen.notices
+        "{notices:?}"
     );
     std::fs::remove_dir_all(&dir).ok();
 }

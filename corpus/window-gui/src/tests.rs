@@ -73,3 +73,40 @@ fn typing_in_the_input_box_reaches_the_agent_and_its_answer_the_transcript() {
         Some(("idle".to_owned(), false))
     );
 }
+
+/// A question from any plugin is a dialog; its button answers it, and the
+/// answered question leaves the dialogs.
+#[test]
+fn a_question_is_a_dialog_its_buttons_answer() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = app_on(&store);
+    app.set_error_handler(bevy_ecs::error::warn).add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        WindowGuiPlugin,
+    ));
+    app.finish();
+    app.update();
+    let agent = app.world().resource::<GuiAgents>().shown;
+    let agent = agent.unwrap_or(Entity::PLACEHOLDER);
+    let ask = Ask::yes_no("Run `shell`?").body("cargo test");
+    let ask = app.world_mut().spawn((ask, ForAgent(agent))).id();
+    app.update();
+    let shown: Vec<_> = app.world().resource::<GuiDialogs>().open.clone();
+    assert_eq!(
+        shown,
+        [Dialog {
+            entity: ask,
+            title: "Run `shell`?".to_owned(),
+            body: "cargo test".to_owned(),
+            choices: vec!["Yes".to_owned(), "No".to_owned()],
+            free_text: false,
+        }]
+    );
+
+    app.world_mut().trigger(Choose { item: 0 });
+    app.update();
+    let answer = app.world().get::<Outcome>(ask).and_then(Answer::of);
+    assert_eq!(answer, Some(Answer::Choice("yes".to_owned())));
+    assert!(app.world().resource::<GuiDialogs>().open.is_empty());
+}

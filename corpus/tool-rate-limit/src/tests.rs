@@ -9,7 +9,7 @@ use futures::future::Shared;
 use rig_cassette::journal::MemoryStore;
 use rig_core::completion::{CompletionRequest, Message};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 use schemars::JsonSchema;
 use serde_json::json;
 
@@ -77,10 +77,6 @@ impl PortableTool for GateTool {
     }
 }
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
 /// The kernel with this plugin and `limits`, its agent answered by `model`
 /// with the calls `tools` registers, and a message delivered.
 fn start(
@@ -93,7 +89,7 @@ fn start(
     app.insert_resource(limits)
         .add_plugins((AgentPlugin, JournalPlugin, ToolRateLimitPlugin))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     tools(&mut app);
     app.finish();
     app.update();
@@ -140,7 +136,7 @@ fn results(request: Option<&CompletionRequest>) -> Vec<String> {
 }
 
 fn ended(world: &World) -> bool {
-    world.resource::<Ended>().0 > 0
+    !world.resource::<Ended>().0.is_empty()
 }
 
 #[test]
@@ -149,7 +145,7 @@ fn a_call_over_the_turn_limit_is_refused_and_not_run() {
     let model = model("echo_tool", &["a", "b", "c"]);
     let echo = EchoTool(ran.clone());
     let (mut app, wakes) = start("[echo_tool]\nper_turn = 2", &model, |app| {
-        app.add_limited_tool_with(echo, ToolOptions::default());
+        app.add_tool(echo);
     });
     run_until(&mut app, &wakes, ended);
 
@@ -181,7 +177,7 @@ fn over_the_concurrent_limit_a_read_only_call_waits_for_the_running_one() {
         footprint: Some(Footprint::ReadOnly),
     };
     let (mut app, wakes) = start("[gate]\nconcurrent = 1", &model, |app| {
-        app.add_limited_tool_with(tool, read_only);
+        app.add_tool_with(tool, read_only);
     });
     let logged =
         |log: &Arc<Mutex<Vec<String>>>| log.lock().map(|log| log.clone()).unwrap_or_default();
@@ -203,7 +199,7 @@ fn over_the_minute_limit_a_call_starts_once_the_minute_passed() {
     let echo = EchoTool(ran.clone());
     let (mut app, wakes) = start("[echo_tool]\nper_minute = 1", &model, |app| {
         app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
-            .add_limited_tool_with(echo, ToolOptions::default());
+            .add_tool(echo);
     });
     app.world_mut()
         .resource_mut::<Time<Virtual>>()

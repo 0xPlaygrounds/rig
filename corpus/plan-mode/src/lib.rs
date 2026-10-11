@@ -2,17 +2,14 @@
 //! read but not change anything: a Prepare system offers its model calls
 //! only the tools that change nothing and tells the model to plan, and a
 //! Gate system refuses, with its own reason, a call that may change
-//! something of the agent or of a subagent it started while planning. The
-//! answer that ends a planning turn is the plan, kept with the mode and
-//! written to `.rig/plan.md`; a picker then offers to execute it, keep
-//! planning or discard it. The agent's tools are never changed, so leaving
-//! gives it back exactly what it had.
-
-use std::path::PathBuf;
+//! something, of the agent or of an agent it spawned. The answer that ends
+//! a planning turn is the plan: it is written to `.rig/plan.md` and the
+//! user is asked whether to execute it, keep planning or discard it. The
+//! agent's tools are never changed, so leaving gives back exactly what it
+//! had.
 
 use rig_harness::prelude::*;
-use rig_tui::{Picker, Side, StatusItem, StatusItems, StatusSystems, Tone};
-use serde::{Deserialize, Serialize};
+use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 #[cfg(test)]
 mod tests;
@@ -31,34 +28,27 @@ pub const REFUSED: &str = "plan mode: changes are not allowed";
 /// What the plan is sent with once the user executes it.
 pub const EXECUTE: &str = "Execute this plan: ";
 
-/// On an agent in plan mode: the plan of its last planning turn. Saved
-/// with the session, and its removal too.
-#[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct PlanMode {
-    /// The last planning turn's answer.
-    pub plan: Option<String>,
-}
+/// Where a captured plan is written, under the project.
+pub const PLAN_FILE: &str = ".rig/plan.md";
 
-/// Where a captured plan is written, relative to the working directory
-/// unless absolute.
-#[derive(Resource, Clone, Debug)]
-pub struct PlanFile(pub PathBuf);
+/// On an agent in plan mode; saved with the session, and its removal too.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Saved, Default)]
+pub struct PlanMode;
 
-impl Default for PlanFile {
-    fn default() -> Self {
-        Self(PathBuf::from(".rig").join("plan.md"))
-    }
-}
+/// On the question about a captured plan.
+#[derive(Component)]
+struct PlanQuestion;
 
-/// `/plan`, the plan-only requests, the plan's capture and its picker.
+/// `/plan`, the plan-only requests and calls, the plan's capture and the
+/// question about it.
 #[derive(Default)]
 pub struct PlanModePlugin;
 
 impl Plugin for PlanModePlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<PlanMode>()
-            .init_resource::<PlanFile>()
+            .init_resource::<ProjectRoot>()
             .add_command(
                 "plan",
                 "Plan before changing anything: /plan, /plan off",
@@ -72,65 +62,33 @@ impl Plugin for PlanModePlugin {
                 ),
             )
             .add_observer(capture)
+            .add_observer(decide)
             .add_systems(PostUpdate, show.in_set(StatusSystems));
     }
 }
 
-/// `/plan` enters plan mode; `/plan off` and `/plan discard` leave it,
-/// `/plan keep` stays, and `/plan execute` leaves it and sends the plan.
-fn plan(
-    In(args): In<CommandArgs>,
-    agents: Query<(Option<&PlanMode>, Has<ActiveTurn>)>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
+/// `/plan` enters plan mode; `/plan off` leaves it.
+fn plan(In(args): In<CommandArgs>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
     let agent = args.agent;
-    let Ok((planning, busy)) = agents.get(agent) else {
-        return;
-    };
-    // The tools change for the whole of a turn, never in its middle.
-    if busy && args.args != "keep" {
-        notices.write(Notice::error(agent, "A turn is running; stop it first."));
-        return;
-    }
-    match (args.args.as_str(), planning) {
-        ("", None) => {
-            commands.entity(agent).insert(PlanMode { plan: None });
+    match args.args.as_str() {
+        "" => {
+            commands.entity(agent).insert(PlanMode);
             notices.write(Notice::info(agent, "Plan mode: nothing can be changed."));
         }
-        ("", Some(_)) => {
-            notices.write(Notice::info(agent, "Already in plan mode."));
-        }
-        ("keep", Some(_)) => {
-            notices.write(Notice::info(agent, "Still planning."));
-        }
-        ("off" | "discard", Some(_)) => {
+        "off" => {
             commands.entity(agent).remove::<PlanMode>();
             notices.write(Notice::info(agent, "Left plan mode."));
         }
-        ("execute", Some(mode)) => {
-            let Some(plan) = mode.plan.clone() else {
-                notices.write(Notice::error(agent, "There is no plan to execute yet."));
-                return;
-            };
-            commands.entity(agent).remove::<PlanMode>();
-            // The user chose to execute it: their request, word for word.
-            let text = format!("{EXECUTE}{plan}");
-            commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).literal());
-        }
-        (_, None) => {
-            notices.write(Notice::error(agent, "Not in plan mode; /plan enters it."));
-        }
-        (other, Some(_)) => {
+        other => {
             notices.write(Notice::error(
                 agent,
-                format!("Unknown /plan argument `{other}`: use off, execute, keep or discard."),
+                format!("Unknown /plan argument `{other}`: use /plan or /plan off."),
             ));
         }
     }
 }
 
-/// Whether `agent` plans: it is in plan mode, or an agent that started it
+/// Whether `agent` plans: it is in plan mode, or an agent that spawned it
 /// is.
 fn plans(agent: Entity, planning: &Query<(), With<PlanMode>>, parents: &Query<&SpawnedBy>) -> bool {
     std::iter::once(agent)
@@ -146,19 +104,19 @@ fn plan_only(
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
 ) {
+    let reads: Vec<&str> = tools
+        .iter()
+        .filter(|(_, footprint)| **footprint != Footprint::Exclusive)
+        .map(|(def, _)| def.0.name.as_str())
+        .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
-        if !plans(agent, &planning, &parents) {
-            continue;
-        }
-        let changes = |name: &str| {
-            let tool = tools.iter().find(|(def, _)| def.0.name.as_str() == name);
-            tool.is_none_or(|(_, footprint)| *footprint == Footprint::Exclusive)
-        };
-        call.request
-            .tools
-            .retain(|tool| !changes(tool.name.as_str()));
-        if let Some(prompt) = call.system_prompt_mut() {
-            prompt.push_str(PLAN_ONLY);
+        if plans(agent, &planning, &parents) {
+            call.request
+                .tools
+                .retain(|tool| reads.contains(&tool.name.as_str()));
+            if let Some(prompt) = call.system_prompt_mut() {
+                prompt.push_str(PLAN_ONLY);
+            }
         }
     }
 }
@@ -180,44 +138,67 @@ fn no_changes(
     }
 }
 
-/// Keeps the answer that ended a planning turn as the plan, writes it to
-/// the [`PlanFile`], and asks the user what to do with it.
+/// Keeps the answer that ended a planning turn as the plan, in the
+/// project's [`PLAN_FILE`], and asks the user what to do with it.
 fn capture(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
-    mut planning: Query<&mut PlanMode>,
-    file: Res<PlanFile>,
+    planning: Query<(), With<PlanMode>>,
+    root: Res<ProjectRoot>,
+    answerers: Answerers,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Ok((TurnOutcome::Answered(answer), &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let (Ok(mut mode), Some(plan)) = (planning.get_mut(agent), final_answer(answer)) else {
+    let Some(plan) = final_answer(answer).filter(|_| planning.contains(agent)) else {
         return;
     };
-    if let Err(error) = write_plan(&file.0, &plan) {
+    let path = root.0.join(PLAN_FILE);
+    let written = path.parent().map_or(Ok(()), std::fs::create_dir_all);
+    if let Err(error) = written.and_then(|()| std::fs::write(&path, &plan)) {
         notices.write(Notice::error(
             agent,
-            format!("The plan was not saved to {}: {error}", file.0.display()),
+            format!("The plan was not saved to {}: {error}", path.display()),
         ));
     }
-    mode.plan = Some(plan);
-    commands.spawn(
-        Picker::new("The plan")
-            .for_agent(agent)
-            .item("Execute", "plan execute")
-            .item("Keep planning", "plan keep")
-            .item("Discard", "plan discard"),
-    );
+    if !answerers.can_answer(Some(agent)) {
+        notices.write(Notice::info(
+            agent,
+            "Still in plan mode; /plan off leaves it.",
+        ));
+        return;
+    }
+    let question = Ask::new("The plan")
+        .body(plan)
+        .choice("execute", "Execute")
+        .choice("keep", "Keep planning")
+        .choice("discard", "Discard");
+    commands.spawn((question, PlanQuestion, ForAgent(agent)));
 }
 
-/// Writes `plan` to `path`, with its directory.
-fn write_plan(path: &std::path::Path, plan: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
+/// Carries out the user's answer about a plan: Execute leaves plan mode and
+/// sends the plan, Discard leaves it, and Keep planning, or no answer, stays.
+fn decide(
+    settled: On<Add<Settled>>,
+    questions: Query<(&Ask, &Outcome, &ForAgent), With<PlanQuestion>>,
+    mut commands: Commands,
+) {
+    let Ok((question, outcome, &ForAgent(agent))) = questions.get(settled.entity) else {
+        return;
+    };
+    let Some(answer) = Answer::of(outcome) else {
+        return;
+    };
+    if answer.is("execute") || answer.is("discard") {
+        commands.entity(agent).remove::<PlanMode>();
     }
-    std::fs::write(path, plan)
+    if answer.is("execute") {
+        // The user chose to execute it: their request, word for word.
+        let text = format!("{EXECUTE}{}", question.body);
+        commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).literal());
+    }
 }
 
 /// "PLAN" on the status line of an agent in plan mode.

@@ -35,6 +35,18 @@ fn start(store: &MemoryStore, model: &MockCompletionModel) -> (App, Receiver<()>
     (app, wakes, agent)
 }
 
+/// The goal's text in this session's `/resume` line.
+fn resume_label(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut labels = world.query::<&ResumeLabel>();
+    let texts: Vec<String> = labels
+        .iter(world)
+        .filter(|label| label.tag == "goal")
+        .map(|label| label.text.clone())
+        .collect();
+    texts.join("|")
+}
+
 /// Runs `/line` for `agent` and returns its reply.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
     app.world_mut().trigger(RunCommand {
@@ -75,12 +87,14 @@ fn the_goal_is_in_every_request_survives_a_restart_and_is_absent_in_a_new_sessio
         status.iter().any(|item| item.text == "◎ Ship OAuth"),
         "{status:?}"
     );
+    assert_eq!(resume_label(&mut app), "◎ Ship OAuth");
     drop(app);
 
     // A restart on the same session brings it back.
     let model = MockCompletionModel::from_stream_turns([reply("Still on it.")]);
     let (mut app, wakes, agent) = start(&store, &model);
     assert_eq!(command(&mut app, agent, "goal"), "Session goal: Ship OAuth");
+    assert_eq!(resume_label(&mut app), "◎ Ship OAuth");
     let preamble = ask(&mut app, &wakes, agent, &model);
     assert!(preamble.contains("Session goal: Ship OAuth"), "{preamble}");
     // Cleared, the next request has no goal.
@@ -94,6 +108,7 @@ fn the_goal_is_in_every_request_survives_a_restart_and_is_absent_in_a_new_sessio
     }
     let preamble = ask(&mut app, &wakes, agent, &model_after);
     assert!(!preamble.contains("Session goal"), "{preamble}");
+    assert_eq!(resume_label(&mut app), "");
     drop(app);
 
     // `/new` runs a session on a store of its own: no goal there.

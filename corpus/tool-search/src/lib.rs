@@ -1,22 +1,25 @@
 //! Deferred tools with tool search (corpus spec 24).
 //!
-//! Tools named by [`DeferredTools`] (name globs, or every tool a plugin
-//! crate added, such as an MCP client's) are left out of each request until
-//! the agent activates them: `tool_search {query}` names the five deferred
-//! tools that match its keywords best and activates them for the calling
-//! agent, which is offered them from its next request on. A deferred tool
-//! called before it was activated still runs, activates it, and the agent
-//! is told so. What each agent activated is saved with the session; a new
-//! agent, a subagent too, starts with none. `/tools` counts the active and
-//! deferred tools, and the system prompt says how many are deferred.
+//! Tools named by the `[tool_search]` settings (name globs, or every tool a
+//! plugin crate added, such as an MCP client's) are left out of each
+//! request until the agent activates them: `tool_search {query}` names the
+//! five deferred tools that match its keywords best and activates them for
+//! the calling agent, which is offered them from its next request on. A
+//! deferred tool called before it was activated still runs; its result
+//! says it is now active. What each agent activated is saved with the
+//! session; a new agent, a subagent too, starts with none. `/tools` counts
+//! the active and deferred tools, and the system prompt says how many are
+//! deferred.
 
 use std::cmp::Reverse;
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_core::completion::ToolDefinition;
-use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::ToolDefinition;
+use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::message::ToolResultContent;
+use rig_harness::rig_core::tool::ToolOutput;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -29,52 +32,17 @@ pub const TOOL_SEARCH: &str = "tool_search";
 /// How many tools a search names at most.
 const TOP: usize = 5;
 
-/// Which tools are deferred: offered only once an agent activated them.
-/// Inserted before the plugin is added, it is kept; otherwise it is read
-/// from `RIG_HOME/tool-search.json`, such as
-/// `{"tools": ["jira_*"], "plugins": ["rig-mcp"]}`.
-#[derive(Resource, Clone, Debug, Default)]
+/// Which tools are deferred, offered only once an agent activated them:
+/// the `[tool_search]` table of the settings, such as
+/// `tools = ["jira_*"]` and `plugins = ["rig-mcp"]`.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct DeferredTools {
-    /// Name globs, such as `jira_*` or `*`.
-    pub names: Vec<Pattern>,
+    /// Name globs, such as `jira_*` or `*`; an invalid one matches nothing.
+    pub tools: Vec<String>,
     /// Plugin crates every tool of which is deferred, such as an MCP
     /// client's: its tools' [`ProvidedBy`] names it.
     pub plugins: Vec<String>,
-}
-
-/// `tool-search.json` as written.
-#[derive(Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct ConfigFile {
-    tools: Vec<String>,
-    plugins: Vec<String>,
-}
-
-impl DeferredTools {
-    /// The tools whose names match one of `globs`; an invalid glob is
-    /// skipped.
-    pub fn matching<'a>(globs: impl IntoIterator<Item = &'a str>) -> Self {
-        Self {
-            names: globs
-                .into_iter()
-                .filter_map(|glob| Pattern::new(glob).ok())
-                .collect(),
-            plugins: Vec::new(),
-        }
-    }
-
-    /// `RIG_HOME/tool-search.json`, or nothing deferred.
-    fn from_home() -> Self {
-        let path = Home::from_env().root().join("tool-search.json");
-        let file: ConfigFile = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default();
-        Self {
-            plugins: file.plugins,
-            ..Self::matching(file.tools.iter().map(String::as_str))
-        }
-    }
 }
 
 /// The deferred tools the agent activated, by name. Saved with the
@@ -87,13 +55,6 @@ impl ActivatedTools {
     fn contains(&self, name: &str) -> bool {
         self.0.iter().any(|activated| activated == name)
     }
-
-    /// Activates `name`, unless it is already.
-    fn activate(&mut self, name: &str) {
-        if !self.contains(name) {
-            self.0.push(name.to_owned());
-        }
-    }
 }
 
 #[derive(Default)]
@@ -101,10 +62,8 @@ pub struct ToolSearchPlugin;
 
 impl Plugin for ToolSearchPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<DeferredTools>() {
-            app.insert_resource(DeferredTools::from_home());
-        }
-        app.register_required_components::<Agent, ActivatedTools>()
+        app.add_setting::<DeferredTools>("tool_search")
+            .register_required_components::<Agent, ActivatedTools>()
             .add_open_tool(
                 TOOL_SEARCH,
                 "Find tools that are not offered yet by keywords over their names and \
@@ -120,8 +79,13 @@ impl Plugin for ToolSearchPlugin {
                 search,
             )
             .add_command("tools", "Count the active and deferred tools", tools)
-            .add_observer(offer)
-            .add_observer(activate_on_call);
+            .add_systems(
+                AgentPass,
+                (
+                    offer.in_set(Stage::Prepare),
+                    activate_on_call.in_set(Stage::Review),
+                ),
+            );
     }
 }
 
@@ -151,14 +115,17 @@ impl Registry<'_, '_> {
         let from_plugin = by
             .and_then(|by| self.plugins.get(by.0).ok())
             .is_some_and(|source| self.config.plugins.contains(&source.krate));
-        from_plugin || self.config.names.iter().any(|glob| glob.matches(name))
+        let glob = |glob: &String| Pattern::new(glob).is_ok_and(|glob| glob.matches(name));
+        from_plugin || self.config.tools.iter().any(glob)
     }
 
-    /// Every deferred tool.
-    fn deferred(&self) -> impl Iterator<Item = &ToolDefinition> {
+    /// The deferred tools `access` lets the agent call.
+    fn deferred<'a>(&'a self, access: &'a ToolAccess) -> impl Iterator<Item = &'a ToolDefinition> {
         self.tools
             .iter()
-            .filter(|(def, by)| self.deferred_def(&def.0, *by))
+            .filter(|(def, by)| {
+                access.allows(def.0.name.as_str()) && self.deferred_def(&def.0, *by)
+            })
             .map(|(def, _)| &def.0)
     }
 
@@ -171,31 +138,40 @@ impl Registry<'_, '_> {
     }
 }
 
-/// Leaves the deferred tools the agent has not activated out of each
-/// request, and says in its system prompt how many tools are deferred.
+/// Leaves the deferred tools the agent has not activated out of each turn's
+/// request (Start then drops their rules from the prompt), and says in the
+/// system prompt how many tools are deferred.
 fn offer(
-    mut prepare: On<PrepareRequest>,
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+    >,
     registry: Registry,
     agents: Query<(&ToolAccess, &ActivatedTools)>,
 ) {
-    let Ok((access, activated)) = agents.get(prepare.agent) else {
-        return;
-    };
-    let prepare = prepare.event_mut();
-    prepare.tools.retain(|tool| {
-        let name = tool.name.as_str();
-        activated.contains(name) || !registry.is_deferred(name)
-    });
-    let deferred = registry
-        .deferred()
-        .filter(|def| access.allows(def.name.as_str()))
-        .count();
-    let searchable = prepare.tools.iter().any(|tool| tool.name == TOOL_SEARCH);
-    if deferred > 0 && searchable {
-        // The total, not what is left, so the prompt stays cached.
-        prepare.preamble.push_str(&format!(
-            "\n\n{deferred} more tools are deferred: `tool_search` finds and activates them."
-        ));
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        let Ok((access, activated)) = agents.get(agent) else {
+            continue;
+        };
+        call.request.tools.retain(|tool| {
+            let name = tool.name.as_str();
+            activated.contains(name) || !registry.is_deferred(name)
+        });
+        let deferred = registry.deferred(access).count();
+        let searchable = call
+            .request
+            .tools
+            .iter()
+            .any(|tool| tool.name == TOOL_SEARCH);
+        if deferred > 0
+            && searchable
+            && let Some(prompt) = call.system_prompt_mut()
+        {
+            // The total, not what is left, so the prompt stays cached.
+            prompt.push_str(&format!(
+                "\n\n{deferred} more tools are deferred: `tool_search` finds and activates them."
+            ));
+        }
     }
 }
 
@@ -207,13 +183,12 @@ fn search(
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
     mut commands: Commands,
 ) {
-    let terms: Vec<String> = words(&called.args.query).collect();
     let Ok((access, mut activated)) = agents.get_mut(called.agent) else {
         return;
     };
+    let terms: Vec<String> = words(&called.args.query).collect();
     let mut found: Vec<(usize, &ToolDefinition)> = registry
-        .deferred()
-        .filter(|def| access.allows(def.name.as_str()))
+        .deferred(access)
         .map(|def| (score(def, &terms), def))
         .filter(|(score, _)| *score > 0)
         .collect();
@@ -232,15 +207,17 @@ fn search(
         lines.push("These tools are now active: call them directly.".to_owned());
         lines.join("\n")
     };
-    // Only a new name changes what is saved.
     for (_, def) in &found {
-        if !activated.contains(def.name.as_str()) {
-            activated.activate(def.name.as_str());
+        let name = def.name.as_str();
+        // Only a new name changes what is saved.
+        if !activated.contains(name) {
+            activated.0.push(name.to_owned());
         }
     }
+    let result = ToolResult::success(ToolOutput::text(text));
     commands
         .entity(called.call)
-        .insert(ToolOutput(ToolResult::success(text.into())));
+        .insert_if_new(Outcome::from(result));
 }
 
 /// The lowercase words of `text`.
@@ -272,37 +249,37 @@ fn score(def: &ToolDefinition, terms: &[String]) -> usize {
         .sum()
 }
 
-/// A deferred tool the model called before activating it runs anyway (the
-/// kernel runs any tool the agent's `ToolAccess` allows); this activates
-/// it and tells the agent with its next request.
+/// A deferred tool the model called before activating it runs anyway (a
+/// tool left out of a request still runs if the agent's `ToolAccess`
+/// allows it): before its result is committed, this activates the tool and
+/// says so at the end of the result.
 fn activate_on_call(
-    call: On<Add<CallOf>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
+    calls: Query<(Entity, &ToolRequest, &ForAgent, &Outcome), Unreviewed>,
     registry: Registry,
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
     mut commands: Commands,
 ) {
-    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
-        return;
-    };
-    let Ok(&TurnOf(agent)) = turns.get(*turn) else {
-        return;
-    };
-    let name = run.call.function.name.as_str();
-    let Ok((access, mut activated)) = agents.get_mut(agent) else {
-        return;
-    };
-    if !access.allows(name) || activated.contains(name) || !registry.is_deferred(name) {
-        return;
+    for (call, request, &ForAgent(agent), outcome) in &calls {
+        let name = request.call.function.name.as_str();
+        let Ok(Answered::ToolResult { result }) = &outcome.0 else {
+            continue;
+        };
+        let Ok((access, mut activated)) = agents.get_mut(agent) else {
+            continue;
+        };
+        if !access.allows(name) || activated.contains(name) || !registry.is_deferred(name) {
+            continue;
+        }
+        activated.0.push(name.to_owned());
+        let mut content = result.output().as_content().to_vec();
+        content.push(ToolResultContent::text(format!(
+            "(`{name}` was deferred and not offered yet; it ran and is now active.)"
+        )));
+        if let Ok(output) = ToolOutput::content(content) {
+            let noted = result.clone().with_output(output);
+            commands.entity(call).insert(Outcome::from(noted));
+        }
     }
-    activated.activate(name);
-    let note = format!(
-        "(`{name}` was deferred and not offered yet; the call ran and `{name}` is now active.)"
-    );
-    commands.trigger(
-        Deliver::new(agent, note, DeliveryMode::Note).with_origin(Origin::plugin("tool-search")),
-    );
 }
 
 /// `/tools`: how many tools the agent is offered, how many are deferred,
@@ -316,18 +293,16 @@ fn tools(
     let Ok((access, activated)) = agents.get(args.agent) else {
         return;
     };
-    let (mut active, mut deferred) = (0, 0);
-    for (def, by) in &registry.tools {
-        let name = def.0.name.as_str();
-        if !access.allows(name) {
-            continue;
-        }
-        if registry.deferred_def(&def.0, by) && !activated.contains(name) {
-            deferred += 1;
-        } else {
-            active += 1;
-        }
-    }
+    let usable = registry
+        .tools
+        .iter()
+        .filter(|(def, _)| access.allows(def.0.name.as_str()))
+        .count();
+    let deferred = registry
+        .deferred(access)
+        .filter(|def| !activated.contains(def.name.as_str()))
+        .count();
+    let active = usable.saturating_sub(deferred);
     let mut text = format!("Tools: {active} active, {deferred} deferred.");
     if !activated.0.is_empty() {
         text.push_str(&format!(" Activated: {}.", activated.0.join(", ")));

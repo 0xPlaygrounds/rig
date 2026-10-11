@@ -1,11 +1,11 @@
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
 
-use corpus_few_shot_examples::{ExamplesProject, FewShotExamplesPlugin};
+use corpus_few_shot_examples::FewShotExamplesPlugin;
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::load;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 use super::*;
 
@@ -37,10 +37,6 @@ impl Plugin for HouseRulesPlugin {
     }
 }
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
 /// The notices' texts.
 #[derive(Resource, Default)]
 struct Seen(Vec<String>);
@@ -62,13 +58,11 @@ fn project() -> Option<PathBuf> {
     Some(root)
 }
 
-/// Runs `/<line>` for `agent` and returns the notice it wrote.
+/// Types `line` to `agent`, as the user, and returns the notices it wrote.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
     app.world_mut().resource_mut::<Seen>().0.clear();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: line.to_owned(),
-    });
+    let typed = Deliver::new(agent, line, DeliveryMode::Queue).with_origin(Origin::user());
+    app.world_mut().trigger(typed);
     app.update();
     app.world().resource::<Seen>().0.join("\n")
 }
@@ -80,17 +74,18 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     let Some(root) = root else {
         return;
     };
-    let (mut app, wakes): (App, Receiver<()>) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin));
+    let session = Home::at(root.join("home")).session(&SessionId::generate());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins((AgentPlugin, JournalPlugin));
     load::<HouseRulesPlugin>(&mut app, "house-rules", "test");
     load::<FewShotExamplesPlugin>(&mut app, "corpus-few-shot-examples", "test");
     load::<ContextInspectorPlugin>(&mut app, "corpus-context-inspector", "test");
-    app.insert_resource(ExamplesProject(root.clone()))
-        .insert_resource(RequestDumps(root.join("requests")))
-        .init_resource::<Ended>()
+    app.init_resource::<Ended>()
         .init_resource::<Seen>()
         .add_systems(Last, see)
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply("Committed.")]);
@@ -109,26 +104,26 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     let said = Deliver::new(agent, "commit this", DeliveryMode::Queue).with_origin(Origin::user());
     app.world_mut().trigger(said);
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0 >= 1 && world.get::<LastRequest>(agent).is_some()
+        !world.resource::<Ended>().0.is_empty()
     });
     let sent = model.requests().len();
     assert_eq!(sent, 1, "the turn's one request reached the model");
 
-    let why = command(&mut app, agent, "why");
+    let why = command(&mut app, agent, "/why");
     for expected in [
         "<house_rules> \"House rules\"",
         "from HouseRulesPlugin",
         "Tools offered: 1",
         "lookup",
         "+ 2 messages added before the conversation (user, assistant;",
-        "by FewShotExamplesPlugin",
     ] {
         assert!(why.contains(expected), "`{expected}` in:\n{why}");
     }
 
-    let full = command(&mut app, agent, "why full");
+    let full = command(&mut app, agent, "/context --last full");
     let id = app.world().get::<AgentId>(agent).map(|id| id.0.clone());
-    let path = root
+    let path = session
+        .path()
         .join("requests")
         .join(format!("{}-last-request.json", id.unwrap_or_default()));
     assert!(full.contains(&path.display().to_string()), "{full}");

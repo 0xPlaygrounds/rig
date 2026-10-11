@@ -15,25 +15,24 @@
 //! fix(parser): accept a trailing comma
 //! ```
 //!
-//! Before each request ([`PrepareRequest`]) the examples whose `when`
-//! matches the latest user text or a file the turn's file tools touched go
-//! first in its messages, right after the system prompt, at most
-//! [`MaxExamples`] of them, in file-name order: the same examples make the
-//! same prefix, so the provider's prompt cache keeps working. They are
-//! never committed to the [`Conversation`], so the session log and
-//! compaction's summaries never see them. `/examples` says which went with
-//! the agent's last request.
+//! A Prepare system puts the examples whose `when` matches the latest user
+//! text, or a file the turn read or changed, right after the system prompt
+//! of each request built from an agent, at most `max_examples` of them
+//! (the `[few_shot_examples]` setting, 3 by default), in file-name order:
+//! the same examples make the same prefix, so the provider's prompt cache
+//! keeps working. They are never committed to the [`Conversation`], so the
+//! session log and compaction's summaries never see them. The directory is
+//! watched and read again when it changes. `/examples` says which went
+//! with the agent's last request.
 
 use std::path::{Path, PathBuf};
 
 use glob::Pattern;
-use rig_core::completion::Message;
 use rig_harness::prelude::*;
-use serde_json::Value;
-
-/// The tools whose `path` argument is a file the turn touched: the file
-/// tools of rig-coding-tools, as rig-compaction tracks them.
-const FILE_TOOLS: [&str; 3] = ["read", "edit", "write"];
+use rig_harness::rig_core::completion::Message;
+use rig_harness::rig_core::tool::FilesChanged;
+use rig_tools::{Read, ReadArgs};
+use serde::Deserialize;
 
 /// Injects the project's few-shot examples into the requests they fit, and
 /// adds `/examples`.
@@ -42,14 +41,17 @@ pub struct FewShotExamplesPlugin;
 
 impl Plugin for FewShotExamplesPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<ExamplesProject>()
-            .init_resource::<MaxExamples>()
+        app.add_setting::<FewShotSettings>("few_shot_examples")
+            .init_resource::<ProjectRoot>()
             .init_resource::<Library>()
+            .add_message::<FileChanges>()
             .register_required_components::<TurnOf, Touched>()
             .register_required_components::<Agent, SentExamples>()
-            .add_observer(load)
-            .add_observer(track)
-            .add_observer(inject)
+            .add_observer(track_reads)
+            .add_observer(track_changes)
+            .add_systems(Startup, watch)
+            .add_systems(Update, reload.before(AgentLoop))
+            .add_systems(AgentPass, inject.in_set(Stage::Prepare))
             .add_command(
                 "examples",
                 "List the few-shot examples that went with the last request",
@@ -58,31 +60,17 @@ impl Plugin for FewShotExamplesPlugin {
     }
 }
 
-/// The project whose `.rig/examples` holds the examples: the working
-/// directory unless set.
-#[derive(Resource, Clone, Debug)]
-pub struct ExamplesProject(pub PathBuf);
-
-impl Default for ExamplesProject {
-    fn default() -> Self {
-        Self(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
-    }
+/// The `[few_shot_examples]` settings table.
+#[derive(Resource, Clone, Copy, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct FewShotSettings {
+    /// How many examples one request takes at most.
+    pub max_examples: usize,
 }
 
-impl ExamplesProject {
-    /// The examples' directory.
-    fn dir(&self) -> PathBuf {
-        self.0.join(".rig").join("examples")
-    }
-}
-
-/// How many examples one request takes at most.
-#[derive(Resource, Clone, Copy, Debug)]
-pub struct MaxExamples(pub usize);
-
-impl Default for MaxExamples {
+impl Default for FewShotSettings {
     fn default() -> Self {
-        Self(3)
+        Self { max_examples: 3 }
     }
 }
 
@@ -90,11 +78,15 @@ impl Default for MaxExamples {
 #[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
 pub struct SentExamples(pub Vec<String>);
 
-/// The files the turn's file tools were called with.
+/// The files the turn's tool calls read or changed.
 #[derive(Component, Clone, Debug, Default)]
 struct Touched(Vec<String>);
 
-/// The examples read when the last turn started, and the files skipped.
+/// The watch on the examples' directory.
+#[derive(Component)]
+struct ExamplesWatch;
+
+/// The examples as last read, and the files skipped.
 #[derive(Resource, Default)]
 struct Library {
     examples: Vec<Example>,
@@ -228,17 +220,21 @@ fn latest_user_text(messages: &[Message]) -> Option<String> {
     })
 }
 
-/// Reads the examples when a turn starts, so an edited file counts from
-/// the next message.
-fn load(_started: On<Add<TurnOf>>, project: Res<ExamplesProject>, mut library: ResMut<Library>) {
-    let mut files: Vec<PathBuf> = std::fs::read_dir(project.dir())
+/// The examples' directory in `root`.
+fn examples_dir(root: &ProjectRoot) -> PathBuf {
+    root.0.join(".rig").join("examples")
+}
+
+/// Reads the examples in `dir`, in file-name order.
+fn read_library(dir: &Path) -> Library {
+    let mut files: Vec<PathBuf> = std::fs::read_dir(dir)
         .into_iter()
         .flatten()
         .filter_map(|entry| entry.ok().map(|entry| entry.path()))
         .filter(|path| path.extension().is_some_and(|extension| extension == "md"))
         .collect();
     files.sort();
-    let mut read = Library::default();
+    let mut library = Library::default();
     for path in files {
         let name = path
             .file_stem()
@@ -248,64 +244,129 @@ fn load(_started: On<Add<TurnOf>>, project: Res<ExamplesProject>, mut library: R
             .map_err(|error| error.to_string())
             .and_then(|text| Example::parse(name.clone(), &text));
         match parsed {
-            Ok(example) => read.examples.push(example),
-            Err(why) => read.skipped.push(format!("{name}: {why}")),
+            Ok(example) => library.examples.push(example),
+            Err(why) => library.skipped.push(format!("{name}: {why}")),
         }
     }
-    *library = read;
+    library
 }
 
-/// Notes the file each of the turn's file tool calls names.
-fn track(
-    call: On<Add<CallOf>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
+/// Reads the examples and watches their directory.
+fn watch(root: Res<ProjectRoot>, mut library: ResMut<Library>, mut commands: Commands) {
+    let dir = examples_dir(&root);
+    *library = read_library(&dir);
+    commands.spawn((ExamplesWatch, FileWatch::new(dir)));
+}
+
+/// Reads the examples again once their directory changed.
+fn reload(
+    mut changes: MessageReader<FileChanges>,
+    watches: Query<(), With<ExamplesWatch>>,
+    root: Res<ProjectRoot>,
+    mut library: ResMut<Library>,
+) {
+    if changes.read().any(|change| watches.contains(change.watch)) {
+        *library = read_library(&examples_dir(&root));
+    }
+}
+
+/// Notes the file of each `read` call on its turn, as the model asks for it.
+fn track_reads(
+    call: On<Add<ToolRequest>>,
+    calls: Query<(&ToolRequest, &CallOf)>,
     mut turns: Query<&mut Touched>,
 ) {
-    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
+    let Ok((request, &CallOf(turn))) = calls.get(call.entity) else {
         return;
     };
-    let function = &run.call.function;
-    if !FILE_TOOLS.contains(&function.name.as_str()) {
+    let function = &request.call.function;
+    if function.name.as_str() != <Read as PortableTool>::NAME {
         return;
     }
-    if let Some(path) = function.arguments.get("path").and_then(Value::as_str)
-        && let Ok(mut touched) = turns.get_mut(*turn)
-        && !touched.0.iter().any(|file| file == path)
+    if let Ok(args) = serde_json::from_value::<ReadArgs>(function.arguments.clone().into())
+        && let Ok(mut touched) = turns.get_mut(turn)
     {
-        touched.0.push(path.to_owned());
+        touched.note(args.path);
     }
 }
 
-/// Puts the examples that fit the request before its messages.
+/// Notes the files any tool call says it changed on its turn.
+fn track_changes(
+    published: On<Insert<Published>>,
+    calls: Query<(&Published, &CallOf)>,
+    mut turns: Query<&mut Touched>,
+) {
+    let Ok((published, &CallOf(turn))) = calls.get(published.entity) else {
+        return;
+    };
+    let Ok(Some(changed)) = published.0.get::<FilesChanged>() else {
+        return;
+    };
+    if let Ok(mut touched) = turns.get_mut(turn) {
+        for path in changed.paths() {
+            touched.note(path.to_owned());
+        }
+    }
+}
+
+impl Touched {
+    /// Notes `path`, once.
+    fn note(&mut self, path: String) {
+        if !self.0.contains(&path) {
+            self.0.push(path);
+        }
+    }
+}
+
+/// The requests built from an agent, as Prepare sees each once.
+type NewRequests<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut ModelRequest,
+        &'static ForAgent,
+        Option<&'static CallOf>,
+    ),
+    (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+>;
+
+/// Puts the examples that fit each request right after its system prompt.
 fn inject(
-    mut prepare: On<PrepareRequest>,
+    mut calls: NewRequests,
     library: Res<Library>,
-    max: Res<MaxExamples>,
-    project: Res<ExamplesProject>,
+    settings: Res<FewShotSettings>,
+    root: Res<ProjectRoot>,
     turns: Query<&Touched>,
     mut agents: Query<&mut SentExamples>,
 ) {
-    let files = turns
-        .get(prepare.entity)
-        .map(|touched| touched.0.as_slice())
-        .unwrap_or_default();
-    let said = latest_user_text(&prepare.messages)
-        .map(|text| words(&text))
-        .unwrap_or_default();
-    let chosen: Vec<&Example> = library
-        .examples
-        .iter()
-        .filter(|example| example.fits(&said, files, &project.0))
-        .take(max.0)
-        .collect();
-    if let Ok(mut sent) = agents.get_mut(prepare.agent) {
-        let names = chosen.iter().map(|example| example.name.clone()).collect();
-        sent.set_if_neq(SentExamples(names));
+    for (mut call, &ForAgent(agent), of) in &mut calls {
+        let files = of
+            .and_then(|&CallOf(turn)| turns.get(turn).ok())
+            .map(|touched| touched.0.as_slice())
+            .unwrap_or_default();
+        let messages = &mut call.request.chat_history;
+        let said = latest_user_text(messages)
+            .map(|text| words(&text))
+            .unwrap_or_default();
+        let chosen: Vec<&Example> = library
+            .examples
+            .iter()
+            .filter(|example| example.fits(&said, files, &root.0))
+            .take(settings.max_examples)
+            .collect();
+        if let Ok(mut sent) = agents.get_mut(agent) {
+            let names = chosen.iter().map(|example| example.name.clone()).collect();
+            sent.set_if_neq(SentExamples(names));
+        }
+        let after_prompt = messages
+            .iter()
+            .take_while(|message| matches!(message, Message::System { .. }))
+            .count();
+        let examples = chosen
+            .iter()
+            .flat_map(|example| example.messages.iter().cloned());
+        messages.splice(after_prompt..after_prompt, examples);
     }
-    let examples = chosen
-        .iter()
-        .flat_map(|example| example.messages.iter().cloned());
-    prepare.messages.splice(0..0, examples);
 }
 
 /// `/examples`.

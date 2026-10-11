@@ -9,12 +9,10 @@ description = "Plugin corpus: 03. Safer shell commands by rewriting"
 workspace = true
 
 [dependencies]
+# Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The `shell` tool the plugin serves again, behind its rewriting layer.
-rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # `RIG_HOME/shell-rewrite.toml`; already in Cargo.lock (1.x), no new package.

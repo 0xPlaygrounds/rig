@@ -13,9 +13,8 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The status item and the picker.
+# The status item.
 rig-tui = { path = "../../plugins/rig-tui" }
-serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

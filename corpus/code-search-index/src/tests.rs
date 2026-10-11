@@ -4,21 +4,23 @@ use std::process::Command;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::EditTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 use serde_json::json;
 
 use super::*;
 
-/// Each tool call's name and result text, in the order they ended, and
-/// whether the turn ended.
+/// Each tool call's name and result text, in the order they settled.
 #[derive(Resource, Default)]
-struct Seen {
-    outputs: Vec<(String, String)>,
-    ended: bool,
-}
+struct Seen(Vec<(String, String)>);
 
-const UI: &str = "pub fn draw_frame(canvas: &mut Canvas) {\n    canvas.clear();\n    \
-                  canvas.draw_border();\n}\n";
+fn seen(settled: On<Add<Settled>>, calls: Query<(&ToolRequest, &Outcome)>, mut seen: ResMut<Seen>) {
+    if let Ok((request, outcome)) = calls.get(settled.entity) {
+        let result = outcome.tool_result();
+        let text = result.output().as_text().unwrap_or_default().to_owned();
+        seen.0
+            .push((request.call.function.name.as_str().to_owned(), text));
+    }
+}
 
 /// A git project in the system's temporary directory with networking code
 /// in `net.rs` and drawing code in `ui.rs`.
@@ -27,8 +29,7 @@ fn project() -> std::io::Result<PathBuf> {
     std::fs::create_dir_all(&dir)?;
     let dir = std::fs::canonicalize(dir)?;
     let git = Command::new("git")
-        .arg("init")
-        .arg("-q")
+        .args(["init", "-q"])
         .current_dir(&dir)
         .status()?;
     if !git.success() {
@@ -41,7 +42,11 @@ fn project() -> std::io::Result<PathBuf> {
          loop {\n        if let Ok(response) = client.send(request.clone()) {\n            \
          return response;\n        }\n    }\n}\n",
     )?;
-    std::fs::write(dir.join("ui.rs"), UI)?;
+    std::fs::write(
+        dir.join("ui.rs"),
+        "pub fn draw_frame(canvas: &mut Canvas) {\n    canvas.clear();\n    \
+         canvas.draw_border();\n}\n",
+    )?;
     Ok(dir)
 }
 
@@ -49,6 +54,13 @@ fn project() -> std::io::Result<PathBuf> {
 fn first_hit(result: &str) -> Option<&str> {
     let line = result.lines().find(|line| line.contains(".rs:"))?;
     line.split(':').next()
+}
+
+/// Runs frames until `count` turns ended.
+fn turns_ended(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>, count: usize) {
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() >= count
+    });
 }
 
 #[test]
@@ -60,26 +72,14 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     };
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    app.set_error_handler(rig_harness::error::warn)
-        .insert_resource(CodeSearchConfig {
-            root: project.clone(),
-            embedder: Embedder::Hashing,
-            context_chunks: 3,
-        })
+    app.set_error_handler(bevy_ecs::error::warn)
+        .insert_resource(Settings::from_toml("[code_search]\ncontext_chunks = 3"))
+        .insert_resource(ProjectRoot(project.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, EditTool, CodeSearchPlugin))
         .init_resource::<Seen>()
-        .add_observer(|_: On<TurnEnded>, mut seen: ResMut<Seen>| seen.ended = true)
-        .add_observer(
-            |add: On<Add<ToolOutput>>,
-             outputs: Query<(&ToolCallRun, &ToolOutput)>,
-             mut seen: ResMut<Seen>| {
-                if let Ok((run, ToolOutput(result))) = outputs.get(add.entity) {
-                    let text = result.output().as_text().unwrap_or_default().to_owned();
-                    let name = run.call.function.name.as_str().to_owned();
-                    seen.outputs.push((name, text));
-                }
-            },
-        );
+        .init_resource::<Ended>()
+        .add_observer(seen)
+        .add_observer(log_ended);
     app.finish();
     app.update();
     run_until(&mut app, &wakes, |world| {
@@ -99,8 +99,9 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
                 "new_text": "pub fn backoff_delay(attempt: u32) -> u64 {\n    100 << attempt\n}\n\npub fn draw_frame",
             }] }),
         ),
-        calls("3", "code_search", json!({ "query": "backoff delay" })),
         reply("done"),
+        calls("3", "code_search", json!({ "query": "backoff delay" })),
+        reply("found"),
     ]);
     let world = app.world_mut();
     let agent = world
@@ -116,14 +117,31 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     world.trigger(Deliver::new(
         agent,
         "Find the retry code.",
-        DeliveryMode::Steer,
+        DeliveryMode::Queue,
     ));
-    run_until(&mut app, &wakes, |world| world.resource::<Seen>().ended);
-    // The index was saved once built.
+    turns_ended(&mut app, &wakes, 1);
+    // The edited file is indexed again from the call's `FilesChanged`,
+    // before any search looks at its time.
+    run_until(&mut app, &wakes, |world| {
+        world
+            .resource::<CodeIndex>()
+            .contains("ui.rs", "fn backoff_delay")
+    });
+    let reindexed = app
+        .world()
+        .resource::<CodeIndex>()
+        .contains("ui.rs", "fn backoff_delay");
+    app.world_mut().trigger(Deliver::new(
+        agent,
+        "Where is the delay?",
+        DeliveryMode::Queue,
+    ));
+    turns_ended(&mut app, &wakes, 2);
     let saved = project.join(INDEX_FILE).exists();
     std::fs::remove_dir_all(&project).ok();
 
-    let outputs = &app.world().resource::<Seen>().outputs;
+    assert!(reindexed, "the edit re-indexed ui.rs");
+    let outputs = &app.world().resource::<Seen>().0;
     assert_eq!(outputs.len(), 3, "{outputs:?}");
     let [(first, retry), (edit, _), (second, backoff)] = outputs.as_slice() else {
         return;
@@ -136,19 +154,23 @@ fn search_finds_code_by_meaning_sees_an_edit_and_adds_context() {
     assert_eq!(first_hit(backoff), Some("ui.rs"), "{backoff}");
     assert!(backoff.contains("fn backoff_delay"), "{backoff}");
     assert!(saved, "the index is kept in .rig/index/");
-    // Every request of the turn carries the chunks found for the user's
-    // message; the conversation does not keep them.
+    // Every request carries the chunks found for its user message; the
+    // conversation does not keep them.
     let sent: Vec<String> = model
         .requests()
         .iter()
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
-    assert_eq!(sent.len(), 4, "{sent:?}");
+    assert_eq!(sent.len(), 5, "{sent:?}");
     assert!(
         sent.iter()
             .all(|request| request.contains("<code-context>"))
     );
-    assert!(sent.iter().all(|request| request.contains("net.rs:")));
+    assert!(
+        sent.iter()
+            .take(3)
+            .all(|request| request.contains("net.rs:"))
+    );
     let world = app.world_mut();
     let kept = world
         .query::<&Conversation>()

@@ -1,29 +1,29 @@
 //! Plugin corpus: 46. HTTP API front (spec `46-http-api.md`).
 //!
 //! Drives the agent over local HTTP while the terminal view keeps working:
-//! `rig --serve=127.0.0.1:7777` starts a server whose random bearer token
-//! is shown as a notice and written to `RIG_HOME/serve-token`.
+//! `rig --serve=127.0.0.1:7777`, or `addr` in the `[serve]` settings,
+//! starts a server whose random bearer token is shown as a notice and
+//! written to `RIG_HOME/serve-token`.
 //!
 //! - `POST /agents/{id}/messages {text, mode}` delivers a message as if
 //!   typed (slash commands run), `POST /agents/{id}/interrupt` stops a turn.
 //! - `GET /agents` lists the agents with their status,
 //!   `GET /agents/{id}/conversation` returns the messages.
 //! - `GET /events` streams Server-Sent Events: `turn_start`, `text_delta`,
-//!   `tool_start`, `tool_end`, `turn_end`, `notice` and `approval_request`.
-//! - `POST /approvals/{id} {choice}` answers a picker a plugin opened.
+//!   `tool_start`, `tool_end`, `turn_end`, `notice`, `approval_request`
+//!   and `approval_closed`.
+//! - `POST /approvals/{id} {choice}` answers any plugin's open [`Ask`], or
+//!   a [`Picker`] the terminal view would show.
 //!
 //! An agent is named by its id or the id's first characters. A client
 //! lagging more than 256 events behind is dropped. Binding to anything but
-//! localhost needs `--serve-remote`.
-
-use std::collections::{HashMap, VecDeque};
-use std::net::SocketAddr;
-use std::path::PathBuf;
+//! localhost needs `allow_remote = true` in `[serve]`.
 
 use crossbeam_channel::Sender;
 use rig_activity::Activity;
 use rig_harness::prelude::*;
-use rig_tui::{Chosen, Picked, Picker};
+use rig_tui::{Chosen, Focused, Picked, Picker};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 mod server;
@@ -33,49 +33,26 @@ use server::{Call, Reply, Request, Server};
 /// The option naming the address to serve on, such as `127.0.0.1:7777`.
 pub const SERVE: &str = "serve";
 
-/// The option that lets the server bind an address that is not localhost.
-pub const SERVE_REMOTE: &str = "serve-remote";
-
-/// The pickers kept for an answer; older ones are forgotten.
-const PENDING_PICKERS: usize = 32;
-
-/// Where and how to serve.
-#[derive(Clone, Debug)]
-pub struct Serve {
-    /// The address, such as `127.0.0.1:7777`; port 0 picks a free one.
-    pub addr: String,
+/// The `[serve]` settings: `addr = "127.0.0.1:7777"`, `allow_remote`.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct ServeSettings {
+    /// The address to serve on; `--serve=ADDR` overrides it. Port 0 picks
+    /// a free one.
+    pub addr: Option<String>,
     /// Whether an address that is not localhost may be bound.
     pub allow_remote: bool,
-    /// Where the token is written, if anywhere.
-    pub token_file: Option<PathBuf>,
 }
 
-impl Serve {
-    /// From the command line's `--serve=ADDR` and `--serve-remote`, with
-    /// the token in `home`'s `serve-token`; `None` without `--serve`.
-    pub fn from_invocation(invoked: &Invoked, home: &Home) -> Option<Self> {
-        let addr = invoked.flag_value(SERVE).filter(|addr| !addr.is_empty())?;
-        Some(Self {
-            addr: addr.to_owned(),
-            allow_remote: invoked.flag(SERVE_REMOTE),
-            token_file: Some(home.root().join("serve-token")),
-        })
-    }
-}
-
-/// The HTTP API front. Serves nothing without a [`Serve`], which the
-/// command line gives unless one is set here.
+/// The HTTP API. Serves nothing without `--serve` or `[serve] addr`.
 #[derive(Default)]
-pub struct HttpApiPlugin {
-    /// Where to serve; [`Serve::from_invocation`] when `None`.
-    pub serve: Option<Serve>,
-}
+pub struct HttpApiPlugin;
 
 /// The running server's address and bearer token.
 #[derive(Resource, Clone, Debug)]
 pub struct HttpApi {
     /// The bound address.
-    pub addr: SocketAddr,
+    pub addr: std::net::SocketAddr,
     /// The token every request carries as `Authorization: Bearer <token>`.
     pub token: String,
 }
@@ -83,36 +60,38 @@ pub struct HttpApi {
 impl Plugin for HttpApiPlugin {
     fn build(&self, app: &mut App) {
         app.add_flag(Flag::new(SERVE, "Serve the HTTP API on ADDR").value("ADDR"))
-            .add_flag(Flag::new(
-                SERVE_REMOTE,
-                "Let --serve bind an address that is not localhost",
-            ));
-        let invoked = app.world().get_resource::<Invoked>();
-        let from_invocation = || {
-            invoked.and_then(|invoked| Serve::from_invocation(invoked, &RigHome::of(app.world())))
-        };
-        let Some(serve) = self.serve.clone().or_else(from_invocation) else {
+            .add_setting::<ServeSettings>("serve");
+        let world = app.world();
+        let flag = world
+            .get_resource::<Invoked>()
+            .and_then(|invoked| invoked.flag_value(SERVE).map(str::to_owned));
+        let settings = world.resource::<ServeSettings>();
+        let Some(addr) = flag.or_else(|| settings.addr.clone()) else {
             return;
         };
+        let allow_remote = settings.allow_remote;
+        let token_file = RigHome::of(world).root().join("serve-token");
         app.init_resource::<Subscribers>()
-            .init_resource::<Streamed>()
-            .init_resource::<Pickers>()
+            .register_required_components::<TurnCall, Streamed>()
             .add_systems(
                 Startup,
                 move |wake: Res<Wake>,
                       mut commands: Commands,
                       mut notices: MessageWriter<Notice>| {
-                    match server::start(&serve, wake.clone()) {
-                        Ok((addr, token, server)) => {
-                            let file = serve.token_file.as_ref().map_or_else(String::new, |path| {
-                                format!(" (in {})", path.display())
-                            });
+                    match server::start(&addr, allow_remote, &token_file, wake.clone()) {
+                        Ok((api, server)) => {
                             notices.write(Notice::info(
                                 None,
-                                format!("HTTP API on http://{addr}, bearer token {token}{file}"),
+                                format!(
+                                    "HTTP API on http://{}, bearer token {} (in {})",
+                                    api.addr,
+                                    api.token,
+                                    token_file.display()
+                                ),
                             ));
-                            commands.insert_resource(HttpApi { addr, token });
+                            commands.insert_resource(api);
                             commands.insert_resource(server);
+                            commands.spawn(Answerer::default());
                         }
                         Err(why) => {
                             notices.write(Notice::error(None, why));
@@ -121,13 +100,16 @@ impl Plugin for HttpApiPlugin {
                 },
             )
             .add_systems(PreUpdate, answer_requests.run_if(resource_exists::<Server>))
-            .add_systems(PostUpdate, (stream_text, relay_notices, offer_pickers))
+            .add_systems(PostUpdate, (stream_text, relay_notices))
             .add_observer(turn_started)
             .add_observer(turn_ended)
+            .add_observer(reply_settled)
             .add_observer(tool_started)
             .add_observer(tool_ended)
-            .add_observer(reply_done)
-            .add_observer(forget_call);
+            .add_observer(asked)
+            .add_observer(ask_answered)
+            .add_observer(picker_opened)
+            .add_observer(picker_closed);
     }
 }
 
@@ -148,17 +130,10 @@ impl Subscribers {
     }
 }
 
-/// How much of each model call's streamed text went out as deltas.
-#[derive(Resource, Default)]
-struct Streamed(HashMap<Entity, usize>);
-
-/// The [`Picker`]s other plugins opened, by id, oldest first, and the
-/// next id.
-#[derive(Resource, Default)]
-struct Pickers {
-    open: VecDeque<(u64, Entity)>,
-    next: u64,
-}
+/// On each turn's model call: how much of its [`Partial`] text went out
+/// as deltas.
+#[derive(Component, Default)]
+struct Streamed(usize);
 
 /// The agents as requests name them.
 type AgentRow<'a> = (
@@ -171,21 +146,27 @@ type AgentRow<'a> = (
     Option<&'a SpawnedBy>,
 );
 
+/// What answering a choice reads.
+type Choosable<'w, 's> = (
+    Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
+    Query<'w, 's, &'static Picker>,
+    Query<'w, 's, Entity, With<Focused>>,
+);
+
 /// Answers the requests the connections handed over since the last frame.
 fn answer_requests(
     server: Res<Server>,
     agents: Query<AgentRow>,
     ids: Query<&AgentId>,
+    choosable: Choosable,
     mut subscribers: ResMut<Subscribers>,
-    mut pickers: (ResMut<Pickers>, Query<&Picker>),
     mut commands: Commands,
 ) {
     for request in server.requests.try_iter() {
         match request {
             Request::Subscribe(sender) => subscribers.0.push(sender),
             Request::Call(call, reply) => {
-                let pickers = (&mut *pickers.0, &pickers.1);
-                let answer = answer(call, &agents, &ids, pickers, &mut commands);
+                let answer = answer(call, &agents, &ids, &choosable, &mut commands);
                 reply.send(answer).ok();
             }
         }
@@ -197,7 +178,7 @@ fn answer(
     call: Call,
     agents: &Query<AgentRow>,
     ids: &Query<&AgentId>,
-    (pickers, open): (&mut Pickers, &Query<&Picker>),
+    choosable: &Choosable,
     commands: &mut Commands,
 ) -> Reply {
     let find = |wanted: &str| {
@@ -215,13 +196,12 @@ fn answer(
                         || if busy { "busy" } else { "idle" }.to_owned(),
                         |activity| activity.status.to_string(),
                     );
-                    let parent = parent.and_then(|parent| ids.get(parent.0).ok());
                     json!({
                         "id": id.0,
                         "name": name.as_str(),
                         "status": status,
                         "busy": busy,
-                        "spawned_by": parent.map(|parent| parent.0.clone()),
+                        "spawned_by": parent.and_then(|parent| agent_id(ids, parent.0)),
                     })
                 })
                 .collect();
@@ -249,57 +229,82 @@ fn answer(
             Some(_) => Reply::error(409, "no turn runs"),
             None => missing(&agent),
         },
-        Call::Answer { id, choice } => {
-            pickers.open.retain(|&(_, entity)| open.contains(entity));
-            let entity = pickers.open.iter().find(|&&(open, _)| open == id);
-            let Some((entity, picker)) =
-                entity.and_then(|&(_, entity)| Some((entity, open.get(entity).ok()?)))
-            else {
-                return Reply::error(404, format!("no open picker {id}"));
-            };
-            let index = match &choice {
-                Value::Number(index) => index
-                    .as_u64()
-                    .and_then(|index| usize::try_from(index).ok())
-                    .filter(|&index| index < picker.items.len()),
-                Value::String(wanted) => picker
-                    .items
-                    .iter()
-                    .position(|item| &item.label == wanted || &item.command == wanted),
-                _ => None,
-            };
-            let chosen = match (index, &choice) {
-                (Some(index), _) => Chosen::Item(index),
-                (None, Value::String(text)) if picker.free_text => Chosen::Text(text.clone()),
-                _ => return Reply::error(400, "no such choice"),
-            };
-            pickers.open.retain(|&(open, _)| open != id);
-            let command = match chosen {
-                Chosen::Item(index) => picker.items.get(index),
-                Chosen::Text(_) => None,
-            };
-            if let (Some(item), Some(agent)) = (command, picker.agent)
-                && !item.command.is_empty()
-            {
-                commands.trigger(RunCommand {
-                    entity: agent,
-                    line: item.command.clone(),
-                });
-            }
-            commands.trigger(Picked {
-                entity,
-                chosen: Some(chosen),
-            });
-            commands.entity(entity).try_despawn();
-            Reply::new(202, json!({ "accepted": true }))
-        }
+        Call::Answer { id, choice } => choose(id, &choice, choosable, commands),
     }
 }
 
-/// The id of the agent whose turn made the call `of` names.
-fn agent_of(of: &CallOf, turns: &Query<&TurnOf>, ids: &Query<&AgentId>) -> Option<String> {
-    let TurnOf(agent) = turns.get(of.0).ok()?;
-    ids.get(*agent).ok().map(|id| id.0.clone())
+/// Answers the open [`Ask`] or [`Picker`] `id` with `choice`: a choice's
+/// position, id or label, or a line of text where one answers it.
+fn choose(
+    id: u64,
+    choice: &Value,
+    (asks, pickers, focused): &Choosable,
+    commands: &mut Commands,
+) -> Reply {
+    let accepted = Reply::new(202, json!({ "accepted": true }));
+    let no_choice = Reply::error(400, "no such choice");
+    let entity = Entity::try_from_bits(id);
+    if let Some((entity, ask)) = entity.and_then(|entity| Some((entity, asks.get(entity).ok()?))) {
+        let chosen = match choice {
+            Value::Number(index) => index
+                .as_u64()
+                .and_then(|index| ask.choices.get(usize::try_from(index).ok()?)),
+            Value::String(wanted) => ask
+                .choices
+                .iter()
+                .find(|choice| &choice.id == wanted || &choice.label == wanted),
+            _ => None,
+        };
+        let answer = match (chosen, choice) {
+            (Some(chosen), _) => Answer::Choice(chosen.id.clone()),
+            (None, Value::String(text)) if ask.free_text => Answer::Text(text.clone()),
+            _ => return no_choice,
+        };
+        commands.entity(entity).insert_if_new(answer.outcome());
+        return accepted;
+    }
+    let Some((entity, picker)) =
+        entity.and_then(|entity| Some((entity, pickers.get(entity).ok()?)))
+    else {
+        return Reply::error(404, format!("no open question {id}"));
+    };
+    let index = match choice {
+        Value::Number(index) => index
+            .as_u64()
+            .and_then(|index| usize::try_from(index).ok())
+            .filter(|&index| index < picker.items.len()),
+        Value::String(wanted) => picker
+            .items
+            .iter()
+            .position(|item| &item.label == wanted || &item.command == wanted),
+        _ => None,
+    };
+    let chosen = match (index, choice) {
+        (Some(index), _) => Chosen::Item(index),
+        (None, Value::String(text)) if picker.free_text => Chosen::Text(text.clone()),
+        _ => return no_choice,
+    };
+    // What the terminal view does on a pick, which it keeps to itself.
+    let item = index.and_then(|index| picker.items.get(index));
+    if let (Some(item), Some(agent)) = (item, picker.agent.or(focused.iter().next()))
+        && !item.command.is_empty()
+    {
+        commands.trigger(RunCommand {
+            entity: agent,
+            line: item.command.clone(),
+        });
+    }
+    commands.trigger(Picked {
+        entity,
+        chosen: Some(chosen),
+    });
+    commands.entity(entity).try_despawn();
+    accepted
+}
+
+/// The id of `agent`.
+fn agent_id(ids: &Query<&AgentId>, agent: Entity) -> Option<String> {
+    ids.get(agent).ok().map(|id| id.0.clone())
 }
 
 fn turn_started(
@@ -308,10 +313,9 @@ fn turn_started(
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    if let Ok(TurnOf(agent)) = turns.get(started.entity)
-        && let Ok(id) = ids.get(*agent)
-    {
-        subscribers.send("turn_start", &json!({ "agent": id.0 }));
+    if let Ok(&TurnOf(agent)) = turns.get(started.entity) {
+        let data = json!({ "agent": agent_id(&ids, agent) });
+        subscribers.send("turn_start", &data);
     }
 }
 
@@ -324,15 +328,13 @@ fn turn_ended(
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok(id) = ids.get(agent) else {
-        return;
-    };
+    let agent = agent_id(&ids, agent);
     let data = match outcome {
         TurnOutcome::Answered(message) => {
-            json!({ "agent": id.0, "outcome": "answered", "answer": final_answer(message) })
+            json!({ "agent": agent, "outcome": "answered", "answer": final_answer(message) })
         }
-        TurnOutcome::Failed(why) => json!({ "agent": id.0, "outcome": "failed", "error": why }),
-        TurnOutcome::Stopped(why) => json!({ "agent": id.0, "outcome": "stopped", "reason": why }),
+        TurnOutcome::Failed(why) => json!({ "agent": agent, "outcome": "failed", "error": why }),
+        TurnOutcome::Stopped(why) => json!({ "agent": agent, "outcome": "stopped", "reason": why }),
     };
     subscribers.send("turn_end", &data);
 }
@@ -343,22 +345,21 @@ fn tool_started(
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    if let Ok((request, ForAgent(agent))) = calls.get(started.entity) {
-        let agent = ids.get(*agent).ok().map(|id| id.0.clone());
-        let data = json!({ "agent": agent, "call": request.call });
+    if let Ok((request, &ForAgent(agent))) = calls.get(started.entity) {
+        let data = json!({ "agent": agent_id(&ids, agent), "call": request.call });
         subscribers.send("tool_start", &data);
     }
 }
 
 fn tool_ended(
-    ended: On<Add<Settled>>,
+    settled: On<Add<Settled>>,
     calls: Query<(&ToolRequest, &ForAgent, &Outcome)>,
     ids: Query<&AgentId>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    if let Ok((request, ForAgent(agent), outcome)) = calls.get(ended.entity) {
+    if let Ok((request, &ForAgent(agent), outcome)) = calls.get(settled.entity) {
         let data = json!({
-            "agent": ids.get(*agent).ok().map(|id| id.0.clone()),
+            "agent": agent_id(&ids, agent),
             "id": request.call.id,
             "name": request.call.function.name.as_str(),
             "result": outcome.tool_result(),
@@ -367,39 +368,35 @@ fn tool_ended(
     }
 }
 
-/// Sends the text each streaming model call added since the last frame.
+/// Sends the text each turn's model call streamed since the last frame.
 fn stream_text(
-    calls: Query<(Entity, &Partial, &CallOf), (With<TurnCall>, Changed<Partial>)>,
-    turns: Query<&TurnOf>,
+    mut calls: Query<(&Partial, &mut Streamed, &ForAgent), Changed<Partial>>,
     ids: Query<&AgentId>,
-    mut streamed: ResMut<Streamed>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    for (call, partial, of) in &calls {
-        let sent = streamed.0.entry(call).or_default();
-        if let Some(delta) = partial.text.get(*sent..).filter(|delta| !delta.is_empty()) {
-            let data = json!({ "agent": agent_of(of, &turns, &ids), "text": delta });
-            subscribers.send("text_delta", &data);
-            *sent = partial.text.len();
-        }
+    for (partial, mut streamed, &ForAgent(agent)) in &mut calls {
+        send_delta(
+            &partial.text,
+            &mut streamed,
+            agent_id(&ids, agent),
+            &mut subscribers,
+        );
     }
 }
 
-/// Sends what a settled model call's reply has beyond what was streamed:
-/// its reply often arrives before [`stream_text`] saw its last fragments.
-fn reply_done(
-    done: On<Add<Settled>>,
-    calls: Query<(&Outcome, &CallOf), With<TurnCall>>,
-    turns: Query<&TurnOf>,
+/// Sends what a settled call's reply has beyond what [`stream_text`] sent:
+/// the kernel takes the call's [`Partial`] away when it commits the reply,
+/// often in the frame its last fragments came, before `PostUpdate`.
+fn reply_settled(
+    settled: On<Add<Settled>>,
+    mut calls: Query<(&Outcome, &mut Streamed, &ForAgent)>,
     ids: Query<&AgentId>,
-    mut streamed: ResMut<Streamed>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    let Some((response, of)) = calls
-        .get(done.entity)
-        .ok()
-        .and_then(|(outcome, of)| Some((outcome.completion()?, of)))
-    else {
+    let Ok((outcome, mut streamed, &ForAgent(agent))) = calls.get_mut(settled.entity) else {
+        return;
+    };
+    let Some(response) = outcome.completion() else {
         return;
     };
     let text: String = response
@@ -410,18 +407,25 @@ fn reply_done(
             _ => None,
         })
         .collect();
-    let sent = streamed
-        .0
-        .insert(done.entity, text.len())
-        .unwrap_or_default();
-    if let Some(delta) = text.get(sent..).filter(|delta| !delta.is_empty()) {
-        let data = json!({ "agent": agent_of(of, &turns, &ids), "text": delta });
-        subscribers.send("text_delta", &data);
-    }
+    send_delta(
+        &text,
+        &mut streamed,
+        agent_id(&ids, agent),
+        &mut subscribers,
+    );
 }
 
-fn forget_call(gone: On<Remove<TurnCall>>, mut streamed: ResMut<Streamed>) {
-    streamed.0.remove(&gone.entity);
+/// Sends `text` past what `streamed` says went out, as a `text_delta`.
+fn send_delta(
+    text: &str,
+    streamed: &mut Streamed,
+    agent: Option<String>,
+    subscribers: &mut Subscribers,
+) {
+    if let Some(delta) = text.get(streamed.0..).filter(|delta| !delta.is_empty()) {
+        subscribers.send("text_delta", &json!({ "agent": agent, "text": delta }));
+        streamed.0 = text.len();
+    }
 }
 
 fn relay_notices(
@@ -430,13 +434,12 @@ fn relay_notices(
     mut subscribers: ResMut<Subscribers>,
 ) {
     for notice in notices.read() {
-        let agent = notice.agent.and_then(|agent| ids.get(agent).ok());
         let level = match notice.level {
             NoticeLevel::Info => "info",
             NoticeLevel::Error => "error",
         };
         let data = json!({
-            "agent": agent.map(|id| id.0.clone()),
+            "agent": notice.agent.and_then(|agent| agent_id(&ids, agent)),
             "level": level,
             "text": notice.text,
         });
@@ -444,36 +447,70 @@ fn relay_notices(
     }
 }
 
-/// Offers each [`Picker`] a plugin opens as an approval request with an
-/// id.
-fn offer_pickers(
-    opened: Query<(Entity, &Picker), Added<Picker>>,
+/// Offers each question a plugin asks, by its entity's bits.
+fn asked(
+    added: On<Add<Ask>>,
+    asks: Query<(&Ask, Option<&ForAgent>)>,
     ids: Query<&AgentId>,
-    mut pickers: ResMut<Pickers>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    for (entity, picker) in &opened {
-        let id = pickers.next;
-        pickers.next += 1;
-        let choices: Vec<&str> = picker
-            .items
-            .iter()
-            .map(|item| item.label.as_str())
-            .collect();
-        let agent = picker.agent.and_then(|agent| ids.get(agent).ok());
+    if let Ok((ask, agent)) = asks.get(added.entity) {
         let data = json!({
-            "id": id,
-            "agent": agent.map(|id| id.0.clone()),
-            "title": picker.title,
-            "choices": choices,
-            "selected": picker.selected,
+            "id": added.entity.to_bits(),
+            "kind": "ask",
+            "agent": agent.and_then(|agent| agent_id(&ids, agent.0)),
+            "title": ask.title,
+            "body": ask.body,
+            "choices": ask.choices,
+            "free_text": ask.free_text,
         });
         subscribers.send("approval_request", &data);
-        if pickers.open.len() == PENDING_PICKERS {
-            pickers.open.pop_front();
-        }
-        pickers.open.push_back((id, entity));
     }
+}
+
+/// Says a question was answered, here or in another front.
+fn ask_answered(
+    answered: On<Add<Outcome>>,
+    asks: Query<(), With<Ask>>,
+    mut subscribers: ResMut<Subscribers>,
+) {
+    if asks.contains(answered.entity) {
+        let data = json!({ "id": answered.entity.to_bits() });
+        subscribers.send("approval_closed", &data);
+    }
+}
+
+/// Offers each picker a plugin opens or replaces, by its entity's bits.
+fn picker_opened(
+    inserted: On<Insert<Picker>>,
+    pickers: Query<&Picker>,
+    ids: Query<&AgentId>,
+    mut subscribers: ResMut<Subscribers>,
+) {
+    if let Ok(picker) = pickers.get(inserted.entity) {
+        let choices: Vec<Value> = picker
+            .items
+            .iter()
+            .enumerate()
+            .map(|(index, item)| json!({ "id": index, "label": item.label }))
+            .collect();
+        let data = json!({
+            "id": inserted.entity.to_bits(),
+            "kind": "picker",
+            "agent": picker.agent.and_then(|agent| agent_id(&ids, agent)),
+            "title": picker.title,
+            "body": picker.body,
+            "choices": choices,
+            "free_text": picker.free_text,
+        });
+        subscribers.send("approval_request", &data);
+    }
+}
+
+/// Says a picker closed, here or in the terminal view.
+fn picker_closed(removed: On<Remove<Picker>>, mut subscribers: ResMut<Subscribers>) {
+    let data = json!({ "id": removed.entity.to_bits() });
+    subscribers.send("approval_closed", &data);
 }
 
 #[cfg(test)]

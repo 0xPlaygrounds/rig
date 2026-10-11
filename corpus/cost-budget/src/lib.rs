@@ -1,17 +1,18 @@
 //! A dollar budget for the session. `/budget 2.00` sets it, `/budget`
 //! shows what was spent against it and `/budget off` removes it; a new
-//! session starts with the `default` of `RIG_HOME/budget.json`
-//! (`{"default": 2.0}`), if any. Every finished model call of every agent,
-//! a plugin's [`ModelRequest`] too, adds what its reply cost (the
-//! provider's figure, else rig-core's catalog price) to the session's
-//! [`Budget`], which is saved with the session. At 80% a warning is shown
-//! once; once the budget is spent, the next model request of any turn is
-//! not sent and the turn ends, the conversation kept for `/retry` after the
-//! budget is raised. A call already running is never cut off. The status
-//! line shows `$1.42/$2.00`, red past 80%.
+//! session starts with the `default` of the `[budget]` settings table, if
+//! any. What was spent is rig-telemetry's [`SessionSpending`]: every model
+//! call of every agent, subagents' and plugins' calls included, priced as
+//! rig-core prices them. At 80% a warning is shown once. Once the budget
+//! is spent, a Gate system refuses every model request about to be sent:
+//! a turn's refused request ends the turn and keeps the user's message for
+//! `/retry` once the budget is raised. A call already running is never cut
+//! off. The budget is saved with the session, and the status line shows
+//! `$1.42/$2.00`, red past 80%.
 
-use rig_ecs::agent::Halt;
+use bevy_ecs::schedule::SystemCondition;
 use rig_harness::prelude::*;
+use rig_telemetry::{SessionSpending, UsagePlugin};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 use serde::Deserialize;
 
@@ -20,10 +21,8 @@ mod tests;
 
 /// The share of the budget past which it is nearly spent.
 const WARN_AT: f64 = 0.8;
-/// Where the budget is in the status line: beside the cost of the meter.
+/// Where the budget is in the status line: after the meter's cost.
 const ITEM: StatusItem = StatusItem::at(Side::Right, 35, 6);
-/// The file in `RIG_HOME` with the budget a new session starts with.
-const CONFIG: &str = "budget.json";
 
 /// Keeps the session within a dollar budget, and adds `/budget`.
 #[derive(Default)]
@@ -31,14 +30,15 @@ pub struct CostBudgetPlugin;
 
 impl Plugin for CostBudgetPlugin {
     fn build(&self, app: &mut App) {
-        // Only an agent the launcher started reads `RIG_HOME`, not a test.
-        let limit = app
-            .world()
-            .get_resource::<Invoked>()
-            .and_then(|_| configured());
+        if !app.is_plugin_added::<UsagePlugin>() {
+            app.add_plugins(UsagePlugin);
+        }
+        app.add_setting::<BudgetSettings>("budget");
+        let settings = app.world().get_resource::<BudgetSettings>();
+        let limit = settings.and_then(|settings| settings.default);
         app.insert_resource(Budget {
-            limit,
-            ..Budget::default()
+            limit: limit.filter(|limit| valid(*limit)),
+            warned: false,
         })
         .init_resource::<AppStatus>()
         .add_command(
@@ -46,140 +46,114 @@ impl Plugin for CostBudgetPlugin {
             "Show the session's spending and budget, set it (/budget 2.00) or remove it (/budget off)",
             budget,
         )
-        .add_observer(record)
-        .add_observer(enforce)
+        .add_systems(AgentPass, refuse_when_spent.in_set(Stage::Gate))
         .add_systems(
             PostUpdate,
-            show.in_set(StatusSystems)
-                .run_if(resource_changed::<Budget>),
+            (
+                warn.run_if(resource_changed::<SessionSpending>),
+                show.in_set(StatusSystems).run_if(
+                    resource_changed::<SessionSpending>.or_eager(resource_changed::<Budget>),
+                ),
+            ),
         );
     }
 }
 
-/// What the session's model calls cost, in USD, and its budget, saved with
-/// the session.
+/// The `[budget]` settings table: `default = 2.0`, the budget of a new
+/// session in USD.
+#[derive(Resource, Deserialize, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct BudgetSettings {
+    pub default: Option<f64>,
+}
+
+/// The session's budget, saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default, PartialEq)]
 #[reflect(Resource, Saved, Default)]
 pub struct Budget {
-    /// The most the session may spend, if limited.
+    /// The most the session may spend, in USD, if limited.
     pub limit: Option<f64>,
-    /// What its finished model calls cost.
-    pub spent: f64,
-    /// The finished calls with no price, which `spent` leaves out.
-    pub unpriced: u64,
     /// Whether the warning at 80% of `limit` was shown.
     pub warned: bool,
 }
 
 impl Budget {
-    /// The limit, once it is spent.
-    fn reached(&self) -> Option<f64> {
-        self.limit.filter(|limit| self.spent >= *limit)
-    }
-
     /// Whether 80% of the limit is spent.
-    fn near(&self) -> bool {
-        self.limit
-            .is_some_and(|limit| self.spent >= limit * WARN_AT)
-    }
-
-    /// `$1.42/$2.00`, or `$1.42 spent` without a limit.
-    fn label(&self) -> String {
-        match self.limit {
-            Some(limit) => format!("${:.2}/${limit:.2}", self.spent),
-            None => format!("${:.2} spent", self.spent),
-        }
+    fn near(&self, spent: f64) -> bool {
+        self.limit.is_some_and(|limit| spent >= limit * WARN_AT)
     }
 }
 
-/// The default budget of `RIG_HOME/budget.json`, if any.
-fn configured() -> Option<f64> {
-    #[derive(Deserialize)]
-    struct Config {
-        default: f64,
-    }
-    let text = std::fs::read_to_string(Home::from_env().root().join(CONFIG)).ok()?;
-    let config: Config = serde_json::from_str(&text).ok()?;
-    Some(config.default).filter(|limit| limit.is_finite() && *limit > 0.0)
+/// What the session spent, in USD.
+fn spent(spending: &SessionSpending) -> f64 {
+    spending.0.total.cost
 }
 
-/// Adds a finished model call's cost, of any agent and any turn, and warns
-/// once at 80% of the budget.
-fn record(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<&Done<ModelReply>>,
+/// `$1.42/$2.00`, or `$1.42 spent` without a limit.
+fn label(limit: Option<f64>, spent: f64) -> String {
+    match limit {
+        Some(limit) => format!("${spent:.2}/${limit:.2}"),
+        None => format!("${spent:.2} spent"),
+    }
+}
+
+fn valid(limit: f64) -> bool {
+    limit.is_finite() && limit > 0.0
+}
+
+/// Once the budget is spent, refuses every model request about to be sent.
+fn refuse_when_spent(
+    calls: Query<Entity, (With<ModelRequest>, Undecided)>,
+    budget: Res<Budget>,
+    spending: Res<SessionSpending>,
+    mut commands: Commands,
+) {
+    let spent = spent(&spending);
+    let Some(limit) = budget.limit.filter(|limit| spent >= *limit) else {
+        return;
+    };
+    for call in &calls {
+        let why = format!(
+            "Stopped: budget of ${limit:.2} reached (${spent:.2} spent). Raise it with /budget, \
+             then /retry."
+        );
+        commands.entity(call).insert_if_new(Outcome::refused(why));
+    }
+}
+
+/// Warns once when 80% of the budget is spent.
+fn warn(
+    spending: Res<SessionSpending>,
     mut budget: ResMut<Budget>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(Done(Ok(response))) = calls.get(done.entity) else {
-        return;
-    };
-    match response.usage.cost {
-        Some(cost) => budget.spent += cost.total,
-        None => budget.unpriced += 1,
-    }
-    if budget.near() && !budget.warned {
+    let spent = spent(&spending);
+    if budget.near(spent) && !budget.warned {
         budget.warned = true;
-        let warning = format!("Budget nearly spent: {}.", budget.label());
+        let warning = format!("Budget nearly spent: {}.", label(budget.limit, spent));
         notices.write(Notice::info(None, warning));
     }
-}
-
-/// Keeps a spent budget's turns from sending their next request: the turn
-/// ends, and the conversation is kept for `/retry`.
-fn enforce(
-    prepare: On<PrepareRequest>,
-    budget: Res<Budget>,
-    mut agents: Query<&mut Conversation>,
-    mut commit: Commit,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Some(limit) = budget.reached() else {
-        return;
-    };
-    let (turn, agent) = (prepare.entity, prepare.agent);
-    if let Ok(mut conversation) = agents.get_mut(agent) {
-        commit.halt(agent, &mut conversation, Halt::Kept);
-    }
-    // Despawned before the observers' calls are waited for, the turn sends
-    // nothing.
-    commands.entity(turn).despawn();
-    notices.write(Notice::error(
-        agent,
-        format!(
-            "Stopped: budget of ${limit:.2} reached (${:.2} spent). Raise it with /budget, then \
-             /retry.",
-            budget.spent
-        ),
-    ));
 }
 
 /// `/budget`, `/budget 2.00`, `/budget off`.
 fn budget(
     In(args): In<CommandArgs>,
     mut budget: ResMut<Budget>,
+    spending: Res<SessionSpending>,
     mut notices: MessageWriter<Notice>,
 ) {
+    let spent = spent(&spending);
     let text = match args.args.as_str() {
-        "" => {
-            let unpriced = match budget.unpriced {
-                0 => String::new(),
-                calls => format!(" ({calls} calls had no price)"),
-            };
-            match budget.limit {
-                Some(_) => format!("Budget: {}{unpriced}.", budget.label()),
-                None => format!("No budget: {}{unpriced}.", budget.label()),
-            }
-        }
+        "" if budget.limit.is_none() => format!("No budget: {}.", label(None, spent)),
+        "" => format!("Budget: {}.", label(budget.limit, spent)),
         "off" => {
             budget.limit = None;
             budget.warned = false;
-            format!("Budget off: {}.", budget.label())
+            format!("Budget off: {}.", label(None, spent))
         }
         amount => {
             let limit = amount.trim_start_matches('$').parse::<f64>().ok();
-            let Some(limit) = limit.filter(|limit| limit.is_finite() && *limit > 0.0) else {
+            let Some(limit) = limit.filter(|limit| valid(*limit)) else {
                 notices.write(Notice::error(
                     args.agent,
                     format!("Not a budget: {amount}; use /budget 2.00 or /budget off."),
@@ -188,8 +162,8 @@ fn budget(
             };
             budget.limit = Some(limit);
             // A budget nearly spent already says so here.
-            budget.warned = budget.near();
-            format!("Budget: {}.", budget.label())
+            budget.warned = budget.near(spent);
+            format!("Budget: {}.", label(budget.limit, spent))
         }
     };
     notices.write(Notice::info(args.agent, text));
@@ -197,8 +171,16 @@ fn budget(
 
 /// The session's spending against its budget in the status line, red past
 /// 80%; nothing without a budget.
-fn show(budget: Res<Budget>, mut status: ResMut<AppStatus>) {
-    let tone = if budget.near() { Tone::Red } else { Tone::Dim };
-    let text = budget.limit.map(|_| budget.label()).unwrap_or_default();
+fn show(budget: Res<Budget>, spending: Res<SessionSpending>, mut status: ResMut<AppStatus>) {
+    let spent = spent(&spending);
+    let tone = if budget.near(spent) {
+        Tone::Red
+    } else {
+        Tone::Dim
+    };
+    let text = budget
+        .limit
+        .map(|limit| label(Some(limit), spent))
+        .unwrap_or_default();
     status.0.show(ITEM.says(text, tone));
 }

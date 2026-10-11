@@ -73,12 +73,6 @@ impl DestructivePatterns {
     }
 }
 
-impl Default for DestructivePatterns {
-    fn default() -> Self {
-        Self::new(BUILT_IN.iter().copied().map(str::to_owned))
-    }
-}
-
 /// The patterns the user allowed for the rest of the session, kept with
 /// it across `/reload` and `/resume`.
 #[derive(Resource, Reflect, Clone, Debug, Default)]
@@ -101,12 +95,10 @@ pub struct ConfirmDestructivePlugin;
 impl Plugin for ConfirmDestructivePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ConfirmSettings>("confirm");
-        if !app.world().contains_resource::<DestructivePatterns>() {
-            let own = app.world().resource::<ConfirmSettings>().patterns.clone();
-            let built_in = BUILT_IN.iter().copied().map(str::to_owned);
-            app.insert_resource(DestructivePatterns::new(built_in.chain(own)));
-        }
-        app.init_resource::<SessionAllowances>()
+        let own = app.world().resource::<ConfirmSettings>().patterns.clone();
+        let built_in = BUILT_IN.iter().copied().map(str::to_owned);
+        app.insert_resource(DestructivePatterns::new(built_in.chain(own)))
+            .init_resource::<SessionAllowances>()
             .add_systems(AgentPass, (answered, gate).chain().in_set(Stage::Gate));
     }
 }

@@ -15,7 +15,7 @@ use rig_harness::prelude::{DeliveryMode, Resource, Wake};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::Serve;
+use crate::HttpApi;
 
 /// How long a connection waits for the app's answer, or for a request.
 const WAIT: Duration = Duration::from_secs(10);
@@ -100,34 +100,34 @@ impl Drop for Server {
     }
 }
 
-/// Binds `serve.addr`, writes the token file, and starts the listener.
-/// Returns the bound address and the token with the server.
-pub(crate) fn start(serve: &Serve, wake: Wake) -> Result<(SocketAddr, String, Server), String> {
-    let addr = serve
-        .addr
+/// Binds `addr`, which must be localhost unless `allow_remote`, writes a
+/// new token to `token_file`, and starts the listener.
+pub(crate) fn start(
+    addr: &str,
+    allow_remote: bool,
+    token_file: &Path,
+    wake: Wake,
+) -> Result<(HttpApi, Server), String> {
+    let cannot = |failure: &dyn std::fmt::Display| format!("cannot serve on {addr}: {failure}");
+    let bound = addr
         .to_socket_addrs()
-        .map_err(|failure| format!("cannot serve on {}: {failure}", serve.addr))?
+        .map_err(|failure| cannot(&failure))?
         .next()
-        .ok_or_else(|| format!("cannot serve on {}: no address", serve.addr))?;
-    if !addr.ip().is_loopback() && !serve.allow_remote {
+        .ok_or_else(|| cannot(&"no address"))?;
+    if !bound.ip().is_loopback() && !allow_remote {
         return Err(format!(
-            "refusing to serve on {addr}, which is not localhost, without allow_remote"
+            "refusing to serve on {bound}, which is not localhost, without `allow_remote = true` in [serve]"
         ));
     }
-    let listener =
-        TcpListener::bind(addr).map_err(|failure| format!("cannot serve on {addr}: {failure}"))?;
-    let addr = listener
-        .local_addr()
-        .map_err(|failure| format!("cannot serve on {addr}: {failure}"))?;
+    let listener = TcpListener::bind(bound).map_err(|failure| cannot(&failure))?;
+    let bound = listener.local_addr().map_err(|failure| cannot(&failure))?;
     let token = format!(
         "{}{}",
         uuid::Uuid::new_v4().simple(),
         uuid::Uuid::new_v4().simple()
     );
-    if let Some(path) = &serve.token_file {
-        write_token(path, &token)
-            .map_err(|failure| format!("cannot write {}: {failure}", path.display()))?;
-    }
+    write_token(token_file, &token)
+        .map_err(|failure| format!("cannot write {}: {failure}", token_file.display()))?;
     let (sender, requests) = crossbeam_channel::unbounded();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = Arc::clone(&stop);
@@ -136,15 +136,12 @@ pub(crate) fn start(serve: &Serve, wake: Wake) -> Result<(SocketAddr, String, Se
         .name("rig-http-api".to_owned())
         .spawn(move || listen(&listener, &stopped, &shared, &sender, &wake))
         .map_err(|failure| format!("cannot start the HTTP API: {failure}"))?;
-    Ok((
-        addr,
-        token,
-        Server {
-            requests,
-            addr,
-            stop,
-        },
-    ))
+    let server = Server {
+        requests,
+        addr: bound,
+        stop,
+    };
+    Ok((HttpApi { addr: bound, token }, server))
 }
 
 /// Writes the token, readable by the user alone.

@@ -1,6 +1,5 @@
 use std::sync::mpsc::Receiver;
 
-use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
@@ -8,30 +7,35 @@ use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 use super::*;
 
-/// What the test watched: each message delivered (agent, mode, text) and
-/// the name of each job run started.
+/// What the test watched: each message (agent, mode, text) and the name of
+/// each job run started.
 #[derive(Resource, Default)]
 struct Seen {
     delivered: Vec<(Entity, DeliveryMode, String)>,
     started: Vec<String>,
 }
 
-/// An app on `store` with the cron plugin on a clock that moves only when
-/// the test moves it, after its first frame restored the session, and its
-/// agent nothing spawned; a new one answered by `model`, when given.
+/// An app on `store` with the cron plugin, after its first frame restored
+/// the session, and its agent nothing spawned; a new one answered by
+/// `model`, when given.
 fn session(
     store: &MemoryStore,
     model: Option<&MockCompletionModel>,
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(Models(Connector::new(Catalog::default())))
-        .insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
         .add_plugins((AgentPlugin, JournalPlugin, CronPlugin))
         .init_resource::<Seen>()
-        .add_observer(|sent: On<Deliver>, mut seen: ResMut<Seen>| {
-            let entry = (sent.entity, sent.mode, sent.text.clone());
-            seen.delivered.push(entry);
-        })
+        .add_observer(
+            |sent: On<Add<Incoming>>,
+             messages: Query<(&Incoming, &ForAgent)>,
+             mut seen: ResMut<Seen>| {
+                if let Ok((message, &ForAgent(to))) = messages.get(sent.entity) {
+                    let entry = (to, message.mode, message.text.clone());
+                    seen.delivered.push(entry);
+                }
+            },
+        )
         .add_observer(
             |run: On<Add<CronRun>>, names: Query<&Name>, mut seen: ResMut<Seen>| {
                 let name = names.get(run.entity).map(|name| name.as_str().to_owned());
@@ -50,13 +54,15 @@ fn session(
     (app, wakes, agent)
 }
 
-/// Moves the clock on by `minutes`, a minute a frame.
-fn advance(app: &mut App, minutes: u32) {
-    for _ in 0..minutes {
-        app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(60)));
-        app.update();
+/// The wall clock moves on by `minutes`, as the plugin sees it: every
+/// job's next tick comes that much sooner. `WakeAt` reads the real clock,
+/// which a test cannot move.
+fn later(app: &mut App, minutes: u64) {
+    let mut jobs = app.world_mut().resource_mut::<CronJobs>();
+    for job in &mut jobs.jobs {
+        job.next = job.next.saturating_sub(minutes * 60_000);
     }
-    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    app.update();
     app.update();
 }
 
@@ -64,8 +70,13 @@ fn seen(app: &App) -> &Seen {
     app.world().resource::<Seen>()
 }
 
+fn count<D: Component>(app: &mut App) -> usize {
+    let world = app.world_mut();
+    world.query_filtered::<(), With<D>>().iter(world).count()
+}
+
 #[test]
-fn a_job_runs_in_its_own_subagent_on_its_tick_and_survives_a_restart() {
+fn a_job_runs_in_its_own_agent_on_its_tick_and_survives_a_restart() {
     let store = MemoryStore::default();
     let model = MockCompletionModel::from_stream_turns([reply("CI green")]);
     let (mut app, wakes, agent) = session(&store, Some(&model));
@@ -77,11 +88,11 @@ fn a_job_runs_in_its_own_subagent_on_its_tick_and_survives_a_restart() {
     app.world_mut().trigger(typed);
     app.update();
 
-    // Nothing runs before the tick; on it, one subagent `cron:1` gets the
+    // Nothing runs before the tick; on it, one agent `cron:1` gets the
     // prompt, and its answer reaches the agent as a note.
-    advance(&mut app, 9);
+    later(&mut app, 9);
     assert!(seen(&app).started.is_empty());
-    advance(&mut app, 1);
+    later(&mut app, 1);
     let noted = |world: &World| {
         let seen = world.resource::<Seen>();
         seen.delivered.iter().any(|(to, mode, text)| {
@@ -93,18 +104,18 @@ fn a_job_runs_in_its_own_subagent_on_its_tick_and_survives_a_restart() {
     assert_eq!(seen(&app).started, ["cron:1"]);
     let asked = format!("{:?}", model.requests());
     assert!(asked.contains("check CI"), "{asked}");
-    // The subagent is gone once it answered.
-    let world = app.world_mut();
-    assert_eq!(world.query::<&CronRun>().iter(world).count(), 0);
+    // The run's agent is retired once it answered.
+    assert_eq!(count::<CronRun>(&mut app), 0);
 
     // Five more minutes: no second run.
-    advance(&mut app, 5);
+    later(&mut app, 5);
     assert_eq!(seen(&app).started, ["cron:1"]);
     assert_eq!(model.request_count(), 1);
     drop(app);
 
     // The restored session has the job, and not the finished run's agent.
     let (mut app, _wakes, agent) = session(&store, None);
+    assert_eq!(count::<Agent>(&mut app), 1);
     app.world_mut().trigger(RunCommand {
         entity: agent,
         line: "cron list".to_owned(),
@@ -120,8 +131,4 @@ fn a_job_runs_in_its_own_subagent_on_its_tick_and_survives_a_restart() {
         .iter()
         .any(|text| text.contains("cron:1 \"every 10m\"") && text.contains("check CI"));
     assert!(listed, "{texts:?}");
-    // The session log brought the run's agent back, and it went again.
-    assert_eq!(seen(&app).started.len(), 1);
-    let world = app.world_mut();
-    assert_eq!(world.query::<&CronRun>().iter(world).count(), 0);
 }

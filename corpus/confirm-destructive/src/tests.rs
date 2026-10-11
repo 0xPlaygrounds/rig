@@ -24,15 +24,14 @@ fn start(
     if let Some(answers) = answers {
         app.add_plugins(AnswerAsks).insert_resource(answers);
     }
-    app.insert_resource(DestructivePatterns::default())
-        .add_plugins((
-            AgentPlugin,
-            JournalPlugin,
-            ShellTool,
-            ConfirmDestructivePlugin,
-        ))
-        .init_resource::<Ended>()
-        .add_observer(log_ended);
+    app.add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        ShellTool,
+        ConfirmDestructivePlugin,
+    ))
+    .init_resource::<Ended>()
+    .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();

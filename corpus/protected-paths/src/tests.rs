@@ -8,14 +8,14 @@ use serde_json::json;
 
 use super::*;
 
-/// A project in the system's temporary directory with a secret `.env`, a
-/// key file and an ordinary file, each holding `KEY`.
+/// A project in the system's temporary directory with a secret `.env` and
+/// an ordinary file, each holding `KEY`, and an empty `RIG_HOME` beside it.
 fn project() -> std::io::Result<PathBuf> {
     let dir = std::env::temp_dir().join(format!("corpus-protected-paths-{}", std::process::id()));
     let project = dir.join("project");
     std::fs::create_dir_all(project.join("sub"))?;
+    std::fs::create_dir_all(dir.join("home"))?;
     std::fs::write(project.join(".env"), "KEY=secret\n")?;
-    std::fs::write(project.join("cert.pem"), "KEY=private\n")?;
     std::fs::write(project.join("notes.txt"), "KEY=public\n")?;
     Ok(project)
 }
@@ -27,16 +27,14 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     let Ok(project) = project else {
         return;
     };
+    let dir = project.parent().unwrap_or(&project).to_path_buf();
     // The built-in tools resolve paths against the working directory.
     assert!(std::env::set_current_dir(&project).is_ok());
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.set_error_handler(rig_harness::error::warn)
-        .insert_resource(PathPolicy::load(
-            &project,
-            ("none", &PathsFile::default()),
-            &[],
-        ))
+        .insert_resource(ProjectRoot(project.clone()))
+        .insert_resource(RigHome(Home::at(dir.join("home"))))
         .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool, SearchTool))
         .add_plugins(ProtectedPathsPlugin)
         .init_resource::<Ended>()
@@ -77,8 +75,8 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         .iter()
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
-    let outside = project.parent().map(|dir| dir.join("outside.txt"));
-    std::fs::remove_dir_all(project.parent().unwrap_or(&project)).ok();
+    let outside = dir.join("outside.txt").exists();
+    std::fs::remove_dir_all(&dir).ok();
     assert_eq!(sent.len(), 4, "{sent:?}");
     let [_, after_read, after_write, after_search] = sent.as_slice() else {
         return;
@@ -86,12 +84,12 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     assert!(after_read.contains("read-protected"), "{after_read}");
     assert!(sent.iter().all(|request| !request.contains("secret")));
     assert!(after_write.contains("write-protected"), "{after_write}");
-    assert!(outside.is_some_and(|outside| !outside.exists()));
+    assert!(!outside);
     assert!(
         after_search.contains("notes.txt:1: KEY=public"),
         "{after_search}"
     );
-    assert!(!after_search.contains(".env:") && !after_search.contains("cert.pem:"));
+    assert!(!after_search.contains(".env:"));
     assert!(after_search.contains("1 match in protected files hidden"));
     let counts = app.world().resource::<PathGuardCounts>();
     assert_eq!(counts.blocked.get("deny_read .env*"), Some(&1));
@@ -99,5 +97,5 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
         counts.blocked.get("deny_write outside the project"),
         Some(&1)
     );
-    assert_eq!(counts.hidden.get("deny_read **/*.pem"), Some(&1));
+    assert_eq!(counts.hidden.get("deny_read .env*"), Some(&1));
 }

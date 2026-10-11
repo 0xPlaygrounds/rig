@@ -1,23 +1,21 @@
-use std::sync::mpsc::Receiver;
-
 use rig_cassette::journal::MemoryStore;
+use rig_core::completion::Message;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness::rig_ecs::journal::commit_message;
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 use rig_telemetry::{Spending, UsagePlugin};
 
 use super::*;
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
-/// Delivers `text` to `agent` as the user typed it, then runs frames until
-/// `ended` turns ended in all.
-fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, ended: usize) {
-    let typed = Deliver::new(agent, text, DeliveryMode::Steer);
-    app.world_mut().trigger(typed);
-    run_until(app, wakes, |world| world.resource::<Ended>().0 >= ended);
-}
+/// What agent A was asked and answered before the handoff.
+const EARLIER: [&str; 6] = [
+    "question one",
+    "answer one",
+    "question two",
+    "answer two",
+    "question three",
+    "answer three",
+];
 
 #[test]
 fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
@@ -25,13 +23,10 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin, HandoffPlugin, UsagePlugin))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
-        reply("answer one"),
-        reply("answer two"),
-        reply("answer three"),
         reply("Brief: files x.rs; goal API"),
         reply("On it."),
     ]);
@@ -42,18 +37,24 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     };
     let choice = ModelChoice(connection.spec.reference());
     let world = app.world_mut();
-    let a = world.query_filtered::<Entity, With<Agent>>().single(world);
-    let Ok(a) = a else {
+    let Ok(a) = world.query_filtered::<Entity, With<Agent>>().single(world) else {
         return;
     };
     world.entity_mut(a).insert((connection, choice.clone()));
-
-    let asked = ["question one", "question two", "question three"];
-    for (turn, question) in asked.into_iter().enumerate() {
-        say(&mut app, &wakes, a, question, turn + 1);
+    for (at, text) in EARLIER.into_iter().enumerate() {
+        let message = match at % 2 {
+            0 => Message::user(text),
+            _ => Message::assistant(text),
+        };
+        commit_message(world, a, message);
     }
+
+    let handoff = Deliver::new(a, "/handoff --now implement API", DeliveryMode::Steer);
+    app.world_mut().trigger(handoff);
     // The handoff's own turn, then the new agent's first.
-    say(&mut app, &wakes, a, "/handoff --now implement API", 5);
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 2
+    });
 
     let world = app.world_mut();
     let mut roots =
@@ -61,11 +62,11 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     let roots: Vec<(Entity, bool)> = roots.iter(world).collect();
     assert_eq!(roots.len(), 2, "{roots:?}");
     assert!(roots.contains(&(a, false)), "A stays, idle: {roots:?}");
-    let b = roots
+    let Some(b) = roots
         .iter()
-        .map(|(agent, _)| *agent)
-        .find(|&agent| agent != a);
-    let Some(b) = b else {
+        .map(|&(agent, _)| agent)
+        .find(|&agent| agent != a)
+    else {
         return;
     };
     let from = world.get::<HandedOffFrom>(b).map(|from| from.agent.clone());
@@ -73,28 +74,30 @@ fn handoff_now_starts_a_fresh_agent_from_the_brief_alone() {
     assert_eq!(world.get::<ModelChoice>(b), Some(&choice));
 
     let requests = model.requests();
-    assert_eq!(requests.len(), 5, "three turns, the brief, B's first");
     let json = |at: usize| {
-        let request = requests.get(at);
-        serde_json::to_string(&request.map(|request| &request.chat_history)).unwrap_or_default()
+        let request = requests.get(at).map(|request| &request.chat_history);
+        serde_json::to_string(&request).unwrap_or_default()
     };
-    let (brief, first) = (json(3), json(4));
+    assert_eq!(requests.len(), 2, "the brief, then B's first");
+    let (brief, first) = (json(0), json(1));
     assert!(
         brief.contains("implement API") && brief.contains("answer three"),
         "{brief}"
     );
     let last = requests
-        .get(4)
+        .get(1)
         .and_then(|request| request.chat_history.last())
         .map(|message| serde_json::to_string(message).unwrap_or_default());
     assert!(
         last.is_some_and(|last| last.contains("Brief: files x.rs")),
         "{first}"
     );
-    for earlier in asked.into_iter().chain(["answer one", "answer three"]) {
+    for earlier in EARLIER {
         assert!(!first.contains(earlier), "{earlier} reached B: {first}");
     }
-    // The brief's call counts in A's usage, beside its three turns.
-    let spent = world.get::<Spending>(a).map(|spent| spent.0.calls);
-    assert_eq!(spent, Some(4));
+    // The brief's call counts in A's usage, as a handoff.
+    let spent = world
+        .get::<Spending>(a)
+        .and_then(|spent| spent.purposes.get(PURPOSE));
+    assert_eq!(spent.map(|spent| spent.calls), Some(1));
 }

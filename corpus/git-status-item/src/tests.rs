@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,15 +9,15 @@ use rig_coding_tools::WriteTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
-use rig_tui::{AppStatus, TuiPlugin};
+use rig_tui::{AppStatus, FRONT};
 
 use super::*;
 
 /// What the git item says, if it is there.
 fn item(world: &World) -> Option<String> {
-    let place = GitStatusConfig::default().place;
+    let place = GitStatusSettings::default().place();
     world
-        .resource::<AppStatus>()
+        .get_resource::<AppStatus>()?
         .0
         .iter()
         .find(|item| (item.side, item.order) == (place.side, place.order))
@@ -29,15 +30,17 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
     let dir = base.join(format!("corpus-git-status-item-{}", std::process::id()));
     fs::remove_dir_all(&dir).ok();
     assert!(fs::create_dir_all(&dir).is_ok());
-    let inner = GitRunner::default();
-    assert!(inner.run(&dir, &["init", "-q", "-b", "main"]).is_some());
-    let file = dir.join("new.txt").display().to_string();
+    let init = Command::new("git")
+        .args(["init", "-q", "-b", "main"])
+        .current_dir(&dir)
+        .status();
+    assert!(init.is_ok_and(|status| status.success()));
 
     let model = MockCompletionModel::from_stream_turns([
         calls(
             "1",
             "write",
-            serde_json::json!({ "path": file, "content": "new\n" }),
+            serde_json::json!({ "path": dir.join("new.txt"), "content": "new\n" }),
         ),
         reply("wrote new.txt"),
     ]);
@@ -48,24 +51,21 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
     };
     let runs = Arc::new(AtomicUsize::new(0));
     let counted = runs.clone();
-    let runner = GitRunner::new(move |dir, args| {
+    let git = GitRunner::default();
+    let runner = GitRunner::new(move |command| {
         counted.fetch_add(1, Ordering::SeqCst);
-        inner.run(dir, args)
+        git.run(command)
     });
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(GitStatusConfig {
-        dir: Some(dir.clone()),
-        ..GitStatusConfig::default()
+    // The terminal view's run, without rig-tui opening a terminal.
+    app.insert_resource(Invoked {
+        terminal: true,
+        ..Invoked::default()
     })
+    .add_front(Front::new(FRONT).on_terminal())
+    .insert_resource(ProjectRoot(dir.clone()))
     .insert_resource(runner)
-    // No `Invoked`: the view's plugin draws nothing, the item is there.
-    .add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        TuiPlugin,
-        WriteTool,
-        GitStatusItemPlugin,
-    ));
+    .add_plugins((AgentPlugin, JournalPlugin, WriteTool, GitStatusItemPlugin));
     app.finish();
 
     run_until(&mut app, &wakes, |world| item(world).is_some());
@@ -85,15 +85,14 @@ fn the_item_shows_the_branch_then_the_file_the_agent_wrote() {
         item(world).as_deref() == Some("main ±1")
     });
     assert_eq!(item(app.world()).as_deref(), Some("main ±1"));
-    assert!(dir.join("new.txt").exists());
 
     // Startup, the write and the turn's end: a look each at most, however
     // many frames ran.
     let runs = runs.load(Ordering::SeqCst);
-    assert!(runs <= 4, "git ran {runs} times");
+    let frames = frames.load(Ordering::SeqCst);
     assert!(
-        frames.load(Ordering::SeqCst) > runs,
-        "fewer frames than git runs"
+        runs <= 3 && frames > runs,
+        "git ran {runs} times in {frames} frames"
     );
     fs::remove_dir_all(&dir).ok();
 }

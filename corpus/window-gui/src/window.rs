@@ -11,12 +11,12 @@ use bevy::picking::events::PointerClick;
 use bevy::prelude::*;
 use bevy::window::{ExitCondition, WindowPlugin};
 use bevy::winit::{EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent};
-use rig_harness::prelude::{Invoked, Wake};
+use rig_harness::prelude::{Answerer, Invoked, Wake};
 use rig_tui::ratatui::style::{Color as TermColor, Modifier};
 use rig_tui::ratatui::text::Line;
 
 use super::{
-    Block, Choose, Dismiss, GUI_ENV, GuiAgents, GuiDialogs, GuiInput, GuiSystems, GuiTranscript,
+    Block, Choose, Dismiss, FRONT, GuiAgents, GuiDialogs, GuiInput, GuiSystems, GuiTranscript,
     LONG_LINES, Show, Stop, Submit, Toggle, ToolBlock,
 };
 
@@ -48,17 +48,14 @@ struct InputText;
 #[derive(Component)]
 struct DialogPanel;
 
-/// Whether the window is the front, from [`GUI_ENV`].
-fn front() -> bool {
-    std::env::var_os(GUI_ENV).is_some_and(|value| !value.is_empty())
-}
-
+/// Opens the window as the front of a `--gui` run, or beside the terminal
+/// view in an interactive one. Bevy's window and render plugins are added
+/// in `build`, so the flag is read here, before `finish` could ask
+/// `runs_front`.
 pub(crate) fn build(app: &mut App) {
-    let beside = app
-        .world()
-        .get_resource::<Invoked>()
-        .is_some_and(Invoked::interactive);
-    let front = front();
+    let invoked = app.world().get_resource::<Invoked>();
+    let front = invoked.is_some_and(|invoked| invoked.flag(FRONT));
+    let beside = invoked.is_some_and(Invoked::interactive);
     if !beside && !front {
         return;
     }
@@ -98,14 +95,17 @@ pub(crate) fn build(app: &mut App) {
         );
 }
 
-/// Points the agent's [`Wake`] at winit's loop, so agent activity and
-/// terminal input wake the window instead of a poll.
+/// Once the window opens, it answers every agent's questions, and the
+/// agent's [`Wake`] points at winit's loop, so agent activity and terminal
+/// input wake the window instead of a poll.
 pub(crate) fn finish(app: &mut App) {
     if let Some(proxy) = app.world().get_resource::<EventLoopProxyWrapper>() {
         let proxy = (**proxy).clone();
         app.insert_resource(Wake::new(move || {
             proxy.send_event(WinitUserEvent::WakeUp).ok();
         }));
+        app.world_mut()
+            .spawn((Name::new("answerer:gui"), Answerer::default()));
     }
 }
 
@@ -410,19 +410,28 @@ fn draw_dialog(
 ) {
     for (panel, mut node) in &mut panels {
         commands.entity(panel).despawn_related::<Children>();
-        let Some(dialog) = dialogs.open.front() else {
+        let Some(dialog) = dialogs.open.first() else {
             node.display = Display::None;
             continue;
         };
         node.display = Display::Flex;
         commands.spawn((text(dialog.title.clone(), TEXT), ChildOf(panel)));
-        for (item, choice) in dialog.items.iter().enumerate() {
-            commands
-                .spawn((button(&choice.label), ChildOf(panel)))
-                .observe(move |mut click: On<PointerClick>, mut commands: Commands| {
+        if !dialog.body.is_empty() {
+            commands.spawn((text(dialog.body.clone(), DIM), ChildOf(panel)));
+        }
+        if dialog.free_text {
+            commands.spawn((
+                text("…or type the answer and press Enter", DIM),
+                ChildOf(panel),
+            ));
+        }
+        for (item, label) in dialog.choices.iter().enumerate() {
+            commands.spawn((button(label), ChildOf(panel))).observe(
+                move |mut click: On<PointerClick>, mut commands: Commands| {
                     click.propagate(false);
                     commands.trigger(Choose { item });
-                });
+                },
+            );
         }
         commands.spawn((button("Cancel"), ChildOf(panel))).observe(
             |mut click: On<PointerClick>, mut commands: Commands| {

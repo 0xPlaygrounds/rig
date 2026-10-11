@@ -3,14 +3,14 @@
 //! [`CodeSearchPlugin`] keeps an index of the project's files (those git
 //! tracks or would track) in `<project>/.rig/index/`: each file is cut into
 //! chunks at top-level items and paragraphs, and each chunk is embedded by
-//! the [`CodeSearchConfig`]'s [`Embedder`]. The index is built in the
-//! background, a batch of files per task, with its progress in the status
-//! line; the `code_search` tool answers from what is built so far. A file
-//! an `edit` or `write` call changed is indexed again once the call ends,
-//! and a search first indexes again the files whose time or size changed.
-//! `/index rebuild` and `/index status` manage it. With
-//! [`CodeSearchConfig::context_chunks`] above zero, the best chunks for the
-//! user's newest message go with that turn's requests, not into the
+//! the [`Embedder`] resource. The index is built in the background, a batch
+//! of files per task, with its progress in the status line; the
+//! `code_search` tool answers from what is built so far. A file any tool
+//! call says it changed (rig-core's `FilesChanged`) is indexed again at
+//! once, and a search first indexes again the files whose time or size
+//! changed. `/index rebuild` and `/index status` manage it. With
+//! `context_chunks` set in the `[code_search]` settings, the best chunks for
+//! the user's newest message go with that turn's requests, not into the
 //! conversation.
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
@@ -23,6 +23,7 @@ use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
 use rig_core::DynModel;
 use rig_core::operation::Embedding;
+use rig_core::tool::FilesChanged;
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -54,8 +55,11 @@ pub struct CodeSearchPlugin;
 
 impl Plugin for CodeSearchPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<CodeSearchConfig>()
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .init_resource::<Embedder>()
             .init_resource::<CodeIndex>()
+            .add_setting::<CodeSearchSettings>("code_search")
             .add_open_tool(
                 "code_search",
                 "Search the project's code by meaning. Returns the best matching chunks: \
@@ -72,45 +76,33 @@ impl Plugin for CodeSearchPlugin {
                 index,
             )
             .add_systems(Startup, start)
+            .add_systems(AgentPass, add_context.in_set(Stage::Prepare))
             .add_observer(listed)
             .add_observer(indexed)
             .add_observer(searched)
-            .add_observer(reindex_edited)
-            .add_observer(add_context)
+            .add_observer(reindex_changed)
             .add_observer(context_found);
         #[cfg(feature = "tui")]
         status::add(app);
     }
 }
 
-/// How the index is made, inserted before the plugin is added to change it.
-#[derive(Resource, Clone)]
-pub struct CodeSearchConfig {
-    /// The project: the working directory unless set.
-    pub root: PathBuf,
-    /// What embeds the chunks and queries.
-    pub embedder: Embedder,
+/// The `[code_search]` settings.
+#[derive(Resource, Deserialize, Clone, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct CodeSearchSettings {
     /// How many chunks go with the requests of each turn on a new user
     /// message; none when zero.
     pub context_chunks: usize,
 }
 
-impl Default for CodeSearchConfig {
-    fn default() -> Self {
-        let root = std::env::current_dir().unwrap_or_default();
-        Self {
-            root: std::fs::canonicalize(&root).unwrap_or(root),
-            embedder: Embedder::Hashing,
-            context_chunks: 0,
-        }
-    }
-}
-
-/// What turns text into vectors.
-#[derive(Clone)]
+/// What turns text into vectors, inserted before the plugin is added to
+/// change it.
+#[derive(Resource, Clone, Default)]
 pub enum Embedder {
     /// Words (snake and camel case split) hashed into buckets: no model,
     /// deterministic.
+    #[default]
     Hashing,
     /// Any rig-core embedding model, such as a local Fastembed one
     /// (`rig_fastembed::Fastembed::embedding(..)?.erase()`).
@@ -150,6 +142,15 @@ impl Embedder {
             }
         }
     }
+
+    /// The unit vector of `query`, or why there is none.
+    async fn embed_one(self, query: String) -> Result<Vec<f32>, String> {
+        let vectors = self.embed(vec![query]).await?;
+        vectors
+            .into_iter()
+            .next()
+            .ok_or_else(|| "no vector for the query".to_owned())
+    }
 }
 
 /// A file's modification time and size, by which a change is noticed.
@@ -183,6 +184,8 @@ type Update = (String, Option<FileEntry>);
 /// The index of the project's files, by path relative to the project.
 #[derive(Resource, Default)]
 pub struct CodeIndex {
+    /// The project, canonical, as the build found it.
+    root: PathBuf,
     files: Files,
     /// Bumped by a rebuild, so work started before it is dropped.
     generation: u64,
@@ -212,12 +215,18 @@ impl CodeIndex {
         (self.files.len(), chunks)
     }
 
+    /// Whether a chunk of `path` contains `text`.
+    pub fn contains(&self, path: &str, text: &str) -> bool {
+        self.files
+            .get(path)
+            .is_some_and(|entry| entry.chunks.iter().any(|chunk| chunk.text.contains(text)))
+    }
+
     /// Takes in `updates`, an entry only when newer than the one it
     /// replaces; whether anything changed.
     fn merge(&mut self, updates: Vec<Update>) -> bool {
-        let mut changed = false;
+        let changed = !updates.is_empty();
         for (path, entry) in updates {
-            changed = true;
             match entry {
                 Some(entry) => {
                     if self
@@ -250,7 +259,7 @@ struct Listed {
     files: Vec<(String, Stamp)>,
 }
 
-/// Files indexed off the loop: a batch of the build, or an edited file.
+/// Files indexed off the loop: a batch of the build, or changed files.
 #[derive(Component)]
 struct Indexed {
     generation: u64,
@@ -258,7 +267,8 @@ struct Indexed {
     updates: Vec<Update>,
 }
 
-/// A `code_search` call's answer, and the files it indexed again.
+/// A `code_search` call's answer, and the files it indexed again, on the
+/// call.
 #[derive(Component)]
 struct Searched {
     generation: u64,
@@ -266,36 +276,47 @@ struct Searched {
     result: ToolResult,
 }
 
-/// The chunks found for a user message, on a call of the turn that waits
-/// for them.
+/// The chunks found for a turn's user message, on the hold that kept the
+/// turn's model call back meanwhile.
 #[derive(Component)]
 struct ContextFound {
-    key: String,
-    text: Option<String>,
+    turn: Entity,
+    context: TurnContext,
 }
 
 /// On a turn: the chunks that go with its requests, for the user message
 /// `key`.
-#[derive(Component)]
-struct UserContext {
+#[derive(Component, Clone)]
+struct TurnContext {
     key: String,
     text: Option<String>,
 }
 
 fn start(
     mut index: ResMut<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    project: Res<ProjectRoot>,
+    embedder: Res<Embedder>,
+    processes: Res<Processes>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    begin(&mut index, &config, &wake, &mut commands, true);
+    index.root = std::fs::canonicalize(&project.0).unwrap_or_else(|_| project.0.clone());
+    begin(
+        &mut index,
+        &embedder,
+        &processes,
+        &wake,
+        &mut commands,
+        true,
+    );
 }
 
 /// Starts a build: lists the files and, with `saved`, reads the saved
 /// index, whose entries still current are kept.
 fn begin(
     index: &mut CodeIndex,
-    config: &CodeSearchConfig,
+    embedder: &Embedder,
+    processes: &Processes,
     wake: &Wake,
     commands: &mut Commands,
     saved: bool,
@@ -307,16 +328,15 @@ fn begin(
     if !saved {
         index.files.clear();
     }
-    let (root, embedder, generation) =
-        (config.root.clone(), config.embedder.id(), index.generation);
+    let (root, embedder, generation) = (index.root.clone(), embedder.id(), index.generation);
+    let git = processes.launcher().command("git");
     let work = async move {
         let listing = blocking(move || {
-            let saved = if saved {
-                load(&root, &embedder)
-            } else {
-                HashMap::new()
+            let saved = match saved {
+                true => load(&root, &embedder),
+                false => HashMap::new(),
             };
-            Ok((saved, list(&root)))
+            Ok((saved, list(git, &root)))
         });
         let (saved, files) = listing.await.unwrap_or_default();
         Listed {
@@ -336,7 +356,7 @@ fn listed(
     add: On<Add<Listed>>,
     mut done: Query<&mut Listed>,
     mut index: ResMut<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -359,37 +379,32 @@ fn listed(
     }
     index.total = queue.len();
     index.queue = queue;
-    next_batch(&mut index, &config, &wake, &mut commands);
+    next_batch(&mut index, &embedder, &wake, &mut commands);
 }
 
 /// Indexes the next batch of the build, or ends it and saves the index.
-fn next_batch(
-    index: &mut CodeIndex,
-    config: &CodeSearchConfig,
-    wake: &Wake,
-    commands: &mut Commands,
-) {
+fn next_batch(index: &mut CodeIndex, embedder: &Embedder, wake: &Wake, commands: &mut Commands) {
     let take = index.queue.len().min(BATCH);
     let paths: Vec<String> = index.queue.drain(..take).collect();
     if paths.is_empty() {
         index.building = false;
-        save(index, config);
+        save(index, embedder);
         return;
     }
-    spawn_indexing(index.generation, config, wake, commands, paths, true);
+    spawn_indexing(index, embedder, wake, commands, paths, true);
 }
 
 /// Indexes `paths` off the loop; `batch` when they are the build's.
 fn spawn_indexing(
-    generation: u64,
-    config: &CodeSearchConfig,
+    index: &CodeIndex,
+    embedder: &Embedder,
     wake: &Wake,
     commands: &mut Commands,
     paths: Vec<String>,
     batch: bool,
 ) {
-    let batch = batch.then_some(paths.len());
-    let work = index_files(config.root.clone(), config.embedder.clone(), paths);
+    let (batch, generation) = (batch.then_some(paths.len()), index.generation);
+    let work = index_files(index.root.clone(), embedder.clone(), paths);
     let work = async move {
         Indexed {
             generation,
@@ -408,7 +423,7 @@ fn indexed(
     add: On<Add<Indexed>>,
     mut done: Query<&mut Indexed>,
     mut index: ResMut<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -423,44 +438,43 @@ fn indexed(
     match indexed.batch {
         Some(count) => {
             index.done += count;
-            next_batch(&mut index, &config, &wake, &mut commands);
+            next_batch(&mut index, &embedder, &wake, &mut commands);
         }
-        None if changed && !index.building => save(&index, &config),
+        None if changed && !index.building => save(&index, &embedder),
         None => {}
     }
 }
 
-/// Indexes again the project file an `edit` or `write` call changed.
-fn reindex_edited(
-    add: On<Add<ToolOutput>>,
-    calls: Query<(&ToolCallRun, &ToolOutput)>,
+/// Indexes again the project files a tool call says it changed, whatever
+/// the tool.
+fn reindex_changed(
+    add: On<Add<Published>>,
+    published: Query<&Published>,
     index: Res<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let Ok((run, ToolOutput(result))) = calls.get(add.entity) else {
+    let Ok(Ok(Some(changed))) = published
+        .get(add.entity)
+        .map(|published| published.0.get::<FilesChanged>())
+    else {
         return;
     };
-    let function = &run.call.function;
-    if !matches!(function.name.as_str(), "edit" | "write") || !result.is_success() {
-        return;
+    let paths: Vec<String> = changed
+        .paths()
+        .filter_map(|path| relative(&index.root, path))
+        .collect();
+    if !paths.is_empty() {
+        spawn_indexing(&index, &embedder, &wake, &mut commands, paths, false);
     }
-    let path = function
-        .arguments
-        .get("path")
-        .and_then(|path| path.as_str());
-    let Some(path) = path.and_then(|path| relative(&config.root, path)) else {
-        return;
-    };
-    let generation = index.generation;
-    spawn_indexing(generation, &config, &wake, &mut commands, vec![path], false);
 }
 
-/// `path`, as the coding tools resolve it, relative to the project; `None`
-/// outside it.
+/// `path`, which is relative to the project unless absolute, relative to
+/// the project; `None` outside it and in `.rig/`.
 fn relative(root: &Path, path: &str) -> Option<String> {
-    let path = std::fs::canonicalize(path).ok()?;
+    let path = root.join(path);
+    let path = std::fs::canonicalize(&path).unwrap_or(path);
     let path = path.strip_prefix(root).ok()?.to_str()?.to_owned();
     (!path.starts_with(".rig/")).then_some(path)
 }
@@ -481,28 +495,31 @@ struct SearchArgs {
 fn search(
     called: On<ToolCalled<SearchArgs>>,
     index: Res<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
+    processes: Res<Processes>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let k = called.args.k.unwrap_or(DEFAULT_K).clamp(1, MAX_K);
-    let note = index
-        .building
-        .then(|| format!("index {}% built; results are partial.\n", index.percent()));
-    let (root, embedder) = (config.root.clone(), config.embedder.clone());
-    let (files, generation, building) = (index.files.clone(), index.generation, index.building);
+    let note = match index.building {
+        true => format!("index {}% built; results are partial.\n", index.percent()),
+        false => String::new(),
+    };
+    let (root, embedder) = (index.root.clone(), embedder.clone());
+    let (files, generation) = (index.files.clone(), index.generation);
+    // New files are looked for only once the build, which lists them, is done.
+    let git = (!index.building).then(|| processes.launcher().command("git"));
     let query = called.args.query.clone();
     let work = async move {
-        let updates = refresh(root, embedder.clone(), &files, building).await;
-        let result = match embedder.embed(vec![query]).await {
-            Ok(vectors) => {
-                let query = vectors.into_iter().next().unwrap_or_default();
+        let updates = refresh(root, embedder.clone(), &files, git).await;
+        let result = match embedder.embed_one(query).await {
+            Ok(query) => {
                 let hits = rank(current(&files, &updates), &query, k);
                 let text = match hits.is_empty() {
                     true => "No code matches.".to_owned(),
                     false => describe(&hits),
                 };
-                ToolResult::success(format!("{}{text}", note.unwrap_or_default()).into())
+                ToolResult::success(format!("{note}{text}").into())
             }
             Err(why) => ToolResult::failed(ToolExecutionError::other(format!(
                 "embedding failed: {why}"
@@ -519,12 +536,12 @@ fn search(
         .insert(Running::spawn_into::<Searched, _>(pool(), &wake, work));
 }
 
-/// Takes in what a search indexed again, and ends its call.
+/// Takes in what a search indexed again, and answers its call.
 fn searched(
     add: On<Add<Searched>>,
     mut done: Query<&mut Searched>,
     mut index: ResMut<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
     mut commands: Commands,
 ) {
     let Ok(mut searched) = done.get_mut(add.entity) else {
@@ -534,18 +551,23 @@ fn searched(
         && index.merge(std::mem::take(&mut searched.updates))
         && !index.building
     {
-        save(&index, &config);
+        save(&index, &embedder);
     }
     let result = searched.result.clone();
     commands
         .entity(add.entity)
         .remove::<Searched>()
-        .insert(ToolOutput(result));
+        .insert_if_new(Outcome::from(result));
 }
 
-/// Indexes again the indexed files whose stamp changed, and, once the
-/// build is done, the project's files not indexed yet.
-async fn refresh(root: PathBuf, embedder: Embedder, files: &Files, building: bool) -> Vec<Update> {
+/// Indexes again the indexed files whose stamp changed, and, with a
+/// `git` command to list them, the project's files not indexed yet.
+async fn refresh(
+    root: PathBuf,
+    embedder: Embedder,
+    files: &Files,
+    git: Option<Command>,
+) -> Vec<Update> {
     let stamps: HashMap<String, Stamp> = files
         .iter()
         .map(|(path, entry)| (path.clone(), entry.stamp))
@@ -557,8 +579,8 @@ async fn refresh(root: PathBuf, embedder: Embedder, files: &Files, building: boo
             .filter(|(path, stamp)| stamp_of(&base.join(path)).as_ref() != Some(*stamp))
             .map(|(path, _)| path.clone())
             .collect();
-        if !building {
-            let new = list(&base).into_iter().map(|(path, _)| path);
+        if let Some(git) = git {
+            let new = list(git, &base).into_iter().map(|(path, _)| path);
             stale.extend(new.filter(|path| !stamps.contains_key(path)));
         }
         Ok(stale)
@@ -627,73 +649,90 @@ fn describe(hits: &[Hit<'_>]) -> String {
     hits.collect::<Vec<_>>().join("\n\n")
 }
 
-/// The context of the user's newest message: on the turn's first request
-/// for it, the request waits for a search of the index; then every
-/// request of the turn carries the chunks found, in that message.
+/// The context of the user's newest message, in each of its turn's model
+/// calls as they are admitted. The turn's first call for a message is held
+/// while the index is searched for it ([`context_found`] adds it and lets
+/// the call go); the turn's later calls get the same chunks at once.
 fn add_context(
-    mut prepare: On<PrepareRequest>,
-    config: Res<CodeSearchConfig>,
+    mut calls: Query<(Entity, &mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    turns: Query<&TurnContext>,
+    settings: Res<CodeSearchSettings>,
     index: Res<CodeIndex>,
-    turns: Query<Option<&UserContext>>,
+    embedder: Res<Embedder>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let k = config.context_chunks;
-    let turn = prepare.entity;
+    let k = settings.context_chunks;
     if k == 0 || index.files.is_empty() {
         return;
     }
-    let Some((position, key)) = newest_user_text(&prepare.messages) else {
-        return;
-    };
-    match turns.get(turn) {
-        Ok(Some(context)) if context.key == key => {
-            if let Some(text) = &context.text
-                && let Some(message::Message::User { content }) = prepare.messages.get_mut(position)
-            {
-                content.push(UserContent::text(text.clone()));
+    for (call, mut request, &CallOf(turn)) in &mut calls {
+        let Some(key) = newest_user_text(&request.request.chat_history).map(|(_, key)| key) else {
+            continue;
+        };
+        match turns.get(turn) {
+            Ok(context) if context.key == key => context.add_to(&mut request),
+            _ => {
+                let (files, embedder) = (index.files.clone(), embedder.clone());
+                let work = async move {
+                    let query = embedder.embed_one(key.clone()).await.unwrap_or_default();
+                    let hits = rank(current(&files, &[]), &query, k);
+                    let text = (!hits.is_empty()).then(|| {
+                        format!(
+                            "<code-context>\nCode that may be relevant:\n\n{}\n</code-context>",
+                            describe(&hits)
+                        )
+                    });
+                    ContextFound {
+                        turn,
+                        context: TurnContext { key, text },
+                    }
+                };
+                commands.spawn((
+                    Name::new("code context"),
+                    HoldOf(call),
+                    Running::spawn_into::<ContextFound, _>(pool(), &wake, work),
+                ));
             }
         }
-        Ok(_) => {
-            let (files, embedder) = (index.files.clone(), config.embedder.clone());
-            let work = async move {
-                let vectors = embedder.embed(vec![key.clone()]).await.unwrap_or_default();
-                let query = vectors.into_iter().next().unwrap_or_default();
-                let hits = rank(current(&files, &[]), &query, k);
-                let text = (!hits.is_empty()).then(|| {
-                    format!(
-                        "<code-context>\nCode that may be relevant:\n\n{}\n</code-context>",
-                        describe(&hits)
-                    )
-                });
-                ContextFound { key, text }
-            };
-            commands.spawn((
-                Name::new("code context"),
-                CallOf(turn),
-                Running::spawn_into::<ContextFound, _>(pool(), &wake, work),
-            ));
-        }
-        Err(_) => {}
     }
 }
 
-/// Keeps the context found on its turn and sends the request it held.
+/// Adds the context found to the call it held, keeps it on the turn for its
+/// later calls, and lets the call go.
 fn context_found(
     add: On<Add<ContextFound>>,
-    mut found: Query<(&mut ContextFound, &CallOf)>,
+    found: Query<(&ContextFound, &HoldOf)>,
+    mut calls: Query<&mut ModelRequest>,
     mut commands: Commands,
 ) {
-    let Ok((mut found, &CallOf(turn))) = found.get_mut(add.entity) else {
+    let Ok((found, &HoldOf(call))) = found.get(add.entity) else {
         return;
     };
-    let context = UserContext {
-        key: std::mem::take(&mut found.key),
-        text: found.text.take(),
-    };
+    if let Ok(mut request) = calls.get_mut(call) {
+        found.context.add_to(&mut request);
+    }
+    commands
+        .entity(found.turn)
+        .try_insert(found.context.clone());
     commands.entity(add.entity).despawn();
-    commands.entity(turn).insert(context);
-    commands.trigger(CallModel { entity: turn });
+}
+
+impl TurnContext {
+    /// Adds the chunks to `request`'s newest user message, if it is the one
+    /// they were found for.
+    fn add_to(&self, request: &mut ModelRequest) {
+        let history = &mut request.request.chat_history;
+        let Some(text) = &self.text else {
+            return;
+        };
+        if let Some((position, key)) = newest_user_text(history)
+            && key == self.key
+            && let Some(message::Message::User { content }) = history.get_mut(position)
+        {
+            content.push(UserContent::text(text.clone()));
+        }
+    }
 }
 
 /// The position and text of the newest user message that has text and no
@@ -724,22 +763,30 @@ fn newest_user_text(messages: &[message::Message]) -> Option<(usize, String)> {
 fn index(
     In(args): In<CommandArgs>,
     mut index: ResMut<CodeIndex>,
-    config: Res<CodeSearchConfig>,
+    embedder: Res<Embedder>,
+    processes: Res<Processes>,
     wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     match args.args.trim() {
         "rebuild" => {
-            begin(&mut index, &config, &wake, &mut commands, false);
+            begin(
+                &mut index,
+                &embedder,
+                &processes,
+                &wake,
+                &mut commands,
+                false,
+            );
             notices.write(Notice::info(args.agent, "Rebuilding the code index."));
         }
         "status" | "" => {
             let (files, chunks) = index.size();
             let mut text = format!(
                 "Code index of {}: {files} files, {chunks} chunks, embedder {}.",
-                config.root.display(),
-                config.embedder.id()
+                index.root.display(),
+                embedder.id()
             );
             if index.building {
                 text.push_str(&format!(
@@ -761,14 +808,14 @@ fn index(
 }
 
 /// Writes the index to the project's `.rig/index/`, off the loop.
-fn save(index: &CodeIndex, config: &CodeSearchConfig) {
+fn save(index: &CodeIndex, embedder: &Embedder) {
     #[derive(Serialize)]
     struct SavedRef<'a> {
         embedder: String,
         files: BTreeMap<&'a str, &'a FileEntry>,
     }
     let saved = SavedRef {
-        embedder: config.embedder.id(),
+        embedder: embedder.id(),
         files: index
             .files
             .iter()
@@ -778,7 +825,7 @@ fn save(index: &CodeIndex, config: &CodeSearchConfig) {
     let Ok(bytes) = serde_json::to_vec(&saved) else {
         return;
     };
-    let path = config.root.join(INDEX_FILE);
+    let path = index.root.join(INDEX_FILE);
     let write = async move {
         let temporary = path.with_extension("json.tmp");
         let written = path
@@ -812,9 +859,10 @@ fn load(root: &Path, embedder: &str) -> HashMap<String, FileEntry> {
 }
 
 /// The files git tracks or would track in `root` (not ignored), with
-/// their stamps; none outside a git repository.
-fn list(root: &Path) -> Vec<(String, Stamp)> {
-    let output = Command::new("git")
+/// their stamps, listed by `git`, a command made as every child process
+/// of the agent is; none outside a git repository.
+fn list(mut git: Command, root: &Path) -> Vec<(String, Stamp)> {
+    let output = git
         .args([
             "ls-files",
             "-z",

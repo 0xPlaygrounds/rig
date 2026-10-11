@@ -1,49 +1,66 @@
 use rig_cassette::journal::MemoryStore;
+use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::settings::Settings;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{app_on, reply, run_until};
+
+/// Adds `model` to `models` as the catalog model `<vendor>/m`, which
+/// connects to it.
+fn scripted(models: &mut Models, vendor: &str, model: &MockCompletionModel) -> Option<()> {
+    let vendor = ProviderId::declare(vendor).ok()?;
+    let model = model.clone();
+    models
+        .0
+        .catalog_mut()
+        .insert(ModelSpec::new(vendor, "m").with_tools(true));
+    models
+        .0
+        .provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
+            let model = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+            Ok(ErasedHandler::new(model))
+        });
+    Some(())
+}
 
 #[test]
 fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((AgentPlugin, JournalPlugin, DebatePlugin))
-        .insert_resource(DebateConfig {
-            pro: Some("openai/gpt-5.1".to_owned()),
-            con: Some("anthropic/claude-sonnet-4-5".to_owned()),
-            judge: Some("deepseek/deepseek-flash".to_owned()),
-            rounds: None,
-        });
     let main = MockCompletionModel::from_stream_turns([reply("unused")]);
-    let host = connect(&main).map(|connection| {
-        let choice = ModelChoice(connection.spec.reference());
-        app.world_mut().spawn((Agent, connection, choice)).id()
-    });
-    let host = host.unwrap_or(Entity::PLACEHOLDER);
+    let pro = MockCompletionModel::from_stream_turns([reply("P1"), reply("P2")]);
+    let con = MockCompletionModel::from_stream_turns([reply("C1"), reply("C2")]);
+    let judge = MockCompletionModel::from_stream_turns([reply("Verdict: P")]);
+    let mut models = Models::default();
+    let parts = [
+        ("debate-main", &main),
+        ("debate-pro", &pro),
+        ("debate-con", &con),
+        ("debate-judge", &judge),
+    ];
+    let listed = parts
+        .iter()
+        .all(|(vendor, model)| scripted(&mut models, vendor, model).is_some());
+    assert!(listed, "the scripted models are in the catalog");
+
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let settings = "[debate]\npro = \"debate-pro/m\"\ncon = \"debate-con/m\"\n\
+                    judge = \"debate-judge/m\"\n";
+    app.insert_resource(models)
+        .insert_resource(Settings::from_toml(settings))
+        .add_plugins((AgentPlugin, JournalPlugin, DebatePlugin));
+    let host = app
+        .world_mut()
+        .spawn((Agent, ModelChoice("debate-main/m".to_owned())))
+        .id();
     app.finish();
     app.update();
 
     let line = "debate --rounds 2 Should the parser be hand-written?".to_owned();
     app.world_mut().trigger(RunCommand { entity: host, line });
-    app.world_mut().flush();
-    let debate = app.world().get::<Debate>(host).cloned();
-    assert!(debate.is_some(), "no debate started");
-    let Some(debate) = debate else {
-        return;
-    };
-    // Each part answers by its own scripted model.
-    let pro = MockCompletionModel::from_stream_turns([reply("P1"), reply("P2")]);
-    let con = MockCompletionModel::from_stream_turns([reply("C1"), reply("C2")]);
-    let judge = MockCompletionModel::from_stream_turns([reply("Verdict: P")]);
-    for (agent, model) in [
-        (debate.pro, &pro),
-        (debate.con, &con),
-        (debate.judge, &judge),
-    ] {
-        if let Some(connection) = connect(model) {
-            app.world_mut().entity_mut(agent).insert(connection);
-        }
-    }
     let said = |world: &World| {
         let conversation = world.get::<Conversation>(host);
         format!("{:?}", conversation.map(Conversation::messages))
@@ -61,7 +78,8 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     }
     assert!(said(app.world()).contains("Verdict: P"));
     assert_eq!(main.request_count(), 0, "a note starts no turn");
-    let spawned = app.world().get::<Spawned>(host);
-    let spawned: Vec<Entity> = spawned.map(|of| of.iter().collect()).unwrap_or_default();
-    assert_eq!(spawned, debate.debaters());
+    let world = app.world_mut();
+    let mut debaters = world.query::<(&Debater, &SpawnedBy)>();
+    let spawned: Vec<Entity> = debaters.iter(world).map(|(_, by)| by.0).collect();
+    assert_eq!(spawned, [host; 3], "three debaters, spawned by the agent");
 }

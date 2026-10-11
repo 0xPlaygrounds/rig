@@ -1,13 +1,15 @@
-use std::path::PathBuf;
 use std::process::Command;
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, WriteTool};
-use rig_core::catalog::{Catalog, Connector};
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 use rig_telemetry::{Spending, UsagePlugin};
-use serde_json::json;
 
 use super::*;
 
@@ -29,6 +31,20 @@ fn repository() -> PathBuf {
     dir
 }
 
+/// The built-in catalog, with `corpus-review/gpt-x` answered by `reviewer`.
+fn models(reviewer: &MockCompletionModel) -> Option<Models> {
+    let vendor = ProviderId::declare("corpus-review").ok()?;
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    let spec = ModelSpec::new(vendor, "gpt-x").with_tools(true);
+    connector.catalog_mut().insert(spec);
+    let reviewer = reviewer.clone();
+    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
+        let model = ModelAdapter::<Completion>::new(spec.reference(), reviewer.clone());
+        Ok(ErasedHandler::new(model))
+    });
+    Some(Models(connector))
+}
+
 #[test]
 fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings() {
     let dir = repository();
@@ -42,14 +58,17 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     let reviewer = MockCompletionModel::from_stream_turns([reply("a.txt lacks a newline")]);
 
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(Models(Connector::new(Catalog::default())))
-        .insert_resource(ReviewConfig {
-            dir: dir.clone(),
-            ..ReviewConfig::default()
-        })
-        .insert_resource(ReviewerModel(connect(&reviewer)))
+    // Without the catalog, the reviewer is never asked and the test fails.
+    if let Some(models) = models(&reviewer) {
+        app.insert_resource(models);
+    }
+    let settings = "[review]\nmodel = \"corpus-review/gpt-x\"";
+    app.insert_resource(Settings::from_toml(settings))
+        .insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, ReadTool, WriteTool))
-        .add_plugins((UsagePlugin, ReviewAgentPlugin));
+        .add_plugins((UsagePlugin, ReviewAgentPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
     let mut agent = app.world_mut().spawn(Agent);
     if let Some(connection) = connect(&main) {
         agent.insert((ModelChoice(connection.spec.reference()), connection));
@@ -68,9 +87,11 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     assert!(asked.contains("write a.txt"), "{asked}");
     assert!(asked.contains("b/a.txt"), "{asked}");
     assert!(asked.contains("No newline at end of file"), "{asked}");
-    // The agent's follow-up turn started from the findings.
+    // The review held the end of the agent's turn, which carried on from
+    // the findings: two turns ended, the reviewer's and that one.
+    assert_eq!(app.world().resource::<Ended>().0.len(), 2);
     let followed = format!("{:?}", main.requests().get(2));
-    assert!(followed.contains("Reviewer ("), "{followed}");
+    assert!(followed.contains("Reviewer (gpt-x) found"), "{followed}");
     assert!(followed.contains("lacks a newline"), "{followed}");
     let written = std::fs::read_to_string(&file).unwrap_or_default();
     assert_eq!(written, "x\n");
@@ -81,9 +102,8 @@ fn a_turn_that_changed_a_file_is_reviewed_once_and_the_agent_fixes_the_findings(
     let mut reviewers = world.query_filtered::<(&SpawnedBy, &Spending), With<Reviewer>>();
     let spent: Vec<(Entity, u64)> = reviewers
         .iter(world)
-        .map(|(by, spent)| (by.0, spent.0.calls))
+        .map(|(by, spent)| (by.0, spent.total.calls))
         .collect();
     assert_eq!(spent, [(agent, 1)]);
-    assert!(world.get::<Reviewing>(agent).is_none());
     std::fs::remove_dir_all(&dir).ok();
 }

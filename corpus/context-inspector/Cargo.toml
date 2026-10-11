@@ -11,10 +11,6 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-# The requests the model connections' tap hands to the world.
-crossbeam-channel = { workspace = true }
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate compaction uses too.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }

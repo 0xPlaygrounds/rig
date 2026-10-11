@@ -11,9 +11,10 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 futures = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }

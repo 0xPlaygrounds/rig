@@ -1,10 +1,11 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 use rig_cassette::journal::MemoryStore;
-use rig_harness_test_support::{app_on, run_until};
+use rig_harness_test_support::{Ended, app_on, log_ended, run_until};
 use rig_models::ModelsPlugin;
 
 use super::*;
@@ -128,21 +129,17 @@ fn answer(mut stream: TcpStream, asked: &Mutex<Vec<String>>) -> std::io::Result<
     stream.flush()
 }
 
-/// How each turn ended, in order.
-#[derive(Resource, Default)]
-struct Ended(Vec<TurnOutcome>);
-
 fn qwen_available(world: &World) -> Option<bool> {
     world
         .resource::<LocalModels>()
         .get("qwen-coder")
-        .map(LocalModel::available)
+        .map(|model| model.available)
 }
 
 /// What the scripted run saw.
 #[derive(Debug, PartialEq)]
 struct Seen {
-    on_stub: bool,
+    model: Option<String>,
     answer: Option<String>,
     window: Option<u32>,
     warmed_up: bool,
@@ -157,14 +154,12 @@ fn a_local_model_is_found_answers_and_is_marked_unavailable_once_its_server_stop
     assert_eq!(
         seen,
         Ok(Seen {
-            on_stub: true,
+            model: Some("local/qwen-coder".to_owned()),
             answer: Some("hi".to_owned()),
             window: Some(32768),
             warmed_up: true,
             available_after_stop: Some(false),
-            failed_after_stop: Some(format!(
-                "The model call failed: Ollama not running at {url}"
-            )),
+            failed_after_stop: Some(format!("Ollama not running at {url}")),
         })
     );
 }
@@ -183,15 +178,14 @@ fn run() -> (Result<Seen, String>, String) {
 fn observe(stub: &mut Stub) -> Result<Seen, String> {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    app.insert_resource(LocalModelsConfig {
-        endpoints: vec![Endpoint::ollama(&stub.url)],
-        ..Default::default()
-    })
-    .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, LocalModelsPlugin))
-    .init_resource::<Ended>()
-    .add_observer(|ended: On<TurnEnded>, mut log: ResMut<Ended>| {
-        log.0.push(ended.outcome.clone());
-    });
+    let settings = format!(
+        "[local_models]\nendpoints = [{{ server = \"ollama\", url = \"{}\" }}]",
+        stub.url
+    );
+    app.insert_resource(Settings::from_toml(&settings))
+        .add_plugins((AgentPlugin, JournalPlugin, ModelsPlugin, LocalModelsPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
     app.finish();
     app.update();
 
@@ -209,17 +203,13 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         "/model local/qwen-coder",
         DeliveryMode::Queue,
     ));
-    // On the plugin's connection to the stub, not the kernel's to the
-    // default address.
-    let on_stub = |world: &World| {
-        let model = world.resource::<LocalModels>().get("qwen-coder");
+    let model = |world: &World| {
         world
             .get::<Connection>(agent)
-            .zip(model)
-            .is_some_and(|(connection, model)| ours(connection, model))
+            .map(|connection| connection.spec.reference())
     };
-    run_until(&mut app, &wakes, on_stub);
-    let on_stub = on_stub(app.world());
+    run_until(&mut app, &wakes, |world| model(world).is_some());
+    let model = model(app.world());
 
     app.world_mut()
         .trigger(Deliver::new(agent, "hello", DeliveryMode::Queue));
@@ -234,6 +224,8 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         .world()
         .get::<Connection>(agent)
         .and_then(|connection| connection.spec.context_window);
+    // The warm-up is sent beside the turn, in the background.
+    run_until(&mut app, &wakes, |_| stub.asked("/api/generate"));
     let warmed_up = stub.asked("/api/generate");
 
     stub.stop();
@@ -254,7 +246,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         _ => None,
     };
     Ok(Seen {
-        on_stub,
+        model,
         answer,
         window,
         warmed_up,

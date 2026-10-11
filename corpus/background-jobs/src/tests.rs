@@ -1,20 +1,16 @@
-use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::SessionId;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 /// The long job's command, unique enough to find among the processes.
 const LONG: &str = "sleep 37.25";
-
-/// Turns that ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
 
 /// Whether a process runs whose command line contains `text`.
 fn running(text: &str) -> bool {
@@ -30,8 +26,10 @@ fn running(text: &str) -> bool {
 }
 
 /// A job that exits after the turn that started it ends starts a turn of
-/// its idle agent (`notify_idle`) whose request says how it ended; a job
-/// still running when the app goes is killed with it.
+/// its idle agent (`notify_idle`) whose request says how it ended; jobs
+/// start as every child process does (here with a variable the launcher
+/// sets, as a sandbox's wrapper would apply); a job still running when the
+/// app goes is killed with it.
 #[test]
 fn a_finished_job_tells_its_idle_agent_and_none_outlives_the_app() {
     let start = |id: &str, command: &str| {
@@ -39,27 +37,28 @@ fn a_finished_job_tells_its_idle_agent_and_none_outlives_the_app() {
     };
     let model = MockCompletionModel::from_stream_turns([
         vec![
-            start("1", "sleep 0.5; echo finished"),
+            start("1", "sleep 0.5; echo finished $VIA"),
             start("2", LONG),
             MockStreamEvent::final_response_with_default_usage(),
         ],
         reply("started"),
         reply("seen"),
     ]);
-    let dir = std::env::var_os("CARGO_TARGET_DIR")
-        .map_or_else(std::env::temp_dir, PathBuf::from)
+    let target = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../target");
+    let home = std::env::var_os("CARGO_TARGET_DIR")
+        .map_or(target, PathBuf::from)
         .join("corpus-background-jobs-test");
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
+    let processes = Processes::default();
+    processes.set(processes.launcher().with_env("VIA", "the-launcher"));
     app.insert_resource(Models(Connector::new(Catalog::default())))
-        .insert_resource(JobSettings {
-            notify_idle: true,
-            dir: Some(dir),
-            ..JobSettings::default()
-        })
+        .insert_resource(Settings::from_toml("[jobs]\nnotify_idle = true"))
+        .insert_resource(SessionPaths(Home::at(home).session(&SessionId::generate())))
+        .insert_resource(processes)
         .add_plugins((AgentPlugin, JournalPlugin, BackgroundJobsPlugin))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -78,12 +77,14 @@ fn a_finished_job_tells_its_idle_agent_and_none_outlives_the_app() {
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Run the tests.", DeliveryMode::Steer));
 
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 >= 2);
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() >= 2
+    });
 
     assert_eq!(model.request_count(), 3, "the exit started a turn");
     let third = format!("{:?}", model.requests().get(2));
     assert!(third.contains("exited with 0"), "{third}");
-    assert!(third.contains("finished"), "{third}");
+    assert!(third.contains("finished the-launcher"), "{third}");
     assert!(running(LONG), "the long job runs past the turns");
 
     drop(app);

@@ -1,59 +1,61 @@
 //! Format and lint on every write (spec `33-format-on-write.md`).
 //!
-//! The `write` and `edit` tools are replaced by the same tools (rig-tools'
-//! [`Write`] and [`Edit`], with the replaced tools' rules and footprint)
-//! that, once the file is written, run its formatter and then its linter,
-//! chosen by the file's extension in [`FormatOnWrite`]. Both run inside the
-//! call, so the call ends, and a later `read` runs, only once they are done.
-//! What they did is appended to the call's result, which stays a success:
-//! "(formatted with rustfmt)" and the changed lines as they now read, a
-//! formatter's failure (the file then stays as written), or the linter's
-//! diagnostics.
+//! Each `write` and `edit` call is wrapped, as it is admitted, in a layer
+//! that runs once the tool answered: on a success it runs the written
+//! file's formatter, then its linter, chosen by its extension in
+//! [`FormatOnWrite`], and appends what they did to the result, which stays
+//! a success: "(formatted with rustfmt)" and the changed lines as they now
+//! read, a formatter's failure (the file is then put back as written), or
+//! the linter's diagnostics. The call settles only once they are done, so
+//! a later `read` sees the formatted file.
 
 use std::collections::HashMap;
-use std::ffi::OsStr;
 use std::fmt::Write as _;
-use std::path::Path;
-use std::process::{Command, Stdio};
-use std::sync::{Arc, mpsc};
-use std::time::Duration;
+use std::path::{Path, PathBuf};
 
-use rig_core::tool::ToolContext;
-use rig_ecs::prelude::*;
+use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
+use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::serve::{Decision, Intercept, Verdict};
+use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
+use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::fs::write_atomic;
-use rig_tools::process::detach;
-use rig_tools::{Edit, Write, blocking};
-use serde_json::Value;
+use rig_tools::process::Launcher;
+use rig_tools::{Edit, Shell, ShellArgs, ShellRun, Write};
+use serde::Deserialize;
 
 /// A formatted region of fewer lines than this is shown in the result.
 const MAX_REGION: usize = 40;
-/// Most lines of a linter's output kept in the result.
-const MAX_DIAGNOSTICS: usize = 50;
 
-/// What runs after a file is written, by its extension (`rs`, `py`):
-/// each command is a program and its arguments, to which the file's path is
-/// appended. A formatter rewrites the file in place; a linter prints its
-/// diagnostics for the file. Insert it before the app's `finish` to change
-/// it.
-#[derive(Resource, Clone, Debug)]
+/// The `[format_on_write]` table of the user's settings: the command line
+/// that formats, and the one that lints, a file of each extension (`rs`,
+/// `py`), run by `sh` with the file's path appended. A formatter rewrites
+/// the file in place; a linter prints its diagnostics. A table the user
+/// sets replaces the default one.
+#[derive(Resource, Clone, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct FormatOnWrite {
     /// The formatter of each extension.
-    pub formatters: HashMap<String, Vec<String>>,
+    pub formatters: HashMap<String, String>,
     /// The linter of each extension.
-    pub linters: HashMap<String, Vec<String>>,
-    /// How long a formatter or linter may run before it is killed.
-    pub timeout: Duration,
+    pub linters: HashMap<String, String>,
+    /// Seconds a formatter or linter may run before it is killed.
+    pub timeout_secs: u64,
 }
 
 impl Default for FormatOnWrite {
     fn default() -> Self {
-        let prettier: &[&str] = &["prettier", "--write", "--log-level", "warn"];
-        let eslint: &[&str] = &["eslint", "--no-color"];
+        let prettier = "prettier --write --log-level warn";
+        let eslint = "eslint --no-color";
+        let table = |entries: &[(&str, &str)]| {
+            let entry = |(ext, line): &(&str, &str)| ((*ext).to_owned(), (*line).to_owned());
+            entries.iter().map(entry).collect()
+        };
         Self {
             formatters: table(&[
-                ("rs", &["rustfmt", "--edition", "2024"]),
-                ("go", &["gofmt", "-w"]),
-                ("py", &["black", "--quiet"]),
+                ("rs", "rustfmt --edition 2024"),
+                ("go", "gofmt -w"),
+                ("py", "black --quiet"),
                 ("js", prettier),
                 ("jsx", prettier),
                 ("ts", prettier),
@@ -62,26 +64,15 @@ impl Default for FormatOnWrite {
                 ("css", prettier),
             ]),
             linters: table(&[
-                ("py", &["ruff", "check", "--quiet", "--no-cache"]),
+                ("py", "ruff check --quiet --no-cache"),
                 ("js", eslint),
                 ("jsx", eslint),
                 ("ts", eslint),
                 ("tsx", eslint),
             ]),
-            timeout: Duration::from_secs(10),
+            timeout_secs: 10,
         }
     }
-}
-
-/// A command table from string slices.
-fn table(entries: &[(&str, &[&str])]) -> HashMap<String, Vec<String>> {
-    entries
-        .iter()
-        .map(|(ext, argv)| {
-            let argv = argv.iter().map(|arg| (*arg).to_owned()).collect();
-            ((*ext).to_owned(), argv)
-        })
-        .collect()
 }
 
 /// Formats and lints every file `write` and `edit` change.
@@ -90,132 +81,183 @@ pub struct FormatOnWritePlugin;
 
 impl Plugin for FormatOnWritePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<FormatOnWrite>();
-    }
-
-    fn finish(&self, app: &mut App) {
-        let config = app.world().get_resource::<FormatOnWrite>().cloned();
-        let config = Arc::new(config.unwrap_or_default());
-        wrap(app, Write, &config);
-        wrap(app, Edit, &config);
+        app.add_setting::<FormatOnWrite>("format_on_write")
+            .init_resource::<Processes>()
+            .add_systems(AgentPass, format_after.in_set(Stage::Prepare));
     }
 }
 
-/// Replaces the registered tool named like `inner` by `inner` followed by
-/// the formatter and linter, keeping the replaced tool's rules and
-/// footprint. Nothing changes when no such tool is registered.
-fn wrap<T>(app: &mut App, inner: T, config: &Arc<FormatOnWrite>)
-where
-    T: Tool<Output = String, Error = ToolExecutionError> + 'static,
-{
-    let world = app.world_mut();
-    let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
-    let found = tools
-        .iter(world)
-        .find(|(_, def, ..)| def.0.name.as_str() == T::NAME)
-        .map(|(entity, _, rules, footprint)| (entity, rules.0.clone(), *footprint));
-    let Some((entity, rules, footprint)) = found else {
-        return;
-    };
-    world.entity_mut(entity).insert(Disabled);
-    let rules: Vec<&str> = rules.iter().map(String::as_str).collect();
-    let tool = Formatted {
-        inner,
-        config: config.clone(),
-    };
-    app.add_tool_with(
-        tool,
-        ToolOptions {
-            rules: &rules,
-            footprint,
-        },
-    );
-}
-
-/// A tool that writes a file named by its `path` argument, then formats
-/// and lints that file.
-struct Formatted<T> {
-    inner: T,
-    config: Arc<FormatOnWrite>,
-}
-
-impl<T> Tool for Formatted<T>
-where
-    T: Tool<Output = String, Error = ToolExecutionError>,
-{
-    const NAME: &'static str = T::NAME;
-    // The inner tool's arguments, whose fields are private: the path is read
-    // from the JSON before they are parsed.
-    type Args = Value;
-    type Output = String;
-    type Error = ToolExecutionError;
-
-    fn description(&self) -> String {
-        self.inner.description()
-    }
-
-    fn parameters(&self) -> Value {
-        self.inner.parameters()
-    }
-
-    async fn call(
-        &self,
-        context: &mut ToolContext,
-        args: Value,
-    ) -> Result<String, ToolExecutionError> {
-        let path = args.get("path").and_then(Value::as_str).map(str::to_owned);
-        let typed = serde_json::from_value(args)
-            .map_err(|error| ToolExecutionError::invalid_args(error.to_string()))?;
-        let result = self.inner.call(context, typed).await?;
-        let Some(path) = path else {
-            return Ok(result);
-        };
-        let config = self.config.clone();
-        blocking(move || Ok(after_write(&config, Path::new(&path), result))).await
-    }
-}
-
-/// `result` with what the formatter and the linter of `path` did.
-fn after_write(config: &FormatOnWrite, path: &Path, mut result: String) -> String {
-    let Some(ext) = path.extension().and_then(OsStr::to_str) else {
-        return result;
-    };
-    if let Some(formatter) = config.formatters.get(ext) {
-        result.push_str(&format_file(formatter, path, config.timeout));
-    }
-    if let Some(linter) = config.linters.get(ext) {
-        result.push_str(&lint(linter, path, config.timeout));
-    }
-    result
-}
-
-/// Runs `formatter` on `path`: what it changed, or why it failed, in which
-/// case the file is put back as it was written.
-fn format_file(formatter: &[String], path: &Path, timeout: Duration) -> String {
-    let name = program(formatter);
-    let Ok(before) = std::fs::read_to_string(path) else {
-        return String::new();
-    };
-    let failed = |why: String| {
-        if std::fs::read_to_string(path).ok().as_deref() != Some(before.as_str()) {
-            write_atomic(path, before.as_bytes()).ok();
+/// Runs each `write` and `edit` call through [`Formatting`], with the
+/// settings and the launcher of the moment it is admitted.
+fn format_after(
+    mut calls: Query<(&ToolRequest, &mut CallHandler), Added<Admitted>>,
+    config: Res<FormatOnWrite>,
+    processes: Res<Processes>,
+) {
+    for (request, mut handler) in &mut calls {
+        let name = request.call.function.name.as_str();
+        if name == Write::NAME || name == Edit::NAME {
+            let layer = Formatting {
+                config: config.clone(),
+                launcher: processes.launcher(),
+            };
+            handler.0 = Handler(handler.0.0.clone().layered(layer));
         }
-        format!("\n\n({name} failed, so the file is left as written: {why})")
-    };
-    let after = match run(formatter, path, timeout) {
-        Ran::Exited { ok: true, .. } => match std::fs::read_to_string(path) {
-            Ok(after) => after,
-            Err(error) => return failed(error.to_string()),
-        },
-        Ran::Exited { ok: false, output } => return failed(output.trim_end().to_owned()),
-        Ran::TimedOut => return failed(format!("no answer in {} s", timeout.as_secs())),
-        Ran::NotStarted(why) => return failed(why),
-    };
+    }
+}
+
+/// What formats and lints the file a call wrote, once it succeeded.
+struct Formatting {
+    config: FormatOnWrite,
+    launcher: Launcher,
+}
+
+/// The file a `write` or `edit` call names.
+#[derive(Deserialize)]
+struct Target {
+    path: PathBuf,
+}
+
+impl Intercept for Formatting {
+    fn name(&self) -> String {
+        "format-on-write".to_owned()
+    }
+
+    async fn before(&self, _: EffectId, _: &EffectKind) -> Decision {
+        Decision::Proceed
+    }
+
+    async fn after(
+        &self,
+        _: EffectId,
+        kind: &EffectKind,
+        outcome: &Result<Answered, ErrorReport>,
+    ) -> Verdict {
+        let (EffectKind::ToolCall { args, .. }, Ok(Answered::ToolResult { result })) =
+            (kind, outcome)
+        else {
+            return Verdict::Keep;
+        };
+        let Ok(Target { path }) = serde_json::from_str(args) else {
+            return Verdict::Keep;
+        };
+        if !result.is_success() {
+            return Verdict::Keep;
+        }
+        let notes = self.check(&path).await;
+        if notes.is_empty() {
+            return Verdict::Keep;
+        }
+        let text = result.output().render() + &notes;
+        let result = result.clone().with_output(ToolOutput::text(text));
+        Verdict::Replace(Ok(Answered::ToolResult { result }))
+    }
+}
+
+impl Formatting {
+    /// What the formatter and the linter of `path` did.
+    async fn check(&self, path: &Path) -> String {
+        let Some(ext) = path.extension().and_then(|ext| ext.to_str()) else {
+            return String::new();
+        };
+        // The launcher may start commands elsewhere than the tool wrote.
+        let path = std::path::absolute(path).unwrap_or_else(|_| path.to_owned());
+        let mut notes = String::new();
+        if let Some(formatter) = self.config.formatters.get(ext) {
+            notes += &self.format(formatter, &path).await;
+        }
+        if let Some(linter) = self.config.linters.get(ext) {
+            notes += &self.lint(linter, &path).await;
+        }
+        notes
+    }
+
+    /// Runs `formatter` on `path`: what it changed, or why it failed, in
+    /// which case the file is put back as it was written.
+    async fn format(&self, formatter: &str, path: &Path) -> String {
+        let Some(before) = read(path).await else {
+            return String::new();
+        };
+        let name = program(formatter);
+        let why = match self.run(formatter, path).await {
+            Ok(ran) if ran.status.success() => match read(path).await {
+                Some(after) => return formatted(name, &before, &after),
+                None => "it left no file to read".to_owned(),
+            },
+            Ok(ran) => ran.output,
+            Err(error) => error.to_string(),
+        };
+        let path = path.to_owned();
+        let restored = blocking(move || {
+            if std::fs::read_to_string(&path).ok().as_deref() != Some(before.as_str()) {
+                write_atomic(&path, before.as_bytes()).map_err(ToolExecutionError::from_error)?;
+            }
+            Ok(())
+        });
+        let left = match restored.await {
+            Ok(()) => "the file is left as written",
+            Err(_) => "the file could not be put back as written",
+        };
+        format!("\n\n({name} failed, so {left}:\n{})", why.trim_end())
+    }
+
+    /// Runs `linter` on `path`: its diagnostics, if it printed any, and how
+    /// it ended unless it exited (a linter exits 1 on findings).
+    async fn lint(&self, linter: &str, path: &Path) -> String {
+        let name = program(linter);
+        let ShellRun { output, status } = match self.run(linter, path).await {
+            Ok(ran) => ran,
+            Err(error) => return format!("\n\n({name} could not run: {error})"),
+        };
+        // The output's last line says how the linter ended.
+        let (diagnostics, end) = output.rsplit_once('\n').unwrap_or(("", &output));
+        let mut note = String::new();
+        if !diagnostics.trim().is_empty() {
+            note = format!("\n\n{name} diagnostics:\n{diagnostics}");
+        }
+        if !matches!(status, ExitStatus::Exited(_)) {
+            write!(note, "\n\n({name} {end})").ok();
+        }
+        note
+    }
+
+    /// Runs `command` on `path` with `sh`, killed after the timeout.
+    async fn run(&self, command: &str, path: &Path) -> Result<ShellRun, ToolExecutionError> {
+        let quoted = path.display().to_string().replace('\'', r"'\''");
+        let args =
+            ShellArgs::new(format!("{command} '{quoted}'")).timeout_secs(self.config.timeout_secs);
+        let shell = Shell {
+            launcher: self.launcher.clone(),
+            ..Shell::default()
+        };
+        shell.run(args).await
+    }
+}
+
+/// The text of `path`, read off the async threads.
+async fn read(path: &Path) -> Option<String> {
+    let path = path.to_owned();
+    blocking(move || Ok(std::fs::read_to_string(path).ok()))
+        .await
+        .ok()
+        .flatten()
+}
+
+/// The program a command line runs, by its file name.
+fn program(command: &str) -> &str {
+    let first = command.split_whitespace().next().unwrap_or("formatter");
+    first.rsplit('/').next().unwrap_or(first)
+}
+
+/// What a formatter named `name` changed from `before` to `after`: nothing
+/// when it changed nothing, else a note and, when they are fewer than
+/// [`MAX_REGION`], the changed lines as they now read.
+fn formatted(name: &str, before: &str, after: &str) -> String {
     if after == before {
         return String::new();
     }
     let mut note = format!("\n\n(formatted with {name})");
-    if let Some((first, lines)) = changed_lines(&before, &after) {
+    if let Some((first, lines)) = changed_lines(before, after) {
         note.push_str("\nThe changed lines now read:\n");
         for (number, line) in (first..).zip(lines) {
             writeln!(note, "{number:>6}\t{line}").ok();
@@ -240,83 +282,6 @@ fn changed_lines<'a>(before: &str, after: &'a str) -> Option<(usize, Vec<&'a str
     let changed = new.get(head..new.len().saturating_sub(tail))?;
     (!changed.is_empty() && changed.len() < MAX_REGION)
         .then(|| (head.saturating_add(1), changed.to_vec()))
-}
-
-/// Runs `linter` on `path`: its diagnostics, if it printed any.
-fn lint(linter: &[String], path: &Path, timeout: Duration) -> String {
-    let name = program(linter);
-    match run(linter, path, timeout) {
-        Ran::Exited { output, .. } if output.trim().is_empty() => String::new(),
-        Ran::Exited { output, .. } => {
-            let mut note = format!("\n\n{name} diagnostics:");
-            for line in output.trim_end().lines().take(MAX_DIAGNOSTICS) {
-                note.push('\n');
-                note.push_str(line);
-            }
-            note
-        }
-        Ran::TimedOut => format!("\n\n({name} gave no answer in {} s)", timeout.as_secs()),
-        Ran::NotStarted(why) => format!("\n\n({name} could not run: {why})"),
-    }
-}
-
-/// The program a command runs, by its file name.
-fn program(argv: &[String]) -> String {
-    let program = argv.first().map(Path::new);
-    let name = program.and_then(Path::file_name).and_then(OsStr::to_str);
-    name.unwrap_or("formatter").to_owned()
-}
-
-/// How a command ended.
-enum Ran {
-    /// It exited, successfully or not, printing `output` (stdout, then
-    /// stderr).
-    Exited { ok: bool, output: String },
-    /// It ran past its timeout and was killed.
-    TimedOut,
-    /// It could not start.
-    NotStarted(String),
-}
-
-/// Runs `argv` with `path` appended, killing it and its children after
-/// `timeout`.
-fn run(argv: &[String], path: &Path, timeout: Duration) -> Ran {
-    let Some((program, args)) = argv.split_first() else {
-        return Ran::NotStarted("the command is empty".to_owned());
-    };
-    let mut command = Command::new(program);
-    command
-        .args(args)
-        .arg(path)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-    detach(&mut command);
-    let child = match command.spawn() {
-        Ok(child) => child,
-        Err(error) => return Ran::NotStarted(error.to_string()),
-    };
-    let leader = child.id();
-    let (sender, finished) = mpsc::channel();
-    std::thread::spawn(move || sender.send(child.wait_with_output()).ok());
-    match finished.recv_timeout(timeout) {
-        Ok(Ok(output)) => {
-            let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-            Ran::Exited {
-                ok: output.status.success(),
-                output: text,
-            }
-        }
-        Ok(Err(error)) => Ran::NotStarted(error.to_string()),
-        Err(_) => {
-            #[cfg(unix)]
-            rig_tools::process::kill_group_of(leader);
-            #[cfg(not(unix))]
-            let _ = leader;
-            Ran::TimedOut
-        }
-    }
 }
 
 #[cfg(test)]

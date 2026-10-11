@@ -13,11 +13,13 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Each debater's spend, which the verdict lists.
+# Each debater's spend, as a column of its line in `/agents`.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+# The debaters are helper agents spawned through `SpawnSubagent`.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
-# RIG_HOME/debate.json.
+# The `[debate]` settings table.
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

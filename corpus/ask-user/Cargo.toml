@@ -10,13 +10,12 @@ workspace = true
 
 [features]
 default = ["tui"]
-# The picker over the transcript and how the terminal view draws a question.
+# How the terminal view draws a call.
 tui = ["dep:rig-tui"]
 
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
 schemars = { workspace = true }

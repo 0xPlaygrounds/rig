@@ -11,14 +11,10 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-# Warnings about what could not be redacted.
+# A warning when redacted data does not read back.
 bevy_log = { workspace = true }
 # The secret patterns.
 regex = { workspace = true }
-# The session store the log is redacted on its way into.
-rig-cassette = { workspace = true }
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true }
 serde_json = { workspace = true }

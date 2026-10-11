@@ -4,28 +4,27 @@
 //! values of the env vars the `[secret-redaction]` table of the user's
 //! `settings.toml` names, `env_vars = ["DB_PASSWORD"]`) never leave the
 //! machine: each distinct one becomes a stable placeholder `‹SECRET_n›` in
-//! every request, in the session log and in the results of every tool. A
-//! tool call that names a placeholder gets the real value. The
-//! placeholders live in memory only; `/secrets` lists them.
+//! what is sent and kept. A tool call that names a placeholder runs with
+//! the real value. The placeholders live in memory only; `/secrets` lists
+//! them.
 //!
-//! It is three stage systems: in Prepare, every model request is redacted
-//! and every tool call's handler is wrapped ([`Unmasked`]) so the call runs
-//! with the secrets and answers with placeholders, recorded as the model
-//! sent it; in Review, a model reply is redacted before it reaches the
-//! conversation. The session log is redacted as it is written.
+//! - Gate: every message and model request about to start is redacted,
+//!   once every Prepare system added to it; a tool call naming a
+//!   placeholder this run does not know is refused.
+//! - Prepare: every tool call's handler is wrapped ([`Unmasked`]): it runs
+//!   with the secrets and answers with placeholders, so the effect log
+//!   records the call as the model sent it and the redacted result.
+//! - Review: every tool result and model reply is redacted before it is
+//!   committed (and so before the session log and the views see it).
 
-use std::io;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use bevy_log::warn;
-use regex::Regex;
-use rig_cassette::journal::JournalStore;
-use rig_core::effect::family;
-use rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as EffectOutcome};
-use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
-use rig_ecs::effects::Handler;
-use rig_ecs::journal::SessionStore;
+use regex::{Captures, Regex};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, family};
+use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, serve_inline_with};
+use rig_harness::rig_ecs::effects::Handler;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -38,11 +37,7 @@ const SHORTEST: usize = 6;
 
 /// Redacts secrets from everything that leaves the machine.
 #[derive(Default)]
-pub struct SecretRedactionPlugin {
-    /// The env vars whose exact values are secrets, besides those the
-    /// user's settings name.
-    pub env_vars: Vec<String>,
-}
+pub struct SecretRedactionPlugin;
 
 /// The `[secret-redaction]` table of `settings.toml`.
 #[derive(Resource, serde::Deserialize, Default)]
@@ -54,67 +49,36 @@ pub struct RedactionSettings {
 
 impl Plugin for SecretRedactionPlugin {
     fn build(&self, app: &mut App) {
-        app.add_setting::<RedactionSettings>("secret-redaction");
-        let named = &app.world().resource::<RedactionSettings>().env_vars;
-        let secrets = Secrets::default();
-        for name in self.env_vars.iter().chain(named) {
-            if let Ok(value) = std::env::var(name)
-                && value.len() >= SHORTEST
-            {
-                secrets
-                    .vault()
-                    .learn(&value, &format!("the value of ${name}"));
-            }
-        }
-        app.insert_resource(secrets)
+        app.add_setting::<RedactionSettings>("secret-redaction")
+            .init_resource::<Secrets>()
+            .add_systems(Startup, learn_env_vars)
             .add_systems(
                 AgentPass,
                 (
-                    (redact_request, unmask_calls).in_set(Stage::Prepare),
-                    redact_reply.in_set(Stage::Review),
+                    unmask_calls.in_set(Stage::Prepare),
+                    (redact_messages, redact_requests, refuse_forgotten).in_set(Stage::Gate),
+                    redact_outcomes.in_set(Stage::Review),
                 ),
             )
+            .add_observer(forget_restored)
             .add_command("secrets", "List the placeholders secrets are sent as", list);
-    }
-
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let Some(secrets) = world.get_resource::<Secrets>().cloned() else {
-            return;
-        };
-        if let Some(store) = world.get_resource::<SessionStore>() {
-            let inner = store.0.clone();
-            let store = RedactingStore {
-                inner,
-                secrets: secrets.clone(),
-            };
-            world.insert_resource(SessionStore::new(store));
-        }
     }
 }
 
-/// One secret seen this session.
+/// One secret seen this run.
 struct Secret {
     value: String,
     hint: String,
 }
 
-/// The secrets seen, `‹SECRET_n›` being the n-th. Never saved.
+/// The secrets, `‹SECRET_n›` being the n-th; `None` for a number from
+/// before a restart, which is forgotten. Never saved.
 #[derive(Default)]
-struct Vault(Vec<Secret>);
+struct Vault(Vec<Option<Secret>>);
 
-/// The session's secrets, shared with the tools that run off the main
-/// thread.
+/// The run's secrets, shared with the tools that run off the main thread.
 #[derive(Resource, Clone, Default)]
 pub struct Secrets(Arc<Mutex<Vault>>);
-
-/// What a placeholder starts and ends with.
-const OPEN: &str = "‹SECRET_";
-const CLOSE: char = '›';
-
-fn placeholder(number: usize) -> String {
-    format!("{OPEN}{number}{CLOSE}")
-}
 
 /// What each kind of secret looks like: its name, and a pattern whose
 /// first group, or else whole match, is the secret.
@@ -140,17 +104,45 @@ static PATTERNS: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|| {
     .collect()
 });
 
+/// A placeholder, its number the first group.
+static PLACEHOLDER: LazyLock<Option<Regex>> = LazyLock::new(|| Regex::new(r"‹SECRET_(\d+)›").ok());
+
+fn placeholder(number: usize) -> String {
+    format!("‹SECRET_{number}›")
+}
+
+/// The placeholders in `text`: each match and its number.
+fn placeholders(text: &str) -> impl Iterator<Item = (&str, Option<usize>)> {
+    PLACEHOLDER.iter().flat_map(move |pattern| {
+        pattern.captures_iter(text).map(|found: Captures| {
+            let whole = found.get(0).map_or("", |whole| whole.as_str());
+            let number = found.get(1).and_then(|number| number.as_str().parse().ok());
+            (whole, number)
+        })
+    })
+}
+
 impl Vault {
     /// The number of `value`, learned from `hint` when new.
     fn learn(&mut self, value: &str, hint: &str) -> usize {
-        if let Some(index) = self.0.iter().position(|secret| secret.value == value) {
+        let known = self
+            .0
+            .iter()
+            .position(|secret| secret.as_ref().is_some_and(|secret| secret.value == value));
+        if let Some(index) = known {
             return index + 1;
         }
-        self.0.push(Secret {
+        self.0.push(Some(Secret {
             value: value.to_owned(),
             hint: hint.to_owned(),
-        });
+        }));
         self.0.len()
+    }
+
+    /// The secret `‹SECRET_number›` stands for, if this run knows it.
+    fn value(&self, number: usize) -> Option<&str> {
+        let secret = self.0.get(number.checked_sub(1)?)?.as_ref()?;
+        Some(&secret.value)
     }
 
     /// `text` with every secret in it replaced by its placeholder, the
@@ -159,20 +151,16 @@ impl Vault {
     fn redact(&mut self, text: &str, source: &str) -> Option<String> {
         for (kind, pattern) in PATTERNS.iter() {
             for found in pattern.captures_iter(text) {
-                let secret = found.get(1).or_else(|| found.get(0));
-                if let Some(secret) = secret.map(|secret| secret.as_str())
-                    && !secret.contains(OPEN)
-                {
-                    self.learn(secret, &format!("{kind} in {source}"));
+                if let Some(secret) = found.get(1).or_else(|| found.get(0)) {
+                    self.learn(secret.as_str(), &format!("{kind} in {source}"));
                 }
             }
         }
         // The longest first, so one inside another goes with it.
         let mut known: Vec<(usize, &str)> = (1..)
             .zip(&self.0)
-            .filter(|(_, secret)| secret.value.len() >= SHORTEST)
-            .map(|(number, secret)| (number, secret.value.as_str()))
-            .filter(|(_, value)| text.contains(value))
+            .filter_map(|(number, secret)| Some((number, secret.as_ref()?.value.as_str())))
+            .filter(|(_, value)| value.len() >= SHORTEST && text.contains(value))
             .collect();
         if known.is_empty() {
             return None;
@@ -189,13 +177,10 @@ impl Vault {
     /// Redacts every string in `value`; whether any changed.
     fn redact_value(&mut self, value: &mut Value, source: &str) -> bool {
         match value {
-            Value::String(text) => match self.redact(text, source) {
-                Some(redacted) => {
-                    *text = redacted;
-                    true
-                }
-                None => false,
-            },
+            Value::String(text) => self
+                .redact(text, source)
+                .map(|redacted| *text = redacted)
+                .is_some(),
             Value::Array(items) => items.iter_mut().fold(false, |changed, item| {
                 self.redact_value(item, source) | changed
             }),
@@ -206,40 +191,27 @@ impl Vault {
         }
     }
 
-    /// `text` with each placeholder in it replaced by its secret, or the
-    /// first placeholder that is not known.
-    fn reveal(&self, text: &str) -> Result<String, String> {
-        let mut revealed = String::with_capacity(text.len());
-        let mut rest = text;
-        while let Some(start) = rest.find(OPEN) {
-            let (before, from) = rest.split_at(start);
-            revealed.push_str(before);
-            let after = from.get(OPEN.len()..).unwrap_or_default();
-            let digits = after.len() - after.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-            let (number, tail) = after.split_at(digits);
-            let Some(tail) = tail.strip_prefix(CLOSE) else {
-                revealed.push_str(OPEN);
-                rest = after;
-                continue;
-            };
-            let secret = number
-                .parse::<usize>()
-                .ok()
-                .and_then(|number| self.0.get(number.checked_sub(1)?));
-            match secret {
-                Some(secret) => revealed.push_str(&secret.value),
-                None => return Err(format!("{OPEN}{number}{CLOSE}")),
-            }
-            rest = tail;
-        }
-        revealed.push_str(rest);
-        Ok(revealed)
-    }
-
-    /// Reveals every string in `value`.
+    /// Replaces each placeholder in every string of `value` by its secret,
+    /// or names the first one this run does not know.
     fn reveal_value(&self, value: &mut Value) -> Result<(), String> {
         match value {
-            Value::String(text) if text.contains(OPEN) => *text = self.reveal(text)?,
+            Value::String(text) => {
+                for (whole, number) in placeholders(text) {
+                    if number.and_then(|number| self.value(number)).is_none() {
+                        return Err(whole.to_owned());
+                    }
+                }
+                if let Some(pattern) = PLACEHOLDER.as_ref() {
+                    let revealed = pattern.replace_all(text, |found: &Captures| {
+                        let number = found.get(1).and_then(|number| number.as_str().parse().ok());
+                        number
+                            .and_then(|number| self.value(number))
+                            .unwrap_or_default()
+                            .to_owned()
+                    });
+                    *text = revealed.into_owned();
+                }
+            }
             Value::Array(items) => {
                 for item in items {
                     self.reveal_value(item)?;
@@ -261,37 +233,86 @@ impl Secrets {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Each placeholder and where its secret was first seen.
+    /// Each placeholder this run knows and where its secret was first seen.
     pub fn hints(&self) -> Vec<(String, String)> {
-        let vault = self.vault();
         (1..)
-            .zip(&vault.0)
-            .map(|(number, secret)| (placeholder(number), secret.hint.clone()))
+            .zip(&self.vault().0)
+            .filter_map(|(number, secret)| {
+                Some((placeholder(number), secret.as_ref()?.hint.clone()))
+            })
             .collect()
     }
 
     /// Redacts every string of `data`, through its JSON form, as seen in
-    /// `source`. Data the redacted form does not read back as is kept.
-    fn redact_data<T: Serialize + DeserializeOwned>(&self, data: &mut T, source: &str) {
+    /// `source`; whether any changed. Data whose redacted form does not
+    /// read back is kept, with a warning.
+    fn redact_data<T: Serialize + DeserializeOwned>(&self, data: &mut T, source: &str) -> bool {
         let Ok(mut value) = serde_json::to_value(&*data) else {
-            return;
+            return false;
         };
-        if self.vault().redact_value(&mut value, source) {
-            match serde_json::from_value(value) {
-                Ok(redacted) => *data = redacted,
-                Err(error) => warn!("secret redaction: could not redact {source}: {error}"),
+        if !self.vault().redact_value(&mut value, source) {
+            return false;
+        }
+        match serde_json::from_value(value) {
+            Ok(redacted) => {
+                *data = redacted;
+                true
             }
+            Err(error) => {
+                warn!("secret redaction: could not redact {source}: {error}");
+                false
+            }
+        }
+    }
+
+    /// The JSON arguments `args` with their placeholders revealed, or the
+    /// first placeholder this run does not know.
+    fn reveal_args(&self, args: &str) -> Result<String, String> {
+        let Ok(mut value) = serde_json::from_str::<Value>(args) else {
+            return Ok(args.to_owned());
+        };
+        self.vault().reveal_value(&mut value)?;
+        Ok(value.to_string())
+    }
+}
+
+/// Why a call naming `unknown` does not run.
+fn forgotten(unknown: &str) -> String {
+    format!(
+        "{unknown} is not a known secret: placeholders are kept in memory only and are \
+         forgotten when the agent restarts. Nothing ran; ask the user for the value again."
+    )
+}
+
+/// The values of the env vars the settings name are secrets from the start.
+fn learn_env_vars(settings: Res<RedactionSettings>, secrets: Res<Secrets>) {
+    let mut vault = secrets.vault();
+    for name in &settings.env_vars {
+        if let Ok(value) = std::env::var(name)
+            && value.len() >= SHORTEST
+        {
+            vault.learn(&value, &format!("the value of ${name}"));
         }
     }
 }
 
-/// Every model request goes out with placeholders: its system prompt and
-/// messages, whatever put the secrets there.
-fn redact_request(mut calls: Query<&mut ModelRequest, Added<Admitted>>, secrets: Res<Secrets>) {
-    for mut call in &mut calls {
-        for message in &mut call.request.chat_history {
-            secrets.redact_data(message, "the conversation");
-        }
+/// A conversation restored from the session names placeholders of an
+/// earlier run: their numbers are forgotten, never given to new secrets.
+fn forget_restored(
+    added: On<Add<Conversation>>,
+    agents: Query<&Conversation>,
+    secrets: Res<Secrets>,
+) {
+    let Ok(text) = agents
+        .get(added.entity)
+        .map(|conversation| serde_json::to_string(conversation).unwrap_or_default())
+    else {
+        return;
+    };
+    let highest = placeholders(&text).filter_map(|(_, number)| number).max();
+    let mut vault = secrets.vault();
+    while vault.0.len() < highest.unwrap_or_default() {
+        vault.0.push(None);
     }
 }
 
@@ -308,48 +329,112 @@ fn unmask_calls(
     }
 }
 
-/// A model reply shows placeholders, to the user and in the conversation:
-/// redacted in Review, before the kernel commits it.
-fn redact_reply(
-    replies: Query<(Entity, &Outcome), (Added<Outcome>, With<ModelRequest>, Without<Settled>)>,
+/// Every message goes to its agent with placeholders, text and
+/// attachments, but a slash command, which never reaches the model.
+fn redact_messages(mut messages: Query<&mut Incoming, Undecided>, secrets: Res<Secrets>) {
+    for mut message in &mut messages {
+        if message.command().is_some() {
+            continue;
+        }
+        let mut text = message.text.clone();
+        if secrets.redact_data(&mut text, "a message") {
+            message.text = text;
+        }
+        for attachment in &mut message.attachments {
+            let source = format!("the attachment {}", attachment.label);
+            secrets.redact_data(&mut attachment.content, &source);
+        }
+    }
+}
+
+/// Every model request goes out with placeholders: its system prompt and
+/// messages, whatever put the secrets there.
+fn redact_requests(mut calls: Query<&mut ModelRequest, Undecided>, secrets: Res<Secrets>) {
+    for mut call in &mut calls {
+        for (index, message) in call.request.chat_history.iter_mut().enumerate() {
+            let source = if index == 0 {
+                "the system prompt"
+            } else {
+                "a request"
+            };
+            secrets.redact_data(message, source);
+        }
+    }
+}
+
+/// A tool call naming a placeholder this run does not know, such as one
+/// from before a restart, is refused.
+fn refuse_forgotten(
+    calls: Query<(Entity, &ToolRequest), Undecided>,
     secrets: Res<Secrets>,
     mut commands: Commands,
 ) {
-    for (call, outcome) in &replies {
-        let Some(response) = outcome.completion() else {
-            continue;
-        };
-        let mut redacted = response.clone();
-        for content in &mut redacted.choice {
-            secrets.redact_data(content, "a model reply");
+    for (call, request) in &calls {
+        let args = serde_json::to_string(&request.call.function.arguments).unwrap_or_default();
+        let vault = secrets.vault();
+        let unknown = placeholders(&args)
+            .find(|(_, number)| number.and_then(|number| vault.value(number)).is_none());
+        if let Some((unknown, _)) = unknown {
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::refused(forgotten(unknown)));
         }
-        if redacted.choice != response.choice {
-            let outcome = Outcome(Ok(EffectOutcome::Completion(redacted)));
-            commands.entity(call).insert(outcome);
+    }
+}
+
+/// On an effect whose outcome was redacted: once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Redacted;
+
+/// Every tool result and model reply reaches the conversation, the
+/// session log and the views with placeholders.
+fn redact_outcomes(
+    answered: Query<
+        (Entity, &Outcome, Option<&ToolRequest>),
+        (
+            Unreviewed,
+            Or<(With<ToolRequest>, With<ModelRequest>)>,
+            Without<Redacted>,
+        ),
+    >,
+    secrets: Res<Secrets>,
+    mut commands: Commands,
+) {
+    for (effect, outcome, tool) in &answered {
+        let source = tool.map_or_else(
+            || "a model reply".to_owned(),
+            |tool| format!("the result of `{}`", tool.call.function.name.as_str()),
+        );
+        let mut redacted = outcome.0.clone();
+        let mut done = commands.entity(effect);
+        if secrets.redact_data(&mut redacted, &source) {
+            done.insert(Outcome(redacted));
         }
+        done.insert(Redacted);
     }
 }
 
 /// `/secrets`.
 fn list(In(args): In<CommandArgs>, secrets: Res<Secrets>, mut notices: MessageWriter<Notice>) {
-    let hints = secrets.hints();
-    let text = if hints.is_empty() {
-        "No secrets seen in this session.".to_owned()
-    } else {
-        let lines: Vec<String> = hints
-            .into_iter()
-            .map(|(placeholder, hint)| format!("{placeholder}  {hint}"))
-            .collect();
-        format!("Secrets, sent as placeholders:\n{}", lines.join("\n"))
+    let lines: Vec<String> = secrets
+        .hints()
+        .into_iter()
+        .map(|(placeholder, hint)| format!("{placeholder}  {hint}"))
+        .collect();
+    let text = match lines.is_empty() {
+        true => "No secrets seen in this run.".to_owned(),
+        false => format!("Secrets, sent as placeholders:\n{}", lines.join("\n")),
     };
     notices.write(Notice::info(args.agent, text));
 }
 
 /// A tool handler that runs its calls with the placeholders in their
 /// arguments replaced by the secrets, and answers with the secrets in its
-/// result replaced by placeholders. The call is recorded as the model
-/// sent it, the result as redacted: the inner handler runs on a dispatch
-/// of its own, which records nothing, with the same scopes.
+/// result replaced by placeholders. The kernel records the call as the
+/// model sent it and this answer: the inner handler runs inline, with the
+/// same scopes (what the tool publishes) but unrecorded, since a rig-core
+/// `Layer` would record the revealed arguments and the raw result.
 pub struct Unmasked {
     inner: ErasedHandler,
     secrets: Secrets,
@@ -366,110 +451,15 @@ impl Serve for Unmasked {
         let EffectKind::ToolCall { name, args } = kind else {
             return self.inner.serve(kind, dispatch).await;
         };
-        let args = match self.reveal(&args) {
-            Ok(args) => args,
-            Err(unknown) => {
-                let why = format!(
-                    "{unknown} is not a known secret: placeholders are kept in memory only and \
-                     are forgotten when the agent restarts. Nothing ran; ask the user for the \
-                     value again."
-                );
-                let result = ToolResult::failed(ToolExecutionError::other(why));
-                return Reply::Outcome(Ok(EffectOutcome::ToolResult { result }));
-            }
-        };
         let source = format!("the result of `{name}`");
-        let unrecorded = dispatch.scopes().into_iter().fold(
-            Dispatch::new(dispatch.id(), dispatch.is_stream()),
-            Dispatch::with_scope,
-        );
-        let reply = self
-            .inner
-            .handle(EffectKind::ToolCall { name, args }, unrecorded);
-        let outcome = reply.await.into_outcome().await;
-        Reply::Outcome(outcome.map(|outcome| match outcome {
-            EffectOutcome::ToolResult { mut result } => {
-                self.secrets.redact_data(&mut result, &source);
-                EffectOutcome::ToolResult { result }
+        let mut outcome = match self.secrets.reveal_args(&args) {
+            Ok(args) => {
+                let kind = EffectKind::ToolCall { name, args };
+                serve_inline_with(&self.inner, kind, dispatch.scopes()).await
             }
-            other => other,
-        }))
-    }
-}
-
-impl Unmasked {
-    /// The JSON arguments `args` with their placeholders revealed.
-    fn reveal(&self, args: &str) -> Result<String, String> {
-        if !args.contains(OPEN) {
-            return Ok(args.to_owned());
-        }
-        let Ok(mut value) = serde_json::from_str::<Value>(args) else {
-            return Ok(args.to_owned());
+            Err(unknown) => Outcome::refused(forgotten(&unknown)).0,
         };
-        self.secrets.vault().reveal_value(&mut value)?;
-        Ok(value.to_string())
-    }
-}
-
-/// The session store, with every line written to it redacted.
-struct RedactingStore {
-    inner: Arc<dyn JournalStore>,
-    secrets: Secrets,
-}
-
-impl JournalStore for RedactingStore {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        self.inner.agents()
-    }
-
-    fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
-        self.inner.read(agent)
-    }
-
-    fn truncate(&self, agent: &str, len: u64) -> io::Result<()> {
-        self.inner.truncate(agent, len)
-    }
-
-    fn append(&self, agent: &str, bytes: &[u8]) -> io::Result<()> {
-        let text = String::from_utf8_lossy(bytes);
-        let mut vault = self.secrets.vault();
-        let mut redacted = String::with_capacity(text.len());
-        for line in text.split_inclusive('\n') {
-            let (body, end) = line
-                .strip_suffix('\n')
-                .map_or((line, ""), |body| (body, "\n"));
-            match serde_json::from_str::<Value>(body) {
-                Ok(mut value) => {
-                    if vault.redact_value(&mut value, "the session log") {
-                        redacted.push_str(&value.to_string());
-                    } else {
-                        redacted.push_str(body);
-                    }
-                }
-                Err(_) => match vault.redact(body, "the session log") {
-                    Some(body) => redacted.push_str(&body),
-                    None => redacted.push_str(body),
-                },
-            }
-            redacted.push_str(end);
-        }
-        drop(vault);
-        self.inner.append(agent, redacted.as_bytes())
-    }
-
-    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.inner.put_blob(name, bytes)
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.inner.blob(name)
-    }
-
-    fn blobs(&self) -> io::Result<Vec<String>> {
-        self.inner.blobs()
-    }
-
-    fn remove(&self, agent: &str) -> io::Result<()> {
-        self.inner.remove(agent)
+        self.secrets.redact_data(&mut outcome, &source);
+        Reply::Outcome(outcome)
     }
 }

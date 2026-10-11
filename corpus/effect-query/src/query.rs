@@ -7,7 +7,6 @@ use std::fmt::Write;
 use rig_cassette::effect_log::EffectLog;
 use rig_core::effect::{Disposition, EffectKind, EffectRecord, Outcome};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{Message, UserContent};
 use rig_core::tool::ToolErrorKind;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -91,7 +90,7 @@ pub struct Filter {
     /// Only effects that ended so.
     pub status: Option<Status>,
     /// Only effects of this turn of their agent and later (from 1).
-    pub since_turn: Option<u32>,
+    pub since_turn: Option<u64>,
     /// The most rows, the latest kept (30 by default).
     pub limit: Option<usize>,
     /// The slowest first, by how long each took, instead of the latest;
@@ -112,7 +111,8 @@ pub struct DetailArgs {
 struct Row<'a> {
     record: &'a EffectRecord,
     agent: String,
-    turn: u32,
+    /// The turn of its agent (from 1), when known.
+    turn: Option<u64>,
     kind: String,
     name: String,
     status: Status,
@@ -142,53 +142,54 @@ fn name_of(record: &EffectRecord) -> String {
     }
 }
 
-/// Whether a model request starts a turn: its last message is the user's
-/// (or a delivered) message rather than tool results.
-fn starts_turn(kind: &EffectKind) -> bool {
-    let EffectKind::Completion { request, .. } = kind else {
-        return false;
-    };
-    matches!(request.chat_history.last(), Some(Message::User { content })
-        if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
+/// What the table knows of an agent besides its effects.
+#[derive(Clone, Debug, Default)]
+pub struct AgentInfo {
+    /// Its name.
+    pub name: String,
+    /// Each turn's index and its first effect's id.
+    pub turns: Vec<(u64, u64)>,
 }
 
-/// Every effect of `log` as a row, in id order, with its agent's name from
-/// `names` (agent id to name) and the turn of its agent it belongs to.
-fn rows<'a>(log: &'a EffectLog, names: &HashMap<String, String>) -> Vec<Row<'a>> {
-    let mut records: Vec<&EffectRecord> = log.records.iter().collect();
-    records.sort_by_key(|record| record.id);
-    let mut turns: HashMap<&str, u32> = HashMap::new();
-    let mut turn_of = HashMap::new();
-    let mut rows = Vec::with_capacity(records.len());
-    for record in records {
-        let scope = record.scope.as_deref().unwrap_or("");
-        let current = turns.entry(scope).or_default();
-        if starts_turn(&record.kind) {
-            *current += 1;
-        }
-        let turn = record
-            .parent
-            .filter(|_| !matches!(record.kind, EffectKind::Completion { .. }))
-            .and_then(|parent| turn_of.get(&(scope, parent)).copied())
-            .unwrap_or((*current).max(1));
-        turn_of.insert((scope, record.id), turn);
-        let agent = names
-            .get(scope)
-            .cloned()
-            .unwrap_or_else(|| scope.get(..8).unwrap_or(scope).to_owned());
-        rows.push(Row {
-            record,
-            agent,
-            turn,
-            kind: kind_label(&record.kind),
-            name: name_of(record),
-            status: Status::of_record(record),
-            took_ms: record
-                .started_ms
-                .zip(record.finished_ms)
-                .map(|(started, finished)| finished.saturating_sub(started)),
-        });
+impl AgentInfo {
+    /// The turn (from 1) effect `id` belongs to: the last that started at
+    /// or before it.
+    fn turn_of(&self, id: u64) -> Option<u64> {
+        self.turns
+            .iter()
+            .filter(|(_, first)| *first <= id)
+            .map(|(index, _)| index + 1)
+            .max()
     }
+}
+
+/// Every effect of `log` as a row, in id order, with its agent's name and
+/// turn from `agents` (by agent id).
+fn rows<'a>(log: &'a EffectLog, agents: &HashMap<String, AgentInfo>) -> Vec<Row<'a>> {
+    let mut rows: Vec<Row> = log
+        .records
+        .iter()
+        .map(|record| {
+            let scope = record.scope.as_deref().unwrap_or("");
+            let info = agents.get(scope);
+            Row {
+                record,
+                agent: info.map_or_else(
+                    || scope.get(..8).unwrap_or(scope).to_owned(),
+                    |info| info.name.clone(),
+                ),
+                turn: info.and_then(|info| info.turn_of(record.id.as_u64())),
+                kind: kind_label(&record.kind),
+                name: name_of(record),
+                status: Status::of_record(record),
+                took_ms: record
+                    .started_ms
+                    .zip(record.finished_ms)
+                    .map(|(started, finished)| finished.saturating_sub(started)),
+            }
+        })
+        .collect();
+    rows.sort_by_key(|row| row.record.id);
     rows
 }
 
@@ -203,7 +204,9 @@ impl Filter {
             .is_none_or(|kind| kind == "any" || kind.eq_ignore_ascii_case(&row.kind));
         let name = self.name.as_deref().is_none_or(|name| name == row.name);
         let status = self.status.is_none_or(|status| status == row.status);
-        let turn = self.since_turn.is_none_or(|since| row.turn >= since);
+        let turn = self
+            .since_turn
+            .is_none_or(|since| row.turn.is_some_and(|turn| turn >= since));
         agent && kind && name && status && turn
     }
 
@@ -271,8 +274,8 @@ fn human(bytes: usize) -> String {
 
 /// The effects of `log` that `filter` keeps, the latest `limit` or the
 /// slowest, as a table.
-pub fn table(log: &EffectLog, names: &HashMap<String, String>, filter: &Filter) -> String {
-    let all = rows(log, names);
+pub fn table(log: &EffectLog, agents: &HashMap<String, AgentInfo>, filter: &Filter) -> String {
+    let all = rows(log, agents);
     let mut kept: Vec<&Row> = all
         .iter()
         .filter(|row| filter.keeps(row, row.record.scope.as_deref().unwrap_or("")))
@@ -314,7 +317,7 @@ pub fn table(log: &EffectLog, names: &HashMap<String, String>, filter: &Filter) 
             "{}\t{}\t{}\t{}\t{}\t{}\t{start}\t{took}\t{}\t{}\t{model}\t{cost}",
             row.record.id.as_u64(),
             row.agent,
-            row.turn,
+            row.turn.map_or("-".to_owned(), |turn| turn.to_string()),
             row.kind,
             row.name,
             row.status.as_str(),

@@ -1,35 +1,36 @@
 //! A window front: the agents on the left with their status and subagents
 //! indented, the shown agent's transcript in the middle (markdown answers,
 //! collapsible reasoning and tool calls, the reply streaming in), an input
-//! box under it, and pickers from any plugin as dialogs with buttons.
+//! box under it, and every open question ([`Ask`]) and picker
+//! ([`Picker`]) as a dialog with buttons.
 //!
 //! What the window shows is its model, four resources kept by systems that
 //! need no window: [`GuiAgents`], [`GuiTranscript`], [`GuiInput`] and
 //! [`GuiDialogs`]. The window, or a test, changes it only through the
 //! requests [`Show`], [`Submit`], [`Stop`], [`Toggle`], [`Choose`] and
-//! [`Dismiss`], which become the same kernel requests the terminal view
-//! sends. With the default `window` feature, a Bevy UI window draws the
-//! model, redrawing a part only when its resource changed.
+//! [`Dismiss`], which become the same requests the terminal view sends.
+//! With the default `window` feature, a Bevy UI window draws the model,
+//! redrawing a part only when its resource changed.
 //!
-//! The window opens beside the terminal view in an interactive run, and as
-//! the front when [`GUI_ENV`] is set: the launcher refuses an unknown
-//! `--gui` flag.
+//! `rig --gui` makes the window the run's front ([`FRONT`]); in an
+//! interactive run without it, the window opens beside the terminal view,
+//! and closing it leaves the agent running.
 
 #[cfg(feature = "window")]
 mod window;
 
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
+use bevy_ecs::system::SystemParam;
 use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
 use rig_harness::primary::primary_order;
+use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
 use rig_harness::rig_ecs::agent::STOPPED;
-use rig_tui::{PickItem, PickRequest};
+use rig_tui::{Chosen, Picked, Picker};
 
-/// Set to a non-empty value, it opens the window as the front, in place of
-/// a `--gui` flag.
-pub const GUI_ENV: &str = "RIG_GUI";
+/// The window's name as a front, and its option: `rig --gui`.
+pub const FRONT: &str = "gui";
 
 /// Lines of a tool call's arguments and result shown before it collapses.
 pub const LONG_LINES: usize = 8;
@@ -50,12 +51,12 @@ impl Plugin for WindowGuiPlugin {
             .init_resource::<GuiTranscript>()
             .init_resource::<GuiInput>()
             .init_resource::<GuiDialogs>()
-            .add_message::<PickRequest>()
+            .add_front(Front::new(FRONT).on_flag(FRONT, "Run the agent in a window"))
             .configure_sets(PostUpdate, GuiSystems.after(ActivitySystems))
-            .add_systems(Update, (open_dialogs, collect_notices, recall))
+            .add_systems(Update, (collect_notices, recall))
             .add_systems(
                 PostUpdate,
-                (list_agents, show_transcript, stream_reply)
+                (list_agents, show_transcript, stream_reply, list_dialogs)
                     .chain()
                     .in_set(GuiSystems),
             )
@@ -231,22 +232,27 @@ pub struct GuiInput {
     pub refused: Option<String>,
 }
 
-/// A choice for the user, from a plugin's [`PickRequest`].
-#[derive(Clone, Debug)]
+/// A question or a picker for the user.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Dialog {
-    /// The agent the choice is for.
-    pub agent: Entity,
-    /// What is chosen.
+    /// The [`Ask`] or [`Picker`] entity.
+    pub entity: Entity,
+    /// What is asked.
     pub title: String,
-    /// The choices; each runs its command for the agent.
-    pub items: Vec<PickItem>,
+    /// More about it; may be empty.
+    pub body: String,
+    /// A button per choice.
+    pub choices: Vec<String>,
+    /// Whether what is typed in the input answers it too.
+    pub free_text: bool,
 }
 
-/// The open dialogs; the first is shown.
+/// The open dialogs: pickers, then questions in the order they were asked.
+/// The first is shown.
 #[derive(Resource, Default, Debug)]
 pub struct GuiDialogs {
-    /// The dialogs, oldest first.
-    pub open: VecDeque<Dialog>,
+    /// The dialogs.
+    pub open: Vec<Dialog>,
 }
 
 /// Show `agent` and send what is typed to it.
@@ -257,8 +263,9 @@ pub struct Show {
 }
 
 /// Send the input to the shown agent as the user's message, as the
-/// terminal view's Enter does: a slash command, a new turn, or steering
-/// for the running one.
+/// terminal view's Enter does: a slash command, a new turn, steering for
+/// the running one, or the answer to its open question that takes text.
+/// With a picker that takes text shown, the input answers it instead.
 #[derive(Event, Clone, Copy, Debug)]
 pub struct Submit;
 
@@ -273,14 +280,15 @@ pub struct Toggle {
     pub key: BlockKey,
 }
 
-/// Choose an item of the shown dialog, which runs its command.
+/// Choose a button of the shown dialog: answer the question, or run the
+/// picker item's command.
 #[derive(Event, Clone, Copy, Debug)]
 pub struct Choose {
     /// The item's position.
     pub item: usize,
 }
 
-/// Close the shown dialog without choosing.
+/// Close the shown dialog without choosing: a question is refused.
 #[derive(Event, Clone, Copy, Debug)]
 pub struct Dismiss;
 
@@ -500,14 +508,39 @@ fn tool_block(
     }
 }
 
-/// Opens the pickers plugins ask for as dialogs.
-fn open_dialogs(mut requests: MessageReader<PickRequest>, mut dialogs: ResMut<GuiDialogs>) {
-    for request in requests.read() {
-        dialogs.open.push_back(Dialog {
-            agent: request.agent,
-            title: request.title.clone(),
-            items: request.items.clone(),
-        });
+/// Keeps the open pickers and questions as dialogs.
+fn list_dialogs(
+    pickers: Query<(Entity, &Picker)>,
+    asks: Query<(Entity, &Ask, &Effect), (Without<Outcome>, Without<Settled>)>,
+    mut dialogs: ResMut<GuiDialogs>,
+) {
+    let mut asked: Vec<_> = asks.iter().collect();
+    asked.sort_by_key(|(.., effect)| effect.id());
+    let open: Vec<Dialog> = pickers
+        .iter()
+        .map(|(entity, picker)| Dialog {
+            entity,
+            title: picker.title.clone(),
+            body: picker.body.clone(),
+            choices: picker.items.iter().map(|item| item.label.clone()).collect(),
+            free_text: picker.free_text,
+        })
+        .chain(asked.into_iter().map(|(entity, ask, _)| {
+            Dialog {
+                entity,
+                title: ask.title.clone(),
+                body: ask.body.clone(),
+                choices: ask
+                    .choices
+                    .iter()
+                    .map(|choice| choice.label.clone())
+                    .collect(),
+                free_text: ask.free_text,
+            }
+        }))
+        .collect();
+    if dialogs.open != open {
+        dialogs.open = open;
     }
 }
 
@@ -564,7 +597,9 @@ fn show(show: On<Show>, agents: Query<(), With<Agent>>, mut list: ResMut<GuiAgen
 fn submit(
     _submit: On<Submit>,
     list: Res<GuiAgents>,
+    dialogs: Res<GuiDialogs>,
     mut input: ResMut<GuiInput>,
+    closing: Closing,
     mut commands: Commands,
 ) {
     let Some(agent) = list.shown else {
@@ -574,6 +609,16 @@ fn submit(
         return;
     }
     let text = std::mem::take(&mut input.text);
+    if let Some(picker) = dialogs.open.first().map(|dialog| dialog.entity)
+        && closing
+            .pickers
+            .get(picker)
+            .is_ok_and(|picker| picker.free_text)
+    {
+        let chosen = Chosen::Text(text.trim().to_owned());
+        closing.close(picker, Some(chosen), Some(agent), &mut commands);
+        return;
+    }
     let refused = input.refused.take().as_ref() == Some(&text);
     let typed = Deliver::new(agent, text, DeliveryMode::Steer);
     commands.trigger(if refused { typed.literal() } else { typed });
@@ -602,21 +647,78 @@ fn toggle(toggle: On<Toggle>, mut transcript: ResMut<GuiTranscript>) {
     }
 }
 
-fn choose(choose: On<Choose>, mut dialogs: ResMut<GuiDialogs>, mut commands: Commands) {
-    let Some(dialog) = dialogs.open.pop_front() else {
-        return;
-    };
-    if let Some(item) = dialog.items.get(choose.item) {
-        commands.trigger(RunCommand {
-            entity: dialog.agent,
-            line: item.command.clone(),
-        });
+fn choose(
+    choose: On<Choose>,
+    dialogs: Res<GuiDialogs>,
+    list: Res<GuiAgents>,
+    closing: Closing,
+    mut commands: Commands,
+) {
+    if let Some(dialog) = dialogs.open.first() {
+        let chosen = Chosen::Item(choose.item);
+        closing.close(dialog.entity, Some(chosen), list.shown, &mut commands);
     }
 }
 
-fn dismiss(_dismiss: On<Dismiss>, mut dialogs: ResMut<GuiDialogs>) {
-    if !dialogs.open.is_empty() {
-        dialogs.open.pop_front();
+fn dismiss(
+    _dismiss: On<Dismiss>,
+    dialogs: Res<GuiDialogs>,
+    list: Res<GuiAgents>,
+    closing: Closing,
+    mut commands: Commands,
+) {
+    if let Some(dialog) = dialogs.open.first() {
+        closing.close(dialog.entity, None, list.shown, &mut commands);
+    }
+}
+
+/// What closing a dialog reads.
+#[derive(SystemParam)]
+struct Closing<'w, 's> {
+    pickers: Query<'w, 's, &'static Picker>,
+    asks: Query<'w, 's, &'static Ask, Without<Outcome>>,
+}
+
+impl Closing<'_, '_> {
+    /// Carries out what the user chose for `entity`, `None` for closing
+    /// it, as the terminal view does: a picker runs its item's command for
+    /// its agent, else the one shown, hears [`Picked`] and is despawned; a
+    /// question is answered, a closed one refused.
+    fn close(
+        &self,
+        entity: Entity,
+        chosen: Option<Chosen>,
+        shown: Option<Entity>,
+        commands: &mut Commands,
+    ) {
+        if let Ok(picker) = self.pickers.get(entity) {
+            let item = match &chosen {
+                Some(Chosen::Item(index)) => picker.items.get(*index),
+                _ => None,
+            };
+            if let (Some(item), Some(agent)) = (item, picker.agent.or(shown))
+                && !item.command.is_empty()
+            {
+                commands.trigger(RunCommand {
+                    entity: agent,
+                    line: item.command.clone(),
+                });
+            }
+            commands.trigger(Picked { entity, chosen });
+            commands.entity(entity).try_despawn();
+        } else if let Ok(ask) = self.asks.get(entity) {
+            let answer = match chosen {
+                Some(Chosen::Item(index)) => ask
+                    .choices
+                    .get(index)
+                    .map(|choice| Answer::Choice(choice.id.clone()).outcome()),
+                Some(Chosen::Text(text)) => Some(Answer::Text(text).outcome()),
+                None => Some(Outcome::refused("The user closed the question.")),
+            };
+            if let Some(answer) = answer {
+                commands.entity(entity).insert_if_new(answer);
+            }
+        }
     }
 }
 

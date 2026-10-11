@@ -1,9 +1,11 @@
-use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
-
 use rig_cassette::journal::MemoryStore;
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 use rig_telemetry::{Spending, UsagePlugin};
 use schemars::JsonSchema;
 
@@ -41,37 +43,44 @@ impl PortableTool for Shell {
     }
 }
 
-/// How each turn ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
+/// The catalog with `corpus-summarizer/cheap`, answered by `cheap`.
+fn models(cheap: &MockCompletionModel) -> Option<Models> {
+    let vendor = ProviderId::declare("corpus-summarizer").ok()?;
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    connector
+        .catalog_mut()
+        .insert(ModelSpec::new(vendor, "cheap"));
+    let cheap = cheap.clone();
+    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
+        let model = ModelAdapter::<Completion>::new(spec.reference(), cheap.clone());
+        Ok(ErasedHandler::new(model))
+    });
+    Some(Models(connector))
+}
 
-/// One turn of an agent answered by `main`, whose outputs `cheap`
-/// summarizes above 100 tokens into `dir`; the app and the agent's entity.
+/// One turn of an agent on `main`, in a project at `root`, whose outputs
+/// over 100 tokens `cheap` summarizes; the app and the agent's entity.
 fn run(
     main: &MockCompletionModel,
     cheap: &MockCompletionModel,
-    dir: PathBuf,
+    root: &Path,
 ) -> Option<(App, Entity)> {
     let store = MemoryStore::default();
-    let (mut app, wakes): (App, Receiver<()>) = app_on(&store);
-    let config = SummarizeOutputs {
-        threshold_tokens: 100,
-        dir,
-        ..SummarizeOutputs::default()
-    };
-    let cheap = connect(cheap).ok_or_else(|| "the catalog lists the model".to_owned());
-    app.set_error_handler(bevy_ecs::error::warn)
+    let (mut app, wakes) = app_on(&store);
+    let settings =
+        "[summarize_outputs]\nthreshold_tokens = 100\nmodel = \"corpus-summarizer/cheap\"";
+    app.insert_resource(Settings::from_toml(settings))
+        .insert_resource(ProjectRoot(root.to_owned()))
+        .insert_resource(models(cheap)?)
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
             SummarizeToolOutputPlugin,
             UsagePlugin,
         ))
-        .insert_resource(config)
-        .insert_resource(CheapModel(cheap))
         .add_tool(Shell)
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -81,7 +90,9 @@ fn run(
         .next()?;
     world.entity_mut(agent).insert(connect(main)?);
     world.trigger(Deliver::new(agent, "Run the tests.", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 > 0);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
     Some((app, agent))
 }
 
@@ -97,7 +108,7 @@ fn main_model() -> MockCompletionModel {
     ])
 }
 
-/// The tool result the main model's second request sent, as JSON.
+/// The main model's second request, as JSON.
 fn second_request(main: &MockCompletionModel) -> String {
     let requests = main.requests();
     let second = requests.get(1);
@@ -106,12 +117,14 @@ fn second_request(main: &MockCompletionModel) -> String {
         .unwrap_or_default()
 }
 
-/// A fresh directory for a test's saved outputs, under this crate.
+/// A fresh project directory for a test, under this crate's target-free
+/// test folder; removed by [`clean`].
 fn fresh(name: &str) -> PathBuf {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("test-outputs")
+        .join("test-projects")
         .join(name);
     std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(&dir).ok();
     dir
 }
 
@@ -125,50 +138,40 @@ fn clean(dir: &Path) {
 
 #[test]
 fn a_big_output_is_saved_and_summarized_by_the_cheap_model() {
-    let dir = fresh("summarized");
-    let (main, cheap) = (
-        main_model(),
-        MockCompletionModel::from_stream_turns([reply("SUMMARY: 2000 lines, no errors")]),
-    );
-    let ran = run(&main, &cheap, dir.clone());
+    let root = fresh("summarized");
+    let cheap = MockCompletionModel::from_stream_turns([reply("SUMMARY: 2000 lines, no errors")]);
+    let main = main_model();
+    let ran = run(&main, &cheap, &root);
     assert!(ran.is_some(), "an agent on the scripted model");
     let Some((app, agent)) = ran else {
         return;
     };
-    let saved = dir.join("call-1.txt");
     let sent = second_request(&main);
     assert!(sent.contains("SUMMARY: 2000 lines, no errors"), "{sent}");
-    assert!(sent.contains(&saved.display().to_string()), "{sent}");
+    assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
     assert!(!sent.contains("line 1000"), "the output is not sent whole");
-    let whole = std::fs::read_to_string(&saved).unwrap_or_default();
+    let whole = std::fs::read_to_string(root.join(".rig/outputs/call-1.txt")).unwrap_or_default();
     assert_eq!(whole.lines().count(), LINES);
     assert_eq!(cheap.request_count(), 1);
-    // The summary counts in the agent's usage, and on its own as the
-    // summarizer's.
-    let spent = app
-        .world()
-        .get::<Spending>(agent)
-        .map(|spent| spent.0.calls);
-    let summarizer = app.world().get::<SummarizerSpending>(agent);
-    assert_eq!(spent, Some(3));
-    assert_eq!(summarizer.map(|spent| spent.0.calls), Some(1));
-    clean(&dir);
+    // The summary counts in the agent's usage, as the summarizer's.
+    let spent = app.world().get::<Spending>(agent);
+    let summarizer = spent.and_then(|spent| spent.purposes.get("summarizer"));
+    assert_eq!(summarizer.map(|spent| spent.calls), Some(1));
+    clean(&root);
 }
 
 #[test]
 fn a_failed_summary_sends_the_head_and_tail() {
-    let dir = fresh("failed");
+    let root = fresh("failed");
     let failure = vec![MockStreamEvent::Error(MockError::provider("down"))];
-    let (main, cheap) = (
-        main_model(),
-        MockCompletionModel::from_stream_turns([failure]),
-    );
-    assert!(run(&main, &cheap, dir.clone()).is_some());
+    let cheap = MockCompletionModel::from_stream_turns([failure]);
+    let main = main_model();
+    assert!(run(&main, &cheap, &root).is_some());
     let sent = second_request(&main);
     assert!(sent.contains("line 1\\n"), "the head: {sent}");
     assert!(sent.contains("line 2000"), "the tail: {sent}");
     assert!(!sent.contains("line 1000\\n"), "the middle is cut: {sent}");
     assert!(sent.contains("the summarizer failed"), "{sent}");
-    assert!(sent.contains(&dir.join("call-1.txt").display().to_string()));
-    clean(&dir);
+    assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
+    clean(&root);
 }

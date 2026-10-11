@@ -1,14 +1,14 @@
 //! Safer shell commands by rewriting (corpus spec `03-shell-rewrite.md`).
 //! Before a `shell` call runs, its command goes through the ordered rules
 //! of `RIG_HOME/shell-rewrite.toml`, each seeing the previous result. The
-//! rewritten command is what runs and what the effect log records; the
-//! model's result starts with "(ran as: `<rewritten>`)", and the
-//! conversation keeps the model's own call.
+//! rewritten command is what runs, what every gate judges and what the
+//! effect log records; the model's result starts with
+//! "(ran as: `<rewritten>`)", and the conversation keeps the model's own
+//! call.
 //!
-//! The rewrite is a rig-core layer ([`Intercept`]) that patches the call's
-//! arguments. The kernel has no way to put a layer on a registered tool, so
-//! the plugin turns the `shell` tool off and registers it again, served by
-//! a `rig_tools::Shell` set up as `rig-coding-tools` sets it up.
+//! The rewrite is a Prepare system editing the call's `ToolRequest`, so
+//! every Gate system (a guard) sees the rewritten command; a Review system
+//! puts the "(ran as: …)" line on its result.
 //!
 //! ```toml
 //! [[rule]]               # rm <files> -> trash <files>, when trash is on PATH
@@ -30,21 +30,14 @@
 //! prefix = "timeout 300"
 //! ```
 
-use std::collections::HashMap;
-use std::path::Path;
-use std::sync::{Mutex, PoisonError};
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 
 use bevy_log::warn;
-use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_core::error::ErrorReport;
-use rig_core::message::ToolResultContent;
-use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{Decision, ErasedHandler, Intercept, Verdict};
-use rig_core::wasm_compat::WasmCompatSend;
-use rig_harness::harness_protocol::env::AGENT_ONLY;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::tool::ToolOutput as Output;
-use rig_tools::Shell;
+use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::message::ToolResultContent;
+use rig_harness::rig_core::tool::ToolOutput;
 use serde::Deserialize;
 
 /// The tool whose calls are rewritten.
@@ -68,10 +61,19 @@ pub struct Rule {
     pub add: Vec<String>,
     /// Put before the command unless its first word starts it already.
     pub prefix: Option<String>,
-    /// Applies only when this program is on `PATH`.
+    /// Applies only when this program is on the command's `PATH`.
     pub needs_program: Option<String>,
-    /// Applies only when this file exists in the working directory.
+    /// Applies only when this file exists in the command's directory.
     pub needs_file: Option<String>,
+}
+
+/// Where a command runs, for the rules' conditions.
+#[derive(Clone, Debug, Default)]
+pub struct Place {
+    /// The command's working directory.
+    pub dir: PathBuf,
+    /// The command's `PATH`.
+    pub path: Option<OsString>,
 }
 
 /// The rules, in file order. Inserted before the plugin is added, it takes
@@ -99,10 +101,11 @@ impl ShellRewrites {
         }
     }
 
-    /// `command` after every rule, in order.
-    pub fn rewrite(&self, command: &str) -> String {
+    /// `command`, run at `place`, after every rule, in order.
+    pub fn rewrite(&self, command: &str, place: &Place) -> String {
         self.rules
             .iter()
+            .filter(|rule| rule.holds(place))
             .fold(command.to_owned(), |command, rule| rule.apply(&command))
     }
 }
@@ -110,9 +113,6 @@ impl ShellRewrites {
 impl Rule {
     /// `command` with this rule applied to each of its simple commands.
     fn apply(&self, command: &str) -> String {
-        if !self.holds() {
-            return command.to_owned();
-        }
         pieces(command)
             .into_iter()
             .enumerate()
@@ -123,13 +123,14 @@ impl Rule {
             .collect()
     }
 
-    /// Whether the rule's conditions hold now.
-    fn holds(&self) -> bool {
+    /// Whether the rule's conditions hold for a command run at `place`.
+    fn holds(&self, place: &Place) -> bool {
+        let on_path = |program| on_path(program, place.path.as_ref());
         self.needs_program.as_deref().is_none_or(on_path)
             && self
                 .needs_file
                 .as_deref()
-                .is_none_or(|file| Path::new(file).exists())
+                .is_none_or(|file| place.dir.join(file).exists())
     }
 
     /// The simple command `piece`, with its surrounding blanks, rewritten.
@@ -241,10 +242,9 @@ fn first_word(text: &str) -> Option<&str> {
     text.split_whitespace().next()
 }
 
-/// Whether `program` is an executable file in a directory of `PATH`.
-fn on_path(program: &str) -> bool {
-    std::env::var_os("PATH")
-        .is_some_and(|path| std::env::split_paths(&path).any(|dir| executable(&dir.join(program))))
+/// Whether `program` is an executable file in a directory of `path`.
+fn on_path(program: &str, path: Option<&OsString>) -> bool {
+    path.is_some_and(|path| std::env::split_paths(path).any(|dir| executable(&dir.join(program))))
 }
 
 #[cfg(unix)]
@@ -259,93 +259,11 @@ fn executable(path: &Path) -> bool {
     path.is_file()
 }
 
-/// The layer on the `shell` handler: patches each call's command and,
-/// after it ran, says what ran in the model's result.
-struct Rewrite {
-    rules: ShellRewrites,
-    /// The rewritten command of each dispatch the layer patched, until its
-    /// answer.
-    ran_as: Mutex<HashMap<EffectId, String>>,
-}
-
-impl Rewrite {
-    fn decide(&self, id: EffectId, kind: &EffectKind) -> Decision {
-        let EffectKind::ToolCall { name, args } = kind else {
-            return Decision::Proceed;
-        };
-        let Ok(serde_json::Value::Object(mut args)) = serde_json::from_str(args) else {
-            return Decision::Proceed;
-        };
-        let Some(command) = args.get("command").and_then(serde_json::Value::as_str) else {
-            return Decision::Proceed;
-        };
-        let rewritten = self.rules.rewrite(command);
-        if rewritten == command {
-            return Decision::Proceed;
-        }
-        args.insert("command".to_owned(), rewritten.clone().into());
-        let Ok(args) = serde_json::to_string(&args) else {
-            return Decision::Proceed;
-        };
-        self.ran_as
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .insert(id, rewritten);
-        Decision::Patch(EffectKind::ToolCall {
-            name: name.clone(),
-            args,
-        })
-    }
-
-    fn report(&self, id: EffectId, outcome: &Result<Outcome, ErrorReport>) -> Verdict {
-        let ran_as = self
-            .ran_as
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .remove(&id);
-        let (Some(ran_as), Ok(Outcome::ToolResult { result })) = (ran_as, outcome) else {
-            return Verdict::Keep;
-        };
-        let line = format!("(ran as: `{ran_as}`)");
-        let output = match result.output().as_text() {
-            Some(text) => Output::text(format!("{line}\n{text}")),
-            None => {
-                let content = std::iter::once(ToolResultContent::text(line))
-                    .chain(result.output().as_content().iter().cloned())
-                    .collect();
-                match Output::content(content) {
-                    Ok(output) => output,
-                    Err(_) => return Verdict::Keep,
-                }
-            }
-        };
-        let result = result.clone().with_output(output);
-        Verdict::Replace(Ok(Outcome::ToolResult { result }))
-    }
-}
-
-impl Intercept for Rewrite {
-    fn name(&self) -> String {
-        "shell-rewrite".to_owned()
-    }
-
-    fn before(
-        &self,
-        id: EffectId,
-        kind: &EffectKind,
-    ) -> impl Future<Output = Decision> + WasmCompatSend {
-        std::future::ready(self.decide(id, kind))
-    }
-
-    fn after(
-        &self,
-        id: EffectId,
-        _kind: &EffectKind,
-        outcome: &Result<Outcome, ErrorReport>,
-    ) -> impl Future<Output = Verdict> + WasmCompatSend {
-        std::future::ready(self.report(id, outcome))
-    }
-}
+/// On a `shell` call whose command a rule rewrote: the command it runs as,
+/// until its result says so.
+#[derive(Component, Clone, Debug)]
+#[component(storage = "SparseSet")]
+pub struct RanAs(pub String);
 
 /// Rewrites `shell` commands by [`ShellRewrites`] before they run.
 #[derive(Default)]
@@ -353,53 +271,99 @@ pub struct ShellRewritePlugin;
 
 impl Plugin for ShellRewritePlugin {
     fn build(&self, app: &mut App) {
-        if app.world().contains_resource::<ShellRewrites>() {
-            return;
+        if !app.world().contains_resource::<ShellRewrites>() {
+            let path = RigHome::of(app.world()).root().join(FILE);
+            let rewrites = ShellRewrites::load(&path).unwrap_or_else(|error| {
+                warn!("{}: {error}; no shell command is rewritten", path.display());
+                ShellRewrites::default()
+            });
+            app.insert_resource(rewrites);
         }
-        let path = Home::from_env().root().join(FILE);
-        let rewrites = ShellRewrites::load(&path).unwrap_or_else(|error| {
-            warn!("{}: {error}; no shell command is rewritten", path.display());
-            ShellRewrites::default()
-        });
-        app.insert_resource(rewrites);
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .add_systems(
+                AgentPass,
+                (
+                    rewrite.in_set(Stage::Prepare),
+                    say_what_ran.in_set(Stage::Review),
+                ),
+            );
     }
+}
 
-    /// Serves the registered `shell` tool again behind the rewriting layer,
-    /// with its definition, rules and footprint.
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let Some(rules) = world.get_resource::<ShellRewrites>().cloned() else {
-            return;
+/// Rewrites each `shell` call's command as it is admitted. The
+/// conversation keeps the model's call; the call's request is what runs,
+/// what gates judge and what the effect log records.
+fn rewrite(
+    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
+    rules: Res<ShellRewrites>,
+    processes: Res<Processes>,
+    root: Res<ProjectRoot>,
+    mut commands: Commands,
+) {
+    if rules.rules.is_empty() {
+        return;
+    }
+    let launcher = processes.launcher();
+    let base = launcher.cwd.clone().unwrap_or_else(|| root.0.clone());
+    let path = launcher
+        .env
+        .iter()
+        .rev()
+        .find(|(name, _)| name == "PATH")
+        .map(|(_, value)| value.clone())
+        .or_else(|| std::env::var_os("PATH"));
+    for (call, mut request) in &mut calls {
+        let arguments = &request.call.function.arguments;
+        if request.call.function.name.as_str() != SHELL {
+            continue;
+        }
+        let Some(command) = arguments.get("command").and_then(|c| c.as_str()) else {
+            continue;
         };
-        let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
-        let Some((tool, def, tool_rules, footprint)) = tools
-            .iter(world)
-            .find(|(_, def, ..)| def.0.name.as_str() == SHELL)
-            .map(|(tool, def, rules, &footprint)| {
-                (tool, def.0.clone(), rules.0.clone(), footprint)
-            })
-        else {
-            return;
+        let dir = arguments.get("cwd").and_then(|dir| dir.as_str());
+        let place = Place {
+            dir: dir.map_or_else(|| base.clone(), |dir| base.join(dir)),
+            path: path.clone(),
         };
-        world.entity_mut(tool).insert(Disabled);
-        let shell = Shell {
-            launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
-            spill: world
-                .get_resource::<SessionPaths>()
-                .map(SessionPaths::spill),
-            ..Shell::default()
+        let rewritten = rules.rewrite(command, &place);
+        if rewritten == command {
+            continue;
+        }
+        let arguments = &mut request.call.function.arguments;
+        arguments.insert("command".to_owned(), rewritten.clone().into());
+        commands.entity(call).insert(RanAs(rewritten));
+    }
+}
+
+/// Puts "(ran as: `<rewritten>`)" first in each rewritten call's result.
+fn say_what_ran(
+    calls: Query<(Entity, &RanAs, &Outcome, Has<Started>), Unreviewed>,
+    mut commands: Commands,
+) {
+    for (call, RanAs(ran_as), outcome, started) in &calls {
+        let mut call = commands.entity(call);
+        call.remove::<RanAs>();
+        let Ok(Answered::ToolResult { result }) = &outcome.0 else {
+            continue;
         };
-        let rewrite = Rewrite {
-            rules,
-            ran_as: Mutex::default(),
+        if !started {
+            continue;
+        }
+        let line = format!("(ran as: `{ran_as}`)");
+        let output = match result.output().as_text() {
+            Some(text) => ToolOutput::text(format!("{line}\n{text}")),
+            None => {
+                let content = std::iter::once(ToolResultContent::text(line))
+                    .chain(result.output().as_content().iter().cloned())
+                    .collect();
+                let Ok(output) = ToolOutput::content(content) else {
+                    continue;
+                };
+                output
+            }
         };
-        let handler = ErasedHandler::new(ToolAdapter::new(shell)).layered(rewrite);
-        let tool_rules: Vec<&str> = tool_rules.iter().map(String::as_str).collect();
-        let options = ToolOptions {
-            rules: &tool_rules,
-            footprint,
-        };
-        world.spawn_tool(def, handler, options);
+        call.insert(Outcome::from(result.clone().with_output(output)));
     }
 }
 

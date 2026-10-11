@@ -1,31 +1,28 @@
 //! Tool calls for models without native tool calling (spec `59-text-tool-calls.md`).
 //!
-//! A model that cannot call tools natively, one its catalog entry says
-//! has no tool support or one named in [`TextToolModels`], is reached
-//! through an adapter for each turn: a [`Connection`] on the turn whose
-//! handler wraps the agent's. On the way in, the request's native tools
-//! become a section of the system prompt that describes them and the
-//! `<tool name="…">{…}</tool>` format, earlier tool calls become those
-//! blocks, and tool results become user text ("Result of read: …"). On the
-//! way out, the reply's tool blocks are cut from the streamed text and
-//! become real tool calls with ids rig issues, so the turn runs them like
-//! any other, and the conversation keeps real calls and results.
-
-use std::sync::Arc;
+//! A model call that goes to a model whose catalog entry says it cannot
+//! call tools, or to one named in the `[text_tools]` settings, is changed
+//! in Prepare: its tools are described in the system prompt with the
+//! `<tool name="…">{…}</tool>` format and no native tool is sent, earlier
+//! tool calls are written as those blocks and tool results as user text
+//! ("Result of read: …"), and its connection's handler is wrapped so the
+//! reply's tool blocks are cut from the streamed text and become real tool
+//! calls, with ids rig issues. The kernel then checks and runs those calls
+//! like any other, and the conversation keeps real calls and results.
 
 use futures::StreamExt;
-use rig_core::completion::{CompletionRequest, CompletionResponse, Message, ToolDefinition};
-use rig_core::effect::{EffectId, EffectKind, HandlerDescriptor, Outcome, family};
-use rig_core::error::ErrorReport;
-use rig_core::message::{ToolFunction, ToolName, ToolResultContent};
-use rig_core::serve::{Decision, Dispatch, ErasedHandler, Intercept, Reply, Serve, Verdict};
-use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
-use rig_ecs::effects::Handler;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
+use rig_harness::rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as Answered, family};
+use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::message::{ToolFunction, ToolName, ToolResultContent};
+use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
+use rig_harness::rig_ecs::effects::Handler;
+use serde::Deserialize;
 
-/// The name of the adapter's layer, as the effect log records it.
-pub const LAYER: &str = "text-tool-calls";
-
+/// The system prompt's section on the tools, by its tag.
+const TAG: &str = "text_tools";
 /// Opens a tool block; a space or `>` must follow.
 const OPEN: &str = "<tool";
 /// Closes a tool block.
@@ -36,124 +33,112 @@ const UNNAMED: &str = "unnamed";
 const FORMAT: &str = "Write a tool call as <tool name=\"TOOL\">{JSON arguments}</tool>, naming a \
                       tool listed in the system prompt, with its arguments as one JSON object.";
 
-/// Models (`vendor/model`) that get tool calls as text although their
-/// catalog entry says they call tools natively. Models whose entry says
-/// they cannot always do.
-#[derive(Resource, Reflect, Clone, Debug, Default)]
-#[reflect(Resource, Default)]
-pub struct TextToolModels(pub Vec<String>);
+/// The `[text_tools]` table: `models = ["vendor/model", …]`, models that
+/// get tool calls as text although their catalog entry says they call
+/// tools natively. Models whose entry says they cannot always do.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
+pub struct TextTools {
+    pub models: Vec<String>,
+}
 
 #[derive(Default)]
 pub struct TextToolCallsPlugin;
 
 impl Plugin for TextToolCallsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TextToolModels>().add_observer(adapt);
+        app.add_setting::<TextTools>("text_tools")
+            .add_systems(AgentPass, as_text.in_set(Stage::Prepare));
     }
 }
 
-/// Sends a new turn of an agent whose model takes tool calls as text
-/// through the adapter.
-fn adapt(
-    add: On<Add<TurnOf>>,
-    turns: Query<(&TurnOf, Option<&Connection>)>,
-    agents: Query<&Connection, With<Agent>>,
-    listed: Res<TextToolModels>,
-    mut commands: Commands,
+/// The model calls admitted this pass, with whether the kernel built
+/// their request from an agent.
+type NewCalls<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut ModelRequest,
+        Option<&'static ForAgent>,
+        Option<&'static BuildFrom>,
+        Has<TurnCall>,
+    ),
+    Added<Admitted>,
+>;
+
+/// Sends each call to a model that takes tool calls as text in that form,
+/// through a handler that reads them back.
+fn as_text(
+    mut calls: NewCalls,
+    agents: Query<(&Connection, &ToolAccess), With<Agent>>,
+    tools: Query<(&ToolDef, &ToolRules)>,
+    settings: Res<TextTools>,
 ) {
-    let Ok((&TurnOf(agent), routed)) = turns.get(add.entity) else {
-        return;
-    };
-    let Some(connection) = routed.or_else(|| agents.get(agent).ok()) else {
-        return;
-    };
-    let spec = &connection.spec;
-    let as_text = !spec.tools || listed.0.contains(&spec.reference());
-    let adapted = connection
-        .handler
-        .0
-        .descriptor()
-        .layers
-        .iter()
-        .any(|layer| layer == LAYER);
-    if as_text && !adapted {
-        commands.entity(add.entity).insert(adapter(connection));
-    }
-}
-
-/// `connection` through the adapter: a model that calls tools, as far as
-/// the turn can tell.
-pub fn adapter(connection: &Connection) -> Connection {
-    let mut spec = connection.spec.as_ref().clone();
-    spec.tools = true;
-    let inner = connection.handler.0.clone().layered(AsText);
-    Connection {
-        spec: Arc::new(spec),
-        handler: Handler(ErasedHandler::new(FromText(inner))),
-    }
-}
-
-/// The request side: rewrites what the model is sent, so the effect log
-/// records the request the model saw.
-struct AsText;
-
-impl Intercept for AsText {
-    fn name(&self) -> String {
-        LAYER.to_owned()
-    }
-
-    async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
-        match kind {
-            EffectKind::Completion { request, stream } => Decision::Patch(EffectKind::Completion {
-                request: as_text(request.clone()),
-                stream: *stream,
-            }),
-            _ => Decision::Proceed,
+    for (mut call, for_agent, from, turn_call) in &mut calls {
+        let agent = from.map(|from| from.0).or(for_agent.map(|agent| agent.0));
+        let agent = agent.and_then(|agent| agents.get(agent).ok());
+        let Some(connection) = call
+            .connection
+            .clone()
+            .or(agent.map(|(own, _)| own.clone()))
+        else {
+            continue;
+        };
+        let spec = &connection.spec;
+        if spec.tools && !settings.models.contains(&spec.reference()) {
+            continue;
         }
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
-    }
-}
-
-/// `request` without native tools: the tools described in its system
-/// prompt, and its calls and results written as text.
-fn as_text(mut request: CompletionRequest) -> CompletionRequest {
-    let tools = std::mem::take(&mut request.tools);
-    request.tool_choice = None;
-    request.chat_history = request
-        .chat_history
-        .into_iter()
-        .map(message_as_text)
-        .collect();
-    if !tools.is_empty() {
-        let guide = guide(&tools);
-        match request.chat_history.first_mut() {
-            Some(Message::System { content }) => {
-                content.push_str("\n\n");
-                content.push_str(&guide);
+        // The kernel offers no tools to a model that calls none: offer the
+        // agent's, as it would have.
+        let built = turn_call || from.is_some();
+        let described: Vec<ToolDefinition> = match agent {
+            Some((_, access)) if built && !spec.tools => {
+                let mut offered: Vec<ToolDefinition> = tools
+                    .iter()
+                    .filter(|(def, _)| access.allows(def.0.name.as_str()))
+                    .map(|(def, _)| def.0.clone())
+                    .collect();
+                offered.sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
+                offered
             }
-            _ => request.chat_history.insert(0, Message::system(guide)),
+            _ => std::mem::take(&mut call.request.tools),
+        };
+        let rules = described.iter().filter_map(|tool| {
+            let rules = tools.iter().find(|(def, _)| def.0.name == tool.name);
+            rules.map(|(_, rules)| rules)
+        });
+        let guide = guide(&described, rules);
+        let request = &mut call.request;
+        request.tools.clear();
+        request.tool_choice = None;
+        for message in &mut request.chat_history {
+            write_calls_as_text(message);
         }
+        if let Some(prompt) = call.system_prompt_mut()
+            && !described.is_empty()
+            && !prompt.contains(&format!("<{TAG}>"))
+        {
+            prompt.push_str("\n\n");
+            prompt.push_str(&guide);
+        }
+        let reads_calls = ErasedHandler::new(FromText(connection.handler.0.clone()));
+        call.connection = Some(Connection {
+            handler: Handler(reads_calls),
+            ..connection
+        });
     }
-    request
 }
 
-/// The system prompt's part on the tools and how to call them.
-fn guide(tools: &[ToolDefinition]) -> String {
-    let mut guide = String::from(
-        "<text_tools>\nYou call a tool by writing a block like this in your reply:\n\
-         <tool name=\"TOOL\">{\"argument\": \"value\"}</tool>\n\
+/// The system prompt's section on `tools` and how to call them, with their
+/// `rules`.
+fn guide<'a>(tools: &[ToolDefinition], rules: impl Iterator<Item = &'a ToolRules>) -> String {
+    let mut guide = format!(
+        "<{TAG}>\nYou call a tool by writing a block like this in your reply:\n\
+         <tool name=\"TOOL\">{{\"argument\": \"value\"}}</tool>\n\
          The block names one of the tools below and holds its arguments as one JSON object. \
          Write each call as a block of its own, then end your reply: the results come back in \
          the next user message, as \"Result of TOOL: …\". Text outside the blocks is shown to \
-         the user.\n\nThe tools:",
+         the user.\n\nThe tools:"
     );
     for tool in tools {
         guide.push_str(&format!(
@@ -163,38 +148,48 @@ fn guide(tools: &[ToolDefinition]) -> String {
             tool.parameters
         ));
     }
-    guide.push_str("\n</text_tools>");
+    let mut lines: Vec<&str> = Vec::new();
+    for rule in rules
+        .flat_map(|rules| rules.0.iter())
+        .map(|rule| rule.trim())
+    {
+        if !rule.is_empty() && !lines.contains(&rule) {
+            lines.push(rule);
+        }
+    }
+    if !lines.is_empty() {
+        guide.push_str("\n\nRules:");
+        for line in lines {
+            guide.push_str(&format!("\n- {line}"));
+        }
+    }
+    guide.push_str(&format!("\n</{TAG}>"));
     guide
 }
 
-/// `message` with its tool calls as blocks and its tool results as text.
-fn message_as_text(message: Message) -> Message {
+/// `message` with its tool calls written as blocks and its tool results as
+/// text.
+fn write_calls_as_text(message: &mut Message) {
     match message {
-        Message::Assistant(mut assistant) => {
-            assistant.content = assistant
-                .content
-                .into_iter()
-                .map(|content| match content {
-                    AssistantContent::ToolCall(call) => AssistantContent::text(format!(
+        Message::Assistant(assistant) => {
+            for content in &mut assistant.content {
+                if let AssistantContent::ToolCall(call) = content {
+                    *content = AssistantContent::text(format!(
                         "<tool name=\"{}\">{}</tool>",
                         call.function.name.as_str(),
                         call.function.raw_arguments()
-                    )),
-                    other => other,
-                })
-                .collect();
-            Message::Assistant(assistant)
+                    ));
+                }
+            }
         }
-        Message::User { content } => Message::User {
-            content: content
-                .into_iter()
-                .map(|content| match content {
-                    UserContent::ToolResult(result) => UserContent::text(result_text(&result)),
-                    other => other,
-                })
-                .collect(),
-        },
-        other => other,
+        Message::User { content } => {
+            for content in content.iter_mut() {
+                if let UserContent::ToolResult(result) = content {
+                    *content = UserContent::text(result_text(result));
+                }
+            }
+        }
+        _ => {}
     }
 }
 
@@ -216,8 +211,8 @@ fn result_text(result: &message::ToolResult) -> String {
     }
 }
 
-/// The reply side: the model's text with its tool blocks cut out as it
-/// streams, and a final response holding real calls in their place.
+/// The model's handler, its reply read for tool blocks: cut out of the
+/// streamed text, and real calls in their place in the final response.
 struct FromText(ErasedHandler);
 
 impl Serve for FromText {
@@ -232,8 +227,8 @@ impl Serve for FromText {
         let reply = self.0.handle(kind, dispatch).await;
         match reply {
             _ if !completion => reply,
-            Reply::Outcome(Ok(Outcome::Completion(response))) => {
-                Reply::Outcome(Ok(Outcome::Completion(with_calls(response))))
+            Reply::Outcome(Ok(Answered::Completion(response))) => {
+                Reply::Outcome(Ok(Answered::Completion(with_calls(response))))
             }
             Reply::Outcome(other) => Reply::Outcome(other),
             Reply::Stream(stream) => {
@@ -323,8 +318,8 @@ fn add_pieces(choice: &mut Vec<AssistantContent>, pieces: Vec<Piece>) {
 
 /// The call a block (what follows `<tool` up to `</tool>`) asks for, with
 /// an id rig issues. A block that names no tool calls `unnamed`, and
-/// arguments that are not a JSON object are kept as written: the turn
-/// answers both with an error.
+/// arguments that are not a JSON object are kept as written: the kernel
+/// refuses both with an error result.
 fn call_of(block: &str) -> Option<ToolCall> {
     let (head, body) = block.split_once('>').unwrap_or((block, ""));
     let name = attribute(head, "name").unwrap_or(UNNAMED);
@@ -345,7 +340,6 @@ fn attribute<'a>(head: &'a str, key: &str) -> Option<&'a str> {
 }
 
 /// A run of a reply's text: shown, or a tool block.
-#[derive(Debug, PartialEq)]
 enum Piece {
     Text(String),
     Block(String),

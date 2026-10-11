@@ -13,13 +13,15 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
-rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
-# `PickRequest`: the only way other plugins ask the user a question.
-rig-tui = { path = "../../plugins/rig-tui" }
+# The `[chat]` settings table.
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
+# The scripted `read` tool's arguments.
+schemars = { workspace = true }
+serde_json = { workspace = true }

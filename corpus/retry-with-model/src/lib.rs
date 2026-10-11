@@ -1,14 +1,17 @@
 //! Plugin corpus: 17. Retry with another model (spec `17-retry-with-model.md`).
 //!
-//! `/retry-with [--force] <vendor/model>` takes the last turn's replies out
-//! of the agent's conversation, keeps them as an alternative, and runs the
-//! turn again on that model, for this turn only: the agent's own
-//! [`ModelChoice`] stays. `/alternatives` lists the kept answers and
-//! `/pick N` swaps the conversation to one of them. The alternatives are
-//! saved with the session.
+//! `/retry-with [--force] <vendor/model>` rewinds the agent's conversation
+//! to the last turn's user message, keeps the answer it takes out as an
+//! alternative, and runs that turn again on the model named, for this turn
+//! only: the agent's own [`ModelChoice`] stays. `/alternatives` lists the
+//! kept answers and `/pick N` swaps the conversation to one of them. The
+//! conversation changes through [`Commit`], so the session log keeps them,
+//! and the alternatives are saved with the session.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
+use rig_harness::rig_core::tool::FilesChanged;
+use rig_tui::Picker;
 use serde::{Deserialize, Serialize};
 
 /// How long an answer's excerpt in `/alternatives` is, in characters.
@@ -20,7 +23,10 @@ pub struct RetryWithModelPlugin;
 impl Plugin for RetryWithModelPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, Alternatives>()
-            .add_observer(track_turn)
+            .register_required_components::<TurnOf, TurnChanges>()
+            .add_observer(note_change)
+            .add_observer(note_turn)
+            .add_systems(AgentPass, route.in_set(Stage::Prepare))
             .add_command(
                 "retry-with",
                 "Run the last turn again on another model: /retry-with [--force] vendor/model",
@@ -39,17 +45,35 @@ impl Plugin for RetryWithModelPlugin {
     }
 }
 
-/// The agent's last turn and the answers to it that `/retry-with`
-/// replaced. Saved with the session.
+/// The agent's last turn, the answer the conversation holds to it, and the
+/// answers `/retry-with` replaced. Saved with the session.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Alternatives {
     /// The index of the user message the last turn answered.
     pub turn: Option<usize>,
-    /// The model of the answer the conversation holds now.
+    /// The model of the answer the conversation holds.
     pub model: String,
+    /// What that answer's tool calls changed.
+    pub changed: Vec<String>,
     /// The replaced answers, oldest first.
     pub kept: Vec<Alternative>,
+}
+
+impl Alternatives {
+    /// The answer to the user message at `turn` that `conversation` holds,
+    /// taken out of these as an alternative.
+    fn take_current(&mut self, conversation: &Conversation, turn: usize) -> Alternative {
+        Alternative {
+            model: std::mem::take(&mut self.model),
+            changed: std::mem::take(&mut self.changed),
+            messages: conversation
+                .messages()
+                .get(turn + 1..)
+                .unwrap_or_default()
+                .to_vec(),
+        }
+    }
 }
 
 /// One answer to the last turn: every message after its user message.
@@ -57,6 +81,8 @@ pub struct Alternatives {
 pub struct Alternative {
     /// The model that answered, `vendor/model`.
     pub model: String,
+    /// What its tool calls changed.
+    pub changed: Vec<String>,
     /// The answer's messages, the tool calls and results included.
     pub messages: Vec<Message>,
 }
@@ -64,13 +90,12 @@ pub struct Alternative {
 impl Alternative {
     /// The start of the answer's last text, on one line.
     fn excerpt(&self) -> String {
-        let text = self
-            .messages
-            .iter()
-            .rev()
-            .find_map(answer_text)
-            .unwrap_or_default();
-        let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        let text = self.messages.iter().rev().find_map(final_answer);
+        let line = text
+            .unwrap_or_default()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
         let mut excerpt: String = line.chars().take(EXCERPT).collect();
         if line.chars().count() > EXCERPT {
             excerpt.push('…');
@@ -79,146 +104,159 @@ impl Alternative {
     }
 }
 
-/// The text of an assistant message, when it has any.
-fn answer_text(message: &Message) -> Option<String> {
-    let Message::Assistant(assistant) = message else {
-        return None;
-    };
-    let text: String = assistant
-        .content
-        .iter()
-        .filter_map(|item| match item {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect();
-    (!text.trim().is_empty()).then_some(text)
-}
+/// On a turn: what its tool calls changed, files by path, or a tool that
+/// may change anything and named no files.
+#[derive(Component, Default)]
+struct TurnChanges(Vec<String>);
 
-/// On an agent whose next turn runs on another model: that model.
+/// On a turn `/retry-with` started: the model its calls go to.
 #[derive(Component)]
 struct RetryOn(Connection);
 
-/// Notes which user message each turn answers, and gives a retried turn
-/// its model. A turn that answers a new message drops the alternatives of
-/// the one before.
-fn track_turn(
-    added: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<(
-        &Conversation,
-        &mut Alternatives,
-        Option<&RetryOn>,
-        Option<&ModelChoice>,
-    )>,
-    mut commands: Commands,
+/// Notes on its turn what each tool call that ran changed.
+fn note_change(
+    settled: On<Add<Settled>>,
+    calls: Query<(&CallOf, &ToolRequest, &Footprint, Option<&Published>), With<Started>>,
+    mut turns: Query<&mut TurnChanges>,
 ) {
-    let Ok(&TurnOf(agent)) = turns.get(added.entity) else {
+    let Ok((&CallOf(turn), request, footprint, published)) = calls.get(settled.entity) else {
         return;
     };
-    let Ok((conversation, mut alternatives, retry, choice)) = agents.get_mut(agent) else {
+    let Ok(mut changed) = turns.get_mut(turn) else {
         return;
     };
-    if let Some(RetryOn(connection)) = retry {
-        alternatives.model = connection.spec.reference();
-        commands.entity(added.entity).insert(connection.clone());
-        commands.entity(agent).remove::<RetryOn>();
+    let files = published.and_then(|published| published.0.get::<FilesChanged>().ok().flatten());
+    match files {
+        Some(files) => changed.0.extend(files.paths().map(str::to_owned)),
+        None if *footprint == Footprint::Exclusive => {
+            changed.0.push(format!(
+                "whatever `{}` changed",
+                request.call.function.name.as_str()
+            ));
+        }
+        None => {}
+    }
+}
+
+/// Notes each answered turn on its agent: which message it answered, on
+/// which model, and what it changed. A turn that answers another message
+/// than the last drops the last one's alternatives.
+fn note_turn(
+    settled: On<Add<Settled>>,
+    turns: Query<(
+        &Turn,
+        &TurnOutcome,
+        &ForAgent,
+        &TurnChanges,
+        Option<&RetryOn>,
+    )>,
+    mut agents: Query<(&Conversation, &mut Alternatives, Option<&Connection>)>,
+) {
+    let Ok((turn, outcome, &ForAgent(agent), changed, retry)) = turns.get(settled.entity) else {
+        return;
+    };
+    let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
+        return;
+    };
+    let asked = conversation.messages().get(turn.first_message);
+    if !matches!(outcome, TurnOutcome::Answered(_)) || !matches!(asked, Some(Message::User { .. }))
+    {
         return;
     }
-    alternatives.model = choice.map(|choice| choice.0.clone()).unwrap_or_default();
-    let messages = conversation.messages();
-    let asked = messages.len().checked_sub(1).filter(|&last| {
-        messages.get(last).is_some_and(|message| {
-            matches!(message, Message::User { content }
-                if content.iter().any(|item| !matches!(item, UserContent::ToolResult(_))))
-        })
-    });
-    if asked.is_some() && asked != alternatives.turn {
-        alternatives.turn = asked;
+    if retry.is_none() && alternatives.turn != Some(turn.first_message) {
         alternatives.kept.clear();
     }
-}
-
-/// The last turn's user message index and its answer, when the
-/// conversation still ends with that turn.
-fn last_answer(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
-    let turn = alternatives.turn?;
-    let asked = conversation.messages().get(turn)?;
-    matches!(asked, Message::User { .. }).then_some(turn)
-}
-
-/// `conversation` with its messages after `turn` replaced by `answer`.
-///
-/// The workaround: the kernel has no public way to take messages out of a
-/// conversation (`Commit::retract` is crate-private), so this rebuilds the
-/// component through its serde form. The change is not logged: a restored
-/// session folds its log back to every answer in a row.
-fn rewritten(
-    conversation: &Conversation,
-    turn: usize,
-    answer: Vec<Message>,
-) -> Option<Conversation> {
-    let mut value = serde_json::to_value(conversation).ok()?;
-    let object = value.as_object_mut()?;
-    let mut messages: Vec<Message> = conversation.messages().get(..=turn)?.to_vec();
-    messages.extend(answer);
-    let kept = turn + 1;
-    let origins = object
-        .get("origins")
-        .and_then(serde_json::Value::as_array)
-        .map(|origins| {
-            origins
-                .iter()
-                .filter(|origin| {
-                    origin
-                        .get(0)
-                        .and_then(serde_json::Value::as_u64)
-                        .is_some_and(|at| at < kept as u64)
-                })
-                .cloned()
-                .collect::<Vec<_>>()
-        })
+    alternatives.turn = Some(turn.first_message);
+    alternatives.model = retry
+        .map(|RetryOn(connection)| connection)
+        .or(connection)
+        .map(|connection| connection.spec.reference())
         .unwrap_or_default();
-    object.insert("messages".to_owned(), serde_json::to_value(messages).ok()?);
-    object.insert("origins".to_owned(), serde_json::Value::Array(origins));
-    object.insert("halted".to_owned(), serde_json::Value::Null);
-    serde_json::from_value(value).ok()
+    alternatives.changed.clone_from(&changed.0);
 }
 
-/// Whether a tool of `name` may change files: any tool not registered as
-/// changing nothing.
-fn may_change(name: &str, tools: &Query<(&ToolDef, &Footprint)>) -> bool {
-    tools
-        .iter()
-        .find(|(def, _)| def.0.name.as_str() == name)
-        .is_none_or(|(_, footprint)| *footprint == Footprint::Exclusive)
+/// Sends the calls of a turn `/retry-with` started to its model.
+fn route(
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    turns: Query<&RetryOn>,
+) {
+    for (mut call, &CallOf(turn)) in &mut calls {
+        if let Ok(RetryOn(connection)) = turns.get(turn) {
+            call.connection = Some(connection.clone());
+        }
+    }
 }
+
+/// The index of the last turn's user message, when the conversation still
+/// holds it.
+fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
+    let turn = alternatives.turn?;
+    matches!(
+        conversation.messages().get(turn),
+        Some(Message::User { .. })
+    )
+    .then_some(turn)
+}
+
+/// A picker of `models`, each running `/retry-with` on it.
+fn models_picker(agent: Entity, force: bool, models: &[String]) -> Picker {
+    let flag = if force { "--force " } else { "" };
+    models.iter().fold(
+        Picker::new("Retry the last turn on").for_agent(agent),
+        |picker, model| picker.item(model, format!("retry-with {flag}{model}")),
+    )
+}
+
+type Agents<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static mut Conversation,
+        &'static mut Alternatives,
+        Has<ActiveTurn>,
+    ),
+>;
 
 /// `/retry-with [--force] <vendor/model>`.
 fn retry_with(
     In(args): In<CommandArgs>,
-    mut agents: Query<(&mut Conversation, &mut Alternatives, Has<ActiveTurn>)>,
-    tools: Query<(&ToolDef, &Footprint)>,
+    mut agents: Agents,
     models: Res<Models>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
     let words: Vec<&str> = args.args.split_whitespace().collect();
     let force = words.contains(&"--force");
-    let mut named = words.iter().filter(|word| **word != "--force");
-    let (Some(model), None) = (named.next(), named.next()) else {
+    let named: Vec<&str> = words
+        .into_iter()
+        .filter(|word| *word != "--force")
+        .collect();
+    let Ok((mut conversation, mut alternatives, busy)) = agents.get_mut(agent) else {
+        return;
+    };
+    if busy {
+        notices.write(Notice::error(agent, "A turn is running; interrupt first."));
+        return;
+    }
+    let [model] = named.as_slice() else {
+        let reachable: Vec<String> = models
+            .0
+            .reachable()
+            .iter()
+            .map(|spec| spec.reference())
+            .collect();
+        commands.spawn(models_picker(agent, force, &reachable));
         notices.write(Notice::error(
             agent,
             "Usage: /retry-with [--force] vendor/model",
         ));
         return;
     };
-    let Ok((mut conversation, mut alternatives, busy)) = agents.get_mut(agent) else {
-        return;
-    };
-    if busy {
-        notices.write(Notice::error(agent, "A turn is running; interrupt first."));
+    if let Err(missed) = models.0.catalog().resolve(model) {
+        commands.spawn(models_picker(agent, force, &missed.suggestions));
+        notices.write(Notice::error(agent, format!("Cannot retry: {missed}.")));
         return;
     }
     let connection = match models.connect(model) {
@@ -228,60 +266,35 @@ fn retry_with(
             return;
         }
     };
-    let Some(turn) = last_answer(&conversation, &alternatives) else {
+    let Some(turn) = last_turn(&conversation, &alternatives) else {
         notices.write(Notice::error(agent, "There is no last turn to retry."));
         return;
     };
-    let answer: Vec<Message> = conversation
-        .messages()
-        .get(turn + 1..)
-        .unwrap_or_default()
-        .to_vec();
-    let changing: Vec<String> = answer
-        .iter()
-        .filter_map(|message| match message {
-            Message::Assistant(assistant) => Some(assistant.tool_calls()),
-            _ => None,
-        })
-        .flatten()
-        .map(|call| call.function.name.as_str().to_owned())
-        .filter(|name| may_change(name, &tools))
-        .collect();
-    if !changing.is_empty() && !force {
-        notices.write(Notice::error(
-            agent,
-            format!(
-                "The last turn ran {} and may have changed files, which a retry does not \
-                 roll back; add --force to retry anyway.",
-                changing.join(", ")
-            ),
-        ));
-        return;
+    if !alternatives.changed.is_empty() {
+        let changed = alternatives.changed.join(", ");
+        if !force {
+            notices.write(Notice::error(
+                agent,
+                format!(
+                    "The last turn changed files ({changed}), which a retry does not roll back; \
+                     add --force to retry anyway."
+                ),
+            ));
+            return;
+        }
+        notices.write(Notice::info(agent, format!("Not rolled back: {changed}.")));
     }
-    let Some(rewound) = rewritten(&conversation, turn, Vec::new()) else {
-        notices.write(Notice::error(agent, "Could not rewind the conversation."));
-        return;
-    };
-    if !changing.is_empty() {
-        notices.write(Notice::info(
-            agent,
-            "Files the last turn changed are not rolled back.",
-        ));
+    let current = alternatives.take_current(&conversation, turn);
+    if !current.messages.is_empty() {
+        alternatives.kept.push(current);
     }
-    if !answer.is_empty() {
-        let model = std::mem::take(&mut alternatives.model);
-        alternatives.kept.push(Alternative {
-            model,
-            messages: answer,
-        });
-    }
-    *conversation = rewound;
+    commit.truncate(agent, &mut conversation, turn + 1);
     notices.write(Notice::info(
         agent,
         format!("Retrying the last turn on {}.", connection.spec.reference()),
     ));
-    commands.entity(agent).insert(RetryOn(connection));
-    commands.trigger(Retry { entity: agent });
+    let retry = commands.spawn((TurnOf(agent), RetryOn(connection))).id();
+    commands.spawn((TurnCall, CallOf(retry), ForAgent(agent)));
 }
 
 /// `/alternatives`.
@@ -290,36 +303,32 @@ fn alternatives(
     agents: Query<&Alternatives>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(alternatives) = agents.get(args.agent) else {
-        return;
-    };
-    if alternatives.kept.is_empty() {
-        notices.write(Notice::info(
-            args.agent,
-            "No alternatives to the last turn.",
-        ));
-        return;
-    }
-    let lines: Vec<String> = alternatives
-        .kept
+    let kept = agents
+        .get(args.agent)
+        .map(|alternatives| alternatives.kept.as_slice());
+    let lines: Vec<String> = kept
+        .unwrap_or_default()
         .iter()
         .enumerate()
         .map(|(at, kept)| format!("{}. {}: {}", at + 1, kept.model, kept.excerpt()))
         .collect();
-    notices.write(Notice::info(
-        args.agent,
+    let text = if lines.is_empty() {
+        "No alternatives to the last turn.".to_owned()
+    } else {
         format!(
             "Alternatives to the last turn (/pick N):\n{}",
             lines.join("\n")
-        ),
-    ));
+        )
+    };
+    notices.write(Notice::info(args.agent, text));
 }
 
 /// `/pick N`: the conversation takes alternative N, which takes the
 /// answer it replaces.
 fn pick(
     In(args): In<CommandArgs>,
-    mut agents: Query<(&mut Conversation, &mut Alternatives, Has<ActiveTurn>)>,
+    mut agents: Agents,
+    mut commit: Commit,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
@@ -331,45 +340,38 @@ fn pick(
         return;
     }
     let count = alternatives.kept.len();
-    let chosen = args
+    let index = args
         .args
+        .trim()
         .parse::<usize>()
         .ok()
         .and_then(|n| n.checked_sub(1));
-    let Some(index) = chosen.filter(|&index| index < count) else {
+    let Some(index) = index.filter(|&index| index < count) else {
         notices.write(Notice::error(
             agent,
             format!("Pick an alternative from 1 to {count}."),
         ));
         return;
     };
-    let Some(turn) = last_answer(&conversation, &alternatives) else {
+    let Some(turn) = last_turn(&conversation, &alternatives) else {
         notices.write(Notice::error(agent, "The last turn is gone."));
         return;
     };
-    let Some(slot) = alternatives.kept.get(index).cloned() else {
+    let current = alternatives.take_current(&conversation, turn);
+    let Some(slot) = alternatives.kept.get_mut(index) else {
         return;
     };
-    let Some(swapped) = rewritten(&conversation, turn, slot.messages) else {
-        notices.write(Notice::error(agent, "Could not swap the conversation."));
-        return;
-    };
-    let current = Alternative {
-        model: std::mem::replace(&mut alternatives.model, slot.model.clone()),
-        messages: conversation
-            .messages()
-            .get(turn + 1..)
-            .unwrap_or_default()
-            .to_vec(),
-    };
-    if let Some(kept) = alternatives.kept.get_mut(index) {
-        *kept = current;
+    let chosen = std::mem::replace(slot, current);
+    commit.truncate(agent, &mut conversation, turn + 1);
+    for message in chosen.messages {
+        commit.message(agent, &mut conversation, message);
     }
-    *conversation = swapped;
     notices.write(Notice::info(
         agent,
-        format!("Picked the answer of {}.", slot.model),
+        format!("Picked the answer of {}.", chosen.model),
     ));
+    alternatives.model = chosen.model;
+    alternatives.changed = chosen.changed;
 }
 
 #[cfg(test)]

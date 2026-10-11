@@ -1,15 +1,15 @@
 //! Plugin corpus: 15. Model fallback chain (spec `15-model-fallback.md`).
 //!
-//! When a model call fails for good with a rate limit, an overload, a
-//! server error or a refused key, the turn goes on with the next model of
-//! the chain that is not cooling down, and the model that failed is skipped
-//! for the cooldown; after it, new turns go back to it. A Review system
-//! reads the kernel's [`RetryVerdict`] (the retries gave up, or a retry
-//! would not help) and supersedes the call with the same request on the
-//! next model; a Prepare system sends a call bound for a cooling model to
-//! the chain instead. A context overflow is left to compaction, and a
-//! failure another plugin took over is left to it. The chain is the
-//! `[model-fallback]` table of the user's `settings.toml`:
+//! When a turn's model call fails for good with a rate limit, an overload,
+//! a server error or a refused key, the same request goes on, in the same
+//! turn, to the next model of the chain that is not cooling down, and the
+//! model that failed is skipped for the cooldown; after it, new turns go
+//! back to it. A Review system reads the kernel's [`RetryVerdict`] (the
+//! retries gave up, or a retry would not help) and supersedes the call; a
+//! Prepare system sends a call bound for a cooling model to the chain
+//! instead. A context overflow is left to compaction, and a failure another
+//! plugin holds or superseded is left to it. The `[model-fallback]` table
+//! of `settings.toml`:
 //!
 //! ```toml
 //! [model-fallback]
@@ -21,22 +21,20 @@ use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use serde::Deserialize;
+use rig_harness::rig_core::error::ErrorReport;
+use serde::{Deserialize, Deserializer};
 
 #[cfg(test)]
 mod tests;
 
-/// How long a model that failed is skipped when the config does not say.
-pub const COOLDOWN: Duration = Duration::from_secs(5 * 60);
-
-/// The models a turn falls back to, in order, as catalog references, and
-/// how long a model that failed is skipped.
-#[derive(Resource, Clone, Debug)]
+/// The `[model-fallback]` settings: the models a turn falls back to, in
+/// order, as catalog references, and how long a model that failed is
+/// skipped (`90s`, `5m`, `1h`; 5 minutes unless set).
+#[derive(Resource, Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
 pub struct FallbackChain {
-    /// The models, the preferred first.
     pub chain: Vec<String>,
-    /// How long a model that failed is skipped.
+    #[serde(deserialize_with = "duration")]
     pub cooldown: Duration,
 }
 
@@ -44,41 +42,23 @@ impl Default for FallbackChain {
     fn default() -> Self {
         Self {
             chain: Vec::new(),
-            cooldown: COOLDOWN,
+            cooldown: Duration::from_secs(5 * 60),
         }
     }
 }
 
 /// The models that failed, by catalog reference, and until when they are
-/// skipped, on the real clock.
-#[derive(Resource, Default, Debug)]
-pub struct Cooling(pub HashMap<String, Duration>);
-
-/// The chain's models as connected, by catalog reference: each connects
-/// once.
-#[derive(Resource, Default, Clone)]
-pub struct Connected(pub HashMap<String, Connection>);
+/// skipped, on Bevy's real clock.
+#[derive(Resource, Default)]
+struct Cooling(HashMap<String, Duration>);
 
 #[derive(Default)]
 pub struct ModelFallbackPlugin;
 
 impl Plugin for ModelFallbackPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<FallbackChain>() {
-            app.add_setting::<FallbackSettings>("model-fallback");
-            let settings = app.world().resource::<FallbackSettings>();
-            let chain = FallbackChain {
-                chain: settings.chain.clone(),
-                cooldown: settings
-                    .cooldown
-                    .as_deref()
-                    .and_then(parse_duration)
-                    .unwrap_or(COOLDOWN),
-            };
-            app.insert_resource(chain);
-        }
-        app.init_resource::<Cooling>()
-            .init_resource::<Connected>()
+        app.add_setting::<FallbackChain>("model-fallback")
+            .init_resource::<Cooling>()
             .add_systems(
                 AgentPass,
                 (
@@ -89,29 +69,18 @@ impl Plugin for ModelFallbackPlugin {
     }
 }
 
-/// The `[model-fallback]` table of `settings.toml`.
-#[derive(Resource, Deserialize, Default)]
-#[serde(default, deny_unknown_fields)]
-struct FallbackSettings {
-    chain: Vec<String>,
-    cooldown: Option<String>,
-}
-
 /// `90`, `90s`, `5m` or `1h`.
-fn parse_duration(text: &str) -> Option<Duration> {
-    let text = text.trim();
-    let split = text
-        .find(|c: char| !c.is_ascii_digit())
-        .unwrap_or(text.len());
-    let (number, unit) = text.split_at(split);
-    let number: u64 = number.parse().ok()?;
-    let seconds = match unit.trim() {
+fn duration<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Duration, D::Error> {
+    let text = String::deserialize(deserializer)?;
+    let digits = text.trim_end_matches(|c: char| !c.is_ascii_digit());
+    let unit = match text.get(digits.len()..).unwrap_or_default().trim() {
         "" | "s" => 1,
         "m" => 60,
         "h" => 3600,
-        _ => return None,
+        unit => return Err(serde::de::Error::custom(format!("unknown unit {unit:?}"))),
     };
-    Some(Duration::from_secs(number.checked_mul(seconds)?))
+    let number: u64 = digits.trim().parse().map_err(serde::de::Error::custom)?;
+    Ok(Duration::from_secs(number.saturating_mul(unit)))
 }
 
 /// The chain as it stands now.
@@ -119,45 +88,32 @@ fn parse_duration(text: &str) -> Option<Duration> {
 struct Chain<'w> {
     config: Res<'w, FallbackChain>,
     cooling: ResMut<'w, Cooling>,
-    connected: ResMut<'w, Connected>,
     models: Res<'w, Models>,
     time: Res<'w, Time<Real>>,
 }
 
 impl Chain<'_> {
+    /// Whether the model `reference` is skipped now.
     fn is_cooling(&self, reference: &str) -> bool {
-        let now = self.time.elapsed();
-        self.cooling
-            .0
-            .get(reference)
-            .is_some_and(|until| now < *until)
+        let until = self.cooling.0.get(reference);
+        until.is_some_and(|until| self.time.elapsed() < *until)
     }
 
-    /// Skips the model `reference` for the cooldown.
-    fn cool(&mut self, reference: &str) {
+    /// Skips `model` for the cooldown.
+    fn cool(&mut self, model: &Connection) {
         let until = self.time.elapsed() + self.config.cooldown;
-        self.cooling.0.insert(reference.to_owned(), until);
+        self.cooling.0.insert(model.spec.reference(), until);
     }
 
     /// The first model of the chain that is not cooling down and connects.
-    fn next(&mut self) -> Option<Connection> {
+    fn next(&self) -> Option<Connection> {
         let catalog = self.models.0.catalog();
-        for entry in &self.config.chain {
-            let reference = catalog
-                .resolve(entry)
-                .map_or_else(|_| entry.clone(), |found| found.spec.reference());
-            if self.is_cooling(&reference) {
-                continue;
-            }
-            if let Some(connection) = self.connected.0.get(&reference) {
-                return Some(connection.clone());
-            }
-            if let Ok(connection) = self.models.connect(&reference) {
-                self.connected.0.insert(reference, connection.clone());
-                return Some(connection);
-            }
-        }
-        None
+        let warm = |model: &&String| {
+            let found = catalog.resolve(model);
+            found.is_ok_and(|found| !self.is_cooling(&found.spec.reference()))
+        };
+        let mut chain = self.config.chain.iter().filter(warm);
+        chain.find_map(|model| self.models.connect(model).ok())
     }
 }
 
@@ -165,40 +121,29 @@ impl Chain<'_> {
 /// server error or a refused key; not a request too long for the model.
 fn falls_back(report: &ErrorReport) -> bool {
     !report.is_context_overflow()
-        && report.kind != ErrorKind::Cancelled
         && (report.is_retryable() || matches!(report.http_status, Some(401 | 403)))
 }
 
-/// "opus overloaded; continuing on gpt-x".
-fn switched(failed: &str, report: &ErrorReport, next: &Connection) -> String {
-    let short = |reference: &str| {
-        let name = reference.rsplit('/').next().unwrap_or(reference);
-        name.to_owned()
-    };
+/// "claude-opus-4-5 overloaded; continuing on gpt-5".
+fn switched(failed: &Connection, report: &ErrorReport, next: &Connection) -> String {
     let why = match report.http_status {
         Some(429) => "rate-limited",
         Some(401 | 403) => "refused the credentials",
         Some(503 | 529) => "overloaded",
-        _ if report.message.to_ascii_lowercase().contains("overloaded") => "overloaded",
         _ => "failing",
     };
-    let next = short(&next.spec.reference());
-    format!("{} {why}; continuing on {next}", short(failed))
+    format!("{} {why}; continuing on {}", failed.spec.id, next.spec.id)
 }
 
-/// A turn's call bound for a model that cools down goes to the chain's
-/// first model that does not.
-fn route(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
-    agents: Query<&Connection, With<Agent>>,
-    mut chain: Chain,
-) {
-    for (mut call, &ForAgent(agent)) in &mut calls {
-        let bound = call.connection.as_ref().or(agents.get(agent).ok());
-        let Some(bound) = bound.map(|connection| connection.spec.reference()) else {
-            continue;
-        };
-        if chain.is_cooling(&bound)
+/// A turn's call bound for a model that cools down, a new turn's or a
+/// retry's the kernel built from its agent, goes to the chain's first
+/// model that does not.
+fn route(mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>, chain: Chain) {
+    for mut call in &mut calls {
+        if call
+            .connection
+            .as_ref()
+            .is_some_and(|to| chain.is_cooling(&to.spec.reference()))
             && let Some(next) = chain.next()
         {
             call.connection = Some(next);
@@ -207,8 +152,9 @@ fn route(
 }
 
 /// A turn's call that failed for good, its retries spent or not worth
-/// trying, is sent again at once on the next model of the chain, in the
-/// same turn: a new call with the same request supersedes it.
+/// trying, is sent again at once on the next model of the chain, which
+/// gets the usual retries of its own: a new call with the same request
+/// supersedes it in the same turn.
 fn fall_back(
     failed: Query<
         (
@@ -222,32 +168,31 @@ fn fall_back(
         ),
         (Unreviewed, With<TurnCall>, Without<SupersededBy>),
     >,
-    agents: Query<&Connection, With<Agent>>,
+    mut turns: Query<&mut Recovery>,
     mut chain: Chain,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, verdict, outcome, request, effect, of, &ForAgent(agent)) in &failed {
-        let Err(report) = &outcome.0 else {
+    for (call, verdict, outcome, request, effect, &CallOf(turn), &ForAgent(agent)) in &failed {
+        let (Err(report), Some(model)) = (&outcome.0, &request.connection) else {
             continue;
         };
         if !matches!(verdict.0, Verdict::GaveUp(_) | Verdict::Final) || !falls_back(report) {
             continue;
         }
-        let Some(model) = request.connection.as_ref().or(agents.get(agent).ok()) else {
-            continue;
-        };
-        let model = model.spec.reference();
-        chain.cool(&model);
+        chain.cool(model);
         let Some(next) = chain.next() else {
             continue;
         };
-        notices.write(Notice::info(agent, switched(&model, report, &next)));
+        notices.write(Notice::info(agent, switched(model, report, &next)));
+        if let Ok(mut recovery) = turns.get_mut(turn) {
+            recovery.retries = 0;
+        }
         commands.spawn((
             request.clone().on(next),
             TurnCall,
             Supersedes(call),
-            CallOf(of.0),
+            CallOf(turn),
             ForAgent(agent),
             Effect::child_of(effect.parent),
         ));

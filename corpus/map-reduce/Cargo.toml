@@ -12,21 +12,17 @@ workspace = true
 default = ["tui"]
 # The "map 6/10" status line item. Without the terminal view, leave it out
 # with `default-features = false`.
-tui = ["dep:rig-tui"]
+tui = ["dep:rig-tui", "rig-subagents/tui"]
 
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
 # Which files a `map_files` call names (already in the lock through rig-core).
 glob = { workspace = true }
-rig-core = { workspace = true }
-rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
-# `edit` and `write`, run for every agent, refused for a map worker outside
-# its file.
-rig-tools = { path = "../../crates/rig-tools" }
+# The workers are helpers spawned through its `SpawnSubagent` effect.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

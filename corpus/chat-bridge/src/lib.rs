@@ -3,19 +3,21 @@
 //! Each chat thread that mentions the bot gets a top-level agent of its
 //! own. Later messages in the thread are queued to that agent, each turn's
 //! final answer is posted back (split when long), tool activity is one
-//! edited "working…" post, and a question another plugin asks with a
-//! picker is posted as "Reply `yes` or `no`". The thread an agent belongs
-//! to is a saved component, so a restart keeps the conversations.
+//! edited "working…" post, and the questions other plugins ask the agent
+//! ([`Ask`]) are posted as "Reply `yes` or `no`": the thread is the
+//! agent's [`Answerer`]. The thread an agent belongs to is a saved
+//! component, so a restart keeps the conversations.
 //!
 //! The network is a [`ChatTransport`] the app inserts with
 //! [`ChatBridge::new`]; posts it cannot send are kept and retried with
-//! backoff.
+//! backoff. `rig --chat` makes the bridge the run's front, a bot with no
+//! terminal; without it, it runs beside the terminal view.
 
 use std::collections::{BTreeMap, VecDeque};
 
 use bevy_log::info;
 use rig_harness::prelude::*;
-use rig_tui::{PickItem, PickRequest};
+use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
@@ -27,7 +29,7 @@ const MAX_BACKOFF: Duration = Duration::from_secs(60);
 
 /// A message the transport received.
 #[derive(Clone, Debug)]
-pub struct Incoming {
+pub struct ChatMessage {
     /// The channel it was posted in.
     pub channel: String,
     /// The thread it belongs to: a top-level message starts its own.
@@ -60,12 +62,13 @@ pub struct Post {
 pub struct Disconnected(pub String);
 
 /// A chat network (Slack socket mode, Matrix, or a fake in tests). It runs
-/// its own connection and reconnects by itself.
+/// its own connection, with its credentials from the environment, and
+/// reconnects by itself.
 pub trait ChatTransport: Send + Sync + 'static {
     /// Starts it; it calls `wake` whenever a message arrives.
     fn start(&mut self, wake: Wake);
     /// The messages received since the last call, without waiting.
-    fn receive(&mut self) -> Vec<Incoming>;
+    fn receive(&mut self) -> Vec<ChatMessage>;
     /// Sends `post`, or says it is disconnected; the bridge then keeps it.
     fn send(&mut self, post: &Post) -> Result<(), Disconnected>;
 }
@@ -108,35 +111,24 @@ impl ChatBridge {
     }
 }
 
-/// Who may talk to the bot, and where; from `RIG_CHAT_CHANNELS` and
-/// `RIG_CHAT_USERS` (comma-separated ids).
-#[derive(Resource, Clone, Debug, Default)]
-pub struct ChatConfig {
+/// Who may talk to the bot, and where: the `[chat]` table of the settings.
+///
+/// ```toml
+/// [chat]
+/// channels = ["C0123"]
+/// users = ["U0456"]
+/// ```
+#[derive(Resource, Clone, Debug, Default, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct ChatSettings {
     /// The channel ids.
     pub channels: Vec<String>,
     /// The user ids.
     pub users: Vec<String>,
 }
 
-impl ChatConfig {
-    /// The configuration in the environment.
-    pub fn from_env() -> Self {
-        let list = |name| {
-            std::env::var(name)
-                .unwrap_or_default()
-                .split(',')
-                .map(str::trim)
-                .filter(|id| !id.is_empty())
-                .map(str::to_owned)
-                .collect()
-        };
-        Self {
-            channels: list("RIG_CHAT_CHANNELS"),
-            users: list("RIG_CHAT_USERS"),
-        }
-    }
-
-    fn allows(&self, message: &Incoming) -> bool {
+impl ChatSettings {
+    fn allows(&self, message: &ChatMessage) -> bool {
         self.channels.contains(&message.channel) && self.users.contains(&message.user)
     }
 }
@@ -144,6 +136,7 @@ impl ChatConfig {
 /// The chat thread an agent answers. Saved with the session.
 #[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
 #[reflect(Component, Saved, Default)]
+#[require(Working)]
 pub struct ChatThread {
     /// The channel id.
     pub channel: String,
@@ -158,32 +151,21 @@ struct Working {
     counts: BTreeMap<&'static str, u32>,
 }
 
-/// A question asked of the thread, answered by `yes` or `no`.
-#[derive(Component)]
-struct Asking(Vec<PickItem>);
-
-/// Messages for agents, delivered once the agents spawned this frame are
-/// ready for them.
-#[derive(Resource, Default)]
-struct Arrivals(Vec<(Entity, String)>);
-
 /// Bridges chat threads to agents.
 #[derive(Default)]
 pub struct ChatBridgePlugin;
 
 impl Plugin for ChatBridgePlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<ChatConfig>() {
-            app.insert_resource(ChatConfig::from_env());
-        }
-        app.init_resource::<ChatBridge>()
-            .init_resource::<Arrivals>()
+        app.add_setting::<ChatSettings>("chat")
+            .add_front(Front::new("chat").on_flag("chat", "Answer a Slack or Matrix channel"))
+            .init_resource::<ChatBridge>()
             .register_type::<ChatThread>()
-            .register_required_components::<ChatThread, Working>()
-            .add_message::<PickRequest>()
             .add_systems(Startup, start)
-            .add_systems(Update, (receive, deliver).chain())
-            .add_systems(PostUpdate, (ask, show_work, report_recalled, flush).chain())
+            .add_systems(Update, receive.before(AgentLoop))
+            .add_systems(PostUpdate, (show_work, report_recalled, flush).chain())
+            .add_observer(answer_for_thread)
+            .add_observer(post_question)
             .add_observer(count_tool_call)
             .add_observer(post_answer);
     }
@@ -195,22 +177,41 @@ fn start(mut bridge: ResMut<ChatBridge>, wake: Res<Wake>) {
     }
 }
 
-/// Routes each message received: to its thread's agent, as the answer to
-/// its question, or to a new agent when it mentions the bot.
+/// A thread answers its agent's questions, from when it is bound or
+/// restored.
+fn answer_for_thread(bound: On<Insert<ChatThread>>, mut commands: Commands) {
+    commands.entity(bound.entity).insert(Answerer {
+        agent: Some(bound.entity),
+    });
+}
+
+/// The questions not answered yet, for the agent each is about.
+type OpenAsks<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static Ask, &'static ForAgent, &'static Effect),
+    (Without<Outcome>, Without<Settled>),
+>;
+
+/// Routes each message received: as the answer to its thread's oldest open
+/// question, to its thread's agent, or to a new agent when it mentions the
+/// bot.
 fn receive(
     mut bridge: ResMut<ChatBridge>,
-    config: Res<ChatConfig>,
-    threads: Query<(Entity, &ChatThread, Option<&Asking>)>,
+    settings: Res<ChatSettings>,
+    threads: Query<(Entity, &ChatThread)>,
+    asks: OpenAsks,
     primaries: PrimaryQuery,
     models: Query<(Option<&ModelChoice>, &Effort, Option<&Connection>)>,
-    mut arrivals: ResMut<Arrivals>,
     mut commands: Commands,
 ) {
     let Some(transport) = &mut bridge.transport else {
         return;
     };
+    let mut spawned: Vec<(Entity, ChatThread)> = Vec::new();
+    let mut answered = Vec::new();
     for message in transport.receive() {
-        if !config.allows(&message) {
+        if !settings.allows(&message) {
             info!(
                 "chat bridge: ignored a message of {} in {}",
                 message.user, message.channel
@@ -221,39 +222,49 @@ fn receive(
             channel: message.channel,
             thread: message.thread,
         };
-        let bound = threads.iter().find(|(_, bound, _)| **bound == thread);
-        if let Some((agent, _, Some(Asking(items)))) = bound
-            && let Some(item) = choice(items, &message.text)
-        {
-            commands.entity(agent).remove::<Asking>();
-            commands.trigger(RunCommand {
-                entity: agent,
-                line: item.command.clone(),
-            });
-            bridge.post(&thread, format!("Chose: {}.", item.label));
-            continue;
-        }
+        let bound = threads
+            .iter()
+            .chain(spawned.iter().map(|(agent, bound)| (*agent, bound)))
+            .find(|(_, bound)| **bound == thread)
+            .map(|(agent, _)| agent);
         let agent = match bound {
-            Some((agent, ..)) => agent,
+            Some(agent) => agent,
             None if message.mentions_bot => {
                 let parent = primary(&primaries).and_then(|agent| models.get(agent).ok());
-                spawn_agent(&mut commands, thread, parent)
+                let agent = spawn_agent(&mut commands, thread.clone(), parent);
+                spawned.push((agent, thread));
+                agent
             }
             None => continue,
         };
-        arrivals.0.push((agent, message.text));
+        let open = asks
+            .iter()
+            .filter(|(ask, _, to, _)| to.0 == agent && !answered.contains(ask))
+            .min_by_key(|(.., effect)| effect.id());
+        if let Some((ask, question, ..)) = open
+            && let Some(choice) = choice(question, &message.text)
+        {
+            answered.push(ask);
+            commands
+                .entity(ask)
+                .insert_if_new(Answer::Choice(choice).outcome());
+            continue;
+        }
+        // A question that takes text is answered by this line, by the
+        // harness, before it reaches the model.
+        commands.trigger(Deliver::new(agent, message.text, DeliveryMode::Queue).literal());
     }
 }
 
-/// The item a reply chooses: `yes` the first that does not deny, `no` the
-/// first that does.
-fn choice<'a>(items: &'a [PickItem], reply: &str) -> Option<&'a PickItem> {
-    let denies = |item: &&PickItem| item.label.to_lowercase().starts_with("deny");
-    match reply.trim().to_lowercase().as_str() {
-        "yes" | "y" => items.iter().find(|item| !denies(item)),
-        "no" | "n" => items.iter().find(denies),
-        _ => None,
-    }
+/// The choice a reply names, by id or label.
+fn choice(ask: &Ask, reply: &str) -> Option<String> {
+    let reply = reply.trim();
+    ask.choices
+        .iter()
+        .find(|choice| {
+            choice.id.eq_ignore_ascii_case(reply) || choice.label.eq_ignore_ascii_case(reply)
+        })
+        .map(|choice| choice.id.clone())
 }
 
 /// A top-level agent for `thread`, on the model of the agent the user
@@ -279,30 +290,46 @@ fn spawn_agent(
     agent.id()
 }
 
-/// Sends what arrived, queued behind a running turn.
-fn deliver(mut arrivals: ResMut<Arrivals>, mut commands: Commands) {
-    for (agent, text) in arrivals.0.drain(..) {
-        commands.trigger(Deliver::new(agent, text, DeliveryMode::Queue).literal());
-    }
-}
-
-/// Counts each tool call of an agent with a thread.
-fn count_tool_call(
-    call: On<Add<CallOf>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
-    mut working: Query<&mut Working>,
+/// Posts each question asked about an agent with a thread.
+fn post_question(
+    asked: On<Add<Ask>>,
+    asks: Query<(&Ask, &ForAgent)>,
+    threads: Query<&ChatThread>,
+    mut bridge: ResMut<ChatBridge>,
 ) {
-    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
+    let Ok((ask, &ForAgent(agent))) = asks.get(asked.entity) else {
         return;
     };
-    if let Ok(TurnOf(agent)) = turns.get(*turn)
-        && let Ok(mut working) = working.get_mut(*agent)
+    let Ok(thread) = threads.get(agent) else {
+        return;
+    };
+    let ids: Vec<String> = ask
+        .choices
+        .iter()
+        .map(|choice| format!("`{}`", choice.id))
+        .collect();
+    let mut text = ask.title.clone();
+    if !ask.body.is_empty() {
+        text.push_str(&format!("\n```\n{}\n```", ask.body));
+    }
+    if !ids.is_empty() {
+        text.push_str(&format!("\nReply {}.", ids.join(" or ")));
+    }
+    bridge.post(thread, text);
+}
+
+/// Counts each tool call of an agent with a thread, once: not again when a
+/// restart runs it again.
+fn count_tool_call(
+    call: On<Add<ToolRequest>>,
+    calls: Query<(&ToolRequest, &ForAgent), Without<Restored>>,
+    mut working: Query<&mut Working>,
+) {
+    if let Ok((request, &ForAgent(agent))) = calls.get(call.entity)
+        && let Ok(mut working) = working.get_mut(agent)
     {
-        *working
-            .counts
-            .entry(kind(run.call.function.name.as_str()))
-            .or_default() += 1;
+        let kind = kind(request.call.function.name.as_str());
+        *working.counts.entry(kind).or_default() += 1;
     }
 }
 
@@ -351,20 +378,30 @@ fn show_work(
     }
 }
 
-/// Posts each turn's final answer, or its failure, to the agent's thread.
+/// Posts each turn's final answer, or why it ended without one, to its
+/// agent's thread.
 fn post_answer(
-    ended: On<TurnEnded>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
     mut agents: Query<(&ChatThread, &mut Working)>,
     mut bridge: ResMut<ChatBridge>,
 ) {
-    let Ok((thread, mut working)) = agents.get_mut(ended.entity) else {
+    let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
+        return;
+    };
+    let Ok((thread, mut working)) = agents.get_mut(agent) else {
         return;
     };
     *working.bypass_change_detection() = Working::default();
-    let text = match &ended.outcome {
+    let text = match outcome {
         TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("The turn failed: {why}"),
-        TurnOutcome::Stopped => "Stopped.".to_owned(),
+        TurnOutcome::Stopped(why) => format!(
+            "Stopped{}.",
+            why.as_ref()
+                .map(|why| format!(": {why}"))
+                .unwrap_or_default()
+        ),
     };
     for part in split(&text, MAX_POST) {
         bridge.post(thread, part);
@@ -401,24 +438,7 @@ fn split(text: &str, max: usize) -> Vec<String> {
     parts
 }
 
-/// Posts each question another plugin asks an agent with a thread.
-fn ask(
-    mut picks: MessageReader<PickRequest>,
-    threads: Query<&ChatThread>,
-    mut bridge: ResMut<ChatBridge>,
-    mut commands: Commands,
-) {
-    for pick in picks.read() {
-        if let Ok(thread) = threads.get(pick.agent) {
-            bridge.post(thread, format!("{}\nReply `yes` or `no`.", pick.title));
-            commands
-                .entity(pick.agent)
-                .insert(Asking(pick.items.clone()));
-        }
-    }
-}
-
-/// Says in the thread which messages a turn that stopped did not send.
+/// Says in the thread which messages a turn that ended did not send.
 fn report_recalled(
     mut recalled: MessageReader<Recalled>,
     threads: Query<&ChatThread>,
@@ -426,10 +446,8 @@ fn report_recalled(
 ) {
     for recalled in recalled.read() {
         if let Ok(thread) = threads.get(recalled.agent) {
-            bridge.post(
-                thread,
-                format!("Not sent, send it again: {}", recalled.text),
-            );
+            let text = format!("Not sent, send it again: {}", recalled.text);
+            bridge.post(thread, text);
         }
     }
 }

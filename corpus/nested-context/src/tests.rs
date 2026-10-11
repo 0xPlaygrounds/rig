@@ -22,19 +22,18 @@ fn project() -> Option<PathBuf> {
     Some(dir)
 }
 
-/// The text of each user message that carries a tool result, in order.
-fn result_messages(conversation: &Conversation) -> Vec<String> {
+/// Each tool result in the conversation, as text, in order.
+fn results(conversation: &Conversation) -> Vec<String> {
     conversation
         .messages()
         .iter()
         .filter_map(|message| match message {
-            message::Message::User { content }
-                if content
-                    .iter()
-                    .any(|item| matches!(item, UserContent::ToolResult(_))) =>
-            {
-                Some(format!("{content:?}"))
-            }
+            message::Message::User { content } => Some(content.iter()),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|item| match item {
+            UserContent::ToolResult(result) => Some(format!("{result:?}")),
             _ => None,
         })
         .collect()
@@ -78,7 +77,7 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     let results = app
         .world()
         .get::<Conversation>(agent)
-        .map(result_messages)
+        .map(results)
         .unwrap_or_default();
     std::fs::remove_dir_all(&dir).ok();
     assert_eq!(results.len(), 2, "two tool results: {results:?}");
@@ -90,6 +89,11 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
     assert!(first.contains("Rules for `pkg/`"), "{first}");
     assert!(second.contains("alpha"), "{second}");
     assert!(!second.contains("Use tabs."), "{second}");
-    let loaded = app.world().get::<NestedLoaded>(agent);
-    assert!(loaded.is_some_and(|loaded| loaded.0.contains_key("pkg/AGENTS.md")));
+    let world = app.world_mut();
+    let mut entries = world.query::<&ContextEntry>();
+    let listed: Vec<&str> = entries
+        .iter(world)
+        .map(|entry| entry.text.as_str())
+        .collect();
+    assert_eq!(listed, ["agent: pkg/AGENTS.md"]);
 }

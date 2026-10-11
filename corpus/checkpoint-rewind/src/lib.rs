@@ -1,40 +1,33 @@
 //! Plugin corpus: 31. Checkpoints and rewind (spec `31-checkpoint-rewind.md`).
 //!
-//! Before each turn of an agent the user started, the working tree, with
-//! its untracked files that are not ignored, is written as a commit under a
+//! Before each turn of a top-level agent, the working tree, with its
+//! untracked files that are not ignored, is written as a commit under a
 //! private ref, `refs/rig/checkpoints/<session>/<turn>`, through a
 //! temporary index: the user's branch, index and stash stay as they are.
-//! `/rewind` picks one of the user's messages and puts the files back as
-//! they were before it, takes the conversation back to just before it,
-//! and puts the message back in the input line.
+//! The snapshot runs off the main thread while it holds the turn's first
+//! model call. `/rewind` picks one of the user's messages and puts the
+//! files back as they were before it, cuts the conversation back to just
+//! before it, and puts the message back in the input line.
 
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
+use bevy_ecs::system::SystemParam;
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-use rig_tui::{PickItem, PickRequest};
-use serde_json::Value;
+use rig_tools::process::Launcher;
+use rig_tui::Picker;
 
-/// Where the checkpoints are kept, below the session's name.
+/// Where the checkpoints are kept, below the session's id.
 const REFS: &str = "refs/rig/checkpoints";
-
-/// The repository the checkpoints are of, and the session that names
-/// their refs. Inserted by the plugin unless the app has one.
-#[derive(Resource, Clone, Debug)]
-pub struct CheckpointRepo {
-    /// A directory inside the repository.
-    pub root: PathBuf,
-    /// The session, as in the refs' names.
-    pub session: String,
-}
 
 /// The files before one of the user's messages.
 #[derive(Reflect, Clone, Debug, Default)]
 pub struct Checkpoint {
-    /// The turn's number, as in its ref's name.
+    /// The turn's index, as in its ref's name.
     pub turn: u64,
     /// The ref holding the files: an earlier turn's when nothing changed.
     pub reference: String,
@@ -42,6 +35,8 @@ pub struct Checkpoint {
     pub tree: String,
     /// The position of the user's message in the conversation.
     pub message: usize,
+    /// The log record of the message, which a restore does not move.
+    pub seq: Option<u64>,
     /// The message's text.
     pub text: String,
     /// The files the user changed since the turn before ended.
@@ -54,8 +49,6 @@ pub struct Checkpoint {
 pub struct Checkpoints {
     /// The checkpoints.
     pub list: Vec<Checkpoint>,
-    /// The number of the next turn's ref.
-    pub next_turn: u64,
     /// The files as the last turn left them, as a git tree.
     pub settled: Option<String>,
 }
@@ -65,19 +58,18 @@ pub struct CheckpointRewindPlugin;
 
 impl Plugin for CheckpointRewindPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<CheckpointRepo>() {
-            let paths = app.world().get_resource::<SessionPaths>();
-            let session = paths
-                .and_then(|paths| paths.path().file_name())
-                .map_or_else(|| "local".to_owned(), |name| name.to_string_lossy().into());
-            let root = std::env::current_dir().unwrap_or_default();
-            app.insert_resource(CheckpointRepo { root, session });
-        }
-        app.register_required_components::<Agent, Checkpoints>()
-            .add_message::<PickRequest>()
-            .add_systems(Startup, prune)
-            .add_observer(checkpoint)
-            .add_observer(settle)
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .init_resource::<RigHome>()
+            .add_message::<SessionDeleted>()
+            .register_required_components::<Agent, Checkpoints>()
+            .add_systems(
+                AgentPass,
+                (snapshot.in_set(Stage::Gate), settle.in_set(Stage::Review)),
+            )
+            .add_systems(Update, (confirmed.after(AgentLoop), prune))
+            .add_observer(taken)
+            .add_observer(settled)
             .add_command(
                 "rewind",
                 "Rewind files and conversation to before a message [--files-only|--chat-only]",
@@ -86,293 +78,436 @@ impl Plugin for CheckpointRewindPlugin {
     }
 }
 
-/// Snapshots the files as a turn of an agent the user started begins,
-/// unless its message has a checkpoint already (a retried turn).
-fn checkpoint(
-    turn: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<(&Conversation, &mut Checkpoints), Without<SpawnedBy>>,
-    repo: Res<CheckpointRepo>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
-        return;
-    };
-    let Ok((conversation, mut checkpoints)) = agents.get_mut(agent) else {
-        return;
-    };
-    let messages = conversation.messages();
-    let Some((message, text)) = messages
-        .len()
-        .checked_sub(1)
-        .and_then(|last| Some((last, user_text(messages.get(last)?)?)))
-    else {
-        return;
-    };
-    if checkpoints
-        .list
-        .last()
-        .is_some_and(|last| last.message == message)
-    {
-        return;
+/// On a turn whose snapshot was taken or asked for: once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Snapshotted;
+
+/// A snapshot being taken while it holds a turn's first model call.
+#[derive(Component)]
+struct Snapshot {
+    agent: Entity,
+    turn: u64,
+    message: usize,
+    seq: Option<u64>,
+    text: String,
+}
+
+/// What a snapshot found: `None` outside a git repository.
+type Taken = Done<Result<Option<Snap>, String>>;
+
+struct Snap {
+    tree: String,
+    reference: String,
+    user_edits: Vec<String>,
+}
+
+/// The tree a turn left, taken while it holds the turn's end.
+#[derive(Component)]
+struct Settling(Entity);
+
+/// The tree a turn left: `None` outside a git repository.
+type Tree = Done<Result<Option<String>, String>>;
+
+/// Where git runs, and the session that names the refs.
+#[derive(SystemParam)]
+struct Repo<'w> {
+    root: Res<'w, ProjectRoot>,
+    processes: Res<'w, Processes>,
+    home: Res<'w, RigHome>,
+    paths: Option<Res<'w, SessionPaths>>,
+    wake: Res<'w, Wake>,
+}
+
+impl Repo<'_> {
+    fn git(&self) -> Git {
+        Git {
+            root: self.root.0.clone(),
+            launcher: self.processes.launcher(),
+        }
     }
-    // Synchronous: the turn's tool calls must not run before it is taken.
-    let Ok(tree) = working_tree(&repo.root) else {
-        return;
-    };
-    let user_edits = checkpoints
-        .settled
-        .as_deref()
-        .map(|settled| changed(&repo.root, settled, &tree))
-        .unwrap_or_default();
-    let number = checkpoints.next_turn.max(1);
-    let reference = match checkpoints.list.last() {
-        Some(last) if last.tree == tree => Ok(last.reference.clone()),
-        _ => store(&repo, number, &tree),
-    };
-    match reference {
-        Ok(reference) => {
-            checkpoints.next_turn = number + 1;
-            checkpoints.list.push(Checkpoint {
-                turn: number,
-                reference,
-                tree,
-                message,
-                text,
-                user_edits,
-            });
-        }
-        Err(failure) => {
-            notices.write(Notice::error(agent, format!("No checkpoint: {failure}")));
-        }
+
+    fn session(&self) -> String {
+        let id = self.paths.as_ref().and_then(|paths| paths.id());
+        id.map_or_else(|| "local".to_owned(), |id| id.to_string())
+    }
+
+    /// The file naming the repository a session's checkpoints are in, so
+    /// they can be pruned with the session from any project.
+    fn record(&self, session: &str) -> PathBuf {
+        self.home.0.root().join("checkpoints").join(session)
+    }
+
+    /// Runs `work` off the main thread, ending as `Done<T>` on its entity.
+    fn spawn<T: Send + Sync + 'static>(
+        &self,
+        work: impl FnOnce() -> T + Send + 'static,
+    ) -> Running {
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        Running::spawn(pool, &self.wake, async move { work() })
     }
 }
 
-/// Notes the files as each turn left them, so edits made between turns
-/// are told apart.
-fn settle(
-    ended: On<TurnEnded>,
-    mut agents: Query<&mut Checkpoints, Without<SpawnedBy>>,
-    repo: Res<CheckpointRepo>,
+/// Holds the first model call of each turn of a top-level agent that
+/// answers a message of the user's until the files are snapshotted.
+fn snapshot(
+    calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
+    turns: Query<&Turn, Without<Snapshotted>>,
+    agents: Query<(&Conversation, &Checkpoints), Without<SpawnedBy>>,
+    repo: Repo,
+    mut commands: Commands,
 ) {
-    if let Ok(mut checkpoints) = agents.get_mut(ended.entity)
-        && let Ok(tree) = working_tree(&repo.root)
-    {
-        checkpoints.settled = Some(tree);
+    for (call, &CallOf(turn_entity), &ForAgent(agent)) in &calls {
+        let Ok(turn) = turns.get(turn_entity) else {
+            continue;
+        };
+        commands.entity(turn_entity).insert(Snapshotted);
+        let Ok((conversation, checkpoints)) = agents.get(agent) else {
+            continue;
+        };
+        let message = turn.first_message;
+        let Some(text) = user_text(conversation, message) else {
+            continue;
+        };
+        let seq = conversation.seq(message);
+        // A retried or restored turn answers a message that has one.
+        if checkpoints.list.last().is_some_and(|last| match seq {
+            Some(_) => last.seq == seq,
+            None => last.message == message,
+        }) {
+            continue;
+        }
+        let git = repo.git();
+        let session = repo.session();
+        let record = repo.record(&session);
+        let index = turn.index;
+        let previous = checkpoints
+            .list
+            .last()
+            .map(|last| (last.tree.clone(), last.reference.clone()));
+        let settled = checkpoints.settled.clone();
+        let running =
+            repo.spawn(move || take(&git, &session, &record, index, previous, settled.as_deref()));
+        let job = Snapshot {
+            agent,
+            turn: index,
+            message,
+            seq,
+            text,
+        };
+        commands.spawn((job, HoldOf(call), running));
     }
+}
+
+/// Keeps the checkpoint a snapshot took, and lets the call go.
+fn taken(
+    done: On<Add<Taken>>,
+    jobs: Query<(&Snapshot, &Taken)>,
+    mut agents: Query<&mut Checkpoints>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let Ok((job, Done(result))) = jobs.get(done.entity) else {
+        return;
+    };
+    match result {
+        Ok(Some(snap)) => {
+            if let Ok(mut checkpoints) = agents.get_mut(job.agent) {
+                checkpoints.list.push(Checkpoint {
+                    turn: job.turn,
+                    reference: snap.reference.clone(),
+                    tree: snap.tree.clone(),
+                    message: job.message,
+                    seq: job.seq,
+                    text: job.text.clone(),
+                    user_edits: snap.user_edits.clone(),
+                });
+            }
+        }
+        Ok(None) => {}
+        Err(failure) => {
+            notices.write(Notice::error(
+                job.agent,
+                format!("No checkpoint: {failure}"),
+            ));
+        }
+    }
+    commands.entity(done.entity).despawn();
+}
+
+/// Holds each proposed end of a snapshotted turn while it notes the files
+/// the turn left, so the user's edits between turns are told apart.
+fn settle(
+    proposed: Query<(Entity, &TurnOf), (Added<TurnOutcome>, With<Snapshotted>)>,
+    repo: Repo,
+    mut commands: Commands,
+) {
+    for (turn, &TurnOf(agent)) in &proposed {
+        let git = repo.git();
+        let running = repo.spawn(move || git.working_tree());
+        commands.spawn((Settling(agent), HoldOf(turn), running));
+    }
+}
+
+fn settled(
+    done: On<Add<Tree>>,
+    jobs: Query<(&Settling, &Tree)>,
+    mut agents: Query<&mut Checkpoints>,
+    mut commands: Commands,
+) {
+    if let Ok((&Settling(agent), Done(Ok(Some(tree))))) = jobs.get(done.entity)
+        && let Ok(mut checkpoints) = agents.get_mut(agent)
+    {
+        checkpoints.settled = Some(tree.clone());
+    }
+    commands.entity(done.entity).despawn();
 }
 
 /// What `/rewind` was asked.
-#[derive(Default)]
+#[derive(Clone, Copy, Debug)]
 struct Asked {
     files: bool,
     chat: bool,
-    confirmed: bool,
     turn: Option<u64>,
-    flags: String,
 }
 
-fn parse(args: &str) -> Result<Asked, String> {
-    let mut asked = Asked {
-        files: true,
-        chat: true,
-        ..Asked::default()
-    };
-    for word in args.split_whitespace() {
-        match word {
-            "--files-only" => asked.chat = false,
-            "--chat-only" => asked.files = false,
-            "--confirm" => asked.confirmed = true,
-            number => {
-                let turn = number
-                    .parse()
-                    .map_err(|_| format!("Not a turn: `{number}`."))?;
-                asked.turn = Some(turn);
+impl Asked {
+    fn parse(args: &str) -> Result<Self, String> {
+        let mut asked = Self {
+            files: true,
+            chat: true,
+            turn: None,
+        };
+        for word in args.split_whitespace() {
+            match word {
+                "--files-only" => asked.chat = false,
+                "--chat-only" => asked.files = false,
+                number => {
+                    let turn = number
+                        .parse()
+                        .map_err(|_| format!("Not a turn: `{number}`."))?;
+                    asked.turn = Some(turn);
+                }
             }
         }
+        if asked.files || asked.chat {
+            Ok(asked)
+        } else {
+            Err("--files-only and --chat-only exclude each other.".to_owned())
+        }
     }
-    if !asked.files && !asked.chat {
-        return Err("--files-only and --chat-only exclude each other.".to_owned());
+
+    /// The command line that rewinds to before `turn` the same way.
+    fn command(self, turn: u64) -> String {
+        let only = match (self.files, self.chat) {
+            (true, false) => "--files-only ",
+            (false, true) => "--chat-only ",
+            _ => "",
+        };
+        format!("rewind {only}{turn}")
     }
-    let flags = [
-        (!asked.chat, "--files-only "),
-        (!asked.files, "--chat-only "),
-    ];
-    asked.flags = flags
-        .iter()
-        .filter(|(on, _)| *on)
-        .map(|(_, flag)| *flag)
-        .collect();
-    Ok(asked)
+}
+
+/// On a question whether to undo the user's edits too.
+#[derive(Component)]
+struct Confirm(Asked);
+
+/// What a rewind reads and changes.
+#[derive(SystemParam)]
+struct Rewinder<'w, 's> {
+    agents: Query<'w, 's, (&'static mut Conversation, &'static mut Checkpoints)>,
+    busy: Query<'w, 's, (), With<ActiveTurn>>,
+    repo: Repo<'w>,
+    commit: Commit<'w, 's>,
+    answerers: Answerers<'w, 's>,
+    notices: MessageWriter<'w, Notice>,
+    recalled: MessageWriter<'w, Recalled>,
+    commands: Commands<'w, 's>,
+}
+
+impl Rewinder<'_, '_> {
+    fn refuse(&mut self, agent: Entity, why: impl Into<String>) {
+        self.notices.write(Notice::error(agent, why));
+    }
+
+    /// A picker of the user's messages with checkpoints.
+    fn pick(&mut self, agent: Entity, asked: Asked) {
+        let Ok((_, checkpoints)) = self.agents.get(agent) else {
+            return;
+        };
+        if checkpoints.list.is_empty() {
+            self.refuse(agent, "No checkpoints yet.");
+            return;
+        }
+        let picker = checkpoints.list.iter().fold(
+            Picker::new("Rewind to before").for_agent(agent),
+            |picker, checkpoint| {
+                let line = checkpoint.text.lines().next().unwrap_or_default();
+                picker.item(
+                    format!("{}. {line}", checkpoint.turn),
+                    asked.command(checkpoint.turn),
+                )
+            },
+        );
+        let selected = picker.items.len().saturating_sub(1);
+        self.commands.spawn(Picker { selected, ..picker });
+    }
+
+    /// Rewinds to before `turn`, asking first when that undoes the user's
+    /// edits, unless `confirmed`.
+    fn rewind(&mut self, agent: Entity, turn: u64, asked: Asked, confirmed: bool) {
+        if self.busy.contains(agent) {
+            self.notices.write(Notice::turn_running(agent));
+            return;
+        }
+        let git = self.repo.git();
+        let Ok((mut conversation, mut checkpoints)) = self.agents.get_mut(agent) else {
+            return;
+        };
+        let Some(at) = checkpoints.list.iter().position(|kept| kept.turn == turn) else {
+            self.refuse(agent, format!("No checkpoint {turn}."));
+            return;
+        };
+        let Some(target) = checkpoints.list.get(at).cloned() else {
+            return;
+        };
+        let message = match target.seq {
+            Some(seq) => {
+                (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(seq))
+            }
+            None => Some(target.message),
+        };
+        let Some(message) = message.filter(|&at| at < conversation.messages().len()) else {
+            self.refuse(agent, "That message is no longer in the conversation.");
+            return;
+        };
+        if asked.files {
+            let current = match git.working_tree() {
+                Ok(Some(current)) => current,
+                Ok(None) => return self.refuse(agent, "The files are not in a git repository."),
+                Err(failure) => return self.refuse(agent, format!("Could not rewind: {failure}")),
+            };
+            let mut edits: BTreeSet<String> = checkpoints
+                .list
+                .iter()
+                .skip(at + 1)
+                .flat_map(|later| later.user_edits.iter().cloned())
+                .collect();
+            if let Some(settled) = &checkpoints.settled {
+                edits.extend(git.changed(settled, &current));
+            }
+            if !edits.is_empty() && !confirmed {
+                let edits: Vec<String> = edits.into_iter().collect();
+                let why = format!("This also undoes your edits to {}.", edits.join(", "));
+                if !self.answerers.can_answer(Some(agent)) {
+                    return self.refuse(agent, format!("{why} Nobody can confirm it here."));
+                }
+                let ask = Ask::yes_no(format!("Rewind to before turn {turn}?")).body(why);
+                self.commands.spawn((ask, ForAgent(agent), Confirm(asked)));
+                return;
+            }
+            if let Err(failure) = git.restore(&current, &target.tree) {
+                return self.refuse(agent, format!("Could not rewind: {failure}"));
+            }
+            checkpoints.settled = Some(target.tree.clone());
+        }
+        if asked.chat {
+            self.commit.truncate(agent, &mut conversation, message);
+            let dropped = checkpoints.list.split_off(at);
+            let kept: BTreeSet<&str> = checkpoints
+                .list
+                .iter()
+                .map(|kept| kept.reference.as_str())
+                .collect();
+            let gone: BTreeSet<&str> = dropped.iter().map(|gone| gone.reference.as_str()).collect();
+            for reference in gone.difference(&kept) {
+                git.run(None, &["update-ref", "-d", reference]).ok();
+            }
+            self.recalled.write(Recalled {
+                agent,
+                text: target.text.clone(),
+                why: None,
+            });
+        }
+        let what = match (asked.files, asked.chat) {
+            (true, false) => "the files",
+            (false, true) => "the conversation",
+            _ => "the files and the conversation",
+        };
+        self.notices.write(Notice::info(
+            agent,
+            format!("Rewound {what} to before turn {turn}."),
+        ));
+    }
 }
 
 /// `/rewind [--files-only|--chat-only] [turn]`: without a turn, a picker of
 /// the user's messages with checkpoints.
-fn rewind(
-    In(args): In<CommandArgs>,
-    mut agents: Query<(&mut Conversation, &mut Checkpoints, Option<&Condensed>)>,
-    busy: Query<(), With<ActiveTurn>>,
-    repo: Res<CheckpointRepo>,
-    mut notices: MessageWriter<Notice>,
-    mut picks: MessageWriter<PickRequest>,
-    mut recalled: MessageWriter<Recalled>,
-    mut commands: Commands,
-) {
+fn rewind(In(args): In<CommandArgs>, mut rewinder: Rewinder) {
     let agent = args.agent;
-    if busy.contains(agent) {
-        notices.write(Notice::error(agent, "A turn is running; stop it first."));
+    if rewinder.busy.contains(agent) {
+        rewinder.notices.write(Notice::turn_running(agent));
         return;
     }
-    let asked = match parse(&args.args) {
-        Ok(asked) => asked,
-        Err(why) => {
-            notices.write(Notice::error(agent, why));
-            return;
-        }
-    };
-    let Ok((mut conversation, mut checkpoints, condensed)) = agents.get_mut(agent) else {
-        return;
-    };
-    let Some(turn) = asked.turn else {
-        if checkpoints.list.is_empty() {
-            notices.write(Notice::error(agent, "No checkpoints yet."));
-            return;
-        }
-        let items = checkpoints.list.iter().map(|checkpoint| PickItem {
-            label: format!("{}. {}", checkpoint.turn, first_line(&checkpoint.text)),
-            command: format!("rewind {}{}", asked.flags, checkpoint.turn),
-        });
-        let items: Vec<PickItem> = items.collect();
-        let selected = items.len().saturating_sub(1);
-        picks.write(PickRequest {
-            agent,
-            title: "Rewind to before".to_owned(),
-            items,
-            selected,
-        });
-        return;
-    };
-    let Some(at) = checkpoints.list.iter().position(|kept| kept.turn == turn) else {
-        notices.write(Notice::error(agent, format!("No checkpoint {turn}.")));
-        return;
-    };
-    let Some(target) = checkpoints.list.get(at).cloned() else {
-        return;
-    };
-    if asked.files {
-        let Ok(current) = working_tree(&repo.root) else {
-            notices.write(Notice::error(
-                agent,
-                "The files are not in a git repository.",
-            ));
-            return;
-        };
-        let mut edits: BTreeSet<String> = checkpoints
-            .list
-            .iter()
-            .skip(at + 1)
-            .flat_map(|later| later.user_edits.iter().cloned())
-            .collect();
-        if let Some(settled) = &checkpoints.settled {
-            edits.extend(changed(&repo.root, settled, &current));
-        }
-        if !edits.is_empty() && !asked.confirmed {
-            let edits: Vec<String> = edits.into_iter().collect();
-            let why = format!("This also undoes your edits to {}.", edits.join(", "));
-            picks.write(PickRequest {
-                agent,
-                title: why.clone(),
-                items: vec![PickItem {
-                    label: format!("Rewind to before turn {turn} anyway"),
-                    command: format!("rewind {}--confirm {turn}", asked.flags),
-                }],
-                selected: 0,
-            });
-            notices.write(Notice::info(agent, format!("{why} Confirm to rewind.")));
-            return;
-        }
-        if let Err(failure) = restore(&repo.root, &current, &target.tree) {
-            notices.write(Notice::error(agent, format!("Could not rewind: {failure}")));
-            return;
-        }
-        checkpoints.settled = Some(target.tree.clone());
+    match Asked::parse(&args.args) {
+        Err(why) => rewinder.refuse(agent, why),
+        Ok(asked) => match asked.turn {
+            None => rewinder.pick(agent, asked),
+            Some(turn) => rewinder.rewind(agent, turn, asked, false),
+        },
     }
-    if asked.chat {
-        let Some(message) = locate(conversation.messages(), &target) else {
-            notices.write(Notice::error(
-                agent,
-                "The message is no longer in the conversation.",
-            ));
-            return;
-        };
-        let Some(cut) = truncated(&conversation, message) else {
-            notices.write(Notice::error(agent, "Could not cut the conversation."));
-            return;
-        };
-        *conversation = cut;
-        if condensed.is_some_and(|condensed| condensed.upto > message) {
-            commands.entity(agent).remove::<Condensed>();
-        }
-        let dropped = checkpoints.list.split_off(at);
-        let kept: BTreeSet<&str> = checkpoints
-            .list
-            .iter()
-            .map(|kept| kept.reference.as_str())
-            .collect();
-        let refs: BTreeSet<&str> = dropped.iter().map(|gone| gone.reference.as_str()).collect();
-        for reference in refs.difference(&kept) {
-            git(&repo.root, None, &["update-ref", "-d", reference]).ok();
-        }
-        recalled.write(Recalled {
-            agent,
-            text: target.text.clone(),
-            why: None,
-        });
-    }
-    let what = match (asked.files, asked.chat) {
-        (true, false) => "the files",
-        (false, true) => "the conversation",
-        _ => "the files and the conversation",
-    };
-    notices.write(Notice::info(
-        agent,
-        format!("Rewound {what} to before turn {turn}."),
-    ));
 }
 
-/// Deletes the checkpoints of sessions that no longer exist.
-fn prune(repo: Res<CheckpointRepo>, paths: Option<Res<SessionPaths>>) {
-    let Some(sessions) = paths.as_ref().and_then(|paths| paths.path().parent()) else {
-        return;
-    };
-    let Ok(listed) = git(
-        &repo.root,
-        None,
-        &["for-each-ref", "--format=%(refname)", REFS],
-    ) else {
-        return;
-    };
-    for reference in listed.lines() {
-        let session = reference
-            .strip_prefix(REFS)
-            .and_then(|rest| rest.trim_start_matches('/').split('/').next());
-        if let Some(session) = session
-            && session != repo.session
-            && !sessions.join(session).is_dir()
-        {
-            git(&repo.root, None, &["update-ref", "-d", reference]).ok();
+/// Rewinds once the user said yes to undoing their edits.
+fn confirmed(asks: Query<(&Outcome, &ForAgent, &Confirm), Added<Outcome>>, mut rewinder: Rewinder) {
+    for (outcome, &ForAgent(agent), &Confirm(asked)) in &asks {
+        let Some(turn) = asked.turn else {
+            continue;
+        };
+        if Answer::of(outcome).is_some_and(|answer| answer.is("yes")) {
+            rewinder.rewind(agent, turn, asked, true);
+        } else {
+            rewinder.notices.write(Notice::info(agent, "Not rewound."));
         }
     }
 }
 
-/// The text of a user's message, without tool results.
-fn user_text(message: &Message) -> Option<String> {
-    let Message::User { content } = message else {
+/// Deletes a deleted session's checkpoints, in the repository its record
+/// names.
+fn prune(mut deleted: MessageReader<SessionDeleted>, repo: Repo) {
+    for SessionDeleted(id) in deleted.read() {
+        let record = repo.record(id.as_str());
+        let Ok(root) = fs::read_to_string(&record) else {
+            continue;
+        };
+        let git = Git {
+            root: PathBuf::from(root.trim_end()),
+            launcher: repo.processes.launcher(),
+        };
+        let prefix = format!("{REFS}/{id}/");
+        IoTaskPool::get_or_init(TaskPool::default)
+            .spawn(async move {
+                let listed = git.run(None, &["for-each-ref", "--format=%(refname)", &prefix]);
+                for reference in listed.unwrap_or_default().lines() {
+                    git.run(None, &["update-ref", "-d", reference]).ok();
+                }
+                fs::remove_file(record).ok();
+            })
+            .detach();
+    }
+}
+
+/// The text the user typed in message `at`, without tool results or what
+/// plugins added.
+fn user_text(conversation: &Conversation, at: usize) -> Option<String> {
+    let Some(message::Message::User { content }) = conversation.messages().get(at) else {
         return None;
     };
     let texts: Vec<&str> = content
         .iter()
-        .filter_map(|item| match item {
+        .enumerate()
+        .filter(|(item, _)| conversation.origin(at, *item).is_none())
+        .filter_map(|(_, item)| match item {
             UserContent::Text(text) => Some(text.text.as_str()),
             _ => None,
         })
@@ -380,134 +515,152 @@ fn user_text(message: &Message) -> Option<String> {
     (!texts.is_empty()).then(|| texts.join("\n"))
 }
 
-fn first_line(text: &str) -> &str {
-    text.lines().next().unwrap_or_default()
-}
-
-/// Where the checkpoint's message is now: where it was, else the last user
-/// message with its text (a restored session starts after its summary).
-fn locate(messages: &[Message], checkpoint: &Checkpoint) -> Option<usize> {
-    let matches = |message: &Message| {
-        user_text(message).is_some_and(|text| text.starts_with(&checkpoint.text))
+/// Takes the snapshot of turn `index`: a new ref, or the last one when the
+/// files did not change since.
+fn take(
+    git: &Git,
+    session: &str,
+    record: &Path,
+    index: u64,
+    previous: Option<(String, String)>,
+    settled: Option<&str>,
+) -> Result<Option<Snap>, String> {
+    let Some(tree) = git.working_tree()? else {
+        return Ok(None);
     };
-    if messages.get(checkpoint.message).is_some_and(matches) {
-        return Some(checkpoint.message);
-    }
-    messages.iter().rposition(matches)
-}
-
-/// `conversation` with its first `len` messages only. The kernel has no
-/// public way to take messages out, so this rebuilds it through its serde
-/// form; the session log still holds the messages taken out.
-fn truncated(conversation: &Conversation, len: usize) -> Option<Conversation> {
-    let mut value = serde_json::to_value(conversation).ok()?;
-    let object = value.as_object_mut()?;
-    if let Some(Value::Array(messages)) = object.get_mut("messages") {
-        messages.truncate(len);
-    }
-    if let Some(Value::Array(origins)) = object.get_mut("origins") {
-        let len = u64::try_from(len).unwrap_or(u64::MAX);
-        origins.retain(|origin| {
-            origin
-                .get(0)
-                .and_then(Value::as_u64)
-                .is_some_and(|at| at < len)
-        });
-    }
-    object.insert("halted".to_owned(), Value::Null);
-    serde_json::from_value(value).ok()
-}
-
-/// Runs git in `root`, with `index` as its index when given; its output.
-fn git(root: &Path, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
-    let mut command = Command::new("git");
-    command
-        .arg("-C")
-        .arg(root)
-        .args(args)
-        .env("GIT_AUTHOR_NAME", "rig")
-        .env("GIT_AUTHOR_EMAIL", "rig@localhost")
-        .env("GIT_COMMITTER_NAME", "rig")
-        .env("GIT_COMMITTER_EMAIL", "rig@localhost");
-    if let Some(index) = index {
-        command.env("GIT_INDEX_FILE", index);
-    }
-    let output = command.output().map_err(|failure| failure.to_string())?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout)
-            .trim_end()
-            .to_owned())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
-    }
-}
-
-/// Runs `work` with a fresh temporary index in the repository's git
-/// directory, removed afterwards.
-fn with_index<T>(root: &Path, work: impl FnOnce(&Path) -> Result<T, String>) -> Result<T, String> {
-    let name = format!("rig-checkpoint-{}.index", std::process::id());
-    let index = root.join(git(root, None, &["rev-parse", "--git-path", &name])?);
-    fs::remove_file(&index).ok();
-    let done = work(&index);
-    fs::remove_file(&index).ok();
-    done
-}
-
-/// The working tree as a git tree: the tracked files and the untracked
-/// ones that are not ignored.
-fn working_tree(root: &Path) -> Result<String, String> {
-    let head = git(root, None, &["rev-parse", "--verify", "-q", "HEAD"]).is_ok();
-    with_index(root, |index| {
-        if head {
-            git(root, Some(index), &["read-tree", "HEAD"])?;
+    let user_edits = settled
+        .map(|settled| git.changed(settled, &tree))
+        .unwrap_or_default();
+    let reference = match previous {
+        Some((last, reference)) if last == tree => reference,
+        _ => {
+            let message = format!("rig checkpoint: session {session}, turn {index}");
+            let commit = git.run(None, &["commit-tree", &tree, "-m", &message])?;
+            let reference = format!("{REFS}/{session}/{index}");
+            git.run(None, &["update-ref", &reference, &commit])?;
+            let top = git.run(None, &["rev-parse", "--show-toplevel"])?;
+            if let Some(parent) = record.parent() {
+                fs::create_dir_all(parent).ok();
+            }
+            fs::write(record, top).ok();
+            reference
         }
-        git(root, Some(index), &["add", "-A"])?;
-        git(root, Some(index), &["write-tree"])
-    })
+    };
+    Ok(Some(Snap {
+        tree,
+        reference,
+        user_edits,
+    }))
 }
 
-/// The paths that differ between the trees `from` and `to`, or that only
-/// one has with `filter`.
-fn diff(root: &Path, from: &str, to: &str, filter: Option<&str>) -> Vec<String> {
-    let filter = filter.map(|filter| format!("--diff-filter={filter}"));
-    let mut args = vec!["diff-tree", "-r", "--name-only", "--no-renames"];
-    args.extend(filter.as_deref());
-    args.extend([from, to]);
-    git(root, None, &args)
-        .map(|listed| listed.lines().map(str::to_owned).collect())
-        .unwrap_or_default()
+/// Git in the project, started as every child process is.
+#[derive(Clone)]
+struct Git {
+    root: PathBuf,
+    launcher: Launcher,
 }
 
-fn changed(root: &Path, from: &str, to: &str) -> Vec<String> {
-    diff(root, from, to, None)
-}
-
-/// Keeps `tree` as a commit under the session's ref for turn `number`.
-fn store(repo: &CheckpointRepo, number: u64, tree: &str) -> Result<String, String> {
-    let message = format!("rig checkpoint: session {}, turn {number}", repo.session);
-    let commit = git(&repo.root, None, &["commit-tree", tree, "-m", &message])?;
-    let reference = format!("{REFS}/{}/{number}", repo.session);
-    git(&repo.root, None, &["update-ref", &reference, &commit])?;
-    Ok(reference)
-}
-
-/// Makes the working tree, now `current`, hold `target`'s files: removes
-/// the files `target` lacks and writes those that differ.
-fn restore(root: &Path, current: &str, target: &str) -> Result<(), String> {
-    let top = PathBuf::from(git(root, None, &["rev-parse", "--show-toplevel"])?);
-    for added in diff(root, target, current, Some("A")) {
-        fs::remove_file(top.join(added)).map_err(|failure| failure.to_string())?;
+impl Git {
+    /// Runs git with `index` as its index when given; its output.
+    fn run(&self, index: Option<&Path>, args: &[&str]) -> Result<String, String> {
+        let mut command: Command = self.launcher.command("git");
+        command
+            .arg("-C")
+            .arg(&self.root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "rig")
+            .env("GIT_AUTHOR_EMAIL", "rig@localhost")
+            .env("GIT_COMMITTER_NAME", "rig")
+            .env("GIT_COMMITTER_EMAIL", "rig@localhost");
+        if let Some(index) = index {
+            command.env("GIT_INDEX_FILE", index);
+        }
+        let output = command.output().map_err(|failure| failure.to_string())?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout)
+                .trim_end()
+                .to_owned())
+        } else {
+            Err(String::from_utf8_lossy(&output.stderr).trim().to_owned())
+        }
     }
-    let differing = diff(root, target, current, Some("DMT"));
-    if differing.is_empty() {
-        return Ok(());
+
+    /// Runs `work` with a fresh temporary index in the repository's git
+    /// directory, removed afterwards.
+    fn with_index<T>(&self, work: impl FnOnce(&Path) -> Result<T, String>) -> Result<T, String> {
+        static NEXT: AtomicU64 = AtomicU64::new(0);
+        let number = NEXT.fetch_add(1, Ordering::Relaxed);
+        let name = format!("rig-checkpoint-{}-{number}.index", std::process::id());
+        let index = self
+            .root
+            .join(self.run(None, &["rev-parse", "--git-path", &name])?);
+        let done = work(&index);
+        fs::remove_file(&index).ok();
+        done
     }
-    with_index(&top, |index| {
-        git(&top, Some(index), &["read-tree", target])?;
-        let mut args = vec!["checkout-index", "-f", "--"];
-        args.extend(differing.iter().map(String::as_str));
-        git(&top, Some(index), &args).map(drop)
-    })
+
+    /// The working tree as a git tree: the tracked files and the untracked
+    /// ones that are not ignored. `None` outside a git repository.
+    fn working_tree(&self) -> Result<Option<String>, String> {
+        if self.run(None, &["rev-parse", "--git-dir"]).is_err() {
+            return Ok(None);
+        }
+        let head = self
+            .run(None, &["rev-parse", "--verify", "-q", "HEAD"])
+            .is_ok();
+        self.with_index(|index| {
+            if head {
+                self.run(Some(index), &["read-tree", "HEAD"])?;
+            }
+            self.run(Some(index), &["add", "-A"])?;
+            self.run(Some(index), &["write-tree"])
+        })
+        .map(Some)
+    }
+
+    /// The paths that differ between the trees `from` and `to`, or that
+    /// only one has, with `filter` (`--diff-filter`).
+    fn diff(&self, from: &str, to: &str, filter: &str) -> Vec<String> {
+        let filter = format!("--diff-filter={filter}");
+        let args = [
+            "diff-tree",
+            "-r",
+            "--name-only",
+            "--no-renames",
+            &filter,
+            from,
+            to,
+        ];
+        self.run(None, &args)
+            .map(|listed| listed.lines().map(str::to_owned).collect())
+            .unwrap_or_default()
+    }
+
+    fn changed(&self, from: &str, to: &str) -> Vec<String> {
+        self.diff(from, to, "ADMT")
+    }
+
+    /// Makes the working tree, now `current`, hold `target`'s files:
+    /// removes the files `target` lacks and writes those that differ.
+    fn restore(&self, current: &str, target: &str) -> Result<(), String> {
+        let top = Self {
+            root: PathBuf::from(self.run(None, &["rev-parse", "--show-toplevel"])?),
+            launcher: self.launcher.clone(),
+        };
+        for added in self.diff(target, current, "A") {
+            fs::remove_file(top.root.join(added)).map_err(|failure| failure.to_string())?;
+        }
+        let differing = self.diff(target, current, "DMT");
+        if differing.is_empty() {
+            return Ok(());
+        }
+        top.with_index(|index| {
+            top.run(Some(index), &["read-tree", target])?;
+            let mut args = vec!["checkout-index", "-f", "--"];
+            args.extend(differing.iter().map(String::as_str));
+            top.run(Some(index), &args).map(drop)
+        })
+    }
 }
 
 #[cfg(test)]

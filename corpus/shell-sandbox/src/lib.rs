@@ -1,30 +1,27 @@
 //! Plugin corpus: 04. Sandboxed shell (spec `04-shell-sandbox.md`).
 //!
-//! [`ShellSandboxPlugin`] turns the default `shell` tool off and adds one of
-//! the same name and arguments whose commands run in a sandbox: `bwrap` on
-//! Linux, `sandbox-exec` on macOS. The project directory and `$TMPDIR` are
-//! writable, the rest of the file system read-only, the home directory
-//! hidden but for an allowlist, and the network off unless `/sandbox net on`
-//! allowed it for the session. Without a sandbox program, shell calls are
-//! refused.
+//! [`ShellSandboxPlugin`] starts every child process, and so every `shell`
+//! command, in a sandbox, by setting the app's [`Processes`] launcher:
+//! `bwrap` on Linux, `sandbox-exec` on macOS. The project directory and
+//! `$TMPDIR` are writable, the rest of the file system read-only, the home
+//! directory hidden but for an allowlist, and the network off unless
+//! `/sandbox net on` allowed it for the session. Without a sandbox program,
+//! `shell` calls are refused.
 
 use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 
-use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_harness::harness_protocol::env::AGENT_ONLY;
 use rig_harness::prelude::*;
-use rig_tools::{Shell, ShellArgs};
-use schemars::JsonSchema;
-use serde::Deserialize;
+use rig_harness::rig_core::tool::{ExitStatus, ToolOutput};
+use rig_tools::process::Launcher;
 
-/// The tool's name, the default shell's.
+/// The tool the sandbox guards, the default shell.
 pub const SHELL: &str = "shell";
 
 /// What a refused call says when no sandbox program was found.
 pub const UNAVAILABLE: &str = "sandbox unavailable";
 
-/// The rule the tool adds to the default shell's.
+/// What the model is told about the sandbox.
 const SANDBOX_RULE: &str = "`shell` runs in a sandbox: only the project directory and $TMPDIR \
      are writable, the home directory is hidden, and the network is off unless the user allowed \
      it with `/sandbox net on`. A command the sandbox blocked says so; do not work around it.";
@@ -44,58 +41,65 @@ const NETWORK_DENIED: &[&str] = &[
     "Connection refused",
 ];
 
-/// The sandboxed `shell` and `/sandbox`.
+/// Every child process in a sandbox, and `/sandbox`.
 #[derive(Default)]
 pub struct ShellSandboxPlugin;
 
 impl Plugin for ShellSandboxPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SandboxConfig>()
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .init_resource::<SandboxConfig>()
             .init_resource::<SandboxNetwork>()
             .add_command(
                 "sandbox",
                 "The shell's sandbox: `/sandbox status`, `/sandbox net on|off`",
                 sandbox_command,
             )
-            .add_systems(Startup, announce);
+            .add_systems(Startup, announce)
+            .add_systems(
+                Update,
+                confine
+                    .run_if(resource_changed::<SandboxNetwork>)
+                    .before(AgentLoop),
+            )
+            .add_systems(
+                AgentPass,
+                (
+                    refuse_unsandboxed.in_set(Stage::Gate),
+                    hint.in_set(Stage::Review),
+                ),
+            );
+        app.world_mut().spawn(PromptSection::new(
+            PromptSection::ORDER_ENVIRONMENT,
+            "sandbox",
+            SANDBOX_RULE,
+        ));
     }
 
+    /// Finds the sandbox program and keeps the launcher the other plugins
+    /// built, which the sandbox wraps.
     fn finish(&self, app: &mut App) {
-        let backend = app
-            .world()
+        let world = app.world();
+        let backend = world
             .get_resource::<SandboxConfig>()
             .and_then(Backend::find);
-        app.insert_resource(Sandbox(backend));
-        let world = app.world_mut();
-        let mut tools = world.query::<(Entity, &ToolDef)>();
-        let default = tools
-            .iter(world)
-            .find(|(_, def)| def.0.name.as_str() == SHELL)
-            .map(|(tool, _)| tool);
-        if let Some(default) = default {
-            world.entity_mut(default).insert(Disabled);
-        }
-        let description = format!(
-            "{} It runs in a sandbox: writes outside the project directory and $TMPDIR fail, \
-             the home directory is hidden, and the network is off unless the user allowed it.",
-            Tool::description(&Shell::default())
-        );
-        let rules: Vec<&str> = Shell::RULES.iter().copied().chain([SANDBOX_RULE]).collect();
-        let options = ToolOptions {
-            rules: &rules,
-            footprint: Some(Footprint::Exclusive),
-        };
-        app.add_open_tool(SHELL, &description, options, run_shell);
+        let unconfined = world
+            .get_resource::<Processes>()
+            .map(Processes::launcher)
+            .unwrap_or_default();
+        app.insert_resource(Sandbox {
+            backend,
+            unconfined,
+        });
     }
 }
 
-/// Where sandboxed commands may write and what they see, read when the app
-/// is finished and at each call. Insert one before adding the plugin to
-/// change the defaults, taken from the environment.
+/// What the sandbox hides and where it looks for its program. Insert one
+/// before adding the plugin to change the defaults, taken from the
+/// environment. The project, [`ProjectRoot`], is always writable.
 #[derive(Resource, Clone, Debug)]
 pub struct SandboxConfig {
-    /// The project directory: writable, and where commands start.
-    pub project: PathBuf,
     /// The home directory, hidden from commands; `None` hides nothing.
     pub home: Option<PathBuf>,
     /// Paths under `home` commands may still read.
@@ -109,7 +113,6 @@ pub struct SandboxConfig {
 impl Default for SandboxConfig {
     fn default() -> Self {
         Self {
-            project: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
             home: std::env::var_os("HOME").map(PathBuf::from),
             home_allowlist: vec![PathBuf::from(".cargo/registry"), PathBuf::from(".rustup")],
             tmpdir: std::env::temp_dir(),
@@ -127,10 +130,15 @@ pub struct SandboxNetwork {
     pub allowed: bool,
 }
 
-/// The sandbox program found when the app was finished, or `None`, and
-/// then every shell call is refused.
+/// The sandbox program found once every plugin was built, or `None`, and
+/// then every `shell` call is refused; and the launcher it wraps.
 #[derive(Resource, Clone, Debug)]
-pub struct Sandbox(pub Option<Backend>);
+pub struct Sandbox {
+    /// The program.
+    pub backend: Option<Backend>,
+    /// How processes started before the sandbox wrapped them.
+    pub unconfined: Launcher,
+}
 
 /// A sandbox program.
 #[derive(Clone, Debug)]
@@ -162,17 +170,17 @@ impl Backend {
         }
     }
 
-    /// The argument list that runs `command` with `sh -c` in the sandbox.
-    fn argv(&self, config: &SandboxConfig, network: bool, command: &str) -> Vec<OsString> {
-        let mut argv: Vec<OsString> = vec![self.program().into()];
+    /// The program and options every command runs under.
+    fn prefix(&self, project: &Path, config: &SandboxConfig, network: bool) -> Vec<OsString> {
+        let mut prefix: Vec<OsString> = vec![self.program().into()];
         match self {
-            Self::Bwrap(_) => argv.extend(bwrap_args(config, network)),
+            Self::Bwrap(_) => prefix.extend(bwrap_args(project, config, network)),
             Self::SandboxExec(_) => {
-                argv.extend(["-p".into(), seatbelt_profile(config, network).into()]);
+                let profile = seatbelt_profile(project, config, network);
+                prefix.extend(["-p".into(), profile.into()]);
             }
         }
-        argv.extend(["sh".into(), "-c".into(), command.into()]);
-        argv
+        prefix
     }
 }
 
@@ -188,62 +196,62 @@ fn lookup(program: &str, search_path: &OsStr) -> Option<PathBuf> {
 /// the home directory an empty read-only directory but for the allowlist,
 /// the project and `$TMPDIR` writable, and no network unless `network`.
 /// The sandbox dies with its parent and takes every process it started with
-/// it, since they live in its own pid namespace.
-fn bwrap_args(config: &SandboxConfig, network: bool) -> Vec<OsString> {
+/// it, since they live in its own pid namespace. Commands start in the
+/// directory they were started in, as bwrap keeps it.
+fn bwrap_args(project: &Path, config: &SandboxConfig, network: bool) -> Vec<OsString> {
     let mut args: Vec<OsString> = ["--die-with-parent", "--unshare-pid", "--unshare-ipc"]
         .map(OsString::from)
         .to_vec();
     if !network {
         args.push("--unshare-net".into());
     }
-    let mut mount = |option: &str, paths: &[&Path]| {
-        args.push(option.into());
+    let mut option = |name: &str, paths: &[&Path]| {
+        args.push(name.into());
         args.extend(paths.iter().map(|path| path.as_os_str().to_owned()));
     };
-    mount("--ro-bind", &[Path::new("/"), Path::new("/")]);
-    mount("--dev", &[Path::new("/dev")]);
-    mount("--proc", &[Path::new("/proc")]);
+    option("--ro-bind", &[Path::new("/"), Path::new("/")]);
+    option("--dev", &[Path::new("/dev")]);
+    option("--proc", &[Path::new("/proc")]);
     if let Some(home) = &config.home {
-        mount("--tmpfs", &[home.as_path()]);
+        option("--tmpfs", &[home.as_path()]);
         for allowed in &config.home_allowlist {
             let path = home.join(allowed);
-            mount("--ro-bind-try", &[path.as_path(), path.as_path()]);
+            option("--ro-bind-try", &[path.as_path(), path.as_path()]);
         }
     }
-    let (project, tmpdir) = (config.project.as_path(), config.tmpdir.as_path());
-    mount("--bind", &[project, project]);
-    mount("--bind-try", &[tmpdir, tmpdir]);
+    let tmpdir = config.tmpdir.as_path();
+    option("--bind", &[project, project]);
+    option("--bind-try", &[tmpdir, tmpdir]);
     if let Some(home) = &config.home {
         // Last, once the mount points under it exist; not recursive, so
         // the project and `$TMPDIR` under it stay writable.
-        mount("--remount-ro", &[home.as_path()]);
-        mount("--setenv", &[Path::new("HOME"), home.as_path()]);
+        option("--remount-ro", &[home.as_path()]);
+        option("--setenv", &[Path::new("HOME"), home.as_path()]);
     }
-    mount("--setenv", &[Path::new("TMPDIR"), tmpdir]);
-    mount("--chdir", &[project]);
+    option("--setenv", &[Path::new("TMPDIR"), tmpdir]);
     args.push("--".into());
     args
 }
 
 /// The macOS sandbox profile: as [`bwrap_args`], in Seatbelt's language;
 /// later rules win.
-fn seatbelt_profile(config: &SandboxConfig, network: bool) -> String {
+fn seatbelt_profile(project: &Path, config: &SandboxConfig, network: bool) -> String {
     let path = |path: &Path| {
         let text = path.to_string_lossy();
         format!("\"{}\"", text.replace('\\', "\\\\").replace('"', "\\\""))
     };
-    let (project, tmpdir) = (path(&config.project), path(&config.tmpdir));
+    let (project, tmpdir) = (path(project), path(&config.tmpdir));
     let mut profile = format!(
         "(version 1)\n(allow default)\n(deny file-write*)\n\
          (allow file-write* (subpath {project}) (subpath {tmpdir}) (literal \"/dev/null\"))\n"
     );
     if let Some(home) = &config.home {
         profile.push_str(&format!("(deny file-read* (subpath {}))\n", path(home)));
-        let allowed = config
+        let allowed: String = config
             .home_allowlist
             .iter()
             .map(|allowed| format!(" (subpath {})", path(&home.join(allowed))))
-            .collect::<String>();
+            .collect();
         profile.push_str(&format!(
             "(allow file-read-metadata)\n(allow file-read* (subpath {project}) (subpath {tmpdir}){allowed})\n"
         ));
@@ -254,104 +262,111 @@ fn seatbelt_profile(config: &SandboxConfig, network: bool) -> String {
     profile
 }
 
-/// `argv` as one `sh` command line, each word quoted, run from `project`.
-fn command_line(project: &Path, argv: &[OsString]) -> String {
-    let quote = |word: &OsStr| format!("'{}'", word.to_string_lossy().replace('\'', r"'\''"));
-    let words: Vec<String> = argv.iter().map(|word| quote(word)).collect();
-    format!(
-        "cd {} || exit 126\nexec {}",
-        quote(project.as_os_str()),
-        words.join(" ")
-    )
-}
-
-/// The arguments of the sandboxed `shell`, the default shell's.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct SandboxedArgs {
-    /// The command line.
-    command: String,
-    /// Seconds before the command is killed.
-    timeout_secs: Option<u64>,
-}
-
-/// Starts a `shell` call: the command, wrapped in the sandbox, runs through
-/// the default shell's runner as the call's [`Running`] task, so an
-/// interrupt, which despawns the call, drops it and kills the sandbox. With
-/// no sandbox program the call is refused.
-fn run_shell(
-    called: On<ToolCalled<SandboxedArgs>>,
+/// Starts every process from now on in the sandbox, with the network as
+/// the session says: at the first frame, after a restore and after each
+/// `/sandbox net`. Without a sandbox program nothing changes, and `shell`
+/// calls are refused.
+fn confine(
     sandbox: Res<Sandbox>,
-    config: Res<SandboxConfig>,
     network: Res<SandboxNetwork>,
-    paths: Option<Res<SessionPaths>>,
-    wake: Res<Wake>,
-    mut commands: Commands,
+    config: Res<SandboxConfig>,
+    root: Res<ProjectRoot>,
+    processes: Res<Processes>,
 ) {
-    let Some(backend) = &sandbox.0 else {
-        let refusal = ToolExecutionError::refused(format!(
-            "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and commands \
-             never run unsandboxed. Ask the user to install one."
-        ));
-        let output = ToolOutput(ToolResult::failed(refusal));
-        commands.entity(called.call).insert_if_new(output);
+    let Some(backend) = &sandbox.backend else {
         return;
     };
-    let argv = backend.argv(&config, network.allowed, &called.args.command);
-    let line = command_line(&config.project, &argv);
-    let shell = Shell {
-        launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
-        spill: paths.map(|paths| paths.spill()),
-        ..Shell::default()
-    };
-    let work = run(shell, line, called.args.timeout_secs, network.allowed);
-    let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-    commands
-        .entity(called.call)
-        .insert(Running::spawn_into::<ToolOutput, _>(pool, &wake, work));
+    let mut launcher = sandbox.unconfined.clone();
+    let wrapped = std::mem::take(&mut launcher.prefix);
+    launcher.prefix = backend.prefix(&root.0, &config, network.allowed);
+    launcher.prefix.extend(wrapped);
+    if launcher.cwd.is_none() {
+        launcher.cwd = Some(root.0.clone());
+    }
+    processes.set(launcher);
 }
 
-/// Runs the wrapped command `line` through `shell`, with a hint when the
-/// sandbox blocked it.
-async fn run(shell: Shell, line: String, timeout_secs: Option<u64>, network: bool) -> ToolResult {
-    let args = ShellArgs {
-        timeout_secs,
-        ..ShellArgs::new(line)
-    };
-    match shell.run(args).await.map(|ran| ran.output) {
-        Ok(mut output) => {
-            if let Some(hint) = hint(&output, network) {
-                output.push_str(&format!("\n{hint}"));
-            }
-            ToolResult::success(output.into())
+/// Refuses each `shell` call when there is no sandbox to run it in.
+fn refuse_unsandboxed(
+    calls: Query<(Entity, &ToolRequest), Undecided>,
+    sandbox: Res<Sandbox>,
+    mut commands: Commands,
+) {
+    if sandbox.backend.is_some() {
+        return;
+    }
+    for (call, request) in &calls {
+        if request.call.function.name.as_str() == SHELL {
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::refused(format!(
+                    "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and \
+                 commands never run unsandboxed. Ask the user to install one."
+                )));
         }
-        Err(error) => ToolResult::failed(error),
     }
 }
 
-/// What to tell the model when `output` shows the sandbox blocked the
-/// command.
-fn hint(output: &str, network: bool) -> Option<String> {
+/// On a `shell` call whose result got its hint.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Hinted;
+
+/// Adds a hint to each failed `shell` command the sandbox blocked, before
+/// it is committed.
+fn hint(
+    calls: Query<(Entity, &ToolRequest, &Outcome, &Published), (Unreviewed, Without<Hinted>)>,
+    network: Res<SandboxNetwork>,
+    mut commands: Commands,
+) {
+    for (call, request, outcome, published) in &calls {
+        let failed = published
+            .0
+            .get::<ExitStatus>()
+            .ok()
+            .flatten()
+            .is_some_and(|status| status != ExitStatus::Exited(0));
+        if request.call.function.name.as_str() != SHELL || !failed {
+            continue;
+        }
+        let result = outcome.tool_result();
+        let Some(why) = result
+            .output()
+            .as_text()
+            .and_then(|output| blocked(output, network.allowed))
+        else {
+            continue;
+        };
+        let text = format!(
+            "{}\nblocked by the sandbox: {why}",
+            result.output().render()
+        );
+        let hinted = result.with_output(ToolOutput::text(text));
+        commands
+            .entity(call)
+            .insert((Outcome::from(hinted), Hinted));
+    }
+}
+
+/// Why the sandbox blocked a command that printed `output`, if it did.
+fn blocked(output: &str, network: bool) -> Option<&'static str> {
     let says = |markers: &[&str]| markers.iter().any(|marker| output.contains(marker));
     if !network && says(NETWORK_DENIED) {
-        Some(
-            "blocked by the sandbox: the network is off; ask the user to run `/sandbox net on`"
-                .to_owned(),
-        )
+        Some("the network is off; ask the user to run `/sandbox net on`")
     } else if says(WRITE_DENIED) {
         Some(
-            "blocked by the sandbox: only the project directory and $TMPDIR are writable; \
-             ask the user to run the command outside the agent"
-                .to_owned(),
+            "only the project directory and $TMPDIR are writable; ask the user to run the \
+             command outside the agent",
         )
     } else {
         None
     }
 }
 
-/// Says once, at startup, that shell calls are refused without a sandbox.
-fn announce(sandbox: Option<Res<Sandbox>>, mut notices: MessageWriter<Notice>) {
-    if sandbox.is_some_and(|sandbox| sandbox.0.is_none()) {
+/// Says once, at startup, that `shell` calls are refused without a
+/// sandbox.
+fn announce(sandbox: Res<Sandbox>, mut notices: MessageWriter<Notice>) {
+    if sandbox.backend.is_none() {
         notices.write(Notice::error(
             None,
             format!("{UNAVAILABLE}: no `bwrap` or `sandbox-exec` on PATH; shell calls are refused"),
@@ -364,40 +379,38 @@ fn sandbox_command(
     In(args): In<CommandArgs>,
     sandbox: Res<Sandbox>,
     config: Res<SandboxConfig>,
+    root: Res<ProjectRoot>,
     mut network: ResMut<SandboxNetwork>,
     mut notices: MessageWriter<Notice>,
 ) {
     let words: Vec<&str> = args.args.split_whitespace().collect();
-    match words.as_slice() {
-        [] | ["status"] => {
-            notices.write(Notice::info(
-                args.agent,
-                status(&sandbox, &config, *network),
-            ));
-        }
+    let said = match words.as_slice() {
+        [] | ["status"] => status(&sandbox, &config, &root.0, *network),
         ["net", "on"] => {
             network.allowed = true;
-            notices.write(Notice::info(
-                args.agent,
-                "Sandbox network on for this session.",
-            ));
+            "Sandbox network on for this session.".to_owned()
         }
         ["net", "off"] => {
             network.allowed = false;
-            notices.write(Notice::info(args.agent, "Sandbox network off."));
+            "Sandbox network off.".to_owned()
         }
         _ => {
-            notices.write(Notice::error(
-                args.agent,
-                "usage: /sandbox status | /sandbox net on | /sandbox net off",
-            ));
+            let usage = "usage: /sandbox status | /sandbox net on | /sandbox net off";
+            notices.write(Notice::error(args.agent, usage));
+            return;
         }
-    }
+    };
+    notices.write(Notice::info(args.agent, said));
 }
 
 /// The sandbox's profile, as `/sandbox status` shows it.
-fn status(sandbox: &Sandbox, config: &SandboxConfig, network: SandboxNetwork) -> String {
-    let Some(backend) = &sandbox.0 else {
+fn status(
+    sandbox: &Sandbox,
+    config: &SandboxConfig,
+    project: &Path,
+    network: SandboxNetwork,
+) -> String {
+    let Some(backend) = &sandbox.backend else {
         return format!("{UNAVAILABLE}: shell calls are refused.");
     };
     let hidden = match &config.home {
@@ -414,7 +427,7 @@ fn status(sandbox: &Sandbox, config: &SandboxConfig, network: SandboxNetwork) ->
     format!(
         "Sandbox: {}\nwritable: {}, {}\nhidden: {hidden}\nnetwork: {}",
         backend.program().display(),
-        config.project.display(),
+        project.display(),
         config.tmpdir.display(),
         if network.allowed { "on" } else { "off" },
     )

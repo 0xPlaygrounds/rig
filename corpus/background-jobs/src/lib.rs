@@ -2,35 +2,36 @@
 //! `job_output`, `job_kill` and `job_list` tools, `/jobs`, and a status
 //! item with the running count.
 //!
-//! A job is `sh -c` in a session and process group of its own, as `shell`
-//! starts its commands, writing its output straight to a log file in the
-//! session's `jobs` directory, so it outlives the turn that started it and,
-//! with [`JobSettings::survive_reload`], the process. A small wrapper shell
-//! writes the job's exit code next to the log, for a process that re-attaches
-//! by pid after `/reload`. While it runs, a [`Running`] task on a job entity
-//! waits for it on a thread of its own and ends as a [`Done<JobExit>`]; an
-//! observer of that tells the agent that started it, with a [`Deliver`]: a
-//! `Note` (with its next model call, whenever that is), or with
-//! [`JobSettings::notify_idle`] a `Steer`, which starts a turn of an idle
-//! agent.
+//! A job is `sh -c`, started as every child process starts ([`Processes`],
+//! so a sandbox plugin's wrapper applies), writing its output straight to a
+//! log file in the session's `jobs` directory, so it outlives the turn that
+//! started it and, with [`JobSettings::survive_reload`], the process. A
+//! small wrapper shell writes the job's exit code next to the log, for a
+//! process that re-attaches by pid after `/reload`. While it runs, a
+//! [`Running`] task on a job entity waits for it on a thread of its own and
+//! ends as a [`Done<JobExit>`]; an observer of that tells the agent that
+//! started it with a [`Deliver`]: a `Note` (with its next model call,
+//! whenever that is), or with [`JobSettings::notify_idle`] a `Steer`, which
+//! also starts a turn of an idle agent.
 //!
 //! What each agent started is its [`AgentJobs`], saved with the session.
 //! The job entity is [`JobOf`] its agent and holds the process group: it is
 //! killed when the entity goes (the agent despawned, the app dropped), and
-//! on any exit but a `/reload` with `survive_reload`.
+//! on any exit but a `/reload` ([`ExitReason::Reload`]) with
+//! `survive_reload`.
 
 use std::fs::{self, File};
 use std::io::{Read as _, Seek as _, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use bevy_app::OnAppExitSystems;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_reload::ReloadStatus;
-use rig_tools::process::detach;
+use rig_tools::process::Launcher;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -39,8 +40,6 @@ mod status;
 #[cfg(test)]
 mod tests;
 
-/// The output a job keeps for `job_output`: the end of its log.
-pub const DEFAULT_BUFFER: u64 = 2 * 1024 * 1024;
 /// Lines `job_output` returns unless asked for more.
 const DEFAULT_TAIL: usize = 50;
 /// Lines the note about a job's exit quotes.
@@ -51,8 +50,9 @@ const NOTE_BYTES: u64 = 8 * 1024;
 /// re-attaches by pid, and so is not its parent, learns it too.
 const WRAPPER: &str = r#"sh -c "$1"; s=$?; echo "$s" > "$2"; exit "$s""#;
 
-/// How jobs behave; another plugin, or the app, may insert its own.
-#[derive(Resource, Clone, Debug)]
+/// The `[jobs]` table of the user's settings.
+#[derive(Resource, Deserialize, Clone, Debug)]
+#[serde(default, deny_unknown_fields)]
 pub struct JobSettings {
     /// A job that exits while its agent is idle starts a turn; otherwise
     /// the note waits for the agent's next model call.
@@ -61,8 +61,6 @@ pub struct JobSettings {
     pub survive_reload: bool,
     /// How much of the end of a job's output `job_output` reads.
     pub buffer_bytes: u64,
-    /// Where logs go, instead of the session's `jobs` directory.
-    pub dir: Option<PathBuf>,
 }
 
 impl Default for JobSettings {
@@ -70,8 +68,7 @@ impl Default for JobSettings {
         Self {
             notify_idle: false,
             survive_reload: false,
-            buffer_bytes: DEFAULT_BUFFER,
-            dir: None,
+            buffer_bytes: 2 * 1024 * 1024,
         }
     }
 }
@@ -86,7 +83,7 @@ pub enum JobState {
     Exited(Option<i32>),
     /// `job_kill` killed it.
     Killed,
-    /// It was not found again after a restart.
+    /// It ended with the process that started it, or was not found again.
     Lost,
 }
 
@@ -200,7 +197,8 @@ impl Drop for Group {
     }
 }
 
-/// Kills the group `pid` leads unless it is gone or kept, and marks it gone.
+/// Kills the group `pid` leads unless it is gone or kept, and marks it
+/// gone: once its leader was reaped, the group's id may name another.
 fn end(state: &AtomicU8, pid: u32) {
     if state
         .compare_exchange(LIVE, GONE, Ordering::AcqRel, Ordering::Acquire)
@@ -219,51 +217,54 @@ pub struct BackgroundJobsPlugin;
 
 impl Plugin for BackgroundJobsPlugin {
     fn build(&self, app: &mut App) {
-        let options = |rules| ToolOptions {
+        let options = |rules, footprint| ToolOptions {
             rules,
-            footprint: Some(Footprint::Exclusive),
+            footprint: Some(footprint),
         };
-        app.init_resource::<JobSettings>()
+        app.init_resource::<Processes>()
+            .add_setting::<JobSettings>("jobs")
             .register_required_components::<Agent, AgentJobs>()
             .add_open_tool(
                 "job_start",
                 "Start a shell command in the background and return its job id at once. \
                  It keeps running after this turn; you are told when it exits.",
-                options(&[
-                    "Use `job_start` for commands that run long or never end, such as dev \
-                     servers, watchers or slow test suites, then keep working; check them \
-                     with `job_output` and stop them with `job_kill`.",
-                ]),
+                options(
+                    &[
+                        "Use `job_start` for commands that run long or never end, such as dev \
+                         servers, watchers or slow test suites, then keep working; check them \
+                         with `job_output` and stop them with `job_kill`.",
+                    ],
+                    Footprint::Exclusive,
+                ),
                 on_start,
             )
             .add_open_tool(
                 "job_output",
                 "The last lines a background job printed.",
-                ToolOptions {
-                    rules: &[],
-                    footprint: Some(Footprint::ReadOnly),
-                },
+                options(&[], Footprint::ReadOnly),
                 on_output,
             )
             .add_open_tool(
                 "job_kill",
                 "Kill a background job and its child processes.",
-                options(&[]),
+                options(&[], Footprint::Exclusive),
                 on_kill,
             )
             .add_open_tool(
                 "job_list",
                 "List your background jobs.",
-                ToolOptions {
-                    rules: &[],
-                    footprint: Some(Footprint::ReadOnly),
-                },
+                options(&[], Footprint::ReadOnly),
                 on_list,
             )
             .add_command("jobs", "List the background jobs", list_command)
             .add_observer(on_exit)
             .add_observer(reattach)
-            .add_systems(Last, kill_on_exit.run_if(on_message::<AppExit>));
+            .add_systems(
+                Last,
+                kill_on_exit
+                    .in_set(OnAppExitSystems)
+                    .run_if(resource_exists::<ExitReason>),
+            );
         #[cfg(feature = "tui")]
         status::add(app);
     }
@@ -302,45 +303,48 @@ struct KillArgs {
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
 
-fn answered(text: String) -> ToolOutput {
-    ToolOutput(ToolResult::success(text.into()))
+fn answered(text: String) -> Outcome {
+    Outcome::from(ToolResult::success(text.into()))
 }
 
-fn refused(why: String) -> ToolOutput {
-    ToolOutput(ToolResult::failed(ToolExecutionError::other(why)))
+fn failed(why: String) -> Outcome {
+    Outcome::from(ToolResult::failed(ToolExecutionError::other(why)))
+}
+
+fn pool() -> &'static TaskPool {
+    IoTaskPool::get_or_init(TaskPool::default)
 }
 
 fn on_start(
     called: On<ToolCalled<StartArgs>>,
-    mut agents: Query<(&AgentId, &mut AgentJobs)>,
-    settings: Res<JobSettings>,
+    mut agents: Query<&mut AgentJobs>,
     paths: Option<Res<SessionPaths>>,
+    processes: Res<Processes>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let (call, agent) = (called.call, called.agent);
-    let Ok((agent_id, mut jobs)) = agents.get_mut(agent) else {
+    let Ok(mut jobs) = agents.get_mut(agent) else {
+        return;
+    };
+    let Some(paths) = paths else {
+        let why = "No session directory to keep the job's log in.".to_owned();
+        commands.entity(call).insert_if_new(failed(why));
         return;
     };
     let id = jobs.0.iter().map(|job| job.id).max().unwrap_or(0) + 1;
-    let dir = settings
-        .dir
-        .clone()
-        .or_else(|| paths.map(|paths| paths.path().join("jobs")))
-        .unwrap_or_else(|| std::env::temp_dir().join("rig-jobs"))
-        .join(&agent_id.0);
-    let command = called.args.command.clone();
-    let name = called
-        .args
-        .name
-        .clone()
-        .unwrap_or_else(|| default_name(&command));
-    let log = dir.join(format!("{id}.log"));
-    let child = match launch(&command, &dir, &log) {
+    let log = paths
+        .path()
+        .join("jobs")
+        .join(&called.caller.0)
+        .join(format!("{id}.log"));
+    let StartArgs { command, name } = &called.args;
+    let name = name.clone().unwrap_or_else(|| default_name(command));
+    let child = match launch(&processes.launcher(), command, &log) {
         Ok(child) => child,
         Err(error) => {
             let why = format!("Could not start the job: {error}");
-            commands.entity(call).insert_if_new(refused(why));
+            commands.entity(call).insert_if_new(failed(why));
             return;
         }
     };
@@ -348,7 +352,7 @@ fn on_start(
     jobs.0.push(JobRecord {
         id,
         name: name.clone(),
-        command,
+        command: command.clone(),
         log: log.display().to_string(),
         pid,
         started_ms: now_ms(),
@@ -361,12 +365,11 @@ fn on_start(
         let code = blocking(move || Ok(wait_child(child, &state))).await;
         JobExit::Exited(code.ok().flatten())
     };
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
         Name::new(format!("job {name}")),
         JobOf(agent),
         LiveJob { id, group },
-        Running::spawn(pool, &wake, waiting),
+        Running::spawn(pool(), &wake, waiting),
     ));
     let text = format!(
         "Started job {id} `{name}` (pid {pid}), logging to {}. You will be told when it exits.",
@@ -375,20 +378,21 @@ fn on_start(
     commands.entity(call).insert_if_new(answered(text));
 }
 
-/// Starts `command` in a process group of its own, its output to `log`.
-fn launch(command: &str, dir: &Path, log: &Path) -> std::io::Result<Child> {
-    fs::create_dir_all(dir)?;
+/// Starts `command` as `launcher` starts processes, its output to `log`.
+fn launch(launcher: &Launcher, command: &str, log: &Path) -> std::io::Result<Child> {
+    if let Some(dir) = log.parent() {
+        fs::create_dir_all(dir)?;
+    }
     let out = File::create(log)?;
     let err = out.try_clone()?;
-    let mut shell = Command::new("sh");
-    shell
+    launcher
+        .command("sh")
         .args(["-c", WRAPPER, "rig-job", command])
         .arg(log.with_extension("status"))
         .stdin(Stdio::null())
         .stdout(out)
-        .stderr(err);
-    detach(&mut shell);
-    shell.spawn()
+        .stderr(err)
+        .spawn()
 }
 
 /// Waits for `child`, then kills what is left of its group: its exit code,
@@ -409,7 +413,7 @@ fn on_output(
     let call = called.call;
     let Some(job) = find(&agents, called.agent, called.args.id) else {
         let why = format!("No job {}; job_list lists them.", called.args.id);
-        commands.entity(call).insert_if_new(refused(why));
+        commands.entity(call).insert_if_new(failed(why));
         return;
     };
     let (log, bytes) = (PathBuf::from(&job.log), settings.buffer_bytes);
@@ -421,10 +425,9 @@ fn on_output(
             Err(error) => ToolResult::failed(error),
         }
     };
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands
         .entity(call)
-        .insert(Running::spawn_into::<ToolOutput, _>(pool, &wake, reading));
+        .insert(Running::answering(pool(), &wake, reading));
 }
 
 fn on_kill(
@@ -439,16 +442,16 @@ fn on_kill(
         .get_mut(agent)
         .ok()
         .and_then(|jobs| jobs.into_inner().0.iter_mut().find(|job| job.id == id));
-    let output = match (job, record) {
+    let outcome = match (job, record) {
         (Some((_, job)), Some(record)) => {
             job.group.kill();
             record.state = JobState::Killed;
             answered(format!("Killed job {id} `{}`.", record.name))
         }
-        (None, Some(record)) => refused(format!("Job {id} is not running: {}", record.line())),
-        (_, None) => refused(format!("No job {id}; job_list lists them.")),
+        (None, Some(record)) => failed(format!("Job {id} is not running: {}", record.line())),
+        (_, None) => failed(format!("No job {id}; job_list lists them.")),
     };
-    commands.entity(call).insert_if_new(output);
+    commands.entity(call).insert_if_new(outcome);
 }
 
 fn on_list(called: On<ToolCalled<ListArgs>>, agents: Query<&AgentJobs>, mut commands: Commands) {
@@ -491,11 +494,11 @@ fn on_exit(
     settings: Res<JobSettings>,
     mut commands: Commands,
 ) {
-    let Ok((JobOf(agent), job, Done(exit))) = live.get(done.entity) else {
+    let Ok((&JobOf(agent), job, Done(exit))) = live.get(done.entity) else {
         return;
     };
     commands.entity(done.entity).despawn();
-    let Ok(mut jobs) = agents.get_mut(*agent) else {
+    let Ok(mut jobs) = agents.get_mut(agent) else {
         return;
     };
     let Some(record) = jobs.0.iter_mut().find(|record| record.id == job.id) else {
@@ -503,16 +506,18 @@ fn on_exit(
     };
     let ended = now_ms();
     record.ended_ms = Some(ended);
-    let killed = record.state == JobState::Killed;
-    record.state = match exit {
-        _ if killed => JobState::Killed,
-        JobExit::Exited(code) => JobState::Exited(*code),
-        JobExit::Lost => JobState::Lost,
-    };
+    if record.state == JobState::Killed {
+        return;
+    }
     let how = match exit {
-        _ if killed => return,
-        JobExit::Exited(code) => format!("exited with {}", code_label(*code)),
-        JobExit::Lost => "ended while the agent restarted".to_owned(),
+        JobExit::Exited(code) => {
+            record.state = JobState::Exited(*code);
+            format!("exited with {}", code_label(*code))
+        }
+        JobExit::Lost => {
+            record.state = JobState::Lost;
+            "ended while the agent restarted".to_owned()
+        }
     };
     let last = tail(Path::new(&record.log), NOTE_BYTES, NOTE_LINES);
     let text = format!(
@@ -527,31 +532,32 @@ fn on_exit(
         DeliveryMode::Note
     };
     let origin = Origin::plugin("background-jobs");
-    commands.trigger(Deliver::new(*agent, text, mode).with_origin(origin));
+    commands.trigger(Deliver::new(agent, text, mode).with_origin(origin));
 }
 
-/// On a restart, waits again for the agent's jobs that were running, with
-/// `survive_reload`; otherwise kills any that still runs.
+/// When a restored agent gets its saved jobs, waits again for those still
+/// running with `survive_reload` (the previous process kept them only for
+/// `/reload`); otherwise kills any that still runs, as after a crash.
 fn reattach(
-    restored: On<Restored>,
+    inserted: On<Insert<AgentJobs>>,
     mut agents: Query<&mut AgentJobs>,
     settings: Res<JobSettings>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let agent = restored.entity;
+    let agent = inserted.entity;
     let Ok(mut jobs) = agents.get_mut(agent) else {
         return;
     };
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
-    for record in jobs
+    let running = jobs
         .0
         .iter_mut()
-        .filter(|record| record.state == JobState::Running)
-    {
+        .filter(|record| record.state == JobState::Running);
+    for record in running {
         let (pid, status) = (record.pid, record.status_file());
-        if !settings.survive_reload {
-            if ours(pid, &status) {
+        let alive = ours(pid, &status);
+        if !(alive && settings.survive_reload) {
+            if alive {
                 Group::new(pid).kill();
             }
             record.state = JobState::Lost;
@@ -570,7 +576,7 @@ fn reattach(
                 id: record.id,
                 group,
             },
-            Running::spawn(pool, &wake, waiting),
+            Running::spawn(pool(), &wake, waiting),
         ));
     }
 }
@@ -589,8 +595,8 @@ fn wait_foreign(pid: u32, status: &Path, state: &AtomicU8) -> JobExit {
     }
 }
 
-/// Whether `pid` is still the wrapper of the job whose code goes to
-/// `status`, not another process that got its pid.
+/// Whether `pid` still leads the job whose code goes to `status`, not
+/// another process that got its pid.
 fn ours(pid: u32, status: &Path) -> bool {
     let cmdline = fs::read(format!("/proc/{pid}/cmdline")).unwrap_or_default();
     let status = status.display().to_string();
@@ -632,16 +638,12 @@ fn wait_pid(pid: u32) {
 #[cfg(not(target_os = "linux"))]
 fn wait_pid(_pid: u32) {}
 
-/// Kills every job on exit, except on `/reload`'s restart with
+/// Kills every job on the way out, except on `/reload` with
 /// `survive_reload`, which leaves them to the next process.
-fn kill_on_exit(
-    settings: Res<JobSettings>,
-    reload: Option<Res<ReloadStatus>>,
-    live: Query<&LiveJob>,
-) {
-    let reloading = reload.is_some_and(|status| *status == ReloadStatus::Ready);
+fn kill_on_exit(settings: Res<JobSettings>, reason: Res<ExitReason>, live: Query<&LiveJob>) {
+    let keep = settings.survive_reload && *reason == ExitReason::Reload;
     for job in &live {
-        if settings.survive_reload && reloading {
+        if keep {
             job.group.keep();
         } else {
             job.group.kill();
@@ -658,8 +660,7 @@ fn find<'a>(agents: &'a Query<&AgentJobs>, agent: Entity, id: u32) -> Option<&'a
 fn tail(log: &Path, bytes: u64, lines: usize) -> String {
     let read = || -> std::io::Result<String> {
         let mut file = File::open(log)?;
-        let len = file.metadata()?.len();
-        let start = len.saturating_sub(bytes);
+        let start = file.metadata()?.len().saturating_sub(bytes);
         file.seek(SeekFrom::Start(start))?;
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)?;

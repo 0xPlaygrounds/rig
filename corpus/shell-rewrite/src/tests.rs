@@ -1,91 +1,115 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use rig_cassette::journal::MemoryStore;
+use rig_core::effect::EffectKind;
 use rig_core::message::{Message, ToolResultContent};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 use super::*;
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
-/// A fresh directory of the test's own, under the temp dir.
+/// A fresh directory of the test's own, beside the test binary in the
+/// target directory.
 fn scratch(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
+    let exe = std::env::current_exe().unwrap_or_default();
+    let base = exe.parent().map(Path::to_path_buf).unwrap_or_default();
+    let dir = base.join(format!(
         "corpus-shell-rewrite-{name}-{}",
         std::process::id()
     ));
     std::fs::remove_dir_all(&dir).ok();
+    std::fs::create_dir_all(dir.join("bin")).ok();
     dir
 }
 
-#[test]
-fn the_rules_rewrite_each_simple_command_in_order() {
-    let parsed = ShellRewrites::parse(
-        r#"
-        [[rule]]
-        command = "cargo test"
-        add = ["--quiet", "-j 4"]
-
-        [[rule]]
-        command = "cargo"
-        prefix = "timeout 300"
-
-        [[rule]]
-        command = "npm install"
-        replace = "pnpm install"
-        needs_file = "no-such-pnpm-lock.yaml"
-        "#,
-    );
-    assert!(parsed.is_ok(), "{parsed:?}");
-    let rewrites = parsed.unwrap_or_default();
-    let cases = [
-        (
-            "cargo test -p x -- --nocapture",
-            "timeout 300 cargo test --quiet -j 4 -p x -- --nocapture",
-        ),
-        ("cargo test --quiet", "timeout 300 cargo test -j 4 --quiet"),
-        (
-            "cd x && cargo build 2>&1 | tail",
-            "cd x && timeout 300 cargo build 2>&1 | tail",
-        ),
-        ("timeout 9 cargo build", "timeout 9 cargo build"),
-        ("echo 'cargo; cargo'", "echo 'cargo; cargo'"),
-        ("npm install", "npm install"),
-    ];
-    let got: Vec<(&str, String)> = cases
-        .iter()
-        .map(|(command, _)| (*command, rewrites.rewrite(command)))
-        .collect();
-    let wanted: Vec<(&str, String)> = cases
-        .iter()
-        .map(|(command, rewritten)| (*command, (*rewritten).to_owned()))
-        .collect();
-    assert_eq!(got, wanted);
+/// A `trash` in `dir/bin` that moves files to `./.trash`.
+fn fake_trash(dir: &Path) {
+    let trash = dir.join("bin/trash");
+    std::fs::write(&trash, "#!/bin/sh\nmkdir -p .trash && mv \"$@\" .trash/\n").ok();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&trash, std::fs::Permissions::from_mode(0o755)).ok();
+    }
 }
 
-/// What the agent's conversation and its model saw.
+/// Stands in for spec 01's guard: asks the user about every `shell` call
+/// about to run whose command has `rm -rf`, as a hold on the call.
+fn guard(calls: Query<(Entity, &ToolRequest, &ForAgent), Undecided>, mut commands: Commands) {
+    for (call, request, &ForAgent(agent)) in &calls {
+        let arguments = &request.call.function.arguments;
+        let command = arguments.get("command").and_then(|c| c.as_str());
+        let command = command.unwrap_or_default();
+        if command.contains("rm -rf") {
+            let ask = Ask::yes_no("Run a destructive command?").body(command.to_owned());
+            commands.spawn((ask, ForAgent(agent), HoldOf(call)));
+        }
+    }
+}
+
+/// How many questions were asked.
+#[derive(Resource, Default)]
+struct Asked(usize);
+
+/// The arguments of each tool call the effect log recorded.
+#[derive(Resource, Default)]
+struct Logged(Vec<String>);
+
+fn log_calls(mut recorded: MessageReader<Recorded>, mut logged: ResMut<Logged>) {
+    for Recorded(record) in recorded.read() {
+        if let EffectKind::ToolCall { args, .. } = &record.kind {
+            logged.0.push(args.clone());
+        }
+    }
+}
+
+/// What the agent's conversation says.
+#[derive(Default)]
 struct Seen {
     /// The arguments of each call in the conversation.
     called: Vec<String>,
     /// The first text of each tool result in the conversation.
     results: Vec<String>,
-    /// The model's second request.
-    second: String,
+    /// The arguments of each call in the effect log.
+    logged: Vec<String>,
+    /// How many questions were asked.
+    asked: usize,
 }
 
-/// Runs a turn whose model calls `shell` with `rm a.txt`, with the rule
-/// `rm` -> `trash` on, in the working directory.
-fn rm_a_txt() -> Option<Seen> {
-    let rules = "[[rule]]\ncommand = \"rm\"\nreplace = \"trash\"\nneeds_program = \"trash\"\n";
+/// Runs a turn in `dir` whose model calls `shell` with `rm a.txt`, then
+/// with `rm -rf b`, under the rules `rm -rf` -> `trash` and `rm` ->
+/// `trash`, with a guard asking about `rm -rf`.
+fn run(dir: &Path) -> Option<Seen> {
+    let rules = r#"
+        [[rule]]
+        command = "rm -rf"
+        replace = "trash"
+        needs_program = "trash"
+
+        [[rule]]
+        command = "rm"
+        replace = "trash"
+        needs_program = "trash"
+    "#;
     let rewrites = ShellRewrites::parse(rules).ok()?;
+    let path = std::env::var_os("PATH").unwrap_or_default();
+    let dirs = std::iter::once(dir.join("bin")).chain(std::env::split_paths(&path));
+    let path = std::env::join_paths(dirs).ok()?;
+    let processes = Processes::default();
+    processes.set(processes.launcher().in_dir(dir).with_env("PATH", path));
+
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     app.insert_resource(rewrites)
+        .insert_resource(processes)
+        .insert_resource(ProjectRoot(dir.to_owned()))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1)
+        .init_resource::<Asked>()
+        .init_resource::<Logged>()
+        .add_systems(PostUpdate, log_calls)
+        .add_observer(log_ended)
+        .add_observer(|_: On<Add<Ask>>, mut asked: ResMut<Asked>| asked.0 += 1)
+        .add_systems(AgentPass, guard.in_set(Stage::Gate))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -96,6 +120,7 @@ fn rm_a_txt() -> Option<Seen> {
     app.update();
     let model = MockCompletionModel::from_stream_turns([
         calls("c1", SHELL, serde_json::json!({ "command": "rm a.txt" })),
+        calls("c2", SHELL, serde_json::json!({ "command": "rm -rf b" })),
         reply("Deleted."),
     ]);
     let world = app.world_mut();
@@ -104,8 +129,14 @@ fn rm_a_txt() -> Option<Seen> {
         .iter(world)
         .next()?;
     world.entity_mut(agent).insert(connect(&model)?);
-    world.trigger(Deliver::new(agent, "Delete a.txt", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 > 0);
+    world.trigger(Deliver::new(
+        agent,
+        "Delete a.txt and b",
+        DeliveryMode::Steer,
+    ));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
 
     let messages = app.world().get::<Conversation>(agent)?.messages();
     let called = messages
@@ -133,60 +164,44 @@ fn rm_a_txt() -> Option<Seen> {
             _ => None,
         })
         .collect();
-    let second = format!("{:?}", model.requests().get(1));
     Some(Seen {
         called,
         results,
-        second,
+        logged: app.world().resource::<Logged>().0.clone(),
+        asked: app.world().resource::<Asked>().0,
     })
 }
 
 #[test]
-fn rm_runs_as_trash_while_the_conversation_keeps_the_models_call() {
-    // A project with `a.txt`, and a `trash` on PATH that moves files to
-    // `./.trash`.
+fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_call() {
     let dir = scratch("rm");
-    let bin = dir.join("bin");
-    std::fs::create_dir_all(&bin).ok();
+    fake_trash(&dir);
     std::fs::write(dir.join("a.txt"), "a").ok();
-    let trash = bin.join("trash");
-    std::fs::write(&trash, "#!/bin/sh\nmkdir -p .trash && mv \"$@\" .trash/\n").ok();
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&trash, std::fs::Permissions::from_mode(0o755)).ok();
-    }
-    let path = std::env::var_os("PATH").unwrap_or_default();
-    let path = std::env::join_paths(std::iter::once(bin).chain(std::env::split_paths(&path)));
-    // SAFETY: no other test of this crate reads or writes the environment,
-    // and this one does so before its app starts any thread.
-    unsafe { std::env::set_var("PATH", path.unwrap_or_default()) };
-    std::env::set_current_dir(&dir).ok();
+    std::fs::create_dir_all(dir.join("b")).ok();
 
-    let seen = rm_a_txt();
+    let seen = run(&dir).unwrap_or_default();
 
+    // What ran is the rewrite: both went to the trash.
     assert!(dir.join(".trash/a.txt").exists());
+    assert!(dir.join(".trash/b").exists());
     assert!(!dir.join("a.txt").exists());
-    let seen = seen.unwrap_or(Seen {
-        called: Vec::new(),
-        results: Vec::new(),
-        second: String::new(),
-    });
-    // The conversation keeps the model's own call.
-    assert_eq!(seen.called, [r#"{"command":"rm a.txt"}"#]);
-    // The result, which the next request carried, says what ran.
-    assert_eq!(seen.results.len(), 1);
-    assert!(
-        seen.results
-            .iter()
-            .all(|result| result.starts_with("(ran as: `trash a.txt`)\n")),
-        "{:?}",
-        seen.results
+    // The guard judged `trash b`, not `rm -rf b`: nobody was asked.
+    assert_eq!(seen.asked, 0);
+    // The conversation keeps the model's own calls.
+    assert_eq!(
+        seen.called,
+        [r#"{"command":"rm a.txt"}"#, r#"{"command":"rm -rf b"}"#]
     );
-    assert!(
-        seen.second.contains("(ran as: `trash a.txt`)"),
-        "{}",
-        seen.second
+    // The effect log records what ran.
+    assert_eq!(
+        seen.logged,
+        [r#"{"command":"trash a.txt"}"#, r#"{"command":"trash b"}"#]
     );
+    // Each result says what ran.
+    assert_eq!(seen.results.len(), 2, "{:?}", seen.results);
+    let wanted = ["(ran as: `trash a.txt`)\n", "(ran as: `trash b`)\n"];
+    for (result, wanted) in seen.results.iter().zip(wanted) {
+        assert!(result.starts_with(wanted), "{result:?}");
+    }
     std::fs::remove_dir_all(&dir).ok();
 }

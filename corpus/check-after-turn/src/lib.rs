@@ -13,40 +13,37 @@
 //! when = "**/*.rs"        # a glob over the edited paths, from the project
 //! ```
 //!
-//! The files a turn edited are the paths of its successful `write` and
-//! `edit` calls. Each matching check runs, one at a time, as a call of the
-//! agent's registered `shell` tool outside any turn, so a plugin that
-//! replaces `shell`, such as a sandbox, runs the checks too. All pass: a
-//! "checks passed" notice. One fails: the agent is sent its name and the
-//! last lines of its output and starts a turn to fix it, at most
-//! `max_rounds` times per user message. A user message, or stopping the
-//! agent, cancels the checks running.
+//! The files a turn edited are what its tool calls published they changed
+//! (`FilesChanged`). Each matching check is a `check` effect of the agent,
+//! one at a time, whose command runs as `Processes` say, so a sandbox
+//! plugin's launcher wraps it too. All pass: a "checks passed" notice. One
+//! fails (its `ExitStatus`): the agent is sent its name and the last lines
+//! of its output and starts a turn to fix it, at most `max_rounds` times per
+//! user message. A user message, or stopping the agent, cancels the checks.
 
 use std::collections::{BTreeSet, VecDeque};
 use std::path::{Component as PathPart, Path, PathBuf};
 
-use bevy_log::warn;
+use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
-use rig_ecs::turn::ToolStarter;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::{ToolFunction, ToolName};
-use serde::Deserialize;
+use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
+use rig_tools::{Cut, MAX_BYTES, Shell, ShellArgs};
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests;
 
-/// Who the agent is told sent a failure.
-const ORIGIN: &str = "checks";
+/// The effect kind of a check, and who the agent is told sent a failure.
+const CHECK: &str = "check";
 /// Fix rounds per user message unless the file says.
 const DEFAULT_MAX_ROUNDS: u32 = 3;
 /// Lines of a failing check's output the agent is sent.
 const TAIL_LINES: usize = 200;
-/// The tools whose successful calls edited the file in their `path`.
-const EDITING_TOOLS: [&str; 2] = ["write", "edit"];
-/// How long a check may run: the `shell` tool's longest timeout.
+/// How long a check may run: the shell's longest timeout.
 const TIMEOUT_SECS: u64 = 600;
-/// The tool each check runs as.
-const SHELL: &str = "shell";
 
 /// Runs the project's checks after a turn that edited files they watch.
 #[derive(Default)]
@@ -54,18 +51,12 @@ pub struct CheckAfterTurnPlugin;
 
 impl Plugin for CheckAfterTurnPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<Checks>() {
-            match std::env::current_dir() {
-                Ok(root) => app.insert_resource(Checks::load(root)),
-                Err(error) => {
-                    warn!("checks: no working directory: {error}");
-                    return;
-                }
-            };
-        }
-        app.register_required_components::<Agent, CheckState>()
-            .add_observer(record_edit)
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .register_required_components::<Agent, CheckState>()
+            .add_observer(note_edits)
             .add_observer(check_after_turn)
+            .add_observer(run_check)
             .add_observer(check_done)
             .add_observer(cancel_on_user)
             .add_observer(cancel_on_interrupt);
@@ -75,12 +66,8 @@ impl Plugin for CheckAfterTurnPlugin {
 }
 
 /// The project's checks.
-#[derive(Resource, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub struct Checks {
-    /// The project directory: edited paths are matched relative to it. The
-    /// checks run where the `shell` tool runs, the working directory, which
-    /// it is when loaded from there.
-    pub root: PathBuf,
     /// Automatic fix rounds per user message.
     pub max_rounds: u32,
     /// The checks, in the order they run.
@@ -94,7 +81,7 @@ pub struct Check {
     pub name: String,
     /// The shell command; it passes when it exits with 0.
     pub command: String,
-    /// The edited paths that make it run.
+    /// The edited paths, relative to the project, that make it run.
     pub when: Pattern,
 }
 
@@ -117,8 +104,8 @@ struct CheckEntry {
 }
 
 impl Checks {
-    /// The checks of `text`, a `checks.toml`, for the project `root`.
-    pub fn parse(root: PathBuf, text: &str) -> Result<Self, String> {
+    /// The checks of `text`, a `checks.toml`.
+    pub fn parse(text: &str) -> Result<Self, String> {
         let file: ChecksFile = toml::from_str(text).map_err(|error| error.to_string())?;
         let checks = file
             .check
@@ -133,46 +120,21 @@ impl Checks {
             })
             .collect::<Result<_, _>>()?;
         Ok(Self {
-            root,
             max_rounds: file.max_rounds.unwrap_or(DEFAULT_MAX_ROUNDS),
             checks,
         })
     }
 
-    /// The checks of `root/.rig/checks.toml`; none when it is missing or
-    /// wrong, which is logged.
-    fn load(root: PathBuf) -> Self {
+    /// The checks of `root/.rig/checks.toml`, read afresh; none when the
+    /// file is missing.
+    fn load(root: &Path) -> Result<Option<Self>, String> {
         let path = root.join(".rig").join("checks.toml");
-        let parsed = match std::fs::read_to_string(&path) {
-            Ok(text) => Self::parse(root.clone(), &text),
-            Err(_) => Err(String::new()),
-        };
-        parsed.unwrap_or_else(|why| {
-            if !why.is_empty() {
-                warn!("checks: {}: {why}", path.display());
-            }
-            Self {
-                root,
-                max_rounds: DEFAULT_MAX_ROUNDS,
-                checks: Vec::new(),
-            }
-        })
-    }
-
-    /// `path`, as a tool call named it, relative to the project; `None`
-    /// outside it.
-    fn relative(&self, path: &str) -> Option<PathBuf> {
-        let path = Path::new(path);
-        let path = match path.strip_prefix(&self.root) {
-            Ok(inside) => inside,
-            Err(_) if path.is_absolute() => return None,
-            Err(_) => path,
-        };
-        let path: PathBuf = path
-            .components()
-            .filter(|part| !matches!(part, PathPart::CurDir))
-            .collect();
-        (!path.as_os_str().is_empty()).then_some(path)
+        match std::fs::read_to_string(&path) {
+            Ok(text) => Self::parse(&text)
+                .map(Some)
+                .map_err(|why| format!("{}: {why}", path.display())),
+            Err(_) => Ok(None),
+        }
     }
 
     /// The checks that watch any of `edited`, in order.
@@ -201,163 +163,223 @@ impl CheckState {
     }
 }
 
-/// On a check's `shell` call: the agent it checks for, the check, and the
-/// checks after it.
+/// On a `check` effect: the check, the checks after it, and the fix rounds
+/// allowed.
 #[derive(Component)]
 struct CheckRun {
-    agent: Entity,
     check: Check,
     left: VecDeque<Check>,
+    max_rounds: u32,
 }
 
-/// Notes the file a turn's successful `write` or `edit` call changed.
-fn record_edit(
-    output: On<Insert<ToolOutput>>,
-    calls: Query<(&ToolOutput, &ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
-    checks: Res<Checks>,
+/// How a check's command ended: the `check` effect's outcome.
+#[derive(Serialize, Deserialize)]
+struct Ran {
+    status: ExitStatus,
+    output: String,
+}
+
+/// Notes the files a settled tool call published it changed.
+fn note_edits(
+    settled: On<Add<Settled>>,
+    calls: Query<(&Published, &ForAgent)>,
+    root: Res<ProjectRoot>,
     mut states: Query<&mut CheckState>,
 ) {
-    let Ok((ToolOutput(result), run, &CallOf(turn))) = calls.get(output.entity) else {
+    let Ok((published, &ForAgent(agent))) = calls.get(settled.entity) else {
         return;
     };
-    let function = &run.call.function;
-    if !EDITING_TOOLS.contains(&function.name.as_str()) || !result.is_success() {
-        return;
-    }
-    let path = function
-        .arguments
-        .get("path")
-        .and_then(|path| path.as_str());
-    let Some(path) = path.and_then(|path| checks.relative(path)) else {
+    let Ok(Some(changed)) = published.0.get::<FilesChanged>() else {
         return;
     };
-    if let Ok(&TurnOf(agent)) = turns.get(turn)
-        && let Ok(mut state) = states.get_mut(agent)
-    {
-        state.edited.insert(path);
+    if let Ok(mut state) = states.get_mut(agent) {
+        let paths = changed.paths().filter_map(|path| relative(&root.0, path));
+        state.edited.extend(paths);
     }
 }
 
 /// Starts the checks that watch what an answered turn edited.
 fn check_after_turn(
-    ended: On<TurnEnded>,
-    checks: Res<Checks>,
+    settled: On<Add<Settled>>,
+    turns: Query<(&TurnOutcome, &ForAgent)>,
+    root: Res<ProjectRoot>,
     mut states: Query<&mut CheckState>,
-    runs: Query<(Entity, &CheckRun)>,
-    starter: ToolStarter,
+    runs: Query<(Entity, &ForAgent), With<CheckRun>>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    let agent = ended.entity;
-    if !matches!(ended.outcome, TurnOutcome::Answered(_)) {
+    let Ok((TurnOutcome::Answered(_), &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
-    }
+    };
     let Ok(mut state) = states.get_mut(agent) else {
         return;
     };
     if state.edited.is_empty() {
         return;
     }
-    let mut left = checks.matching(&std::mem::take(&mut state.edited));
+    let edited = std::mem::take(&mut state.edited);
+    let checks = match Checks::load(&root.0) {
+        Ok(Some(checks)) => checks,
+        Ok(None) => return,
+        Err(why) => {
+            notices.write(Notice::error(agent, format!("checks: {why}")));
+            return;
+        }
+    };
+    let mut left = checks.matching(&edited);
     let Some(check) = left.pop_front() else {
         return;
     };
-    stop_runs(agent, &runs, &mut commands);
-    start_check(&starter, &mut commands, &mut state, (agent, check, left));
+    stop(agent, &runs, &mut commands);
+    let run = CheckRun {
+        check,
+        left,
+        max_rounds: checks.max_rounds,
+    };
+    spawn_check(&mut commands, &mut state, agent, run);
 }
 
-/// Runs `check` for `agent` as a call of the `shell` tool, with the checks
-/// `left` after it.
-fn start_check(
-    starter: &ToolStarter,
-    commands: &mut Commands,
-    state: &mut CheckState,
-    (agent, check, left): (Entity, Check, VecDeque<Check>),
+/// Spawns `run` as a `check` effect of `agent`.
+fn spawn_check(commands: &mut Commands, state: &mut CheckState, agent: Entity, run: CheckRun) {
+    let Check { name, command, .. } = &run.check;
+    state.running = Some(name.clone());
+    let kind = EffectKind::Custom {
+        kind: CHECK.into(),
+        payload: serde_json::json!({ "name": name, "command": command }),
+    };
+    let label = Name::new(format!("check {name}"));
+    let request = EffectRequest {
+        kind,
+        handler: None,
+    };
+    commands.spawn((request, ForAgent(agent), label, run));
+}
+
+/// Runs a check's command once its effect started, as `Processes` say, in
+/// the project unless they name a directory.
+fn run_check(
+    started: On<Add<Started>>,
+    runs: Query<&CheckRun>,
+    processes: Res<Processes>,
+    root: Res<ProjectRoot>,
+    wake: Res<Wake>,
+    mut commands: Commands,
 ) {
-    let Ok(shell) = ToolName::new(SHELL) else {
+    let Ok(run) = runs.get(started.entity) else {
         return;
     };
-    let arguments = serde_json::json!({ "command": check.command, "timeout_secs": TIMEOUT_SECS });
-    let call = ToolCall::from_wire(
-        format!("check-{}", check.name),
-        ToolFunction::new(shell, arguments),
-    );
-    let run = starter.run(call, None);
-    state.running = Some(check.name.clone());
-    let name = Name::new(format!("check {}", check.name));
-    let entity = commands
-        .spawn((name, CheckRun { agent, check, left }, run.clone()))
-        .id();
-    starter.start(commands, entity, agent, &run);
+    let mut launcher = processes.launcher();
+    if launcher.cwd.is_none() {
+        launcher = launcher.in_dir(&root.0);
+    }
+    let shell = Shell {
+        launcher,
+        spill: None,
+        cut: Some(Cut {
+            lines: TAIL_LINES,
+            bytes: MAX_BYTES,
+        }),
+    };
+    let args = ShellArgs::new(run.check.command.clone()).timeout_secs(TIMEOUT_SECS);
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    let work = async move {
+        let ran = shell.run(args).await.map(|ran| Ran {
+            status: ran.status,
+            output: ran.output,
+        });
+        let payload = ran.map(|ran| serde_json::to_value(ran).unwrap_or_default());
+        Outcome::from(
+            payload
+                .map(|payload| Answered::Custom { payload })
+                .map_err(ErrorReport::from),
+        )
+    };
+    commands
+        .entity(started.entity)
+        .insert(Running::answering(pool, &wake, work));
 }
 
-/// A check finished: the next one runs, or the agent hears how they went.
+/// A check settled: the next one runs, or the agent hears how they went.
 fn check_done(
-    output: On<Insert<ToolOutput>>,
-    runs: Query<(&ToolOutput, &CheckRun)>,
-    checks: Res<Checks>,
+    settled: On<Add<Settled>>,
+    runs: Query<(&CheckRun, &Outcome, &ForAgent)>,
     mut states: Query<&mut CheckState>,
-    starter: ToolStarter,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((ToolOutput(result), run)) = runs.get(output.entity) else {
+    let Ok((run, outcome, &ForAgent(agent))) = runs.get(settled.entity) else {
         return;
     };
-    commands.entity(output.entity).despawn();
-    let agent = run.agent;
     let Ok(mut state) = states.get_mut(agent) else {
         return;
     };
     state.running = None;
-    let text = result.output().render();
-    if !result.is_success() {
-        let why = tail(&text, 5);
-        let line = format!("check {} could not run: {why}", run.check.name);
-        notices.write(Notice::error(agent, line));
+    let Check { name, command, .. } = &run.check;
+    let ran = match &outcome.0 {
+        Ok(Answered::Custom { payload }) => serde_json::from_value::<Ran>(payload.clone()).ok(),
+        _ => None,
+    };
+    let Some(ran) = ran else {
+        let why = match &outcome.0 {
+            Err(report) => report.message.clone(),
+            Ok(_) => "it was answered without running".to_owned(),
+        };
+        notices.write(Notice::error(
+            agent,
+            format!("check {name} could not run: {why}"),
+        ));
         return;
-    }
-    if passed(&text) {
+    };
+    if ran.status.success() {
         let mut left = run.left.clone();
         match left.pop_front() {
-            Some(next) => start_check(&starter, &mut commands, &mut state, (agent, next, left)),
+            Some(check) => {
+                let next = CheckRun {
+                    check,
+                    left,
+                    max_rounds: run.max_rounds,
+                };
+                spawn_check(&mut commands, &mut state, agent, next);
+            }
             None => {
                 notices.write(Notice::info(agent, "checks passed"));
             }
         }
         return;
     }
-    if state.rounds >= checks.max_rounds {
-        let line = format!("checks still failing after {} rounds", checks.max_rounds);
+    if state.rounds >= run.max_rounds {
+        let line = format!("checks still failing after {} rounds", run.max_rounds);
         notices.write(Notice::error(agent, line));
         return;
     }
     state.rounds += 1;
-    let Check { name, command, .. } = &run.check;
-    let output = tail(&text, TAIL_LINES);
     let message = format!(
         "The check `{name}` (`{command}`) failed after your changes. The last \
-         {TAIL_LINES} lines of its output:\n\n{output}\n\nFix the cause; the checks \
-         run again when your turn ends."
+         {TAIL_LINES} lines of its output:\n\n{}\n\nFix the cause; the checks run \
+         again when your turn ends.",
+        ran.output.trim_end()
     );
     let deliver = Deliver::new(agent, message, DeliveryMode::Queue);
-    commands.trigger(deliver.with_origin(Origin::plugin(ORIGIN).titled(name.clone())));
+    commands.trigger(deliver.with_origin(Origin::plugin(CHECK).titled(name.clone())));
 }
 
 /// A message the user sends starts over: the checks running stop, and the
 /// fix rounds count from none.
 fn cancel_on_user(
-    deliver: On<Deliver>,
-    runs: Query<(Entity, &CheckRun)>,
+    started: On<Add<Started>>,
+    messages: Query<(&Incoming, &ForAgent)>,
+    runs: Query<(Entity, &ForAgent), With<CheckRun>>,
     mut states: Query<&mut CheckState>,
     mut commands: Commands,
 ) {
-    let user = deliver.origin.kind == OriginKind::User;
-    if !user || deliver.command().is_some() || deliver.text.trim().is_empty() {
+    let Ok((message, &ForAgent(agent))) = messages.get(started.entity) else {
+        return;
+    };
+    if message.origin.kind != OriginKind::User || message.command().is_some() {
         return;
     }
-    stop_runs(deliver.entity, &runs, &mut commands);
-    if let Ok(mut state) = states.get_mut(deliver.entity) {
+    stop(agent, &runs, &mut commands);
+    if let Ok(mut state) = states.get_mut(agent) {
         state.rounds = 0;
         state.running = None;
     }
@@ -366,36 +388,41 @@ fn cancel_on_user(
 /// Stopping the agent stops its checks.
 fn cancel_on_interrupt(
     interrupt: On<Interrupt>,
-    runs: Query<(Entity, &CheckRun)>,
+    runs: Query<(Entity, &ForAgent), With<CheckRun>>,
     mut states: Query<&mut CheckState>,
     mut commands: Commands,
 ) {
-    stop_runs(interrupt.entity, &runs, &mut commands);
+    stop(interrupt.entity, &runs, &mut commands);
     if let Ok(mut state) = states.get_mut(interrupt.entity) {
         state.running = None;
     }
 }
 
-/// Despawns `agent`'s check calls, which cancels their commands.
-fn stop_runs(agent: Entity, runs: &Query<(Entity, &CheckRun)>, commands: &mut Commands) {
-    for (entity, run) in runs {
-        if run.agent == agent {
-            commands.entity(entity).despawn();
+/// Despawns `agent`'s checks, which kills their commands; each is recorded
+/// as cancelled.
+fn stop(agent: Entity, runs: &Query<(Entity, &ForAgent), With<CheckRun>>, commands: &mut Commands) {
+    for (run, &ForAgent(of)) in runs {
+        if of == agent {
+            commands.entity(run).despawn();
         }
     }
 }
 
-/// Whether the `shell` tool's `output` ends in a zero exit code: the tool
-/// says how the command ended only in its text.
-fn passed(output: &str) -> bool {
-    output.trim_end().ends_with("[exit code 0]")
-}
-
-/// The last `lines` lines of `text`.
-fn tail(text: &str, lines: usize) -> String {
-    let all: Vec<&str> = text.trim_end().lines().collect();
-    let skip = all.len().saturating_sub(lines);
-    all.into_iter().skip(skip).collect::<Vec<_>>().join("\n")
+/// `path`, as a tool published it, relative to the project `root`; `None`
+/// outside it. A relative path is the tool's working directory's, the
+/// project's.
+fn relative(root: &Path, path: &str) -> Option<PathBuf> {
+    let path = Path::new(path);
+    let inside = match path.strip_prefix(root) {
+        Ok(inside) => inside,
+        Err(_) if path.is_absolute() => return None,
+        Err(_) => path,
+    };
+    let inside: PathBuf = inside
+        .components()
+        .filter(|part| !matches!(part, PathPart::CurDir))
+        .collect();
+    (!inside.as_os_str().is_empty()).then_some(inside)
 }
 
 /// "checking: <name>" in the status line while a check runs.

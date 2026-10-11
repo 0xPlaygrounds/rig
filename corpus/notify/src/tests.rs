@@ -12,7 +12,7 @@ use super::*;
 #[derive(Default)]
 struct Recording(Mutex<Vec<String>>);
 
-impl Notifier for Recording {
+impl Notify for Recording {
     fn notify(&self, text: &str) {
         if let Ok(mut sent) = self.0.lock() {
             sent.push(text.to_owned());
@@ -37,16 +37,13 @@ fn advance(app: &mut App, by: Duration) {
 }
 
 #[test]
-fn a_finished_turn_and_an_unanswered_picker_notify_but_a_subagent_does_not() {
+fn a_long_turn_and_an_unanswered_picker_notify_but_a_subagent_and_an_answered_question_do_not() {
     let recording = Arc::new(Recording::default());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO))
         .insert_resource(Models(Connector::new(Catalog::default())))
-        .insert_resource(Notifications {
-            notifier: recording.clone(),
-            min_turn: Duration::ZERO,
-            on: true,
-        })
+        .insert_resource(Settings::from_toml("[notify]\nmin_seconds = 0"))
+        .insert_resource(Notifier(recording.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, NotifyPlugin));
     let (top, sub) = (
         MockCompletionModel::from_stream_turns([reply("All done.\nmore")]),
@@ -76,20 +73,21 @@ fn a_finished_turn_and_an_unanswered_picker_notify_but_a_subagent_does_not() {
     });
     // Both turns ended; only the top-level one notified.
     assert_eq!((top.request_count(), sub.request_count()), (1, 1));
-    let idle = |agent| app.world().get::<ActiveTurn>(agent).is_none();
-    assert!(idle(parent) && idle(child));
     assert_eq!(recording.sent(), ["rig: done — All done."]);
 
-    // A picker left open past the patience asks for the user.
-    app.world_mut().write_message(PickRequest {
-        agent: parent,
-        title: "Allow `rm -rf build`?".to_owned(),
-        items: Vec::new(),
-        selected: 0,
-    });
+    // A picker left open past the patience asks for the user; a question
+    // answered within it does not.
+    let picker = Picker::new("Allow `rm -rf build`?");
+    app.world_mut().spawn(picker);
+    let question = app
+        .world_mut()
+        .spawn((Ask::yes_no("Commit?"), ForAgent(parent)))
+        .id();
     app.update();
     advance(&mut app, Duration::from_secs(1));
-    assert_eq!(recording.sent().len(), 1, "not yet: it waited 1 s");
+    assert_eq!(recording.sent().len(), 1, "not yet: they waited 1 s");
+    let yes = Answer::Choice("yes".to_owned()).outcome();
+    app.world_mut().entity_mut(question).insert(yes);
     advance(&mut app, Duration::from_secs(2));
     assert_eq!(
         recording.sent(),

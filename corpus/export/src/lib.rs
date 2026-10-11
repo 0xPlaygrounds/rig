@@ -2,82 +2,128 @@
 //!
 //! `/export [md|html|json] [path] [--thinking] [--session <id>]` writes a
 //! session as Markdown (default, to `./rig-<session-name>.md`), a
-//! self-contained HTML page or JSON. It reads the *saved* session, not the
-//! running agents: the session's agent logs are folded back by the
-//! kernel's own restore, in a second, headless app over a store that
-//! drops every write, so `--session <id>` exports a session that is not
-//! running the same way as the current one.
+//! self-contained HTML page or JSON; `rig --export=<session>` (with
+//! `--export-format`, `--export-to` and `--export-thinking`) does the same
+//! from the command line and exits. Either reads the *saved* session with
+//! the kernel's `read_session`, which neither restores nor writes it, so a
+//! session that is not running exports the same way as this one; each
+//! model call's usage and cost comes from the session's effect log.
 
+use std::any::TypeId;
+use std::collections::BTreeMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use rig_cassette::journal::{JournalStore, JsonlDirStore};
-use rig_core::completion::UsageTotals;
-use rig_ecs::journal::SessionStore;
-use rig_harness::harness_protocol::SessionId;
+use bevy_ecs::system::SystemParam;
+use bevy_reflect::TypeRegistry;
+use bevy_reflect::serde::TypedReflectDeserializer;
+use rig_cassette::effect_log::jsonl;
+use rig_cassette::journal::{EFFECT_LOG, JournalStore, JsonlDirStore};
+use rig_core::completion::{Usage, UsageTotals};
+use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome as Answered};
+use rig_ecs::journal::{SavedAgent, SessionStore, read_session};
+use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_sessions::{Meta, SessionTitle};
-use rig_telemetry::Spending;
+use serde::de::DeserializeSeed;
+use serde_json::Value;
 
 mod render;
 
 pub use render::{Format, JSON_FORMAT};
 
-/// Adds `/export`.
+/// Adds `/export` and the `--export` front.
 #[derive(Default)]
 pub struct ExportPlugin;
 
 impl Plugin for ExportPlugin {
     fn build(&self, app: &mut App) {
+        let flag = Flag::new("export", "Export a saved session, then exit").value("SESSION");
         app.add_command(
             "export",
             "Export the session: /export [md|html|json] [path] [--thinking] [--session <id>]",
             export,
-        );
+        )
+        .add_front(Front {
+            flag: Some(flag),
+            ..Front::new("export")
+        })
+        .add_flag(Flag::new("export-format", "--export's format: md, html or json").value("FORMAT"))
+        .add_flag(Flag::new("export-to", "The file --export writes").value("PATH"))
+        .add_flag(Flag::new(
+            "export-thinking",
+            "--export's Markdown shows reasoning",
+        ));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front("export") {
+            app.add_systems(Startup, export_and_exit);
+        }
     }
 }
 
-/// One agent of a saved session, as its log restores it.
-#[derive(Clone)]
-pub struct SavedAgent {
-    /// Its id.
-    pub id: AgentId,
-    /// The agent that spawned it, if any.
-    pub parent: Option<AgentId>,
-    /// Its conversation, from the newest compaction on.
-    pub conversation: Conversation,
-    /// The summary that replaced its older messages, if it was compacted.
-    pub condensed: Option<String>,
-    /// Its catalog model.
-    pub model: Option<String>,
-    /// What its model calls used and cost, when the usage plugin saved it.
-    pub usage: Option<UsageTotals>,
-}
-
-/// A saved session: its id, its name and its agents.
-#[derive(Clone, Default)]
-pub struct SavedSession {
-    /// Its id, when known.
+/// A saved session as an export shows it.
+pub struct Export {
+    /// Its id, when it has a directory.
     pub id: Option<String>,
     /// What it is listed as.
     pub name: String,
-    /// When it started, in seconds since the Unix epoch, when known.
-    pub started: Option<u64>,
-    /// Its agents, in no particular order.
-    pub agents: Vec<SavedAgent>,
+    /// When its first log was started, in milliseconds since the Unix epoch.
+    pub started_ms: Option<u64>,
+    /// Its agents, in the order their logs were started.
+    pub agents: Vec<ExportedAgent>,
 }
 
-/// What `/export` was asked for.
+/// One agent of an [`Export`].
+pub struct ExportedAgent {
+    /// What its log holds.
+    pub saved: SavedAgent,
+    /// Its catalog model, as saved.
+    pub model: Option<String>,
+    /// Its model calls, in the order they were made.
+    pub calls: Vec<ModelCall>,
+}
+
+/// One model call of an agent, from the session's effect log.
+pub struct ModelCall {
+    /// The effect's id in the log.
+    pub effect: EffectId,
+    /// What it was made for, such as `turn` or `compaction`.
+    pub purpose: Option<String>,
+    /// The model that answered, as `provider/model`.
+    pub model: String,
+    /// The tokens it used and what it cost.
+    pub usage: Usage,
+    /// The provider's response id, which the assistant message's origin
+    /// names too.
+    pub response_id: Option<String>,
+    /// How it ended: ran, superseded, cancelled, …
+    pub disposition: Disposition,
+}
+
+impl ExportedAgent {
+    /// What its calls used, summed.
+    pub fn totals(&self) -> UsageTotals {
+        let mut totals = UsageTotals::default();
+        for call in &self.calls {
+            totals.record(&call.usage);
+        }
+        totals
+    }
+}
+
+/// What `/export` or `--export` was asked for.
 #[derive(Debug, PartialEq, Eq)]
 struct Request {
     format: Format,
     path: Option<PathBuf>,
     thinking: bool,
-    session: Option<String>,
+    session: Option<SessionId>,
 }
 
 impl Request {
+    /// `/export`'s arguments.
     fn parse(args: &str) -> Result<Self, String> {
         let mut request = Self {
             format: Format::Markdown,
@@ -91,7 +137,7 @@ impl Request {
                 "--thinking" => request.thinking = true,
                 "--session" => {
                     let id = words.next().ok_or("--session needs a session id")?;
-                    request.session = Some(id.to_owned());
+                    request.session = Some(id.parse()?);
                 }
                 flag if flag.starts_with("--") => return Err(format!("unknown option `{flag}`")),
                 word => match (Format::parse(word), &request.path) {
@@ -103,59 +149,174 @@ impl Request {
         }
         Ok(request)
     }
+
+    /// The `--export` options.
+    fn of(invoked: &Invoked) -> Result<Self, String> {
+        let format = match invoked.flag_value("export-format") {
+            Some(word) => Format::parse(word).ok_or(format!("unknown format `{word}`"))?,
+            None => Format::Markdown,
+        };
+        let session = invoked
+            .flag_value("export")
+            .ok_or("--export needs a session id")?;
+        Ok(Self {
+            format,
+            path: invoked.flag_value("export-to").map(PathBuf::from),
+            thinking: invoked.flag("export-thinking"),
+            session: Some(session.parse()?),
+        })
+    }
 }
 
-/// `/export`.
-fn export(
-    In(args): In<CommandArgs>,
-    store: Option<Res<SessionStore>>,
-    paths: Option<Res<SessionPaths>>,
-    title: Option<Res<SessionTitle>>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let said = Request::parse(&args.args).and_then(|request| {
+/// Where an export reads from: this session, or another under `RIG_HOME`.
+#[derive(SystemParam)]
+struct Sessions<'w> {
+    store: Option<Res<'w, SessionStore>>,
+    paths: Option<Res<'w, SessionPaths>>,
+    title: Option<Res<'w, SessionTitle>>,
+    home: Option<Res<'w, RigHome>>,
+    root: Option<Res<'w, ProjectRoot>>,
+    registry: Res<'w, AppTypeRegistry>,
+}
+
+impl Sessions<'_> {
+    /// Writes the export `request` asks for; the file it wrote.
+    fn export(&self, request: &Request) -> Result<PathBuf, String> {
+        let registry = self.registry.read();
         let session = match &request.session {
-            Some(id) => other_session(id)?,
+            Some(id) => {
+                let home = self.home.as_ref().map(|home| home.0.clone());
+                let dir = home.unwrap_or_else(Home::from_env).session(id);
+                if !dir.is_saved() {
+                    return Err(format!("no saved session {id}"));
+                }
+                let meta: Option<Meta> = rig_tools::fs::read_json(&dir.meta());
+                let name = meta.map(|meta| listed(&meta.title)).unwrap_or_default();
+                load(&JsonlDirStore::new(dir.path()), Some(&dir), name, &registry)?
+            }
             None => {
-                let store = store.as_ref().ok_or("this session is not saved")?;
-                let id = paths.as_ref().and_then(|paths| session_id(paths.path()));
-                let name = title.as_deref().map(listed).unwrap_or_default();
-                load(store.0.clone(), id, name)
+                let store = self.store.as_ref().ok_or("this session is not saved")?;
+                let name = self.title.as_deref().map(listed).unwrap_or_default();
+                let dir = self.paths.as_deref().map(|paths| &paths.0);
+                load(store.0.as_ref(), dir, name, &registry)?
             }
         };
         let path = request.path.clone().unwrap_or_else(|| {
             let name = slug(&session.name);
             PathBuf::from(format!("rig-{name}.{}", request.format.extension()))
         });
-        let files = render::render(&session, request.format, request.thinking, &path);
-        for (file, bytes) in &files {
-            write(file, bytes)
+        // Paths the user names are the project's.
+        let path = match &self.root {
+            Some(root) => root.0.join(path),
+            None => path,
+        };
+        for (file, bytes) in render::render(&session, request.format, request.thinking, &path) {
+            write(&file, &bytes)
                 .map_err(|failure| format!("writing {}: {failure}", file.display()))?;
         }
-        Ok(format!("Exported the session to {}.", path.display()))
-    });
-    match said {
-        Ok(text) => notices.write(Notice::info(args.agent, text)),
-        Err(why) => notices.write(Notice::error(args.agent, format!("/export: {why}"))),
-    };
-}
-
-/// The saved session `id` under `RIG_HOME`, whether it runs or not.
-fn other_session(id: &str) -> Result<SavedSession, String> {
-    let id: SessionId = id.parse()?;
-    let dir = Home::from_env().session(&id);
-    if !dir.is_saved() {
-        return Err(format!("no saved session {id}"));
+        Ok(path)
     }
-    let meta: Option<Meta> = rig_tools::fs::read_json(&dir.meta());
-    let name = meta.map(|meta| listed(&meta.title)).unwrap_or_default();
-    let store = Arc::new(JsonlDirStore::new(dir.path()));
-    Ok(load(store, Some(id.to_string()), name))
 }
 
-/// A session directory's id: its last path component.
-fn session_id(dir: &Path) -> Option<String> {
-    Some(dir.file_name()?.to_str()?.to_owned())
+/// `/export`.
+fn export(In(args): In<CommandArgs>, sessions: Sessions, mut notices: MessageWriter<Notice>) {
+    let notice = match Request::parse(&args.args).and_then(|request| sessions.export(&request)) {
+        Ok(path) => Notice::info(
+            args.agent,
+            format!("Exported the session to {}.", path.display()),
+        ),
+        Err(why) => Notice::error(args.agent, format!("/export: {why}")),
+    };
+    notices.write(notice);
+}
+
+/// `rig --export=<session>`: exports, says where to, and exits.
+fn export_and_exit(invoked: Option<Res<Invoked>>, sessions: Sessions, mut commands: Commands) {
+    let invoked = invoked.as_deref().cloned().unwrap_or_default();
+    let reason = match Request::of(&invoked).and_then(|request| sessions.export(&request)) {
+        Ok(path) => {
+            println!("{}", path.display());
+            ExitReason::Quit
+        }
+        Err(why) => {
+            eprintln!("rig --export: {why}");
+            ExitReason::Failed(1)
+        }
+    };
+    commands.trigger(Exit(reason));
+}
+
+/// The session in `store`, with the model calls `dir`'s effect log holds.
+fn load(
+    store: &dyn JournalStore,
+    dir: Option<&SessionDir>,
+    name: String,
+    registry: &TypeRegistry,
+) -> Result<Export, String> {
+    let saved = read_session(store).map_err(|failure| format!("reading the session: {failure}"))?;
+    let records = dir
+        .and_then(|dir| jsonl::read(dir.path().join(EFFECT_LOG)).ok())
+        .map(|log| log.records)
+        .unwrap_or_default();
+    let id = dir.and_then(SessionDir::id).map(|id| id.to_string());
+    let agents: Vec<ExportedAgent> = saved
+        .agents
+        .into_iter()
+        .filter(|agent| !agent.conversation.messages().is_empty())
+        .map(|saved| ExportedAgent {
+            model: saved_value::<ModelChoice>(&saved.saved, registry).map(|choice| choice.0),
+            calls: records
+                .iter()
+                .filter(|record| record.scope.as_deref() == Some(saved.id.0.as_str()))
+                .filter_map(model_call)
+                .collect(),
+            saved,
+        })
+        .collect();
+    let name = match (name.is_empty(), &id) {
+        (false, _) => name,
+        (true, Some(id)) => format!("session {id}"),
+        (true, None) => "session".to_owned(),
+    };
+    Ok(Export {
+        started_ms: agents.iter().map(|agent| agent.saved.started_ms).min(),
+        id,
+        name,
+        agents,
+    })
+}
+
+/// A model call's record as a [`ModelCall`]; `None` for other effects and
+/// calls that got no reply.
+fn model_call(record: &EffectRecord) -> Option<ModelCall> {
+    if !matches!(record.kind, EffectKind::Completion { .. }) {
+        return None;
+    }
+    let outcome = record.reviewed.as_ref().unwrap_or(&record.outcome);
+    let Ok(Answered::Completion(response)) = outcome else {
+        return None;
+    };
+    Some(ModelCall {
+        effect: record.id,
+        purpose: record.purpose.as_ref().map(|purpose| purpose.to_string()),
+        model: format!("{}/{}", response.origin.provider, response.origin.model),
+        usage: response.usage,
+        response_id: response.origin.response_id.clone(),
+        disposition: record.disposition,
+    })
+}
+
+/// The saved value of `T` among an agent's `saved` components.
+fn saved_value<T: Reflect + TypePath + FromReflect>(
+    saved: &BTreeMap<String, Value>,
+    registry: &TypeRegistry,
+) -> Option<T> {
+    let value = saved.get(T::type_path())?;
+    let registration = registry.get(TypeId::of::<T>())?;
+    let reflected = TypedReflectDeserializer::new(registration, registry)
+        .deserialize(value)
+        .ok()?;
+    T::from_reflect(&*reflected)
 }
 
 /// The name `/name` gave, else the start of the first message typed.
@@ -183,89 +344,6 @@ fn write(path: &Path, bytes: &[u8]) -> io::Result<()> {
         std::fs::create_dir_all(dir)?;
     }
     std::fs::write(path, bytes)
-}
-
-/// A session store that reads and never writes: restoring a session to
-/// read it must not cut a torn line, answer open calls or log anything.
-struct ReadOnly(Arc<dyn JournalStore>);
-
-impl JournalStore for ReadOnly {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        self.0.agents()
-    }
-
-    fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
-        self.0.read(agent)
-    }
-
-    fn truncate(&self, _: &str, _: u64) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn append(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-
-    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        self.0.blob(name)
-    }
-}
-
-/// The session saved in `store`, folded back by the kernel's restore in a
-/// headless app of its own whose agents stay idle.
-pub fn load(store: Arc<dyn JournalStore>, id: Option<String>, name: String) -> SavedSession {
-    let mut app = App::new();
-    app.insert_resource(SessionStore(Arc::new(ReadOnly(store))))
-        .add_plugins((AgentPlugin, JournalPlugin))
-        .add_observer(|mut restored: On<Restored>| restored.resume = false);
-    app.finish();
-    app.cleanup();
-    app.update();
-    let world = app.world_mut();
-    let mut agents = world.query_filtered::<(
-        &AgentId,
-        &Conversation,
-        Option<&SpawnedBy>,
-        Option<&Condensed>,
-        Option<&ModelChoice>,
-        Option<&Spending>,
-    ), With<Agent>>();
-    let mut ids = world.query::<&AgentId>();
-    let world = &*world;
-    let agents = agents
-        .iter(world)
-        .filter(|(_, conversation, ..)| !conversation.messages().is_empty())
-        .map(
-            |(id, conversation, parent, condensed, model, usage)| SavedAgent {
-                id: id.clone(),
-                parent: parent.and_then(|parent| ids.get(world, parent.0).ok().cloned()),
-                conversation: conversation.clone(),
-                condensed: condensed.map(|condensed| condensed.summary.clone()),
-                model: model.map(|model| model.0.clone()),
-                usage: usage.map(|usage| usage.0),
-            },
-        )
-        .collect();
-    // A session id starts with the Unix time it was made at.
-    let started = id
-        .as_deref()
-        .and_then(|id| id.split('-').next()?.parse().ok());
-    let name = if name.is_empty() {
-        id.as_ref()
-            .map_or_else(|| "session".to_owned(), |id| format!("session {id}"))
-    } else {
-        name
-    };
-    SavedSession {
-        id,
-        name,
-        started,
-        agents,
-    }
 }
 
 #[cfg(test)]

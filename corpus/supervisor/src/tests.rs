@@ -8,18 +8,15 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 /// The open `read` calls, with their paths, until the test answers them.
 #[derive(Resource, Default)]
 struct Reads(Vec<(Entity, String)>);
 
-/// The notices written and the turns ended, with whether they stopped.
+/// The notices written.
 #[derive(Resource, Default)]
-struct Seen {
-    notices: Vec<String>,
-    ended: Vec<(Entity, bool)>,
-}
+struct Notices(Vec<String>);
 
 #[derive(Deserialize, JsonSchema)]
 struct ReadArgs {
@@ -43,17 +40,15 @@ impl Session {
         app.insert_resource(Models(Connector::new(Catalog::default())))
             .add_plugins((AgentPlugin, JournalPlugin, SupervisorPlugin))
             .init_resource::<Reads>()
-            .init_resource::<Seen>()
+            .init_resource::<Notices>()
+            .init_resource::<Ended>()
             .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
-            .add_observer(|end: On<TurnEnded>, mut seen: ResMut<Seen>| {
-                let stopped = matches!(end.outcome, TurnOutcome::Stopped);
-                seen.ended.push((end.entity, stopped));
-            })
+            .add_observer(log_ended)
             .add_systems(
                 Last,
-                |mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>| {
-                    let texts = notices.read().map(|notice| notice.text.clone());
-                    seen.notices.extend(texts);
+                |mut notices: MessageReader<Notice>, mut seen: ResMut<Notices>| {
+                    seen.0
+                        .extend(notices.read().map(|notice| notice.text.clone()));
                 },
             );
         let worker = connect(worker).map(|connection| {
@@ -63,29 +58,34 @@ impl Session {
         let worker = worker.unwrap_or(Entity::PLACEHOLDER);
         app.finish();
         app.update();
-        let world = app.world_mut();
         let typed = "/supervise calls=2 Fix the parser bug";
-        world.trigger(Deliver::new(worker, typed, DeliveryMode::Steer));
-        world.flush();
-        let mut supervisors = world.query_filtered::<Entity, With<Supervisor>>();
-        let hired = supervisors.iter(world).next();
-        if let (Some(hired), Some(connection)) = (hired, connect(supervisor)) {
-            world.entity_mut(hired).insert(connection);
+        app.world_mut()
+            .trigger(Deliver::new(worker, typed, DeliveryMode::Steer));
+        let hired = |world: &World| {
+            let spawned = world.get::<Spawned>(worker);
+            let supervisors = spawned.into_iter().flat_map(Spawned::iter);
+            supervisors
+                .filter(|&agent| world.get::<Supervisor>(agent).is_some())
+                .last()
+        };
+        run_until(&mut app, &wakes, |world| hired(world).is_some());
+        if let (Some(hired), Some(connection)) = (hired(app.world()), connect(supervisor)) {
+            app.world_mut().entity_mut(hired).insert(connection);
         }
         let asked = "The parser drops trailing commas; fix it.";
-        world.trigger(Deliver::new(worker, asked, DeliveryMode::Queue));
+        app.world_mut()
+            .trigger(Deliver::new(worker, asked, DeliveryMode::Queue));
         Self { app, wakes, worker }
     }
 
     /// Runs until `done`.
-    fn run_until(&mut self, done: impl Fn(&World, Entity) -> bool) {
-        let worker = self.worker;
-        run_until(&mut self.app, &self.wakes, |world| done(world, worker));
+    fn run_until(&mut self, done: impl Fn(&World) -> bool) {
+        run_until(&mut self.app, &self.wakes, done);
     }
 
     /// Waits for the worker's next `read` call and answers it.
     fn answer_read(&mut self) {
-        self.run_until(|world, _| !world.resource::<Reads>().0.is_empty());
+        self.run_until(|world| !world.resource::<Reads>().0.is_empty());
         self.answer_reads();
     }
 
@@ -95,7 +95,7 @@ impl Session {
         for (call, path) in reads {
             let output = ToolResult::success(format!("contents of {path}").into());
             if let Ok(mut call) = world.get_entity_mut(call) {
-                call.insert(ToolOutput(output));
+                call.insert(Outcome::from(output));
             }
         }
     }
@@ -111,6 +111,14 @@ fn reader() -> MockCompletionModel {
     ])
 }
 
+/// Whether `worker` accepted a steering message saying `text`.
+fn steered(world: &mut World, worker: Entity, text: &str) -> bool {
+    let mut messages = world.query_filtered::<(&Incoming, &ForAgent), With<Started>>();
+    messages.iter(world).any(|(message, &ForAgent(to))| {
+        to == worker && message.mode == DeliveryMode::Steer && message.text == text
+    })
+}
+
 #[test]
 fn the_supervisor_checks_every_two_calls_and_steers_or_stops_the_worker() {
     let steer = json!({ "decision": "steer", "message": "check tests first" });
@@ -121,15 +129,21 @@ fn the_supervisor_checks_every_two_calls_and_steers_or_stops_the_worker() {
     session.answer_read();
     session.answer_read();
     // The check after the 2nd call steers the worker while it reads on.
-    session.run_until(|world, worker| {
-        let steered = world
-            .get::<Inbox>(worker)
-            .is_some_and(|inbox| !inbox.steering.is_empty());
-        steered && !world.resource::<Reads>().0.is_empty()
-    });
-    session.answer_reads();
-    session.run_until(|_, _| worker.request_count() >= 4 && supervisor.request_count() >= 2);
+    let at = session.worker;
+    let mut found = false;
+    for _ in 0..100 {
+        session.app.update();
+        session.wakes.recv_timeout(Duration::from_millis(100)).ok();
+        if steered(session.app.world_mut(), at, "check tests first") {
+            found = true;
+            break;
+        }
+    }
+    assert!(found, "the worker was never steered");
+    session.answer_read();
+    session.run_until(|_| worker.request_count() >= 4 && supervisor.request_count() >= 2);
 
+    assert_eq!(supervisor.request_count(), 2);
     let checked = format!("{:?}", supervisor.requests().first());
     for part in [
         "Fix the parser bug",
@@ -139,18 +153,11 @@ fn the_supervisor_checks_every_two_calls_and_steers_or_stops_the_worker() {
     ] {
         assert!(checked.contains(part), "{part}: {checked}");
     }
-    let world = session.app.world_mut();
-    let mut checks = world.query::<&Supervisor>();
-    let checks: Vec<u32> = checks
-        .iter(world)
-        .map(|supervisor| supervisor.checks)
-        .collect();
-    assert_eq!(checks, [1]);
-    let steered = format!("{:?}", worker.requests().get(3));
-    assert!(steered.contains("check tests first"), "{steered}");
-    assert!(steered.contains("supervisor"), "{steered}");
+    assert!(!checked.contains("tests/parser.rs"), "{checked}");
     let sent = format!("{:?}", worker.requests().get(2));
     assert!(!sent.contains("check tests first"), "{sent}");
+    let steered = format!("{:?}", worker.requests().get(3));
+    assert!(steered.contains("check tests first"), "{steered}");
 
     // A supervisor that answers `stop` interrupts the worker's turn, and
     // the user is told why.
@@ -161,23 +168,23 @@ fn the_supervisor_checks_every_two_calls_and_steers_or_stops_the_worker() {
     let mut session = Session::new(&worker, &supervisor);
     session.answer_read();
     session.answer_read();
-    session.run_until(|world, worker| {
-        world
-            .resource::<Seen>()
-            .ended
+    session.run_until(|world| {
+        let ended = &world.resource::<Ended>().0;
+        ended
             .iter()
-            .any(|(agent, _)| *agent == worker)
+            .any(|outcome| matches!(outcome, TurnOutcome::Stopped(_)))
     });
-    let seen = session.app.world().resource::<Seen>();
-    assert!(
-        seen.ended.contains(&(session.worker, true)),
-        "{:?}",
-        seen.ended
-    );
-    let told = seen
-        .notices
+    let ended = &session.app.world().resource::<Ended>().0;
+    let stopped = ended.iter().find_map(|outcome| match outcome {
+        TurnOutcome::Stopped(why) => why.clone(),
+        _ => None,
+    });
+    let stopped = stopped.unwrap_or_default();
+    assert!(stopped.contains("it reads files in circles"), "{ended:?}");
+    let notices = &session.app.world().resource::<Notices>().0;
+    let told = notices
         .iter()
         .any(|notice| notice.contains("it reads files in circles"));
-    assert!(told, "{:?}", seen.notices);
+    assert!(told, "{notices:?}");
     assert_eq!(worker.request_count(), 3);
 }

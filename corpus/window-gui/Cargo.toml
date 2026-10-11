@@ -37,7 +37,7 @@ bevy = { workspace = true, optional = true, features = [
 bevy_ecs = { workspace = true }
 rig-activity = { path = "../../plugins/rig-activity" }
 rig-harness = { path = "../../crates/rig-harness" }
-# Pickers (`PickRequest`) and markdown, shared with the terminal view.
+# Pickers (`Picker`) and markdown, shared with the terminal view.
 rig-tui = { path = "../../plugins/rig-tui" }
 serde_json = { workspace = true }
 

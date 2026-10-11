@@ -1,50 +1,62 @@
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::Catalog;
+use rig_core::catalog::{Catalog, ModelSpec, ReasoningSupport};
+use rig_core::completion::{Effort as Level, Reasoning};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
-use rig_ecs::effects::Handler;
-use rig_harness_test_support::{app_on, calls, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, log_ended, reply, run_until};
+use rig_telemetry::{Spending, UsagePlugin};
 
 use super::*;
 
-/// `model` as the catalog model `reference`.
-fn connect(reference: &str, model: &MockCompletionModel) -> Option<Connection> {
-    let spec = Catalog::builtin().resolve(reference).ok()?.shared();
-    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
-    Some(Connection {
-        spec,
-        handler: Handler(ErasedHandler::new(handler)),
-    })
-}
+/// The settings: `cheap` and `strong` are the scripted models, `default`
+/// is not configured.
+const SETTINGS: &str = r#"
+[router.targets]
+cheap = "scripted/cheap"
+strong = "scripted/strong"
+"#;
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
+/// `cheap` and `strong` in the catalog as the scripted vendor's models,
+/// answered by the mock of the same name; `cheap` does not reason.
+fn scripted(models: &mut Models, cheap: &MockCompletionModel, strong: &MockCompletionModel) {
+    let Ok(vendor) = ProviderId::declare("scripted") else {
+        return;
+    };
+    let catalog = models.0.catalog_mut();
+    catalog.insert(ModelSpec::new(vendor, "cheap").with_tools(true));
+    let reasons = ReasoningSupport::Unknown { default: None };
+    catalog.insert(
+        ModelSpec::new(vendor, "strong")
+            .with_tools(true)
+            .with_reasoning(reasons),
+    );
+    let (cheap, strong) = (cheap.clone(), strong.clone());
+    models.0.provide(
+        vendor,
+        move |spec: &ModelSpec, _: &Catalog| -> Result<ErasedHandler, ConnectError> {
+            let model = if spec.id == "cheap" { &cheap } else { &strong };
+            let adapter = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+            Ok(ErasedHandler::new(adapter))
+        },
+    );
+}
 
 #[test]
 fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one() {
     let cheap = MockCompletionModel::from_stream_turns([reply("It is a small crate.")]);
-    let strong = MockCompletionModel::from_stream_turns([calls(
-        "1",
-        "read",
-        serde_json::json!({ "path": "src/lib.rs" }),
-    )]);
-    let targets = [
-        ("cheap", connect("deepseek/deepseek-flash", &cheap)),
-        ("strong", connect("deepseek/deepseek-v4-pro", &strong)),
-    ];
-    let targets: Option<BTreeMap<String, Connection>> = targets
-        .into_iter()
-        .map(|(name, connection)| Some((name.to_owned(), connection?)))
-        .collect();
-    assert!(targets.is_some(), "the catalog lists both models");
+    let read = calls("1", "read", serde_json::json!({ "path": "src/lib.rs" }));
+    let strong = MockCompletionModel::from_stream_turns([read]);
+    let mut models = Models::default();
+    scripted(&mut models, &cheap, &strong);
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    app.add_plugins((AgentPlugin, JournalPlugin, rig_models::ModelsPlugin))
-        .insert_resource(RouterTargets(targets.unwrap_or_default()))
-        .add_plugins(ModelRouterPlugin)
+    app.insert_resource(Settings::from_toml(SETTINGS))
+        .insert_resource(models)
+        .add_plugins((AgentPlugin, JournalPlugin, UsagePlugin))
+        .add_plugins((rig_models::ModelsPlugin, ModelRouterPlugin))
         .add_open_tool(
             "read",
             "Reads a file.",
@@ -54,11 +66,13 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
             },
             |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
                 let output = ToolResult::success("pub fn answer() -> u32 { 42 }".into());
-                commands.entity(called.call).insert(ToolOutput(output));
+                commands
+                    .entity(called.call)
+                    .insert_if_new(Outcome::from(output));
             },
         )
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -71,7 +85,10 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         return;
     };
 
-    // `/model router` is the wrapped `/model`.
+    // The picker's `router` item runs `/model router`; the agent reasons
+    // hard, which only `strong` takes.
+    let high = Effort(Some(Reasoning::Effort(Level::High)));
+    world.entity_mut(agent).insert(high);
     world.trigger(RunCommand {
         entity: agent,
         line: "model router".to_owned(),
@@ -84,40 +101,45 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
         "plan the refactor",
         DeliveryMode::Queue,
     ));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 > 0);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
 
+    let (planned, followed) = (strong.requests(), cheap.requests());
+    assert_eq!(planned.len(), 1, "the plan's request went to strong");
+    assert_eq!(followed.len(), 1, "the read-only follow-up went to cheap");
+    let reasoning = |requests: &[rig_core::completion::CompletionRequest]| {
+        requests
+            .first()
+            .and_then(|request| request.options.reasoning)
+    };
+    assert_eq!(reasoning(&planned), high.0, "strong reasons as asked");
     assert_eq!(
-        strong.request_count(),
-        1,
-        "the plan's request went to strong"
+        reasoning(&followed),
+        None,
+        "cheap falls back to its default"
     );
-    assert_eq!(cheap.request_count(), 1, "the follow-up went to cheap");
-    let spent = app.world().get::<RoutedSpending>(agent);
+    let spent = app.world().get::<Spending>(agent);
     let models: Vec<&str> = spent
-        .map(|spent| spent.0.keys().map(String::as_str).collect())
+        .map(|spent| spent.models.keys().map(String::as_str).collect())
         .unwrap_or_default();
     assert_eq!(
         models,
-        ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"],
-        "usage lists both real models"
+        ["scripted/cheap", "scripted/strong"],
+        "usage lists both"
     );
-    let last = app
+    let label = app
         .world()
-        .get::<LastRoute>(agent)
-        .map(|last| last.0.as_str());
-    assert_eq!(last, Some("cheap (deepseek-flash)"));
+        .get::<ModelLabel>(agent)
+        .map(|label| label.0.as_str());
+    assert_eq!(label, Some("router → cheap"));
 
-    // Any other model goes through `rig-models`' own `/model`, and leaves
-    // the router.
+    // Any other model leaves the router.
     app.world_mut().trigger(RunCommand {
         entity: agent,
-        line: "model deepseek/deepseek-flash".to_owned(),
+        line: "model scripted/strong".to_owned(),
     });
     app.update();
     assert_eq!(app.world().get::<Routing>(agent), Some(&Routing(false)));
-    let chosen = app
-        .world()
-        .get::<ModelChoice>(agent)
-        .map(|model| model.0.as_str());
-    assert_eq!(chosen, Some("deepseek/deepseek-flash"));
+    assert!(app.world().get::<ModelLabel>(agent).is_none());
 }

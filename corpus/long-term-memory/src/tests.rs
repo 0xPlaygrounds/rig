@@ -6,24 +6,21 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_ecs::journal::JournalPlugin;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
-/// A session on a fresh store with the memory plugin keeping its files
-/// under `dir`, whose first agent `model` answers, after its first frame.
+/// A session on a fresh store, its rig home and project under `dir`, whose
+/// first agent `turns` answer, after its first frame.
 fn session(
     dir: &Path,
     turns: Vec<Vec<MockStreamEvent>>,
 ) -> (App, Receiver<()>, MockCompletionModel) {
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(MemoryFiles::new(&dir.join("home"), &dir.join("project")))
+        .insert_resource(RigHome(Home::at(dir.join("home"))))
+        .insert_resource(ProjectRoot(dir.join("project")))
         .add_plugins((AgentPlugin, JournalPlugin, LongTermMemoryPlugin))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns(turns);
@@ -50,12 +47,15 @@ fn ask(app: &mut App, wakes: &Receiver<()>, text: &str) {
         return;
     };
     world.trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| world.resource::<Ended>().0 > 0);
+    run_until(app, wakes, |world| !world.resource::<Ended>().0.is_empty());
 }
 
 #[test]
 fn a_fact_remembered_in_one_session_is_recalled_in_the_next_but_not_saved() {
-    let base = std::env::var_os("CARGO_TARGET_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
+    let base = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target")),
+        PathBuf::from,
+    );
     let dir = base.join(format!("corpus-long-term-memory-{}", std::process::id()));
     fs::remove_dir_all(&dir).ok();
 

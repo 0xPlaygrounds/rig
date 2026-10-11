@@ -1,17 +1,19 @@
 //! Replays a recorded session: the user's messages are sent again in
-//! order, and every model call, tool call and plugin effect of a kind the
-//! recording has is answered from the recorded effect log before it starts,
-//! in Gate, instead of by the provider or the tool. Each model request is
-//! checked against the recorded one at the same position of the same
-//! agent; the first difference stops the replay, or with `continue_live`
-//! is reported and the run goes on live, its calls left to start as usual.
+//! order, and every model call, tool call and replayable plugin effect is
+//! answered from the recorded effect log before it starts, in Gate,
+//! instead of by the provider or the tool. Each model request is checked
+//! against the recorded one at the same position of the same agent; the
+//! first difference stops the replay, or with `--continue-live` is
+//! reported and the run goes on live, its calls left to start as usual.
+//! With `--speed` each answer settles after its recorded duration and
+//! each user message after its recorded gap.
 //!
 //! The replay is started by a [`ReplaySource`] resource inserted before the
-//! plugin is added, or by the option `--replay=DIR` naming a session
-//! directory (with `--replay-flags=`, a comma list of `continue-live`,
-//! `live-tools` and `speed`). Without either the plugin does nothing.
-//! Nothing recorded is written to.
+//! plugin is added, or by `rig --replay=DIR` naming a session directory,
+//! with `--continue-live`, `--live-tools` and `--speed`. Without either the
+//! plugin does nothing. Nothing recorded is written to.
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io;
@@ -31,9 +33,12 @@ mod tests;
 
 /// The option naming the session directory to replay.
 pub const REPLAY: &str = "replay";
-
-/// The option with [`ReplayFlags`] as a comma list.
-pub const REPLAY_FLAGS: &str = "replay-flags";
+/// The option: after the first difference, go on live.
+pub const CONTINUE_LIVE: &str = "continue-live";
+/// The option: run the tools for real.
+pub const LIVE_TOOLS: &str = "live-tools";
+/// The option: keep the recorded timing.
+pub const SPEED: &str = "speed";
 
 /// How a replay runs.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -43,20 +48,9 @@ pub struct ReplayFlags {
     pub continue_live: bool,
     /// Run the tools for real; the model replies still come from the record.
     pub live_tools: bool,
-    /// Send the user messages with their original gaps instead of at once.
+    /// Settle each answer after its recorded duration, and send each user
+    /// message after its recorded gap, instead of at once.
     pub original_timing: bool,
-}
-
-impl ReplayFlags {
-    /// The flags of a comma list such as `continue-live,live-tools,speed`.
-    pub fn parse(list: &str) -> Self {
-        let words: Vec<&str> = list.split(',').map(str::trim).collect();
-        Self {
-            continue_live: words.contains(&"continue-live"),
-            live_tools: words.contains(&"live-tools"),
-            original_timing: words.contains(&"speed"),
-        }
-    }
 }
 
 /// The recorded session to replay: its effect log, which holds every
@@ -78,13 +72,25 @@ impl ReplaySource {
         })
     }
 
-    /// The source `--replay` and `--replay-flags` name, if any.
+    /// The source the options name, if `--replay` is given.
     fn from_invocation(invoked: &Invoked) -> Option<io::Result<Self>> {
         let dir = invoked.flag_value(REPLAY)?;
-        let flags = invoked.flag_value(REPLAY_FLAGS).unwrap_or_default();
-        Some(Self::from_dir(Path::new(dir), ReplayFlags::parse(flags)))
+        let flags = ReplayFlags {
+            continue_live: invoked.flag(CONTINUE_LIVE),
+            live_tools: invoked.flag(LIVE_TOOLS),
+            original_timing: invoked.flag(SPEED),
+        };
+        Some(Self::from_dir(Path::new(dir), flags))
     }
 }
+
+/// A kind of plugin effect ([`EffectKind::name`]) a replay answers from the
+/// record, as an entity: a plugin whose effects only report what happened
+/// outside the agent spawns one; one whose effects change the agent's own
+/// world, such as a subagent's spawn, does not, and its effects run again.
+/// Questions to the user (`ask`) are replayable.
+#[derive(Component, Clone, Debug)]
+pub struct Replayable(pub Cow<'static, str>);
 
 /// The first difference between a replayed effect and the recorded one.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -150,8 +156,6 @@ pub struct Replay {
     models: RecordedAnswers,
     /// Every other effect, answered by the record its request matches.
     others: RecordedAnswers,
-    /// The kinds of effect the recording answers, other than model calls.
-    kinds: HashSet<String>,
     /// The recorded agents, in order of their first effect.
     scopes: Vec<Option<Arc<str>>>,
     /// Each replaying agent's recorded agent, mapped at its first effect.
@@ -175,9 +179,10 @@ impl Replay {
     fn new(source: ReplaySource) -> Self {
         let ReplaySource { mut effects, flags } = source;
         effects.records.sort_by_key(|record| record.id);
+        // The recorded agents; effects of the app itself have no scope.
         let mut scopes = Vec::new();
         for record in &effects.records {
-            if !scopes.contains(&record.scope) {
+            if record.scope.is_some() && !scopes.contains(&record.scope) {
                 scopes.push(record.scope.clone());
             }
         }
@@ -193,16 +198,11 @@ impl Replay {
             .into_iter()
             .filter(|record| !is_message(&record.kind))
             .partition(|record| matches!(record.kind, EffectKind::Completion { .. }));
-        let kinds = others
-            .iter()
-            .map(|record| record.kind.name().to_owned())
-            .collect();
         let answers = |records| RecordedAnswers::new(&EffectLog::from_records(records));
         Self {
             flags,
             models: answers(models).checking(RequestCheck::Skip),
             others: answers(others),
-            kinds,
             scopes,
             agents: HashMap::new(),
             positions: HashMap::new(),
@@ -318,7 +318,7 @@ fn said(record: &EffectRecord) -> Option<Said> {
     let message: Delivered = serde_json::from_value(payload.clone()).ok()?;
     (message.origin.kind == OriginKind::User).then(|| Said {
         text: message.text,
-        at_ms: record.started_ms.unwrap_or_default(),
+        at_ms: record.started_ms.or(record.finished_ms).unwrap_or_default(),
     })
 }
 
@@ -400,13 +400,13 @@ pub struct SessionReplayPlugin;
 impl Plugin for SessionReplayPlugin {
     fn build(&self, app: &mut App) {
         app.add_flag(Flag::new(REPLAY, "Replay the session recorded in DIR").value("DIR"))
-            .add_flag(
-                Flag::new(
-                    REPLAY_FLAGS,
-                    "How --replay runs: continue-live, live-tools, speed",
-                )
-                .value("LIST"),
-            );
+            .add_flag(Flag::new(
+                CONTINUE_LIVE,
+                "Go on live after --replay's first difference",
+            ))
+            .add_flag(Flag::new(LIVE_TOOLS, "Run tools for real in --replay"))
+            .add_flag(Flag::new(SPEED, "Keep the recorded timing in --replay"));
+        app.world_mut().spawn(Replayable("ask".into()));
         let invoked = app.world().get_resource::<Invoked>();
         let from_invocation = invoked.and_then(ReplaySource::from_invocation);
         let source = match app.world_mut().remove_resource::<ReplaySource>() {
@@ -502,7 +502,7 @@ fn send_next(
 type Answerable<'a> = (
     Entity,
     &'a Effect,
-    &'a ForAgent,
+    Option<&'a ForAgent>,
     Option<&'a ModelRequest>,
     Option<&'a ToolRequest>,
     Option<&'a EffectRequest>,
@@ -510,23 +510,29 @@ type Answerable<'a> = (
 
 /// Answers each effect about to start from the record, in id order: a
 /// model call with the recorded reply when its request matches, a tool
-/// call (unless tools run live) and a plugin's effect of a recorded kind
-/// with the record its request matches. At a divergence the call is
-/// refused, which stops the replay, or with `continue_live` left to start
-/// live, as is everything after it.
+/// call (unless tools run live) and a [`Replayable`] plugin effect with
+/// the record its request matches. With `--speed` a hold keeps the answer
+/// from settling for as long as the recorded effect ran. At a divergence
+/// the effect is refused, which stops the replay, or with `continue_live`
+/// left to start live, as is everything after it.
 fn answer_from_record(
     effects: Query<Answerable, (Undecided, Without<Incoming>)>,
+    replayable: Query<&Replayable>,
     mut replay: ResMut<Replay>,
     mut commands: Commands,
 ) {
     let mut ready: Vec<Answerable> = effects.iter().collect();
     ready.sort_by_key(|(_, effect, ..)| effect.id());
-    for (entity, _, &ForAgent(agent), model, tool, request) in ready {
+    for (entity, _, agent, model, tool, request) in ready {
         if replay.live {
             return;
         }
-        let scope = replay.scope_of(agent);
+        let scope = agent.and_then(|&ForAgent(agent)| replay.scope_of(agent));
         let scope = scope.as_deref();
+        let replays = |kind: &EffectKind| {
+            let name = kind.name();
+            replayable.iter().any(|replayable| replayable.0 == name)
+        };
         let answer = match (model, tool, request) {
             (Some(model), ..) => {
                 let key = model.connection.as_ref().map_or_else(
@@ -547,16 +553,23 @@ fn answer_from_record(
                 replay.answered.1 += usize::from(answer.is_ok());
                 answer
             }
-            (None, None, Some(request)) if replay.kinds.contains(request.kind.name()) => {
+            (None, None, Some(request)) if replays(&request.kind) => {
                 let answer = replay.other(scope, &request.kind);
                 replay.answered.1 += usize::from(answer.is_ok());
                 answer
             }
             _ => continue,
         };
-        let mut answering = commands.entity(entity);
         match answer {
             Ok(record) => {
+                if replay.flags.original_timing
+                    && let (Some(started), Some(finished)) = (record.started_ms, record.finished_ms)
+                {
+                    let took = Duration::from_millis(finished.saturating_sub(started));
+                    let hold = commands.spawn(HoldOf(entity)).id();
+                    commands.delayed().duration(took).entity(hold).try_despawn();
+                }
+                let mut answering = commands.entity(entity);
                 if let Some(published) = record.tool_output {
                     answering.insert(Published(published));
                 }
@@ -569,7 +582,7 @@ fn answer_from_record(
                     replay.live = true;
                     return;
                 }
-                answering.insert_if_new(Outcome(Err(report)));
+                commands.entity(entity).insert_if_new(Outcome(Err(report)));
             }
         }
     }

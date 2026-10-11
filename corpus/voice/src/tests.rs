@@ -6,6 +6,7 @@ use rig_core::test_utils::MockCompletionModel;
 
 use super::*;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_tui::KeyBinding;
 
 /// Records a fixed buffer.
 struct FakeRecorder;
@@ -70,9 +71,9 @@ fn advance(app: &mut App, by: Duration) {
     }
 }
 
-/// How many transcripts waited to be sent.
-#[derive(Resource, Default)]
-struct Waited(usize);
+fn draft(world: &World) -> String {
+    world.resource::<TuiInput>().text().to_owned()
+}
 
 #[test]
 fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_without_code() {
@@ -83,15 +84,8 @@ fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_witho
             recorder: Some(Arc::new(FakeRecorder)),
             transcriber: Some(Arc::new(FakeTranscriber)),
             speaker: Some(Arc::new(speaker.clone())),
-            summary_model: None,
         })
-        .add_plugins((AgentPlugin, JournalPlugin, VoicePlugin))
-        .init_resource::<Waited>()
-        .add_observer(
-            |_: On<Add<PendingTranscript>>, mut waited: ResMut<Waited>| {
-                waited.0 += 1;
-            },
-        );
+        .add_plugins((AgentPlugin, JournalPlugin, VoicePlugin));
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([reply(
@@ -102,22 +96,33 @@ fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_witho
         .query_filtered::<Entity, With<Agent>>()
         .iter(world)
         .next();
+    let key = KEY.parse::<Keys>().ok();
+    let binding = world
+        .query::<(Entity, &KeyBinding)>()
+        .iter(world)
+        .find(|(_, binding)| Some(&binding.keys) == key.as_ref() && binding.releases)
+        .map(|(entity, _)| entity);
     let connection = connect(&model);
     assert!(
-        agent.is_some() && connection.is_some(),
-        "an agent on the catalog's model"
+        agent.is_some() && binding.is_some() && connection.is_some(),
+        "an agent on the catalog's model, and the push-to-talk key bound"
     );
-    let (Some(agent), Some(connection)) = (agent, connection) else {
+    let (Some(agent), Some(binding), Some(connection)) = (agent, binding, connection) else {
         return;
     };
     world.entity_mut(agent).insert(connection);
 
-    // Press, release: the transcript waits in the place of being sent.
-    app.world_mut().trigger(TalkPressed { entity: agent });
+    // Hold the key, let go: the transcript waits in the input.
+    let press = |released| KeyPressed {
+        entity: binding,
+        agent: Some(agent),
+        released,
+    };
+    app.world_mut().trigger(press(false));
     app.update();
-    app.world_mut().trigger(TalkReleased { entity: agent });
-    run_until(&mut app, &wakes, |world| world.resource::<Waited>().0 > 0);
-    assert_eq!(app.world().resource::<Waited>().0, 1);
+    app.world_mut().trigger(press(true));
+    run_until(&mut app, &wakes, |world| !draft(world).is_empty());
+    assert_eq!(draft(app.world()), "list the files");
     for _ in 0..5 {
         app.update();
     }
@@ -130,6 +135,7 @@ fn a_held_key_sends_the_transcript_after_a_moment_and_the_answer_is_spoken_witho
     // The moment passes: it is sent, answered, and the answer spoken.
     advance(&mut app, AUTO_SEND);
     run_until(&mut app, &wakes, |_| !speaker.said().is_empty());
+    assert_eq!(draft(app.world()), "");
     let sent = model
         .requests()
         .iter()

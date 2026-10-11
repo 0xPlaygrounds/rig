@@ -13,20 +13,23 @@ use rig_core::message::{DocumentData, DocumentSourceKind, Image, MimeType, ToolR
 use rig_harness::prelude::*;
 use serde_json::{Value, json};
 
-use super::{SavedAgent, SavedSession};
+use super::{Export, ExportedAgent, ModelCall};
 
 /// The `format` field of an export's JSON. Its shape:
 ///
 /// ```json
 /// { "format": "rig-export/1",
-///   "session": { "id": "…", "name": "…", "started": 1760000000 },
+///   "session": { "id": "…", "name": "…", "started_ms": 1760000000000 },
 ///   "models": ["vendor/model"],
 ///   "agents": [{
 ///     "id": "…", "parent": "…" | null,
 ///     "task_call": "the parent's task call id" | null, "title": "…" | null,
-///     "model": "vendor/model" | null,
-///     "usage": rig-core's UsageTotals (tokens, cost) | null,
-///     "condensed": "the compaction summary before `messages`" | null,
+///     "model": "vendor/model" | null, "started_ms": 0, "retired": false,
+///     "usage": rig-core's UsageTotals (tokens, cost) of `calls`,
+///     "calls": [{ "effect": 7, "purpose": "turn" | null, "model": "provider/model",
+///                 "usage": rig-core Usage (tokens, cost), "response_id": "…" | null,
+///                 "disposition": "ran" | "superseded" | … }],
+///     "condensed": { "upto": 4, "summary": "replaces messages[..upto]" } | null,
 ///     "messages": [rig-core Message, …],
 ///     "origins": [{ "message": 0, "item": 0, "origin": Origin }] }] }
 /// ```
@@ -65,7 +68,7 @@ impl Format {
 /// The files of `session` exported as `format` to `path`: the export, and
 /// for Markdown the images it links to.
 pub(crate) fn render(
-    session: &SavedSession,
+    session: &Export,
     format: Format,
     thinking: bool,
     path: &Path,
@@ -120,21 +123,22 @@ trait Sink {
     fn image(&mut self, image: &Image);
 }
 
-fn walk_session(sink: &mut dyn Sink, session: &SavedSession) {
+fn walk_session(sink: &mut dyn Sink, session: &Export) {
     let mut rows = vec![("Models", models(session).join(", "))];
     if let Some(id) = &session.id {
         rows.insert(0, ("Session", id.clone()));
     }
-    if let Some(started) = session.started {
-        rows.push(("Started", utc(started)));
+    if let Some(started) = session.started_ms {
+        rows.push(("Started", utc(started / 1000)));
     }
     sink.header(&session.name, &rows);
     let mut walked = HashSet::new();
     let roots = session.agents.iter().filter(|agent| {
         agent
+            .saved
             .parent
             .as_ref()
-            .is_none_or(|parent| !session.agents.iter().any(|other| &other.id == parent))
+            .is_none_or(|parent| !session.agents.iter().any(|other| &other.saved.id == parent))
     });
     for root in roots {
         walk(sink, session, root, 0, &mut walked);
@@ -144,33 +148,34 @@ fn walk_session(sink: &mut dyn Sink, session: &SavedSession) {
 /// `agent`'s section, its subagents' nested in it.
 fn walk<'s>(
     sink: &mut dyn Sink,
-    session: &'s SavedSession,
-    agent: &'s SavedAgent,
+    session: &'s Export,
+    agent: &'s ExportedAgent,
     depth: usize,
     walked: &mut HashSet<&'s str>,
 ) {
-    if !walked.insert(agent.id.0.as_str()) {
+    if !walked.insert(agent.saved.id.0.as_str()) {
         return;
     }
-    let mut title = match (&agent.parent, spawned_by(agent)) {
-        (Some(_), Some((_, Some(task)))) => format!("Subagent {} “{task}”", agent.id.short()),
-        (Some(_), _) => format!("Subagent {}", agent.id.short()),
-        (None, _) => format!("Agent {}", agent.id.short()),
+    let mut title = match (&agent.saved.parent, spawned_by(agent)) {
+        (Some(_), Some((_, Some(task)))) => format!("Subagent {} “{task}”", agent.saved.id.short()),
+        (Some(_), _) => format!("Subagent {}", agent.saved.id.short()),
+        (None, _) => format!("Agent {}", agent.saved.id.short()),
     };
     if let Some(model) = &agent.model {
         title.push_str(&format!(" ({model})"));
     }
     sink.open(depth, &title);
-    if let Some(summary) = &agent.condensed {
-        sink.summary(summary);
-    }
-    let children: Vec<&SavedAgent> = session
+    let children: Vec<&ExportedAgent> = session
         .agents
         .iter()
-        .filter(|child| child.parent.as_ref() == Some(&agent.id))
+        .filter(|child| child.saved.parent.as_ref() == Some(&agent.saved.id))
         .collect();
-    let conversation = &agent.conversation;
+    let conversation = &agent.saved.conversation;
     for (at, message) in conversation.messages().iter().enumerate() {
+        // The summary that replaced the messages before it.
+        if let Some(condensed) = agent.saved.condensed.as_ref().filter(|c| c.upto == at) {
+            sink.summary(&condensed.summary);
+        }
         match message {
             message::Message::User { content } => {
                 for (item, content) in content.iter().enumerate() {
@@ -211,8 +216,8 @@ fn walk<'s>(
             message::Message::System { content } => sink.text("System", content),
         }
     }
-    // Subagents no result of this conversation names, such as those of
-    // messages a compaction left out or of a call still running.
+    // Subagents no result of this conversation names, such as those of a
+    // call still running.
     for child in children {
         walk(sink, session, child, depth + 1, walked);
     }
@@ -260,29 +265,35 @@ fn sender(origin: Option<&Origin>) -> String {
 
 /// The call that spawned `agent` and its task's title: the request and
 /// title of its first message, its brief, when its parent sent it.
-fn spawned_by(agent: &SavedAgent) -> Option<(String, Option<String>)> {
-    let first = match agent.conversation.messages().first()? {
+fn spawned_by(agent: &ExportedAgent) -> Option<(String, Option<String>)> {
+    let first = match agent.saved.conversation.messages().first()? {
         message::Message::User { content } => content.len(),
         _ => 0,
     };
     (0..first).find_map(|item| {
-        let origin = agent.conversation.origin(0, item)?;
-        let from_parent = origin.from.is_some() && origin.from == agent.parent;
+        let origin = agent.saved.conversation.origin(0, item)?;
+        let from_parent = origin.from.is_some() && origin.from == agent.saved.parent;
         let request = origin.request.as_ref().filter(|_| from_parent)?;
         Some((request.0.clone(), origin.title.clone()))
     })
 }
 
 /// Every model the session's agents use or answered with.
-fn models(session: &SavedSession) -> Vec<String> {
+fn models(session: &Export) -> Vec<String> {
     let mut models: Vec<String> = Vec::new();
     for agent in &session.agents {
-        let answered = agent.conversation.messages().iter().filter_map(|message| {
-            let message::Message::Assistant(assistant) = message else {
-                return None;
-            };
-            Some(assistant.origin.as_ref()?.model.clone())
-        });
+        let answered = agent
+            .saved
+            .conversation
+            .messages()
+            .iter()
+            .filter_map(|message| {
+                let message::Message::Assistant(assistant) = message else {
+                    return None;
+                };
+                let origin = assistant.origin.as_ref()?;
+                Some(format!("{}/{}", origin.provider, origin.model))
+            });
         for model in agent.model.iter().cloned().chain(answered) {
             if !models.contains(&model) {
                 models.push(model);
@@ -292,13 +303,13 @@ fn models(session: &SavedSession) -> Vec<String> {
     models
 }
 
-fn to_json(session: &SavedSession) -> Value {
+fn to_json(session: &Export) -> Value {
     let agents: Vec<Value> = session
         .agents
         .iter()
         .map(|agent| {
             let spawned = spawned_by(agent);
-            let messages = agent.conversation.messages();
+            let messages = agent.saved.conversation.messages();
             let origins: Vec<Value> = messages
                 .iter()
                 .enumerate()
@@ -310,18 +321,23 @@ fn to_json(session: &SavedSession) -> Value {
                     (0..items).map(move |item| (at, item))
                 })
                 .filter_map(|(at, item)| {
-                    let origin = agent.conversation.origin(at, item)?;
+                    let origin = agent.saved.conversation.origin(at, item)?;
                     Some(json!({ "message": at, "item": item, "origin": origin }))
                 })
                 .collect();
             json!({
-                "id": agent.id.0,
-                "parent": agent.parent.as_ref().map(|parent| &parent.0),
+                "id": agent.saved.id.0,
+                "parent": agent.saved.parent.as_ref().map(|parent| &parent.0),
                 "task_call": spawned.as_ref().map(|(call, _)| call),
                 "title": spawned.and_then(|(_, title)| title),
                 "model": agent.model,
-                "usage": agent.usage,
-                "condensed": agent.condensed,
+                "started_ms": agent.saved.started_ms,
+                "retired": agent.saved.retired,
+                "usage": agent.totals(),
+                "calls": agent.calls.iter().map(call_json).collect::<Vec<_>>(),
+                "condensed": agent.saved.condensed.as_ref().map(|condensed| {
+                    json!({ "upto": condensed.upto, "summary": condensed.summary })
+                }),
                 "messages": messages,
                 "origins": origins,
             })
@@ -329,9 +345,20 @@ fn to_json(session: &SavedSession) -> Value {
         .collect();
     json!({
         "format": JSON_FORMAT,
-        "session": { "id": session.id, "name": session.name, "started": session.started },
+        "session": { "id": session.id, "name": session.name, "started_ms": session.started_ms },
         "models": models(session),
         "agents": agents,
+    })
+}
+
+fn call_json(call: &ModelCall) -> Value {
+    json!({
+        "effect": call.effect,
+        "purpose": call.purpose,
+        "model": call.model,
+        "usage": call.usage,
+        "response_id": call.response_id,
+        "disposition": call.disposition,
     })
 }
 
@@ -425,7 +452,7 @@ impl Sink for Markdown {
     fn summary(&mut self, text: &str) {
         let _ = writeln!(
             self.out,
-            "**Compaction summary** (in place of the earlier messages):\n\n{text}\n"
+            "**Compaction summary** (what the model saw in place of the messages above):\n\n{text}\n"
         );
     }
 
@@ -522,8 +549,8 @@ impl Sink for Html {
     fn summary(&mut self, text: &str) {
         let _ = writeln!(
             self.0,
-            "<div class=\"summary\"><b>Compaction summary</b> (in place of the earlier \
-             messages)<pre>{}</pre></div>",
+            "<div class=\"summary\"><b>Compaction summary</b> (what the model saw in place of the \
+             messages above)<pre>{}</pre></div>",
             escape(text)
         );
     }

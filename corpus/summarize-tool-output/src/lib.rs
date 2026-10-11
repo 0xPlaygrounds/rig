@@ -1,24 +1,24 @@
 //! Big tool outputs are condensed by a cheap model before the agent's model
-//! sees them. A tool call whose output is over
-//! [`SummarizeOutputs::threshold_tokens`] has its whole output saved to a
-//! file under [`SummarizeOutputs::dir`], which the model can `read`, and a
-//! [`ModelRequest`] of the turn on the [`CheapModel`] writes the summary the
-//! model gets in its place. When there is no cheap model, or it fails or
-//! takes longer than [`SummarizeOutputs::timeout`], the model gets the
-//! output's head and tail with a note instead.
-//!
-//! The kernel inserts a tool's [`ToolOutput`] on its call when the tool's
-//! [`Running`] task ends, and the turn takes it at once. To get at the
-//! output first, the plugin moves each tool call's task onto an entity of
-//! its own ([`HeldFor`] the call), so the output lands there, and inserts
-//! the call's [`ToolOutput`] itself once it decided what the model gets.
+//! sees them. A Review system takes each tool call's result over
+//! [`SummarizeOutputs::threshold_tokens`]: it saves the whole output to a
+//! file under [`SummarizeOutputs::dir`], which the model can `read`, and
+//! holds the call with a summary call of the turn ([`Summarizing`], a
+//! [`ModelRequest`] on the configured cheap model, named `summarizing
+//! output`). Once the summary is in, another Review system replaces the
+//! call's result with it and lets the call go. When there is no cheap
+//! model, or it fails or takes longer than
+//! [`SummarizeOutputs::timeout_secs`], the model gets the output's head and
+//! tail with a note instead. The summary's usage counts with the agent's
+//! under the purpose `summarizer`.
 
 use std::path::{Path, PathBuf};
 
-use rig_core::completion::{CompletionRequest, UsageTotals};
-use rig_core::tool::ToolOutput as Content;
 use rig_harness::prelude::*;
-use serde::{Deserialize, Serialize};
+use rig_harness::rig_core::completion::CompletionRequest;
+use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
+use rig_harness::rig_core::tool::ToolOutput;
+use serde::Deserialize;
 
 /// Summarizes big tool outputs with a cheap model.
 #[derive(Default)]
@@ -26,30 +26,29 @@ pub struct SummarizeToolOutputPlugin;
 
 impl Plugin for SummarizeToolOutputPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SummarizeOutputs>()
-            .register_required_components::<Agent, SummarizerSpending>()
-            .add_systems(Startup, connect_cheap_model)
-            .add_observer(hold_output)
-            .add_observer(take_output)
-            .add_observer(take_summary)
-            .add_observer(time_out);
+        app.add_setting::<SummarizeOutputs>("summarize_outputs")
+            .init_resource::<ProjectRoot>()
+            .add_systems(
+                AgentPass,
+                (take_summaries, summarize).chain().in_set(Stage::Review),
+            );
     }
 }
 
-/// How big outputs are summarized.
-#[derive(Resource, Clone, Debug)]
+/// The `[summarize_outputs]` settings.
+#[derive(Resource, Clone, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct SummarizeOutputs {
     /// Outputs estimated above this many tokens are summarized.
     pub threshold_tokens: usize,
-    /// The catalog model (`vendor/model`) that summarizes, connected at
-    /// startup into the [`CheapModel`]; `None` truncates instead.
+    /// The catalog model (`vendor/model`) that summarizes; without one,
+    /// big outputs are cut to their head and tail.
     pub model: Option<String>,
     /// Tools whose outputs are never summarized.
     pub skip: Vec<String>,
-    /// How long the summary may take before the output is truncated
-    /// instead.
-    pub timeout: Duration,
-    /// Where whole outputs are saved, as `call-<n>.txt`.
+    /// Seconds the summary may take before the output is cut instead.
+    pub timeout_secs: u64,
+    /// Where whole outputs are saved, as `call-<n>.txt`, under the project.
     pub dir: PathBuf,
 }
 
@@ -59,45 +58,25 @@ impl Default for SummarizeOutputs {
             threshold_tokens: 8_000,
             model: None,
             skip: Vec::new(),
-            timeout: Duration::from_secs(30),
+            timeout_secs: 30,
             dir: PathBuf::from(".rig/outputs"),
         }
     }
 }
 
-/// The model that summarizes, or why there is none. Inserted at startup
-/// from [`SummarizeOutputs::model`] unless the app inserted one.
-#[derive(Resource, Clone)]
-pub struct CheapModel(pub Result<Connection, String>);
+/// On a tool call whose output this plugin took: once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Summarized;
 
-/// What an agent's summaries used, a part of its total usage, saved with
-/// the session.
-#[derive(Component, Reflect, Clone, Copy, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct SummarizerSpending(pub UsageTotals);
-
-/// The entity holding the task of the tool call it names: the call's
-/// output lands here first. Despawned with the call, which cancels it.
-#[derive(Component, Debug)]
-#[relationship(relationship_target = Held)]
-pub struct HeldFor(pub Entity);
-
-/// The task of a tool call, held by the plugin.
-#[derive(Component, Debug)]
-#[relationship_target(relationship = HeldFor, linked_spawn)]
-pub struct Held(Entity);
-
-/// The summary call of a big output: a [`ModelRequest`] of the call's
-/// turn, named `summarizing output` for views.
+/// The summary call of a big output, which holds the tool call.
 #[derive(Component, Clone, Debug)]
 pub struct Summarizing {
     /// The tool call.
     pub call: Entity,
     /// What the tool returned.
     pub result: ToolResult,
-    /// Its text.
-    pub text: String,
-    /// What the summary says about it.
+    /// What the model is told about it.
     pub about: About,
 }
 
@@ -108,15 +87,37 @@ pub struct About {
     pub tool: String,
     /// The output's estimated tokens.
     pub tokens: usize,
-    /// The file holding it whole.
+    /// The file holding it whole, under the project when it can be.
     pub path: PathBuf,
+    /// Characters a cut keeps.
+    pub budget: usize,
 }
 
-/// The summary call `entity` ran out of time.
-#[derive(EntityEvent, Clone, Copy, Debug)]
-pub struct SummaryTimedOut {
-    /// The summary call.
-    pub entity: Entity,
+impl About {
+    /// `result` with the summary in place of its output.
+    fn summary(&self, result: &ToolResult, summary: &str) -> Outcome {
+        let text = format!(
+            "Summary of a {}-token `{}` output (full output: `{}`):\n\n{}",
+            thousands(self.tokens),
+            self.tool,
+            self.path.display(),
+            summary.trim()
+        );
+        Outcome::from(result.clone().with_output(ToolOutput::text(text)))
+    }
+
+    /// `result` with its output cut to its head and tail, the cut saying
+    /// why and where the whole output is.
+    fn truncated(&self, result: &ToolResult, why: &str) -> Outcome {
+        let note = format!(
+            "{why}; the whole {}-token output is in `{}`",
+            thousands(self.tokens),
+            self.path.display()
+        );
+        let text = result.output().as_text().unwrap_or_default();
+        let cut = head_and_tail(text, self.budget, &note);
+        Outcome::from(result.clone().with_output(ToolOutput::text(cut)))
+    }
 }
 
 /// What the summarizer is told.
@@ -133,250 +134,140 @@ fn tokens(text: &str) -> usize {
     text.len().div_ceil(4)
 }
 
-fn connect_cheap_model(
+/// Whether `call` reads a file under `dir`, such as a saved output.
+fn reads_saved(call: &ToolCall, root: &Path, dir: &Path) -> bool {
+    let path = call.function.arguments.get("path");
+    call.function.name.as_str() == "read"
+        && path
+            .and_then(|path| path.as_str())
+            .is_some_and(|path| root.join(path).starts_with(dir))
+}
+
+/// Takes each big tool result as it is reviewed: saves it whole, then
+/// holds the call with a summary call on the cheap model, or cuts it when
+/// there is none.
+fn summarize(
+    calls: Query<
+        (
+            Entity,
+            &ToolRequest,
+            &Outcome,
+            &Effect,
+            &ForAgent,
+            Option<&CallOf>,
+        ),
+        (Unreviewed, Without<Summarized>),
+    >,
     config: Res<SummarizeOutputs>,
-    cheap: Option<Res<CheapModel>>,
+    root: Res<ProjectRoot>,
     models: Res<Models>,
     mut commands: Commands,
 ) {
-    if cheap.is_some() {
-        return;
-    }
-    let connection = match &config.model {
-        Some(model) => models.connect(model),
-        None => Err("no summarizer model is configured".to_owned()),
-    };
-    commands.insert_resource(CheapModel(connection));
-}
-
-/// Whether `run` reads a file under `dir`, such as a saved output.
-fn reads_saved(run: &ToolCallRun, dir: &Path) -> bool {
-    let function = &run.call.function;
-    let path = function
-        .arguments
-        .get("path")
-        .and_then(|path| path.as_str());
-    function.name.as_str() == "read"
-        && path.is_some_and(|path| {
-            let path = Path::new(path);
-            match (path.canonicalize(), dir.canonicalize()) {
-                (Ok(path), Ok(dir)) => path.starts_with(dir),
-                _ => path.starts_with(dir),
+    let dir = root.0.join(&config.dir);
+    for (call, request, outcome, effect, &ForAgent(agent), turn) in &calls {
+        let Ok(Answered::ToolResult { result }) = &outcome.0 else {
+            continue;
+        };
+        let (Some(text), tool) = (
+            result.output().as_text(),
+            request.call.function.name.as_str(),
+        ) else {
+            continue;
+        };
+        let estimate = tokens(text);
+        if estimate <= config.threshold_tokens
+            || config.skip.iter().any(|skip| skip == tool)
+            || reads_saved(&request.call, &root.0, &dir)
+        {
+            continue;
+        }
+        commands.entity(call).insert(Summarized);
+        let saved = save(&dir, text);
+        let path = saved.as_ref().map_or_else(|_| PathBuf::new(), Clone::clone);
+        let about = About {
+            tool: tool.to_owned(),
+            tokens: estimate,
+            path: path.strip_prefix(&root.0).unwrap_or(&path).to_owned(),
+            budget: config.threshold_tokens.saturating_mul(4),
+        };
+        let connection = match (saved, &config.model) {
+            (Err(why), _) => Err(format!("the output could not be saved ({why})")),
+            (Ok(_), None) => Err("no summarizer model is configured".to_owned()),
+            (Ok(_), Some(model)) => models.connect(model),
+        };
+        let connection = match connection {
+            Ok(connection) => connection,
+            Err(why) => {
+                commands.entity(call).insert(about.truncated(result, &why));
+                continue;
             }
-        })
-}
-
-/// Moves the task of a tool call that may be summarized onto an entity of
-/// its own, so its output lands there.
-fn hold_output(
-    add: On<Add<Running>>,
-    calls: Query<&ToolCallRun, With<CallOf>>,
-    config: Res<SummarizeOutputs>,
-    mut commands: Commands,
-) {
-    let call = add.entity;
-    let Ok(run) = calls.get(call) else {
-        return;
-    };
-    let name = run.call.function.name.as_str();
-    if config.skip.iter().any(|skip| skip == name) || reads_saved(run, &config.dir) {
-        return;
-    }
-    commands
-        .entity(call)
-        .queue(move |mut entity: EntityWorldMut| {
-            if let Some(running) = entity.take::<Running>() {
-                entity.world_scope(|world| {
-                    world.spawn((running, HeldFor(call)));
-                });
-            }
-        });
-}
-
-/// Takes a held output: a small one goes to its call as it is; a big one is
-/// saved and summarized, or truncated when there is no cheap model.
-fn take_output(
-    add: On<Add<ToolOutput>>,
-    held: Query<(&HeldFor, &ToolOutput)>,
-    runs: Query<(&ToolCallRun, &CallOf)>,
-    config: Res<SummarizeOutputs>,
-    cheap: Option<Res<CheapModel>>,
-    mut commands: Commands,
-) {
-    let Ok((&HeldFor(call), ToolOutput(result))) = held.get(add.entity) else {
-        return;
-    };
-    commands.entity(add.entity).despawn();
-    let (Ok((run, &CallOf(turn))), Some(text)) = (runs.get(call), result.output().as_text()) else {
-        commands
-            .entity(call)
-            .try_insert_if_new(ToolOutput(result.clone()));
-        return;
-    };
-    let estimate = tokens(text);
-    if estimate <= config.threshold_tokens {
-        commands
-            .entity(call)
-            .try_insert_if_new(ToolOutput(result.clone()));
-        return;
-    }
-    let budget = config.threshold_tokens.saturating_mul(4);
-    let tool = run.call.function.name.as_str().to_owned();
-    let path = match save(&config.dir, text) {
-        Ok(path) => path,
-        Err(why) => {
-            let note = format!("the whole output could not be saved: {why}");
-            let cut = head_and_tail(text, budget, &note);
-            let output = ToolOutput(result.clone().with_output(Content::text(cut)));
-            commands.entity(call).try_insert_if_new(output);
-            return;
-        }
-    };
-    let about = About {
-        tool,
-        tokens: estimate,
-        path,
-    };
-    let connection = match cheap.as_deref() {
-        Some(CheapModel(Ok(connection))) => connection,
-        Some(CheapModel(Err(why))) => {
-            let output = truncated(result, text, &about, budget, why);
-            commands.entity(call).try_insert_if_new(output);
-            return;
-        }
-        None => {
-            let why = "no summarizer model is connected";
-            let output = truncated(result, text, &about, budget, why);
-            commands.entity(call).try_insert_if_new(output);
-            return;
-        }
-    };
-    let window = connection.spec.context_window;
-    let cap = window.map_or(MAX_INPUT_CHARS, |window| {
-        usize::try_from(window).map_or(MAX_INPUT_CHARS, |window| window.saturating_mul(3))
-    });
-    let input = if text.len() > cap {
-        head_and_tail(text, cap, "cut to fit the summarizer")
-    } else {
-        text.to_owned()
-    };
-    let prompt = format!(
-        "The `{}` tool was called with {}. Its output, about {} tokens:\n\n{input}",
-        about.tool,
-        run.call.function.raw_arguments(),
-        thousands(estimate)
-    );
-    let request = CompletionRequest::new(message::Message::user(prompt)).preamble(PREAMBLE);
-    let summary = commands
-        .spawn((
+        };
+        let cap = connection
+            .spec
+            .context_window
+            .and_then(|window| usize::try_from(window).ok())
+            .map_or(MAX_INPUT_CHARS, |window| window.saturating_mul(3));
+        let input = if text.len() > cap {
+            head_and_tail(text, cap, "cut to fit the summarizer")
+        } else {
+            text.to_owned()
+        };
+        let prompt = format!(
+            "The `{tool}` tool was called with {}. Its output, about {} tokens:\n\n{input}",
+            request.call.function.raw_arguments(),
+            thousands(estimate)
+        );
+        let summary = CompletionRequest::new(message::Message::user(prompt)).preamble(PREAMBLE);
+        let mut summary = commands.spawn((
             Name::new("summarizing output"),
             Summarizing {
                 call,
                 result: result.clone(),
-                text: text.to_owned(),
                 about,
             },
-            ModelRequest { request },
-            connection.clone(),
-            CallOf(turn),
-        ))
-        .id();
-    commands
-        .delayed()
-        .duration(config.timeout)
-        .trigger(SummaryTimedOut { entity: summary });
+            ModelRequest::new(summary).on(connection),
+            Effect::child_of(Some(effect.id())).with_purpose("summarizer"),
+            ForAgent(agent),
+            HoldOf(call),
+        ));
+        if let Some(&CallOf(turn)) = turn {
+            summary.insert(CallOf(turn));
+        }
+        let (summary, secs) = (summary.id(), config.timeout_secs);
+        let late = ErrorReport::new(ErrorKind::Timeout, format!("it took longer than {secs} s"));
+        commands
+            .delayed()
+            .duration(Duration::from_secs(secs))
+            .entity(summary)
+            .try_insert_if_new(Outcome(Err(late)));
+    }
 }
 
-/// Takes a finished summary to its call, or the output's head and tail
-/// when the summarizer failed.
-fn take_summary(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&CallOf, &Summarizing, &Done<ModelReply>)>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<&mut SummarizerSpending>,
-    config: Res<SummarizeOutputs>,
+/// Puts each finished summary in its tool call's result, or the output's
+/// head and tail when the summarizer failed, and lets the call go.
+fn take_summaries(
+    summaries: Query<(Entity, &Summarizing, &Outcome), (Unreviewed, With<HoldOf>)>,
     mut commands: Commands,
 ) {
-    let Ok((&CallOf(turn), summarizing, Done(reply))) = calls.get(done.entity) else {
-        return;
-    };
-    commands.entity(done.entity).despawn();
-    let Summarizing {
-        call,
-        result,
-        text,
-        about,
-    } = summarizing;
-    let summary = match reply {
-        Ok(response) => {
-            if let Ok(&TurnOf(agent)) = turns.get(turn)
-                && let Ok(mut spent) = agents.get_mut(agent)
-            {
-                spent.0.record(&response.usage);
-            }
-            Some(response.text()).filter(|summary| !summary.trim().is_empty())
-        }
-        Err(_) => None,
-    };
-    let output = match (summary, reply) {
-        (Some(summary), _) => {
-            let summary = format!(
-                "Summary of a {}-token `{}` output (full output: `{}`):\n\n{}",
-                thousands(about.tokens),
-                about.tool,
-                about.path.display(),
-                summary.trim()
-            );
-            ToolOutput(result.clone().with_output(Content::text(summary)))
-        }
-        (None, Err(report)) => {
-            let why = format!("the summarizer failed: {report}");
-            truncated(
-                result,
-                text,
-                about,
-                config.threshold_tokens.saturating_mul(4),
-                &why,
-            )
-        }
-        (None, Ok(_)) => {
-            let why = "the summarizer answered nothing";
-            truncated(
-                result,
-                text,
-                about,
-                config.threshold_tokens.saturating_mul(4),
-                why,
-            )
-        }
-    };
-    commands.entity(*call).try_insert_if_new(output);
-}
-
-/// Truncates the output of a summary that took too long, and cancels it.
-fn time_out(
-    timed_out: On<SummaryTimedOut>,
-    calls: Query<&Summarizing>,
-    config: Res<SummarizeOutputs>,
-    mut commands: Commands,
-) {
-    let Ok(summarizing) = calls.get(timed_out.entity) else {
-        return;
-    };
-    let why = format!(
-        "the summarizer took longer than {} s",
-        config.timeout.as_secs()
-    );
-    let budget = config.threshold_tokens.saturating_mul(4);
-    let output = truncated(
-        &summarizing.result,
-        &summarizing.text,
-        &summarizing.about,
-        budget,
-        &why,
-    );
-    commands.entity(summarizing.call).try_insert_if_new(output);
-    commands.entity(timed_out.entity).despawn();
+    for (
+        summary,
+        Summarizing {
+            call,
+            result,
+            about,
+        },
+        outcome,
+    ) in &summaries
+    {
+        let text = outcome.completion().map(|response| response.text());
+        let output = match (&outcome.0, text) {
+            (Err(why), _) => about.truncated(result, &format!("the summarizer failed: {why}")),
+            (Ok(_), Some(text)) if !text.trim().is_empty() => about.summary(result, &text),
+            (Ok(_), _) => about.truncated(result, "the summarizer answered nothing"),
+        };
+        commands.entity(*call).try_insert(output);
+        commands.entity(summary).remove::<HoldOf>();
+    }
 }
 
 /// Saves `text` whole in a new `call-<n>.txt` under `dir`.
@@ -385,24 +276,6 @@ fn save(dir: &Path, text: &str) -> std::io::Result<PathBuf> {
     let (path, mut file) = Spill(dir.to_owned()).create("call")?;
     file.write_all(text.as_bytes())?;
     Ok(path)
-}
-
-/// `result` with its output cut to its head and tail, the cut saying why
-/// and where the whole output is.
-fn truncated(
-    result: &ToolResult,
-    text: &str,
-    about: &About,
-    budget: usize,
-    why: &str,
-) -> ToolOutput {
-    let note = format!(
-        "{why}; the whole {}-token output is in `{}`",
-        thousands(about.tokens),
-        about.path.display()
-    );
-    let cut = head_and_tail(text, budget, &note);
-    ToolOutput(result.clone().with_output(Content::text(cut)))
 }
 
 /// The first and last whole lines of `text` within `budget` characters in

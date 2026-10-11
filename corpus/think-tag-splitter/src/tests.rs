@@ -3,22 +3,23 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::rig_ecs::journal::JournalPlugin;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
 use super::*;
 
-/// The last streamed text and reasoning of each model call, as fronts saw
-/// them, and how many turns ended.
+/// The text and reasoning each turn's model call streamed, as fronts saw
+/// them.
 #[derive(Resource, Default)]
 struct Seen {
     partials: Vec<(String, String)>,
-    ended: usize,
 }
 
 fn start(store: &MemoryStore) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     app.add_plugins((AgentPlugin, JournalPlugin, ThinkTagSplitterPlugin))
         .init_resource::<Seen>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
         .add_observer(
             |gone: On<Remove<Partial>>, partials: Query<&Partial>, mut seen: ResMut<Seen>| {
                 if let Ok(partial) = partials.get(gone.entity) {
@@ -26,8 +27,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
                     seen.partials.push(streamed);
                 }
             },
-        )
-        .add_observer(|_: On<TurnEnded>, mut seen: ResMut<Seen>| seen.ended += 1);
+        );
     app.finish();
     app.update();
     (app, wakes)
@@ -36,7 +36,9 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
 fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, turns: usize) {
     app.world_mut()
         .trigger(Deliver::new(agent, "What is 2 + 2?", DeliveryMode::Queue));
-    run_until(app, wakes, |world| world.resource::<Seen>().ended >= turns);
+    run_until(app, wakes, |world| {
+        world.resource::<Ended>().0.len() >= turns
+    });
 }
 
 #[test]

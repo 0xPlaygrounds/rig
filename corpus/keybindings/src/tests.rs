@@ -11,56 +11,81 @@ fn collect(mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>) {
         .extend(notices.read().map(|notice| notice.text.clone()));
 }
 
-fn model(app: &App, agent: Entity) -> Option<String> {
+/// The bindings of `keys` in force.
+fn bound(app: &mut App, keys: &str) -> Vec<(Entity, bool)> {
+    let keys: Result<Keys, String> = keys.parse();
+    let world = app.world_mut();
+    let mut bindings = world.query::<(Entity, &KeyBinding, Has<UserKey>)>();
+    bindings
+        .iter(world)
+        .filter(|(_, binding, _)| Ok(&binding.keys) == keys.as_ref())
+        .map(|(entity, _, user)| (entity, user))
+        .collect()
+}
+
+/// Presses the user's binding of `keys` for `agent`, as the terminal view
+/// does, then runs a frame.
+fn press(app: &mut App, keys: &str, agent: Entity) {
+    let user = bound(app, keys).into_iter().find(|(_, user)| *user);
+    assert!(user.is_some(), "{keys} is not bound");
+    if let Some((entity, _)) = user {
+        app.world_mut().trigger(KeyPressed {
+            entity,
+            agent: Some(agent),
+            released: false,
+        });
+    }
+    app.update();
+}
+
+fn model(app: &App, agent: Entity) -> Option<&str> {
     app.world()
         .get::<ModelChoice>(agent)
-        .map(|choice| choice.0.clone())
+        .map(|choice| choice.0.as_str())
 }
 
 #[test]
-fn alt_m_cycles_the_model_and_a_built_in_key_needs_override() {
-    let base = std::env::var_os("CARGO_TARGET_DIR").map_or_else(std::env::temp_dir, PathBuf::from);
-    let dir = base.join(format!("corpus-keybindings-{}", std::process::id()));
+fn keys_cycle_the_model_and_a_taken_key_needs_override() {
+    let target = std::env::var_os("CARGO_TARGET_DIR").map_or_else(
+        || PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target")),
+        PathBuf::from,
+    );
+    let dir = target.join(format!("corpus-keybindings-{}", std::process::id()));
     assert!(std::fs::create_dir_all(&dir).is_ok());
-    let file = dir.join("keys.toml");
     // The catalog has no `deepseek/deepseek-pro`, the spec's second model.
     let keys = r#"
 "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
 "ctrl+k" = { command = "/help" }
-"ctrl+g" = { command = "/help", override = true }
+"ctrl+t" = { insert = "Think." }
+"ctrl+e" = { editor = true, override = true }
 "enter" = { send = "hello" }
 "#;
-    assert!(std::fs::write(&file, keys).is_ok());
+    assert!(std::fs::write(dir.join(USER_FILE), keys).is_ok());
 
     let mut app = App::new();
-    app.insert_resource(KeysFile(file))
+    app.insert_resource(Invoked::default())
+        .insert_resource(RigHome(Home::at(&dir)))
+        .insert_resource(Settings::default())
         .init_resource::<Seen>()
         .add_plugins((AgentPlugin, KeyBindingsPlugin))
         .add_systems(Last, collect);
-    app.update();
+    app.finish();
+    app.cleanup();
     app.update();
     std::fs::remove_dir_all(&dir).ok();
 
+    // `enter` sends and `ctrl+k` deletes to the line's end in the view, so
+    // both are refused without `override`; `ctrl+e` replaced the line end.
     let seen = &app.world().resource::<Seen>().0;
-    assert!(
+    let refused = |key: &str| {
         seen.iter()
-            .any(|text| text.starts_with("Key enter (keys.toml) refused") && text.contains("send")),
-        "{seen:?}"
-    );
-    // `ctrl+k` deletes to the line end in the terminal view, so the spec's
-    // own example is refused without `override` too.
-    assert!(
-        seen.iter().any(|text| text.starts_with("Key ctrl+k")),
-        "{seen:?}"
-    );
-    let bound: Vec<String> = app
-        .world()
-        .resource::<KeyBindings>()
-        .0
-        .iter()
-        .map(|binding| binding.chord.to_string())
-        .collect();
-    assert_eq!(bound, ["alt+m", "ctrl+g"]);
+            .any(|text| text.starts_with(&format!("keys.toml: `{key}` refused")))
+    };
+    assert!(refused("enter") && refused("ctrl+k"), "{seen:?}");
+    assert!(!refused("ctrl+e") && !refused("alt+m"), "{seen:?}");
+    assert_eq!(bound(&mut app, "enter").len(), 1);
+    assert!(bound(&mut app, "enter").iter().all(|(_, user)| !user));
+    assert!(bound(&mut app, "ctrl+e").iter().all(|(_, user)| *user));
 
     let world = app.world_mut();
     let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
@@ -73,28 +98,25 @@ fn alt_m_cycles_the_model_and_a_built_in_key_needs_override() {
         model: "deepseek/deepseek-flash".to_owned(),
     });
     app.update();
-    assert_eq!(
-        model(&app, agent).as_deref(),
-        Some("deepseek/deepseek-flash")
-    );
+    press(&mut app, "alt+m", agent);
+    assert_eq!(model(&app, agent), Some("deepseek/deepseek-v4-pro"));
+    press(&mut app, "alt+m", agent);
+    assert_eq!(model(&app, agent), Some("deepseek/deepseek-flash"));
 
-    let alt_m = KeyEvent::new(KeyCode::Char('m'), KeyModifiers::ALT);
-    app.world_mut().trigger(KeyPressed {
+    press(&mut app, "ctrl+t", agent);
+    assert_eq!(app.world().resource::<TuiInput>().text(), "Think.");
+
+    app.world_mut().trigger(RunCommand {
         entity: agent,
-        key: alt_m,
+        line: "keys".to_owned(),
     });
     app.update();
-    assert_eq!(
-        model(&app, agent).as_deref(),
-        Some("deepseek/deepseek-v4-pro")
-    );
-    app.world_mut().trigger(KeyPressed {
-        entity: agent,
-        key: alt_m,
-    });
-    app.update();
-    assert_eq!(
-        model(&app, agent).as_deref(),
-        Some("deepseek/deepseek-flash")
+    let seen = &app.world().resource::<Seen>().0;
+    let listed = seen.last().map(String::as_str).unwrap_or_default();
+    assert!(
+        listed
+            .lines()
+            .any(|line| line.starts_with("alt+m") && line.ends_with("(keys.toml)")),
+        "{listed}"
     );
 }

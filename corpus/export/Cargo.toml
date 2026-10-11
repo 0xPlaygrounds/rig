@@ -10,13 +10,15 @@ workspace = true
 
 [dependencies]
 base64 = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
 rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
-rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
@@ -24,3 +26,4 @@ rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features =
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

@@ -1,67 +1,22 @@
-//! Plugin corpus: 48. JSON event stream and RPC mode (spec `48-json-stream.md`).
-//!
-//! With `RIG_JSON=1` (stream) or `RIG_JSON=rpc`, every event of every
-//! agent goes to stdout as one JSON line, and in RPC mode stdin takes
-//! commands as JSON lines. The launcher refuses `--json` and `--rpc`
-//! (`Invocation::parse` knows only `-p` and `-m`), so the mode comes from
-//! the environment; an app may insert [`JsonMode`] itself.
-//!
-//! # Schema, version 1
-//!
-//! Every line is an object with `v` (1), `type`, `agent` (the `AgentId`,
-//! or `null` for app-wide lines) and, for a subagent, `parent`.
-//!
-//! Events: `session_start {agents: [{agent, parent, name}]}`,
-//! `turn_start`, `text_delta {text}`, `reasoning_delta {text}`,
-//! `tool_call_start {id, name, args}`, `tool_call_end {id, name, result,
-//! is_error}`, `notice {level, text}`, `usage {usage}`, `turn_end {outcome:
-//! "answered" | "failed" | "stopped", text?, error?}`, `request
-//! {request_id, title, choices, selected}` (a picker another plugin opened)
-//! and `response {id, ok, error?}`.
-//!
-//! Commands (RPC): `{"type":"prompt","id":…,"agent"?:…,"text":…}`,
-//! `{"type":"interrupt","id":…,"agent"?:…}`,
-//! `{"type":"set_model","id":…,"agent"?:…,"model":"vendor/model"}`,
-//! `{"type":"answer","id":…,"request_id":…,"choice":<index>}`. Without
-//! `agent` a command goes to the primary agent. End of stdin exits.
-//!
-//! `rig-print` must be left out of `plugins.toml` for this front: it
-//! drives a non-interactive run itself, reads stdin and prints the answer.
+#![doc = include_str!("../README.md")]
 
-use std::collections::HashMap;
 use std::io::{BufRead as _, Write};
 
 use bevy_ecs::system::SystemParam;
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::calls::Done;
-use rig_harness::rig_ecs::turn::ModelReply;
-use rig_tui::{PickItem, PickRequest};
+use rig_tui::{Chosen, Picked, Picker};
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
 
 /// The schema version every line carries as `v`.
 pub const VERSION: u32 = 1;
 
-/// Which JSON front runs.
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum JsonMode {
-    /// Events out; with `-p`, one prompt then exit.
-    Stream,
-    /// Events out and commands in, until stdin ends.
-    Rpc,
-}
+/// The front's name and its option, `--json`.
+pub const FRONT: &str = "json";
 
-impl JsonMode {
-    /// From `RIG_JSON`: `rpc`, or any other non-empty value for a stream.
-    pub fn from_env() -> Option<Self> {
-        match std::env::var("RIG_JSON").ok()?.as_str() {
-            "" | "0" => None,
-            "rpc" => Some(Self::Rpc),
-            _ => Some(Self::Stream),
-        }
-    }
-}
+/// The option that keeps a `--json` run reading commands, `--rpc`.
+pub const RPC: &str = "rpc";
 
 /// Where the lines go: stdout unless the app inserted another.
 #[derive(Resource)]
@@ -74,13 +29,12 @@ impl JsonSink {
     }
 }
 
-/// The command lines coming in: stdin's in RPC mode unless the app
-/// inserted another.
+/// The command lines coming in: stdin's unless the app inserted another.
 #[derive(Resource)]
 pub struct RpcInput(Receiver<String>);
 
 impl RpcInput {
-    /// An input fed by the returned sender.
+    /// An input fed by the returned sender; it ends when the sender drops.
     pub fn channel() -> (Sender<String>, Self) {
         let (sender, receiver) = crossbeam_channel::unbounded();
         (sender, Self(receiver))
@@ -93,65 +47,75 @@ pub struct JsonStreamPlugin;
 
 impl Plugin for JsonStreamPlugin {
     fn build(&self, app: &mut App) {
-        let mode = match app.world().get_resource::<JsonMode>() {
-            Some(mode) => *mode,
-            None => match JsonMode::from_env() {
-                Some(mode) => mode,
-                None => return,
-            },
-        };
-        app.insert_resource(mode)
-            .add_message::<PickRequest>()
-            .init_resource::<Pickers>()
-            .register_required_components::<Partial, Streamed>()
+        app.add_front(Front::new(FRONT).on_flag(FRONT, "Print every event as a JSON line"))
+            .add_flag(Flag::new(
+                RPC,
+                "With --json, read commands as JSON lines on stdin",
+            ));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if !app.runs_front(FRONT) {
+            return;
+        }
+        let invoked = app.world().get_resource::<Invoked>().cloned();
+        let args = invoked.as_ref().map(|invoked| &invoked.args);
+        let prompt = args.and_then(|args| args.print.clone());
+        let rpc = prompt.is_none() || invoked.as_ref().is_some_and(|invoked| invoked.flag(RPC));
+        if !app.world().contains_resource::<JsonSink>() {
+            app.insert_resource(JsonSink::new(std::io::stdout()));
+        }
+        app.register_required_components::<TurnCall, Streamed>()
             .add_observer(turn_started)
-            .add_observer(tool_started)
-            .add_observer(tool_ended)
-            .add_observer(model_done)
-            .add_observer(turn_ended)
+            .add_observer(started)
+            .add_observer(settled)
+            .add_observer(picker_opened)
             .add_systems(
                 Update,
                 (
                     session_started.run_if(resource_added::<SessionRestored>),
-                    stream_deltas.after(PollCalls),
+                    stream_deltas.after(PollCalls).before(AgentLoop),
                     notices,
-                    pickers,
-                    commands.run_if(resource_exists::<RpcInput>),
                 ),
             );
-        if !app.world().contains_resource::<JsonSink>() {
-            app.insert_resource(JsonSink::new(std::io::stdout()));
+        if rpc {
+            app.world_mut().spawn(Answerer::default());
+            if !app.world().contains_resource::<RpcInput>() {
+                app.add_systems(Startup, read_stdin);
+            }
+            app.add_systems(
+                Update,
+                run_commands
+                    .before(AgentLoop)
+                    .run_if(resource_exists::<RpcInput>),
+            );
+        } else {
+            app.add_systems(AgentPass, refuse_asks.in_set(Stage::Gate));
         }
-        if mode == JsonMode::Rpc && !app.world().contains_resource::<RpcInput>() {
-            app.add_systems(Startup, read_stdin);
-        }
-        let prompt = app
-            .world()
-            .get_resource::<Invoked>()
-            .and_then(|invoked| invoked.args.print.clone());
-        if let (JsonMode::Stream, Some(prompt)) = (mode, prompt) {
+        if let Some(prompt) = prompt {
+            let model = args.is_some_and(|args| args.model.is_some());
             app.insert_resource(PrintRun {
                 prompt,
+                model,
                 step: Step::Start,
+                exit: !rpc,
                 answered: false,
             })
-            .add_systems(Update, drive);
+            .add_systems(
+                Update,
+                drive
+                    .before(AgentLoop)
+                    .run_if(resource_exists::<SessionRestored>),
+            );
         }
     }
 }
 
-/// What a model call's stream sent out so far, in bytes.
+/// What a turn's model call has sent out of its [`Partial`], in bytes.
 #[derive(Component, Default)]
 struct Streamed {
     text: usize,
     reasoning: usize,
-}
-
-/// Pickers waiting for an `answer`, by request id.
-#[derive(Resource, Default)]
-struct Pickers {
-    next: u64,
-    open: HashMap<String, (Entity, Vec<PickItem>)>,
 }
 
 /// Writes lines, each naming its agent and the agent's parent.
@@ -209,138 +173,134 @@ fn turn_started(turn: On<Add<TurnOf>>, turns: Query<&TurnOf>, mut out: Out) {
     }
 }
 
-/// The agent whose turn made the call `call`, if any.
-fn call_agent(call: Entity, of: &Query<&CallOf>, turns: &Query<&TurnOf>) -> Option<Entity> {
-    let CallOf(turn) = of.get(call).ok()?;
-    turns.get(*turn).ok().map(|TurnOf(agent)| *agent)
-}
-
-fn tool_started(
-    add: On<Add<ToolCallRun>>,
-    runs: Query<&ToolCallRun>,
-    of: Query<&CallOf>,
-    turns: Query<&TurnOf>,
+/// A tool call starts, or a question waits for its answer.
+fn started(
+    start: On<Add<Started>>,
+    calls: Query<(&ToolRequest, &ForAgent)>,
+    asks: Query<(&Ask, Option<&ForAgent>)>,
     mut out: Out,
 ) {
-    let Ok(run) = runs.get(add.entity) else {
-        return;
-    };
-    let call = &run.call;
-    let fields = json!({
-        "id": call.id.wire(),
-        "name": call.function.name.as_str(),
-        "args": call.function.arguments_value(),
-    });
-    out.emit(
-        "tool_call_start",
-        call_agent(add.entity, &of, &turns),
-        fields,
-    );
+    if let Ok((request, &ForAgent(agent))) = calls.get(start.entity) {
+        let call = &request.call;
+        let fields = json!({
+            "id": call.id.wire(),
+            "name": call.function.name.as_str(),
+            "args": call.function.arguments_value(),
+        });
+        out.emit("tool_call_start", Some(agent), fields);
+    } else if let Ok((ask, agent)) = asks.get(start.entity) {
+        let choices: Vec<&str> = ask.choices.iter().map(|c| c.label.as_str()).collect();
+        let request = (start.entity, "ask", ask.title.as_str(), ask.body.as_str());
+        emit_request(
+            &mut out,
+            agent.map(|agent| agent.0),
+            request,
+            choices,
+            ask.free_text,
+        );
+    }
 }
 
-fn tool_ended(
-    add: On<Add<ToolOutput>>,
-    calls: Query<(&ToolCallRun, &ToolOutput)>,
-    of: Query<&CallOf>,
-    turns: Query<&TurnOf>,
+/// A `request` line about `entity`, which an `answer` names.
+fn emit_request(
+    out: &mut Out,
+    agent: Option<Entity>,
+    (entity, kind, title, body): (Entity, &str, &str, &str),
+    choices: Vec<&str>,
+    free_text: bool,
+) {
+    let fields = json!({
+        "request_id": entity.to_bits(),
+        "kind": kind,
+        "title": title,
+        "body": body,
+        "choices": choices,
+        "free_text": free_text,
+    });
+    out.emit("request", agent, fields);
+}
+
+fn picker_opened(opened: On<Insert<Picker>>, pickers: Query<&Picker>, mut out: Out) {
+    if let Ok(picker) = pickers.get(opened.entity) {
+        let choices: Vec<&str> = picker.items.iter().map(|i| i.label.as_str()).collect();
+        let request = (
+            opened.entity,
+            "picker",
+            picker.title.as_str(),
+            picker.body.as_str(),
+        );
+        emit_request(&mut out, picker.agent, request, choices, picker.free_text);
+    }
+}
+
+/// A tool call, model call or turn settled.
+fn settled(
+    settled: On<Add<Settled>>,
+    effects: Query<(&ForAgent, Option<&Outcome>, Option<&TurnOutcome>)>,
+    calls: Query<&ToolRequest>,
+    models: Query<(), With<ModelRequest>>,
+    run: Option<ResMut<PrintRun>>,
     mut out: Out,
 ) {
-    let Ok((run, ToolOutput(result))) = calls.get(add.entity) else {
+    let entity = settled.entity;
+    let Ok((&ForAgent(agent), outcome, ended)) = effects.get(entity) else {
         return;
     };
-    let fields = json!({
-        "id": run.call.id.wire(),
-        "name": run.call.function.name.as_str(),
-        "result": serde_json::to_value(result.output()).unwrap_or_default(),
-        "is_error": !result.is_success(),
-    });
-    out.emit("tool_call_end", call_agent(add.entity, &of, &turns), fields);
+    if let (Ok(request), Some(outcome)) = (calls.get(entity), outcome) {
+        let result = outcome.tool_result();
+        let fields = json!({
+            "id": request.call.id.wire(),
+            "name": request.call.function.name.as_str(),
+            "result": serde_json::to_value(result.output()).unwrap_or_default(),
+            "is_error": !result.is_success(),
+        });
+        out.emit("tool_call_end", Some(agent), fields);
+    } else if let Some(response) = outcome
+        .filter(|_| models.contains(entity))
+        .and_then(Outcome::completion)
+    {
+        let usage = serde_json::to_value(response.usage).unwrap_or_default();
+        out.emit("usage", Some(agent), json!({ "usage": usage }));
+    } else if let Some(ended) = ended {
+        let fields = match ended {
+            TurnOutcome::Answered(message) => {
+                json!({ "outcome": "answered", "text": final_answer(message) })
+            }
+            TurnOutcome::Failed(why) => json!({ "outcome": "failed", "error": why }),
+            TurnOutcome::Stopped(why) => json!({ "outcome": "stopped", "error": why }),
+        };
+        if let Some(mut run) = run
+            && run.step == Step::Sent(agent)
+        {
+            run.answered = matches!(ended, TurnOutcome::Answered(_));
+        }
+        out.emit("turn_end", Some(agent), fields);
+    }
 }
 
-/// Sends what each streaming model call added since the last frame.
+/// Sends what each turn's model call streamed since the last frame, before
+/// the loop commits a finished reply and takes its [`Partial`] away.
 fn stream_deltas(
-    mut calls: Query<(Entity, &Partial, &mut Streamed), Changed<Partial>>,
-    of: Query<&CallOf>,
-    turns: Query<&TurnOf>,
+    mut calls: Query<(&Partial, &mut Streamed, &ForAgent), Changed<Partial>>,
     mut out: Out,
 ) {
-    for (call, partial, mut streamed) in &mut calls {
-        let agent = call_agent(call, &of, &turns);
-        send_new(
-            &mut out,
-            agent,
-            &partial.text,
-            &mut streamed.text,
-            "text_delta",
-        );
-        let reasoning = &partial.reasoning;
-        send_new(
-            &mut out,
-            agent,
-            reasoning,
-            &mut streamed.reasoning,
-            "reasoning_delta",
-        );
-    }
-}
-
-/// Sends `full` past the `sent` bytes as a `kind` line.
-fn send_new(out: &mut Out, agent: Option<Entity>, full: &str, sent: &mut usize, kind: &str) {
-    if let Some(new) = full.get(*sent..).filter(|new| !new.is_empty()) {
-        out.emit(kind, agent, json!({ "text": new }));
-        *sent = full.len();
-    }
-}
-
-/// A model call ended: sends the rest of its text the stream did not
-/// show yet (the call is gone before the next frame's deltas), and its
-/// usage.
-fn model_done(
-    done: On<Add<Done<ModelReply>>>,
-    mut calls: Query<(&Done<ModelReply>, Option<&mut Streamed>)>,
-    of: Query<&CallOf>,
-    turns: Query<&TurnOf>,
-    mut out: Out,
-) {
-    let Ok((Done(reply), streamed)) = calls.get_mut(done.entity) else {
-        return;
-    };
-    let Ok(response) = reply else {
-        return;
-    };
-    let agent = call_agent(done.entity, &of, &turns);
-    if let Some(mut streamed) = streamed {
-        let (mut text, mut reasoning) = (String::new(), String::new());
-        for item in &response.choice {
-            match item {
-                AssistantContent::Text(part) => text.push_str(part.text()),
-                AssistantContent::Reasoning(part) => reasoning.push_str(&part.text),
-                _ => {}
+    for (partial, mut streamed, &ForAgent(agent)) in &mut calls {
+        let streamed = &mut *streamed;
+        let parts = [
+            (&partial.text, &mut streamed.text, "text_delta"),
+            (
+                &partial.reasoning,
+                &mut streamed.reasoning,
+                "reasoning_delta",
+            ),
+        ];
+        for (full, sent, kind) in parts {
+            if let Some(new) = full.get(*sent..).filter(|new| !new.is_empty()) {
+                out.emit(kind, Some(agent), json!({ "text": new }));
+                *sent = full.len();
             }
         }
-        send_new(&mut out, agent, &text, &mut streamed.text, "text_delta");
-        let sent = &mut streamed.reasoning;
-        send_new(&mut out, agent, &reasoning, sent, "reasoning_delta");
     }
-    let usage = serde_json::to_value(response.usage).unwrap_or_default();
-    out.emit("usage", agent, json!({ "usage": usage }));
-}
-
-fn turn_ended(ended: On<TurnEnded>, run: Option<ResMut<PrintRun>>, mut out: Out) {
-    let fields = match &ended.outcome {
-        TurnOutcome::Answered(message) => {
-            json!({ "outcome": "answered", "text": final_answer(message) })
-        }
-        TurnOutcome::Failed(why) => json!({ "outcome": "failed", "error": why }),
-        TurnOutcome::Stopped => json!({ "outcome": "stopped" }),
-    };
-    if let Some(mut run) = run
-        && let Step::Sent { agent } = run.step
-        && agent == ended.entity
-    {
-        run.answered = matches!(ended.outcome, TurnOutcome::Answered(_));
-    }
-    out.emit("turn_end", Some(ended.entity), fields);
 }
 
 fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
@@ -354,28 +314,15 @@ fn notices(mut notices: MessageReader<Notice>, mut out: Out) {
     }
 }
 
-/// Turns each picker another plugin opens into a `request`.
-fn pickers(mut requests: MessageReader<PickRequest>, mut open: ResMut<Pickers>, mut out: Out) {
-    for request in requests.read() {
-        open.next += 1;
-        let id = format!("pick-{}", open.next);
-        let choices: Vec<&str> = request
-            .items
-            .iter()
-            .map(|item| item.label.as_str())
-            .collect();
-        let fields = json!({
-            "request_id": id,
-            "title": request.title,
-            "choices": choices,
-            "selected": request.selected,
-        });
-        out.emit("request", Some(request.agent), fields);
-        open.open.insert(id, (request.agent, request.items.clone()));
+/// Nobody answers a `-p` run's questions: each is refused.
+fn refuse_asks(asks: Query<Entity, (With<Ask>, Undecided)>, mut commands: Commands) {
+    for ask in &asks {
+        let why = "nobody answers questions in a --json -p run";
+        commands.entity(ask).insert_if_new(Outcome::refused(why));
     }
 }
 
-/// Starts the thread that feeds stdin's lines in.
+/// Starts the thread that feeds stdin's lines in, waking the loop for each.
 fn read_stdin(wake: Res<Wake>, mut commands: Commands) {
     let (sender, input) = RpcInput::channel();
     let wake = wake.clone();
@@ -389,7 +336,7 @@ fn read_stdin(wake: Res<Wake>, mut commands: Commands) {
             }
             wake.wake();
         }
-        // The sender drops: the input ends.
+        // The input ends with the sender.
         drop(sender);
         wake.wake();
     });
@@ -401,7 +348,7 @@ fn read_stdin(wake: Res<Wake>, mut commands: Commands) {
 struct Command {
     #[serde(default)]
     id: Value,
-    /// The agent's `AgentId`; the primary agent without one.
+    /// The agent's `AgentId`; the agent the user talks to without one.
     #[serde(default)]
     agent: Option<String>,
     #[serde(flatten)]
@@ -411,24 +358,34 @@ struct Command {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum Kind {
-    Prompt { text: String },
+    Prompt {
+        text: String,
+    },
     Interrupt,
-    SetModel { model: String },
-    Answer { request_id: String, choice: usize },
+    SetModel {
+        model: String,
+    },
+    Answer {
+        request_id: u64,
+        choice: Option<usize>,
+        text: Option<String>,
+    },
 }
 
-/// What a command line needs of the app.
+/// What a command needs of the app.
 #[derive(SystemParam)]
 struct Rpc<'w, 's> {
     input: Res<'w, RpcInput>,
-    primary: PrimaryQuery<'w, 's>,
-    pickers: ResMut<'w, Pickers>,
+    agents: PrimaryQuery<'w, 's>,
+    asks: Query<'w, 's, &'static Ask, (Without<Outcome>, Without<Settled>)>,
+    pickers: Query<'w, 's, &'static Picker>,
     commands: Commands<'w, 's>,
     exits: MessageWriter<'w, AppExit>,
 }
 
-/// Runs each command line that came in, answering each with a `response`.
-fn commands(mut rpc: Rpc, mut out: Out) {
+/// Runs each command line that came in, answering each with a `response`;
+/// the end of the input ends the run.
+fn run_commands(mut rpc: Rpc, mut out: Out) {
     loop {
         let line = match rpc.input.0.try_recv() {
             Ok(line) => line,
@@ -456,63 +413,121 @@ fn commands(mut rpc: Rpc, mut out: Out) {
 /// Runs `command`, or says why it cannot.
 fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
     let agent = match &command.agent {
-        Some(id) => {
-            let agents = rpc.primary.iter().map(|(agent, id, _)| (agent, id));
-            AgentId(id.clone()).find_in(agents)
-        }
-        None => primary(&rpc.primary),
+        Some(id) => AgentId(id.clone()).find_in(rpc.agents.iter().map(|(e, id, _)| (e, id))),
+        None => primary(&rpc.agents),
     };
     let agent = agent.ok_or("no such agent")?;
     match command.kind {
         Kind::Prompt { text } => {
-            let deliver = Deliver::new(agent, text, DeliveryMode::Queue);
-            rpc.commands.trigger(deliver);
+            let prompt = Deliver::new(agent, text, DeliveryMode::Queue);
+            rpc.commands.trigger(prompt);
         }
         Kind::Interrupt => rpc.commands.trigger(Interrupt::new(agent)),
         Kind::SetModel { model } => rpc.commands.trigger(SetModel {
             entity: agent,
             model,
         }),
-        Kind::Answer { request_id, choice } => {
-            let (picker, items) = rpc
-                .pickers
-                .open
-                .remove(&request_id)
-                .ok_or("no such request")?;
-            let item = items.get(choice).ok_or("no such choice")?;
-            rpc.commands.trigger(RunCommand {
-                entity: picker,
-                line: item.command.clone(),
-            });
+        Kind::Answer {
+            request_id,
+            choice,
+            text,
+        } => {
+            let request = Entity::try_from_bits(request_id).ok_or("no such request")?;
+            answer(rpc, agent, request, (choice, text))?;
         }
     }
     Ok(())
 }
 
-/// A `-p` run in stream mode.
+/// Answers the open question or picker `request` with the item at
+/// `choice`, else with `text`.
+fn answer(
+    rpc: &mut Rpc,
+    agent: Entity,
+    request: Entity,
+    (choice, text): (Option<usize>, Option<String>),
+) -> Result<(), String> {
+    if let Ok(ask) = rpc.asks.get(request) {
+        let answer = match (choice, text) {
+            (Some(index), _) => {
+                let choice = ask.choices.get(index).ok_or("no such choice")?;
+                Answer::Choice(choice.id.clone())
+            }
+            (None, Some(text)) if ask.free_text => Answer::Text(text),
+            _ => return Err("the answer needs a choice".to_owned()),
+        };
+        rpc.commands.entity(request).insert_if_new(answer.outcome());
+        return Ok(());
+    }
+    // A picker is the terminal view's: picking runs the item's command,
+    // then tells its plugin and closes it, as the view does.
+    let picker = rpc.pickers.get(request).map_err(|_| "no such request")?;
+    let chosen = match (choice, text) {
+        (Some(index), _) => {
+            let item = picker.items.get(index).ok_or("no such choice")?;
+            if !item.command.is_empty() {
+                rpc.commands.trigger(RunCommand {
+                    entity: picker.agent.unwrap_or(agent),
+                    line: item.command.clone(),
+                });
+            }
+            Chosen::Item(index)
+        }
+        (None, Some(text)) if picker.free_text => Chosen::Text(text),
+        _ => return Err("the answer needs a choice".to_owned()),
+    };
+    rpc.commands.trigger(Picked {
+        entity: request,
+        chosen: Some(chosen),
+    });
+    rpc.commands.entity(request).despawn();
+    Ok(())
+}
+
+/// A `-p` run: its prompt, then, unless commands keep it running, the exit
+/// once no agent works.
 #[derive(Resource)]
 struct PrintRun {
     prompt: String,
+    /// Whether `--model` named the model, which rig-models chooses.
+    model: bool,
     step: Step,
-    /// Whether the prompt's turn ended with an answer.
+    /// Whether the run exits after the prompt.
+    exit: bool,
+    /// Whether the prompt's last turn ended with an answer.
     answered: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum Step {
     Start,
-    Connecting { agent: Entity },
-    Sent { agent: Entity },
+    /// The prompt went to this agent.
+    Sent(Entity),
     Done,
 }
 
-/// Chooses a model when none was, sends the prompt, and exits once no
-/// agent works: 0 when the prompt's turn was answered, 1 otherwise.
+/// What keeps a `-p` run from exiting: turns, other work such as a
+/// sign-in, and messages on their way to an agent.
+#[derive(SystemParam)]
+struct Busy<'w, 's> {
+    turns: Query<'w, 's, (), With<TurnOf>>,
+    running: Query<'w, 's, (), With<Running>>,
+    messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
+}
+
+impl Busy<'_, '_> {
+    fn any(&self) -> bool {
+        !self.turns.is_empty() || !self.running.is_empty() || !self.messages.is_empty()
+    }
+}
+
+/// Sends the prompt, with the first model that can be reached when none
+/// was chosen, and exits once no agent works: 0 when the prompt's turn was
+/// answered, 1 otherwise.
 fn drive(
     mut run: ResMut<PrintRun>,
-    agents: PrimaryQuery,
-    choices: Query<(Option<&ModelChoice>, Has<Connection>)>,
-    busy: Query<(), Or<(With<TurnOf>, With<Running>)>>,
+    (agents, chosen): (PrimaryQuery, Query<(), With<ModelChoice>>),
+    busy: Busy,
     models: Res<Models>,
     mut commands: Commands,
     mut exits: MessageWriter<AppExit>,
@@ -522,7 +537,8 @@ fn drive(
             let Some(agent) = primary(&agents) else {
                 return;
             };
-            if let Ok((None, false)) = choices.get(agent)
+            if !run.model
+                && !chosen.contains(agent)
                 && let Some(spec) = models.0.reachable().first()
             {
                 let model = spec.reference().to_string();
@@ -531,28 +547,18 @@ fn drive(
                     model,
                 });
             }
-            run.step = Step::Connecting { agent };
+            let prompt = Deliver::new(agent, run.prompt.clone(), DeliveryMode::Steer);
+            commands.trigger(prompt);
+            run.step = Step::Sent(agent);
         }
-        Step::Connecting { agent } => {
-            if !choices.get(agent).is_ok_and(|(_, connected)| connected) {
-                run.step = Step::Done;
-                exits.write(AppExit::from_code(1));
-                return;
-            }
-            let text = run.prompt.clone();
-            commands.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-            run.step = Step::Sent { agent };
+        Step::Sent(_) if run.exit && !busy.any() => {
+            run.step = Step::Done;
+            exits.write(match run.answered {
+                true => AppExit::Success,
+                false => AppExit::from_code(1),
+            });
         }
-        Step::Sent { .. } => {
-            if busy.is_empty() {
-                run.step = Step::Done;
-                exits.write(match run.answered {
-                    true => AppExit::Success,
-                    false => AppExit::from_code(1),
-                });
-            }
-        }
-        Step::Done => {}
+        Step::Sent(_) | Step::Done => {}
     }
 }
 

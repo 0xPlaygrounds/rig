@@ -2,28 +2,27 @@
 //!
 //! A turn that changed files in a git repository ends with a commit of
 //! exactly those files: what `git status` shows at its end and did not
-//! show at its start, so the user's own uncommitted work stays out. The
-//! commit is made at once with "rig: <first line of the request>" as its
-//! subject, then reworded with the subject a cheap model writes from its
-//! diff, when one is configured. `/undo` takes the last one back and tells
-//! the agent; `/autocommit on|off` turns it on or off for the session.
+//! show at its start, so the user's own uncommitted work stays out. When a
+//! message model is set (`[auto-commit] message_model` in the settings),
+//! the turn's proposed end is held by a model call that writes the
+//! commit's subject from its diff; otherwise, or when that call fails, the
+//! subject is "rig: <first line of the request>". `/undo` takes the last
+//! commit back and tells the agent; `/autocommit on|off` turns it on or
+//! off for the session.
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Message};
-use rig_harness::rig_core::effect::family::Completion;
-use rig_harness::rig_core::effect::{EffectKind, Family};
-use rig_harness::rig_ecs::effects::Effects;
+use rig_harness::rig_core::tool::FilesChanged;
 use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
 
-/// The plugin's name, as the origin of what it tells agents.
+/// The plugin's name: its settings' table, its model calls' purpose and
+/// the origin of what it tells agents.
 const NAME: &str = "auto-commit";
 
 /// The most of a commit's diff the message model reads.
@@ -42,16 +41,16 @@ pub struct AutoCommitPlugin;
 
 impl Plugin for AutoCommitPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<AutoCommitConfig>() {
-            app.insert_resource(AutoCommitConfig::from_home());
-        }
-        app.init_resource::<AutoCommit>()
+        app.add_setting::<AutoCommitConfig>(NAME)
+            .init_resource::<ProjectRoot>()
+            .init_resource::<Processes>()
+            .init_resource::<AutoCommit>()
             .init_resource::<Said>()
-            .register_required_components::<Agent, Turns>()
-            .add_observer(start)
+            .add_observer(snapshot)
             .add_observer(touch)
+            .add_observer(take_subject)
             .add_observer(commit_turn)
-            .add_observer(reword)
+            .add_systems(AgentPass, ask_subject.in_set(Stage::Review))
             .add_command("undo", "Undo the last auto-commit", undo)
             .add_command(
                 "autocommit",
@@ -61,34 +60,15 @@ impl Plugin for AutoCommitPlugin {
     }
 }
 
-/// How the plugin works, from `RIG_HOME/auto-commit.json` when it exists.
+/// The `[auto-commit]` table of the settings.
 #[derive(Resource, Clone, Debug, Default, Deserialize)]
-#[serde(default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AutoCommitConfig {
     /// The catalog model (`vendor/model`) that writes commit subjects;
     /// none keeps "rig: <first line of the request>".
     pub message_model: Option<String>,
     /// How `/undo` takes a commit back.
     pub undo: UndoMode,
-    /// The directory in the repository, else the working directory.
-    pub dir: Option<PathBuf>,
-}
-
-impl AutoCommitConfig {
-    fn from_home() -> Self {
-        let path = Home::from_env().root().join("auto-commit.json");
-        std::fs::read_to_string(path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
-    }
-
-    fn dir(&self) -> PathBuf {
-        self.dir
-            .clone()
-            .or_else(|| std::env::current_dir().ok())
-            .unwrap_or_else(|| PathBuf::from("."))
-    }
 }
 
 /// How `/undo` takes the last auto-commit back.
@@ -102,10 +82,6 @@ pub enum UndoMode {
     /// Always `git revert`.
     Revert,
 }
-
-/// The model that writes commit subjects, in place of the configured one.
-#[derive(Resource, Clone)]
-pub struct MessageModel(pub Connection);
 
 /// Whether turns are committed, and the commits made, newest last, which
 /// `/undo` takes back. Saved with the session.
@@ -125,11 +101,6 @@ impl Default for AutoCommit {
     }
 }
 
-/// The turns the agent ended, for commit bodies. Saved with the session.
-#[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved)]
-struct Turns(u32);
-
 /// Why nothing was committed, each said once.
 #[derive(Resource, Default)]
 struct Said(BTreeSet<String>);
@@ -142,32 +113,38 @@ impl Said {
     }
 }
 
-/// On an agent while its turn runs: the repository, what was dirty when
-/// the turn started, the files its `edit` and `write` calls named, and the
-/// request's first line.
+/// On a turn: its repository, what was dirty when it started, and the
+/// files its tool calls said they changed.
 #[derive(Component)]
-struct Started {
+struct Before {
     root: PathBuf,
     dirty: BTreeSet<String>,
     touched: BTreeSet<String>,
-    request: String,
 }
 
-/// A commit whose subject the message model writes.
-#[derive(Component)]
-struct Rewording {
-    commit: String,
-    root: PathBuf,
-    body: String,
+impl Before {
+    /// The files the turn changed: dirty now and not when it started.
+    fn changed(&self, processes: &Processes) -> Result<Vec<String>, String> {
+        let now = status(processes, &self.root)?;
+        Ok(now.difference(&self.dirty).cloned().collect())
+    }
 }
+
+/// On a turn: the subject the message model wrote for its commit.
+#[derive(Component)]
+struct Subject(String);
+
+/// On the message model's call: the turn whose end it holds.
+#[derive(Component)]
+struct WritesSubject(Entity);
 
 /// Records what is dirty as a turn starts.
-fn start(
+fn snapshot(
     turn: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
-    agents: Query<&Conversation>,
     state: Res<AutoCommit>,
-    config: Res<AutoCommitConfig>,
+    project: Res<ProjectRoot>,
+    processes: Res<Processes>,
     mut said: ResMut<Said>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -178,85 +155,146 @@ fn start(
     if !state.enabled {
         return;
     }
-    let root = match repository(&config.dir()) {
-        Ok(root) => root,
-        Err(why) => return said.once(agent, why, &mut notices),
-    };
-    let dirty = match status(&root) {
-        Ok(dirty) => dirty,
-        Err(why) => return said.once(agent, why, &mut notices),
-    };
-    let request = agents.get(agent).map(request).unwrap_or_default();
-    commands.entity(agent).insert(Started {
-        root,
-        dirty,
-        touched: BTreeSet::new(),
-        request,
+    let before = repository(&processes, &project.0).and_then(|root| {
+        let dirty = status(&processes, &root)?;
+        Ok(Before {
+            root,
+            dirty,
+            touched: BTreeSet::new(),
+        })
     });
+    match before {
+        Ok(before) => {
+            commands.entity(turn.entity).insert(before);
+        }
+        Err(why) => said.once(agent, why, &mut notices),
+    }
 }
 
-/// Notes the file of each `edit` and `write` call.
+/// Notes the files each tool call of a turn says it changed.
 fn touch(
-    call: On<Add<CallOf>>,
-    calls: Query<(&ToolCallRun, &CallOf)>,
-    turns: Query<&TurnOf>,
-    mut agents: Query<&mut Started>,
+    published: On<Add<Published>>,
+    calls: Query<(&Published, &CallOf)>,
+    mut turns: Query<&mut Before>,
+    project: Res<ProjectRoot>,
 ) {
-    let Ok((run, CallOf(turn))) = calls.get(call.entity) else {
+    let Ok((Published(facts), &CallOf(turn))) = calls.get(published.entity) else {
         return;
     };
-    let function = &run.call.function;
-    if !matches!(function.name.as_str(), "edit" | "write") {
-        return;
-    }
-    let Some(path) = function
-        .arguments
-        .get("path")
-        .and_then(|path| path.as_str())
-    else {
+    let Ok(mut before) = turns.get_mut(turn) else {
         return;
     };
-    if let Ok(TurnOf(agent)) = turns.get(*turn)
-        && let Ok(mut started) = agents.get_mut(*agent)
-        && let Some(path) = relative(&started.root, Path::new(path))
-    {
-        started.touched.insert(path);
+    let Ok(Some(files)) = facts.get::<FilesChanged>() else {
+        return;
+    };
+    for path in files.paths() {
+        if let Some(path) = relative(&before.root, &project.0.join(path)) {
+            before.touched.insert(path);
+        }
     }
 }
 
-/// Commits what the turn changed, then asks the message model to reword it.
-fn commit_turn(
-    ended: On<TurnEnded>,
-    mut agents: Query<(&AgentId, &mut Turns)>,
-    started: Query<&Started>,
-    mut state: ResMut<AutoCommit>,
+/// Holds each proposed end of a turn that changed files with a call to the
+/// message model, given the changes' diff.
+fn ask_subject(
+    proposed: Query<(Entity, &TurnOf, &Before), Added<TurnOutcome>>,
     config: Res<AutoCommitConfig>,
-    session: Option<Res<SessionPaths>>,
+    models: Res<Models>,
+    processes: Res<Processes>,
     mut said: ResMut<Said>,
-    model: Writer,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = ended.entity;
-    let Ok((id, mut turns)) = agents.get_mut(agent) else {
+    for (turn, &TurnOf(agent), before) in &proposed {
+        commands.entity(turn).remove::<Subject>();
+        let Some(reference) = config.message_model.as_deref() else {
+            continue;
+        };
+        let changed = match before.changed(&processes) {
+            Ok(changed) if !changed.is_empty() => changed,
+            _ => continue,
+        };
+        let connection = match models.connect(reference) {
+            Ok(connection) => connection,
+            Err(why) => {
+                said.once(agent, why, &mut notices);
+                continue;
+            }
+        };
+        let paths: Vec<&str> = changed.iter().map(String::as_str).collect();
+        let root = &before.root;
+        let diff = git(
+            &processes,
+            root,
+            &[&["add", "-A", "--"], &paths[..]].concat(),
+        )
+        .and_then(|_| {
+            let diff = ["diff", "--cached", "--no-color", "--"];
+            git(&processes, root, &[&diff[..], &paths[..]].concat())
+        })
+        .unwrap_or_default();
+        let diff: String = diff.chars().take(DIFF_CHARS).collect();
+        let request = CompletionRequest::new(Message::user(diff)).preamble(PREAMBLE);
+        commands.spawn((
+            Name::new("commit message"),
+            ModelRequest::new(request).on(connection),
+            Effect::default().with_purpose(NAME),
+            ForAgent(agent),
+            HoldOf(turn),
+            WritesSubject(turn),
+        ));
+    }
+}
+
+/// Keeps the subject the message model answered on its turn, and lets the
+/// turn end; a failed call leaves the fallback subject.
+fn take_subject(
+    settled: On<Add<Settled>>,
+    calls: Query<(&WritesSubject, &Outcome)>,
+    mut commands: Commands,
+) {
+    let Ok((&WritesSubject(turn), outcome)) = calls.get(settled.entity) else {
         return;
     };
-    turns.0 += 1;
-    let Ok(started) = started.get(agent) else {
+    commands.entity(settled.entity).try_remove::<HoldOf>();
+    let subject = outcome.completion().and_then(|response| {
+        let text = response.text();
+        let line = text.lines().map(str::trim).find(|line| !line.is_empty())?;
+        Some(clip(line.trim_matches(['"', '`', '\''])))
+    });
+    if let Some(subject) = subject {
+        commands.entity(turn).try_insert(Subject(subject));
+    }
+}
+
+/// Commits what each ended turn changed, and warns about files the turn
+/// touched that the user had changed before it.
+fn commit_turn(
+    settled: On<Add<Settled>>,
+    turns: Query<(&Before, &Turn, &ForAgent, Option<&Subject>)>,
+    agents: Query<(&AgentId, &Conversation)>,
+    mut state: ResMut<AutoCommit>,
+    processes: Res<Processes>,
+    session: Option<Res<SessionPaths>>,
+    mut said: ResMut<Said>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((before, turn, &ForAgent(agent), subject)) = turns.get(settled.entity) else {
         return;
     };
-    commands.entity(agent).remove::<Started>();
+    let Ok((id, conversation)) = agents.get(agent) else {
+        return;
+    };
     if !state.enabled {
         return;
     }
-    let root = &started.root;
-    let changed = match status(root) {
-        Ok(now) => &now - &started.dirty,
+    let changed = match before.changed(&processes) {
+        Ok(changed) => changed,
         Err(why) => return said.once(agent, why, &mut notices),
     };
-    let theirs: Vec<&str> = started
+    let theirs: Vec<&str> = before
         .touched
-        .intersection(&started.dirty)
+        .intersection(&before.dirty)
         .map(String::as_str)
         .collect();
     if !theirs.is_empty() {
@@ -269,131 +307,44 @@ fn commit_turn(
     if changed.is_empty() {
         return;
     }
+    let subject = subject.map_or_else(
+        || {
+            clip(&format!(
+                "rig: {}",
+                request(conversation, turn.first_message)
+            ))
+        },
+        |subject| subject.0.clone(),
+    );
     let session = session
-        .as_ref()
-        .map_or_else(|| id.0.clone(), |paths| paths.path().display().to_string());
-    let body = format!("Session: {session}\nAgent: {}\nTurn: {}", id.0, turns.0);
-    let subject = clip(&format!("rig: {}", started.request));
+        .and_then(|paths| paths.id())
+        .map_or_else(|| "unsaved".to_owned(), |session| session.to_string());
+    let body = format!(
+        "Session: {session}\nAgent: {}\nTurn: {}",
+        id.0,
+        turn.index + 1
+    );
     let paths: Vec<&str> = changed.iter().map(String::as_str).collect();
-    let committed = git(root, &[&["add", "-A", "--"], paths.as_slice()].concat())
-        .and_then(|_| {
-            let message = ["commit", "-q", "-m", &subject, "-m", &body, "--"];
-            git(root, &[message.as_slice(), paths.as_slice()].concat())
-        })
-        .and_then(|_| git(root, &["rev-parse", "HEAD"]));
-    let commit = match committed {
-        Ok(commit) => commit,
+    let root = &before.root;
+    let committed = git(
+        &processes,
+        root,
+        &[&["add", "-A", "--"], &paths[..]].concat(),
+    )
+    .and_then(|_| {
+        let commit = ["commit", "-q", "-m", &subject, "-m", &body, "--"];
+        git(&processes, root, &[&commit[..], &paths[..]].concat())
+    })
+    .and_then(|_| git(&processes, root, &["rev-parse", "HEAD"]));
+    match committed {
+        Ok(commit) => {
+            let text = format!("auto-commit: {} {subject}", short(&commit));
+            notices.write(Notice::info(agent, text));
+            state.commits.push(commit);
+        }
         Err(why) => {
             notices.write(Notice::error(agent, format!("auto-commit failed: {why}")));
-            return;
         }
-    };
-    notices.write(Notice::info(
-        agent,
-        format!("auto-commit: {} {subject}", short(&commit)),
-    ));
-    state.commits.push(commit.clone());
-    let Some(connection) = model.connection(&config, agent, &mut said, &mut notices) else {
-        return;
-    };
-    let diff = git(root, &["show", "--format=", "--patch", &commit]).unwrap_or_default();
-    let diff: String = diff.chars().take(DIFF_CHARS).collect();
-    let request = CompletionRequest::new(Message::user(diff)).preamble(PREAMBLE);
-    let kind = EffectKind::Completion {
-        request,
-        stream: true,
-    };
-    let (_, reply) = model
-        .effects
-        .dispatch(&id.0, None, connection.handler.0, kind);
-    let work = async move {
-        reply
-            .await
-            .into_outcome()
-            .await
-            .and_then(Completion::unwrap)
-    };
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
-    commands.spawn((
-        Name::new("commit message"),
-        Rewording {
-            commit,
-            root: root.clone(),
-            body,
-        },
-        Running::spawn(pool, &model.wake, work),
-    ));
-}
-
-/// What sends the message model its request.
-#[derive(bevy_ecs::system::SystemParam)]
-struct Writer<'w> {
-    effects: Res<'w, Effects>,
-    wake: Res<'w, Wake>,
-    models: Res<'w, Models>,
-    own: Option<Res<'w, MessageModel>>,
-}
-
-impl Writer<'_> {
-    /// The message model, if one is set and can be reached.
-    fn connection(
-        &self,
-        config: &AutoCommitConfig,
-        agent: Entity,
-        said: &mut Said,
-        notices: &mut MessageWriter<Notice>,
-    ) -> Option<Connection> {
-        if let Some(own) = &self.own {
-            return Some(own.0.clone());
-        }
-        let reference = config.message_model.as_deref()?;
-        self.models
-            .connect(reference)
-            .map_err(|why| said.once(agent, why, notices))
-            .ok()
-    }
-}
-
-/// Rewords the commit with the model's subject while it is still HEAD; a
-/// failed reply keeps the first subject.
-fn reword(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&Rewording, &Done<ModelReply>)>,
-    mut state: ResMut<AutoCommit>,
-    mut commands: Commands,
-) {
-    let Ok((rewording, Done(reply))) = calls.get(done.entity) else {
-        return;
-    };
-    commands.entity(done.entity).despawn();
-    let subject = reply
-        .as_ref()
-        .ok()
-        .and_then(|response| response.message())
-        .and_then(|message| final_answer(&message))
-        .and_then(|answer| {
-            let line = answer
-                .lines()
-                .map(str::trim)
-                .find(|line| !line.is_empty())?;
-            Some(clip(line.trim_matches(['"', '`', '\''])))
-        });
-    let root = &rewording.root;
-    let head = git(root, &["rev-parse", "HEAD"]).ok();
-    let (Some(subject), true) = (subject, head.as_ref() == Some(&rewording.commit)) else {
-        return;
-    };
-    let amend = ["commit", "--amend", "--only", "-q", "-m", &subject];
-    let amended = git(root, &[amend.as_slice(), &["-m", &rewording.body]].concat())
-        .and_then(|_| git(root, &["rev-parse", "HEAD"]));
-    if let Ok(amended) = amended
-        && let Some(last) = state
-            .commits
-            .iter_mut()
-            .rev()
-            .find(|commit| **commit == rewording.commit)
-    {
-        *last = amended;
     }
 }
 
@@ -403,6 +354,8 @@ fn undo(
     agents: Query<Has<ActiveTurn>>,
     mut state: ResMut<AutoCommit>,
     config: Res<AutoCommitConfig>,
+    project: Res<ProjectRoot>,
+    processes: Res<Processes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -415,7 +368,8 @@ fn undo(
         notices.write(Notice::info(agent, "Nothing auto-committed to undo."));
         return;
     };
-    let undone = repository(&config.dir()).and_then(|root| {
+    let git = |root: &Path, args: &[&str]| git(&processes, root, args);
+    let undone = repository(&processes, &project.0).and_then(|root| {
         let subject = git(&root, &["log", "-1", "--format=%s", &commit])?;
         let head = git(&root, &["rev-parse", "HEAD"])?;
         let pushed = git(&root, &["branch", "-r", "--contains", &commit])?;
@@ -470,33 +424,31 @@ fn toggle(
     notices.write(Notice::info(args.agent, format!("Auto-commit is {says}.")));
 }
 
-/// The first line of the request that started the agent's turn: the text
-/// of its conversation's last user message, after the line naming who sent
-/// it when that was not the user.
-fn request(conversation: &Conversation) -> String {
-    let messages = conversation.messages();
-    let found = messages.iter().enumerate().rev().find_map(|(at, message)| {
-        let Message::User { content } = message else {
+/// The first line of the request a turn answers, the conversation's
+/// message `at`, after the header naming who sent it when that was not
+/// the user.
+fn request(conversation: &Conversation, at: usize) -> String {
+    let Some(Message::User { content }) = conversation.messages().get(at) else {
+        return "changes".to_owned();
+    };
+    let found = content.iter().enumerate().find_map(|(item, content)| {
+        let UserContent::Text(text) = content else {
             return None;
         };
-        content.iter().enumerate().find_map(|(item, content)| {
-            let UserContent::Text(text) = content else {
-                return None;
-            };
-            let skip = usize::from(conversation.origin(at, item).is_some());
-            text.text
-                .lines()
-                .skip(skip)
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-        })
+        let origin = conversation.origin(at, item);
+        let skip = usize::from(origin.and_then(Origin::header).is_some());
+        text.text
+            .lines()
+            .skip(skip)
+            .map(str::trim)
+            .find(|line| !line.is_empty())
     });
     found.unwrap_or("changes").to_owned()
 }
 
 /// The top of the repository `dir` is in, or why nothing is committed.
-fn repository(dir: &Path) -> Result<PathBuf, String> {
-    git(dir, &["rev-parse", "--show-toplevel"])
+fn repository(processes: &Processes, dir: &Path) -> Result<PathBuf, String> {
+    git(processes, dir, &["rev-parse", "--show-toplevel"])
         .map(PathBuf::from)
         .map_err(|_| {
             format!(
@@ -507,7 +459,7 @@ fn repository(dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// Why nothing is committed while a merge, rebase or the like is under way.
-fn busy(root: &Path) -> Result<(), String> {
+fn busy(processes: &Processes, root: &Path) -> Result<(), String> {
     for (file, what) in [
         ("MERGE_HEAD", "a merge"),
         ("rebase-merge", "a rebase"),
@@ -515,7 +467,7 @@ fn busy(root: &Path) -> Result<(), String> {
         ("CHERRY_PICK_HEAD", "a cherry-pick"),
         ("REVERT_HEAD", "a revert"),
     ] {
-        let path = git(root, &["rev-parse", "--git-path", file])?;
+        let path = git(processes, root, &["rev-parse", "--git-path", file])?;
         if root.join(path).exists() {
             return Err(format!("{what} is under way; nothing is committed."));
         }
@@ -524,12 +476,10 @@ fn busy(root: &Path) -> Result<(), String> {
 }
 
 /// The files `git status` shows, relative to the repository's top.
-fn status(root: &Path) -> Result<BTreeSet<String>, String> {
-    busy(root)?;
-    let out = run(
-        root,
-        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-    )?;
+fn status(processes: &Processes, root: &Path) -> Result<BTreeSet<String>, String> {
+    busy(processes, root)?;
+    let args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+    let out = run(processes, root, &args)?;
     let mut paths = BTreeSet::new();
     let mut fields = out.split('\0').filter(|field| !field.is_empty());
     while let Some(entry) = fields.next() {
@@ -543,7 +493,7 @@ fn status(root: &Path) -> Result<BTreeSet<String>, String> {
     Ok(paths)
 }
 
-/// `path`, as a tool names it, relative to the repository's top.
+/// `path` relative to the repository's top `root`, if it is in it.
 fn relative(root: &Path, path: &Path) -> Option<String> {
     let absolute = std::path::absolute(path).ok()?;
     let parent = absolute.parent()?.canonicalize().ok()?;
@@ -552,14 +502,17 @@ fn relative(root: &Path, path: &Path) -> Option<String> {
     Some(relative.to_string_lossy().replace('\\', "/"))
 }
 
-/// Runs git in `dir`: its trimmed output, or its error.
-fn git(dir: &Path, args: &[&str]) -> Result<String, String> {
-    run(dir, args).map(|out| out.trim().to_owned())
+/// Runs git in `dir` as every child process starts: its trimmed output,
+/// or its error.
+fn git(processes: &Processes, dir: &Path, args: &[&str]) -> Result<String, String> {
+    run(processes, dir, args).map(|out| out.trim().to_owned())
 }
 
 /// Runs git in `dir`: its output, or its error.
-fn run(dir: &Path, args: &[&str]) -> Result<String, String> {
-    let output = Command::new("git")
+fn run(processes: &Processes, dir: &Path, args: &[&str]) -> Result<String, String> {
+    let output = processes
+        .launcher()
+        .command("git")
         .arg("-C")
         .arg(dir)
         .args(args)

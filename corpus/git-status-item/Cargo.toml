@@ -11,7 +11,7 @@ workspace = true
 [features]
 default = ["tui"]
 # The item on the terminal view's status line; without it the plugin does nothing.
-tui = ["dep:rig-tui"]
+tui = ["dep:rig-tui", "dep:serde"]
 
 [dependencies]
 # Named by Bevy's derives.
@@ -19,6 +19,7 @@ bevy_ecs = { workspace = true }
 bevy_tasks = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"], optional = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }

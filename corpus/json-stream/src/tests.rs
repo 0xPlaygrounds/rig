@@ -1,12 +1,10 @@
-use std::io::Write;
 use std::sync::{Arc, Mutex};
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_ecs::journal::JournalPlugin;
+use rig_harness::harness_protocol::Invocation;
 use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
-use serde_json::Value;
 
 use super::*;
 
@@ -36,96 +34,88 @@ impl Lines {
             .map(|line| serde_json::from_str(line).unwrap_or(Value::Null))
             .collect()
     }
-}
 
-/// The field `key` of `line`, `Null` without one.
-fn at<'a>(line: &'a Value, key: &str) -> &'a Value {
-    line.get(key).unwrap_or(&Value::Null)
+    /// The first line of type `kind` for which `pick` holds.
+    fn find(&self, kind: &str, pick: impl Fn(&Value) -> bool) -> Option<Value> {
+        self.parsed()
+            .into_iter()
+            .find(|line| at(line, "type") == kind && pick(line))
+    }
 }
 
 #[test]
-fn a_prompt_command_streams_the_turn_as_json_lines() {
+fn rpc_commands_stream_the_turn_and_answer_requests_as_json_lines() {
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
     let lines = Lines::default();
     let (input, rpc) = RpcInput::channel();
-    app.insert_resource(JsonMode::Rpc)
-        .insert_resource(JsonSink::new(lines.clone()))
-        .insert_resource(rpc)
-        .add_plugins((AgentPlugin, JournalPlugin, ReadTool, JsonStreamPlugin));
+    let flags = [(FRONT.to_owned(), None), (RPC.to_owned(), None)];
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: flags.into(),
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .insert_resource(JsonSink::new(lines.clone()))
+    .insert_resource(rpc)
+    .add_plugins((AgentPlugin, JournalPlugin, ReadTool, JsonStreamPlugin));
     app.finish();
     app.update();
     let model = MockCompletionModel::from_stream_turns([
-        calls("c1", "read", serde_json::json!({ "path": "Cargo.toml" })),
+        calls("c1", "read", json!({ "path": "Cargo.toml" })),
         reply("ok"),
     ]);
     let world = app.world_mut();
-    let agent = world
-        .query_filtered::<Entity, With<Agent>>()
-        .iter(world)
-        .next();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
     let connection = connect(&model);
     assert!(
-        agent.is_some() && connection.is_some(),
-        "an agent and the catalog's model"
+        agent.is_ok() && connection.is_some(),
+        "an agent and a model"
     );
-    let (Some(agent), Some(connection)) = (agent, connection) else {
+    let (Ok(agent), Some(connection)) = (agent, connection) else {
         return;
     };
     world.entity_mut(agent).insert(connection);
 
-    let sent = input.send(r#"{"type":"prompt","id":7,"text":"read a.txt"}"#.to_owned());
-    assert!(sent.is_ok());
-    let ended = |lines: &Lines| {
-        lines
-            .parsed()
-            .iter()
-            .any(|line| at(line, "type") == "turn_end")
-    };
+    let prompt = r#"{"type":"prompt","id":7,"text":"read a.txt"}"#;
+    assert!(input.send(prompt.to_owned()).is_ok());
     let watched = lines.clone();
-    run_until(&mut app, &wakes, move |_| ended(&watched));
+    run_until(&mut app, &wakes, move |_| {
+        watched.find("turn_end", |_| true).is_some()
+    });
 
     let parsed = lines.parsed();
     assert!(
         parsed.iter().all(|line| at(line, "v") == VERSION),
         "{parsed:?}"
     );
-    let response = parsed.iter().find(|line| at(line, "type") == "response");
+    let response = lines.find("response", |_| true);
     assert_eq!(
-        response.map(|line| (at(line, "id").clone(), at(line, "ok").clone())),
+        response.map(|r| (at(&r, "id").clone(), at(&r, "ok").clone())),
         Some((7.into(), true.into()))
     );
     let kinds: Vec<&str> = parsed
         .iter()
         .filter_map(|line| at(line, "type").as_str())
         .collect();
-    let expected = [
+    let mut rest = kinds.iter();
+    for kind in [
         "turn_start",
         "tool_call_start",
         "tool_call_end",
         "text_delta",
         "turn_end",
-    ];
-    let mut rest = kinds.iter();
-    for kind in expected {
+    ] {
         assert!(
             rest.any(|seen| *seen == kind),
             "{kind} in order in {kinds:?}"
         );
     }
-    let start = parsed
-        .iter()
-        .find(|line| at(line, "type") == "tool_call_start");
+    let start = lines.find("tool_call_start", |_| true);
     assert_eq!(
-        start.map(|line| at(line, "name").clone()),
+        start.map(|line| at(&line, "name").clone()),
         Some("read".into())
-    );
-    let end = parsed
-        .iter()
-        .find(|line| at(line, "type") == "tool_call_end");
-    assert_eq!(
-        end.map(|line| at(line, "is_error").clone()),
-        Some(false.into())
     );
     let text: String = parsed
         .iter()
@@ -133,9 +123,46 @@ fn a_prompt_command_streams_the_turn_as_json_lines() {
         .filter_map(|line| at(line, "text").as_str())
         .collect();
     assert_eq!(text, "ok");
-    let turn_end = parsed.iter().find(|line| at(line, "type") == "turn_end");
+    let end = lines.find("turn_end", |_| true);
     assert_eq!(
-        turn_end.map(|line| at(line, "outcome").clone()),
+        end.map(|line| at(&line, "outcome").clone()),
         Some("answered".into())
     );
+
+    // A plugin's question about a subagent becomes a request, with the
+    // subagent's parent, and an `answer` answers it.
+    let world = app.world_mut();
+    let sub = world
+        .spawn((Agent, Name::new("sub"), SpawnedBy(agent)))
+        .id();
+    let ask = world.spawn((Ask::yes_no("Run it?"), ForAgent(sub))).id();
+    let watched = lines.clone();
+    run_until(&mut app, &wakes, move |_| {
+        watched.find("request", |_| true).is_some()
+    });
+    let request = lines.find("request", |_| true).unwrap_or_default();
+    let parent = app.world().get::<AgentId>(agent).map(|id| id.0.clone());
+    assert_eq!(
+        at(&request, "parent").as_str(),
+        parent.as_deref(),
+        "{request}"
+    );
+    let answer =
+        json!({ "type": "answer", "id": 8, "request_id": at(&request, "request_id"), "choice": 1 });
+    assert!(input.send(answer.to_string()).is_ok());
+    run_until(&mut app, &wakes, |world| {
+        world.get::<Outcome>(ask).is_some()
+    });
+    let answered = app.world().get::<Outcome>(ask).and_then(Answer::of);
+    assert_eq!(answered, Some(Answer::Choice("no".to_owned())));
+    let response = lines.find("response", |line| at(line, "id") == 8);
+    assert_eq!(
+        response.map(|line| at(&line, "ok").clone()),
+        Some(true.into())
+    );
+}
+
+/// The field `key` of `line`, `Null` without one.
+fn at<'a>(line: &'a Value, key: &str) -> &'a Value {
+    line.get(key).unwrap_or(&Value::Null)
 }

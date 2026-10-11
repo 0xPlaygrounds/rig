@@ -1,64 +1,67 @@
 //! Local models (spec `58-local-models.md`): models served by an Ollama
 //! daemon or a llama.cpp server on this machine, found at startup and on
-//! `/models refresh` by probing the configured endpoints in the
+//! `/models refresh` by probing the `[local_models]` endpoints in the
 //! background, and used like any catalog model.
 //!
-//! - Each model found is put in the catalog under its server's vendor
-//!   (`ollama/<name>`, `llamacpp/<name>`), free and with the context window
-//!   and tool support the server reports, so `/model`, the picker, usage
-//!   and cost treat it as any other. `/model local/<name>` names it too.
-//! - The catalog connects a local model to its server's default address,
-//!   so an agent on one gets this plugin's connection instead: the model on
-//!   the configured endpoint, behind a layer that fails each request at
-//!   once with "Ollama not running at …" while the model is unavailable.
+//! - The plugin declares the vendor `local` and puts each model found in
+//!   the catalog as `local/<name>`, free and with the context window and
+//!   tool support its server reports, and provides the vendor: its models
+//!   connect to their server's OpenAI-compatible `/v1`. So `/model`, the
+//!   picker, `--model`, the saved choice, usage and cost take them like any
+//!   other model.
 //! - A model the server stops listing, or whose server is down, is marked
-//!   unavailable; an endpoint that is down is skipped with one debug line.
+//!   unavailable (and so named in the picker); a model call to it is
+//!   refused at the gate with "Ollama not running at …". An endpoint that
+//!   is down is skipped with one debug line.
 //! - A model without tool support is offered none (the kernel's rule for a
-//!   catalog entry without tools), and the system prompt says so, unless
-//!   the turn is routed to another connection, as the text tool-call plugin
-//!   (spec 59) does for such models.
-//! - Choosing a local Ollama model sends a small warm-up request, so the
-//!   first turn does not wait for the model to load.
+//!   catalog entry without tools), and its agent's system prompt says so,
+//!   in words that leave room for a plugin that describes tools as text
+//!   (spec 59).
+//! - An agent connected to an Ollama model sends it a small warm-up
+//!   request, so the first turn does not wait for the model to load.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy_log::{debug, warn};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing};
-use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::http_client::{DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::{ConnectOptions, ProviderId};
-use rig_core::serve::adapters::ModelAdapter;
-use rig_core::serve::{Decision, ErasedHandler, Intercept, Verdict};
-use rig_ecs::effects::Handler;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing};
+use rig_harness::rig_core::http_client::{
+    DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
+};
+use rig_harness::rig_core::operation::Completion;
+use rig_harness::rig_core::providers::registry::{ConnectError, ConnectOptions, ProviderId};
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::serve::adapters::ModelAdapter;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
-/// The prefix `/model` takes for a local model, beside its catalog
-/// reference.
-pub const LOCAL: &str = "local/";
+/// The vendor local models are filed under: `local/<name>`.
+pub const VENDOR: &str = "local";
+
+/// The tag of the system prompt's section for a model without tools.
+const TAG: &str = "local_model";
 
 /// What the system prompt says to a model that cannot call tools.
-pub const NO_TOOLS: &str = "This model cannot call tools, so none are offered: answer in \
-                            text, and ask the user to run what needs running.";
+pub const NO_TOOLS: &str = "This model has no native tool calling, so no tools are offered to \
+                            it as functions. Unless another section describes tools and how to \
+                            call them, answer in text and ask the user to run what needs running.";
 
 /// The kind of local server at an endpoint.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Server {
     /// An Ollama daemon: `/api/tags`, `/api/show`, and its OpenAI-compatible
     /// `/v1`.
     Ollama,
-    /// A llama.cpp `llama-server`: `/v1/models`, `/props` and `/v1`.
+    /// A llama.cpp `llama-server` (or LM Studio): `/v1/models`, `/props`
+    /// and `/v1`.
     LlamaCpp,
 }
 
 impl Server {
-    /// The catalog vendor its models are filed under.
-    fn vendor(self) -> &'static str {
+    /// The vendor whose dialect its `/v1` speaks.
+    fn dialect(self) -> &'static str {
         match self {
             Self::Ollama => "ollama",
             Self::LlamaCpp => "llamacpp",
@@ -75,7 +78,8 @@ impl Server {
 }
 
 /// A server to probe: its kind and its address, without `/v1`.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Endpoint {
     /// The kind of server.
     pub server: Server,
@@ -84,36 +88,33 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-    /// An Ollama daemon at `url`.
-    pub fn ollama(url: impl Into<String>) -> Self {
+    fn new(server: Server, url: &str) -> Self {
         Self {
-            server: Server::Ollama,
-            url: url.into().trim_end_matches('/').to_owned(),
+            server,
+            url: url.to_owned(),
         }
     }
 
-    /// A llama.cpp server at `url`.
-    pub fn llama_cpp(url: impl Into<String>) -> Self {
-        Self {
-            server: Server::LlamaCpp,
-            url: url.into().trim_end_matches('/').to_owned(),
-        }
+    /// Its address without a trailing `/`.
+    fn base(&self) -> &str {
+        self.url.trim_end_matches('/')
     }
 
-    /// What a request to one of its models fails with while it is
-    /// unavailable.
+    /// Why a model call to one of its models is refused while the model
+    /// is unavailable.
     fn down(&self) -> String {
-        format!("{} not running at {}", self.server.label(), self.url)
+        format!("{} not running at {}", self.server.label(), self.base())
     }
 }
 
-/// Where to look for local models, and whether choosing one warms it up.
-/// Insert it before adding the plugin to change it.
-#[derive(Resource, Clone, Debug)]
+/// The `[local_models]` table: where to look for local models, and whether
+/// choosing one warms it up.
+#[derive(Resource, Clone, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct LocalModelsConfig {
     /// The servers probed, in order: a model two serve is the first's.
     pub endpoints: Vec<Endpoint>,
-    /// Whether choosing an Ollama model sends a warm-up request.
+    /// Whether an agent connected to an Ollama model warms it up.
     pub warm_up: bool,
     /// How long Ollama keeps a warmed-up model loaded.
     pub keep_alive: String,
@@ -123,8 +124,8 @@ impl Default for LocalModelsConfig {
     fn default() -> Self {
         Self {
             endpoints: vec![
-                Endpoint::ollama("http://127.0.0.1:11434"),
-                Endpoint::llama_cpp("http://127.0.0.1:8080"),
+                Endpoint::new(Server::Ollama, "http://127.0.0.1:11434"),
+                Endpoint::new(Server::LlamaCpp, "http://127.0.0.1:8080"),
             ],
             warm_up: true,
             keep_alive: "10m".to_owned(),
@@ -133,30 +134,32 @@ impl Default for LocalModelsConfig {
 }
 
 /// A local model found on a server.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LocalModel {
     /// The server's name for it.
     pub name: String,
     /// Where it is served.
     pub endpoint: Endpoint,
-    /// The model on that server. Its spec is this plugin's own copy of the
-    /// catalog entry, which tells it apart from the connection the kernel
-    /// makes to the server's default address.
-    pub connection: Connection,
-    /// Whether the server listed it at the last probe; read by the layer
-    /// on `connection`.
-    up: Arc<AtomicBool>,
+    /// Its context window, when the server says.
+    pub context: Option<u32>,
+    /// Whether it calls tools natively.
+    pub tools: bool,
+    /// Whether its server listed it at the last probe.
+    pub available: bool,
 }
 
 impl LocalModel {
-    /// Whether the server listed it at the last probe.
-    pub fn available(&self) -> bool {
-        self.up.load(Ordering::Acquire)
-    }
-
-    /// Its catalog reference, such as `ollama/qwen-coder`.
-    pub fn reference(&self) -> String {
-        self.connection.spec.reference()
+    /// Its catalog entry.
+    fn spec(&self, vendor: ProviderId) -> ModelSpec {
+        let state = if self.available { "" } else { ", unavailable" };
+        let spec = ModelSpec::new(vendor, &self.name)
+            .with_display_name(format!("{} (local{state})", self.name))
+            .with_tools(self.tools)
+            .with_pricing(Pricing::new(0.0, 0.0));
+        match self.context {
+            Some(tokens) => spec.with_context_window(tokens),
+            None => spec,
+        }
     }
 }
 
@@ -170,24 +173,21 @@ impl LocalModels {
         self.0.get(name)
     }
 
-    /// Every model found, by name.
-    pub fn iter(&self) -> impl Iterator<Item = &LocalModel> {
-        self.0.values()
-    }
-
-    /// The model of the catalog reference `reference`.
-    fn by_reference(&self, reference: &str) -> Option<&LocalModel> {
-        self.0.values().find(|model| model.reference() == reference)
+    /// The local model `spec` is the catalog entry of.
+    fn of(&self, spec: &ModelSpec) -> Option<&LocalModel> {
+        (spec.provider.vendor() == VENDOR)
+            .then(|| self.0.get(&spec.id))
+            .flatten()
     }
 }
 
-/// Finds the models of local servers and connects agents to them.
+/// Finds the models of local servers and serves them as `local/<name>`.
 #[derive(Default)]
 pub struct LocalModelsPlugin;
 
 impl Plugin for LocalModelsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<LocalModelsConfig>()
+        app.add_setting::<LocalModelsConfig>("local_models")
             .init_resource::<LocalModels>()
             .add_command(
                 "models",
@@ -195,10 +195,9 @@ impl Plugin for LocalModelsPlugin {
                 models_command,
             )
             .add_systems(Startup, probe_at_startup)
+            .add_systems(AgentPass, refuse_unavailable.in_set(Stage::Gate))
             .add_observer(found)
-            .add_observer(use_local_connection)
-            .add_observer(local_alias)
-            .add_observer(say_no_tools);
+            .add_observer(connected);
     }
 }
 
@@ -233,8 +232,8 @@ fn start_probe(commands: &mut Commands, config: &LocalModelsConfig, wake: &Wake)
         let mut probed = Probed::new();
         for endpoint in endpoints {
             let found = match endpoint.server {
-                Server::Ollama => probe_ollama(&http, &endpoint.url).await,
-                Server::LlamaCpp => probe_llama_cpp(&http, &endpoint.url).await,
+                Server::Ollama => probe_ollama(&http, endpoint.base()).await,
+                Server::LlamaCpp => probe_llama_cpp(&http, endpoint.base()).await,
             };
             probed.push((endpoint, found));
         }
@@ -353,14 +352,15 @@ async fn fetch(
     serde_json::from_slice(&body).map_err(|error| error.to_string())
 }
 
-/// Takes a finished probe: adds what is new to the catalog, marks each
-/// model available or not, and connects the agents on a local model.
+/// Takes a finished probe: marks each model available or not, lists the
+/// models in the catalog, points the `local` vendor at their servers, and
+/// connects the agents whose saved choice named a model not found yet.
 fn found(
     done: On<Add<Done<Probed>>>,
     mut probes: Query<&mut Done<Probed>>,
     mut local: ResMut<LocalModels>,
     mut models: ResMut<Models>,
-    agents: Query<(Entity, &ModelChoice, Option<&Connection>), With<Agent>>,
+    agents: Query<(Entity, &ModelChoice), (With<Agent>, Without<Connection>)>,
     mut commands: Commands,
 ) {
     let Ok(mut probe) = probes.get_mut(done.entity) else {
@@ -368,152 +368,131 @@ fn found(
     };
     let probed = std::mem::take(&mut probe.0);
     commands.entity(done.entity).despawn();
-    let mut catalog = models.0.catalog().clone();
-    let mut added = false;
     for (endpoint, result) in probed {
-        let listed = match result {
-            Ok(listed) => listed,
-            Err(why) => {
-                debug!("no local models at {}: {why}", endpoint.url);
-                Vec::new()
-            }
-        };
-        for model in local.0.values().filter(|model| model.endpoint == endpoint) {
-            let up = listed.iter().any(|found| found.name == model.name);
-            model.up.store(up, Ordering::Release);
+        let listed = result.unwrap_or_else(|why| {
+            debug!("no local models at {}: {why}", endpoint.base());
+            Vec::new()
+        });
+        for model in local.0.values_mut().filter(|it| it.endpoint == endpoint) {
+            model.available = listed.iter().any(|found| found.name == model.name);
         }
         for found in listed {
-            match local.0.get(&found.name) {
-                // Known: the same server again, or a model an earlier
-                // server serves.
-                Some(known) if known.endpoint == endpoint => {
-                    let spec = &known.connection.spec;
-                    if spec.context_window == found.context && spec.tools == found.tools {
-                        continue;
-                    }
-                }
-                Some(known) if known.available() => continue,
-                _ => {}
+            let earlier = local.0.get(&found.name);
+            if earlier.is_some_and(|it| it.endpoint != endpoint && it.available) {
+                continue;
             }
-            match add(&mut catalog, &endpoint, &found) {
-                Ok(model) => {
-                    local.0.insert(found.name, model);
-                    added = true;
-                }
-                Err(why) => warn!("cannot use the local model {}: {why}", found.name),
-            }
+            let model = LocalModel {
+                name: found.name.clone(),
+                endpoint: endpoint.clone(),
+                context: found.context,
+                tools: found.tools,
+                available: true,
+            };
+            local.0.insert(found.name, model);
         }
     }
-    if added {
-        // `Connector` has no way to change its catalog, so this drops the
-        // sign-ins other plugins added to it.
-        *models = Models(Connector::new(catalog));
+    let vendor = match ProviderId::declare(VENDOR) {
+        Ok(vendor) => vendor,
+        Err(why) => return warn!("cannot declare the `{VENDOR}` vendor: {why}"),
+    };
+    let catalog = models.0.catalog_mut();
+    for model in local.0.values() {
+        catalog.insert(model.spec(vendor));
     }
-    for (agent, choice, connection) in &agents {
-        let Some(model) = local.by_reference(&choice.0) else {
+    let servers: BTreeMap<String, Endpoint> = local
+        .0
+        .iter()
+        .map(|(name, model)| (name.clone(), model.endpoint.clone()))
+        .collect();
+    models
+        .0
+        .provide(vendor, move |spec: &ModelSpec, catalog: &Catalog| {
+            serve(&servers, spec, catalog)
+        });
+    // A session restored on a local model could not connect it before
+    // this probe found it: choosing it again connects it now.
+    for (agent, choice) in &agents {
+        let name = choice
+            .0
+            .strip_prefix(VENDOR)
+            .and_then(|it| it.strip_prefix('/'));
+        if name.is_some_and(|name| local.0.contains_key(name)) {
+            commands.entity(agent).insert(choice.clone());
+        }
+    }
+}
+
+/// The local model `spec` on its server's OpenAI-compatible `/v1`.
+fn serve(
+    servers: &BTreeMap<String, Endpoint>,
+    spec: &ModelSpec,
+    catalog: &Catalog,
+) -> Result<ErasedHandler, ConnectError> {
+    let endpoint = servers.get(&spec.id).ok_or(ConnectError::CatalogOnly {
+        vendor: VENDOR.to_owned(),
+        served_by: "a local server, once one lists it",
+    })?;
+    let served = format!("{}/{}", endpoint.server.dialect(), spec.id);
+    let options = ConnectOptions::new().base_url(format!("{}/v1", endpoint.base()));
+    let model = catalog.connect_with(served.as_str(), options)?;
+    let adapter = ModelAdapter::<Completion>::new(spec.reference(), model);
+    Ok(ErasedHandler::new(adapter))
+}
+
+/// Refuses a model call to a local model that is unavailable, before it is
+/// sent.
+fn refuse_unavailable(
+    calls: Query<(Entity, &ModelRequest, Option<&ForAgent>, Option<&BuildFrom>), Undecided>,
+    agents: Query<&Connection, With<Agent>>,
+    local: Res<LocalModels>,
+    mut commands: Commands,
+) {
+    for (call, request, for_agent, from) in &calls {
+        let agent = from.map(|it| it.0).or(for_agent.map(|it| it.0));
+        let own = agent.and_then(|agent| agents.get(agent).ok());
+        let Some(connection) = request.connection.as_ref().or(own) else {
             continue;
         };
-        if connection.is_none_or(|connection| !ours(connection, model)) {
-            commands.entity(agent).insert(model.connection.clone());
+        if let Some(model) = local.of(&connection.spec)
+            && !model.available
+        {
+            let refused = Outcome::refused(model.endpoint.down());
+            commands.entity(call).insert_if_new(refused);
         }
     }
 }
 
-/// `found` in `catalog`, free, and the model on `endpoint`, available.
-fn add(catalog: &mut Catalog, endpoint: &Endpoint, found: &Found) -> Result<LocalModel, String> {
-    let vendor = endpoint.server.vendor();
-    let provider = ProviderId::catalog(vendor).ok_or(format!("no vendor {vendor}"))?;
-    let mut spec = ModelSpec::new(provider, &found.name)
-        .with_display_name(format!("{} (local)", found.name))
-        .with_tools(found.tools)
-        .with_pricing(Pricing::new(0.0, 0.0));
-    if let Some(context) = found.context {
-        spec = spec.with_context_window(context);
-    }
-    catalog.insert(spec.clone());
-    // A copy of its own, not the catalog's: see `LocalModel::connection`.
-    let spec = Arc::new(spec);
-    let options = ConnectOptions::new().base_url(format!("{}/v1", endpoint.url));
-    let model = catalog
-        .connect_with(&*spec, options)
-        .map_err(|error| error.to_string())?;
-    let up = Arc::new(AtomicBool::new(true));
-    let available = Available {
-        up: up.clone(),
-        down: endpoint.down(),
-    };
-    let handler = ErasedHandler::new(ModelAdapter::<Completion>::new(spec.reference(), model))
-        .layered(available);
-    Ok(LocalModel {
-        name: found.name.clone(),
-        endpoint: endpoint.clone(),
-        connection: Connection {
-            spec,
-            handler: Handler(handler),
-        },
-        up,
-    })
-}
-
-/// Whether `connection` is this plugin's connection to `model`.
-fn ours(connection: &Connection, model: &LocalModel) -> bool {
-    Arc::ptr_eq(&connection.spec, &model.connection.spec)
-}
-
-/// Fails each request at once, and for good, while the model is
-/// unavailable.
-struct Available {
-    up: Arc<AtomicBool>,
-    down: String,
-}
-
-impl Intercept for Available {
-    fn name(&self) -> String {
-        "local-models".to_owned()
-    }
-
-    async fn before(&self, _id: EffectId, _kind: &EffectKind) -> Decision {
-        if self.up.load(Ordering::Acquire) {
-            return Decision::Proceed;
-        }
-        let report = ErrorReport::new(ErrorKind::HandlerUnavailable, self.down.clone());
-        Decision::Deny(report.with_retryable(false))
-    }
-
-    async fn after(
-        &self,
-        _id: EffectId,
-        _kind: &EffectKind,
-        _outcome: &Result<Outcome, ErrorReport>,
-    ) -> Verdict {
-        Verdict::Keep
-    }
-}
-
-/// An agent connected to a local model by the kernel, which reaches the
-/// server's default address, gets this plugin's connection instead; once
-/// it has it, the model is warmed up.
-fn use_local_connection(
+/// An agent connected to a local model without tools is told so in its
+/// system prompt, and one connected to an Ollama model warms it up.
+fn connected(
     inserted: On<Insert<Connection>>,
     agents: Query<&Connection, With<Agent>>,
+    sections: Query<(Entity, &PromptSection, &SectionOf)>,
     local: Res<LocalModels>,
     config: Res<LocalModelsConfig>,
     mut commands: Commands,
 ) {
-    let Ok(connection) = agents.get(inserted.entity) else {
+    let agent = inserted.entity;
+    let Ok(connection) = agents.get(agent) else {
         return;
     };
-    let Some(model) = local.by_reference(&connection.spec.reference()) else {
-        return;
-    };
-    if !ours(connection, model) {
-        commands
-            .entity(inserted.entity)
-            .insert(model.connection.clone());
-        return;
+    let model = local.of(&connection.spec);
+    let told = sections
+        .iter()
+        .find(|(_, section, of)| of.0 == agent && section.tag == TAG);
+    match (model.is_some_and(|it| !it.tools), told) {
+        (true, None) => {
+            let section = PromptSection::new(PromptSection::ORDER_ROLE, TAG, NO_TOOLS);
+            commands.spawn((section, SectionOf(agent)));
+        }
+        (false, Some((section, ..))) => commands.entity(section).despawn(),
+        _ => {}
     }
-    if config.warm_up && model.available() && model.endpoint.server == Server::Ollama {
-        let url = format!("{}/api/generate", model.endpoint.url);
+    let Some(model) = model else {
+        return;
+    };
+    if config.warm_up && model.available && model.endpoint.server == Server::Ollama {
+        let url = format!("{}/api/generate", model.endpoint.base());
         let body = json!({ "model": model.name, "keep_alive": config.keep_alive });
         io_pool()
             .spawn(async move {
@@ -526,50 +505,6 @@ fn use_local_connection(
     }
 }
 
-/// `/model local/<name>` chooses the local model `name`.
-fn local_alias(mut deliver: On<Deliver>, local: Res<LocalModels>) {
-    let Some(line) = deliver.command() else {
-        return;
-    };
-    let Some(asked) = line.strip_prefix("model") else {
-        return;
-    };
-    if !asked.starts_with(char::is_whitespace) {
-        return;
-    }
-    let Some(model) = asked
-        .trim()
-        .strip_prefix(LOCAL)
-        .and_then(|name| local.get(name))
-    else {
-        return;
-    };
-    deliver.text = format!("/model {}", model.reference());
-}
-
-/// Tells a local model without tools that it has none, unless its turn is
-/// routed to another connection, such as one that turns tool calls into
-/// text.
-fn say_no_tools(
-    mut prepare: On<PrepareRequest>,
-    routed: Query<(), (With<TurnOf>, With<Connection>)>,
-    agents: Query<&Connection>,
-    local: Res<LocalModels>,
-) {
-    if routed.contains(prepare.entity) {
-        return;
-    }
-    let Ok(connection) = agents.get(prepare.agent) else {
-        return;
-    };
-    if connection.spec.tools || local.by_reference(&connection.spec.reference()).is_none() {
-        return;
-    }
-    prepare.tools.clear();
-    prepare.preamble.push_str("\n\n");
-    prepare.preamble.push_str(NO_TOOLS);
-}
-
 /// `/models` lists the local models; `/models refresh` looks again.
 fn models_command(
     In(args): In<CommandArgs>,
@@ -580,7 +515,7 @@ fn models_command(
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    match args.args.as_str() {
+    match args.args.trim() {
         "refresh" => {
             if probes.is_empty() {
                 start_probe(&mut commands, &config, &wake);
@@ -588,7 +523,7 @@ fn models_command(
             notices.write(Notice::info(args.agent, "Looking for local models."));
         }
         "" => {
-            let lines: Vec<String> = local.iter().map(describe).collect();
+            let lines: Vec<String> = local.0.values().map(describe).collect();
             let text = match lines.is_empty() {
                 true => "No local models found: /models refresh looks again.".to_owned(),
                 false => lines.join("\n"),
@@ -606,21 +541,16 @@ fn models_command(
 
 /// One line about `model`.
 fn describe(model: &LocalModel) -> String {
-    let spec = &model.connection.spec;
-    let window = spec.context_window.map_or_else(
+    let window = model.context.map_or_else(
         || "window unknown".to_owned(),
         |tokens| format!("{tokens} tokens"),
     );
-    let tools = if spec.tools { "tools" } else { "no tools" };
-    let state = match model.available() {
+    let tools = if model.tools { "tools" } else { "no tools" };
+    let state = match model.available {
         true => "available".to_owned(),
         false => format!("unavailable: {}", model.endpoint.down()),
     };
-    format!(
-        "{LOCAL}{} ({}): {window}, {tools}, {state}",
-        model.name,
-        model.reference()
-    )
+    format!("{VENDOR}/{}: {window}, {tools}, {state}", model.name)
 }
 
 #[cfg(test)]

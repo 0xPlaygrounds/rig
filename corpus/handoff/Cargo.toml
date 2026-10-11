@@ -12,12 +12,13 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The request that reads a conversation as text, and the reply's text.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
-# Showing the new agent.
+# The input line to edit the brief in, and showing the new agent.
 rig-tui = { path = "../../plugins/rig-tui" }
+# The `[handoff]` settings table.
+serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

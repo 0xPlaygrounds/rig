@@ -1,18 +1,22 @@
 use rig_basics::BasicCommandsPlugin;
 use rig_cassette::journal::MemoryStore;
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
 use rig_core::completion::Message;
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::watch::WatchPlugin;
 
 use super::*;
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
-
-/// The text of a user message.
-fn user_text(message: &Message) -> Option<String> {
-    let Message::User { content } = message else {
+/// The text of the last message of the last request `model` got, if it is
+/// the user's.
+fn last_user_text(model: &MockCompletionModel) -> Option<String> {
+    let requests = model.requests();
+    let Some(Message::User { content }) = requests.last()?.chat_history.last().cloned() else {
         return None;
     };
     let texts: Vec<String> = content
@@ -25,34 +29,62 @@ fn user_text(message: &Message) -> Option<String> {
     Some(texts.join("\n"))
 }
 
-/// The notices written since the last frame.
-fn notices(app: &App) -> Vec<String> {
-    let notices = app.world().resource::<Messages<Notice>>();
-    notices
-        .iter_current_update_messages()
-        .map(|notice| notice.text.clone())
-        .collect()
+/// The catalog, with `templates/big`, answered by `big`.
+fn models_with(big: &MockCompletionModel) -> Option<Models> {
+    let vendor = ProviderId::declare("templates").ok()?;
+    let mut connector = Connector::default();
+    connector
+        .catalog_mut()
+        .insert(ModelSpec::new(vendor, "big").with_tools(true));
+    let big = big.clone();
+    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
+        let model = ModelAdapter::<Completion>::new(spec.reference(), big.clone());
+        Ok(ErasedHandler::new(model))
+    });
+    Some(Models(connector))
+}
+
+/// Whether the command `/name` exists.
+fn has_command(world: &World, name: &str) -> bool {
+    let commands = world.try_query_filtered::<&Name, With<SlashCommand>>();
+    commands
+        .is_some_and(|mut commands| commands.iter(world).any(|command| command.as_str() == name))
 }
 
 #[test]
 fn a_template_is_a_command_that_sends_its_expansion() {
-    let dir = std::env::temp_dir().join(format!("corpus-prompt-templates-{}", std::process::id()));
-    let prompts = dir.join("prompts");
+    let root = std::env::temp_dir().join(format!("corpus-prompt-templates-{}", std::process::id()));
+    let prompts = root.join(".rig").join("prompts");
+    let write = |name: &str, text: &str| {
+        let written = std::fs::create_dir_all(&prompts)
+            .and_then(|()| std::fs::write(prompts.join(name), text));
+        assert!(written.is_ok(), "{written:?}");
+    };
+    write(
+        "review.md",
+        "---\ndescription: Review a file\n---\nReview $1 for bugs.\n",
+    );
+
+    let model = MockCompletionModel::from_stream_turns([reply("No bugs.")]);
+    let big = MockCompletionModel::from_stream_turns([reply("They are scopes.")]);
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    app.set_error_handler(rig_harness::error::warn)
-        .insert_resource(TemplateDirs(vec![prompts.clone()]))
+    if let Some(models) = models_with(&big) {
+        app.insert_resource(models);
+    }
+    app.insert_resource(ProjectRoot(root.clone()))
+        .insert_resource(RigHome(Home::at(root.join("home"))))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            WatchPlugin,
             BasicCommandsPlugin,
             PromptTemplatesPlugin,
         ))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
-    let model = MockCompletionModel::from_stream_turns([reply("No bugs.")]);
     let world = app.world_mut();
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
@@ -64,30 +96,27 @@ fn a_template_is_a_command_that_sends_its_expansion() {
         return;
     };
     world.entity_mut(agent).insert(connection);
-    app.update();
-
-    // A template written while the agent runs.
-    let written = std::fs::create_dir_all(&prompts).and_then(|()| {
-        std::fs::write(
-            prompts.join("review.md"),
-            "---\ndescription: Review a file\n---\nReview $1 for bugs.\n",
-        )
-    });
-    assert!(written.is_ok(), "{written:?}");
+    let typed = |app: &mut App, text: &str| {
+        app.world_mut()
+            .trigger(Deliver::new(agent, text, DeliveryMode::Steer));
+        app.update();
+    };
 
     // `/help` lists the template with its description.
-    let typed = |text: &str| Deliver::new(agent, text, DeliveryMode::Steer);
-    app.world_mut().trigger(typed("/help"));
-    app.world_mut().flush();
-    let help = notices(&app).join("\n");
+    typed(&mut app, "/help");
+    let notices = app.world().resource::<Messages<Notice>>();
+    let help: Vec<String> = notices
+        .iter_current_update_messages()
+        .map(|notice| notice.text.clone())
+        .collect();
+    let help = help.join("\n");
     let listed = help
         .lines()
         .any(|line| line.starts_with("/review ") && line.ends_with(" Review a file"));
     assert!(listed, "{help}");
 
     // Without its argument it is refused with its usage, and nothing is sent.
-    app.world_mut().trigger(typed("/review"));
-    app.world_mut().flush();
+    typed(&mut app, "/review");
     let recalled = app.world().resource::<Messages<Recalled>>();
     let why: Vec<String> = recalled
         .iter_current_update_messages()
@@ -98,14 +127,29 @@ fn a_template_is_a_command_that_sends_its_expansion() {
     assert!(model.requests().is_empty());
 
     // With it, the expansion is the user's message to the model.
-    app.world_mut().trigger(typed("/review src/lib.rs"));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 > 0);
-    let requests = model.requests();
-    let last = requests
-        .first()
-        .and_then(|request| request.chat_history.last())
-        .and_then(user_text);
-    assert_eq!(requests.len(), 1);
-    assert_eq!(last.as_deref(), Some("Review src/lib.rs for bugs."));
-    std::fs::remove_dir_all(&dir).ok();
+    typed(&mut app, "/review src/lib.rs");
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 1
+    });
+    assert_eq!(model.requests().len(), 1);
+    assert_eq!(
+        last_user_text(&model).as_deref(),
+        Some("Review src/lib.rs for bugs.")
+    );
+
+    // A template written while the agent runs is a command once seen, and
+    // its turn runs on the model it names.
+    write(
+        "explain.md",
+        "---\nmodel: templates/big\nargs: [topic]\n---\nExplain ${topic}.",
+    );
+    run_until(&mut app, &wakes, |world| has_command(world, "/explain"));
+    assert!(has_command(app.world(), "/explain"));
+    typed(&mut app, "/explain lifetimes");
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 2
+    });
+    assert_eq!((model.requests().len(), big.requests().len()), (1, 1));
+    assert_eq!(last_user_text(&big).as_deref(), Some("Explain lifetimes."));
+    std::fs::remove_dir_all(&root).ok();
 }

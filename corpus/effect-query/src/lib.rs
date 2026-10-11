@@ -4,7 +4,9 @@
 //! session's effect log (`effects.jsonl`, written by rig-telemetry's
 //! `EffectLogPlugin`) back from disk, so they see every model and tool
 //! call of the session, plugins' own and those from before a `/reload`.
-//! They only read it.
+//! They only read it. Which turn of its agent an effect belongs to comes
+//! from the kernel's turn numbers, kept per agent as the first effect of
+//! each turn ([`TurnStarts`], saved with the session).
 
 mod query;
 
@@ -17,7 +19,7 @@ use rig_cassette::effect_log::{EffectLog, jsonl};
 use rig_cassette::journal::EFFECT_LOG;
 use rig_harness::prelude::*;
 
-pub use query::{DetailArgs, Filter, Status};
+pub use query::{AgentInfo, DetailArgs, Filter, Status};
 
 /// The tool that lists effects.
 pub const EFFECTS_TOOL: &str = "effects";
@@ -45,6 +47,8 @@ impl Plugin for EffectQueryPlugin {
             footprint: Some(Footprint::ReadOnly),
         };
         app.insert_resource(LogFile(log))
+            .register_required_components::<Agent, TurnStarts>()
+            .add_observer(note_turn_start)
             .add_open_tool(EFFECTS_TOOL, EFFECTS_DESCRIPTION, read_only(), on_effects)
             .add_open_tool(DETAIL_TOOL, DETAIL_DESCRIPTION, read_only(), on_detail)
             .add_command(
@@ -74,12 +78,58 @@ impl LogFile {
     }
 }
 
-/// Each agent's name by its id, for the table.
-fn agent_names(agents: &Query<(&AgentId, &Name)>) -> Arc<HashMap<String, String>> {
+/// The first effect of each of an agent's turns, by the turn's index, so
+/// an effect's turn is the last that started at or before it. Saved with
+/// the session, so effects from before a restart keep their turns.
+#[derive(Component, Reflect, Clone, Debug, Default)]
+#[reflect(Component, Saved, Default)]
+pub struct TurnStarts(pub Vec<TurnStart>);
+
+/// Where one turn begins in the effect log.
+#[derive(Reflect, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TurnStart {
+    /// The turn's [`Turn::index`].
+    pub index: u64,
+    /// Its first effect's id.
+    pub first_effect: u64,
+}
+
+/// Notes each turn's first effect as it starts.
+fn note_turn_start(
+    started: On<Add<Started>>,
+    calls: Query<(&Effect, &CallOf, &ForAgent)>,
+    turns: Query<&Turn>,
+    mut agents: Query<&mut TurnStarts>,
+) {
+    let Ok((effect, &CallOf(turn), &ForAgent(agent))) = calls.get(started.entity) else {
+        return;
+    };
+    let (Ok(turn), Ok(mut starts)) = (turns.get(turn), agents.get_mut(agent)) else {
+        return;
+    };
+    let id = effect.id().as_u64();
+    match starts.0.iter_mut().find(|start| start.index == turn.index) {
+        Some(start) if start.first_effect > id => start.first_effect = id,
+        Some(_) => {}
+        None => starts.0.push(TurnStart {
+            index: turn.index,
+            first_effect: id,
+        }),
+    }
+}
+
+/// Each agent's name and turn starts by its id, for the table.
+fn agent_infos(agents: &Query<(&AgentId, &Name, &TurnStarts)>) -> Arc<HashMap<String, AgentInfo>> {
     Arc::new(
         agents
             .iter()
-            .map(|(id, name)| (id.0.clone(), name.as_str().to_owned()))
+            .map(|(id, name, starts)| {
+                let info = AgentInfo {
+                    name: name.as_str().to_owned(),
+                    turns: starts.0.iter().map(|s| (s.index, s.first_effect)).collect(),
+                };
+                (id.0.clone(), info)
+            })
             .collect(),
     )
 }
@@ -112,12 +162,12 @@ fn answer_call(
 
 fn on_effects(
     mut called: On<ToolCalled<Filter>>,
-    agents: Query<(&AgentId, &Name)>,
+    agents: Query<(&AgentId, &Name, &TurnStarts)>,
     file: Res<LogFile>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let names = agent_names(&agents);
+    let names = agent_infos(&agents);
     let filter = std::mem::take(&mut called.args);
     answer_call(
         &mut commands,
@@ -153,7 +203,7 @@ struct Listing {
 /// `/effects [filter]`: the same table as the tool, as a notice.
 fn effects_command(
     In(args): In<CommandArgs>,
-    agents: Query<(&AgentId, &Name)>,
+    agents: Query<(&AgentId, &Name, &TurnStarts)>,
     file: Res<LogFile>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -167,7 +217,7 @@ fn effects_command(
             return;
         }
     };
-    let (names, file) = (agent_names(&agents), file.clone());
+    let (names, file) = (agent_infos(&agents), file.clone());
     let read = blocking(move || Ok(file.read().map(|log| query::table(&log, &names, &filter))));
     let work = async move {
         let text = read.await.map_err(|error| error.to_string()).flatten();

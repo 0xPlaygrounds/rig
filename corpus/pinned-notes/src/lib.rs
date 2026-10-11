@@ -6,19 +6,21 @@
 //! agent: each change inserts a new value, which the session log records
 //! and `/resume` and `/reload` bring back, and whose insertion rewrites the
 //! agent's own [`PromptSection`]. A compaction's summary call is told the
-//! notes exist so it does not repeat them.
+//! notes in Prepare, so the summary does not repeat them, and a `task` call
+//! with `inherit_pins: true` gives the subagent a copy of its parent's.
 
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::DeferredWorld;
-use bevy_log::warn;
 use rig_compaction::Summarizing;
-use rig_core::completion::Message;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::Message;
+use rig_subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 /// The tool with which the model pins and unpins notes.
 pub const PIN_NOTE: &str = "pin_note";
+
+/// The argument this plugin adds to `task`.
+pub const INHERIT_PINS: &str = "inherit_pins";
 
 /// Where the notes go in the system prompt: after the project's
 /// instructions, which change less often, and before the environment.
@@ -28,8 +30,9 @@ pub const ORDER_PINS: i32 = 250;
 const TAG: &str = "pinned_notes";
 
 /// Adds `/pin`, `/pins`, `/unpin`, the `pin_note` tool, the agent's
-/// pinned-notes prompt section and, with the `tui` feature, the "📌 n"
-/// status item.
+/// pinned-notes prompt section, the notes in compaction summaries,
+/// `inherit_pins` on `task` and, with the `tui` feature, the "📌 n" status
+/// item.
 #[derive(Default)]
 pub struct PinnedNotesPlugin;
 
@@ -57,10 +60,36 @@ impl Plugin for PinnedNotesPlugin {
                     footprint: Some(Footprint::Independent),
                 },
                 on_pin_note,
+            )
+            .add_systems(
+                AgentPass,
+                (
+                    (tell_summaries, take_inherit_pins).in_set(Stage::Prepare),
+                    inherit.in_set(Stage::Review),
+                ),
             );
-        tell_summaries(app.world_mut());
         #[cfg(feature = "tui")]
         app.add_systems(PostUpdate, tui::show.in_set(rig_tui::StatusSystems));
+    }
+
+    /// Offers `inherit_pins` on `task`, once rig-subagents added it.
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        let mut tools = world.query::<&mut ToolDef>();
+        for mut def in tools.iter_mut(world) {
+            if def.0.name.as_str() != TASK {
+                continue;
+            }
+            let properties = def.0.parameters.get_mut("properties");
+            if let Some(properties) = properties.and_then(serde_json::Value::as_object_mut) {
+                let argument = serde_json::json!({
+                    "type": "boolean",
+                    "description": "When true, the subagent starts with a copy of your pinned \
+                        notes. Off when absent.",
+                });
+                properties.insert(INHERIT_PINS.to_owned(), argument);
+            }
+        }
     }
 }
 
@@ -143,15 +172,12 @@ fn write_section(
     let Ok(pins) = pins.get(agent) else {
         return;
     };
-    let text = pins.section();
-    let mine = sections.iter_mut().find(|(of, _)| of.0 == agent);
-    match mine {
-        Some((_, mut section)) => {
-            let changed = PromptSection::new(ORDER_PINS, TAG, text);
-            section.set_if_neq(changed);
+    let section = PromptSection::new(ORDER_PINS, TAG, pins.section());
+    match sections.iter_mut().find(|(of, _)| of.0 == agent) {
+        Some((_, mut mine)) => {
+            mine.set_if_neq(section);
         }
-        None if !text.is_empty() => {
-            let section = PromptSection::new(ORDER_PINS, TAG, text);
+        None if !section.text.is_empty() => {
             commands.spawn((
                 Name::new("pinned notes"),
                 PinsSection,
@@ -237,7 +263,7 @@ fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands
     if let (Ok(()), Some(text)) = (&changed, &args.text) {
         changed = current.with(text).map(|pins| current = pins);
     }
-    let output = match changed {
+    let result = match changed {
         Ok(()) => {
             let report = current.report();
             if args.text.is_some() || args.unpin.is_some() {
@@ -251,58 +277,78 @@ fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands
     };
     commands
         .entity(called.call)
-        .insert_if_new(ToolOutput(output));
+        .insert_if_new(Outcome::from(result));
 }
 
 /// Tells each compaction's summary call the agent's pinned notes, so the
-/// summary leaves them out: an `on_add` hook of [`ModelRequest`], which runs
-/// before the kernel's observer dispatches the request.
-fn tell_summaries(world: &mut World) {
-    let id = world.register_component::<ModelRequest>();
-    if world
-        .archetypes()
-        .iter()
-        .any(|archetype| archetype.contains(id))
-    {
-        warn!("pinned notes: model requests exist already; summaries will not be told the pins");
-        return;
-    }
-    let hooks = world.register_component_hooks::<ModelRequest>();
-    if hooks.try_on_add(tell_summary).is_none() {
-        warn!(
-            "pinned notes: model requests have a hook already; summaries will not be told the pins"
+/// summary leaves them out.
+fn tell_summaries(
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, With<Summarizing>, Without<TurnCall>),
+    >,
+    pins: Query<&Pins>,
+) {
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        let Some(pins) = pins.get(agent).ok().filter(|pins| !pins.0.is_empty()) else {
+            continue;
+        };
+        let note = format!(
+            "The agent keeps these pinned notes in its system prompt, apart from the \
+             conversation; they survive this compaction, so do not repeat them in the \
+             summary:\n{}",
+            pins.listed()
         );
+        match call.system_prompt_mut() {
+            Some(prompt) => {
+                prompt.push_str("\n\n");
+                prompt.push_str(&note);
+            }
+            None => call.request.chat_history.insert(0, Message::system(note)),
+        }
     }
 }
 
-/// Adds the agent's notes to the system message of a compaction's summary
-/// request, as it is added.
-fn tell_summary(mut world: DeferredWorld, context: HookContext) {
-    let call = context.entity;
-    if world.get::<Summarizing>(call).is_none() {
-        return;
+/// On a `task` call that asked for `inherit_pins: true`.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct InheritPins;
+
+/// Takes `inherit_pins` out of each `task` call as it is admitted, before
+/// rig-subagents parses the rest, and marks the call that asked for it.
+fn take_inherit_pins(
+    mut calls: Query<(Entity, &mut ToolRequest), Added<Admitted>>,
+    mut commands: Commands,
+) {
+    for (call, mut request) in &mut calls {
+        let function = &request.call.function;
+        if function.name.as_str() != TASK || !function.arguments.contains_key(INHERIT_PINS) {
+            continue;
+        }
+        let asked = request.call.function.arguments.shift_remove(INHERIT_PINS);
+        if asked.and_then(|asked| asked.as_bool()) == Some(true) {
+            commands.entity(call).insert(InheritPins);
+        }
     }
-    let Some(&CallOf(turn)) = world.get::<CallOf>(call) else {
-        return;
-    };
-    let Some(&TurnOf(agent)) = world.get::<TurnOf>(turn) else {
-        return;
-    };
-    let Some(pins) = world.get::<Pins>(agent).filter(|pins| !pins.0.is_empty()) else {
-        return;
-    };
-    let note = format!(
-        "\n\nThe agent keeps these pinned notes in its system prompt, apart from the \
-         conversation; they survive this compaction, so do not repeat them in the summary:\n{}",
-        pins.listed()
-    );
-    let Some(mut request) = world.get_mut::<ModelRequest>(call) else {
-        return;
-    };
-    let history = &mut request.request.chat_history;
-    match history.first_mut() {
-        Some(Message::System { content }) => content.push_str(&note),
-        _ => history.insert(0, Message::system(note.trim_start())),
+}
+
+/// Gives the subagent of a `task` call that asked for it a copy of its
+/// parent's pinned notes, as it is spawned.
+fn inherit(
+    spawned: Query<
+        (&SpawnedAgent, &ForAgent, &ChildOf),
+        (With<SpawnSubagent>, Unreviewed, Added<SpawnedAgent>),
+    >,
+    asked: Query<(), With<InheritPins>>,
+    pins: Query<&Pins>,
+    mut commands: Commands,
+) {
+    for (&SpawnedAgent(child), &ForAgent(parent), of) in &spawned {
+        if asked.contains(of.parent())
+            && let Ok(pins) = pins.get(parent)
+        {
+            commands.entity(child).insert(pins.clone());
+        }
     }
 }
 

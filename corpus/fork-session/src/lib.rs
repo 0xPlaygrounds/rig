@@ -1,41 +1,36 @@
 //! Plugin corpus: 43. Fork and branch sessions (spec `43-fork-session.md`).
 //!
-//! `/fork [name]` copies the running session (every agent's log, so its
-//! saved plugin state too, the saved resources, the images and the
-//! listing cache) into a new session and switches to it. `/branch` picks
-//! one of the shown agent's own messages and makes a new session whose
-//! logs end just before it, so the conversation and every saved component
-//! are as they were then; the message waits in the new session's input.
+//! `/fork [name]` copies the running session into a new one with the
+//! harness's [`ForkSession`] and switches to it. `/branch` picks one of the
+//! shown agent's own messages and forks the session as of just before it
+//! (the kernel cuts every log there, so saved plugin state comes back as it
+//! was then); the new session starts with that message in the input line.
 //! Each new session's [`FAMILY`] file names its parent and the fork point,
-//! and `/tree` shows the family. Files on disk are never branched.
+//! and `/tree` shows the family. Files on disk are never branched, except
+//! that `/branch --files` (with the `checkpoints` feature and spec 31's
+//! plugin) puts them back as that plugin's checkpoint before the message
+//! kept them.
 
-use std::fs;
-use std::io;
-use std::path::Path;
-
-use rig_cassette::journal::{JournalStore, JsonlDirStore};
-use rig_core::completion::Message;
-use rig_ecs::WriteJournal;
-use rig_ecs::journal::{SESSION, SessionStore, now_ms};
-use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_sessions::{Meta, SessionsPlugin, SwitchSession, list};
+use rig_harness::rig_core::message::Message;
+use rig_harness::rig_ecs::journal::now_ms;
+use rig_sessions::{ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
-use rig_tui::{Focus, PickItem, PickRequest};
+use rig_tui::{Chosen, Focus, Picked, Picker, TuiInput};
 use serde::{Deserialize, Serialize};
 
-/// The file of a session directory that says where the session came from.
+/// A session directory's file saying where the session came from.
 pub const FAMILY: &str = "family.json";
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
 
-/// How deep `/tree` follows parents, against a loop in edited files.
+/// How deep `/tree` follows a family, against a loop in edited files.
 const DEPTH: usize = 64;
 
-/// What the files are told after a fork.
+/// What the user is told after a fork.
 const FILES: &str = "Files on disk are not branched: the working tree stays as it is.";
 
 /// `/fork`, `/branch` and `/tree`.
@@ -47,8 +42,8 @@ impl Plugin for ForkSessionPlugin {
         if !app.is_plugin_added::<SessionsPlugin>() {
             app.add_plugins(SessionsPlugin);
         }
-        app.init_resource::<Requested>()
-            .add_message::<PickRequest>()
+        app.init_resource::<Pending>()
+            .add_message::<SessionForked>()
             .add_command(
                 "fork",
                 "Copy this session into a new one and switch to it: /fork [name]",
@@ -56,36 +51,33 @@ impl Plugin for ForkSessionPlugin {
             )
             .add_command(
                 "branch",
-                "Pick a message of yours to branch a new session from, before it",
+                "Pick a message of yours to start a new session before it [--files]",
                 branch,
             )
             .add_command("tree", "Show this session's forks and branches", tree)
-            .add_observer(recall_input)
-            .add_systems(
-                Last,
-                carry_out
-                    .after(WriteJournal)
-                    .run_if(|requested: Res<Requested>| requested.0.is_some()),
-            );
+            .add_systems(Startup, arrive)
+            .add_systems(Update, forked);
     }
 }
 
 /// Where a session came from, in its [`FAMILY`] file.
-#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(default)]
 pub struct Family {
     /// The session it was forked or branched from.
     pub parent: Option<String>,
-    /// Where: `fork`, or the start of the message it was branched before.
+    /// Where: `fork`, or the message it was branched before.
     pub point: String,
     /// When, in milliseconds since the Unix epoch.
     pub created: u64,
-    /// What goes in an agent's input at the session's next start, once.
+    /// The name `/fork` gave it, set once it starts.
+    pub name: Option<String>,
+    /// What goes in an agent's input line once it starts.
     pub input: Option<Input>,
 }
 
 /// Text for an agent's input line.
-#[derive(Serialize, Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 pub struct Input {
     /// The agent's id.
     pub agent: String,
@@ -93,33 +85,16 @@ pub struct Input {
     pub text: String,
 }
 
-/// A fork the commands asked for, made once the frame's records are on
-/// disk.
+/// The fork asked for, until the harness wrote it.
 #[derive(Resource, Default)]
-struct Requested(Option<Request>);
+struct Pending(Option<Asked>);
 
-enum Request {
-    Fork { agent: Entity, name: Option<String> },
-    Branch { agent: Entity, message: usize },
-}
-
-/// Where the logs of a branch end.
-struct Cut {
-    /// The log of the agent branched, cut before this record.
-    agent: String,
-    seq: u64,
-    /// Every other log, cut before this time.
-    t: u64,
-}
-
-/// The fields of a log line a cut reads.
-#[derive(Deserialize)]
-struct Line {
-    seq: u64,
-    t: u64,
-    #[serde(rename = "type")]
-    kind: String,
-    message: Option<Message>,
+struct Asked {
+    agent: Entity,
+    before: Option<(AgentId, u64)>,
+    family: Family,
+    /// The command that puts the files back, for `/branch --files`.
+    files: Option<String>,
 }
 
 /// The messages the user typed in `conversation`, by index, as text.
@@ -150,15 +125,24 @@ fn typed(conversation: &Conversation) -> Vec<(usize, String)> {
     typed
 }
 
-/// Why nothing can be forked now, if so.
-fn refusal(turns: &Query<(), With<TurnOf>>, paths: Option<&SessionPaths>) -> Option<String> {
+fn one_line(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+/// This session's id, or why nothing can be forked now.
+fn forkable(
+    agent: Entity,
+    turns: &Query<(), With<TurnOf>>,
+    paths: Option<&SessionPaths>,
+) -> Result<String, Notice> {
     if !turns.is_empty() {
-        return Some("A turn is running. Press Esc to stop it first.".to_owned());
+        return Err(Notice::turn_running(agent));
     }
-    if !paths.is_some_and(|paths| paths.is_saved()) {
-        return Some("Nothing of this session is saved yet.".to_owned());
-    }
-    None
+    paths
+        .filter(|paths| paths.is_saved())
+        .and_then(|paths| paths.id())
+        .map(|id| id.to_string())
+        .ok_or_else(|| Notice::error(agent, "Nothing of this session is saved yet."))
 }
 
 /// `/fork [name]`.
@@ -166,328 +150,212 @@ fn fork(
     In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
-    mut requested: ResMut<Requested>,
+    mut pending: ResMut<Pending>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if let Some(why) = refusal(&turns, paths.as_deref()) {
-        notices.write(Notice::error(args.agent, why));
-        return;
-    }
+    let parent = match forkable(args.agent, &turns, paths.as_deref()) {
+        Ok(parent) => parent,
+        Err(refused) => {
+            notices.write(refused);
+            return;
+        }
+    };
     let name = args.args.trim();
-    requested.0 = Some(Request::Fork {
+    pending.0 = Some(Asked {
         agent: args.agent,
-        name: (!name.is_empty()).then(|| name.to_owned()),
+        before: None,
+        family: Family {
+            parent: Some(parent),
+            point: "fork".to_owned(),
+            created: now_ms(),
+            name: (!name.is_empty()).then(|| one_line(name)),
+            input: None,
+        },
+        files: None,
     });
+    commands.trigger(ForkSession::default());
 }
 
-/// `/branch` picks a message; `/branch <index>` branches before it.
+/// `/branch [--files]`: a picker of the agent's typed messages.
 fn branch(
     In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
     conversations: Query<&Conversation>,
-    mut requested: ResMut<Requested>,
-    mut picks: MessageWriter<PickRequest>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if let Some(why) = refusal(&turns, paths.as_deref()) {
-        notices.write(Notice::error(args.agent, why));
-        return;
-    }
-    let typed = conversations.get(args.agent).map(typed).unwrap_or_default();
-    let arg = args.args.trim();
-    if arg == "--files" {
-        notices.write(Notice::error(
-            args.agent,
-            "/branch --files needs a checkpoint plugin, and none is loaded.",
-        ));
-        return;
-    }
-    if arg.is_empty() {
-        if typed.is_empty() {
-            notices.write(Notice::info(
-                args.agent,
-                "No message of yours to branch from.",
-            ));
+    let agent = args.agent;
+    let parent = match forkable(agent, &turns, paths.as_deref()) {
+        Ok(parent) => parent,
+        Err(refused) => {
+            notices.write(refused);
             return;
         }
-        let items: Vec<PickItem> = typed
-            .iter()
-            .rev()
-            .map(|(at, text)| PickItem {
-                label: shorten(&one_line(text), LABEL_CHARS),
-                command: format!("branch {at}"),
-            })
-            .collect();
-        picks.write(PickRequest {
-            agent: args.agent,
-            title: "Branch a new session before this message".to_owned(),
-            items,
-            selected: 0,
-        });
+    };
+    let files = match args.args.trim() {
+        "" => false,
+        "--files" if cfg!(feature = "checkpoints") => true,
+        "--files" => {
+            let why = "/branch --files needs this plugin built with its `checkpoints` feature.";
+            notices.write(Notice::error(agent, why));
+            return;
+        }
+        other => {
+            notices.write(Notice::error(agent, format!("Unknown option `{other}`.")));
+            return;
+        }
+    };
+    let typed = conversations.get(agent).map(typed).unwrap_or_default();
+    if typed.is_empty() {
+        notices.write(Notice::info(agent, "No message of yours to branch from."));
         return;
     }
-    match arg.parse::<usize>() {
-        Ok(message) if typed.iter().any(|(at, _)| *at == message) => {
-            requested.0 = Some(Request::Branch {
-                agent: args.agent,
-                message,
+    let picker = typed.iter().fold(
+        Picker::new("Branch a new session before this message").for_agent(agent),
+        |picker, (_, text)| picker.item(shorten(&one_line(text), LABEL_CHARS), ""),
+    );
+    let selected = picker.items.len().saturating_sub(1);
+    commands.spawn(Picker { selected, ..picker }).observe(
+        move |picked: On<Picked>,
+              agents: Query<(&AgentId, &Conversation)>,
+              snapshots: Snapshots<'_, '_>,
+              mut pending: ResMut<Pending>,
+              mut commands: Commands,
+              mut notices: MessageWriter<Notice>| {
+            let Some(Chosen::Item(index)) = picked.chosen else {
+                return;
+            };
+            let (Some((at, text)), Ok((id, conversation))) = (typed.get(index), agents.get(agent))
+            else {
+                return;
+            };
+            let Some(seq) = conversation.seq(*at) else {
+                notices.write(Notice::error(agent, "That message is not saved yet."));
+                return;
+            };
+            let files = match files.then(|| restore_files(&snapshots, agent, seq)) {
+                Some(Err(why)) => {
+                    notices.write(Notice::error(agent, why));
+                    return;
+                }
+                Some(Ok(line)) => Some(line),
+                None => None,
+            };
+            let before = Some((id.clone(), seq));
+            pending.0 = Some(Asked {
+                agent,
+                before: before.clone(),
+                family: Family {
+                    parent: Some(parent.clone()),
+                    point: format!("before “{}”", shorten(&one_line(text), 40)),
+                    created: now_ms(),
+                    name: None,
+                    input: Some(Input {
+                        agent: id.0.clone(),
+                        text: text.clone(),
+                    }),
+                },
+                files,
             });
-        }
-        _ => {
-            notices.write(Notice::error(
-                args.agent,
-                format!("`{arg}` is none of your messages; /branch alone lists them."),
-            ));
-        }
-    }
+            commands.trigger(ForkSession { before });
+        },
+    );
 }
 
-fn one_line(text: &str) -> String {
-    text.split_whitespace().collect::<Vec<_>>().join(" ")
+/// The checkpoints spec 31's plugin keeps with each agent.
+#[cfg(feature = "checkpoints")]
+type Snapshots<'w, 's> = Query<'w, 's, &'static corpus_checkpoint_rewind::Checkpoints>;
+#[cfg(not(feature = "checkpoints"))]
+type Snapshots<'w, 's> = ();
+
+/// The command of spec 31's plugin that puts the files back as they were
+/// before the message logged as `seq`.
+#[cfg(feature = "checkpoints")]
+fn restore_files(snapshots: &Snapshots<'_, '_>, agent: Entity, seq: u64) -> Result<String, String> {
+    snapshots
+        .get(agent)
+        .ok()
+        .and_then(|kept| kept.list.iter().find(|kept| kept.seq == Some(seq)))
+        .map(|checkpoint| format!("rewind --files-only {}", checkpoint.turn))
+        .ok_or_else(|| "No checkpoint of the files before that message.".to_owned())
 }
 
-/// Makes the fork asked for, once this frame's records are on disk, and
-/// switches to it.
-fn carry_out(
-    mut requested: ResMut<Requested>,
-    store: Option<Res<SessionStore>>,
-    paths: Option<Res<SessionPaths>>,
-    agents: Query<(&AgentId, &Conversation)>,
+#[cfg(not(feature = "checkpoints"))]
+fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: u64) -> Result<String, String> {
+    Err("/branch --files needs spec 31's checkpoints.".to_owned())
+}
+
+/// Writes the family of each fork this plugin asked for, then switches to
+/// it.
+fn forked(
+    mut forks: MessageReader<SessionForked>,
+    mut pending: ResMut<Pending>,
+    home: Res<RigHome>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Some(request) = requested.0.take() else {
-        return;
-    };
-    let (Some(SessionStore(store)), Some(paths)) = (store.as_deref(), paths.as_deref()) else {
-        return;
-    };
-    let (agent, made) = match request {
-        Request::Fork { agent, name } => {
-            let family = Family {
-                parent: Some(session_id(paths)),
-                point: "fork".to_owned(),
-                created: now_ms(),
-                input: None,
-            };
-            (agent, copy(&**store, paths, None, family, name))
+    for fork in forks.read() {
+        let Some(asked) = pending.0.take_if(|asked| asked.before == fork.before) else {
+            continue;
+        };
+        let file = home.0.session(&fork.to).path().join(FAMILY);
+        if let Err(failure) = write_json(&file, &asked.family) {
+            let why = format!("Could not write session {}'s family: {failure}", fork.to);
+            notices.write(Notice::error(asked.agent, why));
+            continue;
         }
-        Request::Branch { agent, message } => {
-            let made = agents
-                .get(agent)
-                .map_err(|_| io::Error::other("the agent is gone"))
-                .and_then(|(id, conversation)| {
-                    let text = typed(conversation)
-                        .into_iter()
-                        .find_map(|(at, text)| (at == message).then_some(text))
-                        .unwrap_or_default();
-                    let cut = cut_before(&**store, id, conversation, message)?;
-                    let family = Family {
-                        parent: Some(session_id(paths)),
-                        point: format!("before “{}”", shorten(&one_line(&text), 40)),
-                        created: now_ms(),
-                        input: Some(Input {
-                            agent: id.0.clone(),
-                            text,
-                        }),
-                    };
-                    copy(&**store, paths, Some(cut), family, None)
-                });
-            (agent, made)
-        }
-    };
-    match made {
-        Ok(id) => {
-            notices.write(Notice::info(agent, format!("Made session {id}. {FILES}")));
-            commands.trigger(SwitchSession {
-                session: Some(id.to_string()),
+        if let Some(line) = asked.files {
+            commands.trigger(RunCommand {
+                entity: asked.agent,
+                line,
             });
         }
-        Err(failure) => {
-            notices.write(Notice::error(agent, format!("Could not fork: {failure}")));
-        }
+        let made = format!("Made session {}. {FILES}", fork.to);
+        notices.write(Notice::info(asked.agent, made));
+        commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone()))));
     }
 }
 
-/// The running session's id: its directory's name.
-fn session_id(paths: &SessionDir) -> String {
-    paths
-        .path()
-        .file_name()
-        .map(|name| name.to_string_lossy().into_owned())
-        .unwrap_or_default()
-}
-
-/// The complete lines of the log of `agent` in `store`, with what a cut
-/// reads of each.
-fn lines(store: &dyn JournalStore, agent: &str) -> io::Result<Vec<(Vec<u8>, Line)>> {
-    let bytes = store.read(agent)?;
-    Ok(bytes
-        .split_inclusive(|byte| *byte == b'\n')
-        .filter(|line| line.ends_with(b"\n"))
-        .filter_map(|line| Some((line.to_vec(), serde_json::from_slice(line).ok()?)))
-        .collect())
-}
-
-/// Where the logs end for a branch before message `message` of the agent
-/// `id`: the record that began that message. The log is folded as the
-/// conversation was (a user message after a user message goes into it, a
-/// retract takes the last out), and aligned with the conversation at the
-/// end, since a restore after a summary starts the conversation later.
-fn cut_before(
-    store: &dyn JournalStore,
-    id: &AgentId,
-    conversation: &Conversation,
-    message: usize,
-) -> io::Result<Cut> {
-    let mut starts: Vec<(u64, u64, bool)> = Vec::new();
-    for (_, line) in lines(store, &id.0)? {
-        match line.kind.as_str() {
-            "message" => {
-                let user = matches!(line.message, Some(Message::User { .. }));
-                if !(user && starts.last().is_some_and(|(.., last)| *last)) {
-                    starts.push((line.seq, line.t, user));
-                }
-            }
-            "retract" => {
-                starts.pop();
-            }
-            _ => {}
-        }
-    }
-    let at = (message + starts.len()).checked_sub(conversation.messages().len());
-    let (seq, t, _) = at
-        .and_then(|at| starts.get(at))
-        .copied()
-        .ok_or_else(|| io::Error::other("that message is not in the session's log"))?;
-    Ok(Cut {
-        agent: id.0.clone(),
-        seq,
-        t,
-    })
-}
-
-/// A new session id under `home`'s sessions, unused.
-fn new_id(sessions: &Path) -> io::Result<SessionId> {
-    let base = SessionId::generate();
-    for n in 0..1000 {
-        let id = if n == 0 {
-            base.to_string()
-        } else {
-            format!("{base}-{n}")
-        };
-        if !sessions.join(&id).exists() {
-            return id.parse().map_err(io::Error::other);
-        }
-    }
-    Err(io::Error::other("no free session id"))
-}
-
-/// Copies the session in `store` and `from` into a new session beside it,
-/// its logs cut as `cut` says, with `family` and the listing cache, named
-/// `name` if given; the new session's id.
-fn copy(
-    store: &dyn JournalStore,
-    from: &SessionDir,
-    cut: Option<Cut>,
-    family: Family,
-    name: Option<String>,
-) -> io::Result<SessionId> {
-    let sessions = from
-        .path()
-        .parent()
-        .ok_or_else(|| io::Error::other("the session has no sessions directory"))?;
-    let id = new_id(sessions)?;
-    let to = Home::from_env().session(&id);
-    if to.path().parent() != Some(sessions) {
-        return Err(io::Error::other("the session is not under RIG_HOME"));
-    }
-    fs::create_dir_all(to.path())?;
-    let target = JsonlDirStore::new(to.path());
-    for agent in store.agents()? {
-        let kept: Vec<u8> = lines(store, &agent)?
-            .into_iter()
-            .filter(|(_, line)| match &cut {
-                None => true,
-                Some(cut) if cut.agent == agent => line.seq < cut.seq,
-                Some(cut) => line.t < cut.t,
-            })
-            .flat_map(|(bytes, _)| bytes)
-            .collect();
-        // A log of only its header is an agent spawned after the cut.
-        let records = kept.iter().filter(|byte| **byte == b'\n').count();
-        if records > 1 || (agent == SESSION && records > 0) {
-            target.append(&agent, &kept)?;
-        }
-    }
-    copy_dir(&from.path().join("blobs"), &to.path().join("blobs"))?;
-    copy_dir(&from.images(), &to.images())?;
-    if from.directory().exists() {
-        fs::copy(from.directory(), to.directory())?;
-    }
-    let mut meta: Meta = read_json(&from.meta()).unwrap_or_default();
-    if name.is_some() {
-        meta.title.name = name;
-    }
-    meta.updated = now_ms();
-    write_json(&to.meta(), &meta)?;
-    write_json(&to.path().join(FAMILY), &family)?;
-    Ok(id)
-}
-
-/// Copies the files of `from`, if it exists, into `to`.
-fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {
-    let Ok(entries) = fs::read_dir(from) else {
-        return Ok(());
-    };
-    fs::create_dir_all(to)?;
-    for entry in entries {
-        let entry = entry?;
-        if entry.file_type()?.is_file() {
-            fs::copy(entry.path(), to.join(entry.file_name()))?;
-        }
-    }
-    Ok(())
-}
-
-/// Puts the message a branch was made before in its agent's input, once,
-/// and shows that agent.
-fn recall_input(
-    restored: On<Restored>,
-    ids: Query<&AgentId>,
+/// A forked session's start: says where it came from in `/resume`, takes
+/// the name `/fork` gave it, and puts the message it was branched before
+/// in the input line, showing its agent.
+fn arrive(
     paths: Option<Res<SessionPaths>>,
-    mut recalled: MessageWriter<Recalled>,
+    agents: PrimaryQuery,
+    mut title: ResMut<SessionTitle>,
+    input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
 ) {
-    let Some(paths) = paths else {
+    let Some(file) = paths.map(|paths| paths.path().join(FAMILY)) else {
         return;
     };
-    let file = paths.path().join(FAMILY);
     let Some(mut family) = read_json::<Family>(&file) else {
         return;
     };
-    let Ok(id) = ids.get(restored.entity) else {
-        return;
-    };
-    if family
-        .input
-        .as_ref()
-        .is_none_or(|input| input.agent != id.0)
-    {
+    if let Some(parent) = &family.parent {
+        let label = format!("from {parent}, {}", family.point);
+        commands.spawn(ResumeLabel::new("family", label));
+    }
+    let (name, typed) = (family.name.take(), family.input.take());
+    if name.is_none() && typed.is_none() {
         return;
     }
-    if let Some(input) = family.input.take() {
-        commands.trigger(Focus {
-            entity: restored.entity,
-        });
-        recalled.write(Recalled {
-            agent: restored.entity,
-            text: input.text,
-            why: None,
-        });
-        write_json(&file, &family).ok();
+    if name.is_some() {
+        title.name = name;
     }
+    if let Some(typed) = typed {
+        let agent = agents.iter().find(|(_, id, _)| id.0 == typed.agent);
+        if let Some(entity) = agent.map(|(agent, ..)| agent).or_else(|| primary(&agents)) {
+            commands.trigger(Focus { entity });
+        }
+        if let Some(mut input) = input {
+            input.set(typed.text);
+        }
+    }
+    // Once: a later start of the session leaves its input alone.
+    write_json(&file, &family).ok();
 }
 
 /// `/tree`: the sessions forked and branched from this one's root, as a
@@ -495,104 +363,81 @@ fn recall_input(
 fn tree(
     In(args): In<CommandArgs>,
     paths: Option<Res<SessionPaths>>,
-    mut picks: MessageWriter<PickRequest>,
+    home: Res<RigHome>,
+    title: Res<SessionTitle>,
+    mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let Some(paths) = paths else {
         return;
     };
-    let home = Home::from_env();
-    let current = session_id(&paths);
-    let family_of = |dir: &SessionDir| read_json::<Family>(&dir.path().join(FAMILY));
-    // Every other saved session, with where it came from.
-    let others: Vec<_> = list(&home, paths.path())
+    let Some(current) = paths.id().map(|id| id.to_string()) else {
+        return;
+    };
+    let family_of =
+        |path: &std::path::Path| read_json::<Family>(&path.join(FAMILY)).unwrap_or_default();
+    // Every saved session: its id, its line and its family.
+    let mut nodes: Vec<(String, String, Family)> = list(&home.0, paths.path())
         .into_iter()
         .map(|entry| {
-            let family = family_of(&home.session(&entry.id)).unwrap_or_default();
-            (entry, family)
+            let family = family_of(home.0.session(&entry.id).path());
+            (entry.id.to_string(), entry.label(), family)
         })
         .collect();
-    let parent_of = |id: &str| -> Option<String> {
-        if id == current {
-            return family_of(&paths).and_then(|family| family.parent);
-        }
-        others
-            .iter()
-            .find(|(entry, _)| entry.id.as_str() == id)
-            .and_then(|(_, family)| family.parent.clone())
+    let this = title.name.clone().unwrap_or_else(|| title.typed.clone());
+    nodes.push((
+        current.clone(),
+        format!("● this session  {this}"),
+        family_of(paths.path()),
+    ));
+    let parent_of = |id: &str| {
+        let parent = nodes.iter().find(|node| node.0 == id)?.2.parent.clone()?;
+        nodes.iter().any(|node| node.0 == parent).then_some(parent)
     };
     let mut root = current.clone();
     for _ in 0..DEPTH {
         match parent_of(&root) {
-            Some(parent)
-                if parent == current || others.iter().any(|(e, _)| e.id.as_str() == parent) =>
-            {
-                root = parent;
-            }
-            _ => break,
+            Some(parent) => root = parent,
+            None => break,
         }
     }
-    let mut items = Vec::new();
+    let mut picker = Picker::new("This session's family").for_agent(args.agent);
     let mut stack = vec![(root, 0usize)];
     while let Some((id, depth)) = stack.pop() {
-        if items.len() > 500 || depth > DEPTH {
+        let Some((_, label, family)) = nodes.iter().find(|node| node.0 == id) else {
+            continue;
+        };
+        if depth > DEPTH || picker.items.len() > 500 {
             break;
         }
-        let indent = "  ".repeat(depth);
-        let (label, point) = if id == current {
-            let point = family_of(&paths)
-                .map(|family| family.point)
-                .unwrap_or_default();
-            ("● this session".to_owned(), point)
-        } else {
-            match others.iter().find(|(entry, _)| entry.id.as_str() == id) {
-                Some((entry, family)) => (entry.label(), family.point.clone()),
-                None => continue,
-            }
+        let point = match family.point.as_str() {
+            "" => String::new(),
+            point => format!("  · {point}"),
         };
-        let point = if point.is_empty() {
+        let command = if id == current {
             String::new()
         } else {
-            format!("  · {point}")
+            format!("resume {id}")
         };
-        items.push(PickItem {
-            label: format!("{indent}{label}{point}"),
-            command: if id == current {
-                "name".to_owned()
-            } else {
-                format!("resume {id}")
-            },
-        });
-        let mut children: Vec<(u64, String)> = others
-            .iter()
-            .filter(|(_, family)| family.parent.as_deref() == Some(id.as_str()))
-            .map(|(entry, family)| (family.created, entry.id.to_string()))
-            .collect();
-        if family_of(&paths)
-            .and_then(|family| family.parent)
-            .as_deref()
-            == Some(id.as_str())
-        {
-            let created = family_of(&paths).map_or(0, |family| family.created);
-            children.push((created, current.clone()));
+        if id == current {
+            picker.selected = picker.items.len();
         }
+        picker = picker.item(format!("{}{label}{point}", "  ".repeat(depth)), command);
+        let mut children: Vec<(u64, String)> = nodes
+            .iter()
+            .filter(|node| node.2.parent.as_deref() == Some(id.as_str()))
+            .map(|node| (node.2.created, node.0.clone()))
+            .collect();
         // Oldest first once popped.
         children.sort_by(|a, b| b.cmp(a));
         stack.extend(children.into_iter().map(|(_, child)| (child, depth + 1)));
     }
-    if items.len() < 2 {
-        notices.write(Notice::info(
-            args.agent,
-            "This session has no forks or branches; /fork or /branch makes one.",
-        ));
+    if picker.items.len() < 2 {
+        let none = "This session has no forks or branches; /fork or /branch makes one.";
+        notices.write(Notice::info(args.agent, none));
         return;
     }
-    picks.write(PickRequest {
-        agent: args.agent,
-        title: "Sessions forked from the same one".to_owned(),
-        items,
-        selected: 0,
-    });
+    commands.spawn(picker);
 }
 
 #[cfg(test)]

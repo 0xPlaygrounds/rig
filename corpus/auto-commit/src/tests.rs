@@ -3,15 +3,16 @@ use std::path::{Path, PathBuf};
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::operation::Completion;
+use rig_core::providers::registry::ProviderId;
+use rig_core::serve::ErasedHandler;
+use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::MockCompletionModel;
-use rig_ecs::journal::JournalPlugin;
+use rig_harness::settings::Settings;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
-
-/// How many turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 /// A repository with one commit, and the user's uncommitted `b.txt`.
 fn repository(dir: &Path) -> Option<()> {
@@ -26,9 +27,23 @@ fn repository(dir: &Path) -> Option<()> {
         &["add", "README"],
         &["commit", "-q", "-m", "Start"],
     ] {
-        git(dir, args).ok()?;
+        git(&Processes::default(), dir, args).ok()?;
     }
     fs::write(dir.join("b.txt"), "the user's own work\n").ok()
+}
+
+/// The catalog with `cheap` as the model `corpus-scripted/cheap`.
+fn models_with(cheap: MockCompletionModel) -> Option<Models> {
+    let vendor = ProviderId::declare("corpus-scripted").ok()?;
+    let mut connector = Connector::default();
+    connector
+        .catalog_mut()
+        .insert(ModelSpec::new(vendor, "cheap"));
+    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
+        let model = ModelAdapter::<Completion>::new(spec.reference(), cheap.clone());
+        Ok(ErasedHandler::new(model))
+    });
+    Some(Models(connector))
 }
 
 #[test]
@@ -41,6 +56,8 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
         dir.display()
     );
     let a = dir.join("a.txt").display().to_string();
+    let processes = Processes::default();
+    let git = |args: &[&str]| git(&processes, &dir, args).unwrap_or_default();
 
     let model = MockCompletionModel::from_stream_turns([
         calls(
@@ -51,24 +68,24 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
         reply("added a"),
     ]);
     let cheap = MockCompletionModel::from_stream_turns([reply("Add a.txt")]);
-    let connections = (connect(&model), connect(&cheap));
+    let found = (connect(&model), models_with(cheap));
     assert!(
-        connections.0.is_some() && connections.1.is_some(),
-        "the catalog lists the model"
+        found.0.is_some() && found.1.is_some(),
+        "the catalog lists the models"
     );
-    let (Some(connection), Some(cheap_connection)) = connections else {
+    let (Some(connection), Some(models)) = found else {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
     app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(AutoCommitConfig {
-            dir: Some(dir.clone()),
-            ..AutoCommitConfig::default()
-        })
-        .insert_resource(MessageModel(cheap_connection))
+        .insert_resource(Settings::from_toml(
+            "[auto-commit]\nmessage_model = \"corpus-scripted/cheap\"",
+        ))
+        .insert_resource(models)
+        .insert_resource(ProjectRoot(dir.clone()))
         .add_plugins((AgentPlugin, JournalPlugin, WriteTool, AutoCommitPlugin))
         .init_resource::<Ended>()
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -80,22 +97,22 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Add a file a.txt", DeliveryMode::Queue));
 
-    let subject = |dir: &Path| git(dir, &["log", "-1", "--format=%s"]).unwrap_or_default();
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Ended>().0 > 0 && subject(&dir) == "Add a.txt"
+        !world.resource::<Ended>().0.is_empty()
     });
-    assert_eq!(subject(&dir), "Add a.txt");
-    let body = git(&dir, &["log", "-1", "--format=%b"]).unwrap_or_default();
+    assert_eq!(git(&["log", "-1", "--format=%s"]), "Add a.txt");
+    let body = git(&["log", "-1", "--format=%b"]);
     assert!(body.contains("Turn: 1"), "{body}");
-    let tree = |dir: &Path| git(dir, &["ls-tree", "--name-only", "HEAD"]).unwrap_or_default();
-    assert_eq!(tree(&dir), "README\na.txt");
-    let status = git(&dir, &["status", "--porcelain"]).unwrap_or_default();
+    assert_eq!(git(&["ls-tree", "--name-only", "HEAD"]), "README\na.txt");
+    let status = git(&["status", "--porcelain"]);
     assert_eq!(status, "?? b.txt", "the user's file stays uncommitted");
 
     app.world_mut()
         .trigger(Deliver::new(agent, "/undo", DeliveryMode::Steer));
-    run_until(&mut app, &wakes, |_| tree(&dir) == "README");
-    assert_eq!(tree(&dir), "README");
+    run_until(&mut app, &wakes, |_| {
+        git(&["ls-tree", "--name-only", "HEAD"]) == "README"
+    });
+    assert_eq!(git(&["ls-tree", "--name-only", "HEAD"]), "README");
     assert!(!dir.join("a.txt").exists());
     assert!(dir.join("b.txt").exists());
     let told = app

@@ -1,114 +1,86 @@
 //! A virtual model, `router`, that sends each model request of an agent to
-//! one of a few configured models: `/model router` (also in the `/model`
-//! picker) turns it on for the agent, and choosing any other model turns it
-//! off. The rules come from `RIG_HOME/router.json`; the first that matches
-//! a request picks its target, so one turn may mix models:
+//! one of a few configured models. `/model router` (also in the `/model`
+//! picker, through rig-models' [`ModelItem`]) turns it on for the agent,
+//! and choosing any other model turns it off. The rules are the `[router]`
+//! table of `settings.toml`; the first that matches a request picks its
+//! target, so one turn may mix models:
 //!
-//! ```json
-//! {
-//!   "targets": { "cheap": "deepseek/deepseek-flash", "strong": "deepseek/deepseek-v4-pro" },
-//!   "rules": [
-//!     { "when": { "context_over": 60000 }, "use": "strong" },
-//!     { "when": { "first_request_mentions": ["plan", "design", "why", "debug"] }, "use": "strong" },
-//!     { "when": "after_read_only_tools", "use": "cheap" },
-//!     { "when": "always", "use": "default" }
-//!   ]
-//! }
+//! ```toml
+//! [router.targets]
+//! cheap = "deepseek/deepseek-flash"
+//! strong = "deepseek/deepseek-v4-pro"
+//! default = "deepseek/deepseek-v4-pro"
+//!
+//! [[router.rules]]
+//! when = { context_over = 60000 }
+//! use = "strong"
+//!
+//! [[router.rules]]
+//! when = { first_request_mentions = ["plan", "design", "why", "debug"] }
+//! use = "strong"
+//!
+//! [[router.rules]]
+//! when = "after_read_only_tools"
+//! use = "cheap"
+//!
+//! [[router.rules]]
+//! when = "always"
+//! use = "default"
 //! ```
 //!
-//! A routed request goes to its target as the turn's [`Connection`], so the
-//! effect log records it under the real model; the agent's reasoning
-//! setting goes along when the target takes it, else the target's default.
-//! Each agent's [`RoutedSpending`] sums its calls by real model (`/router`
-//! lists it), and the status line says `router → cheap (deepseek-flash)`.
-//! A rule whose target is not configured or cannot be connected is off,
-//! with a warning at startup.
+//! A routed request is a Prepare edit of its `connection`, so the kernel
+//! sends it there, fits its options to that model (a reasoning setting the
+//! target does not take falls back to the target's default), and the
+//! effect log and rig-telemetry's per-model spending record it under the
+//! real model. The agent's [`ModelLabel`] says `router → deepseek-flash`
+//! in the status line. A rule whose target is not configured or cannot be
+//! connected is off, with a warning at startup.
 
 use std::collections::BTreeMap;
-use std::mem;
 
-use bevy_ecs::message::Messages;
-use bevy_ecs::system::SystemId;
 use bevy_log::warn;
-use rig_core::completion::UsageTotals;
+use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-use rig_tui::{PickItem, PickRequest, Side, StatusItem, StatusItems, StatusSystems, Tone};
-use serde::{Deserialize, Serialize};
+use rig_models::{ModelItem, ModelLabel};
+use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
 
 /// The virtual model's name, as `/model router` takes it.
 pub const ROUTER: &str = "router";
-/// The file in `RIG_HOME` with the rules.
-const CONFIG: &str = "router.json";
-/// Where the routed model is: right after the agent's model.
-const ROUTE: StatusItem = StatusItem::at(Side::Left, 35, 14);
 
-/// Adds the `router` virtual model and `/router`.
+/// Adds the `router` virtual model.
 #[derive(Default)]
 pub struct ModelRouterPlugin;
 
 impl Plugin for ModelRouterPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<RouterConfig>() {
-            // Only an agent the launcher started reads `RIG_HOME`, not a test.
-            let config = app
-                .world()
-                .get_resource::<Invoked>()
-                .and_then(|_| RouterConfig::read())
-                .unwrap_or_default();
-            app.insert_resource(config);
-        }
-        app.init_resource::<RouterTargets>()
-            .init_resource::<ModelCommand>()
-            .add_message::<PickRequest>()
+        app.add_setting::<RouterConfig>("router")
+            .init_resource::<Targets>()
             .register_required_components::<Agent, Routing>()
-            .register_required_components::<Agent, RoutedSpending>()
             .add_command(
-                "router",
-                "Show the model router's rules and what each model it used spent",
+                ROUTER,
+                "Route each model request by the [router] rules of settings.toml",
                 router,
             )
             .add_systems(Startup, connect_targets)
-            .add_systems(PostUpdate, show.in_set(StatusSystems))
-            .add_observer(start_turn)
-            .add_observer(route)
-            .add_observer(record)
-            .add_observer(leave_router);
-    }
-
-    /// Wraps `/model` (of `rig-models`, if added) so it also takes
-    /// `router` and lists it in its picker.
-    fn finish(&self, app: &mut App) {
-        let world = app.world_mut();
-        let mut commands = world.query_filtered::<(Entity, &Name), With<SlashCommand>>();
-        let original = commands
-            .iter(world)
-            .find(|(_, name)| name.as_str() == "/model")
-            .map(|(entity, _)| entity);
-        if let Some(original) = original {
-            world.entity_mut(original).insert(Disabled);
-        }
-        world.insert_resource(ModelCommand(original));
-        app.add_command(
-            "model",
-            "Pick the model, set it with /model vendor/model, or route each request with /model router",
-            model,
-        );
+            .add_systems(AgentPass, route.in_set(Stage::Prepare))
+            .add_observer(label)
+            .add_observer(leave.run_if(resource_exists::<SessionRestored>));
+        let item = ModelItem::new(ROUTER, "router  a model per request, by [router]", ROUTER);
+        app.world_mut().spawn(item);
     }
 }
 
-/// The router's targets and rules, from `RIG_HOME/router.json`. Without a
-/// file it has the usual rules and no targets, so every rule is off.
+/// The `[router]` table: the targets and the rules. Without one it has the
+/// usual rules and no targets, so every rule is off.
 #[derive(Resource, Clone, Debug, Deserialize)]
+#[serde(default, deny_unknown_fields)]
 pub struct RouterConfig {
     /// Each target's catalog model, by the name the rules use.
-    #[serde(default)]
     pub targets: BTreeMap<String, String>,
     /// The rules, first match wins.
-    #[serde(default)]
     pub rules: Vec<Rule>,
 }
 
@@ -118,14 +90,12 @@ impl Default for RouterConfig {
             when,
             target: target.to_owned(),
         };
-        let words = ["plan", "design", "why", "debug"]
-            .map(str::to_owned)
-            .to_vec();
+        let words = ["plan", "design", "why", "debug"].map(str::to_owned);
         Self {
             targets: BTreeMap::new(),
             rules: vec![
                 rule(When::ContextOver(60_000), "strong"),
-                rule(When::FirstRequestMentions(words), "strong"),
+                rule(When::FirstRequestMentions(words.to_vec()), "strong"),
                 rule(When::AfterReadOnlyTools, "cheap"),
                 rule(When::Always, "default"),
             ],
@@ -133,18 +103,9 @@ impl Default for RouterConfig {
     }
 }
 
-impl RouterConfig {
-    fn read() -> Option<Self> {
-        let path = Home::from_env().root().join(CONFIG);
-        let text = std::fs::read_to_string(&path).ok()?;
-        serde_json::from_str(&text)
-            .inspect_err(|why| warn!("router: {} is not read: {why}", path.display()))
-            .ok()
-    }
-}
-
 /// One routing rule: when it matches, the request goes to `target`.
 #[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Rule {
     /// When it matches.
     pub when: When,
@@ -160,7 +121,7 @@ pub enum When {
     /// The agent's context, as its last reply reported it, is over this
     /// many tokens.
     ContextOver(u64),
-    /// The first request of a turn, whose user text contains one of these
+    /// The first request of a turn whose user text contains one of these
     /// words (any case).
     FirstRequestMentions(Vec<String>),
     /// A request after tool calls that were all read-only.
@@ -180,10 +141,9 @@ impl std::fmt::Display for When {
     }
 }
 
-/// The targets that could be connected, by name. A test or a plugin may
-/// insert a target before startup; startup connects the rest.
+/// The targets that could be connected at startup, by name.
 #[derive(Resource, Clone, Default)]
-pub struct RouterTargets(pub BTreeMap<String, Connection>);
+pub struct Targets(pub BTreeMap<String, Connection>);
 
 /// Whether the agent's requests are routed: its model is `router`. Saved
 /// with the session.
@@ -191,26 +151,11 @@ pub struct RouterTargets(pub BTreeMap<String, Connection>);
 #[reflect(Component, Saved, Default)]
 pub struct Routing(pub bool);
 
-/// Where the agent's last routed request went, for the status line.
-#[derive(Component, Clone, Debug)]
-pub struct LastRoute(pub String);
-
-/// The agent's model calls' usage, by the real model that answered each.
-/// Saved with the session.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
-#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
-pub struct RoutedSpending(pub BTreeMap<String, UsageTotals>);
-
-/// `rig-models`' `/model`, disabled and run by this plugin's.
-#[derive(Resource, Default)]
-struct ModelCommand(Option<Entity>);
-
-/// Connects each target a rule uses, unless one was given, and warns of
-/// each rule that is off.
+/// Connects each target a rule uses, and warns of each rule that is off.
 fn connect_targets(
     config: Res<RouterConfig>,
     models: Res<Models>,
-    mut targets: ResMut<RouterTargets>,
+    mut targets: ResMut<Targets>,
     mut notices: MessageWriter<Notice>,
 ) {
     for rule in &config.rules {
@@ -219,7 +164,7 @@ fn connect_targets(
         }
         let connected = match config.targets.get(&rule.target) {
             Some(reference) => models.connect(reference),
-            None => Err(format!("`{}` is not in {CONFIG}", rule.target)),
+            None => Err(format!("`{}` is not in [router.targets]", rule.target)),
         };
         match connected {
             Ok(connection) => {
@@ -237,133 +182,85 @@ fn connect_targets(
     }
 }
 
-/// `/model router` routes the agent's requests; anything else is
-/// `rig-models`' `/model`, whose picker gets `router` first.
-fn model(In(args): In<CommandArgs>, world: &mut World) {
-    let agent = args.agent;
-    if args.args == ROUTER {
-        choose_router(world, agent);
-        return;
-    }
-    let Some(original) = world.resource::<ModelCommand>().0 else {
-        if !args.args.is_empty() {
-            world.trigger(SetModel {
-                entity: agent,
-                model: args.args,
-            });
-        }
-        return;
-    };
-    let earlier = swap_picks(world, Messages::default());
-    let ran = world.run_system_with(SystemId::<In<CommandArgs>>::from_entity(original), args);
-    let mut asked = swap_picks(world, earlier);
-    if let Err(why) = ran {
-        world.write_message(Notice::error(agent, why.to_string()));
-    }
-    for mut pick in asked.drain() {
-        let item = PickItem {
-            label: format!("{ROUTER}  a model per request, by {CONFIG}"),
-            command: format!("model {ROUTER}"),
-        };
-        pick.items.insert(0, item);
-        world.write_message(pick);
-    }
-}
-
-/// Puts `picks` in place of the world's picker requests, and returns those.
-fn swap_picks(world: &mut World, picks: Messages<PickRequest>) -> Messages<PickRequest> {
-    match world.get_resource_mut::<Messages<PickRequest>>() {
-        Some(mut current) => mem::replace(&mut *current, picks),
-        None => picks,
-    }
-}
-
-/// Turns routing on for an idle agent with a reachable target.
-fn choose_router(world: &mut World, agent: Entity) {
-    if world.get::<ActiveTurn>(agent).is_some() {
-        world.write_message(Notice::turn_running(agent));
-        return;
-    }
-    if world.resource::<RouterTargets>().0.is_empty() {
-        let why = format!("No router target can be used: set them in RIG_HOME/{CONFIG}.");
-        world.write_message(Notice::error(agent, why));
-        return;
-    }
-    world.entity_mut(agent).insert(Routing(true));
-    world.write_message(Notice::info(agent, "Model: router."));
-}
-
-/// Choosing a real model leaves the router.
-fn leave_router(set: On<SetModel>, mut agents: Query<&mut Routing, Without<ActiveTurn>>) {
-    if let Ok(mut routing) = agents.get_mut(set.entity) {
-        routing.set_if_neq(Routing(false));
-    }
-}
-
-/// A routed turn of an agent without a model of its own starts on a target,
-/// so the kernel can prepare its first request; [`route`] picks the rest.
-fn start_turn(
-    turn: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    agents: Query<(&Routing, Has<Connection>)>,
-    targets: Res<RouterTargets>,
+/// `/router` (and `/model router`): routes the agent's requests, and says
+/// by which rules.
+fn router(
+    In(args): In<CommandArgs>,
+    config: Res<RouterConfig>,
+    targets: Res<Targets>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    let Ok(TurnOf(agent)) = turns.get(turn.entity) else {
+    if targets.0.is_empty() {
+        let why = "No router target can be used: set them in [router.targets] of settings.toml.";
+        notices.write(Notice::error(args.agent, why));
         return;
-    };
-    if let Ok((Routing(true), false)) = agents.get(*agent)
-        && let Some(connection) = targets.0.values().next()
-    {
-        commands.entity(turn.entity).insert(connection.clone());
+    }
+    commands.entity(args.agent).insert(Routing(true));
+    let mut lines = vec!["Model: router.".to_owned()];
+    for rule in &config.rules {
+        let model = targets.0.get(&rule.target);
+        let model = model.map_or_else(|| "off".to_owned(), |target| target.spec.reference());
+        lines.push(format!("  {} → {} ({model})", rule.when, rule.target));
+    }
+    notices.write(Notice::info(args.agent, lines.join("\n")));
+}
+
+/// A routed agent's model is `router`, also once restored.
+fn label(inserted: On<Insert<Routing>>, agents: Query<&Routing>, mut commands: Commands) {
+    if let Ok(Routing(true)) = agents.get(inserted.entity) {
+        commands
+            .entity(inserted.entity)
+            .insert(ModelLabel(ROUTER.to_owned()));
     }
 }
 
-/// Picks the target of each request of a routed agent by the first rule
-/// that matches, sends the request there, and translates the reasoning
-/// setting for it.
+/// Choosing a model, after the session was restored, leaves the router.
+fn leave(inserted: On<Insert<ModelChoice>>, agents: Query<&Routing>, mut commands: Commands) {
+    if let Ok(Routing(true)) = agents.get(inserted.entity) {
+        commands
+            .entity(inserted.entity)
+            .insert(Routing(false))
+            .remove::<ModelLabel>();
+    }
+}
+
+/// Sends each turn request of a routed agent to the target of the first
+/// rule that matches it.
 fn route(
-    mut prepare: On<PrepareRequest>,
-    agents: Query<(&Routing, &LastUsage, &Effort)>,
+    mut calls: Query<(&mut ModelRequest, &CallOf, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    agents: Query<(&Routing, &Conversation, &LastUsage, Option<&ModelLabel>)>,
+    turns: Query<&Turn>,
     tools: Query<(&ToolDef, &Footprint)>,
     config: Res<RouterConfig>,
-    targets: Res<RouterTargets>,
+    targets: Res<Targets>,
     mut commands: Commands,
 ) {
-    let (turn, agent) = (prepare.entity, prepare.agent);
-    let Ok((Routing(true), last, effort)) = agents.get(agent) else {
-        return;
-    };
-    let read_only = |name: &str| {
-        tools.iter().any(|(def, footprint)| {
-            def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
-        })
-    };
-    let request = Request::of(&prepare.messages, read_only);
-    let chosen = config.rules.iter().find_map(|rule| {
-        let target = targets.0.get(&rule.target)?;
-        request
-            .matches(&rule.when, last)
-            .then_some((&rule.target, target))
-    });
-    let Some((name, connection)) = chosen else {
-        return;
-    };
-    let spec = &connection.spec;
-    let wanted = spec.default_options(effort.0);
-    let fitting = match spec.validate(&wanted) {
-        Ok(()) => wanted,
-        Err(_) => spec.default_options(None),
-    };
-    prepare.options.reasoning = fitting.reasoning;
-    prepare.options.cache = fitting.cache;
-    if !spec.tools {
-        prepare.tools.clear();
+    for (mut call, &CallOf(turn), &ForAgent(agent)) in &mut calls {
+        let Ok((Routing(true), conversation, last, label)) = agents.get(agent) else {
+            continue;
+        };
+        let first = turns.get(turn).map_or(0, |turn| turn.first_message);
+        let this_turn = conversation.messages().get(first..).unwrap_or_default();
+        let read_only = |name: &str| {
+            tools.iter().any(|(def, footprint)| {
+                def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
+            })
+        };
+        let request = Request::of(this_turn, read_only);
+        let chosen = config.rules.iter().find_map(|rule| {
+            let target = targets.0.get(&rule.target)?;
+            request.matches(&rule.when, last).then_some(target)
+        });
+        let Some(target) = chosen else {
+            continue;
+        };
+        call.connection = Some(target.clone());
+        let shown = ModelLabel(format!("{ROUTER} → {}", target.spec.id));
+        if label != Some(&shown) {
+            commands.entity(agent).insert(shown);
+        }
     }
-    commands.entity(turn).insert(connection.clone());
-    commands
-        .entity(agent)
-        .insert(LastRoute(format!("{name} ({})", spec.id)));
 }
 
 /// What a request is, for the rules.
@@ -376,31 +273,33 @@ struct Request {
 }
 
 impl Request {
-    fn of(messages: &[Message], read_only: impl Fn(&str) -> bool) -> Self {
-        let mut back = messages.iter().rev();
-        let (last, before) = (back.next(), back.next());
-        let Some(Message::User { content }) = last else {
+    /// The request after `this_turn`, the messages of its turn so far.
+    fn of(this_turn: &[Message], read_only: impl Fn(&str) -> bool) -> Self {
+        let mut replies = this_turn.iter().filter_map(|message| match message {
+            Message::Assistant(reply) => Some(reply),
+            _ => None,
+        });
+        let Some(reply) = replies.next_back() else {
+            let text = this_turn.iter().flat_map(|message| match message {
+                Message::User { content } => content
+                    .iter()
+                    .filter_map(|item| match item {
+                        UserContent::Text(text) => Some(text.text.to_lowercase()),
+                        _ => None,
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            });
             return Self {
-                first: None,
+                first: Some(text.collect::<Vec<_>>().join("\n")),
                 after_read_only: false,
             };
         };
-        let results = content
-            .iter()
-            .any(|item| matches!(item, UserContent::ToolResult(_)));
-        let first = (!results).then(|| {
-            let texts = content.iter().filter_map(|item| match item {
-                UserContent::Text(text) => Some(text.text.to_lowercase()),
-                _ => None,
-            });
-            texts.collect::<Vec<_>>().join("\n")
-        });
-        let after_read_only = results
-            && matches!(before, Some(Message::Assistant(reply))
-                if reply.tool_calls().next().is_some()
-                    && reply.tool_calls().all(|call| read_only(call.function.name.as_str())));
+        let mut called = reply.tool_calls().peekable();
+        let after_read_only =
+            called.peek().is_some() && called.all(|call| read_only(call.function.name.as_str()));
         Self {
-            first,
+            first: None,
             after_read_only,
         }
     }
@@ -415,74 +314,5 @@ impl Request {
             When::AfterReadOnlyTools => self.after_read_only,
             When::Always => true,
         }
-    }
-}
-
-/// Adds a finished model call's usage under the real model that answered
-/// it: the call's connection, else its turn's, else its agent's.
-fn record(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&CallOf, &Done<ModelReply>, Option<&Connection>)>,
-    turns: Query<(&TurnOf, Option<&Connection>)>,
-    mut agents: Query<(Option<&Connection>, &mut RoutedSpending)>,
-) {
-    let Ok((&CallOf(turn), Done(Ok(response)), own)) = calls.get(done.entity) else {
-        return;
-    };
-    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
-        return;
-    };
-    let Ok((agents_own, mut spent)) = agents.get_mut(agent) else {
-        return;
-    };
-    if let Some(connection) = own.or(routed).or(agents_own) {
-        let model = connection.spec.reference();
-        spent.0.entry(model).or_default().record(&response.usage);
-    }
-}
-
-/// `/router`: whether the agent is routed, each rule, and what each model
-/// spent.
-fn router(
-    In(args): In<CommandArgs>,
-    agents: Query<(&Routing, &RoutedSpending)>,
-    config: Res<RouterConfig>,
-    targets: Res<RouterTargets>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok((Routing(on), RoutedSpending(spent))) = agents.get(args.agent) else {
-        return;
-    };
-    let mut lines = vec![format!(
-        "Router: {}.",
-        if *on { "on" } else { "off (/model router)" }
-    )];
-    for rule in &config.rules {
-        let target = match targets.0.get(&rule.target) {
-            Some(connection) => connection.spec.reference(),
-            None => "off".to_owned(),
-        };
-        lines.push(format!("  {} → {} ({target})", rule.when, rule.target));
-    }
-    for (model, totals) in spent {
-        lines.push(format!("  {model}: {totals}"));
-    }
-    notices.write(Notice::info(args.agent, lines.join("\n")));
-}
-
-/// `router → cheap (deepseek-flash)` in a routed agent's status line.
-fn show(
-    mut agents: Query<
-        (&Routing, Option<&LastRoute>, &mut StatusItems),
-        Or<(Changed<Routing>, Changed<LastRoute>)>,
-    >,
-) {
-    for (Routing(on), last, mut items) in &mut agents {
-        let text = match (on, last) {
-            (false, _) => String::new(),
-            (true, Some(LastRoute(route))) => format!("{ROUTER} → {route}"),
-            (true, None) => ROUTER.to_owned(),
-        };
-        items.show(ROUTE.says(text, Tone::Dim));
     }
 }

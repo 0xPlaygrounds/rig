@@ -1,18 +1,15 @@
 //! Plugin corpus: 16. Custom provider registration (spec `16-custom-provider.md`).
 //!
 //! Providers listed in `RIG_HOME/providers.toml` (a company gateway, say)
-//! become models the agent can use as `<name>/<model>`: `/model corp/big`,
-//! or the `/model` picker, which lists them beside the catalog's. Each is
-//! reached on the wire of its `api`, at its `base_url`, with its extra
-//! `headers` and its key from `key_env` or `key_command` (run again once
-//! the token it printed expired), and priced and windowed by its own
-//! entry. The choice is the saved [`CustomModel`] on the agent, which a
-//! restart or `/reload` connects again; `/reload` restarts the process, so
-//! it also re-reads the file.
-//!
-//! The kernel's catalog cannot hold a vendor it does not know, so a
-//! configured model is not a [`ModelChoice`]: this plugin replaces
-//! `/model`, connects the agent itself and removes its `ModelChoice`.
+//! become catalog vendors: each is declared, its models are added to the
+//! catalog in [`Models`] as `<name>/<model>`, and the vendor is reached
+//! through this plugin's [`Provide`], never the environment's keys for a
+//! built-in vendor. So `--model`, `/model`, its picker, the remembered
+//! default, subagents and session restore take them like any built-in
+//! model. Each is reached on the wire of its `api`, at its `base_url`, with
+//! its extra `headers` and its key from `key_env` or `key_command` (run
+//! again once the token it printed expired), and priced and windowed by its
+//! own entry. `/reload` restarts the process, so it re-reads the file.
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -21,15 +18,15 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use http::{HeaderMap, HeaderName, HeaderValue, Method, Uri};
-use rig_core::catalog::{Catalog, ModelSpec, Pricing, ReasoningSupport};
-use rig_core::http_client::{self, HttpMiddleware};
-use rig_core::operation::Completion;
-use rig_core::providers::registry::{ConnectOptions, Format, ProviderId};
-use rig_core::serve::ErasedHandler;
-use rig_core::serve::adapters::ModelAdapter;
-use rig_core::wasm_compat::WasmBoxedFuture;
-use rig_ecs::effects::Handler;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Pricing, ReasoningSupport};
+use rig_harness::rig_core::http_client::{self, HttpMiddleware};
+use rig_harness::rig_core::providers::anthropic::wire::{AnthropicConfig, compatible};
+use rig_harness::rig_core::providers::openai::wire::{Auth, Dialect, OpenAIConfig, Route};
+use rig_harness::rig_core::providers::registry::{ConnectError, ProviderConfig, ProviderId};
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
+use rig_models::ModelItem;
 use serde::Deserialize;
 
 /// The file under `RIG_HOME`.
@@ -40,51 +37,60 @@ pub const FILE: &str = "providers.toml";
 const TOKEN_LIFETIME: Duration = Duration::from_secs(300);
 
 /// Adds the providers of `RIG_HOME/providers.toml` (or of a
-/// [`CustomProviders`] inserted before it) and replaces `/model` with one
-/// that also takes their models.
+/// [`CustomProviders`] inserted before it) to the catalog.
 #[derive(Default)]
 pub struct CustomProviderPlugin;
 
 impl Plugin for CustomProviderPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<CustomProviders>() {
-            let providers = CustomProviders::load(&Home::from_env().root().join(FILE));
-            app.insert_resource(providers);
+            let path = RigHome::of(app.world()).root().join(FILE);
+            app.insert_resource(CustomProviders::load(&path));
         }
-        app.init_resource::<Settled>()
-            .add_observer(reconnect_restored)
-            .add_observer(leave_custom)
-            .add_systems(Startup, report_problems)
-            .add_systems(First, settle);
-        #[cfg(feature = "tui")]
-        app.add_message::<rig_tui::PickRequest>();
+        app.add_systems(Startup, report_problems);
     }
 
-    /// Replaces `/model`, whichever plugin added it, once every plugin's
-    /// `build` ran.
+    /// Registers the providers once every plugin's `build` ran, so the
+    /// process launcher and tokio runtime they run `key_command` with exist.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
-        let builtin = world
-            .query_filtered::<(Entity, &Name), With<SlashCommand>>()
-            .iter(world)
-            .find(|(_, name)| name.as_str() == "/model")
-            .map(|(entity, _)| entity);
-        if let Some(builtin) = builtin {
-            world.entity_mut(builtin).insert(Disabled);
+        let processes = world.get_resource_or_init::<Processes>().clone();
+        let runtime = world
+            .get_resource::<TokioRuntime>()
+            .cloned()
+            .or_else(|| rig_reqwest::runtime().ok().map(TokioRuntime));
+        let providers = world
+            .get_resource::<CustomProviders>()
+            .map(|providers| providers.providers.clone())
+            .unwrap_or_default();
+        let mut no_key = Vec::new();
+        let mut models = world.get_resource_or_init::<Models>();
+        for provider in providers {
+            for spec in &provider.models {
+                models.0.catalog_mut().insert(spec.clone());
+                if spec.tools && provider.has_key() == Some(false) {
+                    no_key.push(spec.reference());
+                }
+            }
+            let gateway = Gateway {
+                provider: Arc::clone(&provider),
+                processes: processes.clone(),
+                runtime: runtime.clone(),
+            };
+            models
+                .0
+                .provide(provider.id, move |spec: &ModelSpec, catalog: &Catalog| {
+                    gateway.handler(spec, catalog)
+                });
         }
-        app.add_command(
-            "model",
-            "Pick the model, or set it with /model vendor/model or /model <provider>/<model>",
-            model,
-        );
+        // The picker lists only models that can be reached; these are listed
+        // too, marked, and choosing one says which variable to set.
+        world.spawn_batch(no_key.into_iter().map(|reference| {
+            let label = format!("{reference}  (no key)");
+            ModelItem::new(label.clone(), label, format!("model {reference}"))
+        }));
     }
 }
-
-/// The agent's model is `<provider>/<model>` of `providers.toml`. Saved
-/// with the session; an agent with one has no [`ModelChoice`].
-#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
-#[reflect(Component, Saved)]
-pub struct CustomModel(pub String);
 
 /// The configured providers, read once at startup, and what in the file
 /// could not be used.
@@ -98,21 +104,21 @@ pub struct CustomProviders {
 
 /// One provider of `providers.toml`.
 pub struct Provider {
-    /// What its models' references start with.
-    pub name: String,
-    base_url: String,
+    /// The vendor its models are filed under.
+    pub id: ProviderId,
+    /// Its wire, at its URL, without a key: the key goes on each request.
+    config: ProviderConfig,
     api: Api,
     key: KeySource,
     headers: HeaderMap,
-    /// Its models, as specs on the built-in provider whose wire its `api`
-    /// speaks, named `<name>/<id>`.
-    pub models: Vec<Arc<ModelSpec>>,
+    /// Its models, as catalog specs of its vendor.
+    pub models: Vec<ModelSpec>,
 }
 
 /// Where a provider's key comes from.
 enum KeySource {
     /// An environment variable.
-    Env(String),
+    Env(&'static str),
     /// A command's output, kept until it expires.
     Command {
         command: String,
@@ -127,32 +133,6 @@ enum Api {
     OpenaiChat,
     OpenaiResponses,
     Anthropic,
-}
-
-impl Api {
-    /// The built-in provider whose wire this is: a configured model is
-    /// encoded as one of its models, at the configured URL. Groq stands for
-    /// a plain Chat Completions server.
-    fn carrier(self) -> Option<ProviderId> {
-        match self {
-            Api::OpenaiChat => ProviderId::new("groq", Format::OpenAi),
-            Api::OpenaiResponses => ProviderId::new("openai", Format::OpenAi),
-            Api::Anthropic => ProviderId::new("anthropic", Format::Anthropic),
-        }
-    }
-
-    /// The header the key goes in.
-    fn auth(self, key: &str) -> Result<(HeaderName, HeaderValue), String> {
-        let (name, value) = match self {
-            Api::OpenaiChat | Api::OpenaiResponses => {
-                (http::header::AUTHORIZATION, format!("Bearer {key}"))
-            }
-            Api::Anthropic => (HeaderName::from_static("x-api-key"), key.to_owned()),
-        };
-        let mut value = HeaderValue::from_str(&value).map_err(|why| why.to_string())?;
-        value.set_sensitive(true);
-        Ok((name, value))
-    }
 }
 
 #[derive(Deserialize)]
@@ -240,33 +220,17 @@ impl CustomProviders {
         }
         providers
     }
-
-    /// The provider and model `reference` (`<provider>/<model>`) names.
-    pub fn find(&self, reference: &str) -> Option<(&Arc<Provider>, &Arc<ModelSpec>)> {
-        let (name, id) = reference.trim().split_once('/')?;
-        let provider = self
-            .providers
-            .iter()
-            .find(|provider| provider.name == name)?;
-        let spec = provider.models.iter().find(|spec| spec.id == id)?;
-        Some((provider, spec))
-    }
 }
 
 impl Provider {
     fn new(entry: ProviderEntry) -> Result<Self, String> {
-        if entry.name.is_empty() || entry.name.contains('/') {
-            return Err("a name is a word without `/`".to_owned());
-        }
-        if ProviderId::catalog(&entry.name).is_some() {
+        let id = ProviderId::declare(&entry.name).map_err(|why| why.to_string())?;
+        if id.is_registered() {
             return Err("the name is a built-in provider's".to_owned());
         }
-        let carrier = entry
-            .api
-            .carrier()
-            .ok_or_else(|| format!("this build cannot speak {:?}", entry.api))?;
         let key = match (entry.key_env, entry.key_command) {
-            (Some(env), None) => KeySource::Env(env),
+            // Named once per process, as rig-core names declared vendors.
+            (Some(env), None) => KeySource::Env(Box::leak(env.into_boxed_str())),
             (None, Some(command)) => KeySource::Command {
                 command,
                 cached: Mutex::new(None),
@@ -281,48 +245,37 @@ impl Provider {
                 HeaderValue::from_str(&value).map_err(|why| format!("header `{name}`: {why}"))?;
             headers.insert(name, value);
         }
+        let config = match entry.api {
+            Api::OpenaiChat | Api::OpenaiResponses => {
+                let route = match entry.api {
+                    Api::OpenaiResponses => Route::Responses,
+                    _ => Route::Chat,
+                };
+                let mut config = OpenAIConfig::with_key(&Dialect::gateway(id.vendor(), "", ""), "");
+                // The key is put on each request: the wire sends none.
+                config.auth = Auth::OptionalBearer;
+                ProviderConfig::OpenAi(config.with_base_url(&entry.base_url).with_route(route))
+            }
+            Api::Anthropic => {
+                let dialect = compatible(id.vendor(), "", "", None);
+                ProviderConfig::Anthropic(
+                    AnthropicConfig::with_key(&dialect, "").with_base_url(&entry.base_url),
+                )
+            }
+        };
         let models = entry
             .models
             .into_iter()
-            .map(|model| {
-                let mut spec = ModelSpec::new(carrier, &model.id)
-                    .with_display_name(model.name.unwrap_or_else(|| model.id.clone()))
-                    .with_tools(model.tools);
-                if let Some(tokens) = model.context_window {
-                    spec = spec.with_context_window(tokens);
-                }
-                if let Some(tokens) = model.max_output {
-                    spec = spec.with_max_output_tokens(tokens);
-                }
-                if let Some(price) = model.price {
-                    let mut pricing = Pricing::new(price.input, price.output);
-                    if let Some(read) = price.cache_read {
-                        pricing = pricing.with_cache_read(read);
-                    }
-                    if let Some(write) = price.cache_write {
-                        pricing = pricing.with_cache_write(write);
-                    }
-                    spec = spec.with_pricing(pricing);
-                }
-                if model.reasoning {
-                    spec = spec.with_reasoning(ReasoningSupport::Unknown { default: None });
-                }
-                Arc::new(spec)
-            })
+            .map(|model| model_spec(id, model))
             .collect();
         Ok(Self {
-            name: entry.name,
-            base_url: entry.base_url,
+            id,
+            config,
             api: entry.api,
             key,
             headers,
             models,
         })
-    }
-
-    /// `<name>/<id>`.
-    pub fn reference(&self, spec: &ModelSpec) -> String {
-        format!("{}/{}", self.name, spec.id)
     }
 
     /// Whether a key is there: `None` when only running its command tells.
@@ -333,56 +286,151 @@ impl Provider {
         }
     }
 
-    /// The key: the variable's value, or the command's token, run again
-    /// once the last one expired. A failed command is reported with its
-    /// stderr.
-    fn key(&self) -> Result<String, String> {
-        match &self.key {
-            KeySource::Env(name) => std::env::var(name)
-                .ok()
-                .filter(|key| !key.is_empty())
-                .ok_or_else(|| format!("no key: set `{name}`")),
-            KeySource::Command { command, cached } => {
-                let mut cached = cached.lock().unwrap_or_else(PoisonError::into_inner);
-                if let Some((token, until)) = cached.as_ref()
-                    && Instant::now() < *until
-                {
-                    return Ok(token.clone());
-                }
-                let (token, lifetime) = run_key_command(command)?;
-                *cached = Some((token.clone(), Instant::now() + lifetime));
-                Ok(token)
-            }
-        }
+    /// The token a `key_command` printed, if it has not expired.
+    fn cached(&self) -> Option<String> {
+        let KeySource::Command { cached, .. } = &self.key else {
+            return None;
+        };
+        let cached = cached.lock().unwrap_or_else(PoisonError::into_inner);
+        cached
+            .as_ref()
+            .filter(|(_, until)| Instant::now() < *until)
+            .map(|(token, _)| token.clone())
     }
 
-    /// `spec` connected: its wire at the configured URL, with the headers
-    /// and key on every request.
-    fn connect(self: &Arc<Self>, spec: &Arc<ModelSpec>) -> Result<Connection, String> {
-        let reference = self.reference(spec);
-        let cannot = |why: String| format!("Cannot use {reference}: {why}.");
-        let key = self.key().map_err(cannot)?;
-        let http = rig_reqwest::shared().with_middleware(Gateway(Arc::clone(self)));
-        let options = ConnectOptions::new()
-            .api_key(key)
-            .base_url(self.base_url.clone())
-            .http(http);
-        let model = Catalog::builtin()
-            .connect_with(&**spec, options)
-            .map_err(|why| cannot(why.to_string()))?;
-        let handler = ModelAdapter::<Completion>::new(reference, model);
-        Ok(Connection {
-            spec: Arc::clone(spec),
-            handler: Handler(ErasedHandler::new(handler)),
+    /// The header the key goes in.
+    fn auth(&self, key: &str) -> Result<(HeaderName, HeaderValue), String> {
+        let (name, value) = match self.api {
+            Api::OpenaiChat | Api::OpenaiResponses => {
+                (http::header::AUTHORIZATION, format!("Bearer {key}"))
+            }
+            Api::Anthropic => (HeaderName::from_static("x-api-key"), key.to_owned()),
+        };
+        let mut value = HeaderValue::from_str(&value).map_err(|why| why.to_string())?;
+        value.set_sensitive(true);
+        Ok((name, value))
+    }
+}
+
+/// A configured model as a catalog spec of the vendor `id`.
+fn model_spec(id: ProviderId, model: ModelEntry) -> ModelSpec {
+    let mut spec = ModelSpec::new(id, &model.id)
+        .with_display_name(model.name.unwrap_or_else(|| model.id.clone()))
+        .with_tools(model.tools);
+    if let Some(tokens) = model.context_window {
+        spec = spec.with_context_window(tokens);
+    }
+    if let Some(tokens) = model.max_output {
+        spec = spec.with_max_output_tokens(tokens);
+    }
+    if let Some(price) = model.price {
+        let mut pricing = Pricing::new(price.input, price.output);
+        if let Some(read) = price.cache_read {
+            pricing = pricing.with_cache_read(read);
+        }
+        if let Some(write) = price.cache_write {
+            pricing = pricing.with_cache_write(write);
+        }
+        spec = spec.with_pricing(pricing);
+    }
+    if model.reasoning {
+        spec = spec.with_reasoning(ReasoningSupport::Unknown { default: None });
+    }
+    spec
+}
+
+/// How a configured provider's models are reached, and the HTTP middleware
+/// that puts its headers and current key on each of its requests.
+#[derive(Clone)]
+struct Gateway {
+    provider: Arc<Provider>,
+    /// How `key_command` starts.
+    processes: Processes,
+    /// Where `key_command` runs, off the request's future.
+    runtime: Option<TokioRuntime>,
+}
+
+impl Gateway {
+    /// A model of the provider, priced and windowed by its spec. A missing
+    /// `key_env` refuses it, so choosing it says what to set.
+    fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
+        if let KeySource::Env(name) = self.provider.key
+            && self.provider.has_key() == Some(false)
+        {
+            return Err(ConnectError::MissingKey {
+                vendor: self.provider.id.vendor().to_owned(),
+                tried: vec![name],
+            });
+        }
+        let http = rig_reqwest::shared().with_middleware(self.clone());
+        let facts = ModelFacts::new(spec.clone()).with_catalog(catalog);
+        Ok(self
+            .provider
+            .config
+            .completion_handler(&spec.reference(), &spec.id, http, facts))
+    }
+
+    /// The key: the variable's value, or the command's token, run again
+    /// once the last one expired. A failed command says its stderr.
+    async fn key(&self) -> Result<String, String> {
+        let command = match &self.provider.key {
+            KeySource::Env(name) => {
+                return std::env::var(name)
+                    .ok()
+                    .filter(|key| !key.is_empty())
+                    .ok_or_else(|| format!("no key: set `{name}`"));
+            }
+            KeySource::Command { command, .. } => command,
+        };
+        if let Some(token) = self.provider.cached() {
+            return Ok(token);
+        }
+        let mut sh = self.processes.launcher().command("sh");
+        sh.args(["-c", command]);
+        let run = {
+            let command = command.clone();
+            move || run_key_command(sh, &command)
+        };
+        let (token, lifetime) = match &self.runtime {
+            Some(runtime) => runtime
+                .0
+                .spawn_blocking(run)
+                .await
+                .map_err(|why| format!("`{command}` did not finish: {why}"))??,
+            None => run()?,
+        };
+        if let KeySource::Command { cached, .. } = &self.provider.key {
+            *cached.lock().unwrap_or_else(PoisonError::into_inner) =
+                Some((token.clone(), Instant::now() + lifetime));
+        }
+        Ok(token)
+    }
+}
+
+impl HttpMiddleware for Gateway {
+    fn before_request_headers<'a>(
+        &'a self,
+        _method: &'a Method,
+        _uri: &'a Uri,
+        headers: &'a mut HeaderMap,
+    ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
+        Box::pin(async move {
+            let failed = |why: String| http_client::Error::Instance(why.into());
+            let key = self.key().await.map_err(failed)?;
+            let (name, value) = self.provider.auth(&key).map_err(failed)?;
+            for (name, value) in &self.provider.headers {
+                headers.insert(name.clone(), value.clone());
+            }
+            headers.insert(name, value);
+            Ok(())
         })
     }
 }
 
-/// Runs a `key_command` with `sh -c`: its output is the token, or JSON
-/// with `token` and `expires_in` seconds.
-fn run_key_command(command: &str) -> Result<(String, Duration), String> {
-    let output = Command::new("sh")
-        .args(["-c", command])
+/// Runs `sh`, a `key_command` started as every child process starts: its
+/// output is the token, or JSON with `token` and `expires_in` seconds.
+fn run_key_command(mut sh: Command, command: &str) -> Result<(String, Duration), String> {
+    let output = sh
         .output()
         .map_err(|why| format!("`{command}` did not run: {why}"))?;
     if !output.status.success() {
@@ -412,210 +460,11 @@ fn run_key_command(command: &str) -> Result<(String, Duration), String> {
     Ok((token, lifetime))
 }
 
-/// Puts a provider's headers and current key on each of its requests.
-struct Gateway(Arc<Provider>);
-
-impl HttpMiddleware for Gateway {
-    fn before_request_headers<'a>(
-        &'a self,
-        _method: &'a Method,
-        _uri: &'a Uri,
-        headers: &'a mut HeaderMap,
-    ) -> WasmBoxedFuture<'a, http_client::Result<()>> {
-        Box::pin(async move {
-            for (name, value) in &self.0.headers {
-                headers.insert(name.clone(), value.clone());
-            }
-            let failed = |why: String| http_client::Error::Instance(why.into());
-            let key = self.0.key().map_err(failed)?;
-            let (name, value) = self.0.api.auth(&key).map_err(failed)?;
-            headers.insert(name, value);
-            Ok(())
-        })
-    }
-}
-
-/// Set once the first frame's [`settle`] ran: from then on a
-/// [`ModelChoice`] inserted is the user's.
-#[derive(Resource, Default)]
-struct Settled(bool);
-
-/// `/model <provider>/<model>` connects a configured model; any other
-/// reference is the catalog's, which [`SetModel`] sets; without arguments,
-/// the terminal view lets the user pick one of either.
-fn model(
-    In(args): In<CommandArgs>,
-    providers: Res<CustomProviders>,
-    agents: Query<Has<ActiveTurn>, With<Agent>>,
-    #[cfg(feature = "tui")] models: Res<Models>,
-    #[cfg(feature = "tui")] mut picks: MessageWriter<rig_tui::PickRequest>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = args.agent;
-    if args.args.is_empty() {
-        #[cfg(feature = "tui")]
-        pick(agent, &models, &providers, &mut picks, &mut notices);
-        return;
-    }
-    let Some((provider, spec)) = providers.find(&args.args) else {
-        commands.trigger(SetModel {
-            entity: agent,
-            model: args.args,
-        });
-        return;
-    };
-    match agents.get(agent) {
-        Ok(false) => {}
-        Ok(true) => {
-            notices.write(Notice::turn_running(agent));
-            return;
-        }
-        Err(_) => return,
-    }
-    let reference = provider.reference(spec);
-    match provider.connect(spec) {
-        Ok(connection) => {
-            commands
-                .entity(agent)
-                .remove::<ModelChoice>()
-                .insert((CustomModel(reference.clone()), connection));
-            let model = format!("Model: {} ({reference}).", spec.display_name);
-            notices.write(Notice::info(agent, model));
-        }
-        Err(why) => {
-            notices.write(Notice::error(agent, why));
-        }
-    }
-}
-
-/// Connects a restored agent's configured model again.
-fn reconnect_restored(
-    restored: On<Restored>,
-    agents: Query<&CustomModel>,
-    providers: Res<CustomProviders>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = restored.entity;
-    if let Ok(CustomModel(reference)) = agents.get(agent) {
-        reconnect(agent, reference, &providers, &mut commands, &mut notices);
-    }
-}
-
-fn reconnect(
-    agent: Entity,
-    reference: &str,
-    providers: &CustomProviders,
-    commands: &mut Commands,
-    notices: &mut MessageWriter<Notice>,
-) {
-    let connected = match providers.find(reference) {
-        Some((provider, spec)) => provider.connect(spec),
-        None => Err(format!("{reference} is no longer in {FILE}.")),
-    };
-    match connected {
-        Ok(connection) => {
-            commands.entity(agent).insert(connection);
-        }
-        Err(why) => {
-            commands.entity(agent).remove::<Connection>();
-            notices.write(Notice::error(agent, why));
-        }
-    }
-}
-
-/// A catalog model chosen after a configured one replaces it.
-fn leave_custom(
-    chosen: On<Insert<ModelChoice>>,
-    settled: Res<Settled>,
-    agents: Query<(), With<CustomModel>>,
-    mut commands: Commands,
-) {
-    if settled.0 && agents.contains(chosen.entity) {
-        commands.entity(chosen.entity).remove::<CustomModel>();
-    }
-}
-
-/// On the first frame, after startup: an agent restored on a configured
-/// model that was given a catalog model while starting (the remembered
-/// default a new agent gets) goes back to its configured one.
-fn settle(
-    mut settled: ResMut<Settled>,
-    agents: Query<(Entity, &CustomModel), With<ModelChoice>>,
-    providers: Res<CustomProviders>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    if settled.0 {
-        return;
-    }
-    settled.0 = true;
-    for (agent, CustomModel(reference)) in &agents {
-        commands.entity(agent).remove::<ModelChoice>();
-        reconnect(agent, reference, &providers, &mut commands, &mut notices);
-    }
-}
-
 /// What in `providers.toml` could not be used, as notices.
 fn report_problems(providers: Res<CustomProviders>, mut notices: MessageWriter<Notice>) {
     for problem in &providers.problems {
         notices.write(Notice::error(None, problem.clone()));
     }
-}
-
-/// The configured models that call tools, each marked "no key" when its
-/// variable is unset, then the catalog's models that can be reached, as
-/// rig-models' picker lists them.
-#[cfg(feature = "tui")]
-fn pick(
-    agent: Entity,
-    models: &Models,
-    providers: &CustomProviders,
-    picks: &mut MessageWriter<rig_tui::PickRequest>,
-    notices: &mut MessageWriter<Notice>,
-) {
-    use rig_tui::{PickItem, PickRequest};
-    let item = |reference: String, name: &str, note: &str| PickItem {
-        label: format!("{reference}  {name}{note}"),
-        command: format!("model {reference}"),
-    };
-    let mut items: Vec<PickItem> = providers
-        .providers
-        .iter()
-        .flat_map(|provider| {
-            let note = match provider.has_key() {
-                Some(false) => "  (no key)",
-                _ => "",
-            };
-            provider
-                .models
-                .iter()
-                .filter(|spec| spec.tools)
-                .map(move |spec| item(provider.reference(spec), &spec.display_name, note))
-        })
-        .collect();
-    items.extend(models.0.reachable().into_iter().map(|spec| {
-        let note = match models.0.plan(spec) {
-            Some(plan) => format!("  ({plan} plan)"),
-            None if spec.provider.requires_credential() => String::new(),
-            None => "  (no key needed)".to_owned(),
-        };
-        item(spec.reference(), &spec.display_name, &note)
-    }));
-    if items.is_empty() {
-        notices.write(Notice::error(
-            agent,
-            format!("No model can be reached: set a provider's key, or add one to {FILE}."),
-        ));
-        return;
-    }
-    picks.write(PickRequest {
-        agent,
-        title: "Model".to_owned(),
-        items,
-        selected: 0,
-    });
 }
 
 #[cfg(test)]

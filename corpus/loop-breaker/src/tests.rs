@@ -1,12 +1,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, calls, connect, log_ended, reply, run_until};
 
 /// What the test `read` tool answers.
 const CONTENTS: &str = "the contents of a.txt";
@@ -34,33 +35,39 @@ impl PortableTool for Read {
     }
 }
 
-/// How each turn ended, and every notice.
+/// Every notice's text.
 #[derive(Resource, Default)]
-struct Seen {
-    ended: Vec<TurnOutcome>,
-    notices: Vec<String>,
-}
+struct Notices(Vec<String>);
 
-fn record_notices(mut notices: MessageReader<Notice>, mut seen: ResMut<Seen>) {
-    seen.notices
-        .extend(notices.read().map(|notice| notice.text.clone()));
-}
-
-#[test]
-fn repeated_calls_are_refused_then_end_the_turn() {
-    let store = MemoryStore::default();
-    let (mut app, wakes) = app_on(&store);
-    let runs = Arc::new(AtomicUsize::new(0));
+/// The kernel, the journal and the loop breaker on `store`, with a `read`
+/// tool counting into `runs`, after the first frame restored the session,
+/// with its loop's wakes.
+fn start(store: &MemoryStore, runs: &Arc<AtomicUsize>) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app_on(store);
     app.set_error_handler(bevy_ecs::error::warn)
         .add_plugins((AgentPlugin, JournalPlugin, LoopBreakerPlugin))
         .add_tool(Read(runs.clone()))
-        .init_resource::<Seen>()
-        .add_systems(Update, record_notices)
-        .add_observer(|ended: On<TurnEnded>, mut seen: ResMut<Seen>| {
-            seen.ended.push(ended.outcome.clone());
-        });
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .init_resource::<Notices>()
+        .add_systems(
+            Update,
+            |mut read: MessageReader<Notice>, mut notices: ResMut<Notices>| {
+                notices
+                    .0
+                    .extend(read.read().map(|notice| notice.text.clone()));
+            },
+        );
     app.finish();
     app.update();
+    (app, wakes)
+}
+
+#[test]
+fn repeated_calls_are_refused_then_stop_the_turn() {
+    let store = MemoryStore::default();
+    let runs = Arc::new(AtomicUsize::new(0));
+    let (mut app, wakes) = start(&store, &runs);
     // Five identical calls, each in its own reply; the answer is never
     // asked for.
     let read = |id| calls(id, "read", json!({"path": "a.txt"}));
@@ -88,9 +95,8 @@ fn repeated_calls_are_refused_then_end_the_turn() {
     world.entity_mut(agent).insert(connection);
     world.trigger(Deliver::new(agent, "Read a.txt.", DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        !world.resource::<Seen>().ended.is_empty()
+        !world.resource::<Ended>().0.is_empty()
     });
-    // The notice is read in the frame after the turn ended.
     app.update();
 
     let sent: Vec<String> = model
@@ -98,39 +104,41 @@ fn repeated_calls_are_refused_then_end_the_turn() {
         .iter()
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .collect();
-    assert_eq!(sent.len(), 5, "no sixth request: {sent:#?}");
-    let refused = "You already called `read` with these arguments twice with the same result";
+    assert_eq!(sent.len(), 5, "five requests, no sixth: {sent:#?}");
     let [_, second, third, fourth, fifth] = sent.as_slice() else {
         return;
     };
-    // Calls 1 and 2 ran: their results are the tool's.
-    assert!(second.contains(CONTENTS), "call 1 ran: {second}");
-    assert_eq!(third.matches(CONTENTS).count(), 2, "call 2 ran: {third}");
-    assert!(!third.contains("You already called"), "{third}");
-    // The kernel starts a call's task before any plugin sees it: the refused
-    // calls ran too, only their results were replaced.
-    assert!(runs.load(Ordering::SeqCst) >= 2);
+    // Calls 1 and 2 ran, and no other.
+    assert_eq!(runs.load(Ordering::SeqCst), 2);
+    assert!(second.contains(CONTENTS), "{second}");
+    assert_eq!(third.matches(CONTENTS).count(), 2, "{third}");
     // Call 3's result is the refusal, and request 4 carries it.
+    let refused = "You already called `read` with these arguments twice with the same result";
     assert!(fourth.contains(refused), "{fourth}");
-    assert_eq!(fourth.matches(CONTENTS).count(), 2, "{fourth}");
     assert!(fifth.contains("these arguments 3 times"), "{fifth}");
 
-    let seen = app.world().resource::<Seen>();
+    let ended = &app.world().resource::<Ended>().0;
+    let why = "the agent was repeating `read a.txt`";
     assert!(
-        matches!(seen.ended.as_slice(), [TurnOutcome::Stopped]),
-        "{:?}",
-        seen.ended
+        matches!(ended.as_slice(), [TurnOutcome::Stopped(Some(stopped))] if stopped == why),
+        "{ended:?}"
     );
+    let notices = &app.world().resource::<Notices>().0;
     assert!(
-        seen.notices
+        notices
             .iter()
-            .any(|notice| notice == "stopped: the agent was repeating `read a.txt`"),
-        "{:?}",
-        seen.notices
+            .any(|notice| *notice == format!("stopped: {why}")),
+        "{notices:?}"
     );
-    // The fifth call has a result, and nothing waits for the model.
-    let conversation = app.world().get::<Conversation>(agent);
-    let last = conversation.and_then(|conversation| conversation.messages().last());
-    let last = serde_json::to_string(&last).unwrap_or_default();
-    assert!(last.contains("stopped: the agent was repeating"), "{last}");
+    drop(app);
+
+    // A restart leaves the stopped turn stopped: nothing is sent again.
+    let (mut app, _) = start(&store, &runs);
+    for _ in 0..5 {
+        app.update();
+    }
+    let world = app.world_mut();
+    let busy = world.query::<&TurnOf>().iter(world).count();
+    let ended = &world.resource::<Ended>().0;
+    assert!(busy == 0 && ended.is_empty(), "{busy} turns, {ended:?}");
 }

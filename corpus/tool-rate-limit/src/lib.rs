@@ -12,23 +12,17 @@
 //! concurrent = 1
 //! ```
 //!
-//! A call over `per_turn` or `per_session` is refused; one over
-//! `per_minute` or `concurrent` waits for a slot, without holding back other
-//! tools' calls. The kernel starts a tool's call in the same system that
-//! spawns it, with no hook before, so only a tool registered through
-//! [`AppLimitedToolsExt::add_limited_tool_with`] is limited: it becomes an
-//! open tool whose calls this plugin starts on its tool's handler once a
-//! slot is free.
+//! A Gate system sees each call of a limited tool as it is about to run.
+//! It refuses one over `per_turn` or `per_session`; it holds one over
+//! `concurrent` until a running call of the tool is answered, and one over
+//! `per_minute` until its oldest start leaves the minute. A released call
+//! is gated again, oldest first. A held call holds back nothing but the
+//! calls the kernel orders after it, and an interrupt takes its hold away
+//! with the turn.
 
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 use bevy_log::warn;
-use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
-use rig_core::completion::ToolDefinition;
-use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{Dispatch, ErasedHandler};
-use rig_ecs::effects::Handler;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
@@ -63,8 +57,8 @@ pub struct Limits(pub BTreeMap<String, Limit>);
 impl Limits {
     /// `RIG_HOME/limits.toml`; none when it is missing or wrong, with a
     /// warning for the latter.
-    fn load() -> Self {
-        let path = Home::from_env().root().join("limits.toml");
+    fn load(home: &Home) -> Self {
+        let path = home.root().join("limits.toml");
         let Ok(text) = std::fs::read_to_string(&path) else {
             return Self::default();
         };
@@ -73,16 +67,15 @@ impl Limits {
             Self::default()
         })
     }
-
-    fn of(&self, tool: &str) -> Limit {
-        self.0.get(tool).copied().unwrap_or_default()
-    }
 }
 
 /// Whose budget a call counts in: its agent's, or `None` for a shared one.
 type Budget = Option<Entity>;
 
-/// How many calls of each tool an agent made this session (its budget).
+/// A tool's calls in one budget.
+type Key = (Budget, String);
+
+/// How many calls of each tool an agent made this session.
 #[derive(Component, Reflect, Default)]
 #[reflect(Component, Saved)]
 struct SessionUsage(HashMap<String, u32>);
@@ -96,94 +89,32 @@ struct SharedUsage(HashMap<String, u32>);
 #[derive(Component, Default)]
 struct TurnUsage(HashMap<String, u32>);
 
-/// When each budget's calls of each tool started, in the last minute.
+/// When each budget's calls of each tool were let through, in about the
+/// last minute, oldest first.
 #[derive(Resource, Default)]
-struct Recent(HashMap<(Budget, String), VecDeque<Duration>>);
+struct Recent(HashMap<Key, VecDeque<Duration>>);
 
 impl Recent {
-    /// The starts of `key` in the window ending `now`, oldest first.
-    fn within(&self, key: &(Budget, String), now: Duration) -> impl Iterator<Item = Duration> {
-        let starts = self.0.get(key).into_iter().flatten().copied();
-        starts.filter(move |start| *start + WINDOW > now)
+    /// The starts of `key` in the minute up to `now`, oldest first.
+    fn within(&mut self, key: &Key, now: Duration) -> &mut VecDeque<Duration> {
+        let starts = self.0.entry(key.clone()).or_default();
+        starts.retain(|start| *start + WINDOW > now);
+        starts
     }
 }
 
-/// The handler of a limited tool, on its entity.
+/// On a call this plugin let through. It takes a `concurrent` slot until
+/// the call is answered.
 #[derive(Component)]
-struct LimitedTool(Handler);
+#[component(storage = "SparseSet")]
+struct Slot(Key);
 
-/// A call of a limited tool, with what it needs to start.
+/// A hold on a call waiting for a slot: until a running call of its tool
+/// is answered, or until `until` on Bevy's clock for a full minute.
 #[derive(Component)]
-struct Limited {
-    tool: String,
-    budget: Budget,
-    handler: Handler,
-    kind: EffectKind,
-    effect: EffectId,
-    order: u64,
-}
-
-impl Limited {
-    fn key(&self) -> (Budget, String) {
-        (self.budget, self.tool.clone())
-    }
-}
-
-/// On a limited call waiting for a slot.
-#[derive(Component)]
-struct Waiting;
-
-/// On a limited call that started.
-#[derive(Component)]
-struct Started;
-
-/// Starts every waiting call that has a slot.
-#[derive(Event)]
-struct Release;
-
-/// Registers tools whose calls are held to [`Limits`].
-pub trait AppLimitedToolsExt {
-    /// [`AppToolsExt::add_tool_with`], its calls held to the tool's limits.
-    fn add_limited_tool_with<T: Tool + 'static>(
-        &mut self,
-        tool: T,
-        options: ToolOptions<'_>,
-    ) -> &mut Self;
-}
-
-impl AppLimitedToolsExt for App {
-    fn add_limited_tool_with<T: Tool + 'static>(
-        &mut self,
-        tool: T,
-        options: ToolOptions<'_>,
-    ) -> &mut Self {
-        let world = self.world_mut();
-        let mut tools = world.query::<(Entity, &mut ToolDef)>();
-        if tools
-            .iter(world)
-            .any(|(_, def)| def.0.name.as_str() == T::NAME)
-        {
-            warn!("limited tool not registered: `{}` exists", T::NAME);
-            return self;
-        }
-        let (description, parameters) = (tool.description(), tool.parameters());
-        let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
-        self.add_open_tool::<serde_json::Value, _>(T::NAME, &description, options, on_called);
-        let world = self.world_mut();
-        let mut tools = world.query::<(Entity, &mut ToolDef)>();
-        let found = tools
-            .iter_mut(world)
-            .find(|(_, def)| def.0.name.as_str() == T::NAME);
-        if let Some((entity, mut def)) = found {
-            // The open tool's schema is any JSON; the model is told the tool's own.
-            def.0 = ToolDefinition {
-                parameters,
-                ..def.0.clone()
-            };
-            world.entity_mut(entity).insert(LimitedTool(handler));
-        }
-        self
-    }
+struct WaitingFor {
+    key: Key,
+    until: Option<Duration>,
 }
 
 #[derive(Default)]
@@ -192,182 +123,159 @@ pub struct ToolRateLimitPlugin;
 impl Plugin for ToolRateLimitPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<Limits>() {
-            app.insert_resource(Limits::load());
+            let limits = Limits::load(&RigHome::of(app.world()));
+            app.insert_resource(limits);
         }
         app.init_resource::<SharedUsage>()
             .init_resource::<Recent>()
             .register_required_components::<Agent, SessionUsage>()
             .register_required_components::<TurnOf, TurnUsage>()
-            .add_observer(release)
-            .add_observer(release_on_output)
-            .add_observer(release_on_removal)
+            .add_systems(AgentPass, limit.in_set(Stage::Gate))
+            .add_observer(free_on_answer)
+            .add_observer(free_on_removal)
             .add_command("limits", "Show each tool limit and its use", show_limits);
         #[cfg(feature = "tui")]
         app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
     }
 }
 
-/// Counts a call of a limited tool, and refuses it over `per_turn` or
-/// `per_session`; otherwise it waits for [`release`] to start it.
-fn on_called(
-    called: On<ToolCalled<serde_json::Value>>,
-    tools: Query<&LimitedTool>,
-    limits: Res<Limits>,
-    of: Query<&CallOf>,
-    mut turns: Query<&mut TurnUsage>,
-    mut sessions: Query<&mut SessionUsage>,
-    mut shared: ResMut<SharedUsage>,
-    mut order: Local<u64>,
-    mut commands: Commands,
-) {
-    let name = called.run.call.function.name.as_str();
-    let Ok(LimitedTool(handler)) = tools.get(called.entity) else {
-        return;
-    };
-    let limit = limits.of(name);
-    let mut turn = of
-        .get(called.call)
-        .and_then(|&CallOf(turn)| turns.get_mut(turn));
-    let mut session = sessions.get_mut(called.agent);
-    let session = match (limit.shared, session.as_mut()) {
-        (true, _) => Some(&mut shared.0),
-        (false, Ok(session)) => Some(&mut session.0),
-        (false, Err(_)) => None,
-    };
-    let used = |usage: Option<&HashMap<String, u32>>| {
-        usage
-            .and_then(|usage| usage.get(name))
-            .copied()
-            .unwrap_or(0)
-    };
-    let over = [
+/// Each call of a limited tool about to run, oldest first: refused over
+/// `per_turn` or `per_session`, held while `concurrent` or `per_minute`
+/// has no slot, else let through and counted. A call a restart runs again
+/// was counted before: it only takes a slot.
+fn limit(
+    calls: Query<
         (
-            limit.per_turn,
-            used(turn.as_deref().ok().map(|turn| &turn.0)),
-            "turn",
+            Entity,
+            &Effect,
+            &ToolRequest,
+            &ForAgent,
+            Option<&CallOf>,
+            Has<Restored>,
         ),
-        (limit.per_session, used(session.as_deref()), "session"),
-    ]
-    .into_iter()
-    .find_map(|(limit, used, per)| {
-        limit
-            .filter(|&limit| used >= limit)
-            .map(|limit| (limit, per))
-    });
-    if let Some((limit, per)) = over {
-        let why = format!("limit reached: {limit} per {per} for `{name}`");
-        let refused = ToolResult::failed(ToolExecutionError::refused(why));
-        commands.entity(called.call).insert(ToolOutput(refused));
-        return;
-    }
-    for usage in [turn.as_mut().ok().map(|turn| &mut turn.0), session]
-        .into_iter()
-        .flatten()
-    {
-        *usage.entry(name.to_owned()).or_default() += 1;
-    }
-    *order += 1;
-    let limited = Limited {
-        tool: name.to_owned(),
-        budget: (!limit.shared).then_some(called.agent),
-        handler: handler.clone(),
-        kind: EffectKind::ToolCall {
-            name: name.to_owned(),
-            args: called.run.call.function.raw_arguments(),
-        },
-        effect: called.effect,
-        order: *order,
-    };
-    // The status line counts down each second while the call waits.
-    let waiting = (limited, Waiting, KeepAwake(Duration::from_secs(1)));
-    commands.entity(called.call).insert(waiting);
-    commands.trigger(Release);
-}
-
-/// A finished limited call frees its slot.
-fn release_on_output(
-    done: On<Add<ToolOutput>>,
-    limited: Query<(), With<Limited>>,
-    mut commands: Commands,
-) {
-    if limited.contains(done.entity) {
-        commands.trigger(Release);
-    }
-}
-
-/// So does one an interrupt cancels.
-fn release_on_removal(_: On<Remove<Limited>>, mut commands: Commands) {
-    commands.trigger(Release);
-}
-
-/// Starts each waiting call, oldest first, that its tool's `concurrent`
-/// and `per_minute` allow; for one the minute holds back, comes back when
-/// its oldest start leaves the window.
-fn release(
-    _: On<Release>,
+        (Undecided, Without<Slot>),
+    >,
+    slots: Query<&Slot, Without<Outcome>>,
     limits: Res<Limits>,
-    waiting: Query<(Entity, &Limited), With<Waiting>>,
-    running: Query<&Limited, (With<Started>, Without<ToolOutput>)>,
+    mut turns: Query<&mut TurnUsage>,
+    mut agents: Query<&mut SessionUsage>,
+    mut shared: ResMut<SharedUsage>,
     mut recent: ResMut<Recent>,
     time: Res<Time>,
-    wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let now = time.elapsed();
-    for starts in recent.0.values_mut() {
-        starts.retain(|start| *start + WINDOW > now);
+    let mut running: HashMap<Key, u32> = HashMap::new();
+    for Slot(key) in &slots {
+        *running.entry(key.clone()).or_default() += 1;
     }
-    recent.0.retain(|_, starts| !starts.is_empty());
-    let mut busy: HashMap<(Budget, String), u32> = HashMap::new();
-    for call in &running {
-        *busy.entry(call.key()).or_default() += 1;
-    }
-    let mut queue: Vec<_> = waiting.iter().collect();
-    queue.sort_by_key(|(_, call)| call.order);
-    let mut next: Option<Duration> = None;
-    for (entity, call) in queue {
-        let limit = limits.of(&call.tool);
-        let key = call.key();
-        let running = busy.entry(key.clone()).or_default();
-        if limit.concurrent.is_some_and(|most| *running >= most) {
+    let mut queue: Vec<_> = calls.iter().collect();
+    queue.sort_by_key(|(_, effect, ..)| effect.id());
+    for (call, _, request, &ForAgent(agent), of, restored) in queue {
+        let tool = request.call.function.name.as_str();
+        let Some(limit) = limits.0.get(tool) else {
+            continue;
+        };
+        let key = ((!limit.shared).then_some(agent), tool.to_owned());
+        let turn = of.map(|&CallOf(turn)| turn);
+        let session = if limit.shared {
+            Some(&shared.0)
+        } else {
+            agents.get(agent).ok().map(|own| &own.0)
+        };
+        let used = |usage: Option<&HashMap<String, u32>>| {
+            usage
+                .and_then(|usage| usage.get(tool))
+                .copied()
+                .unwrap_or(0)
+        };
+        let turn_used = used(
+            turn.and_then(|turn| turns.get(turn).ok())
+                .map(|turn| &turn.0),
+        );
+        let over = [
+            (limit.per_turn, turn_used, "turn"),
+            (limit.per_session, used(session), "session"),
+        ]
+        .into_iter()
+        .find_map(|(most, used, per)| most.filter(|most| used >= *most).map(|most| (most, per)));
+        if let Some((most, per)) = over.filter(|_| !restored) {
+            let why = format!("limit reached: {most} per {per} for `{tool}`");
+            commands.entity(call).insert_if_new(Outcome::refused(why));
             continue;
         }
-        let starts = recent.0.entry(key).or_default();
-        if let Some(most) = limit.per_minute
-            && starts.len() >= usize::try_from(most).unwrap_or(usize::MAX)
-        {
-            let free = starts.front().map(|oldest| *oldest + WINDOW - now);
-            next = next.into_iter().chain(free).min();
+        let busy = running.entry(key.clone()).or_default();
+        if limit.concurrent.is_some_and(|most| *busy >= most) {
+            commands.spawn((WaitingFor { key, until: None }, HoldOf(call)));
             continue;
         }
-        if limit.per_minute.is_some() {
-            starts.push_back(now);
+        let starts = recent.within(&key, now);
+        let full = limit
+            .per_minute
+            .is_some_and(|most| starts.len() >= usize::try_from(most).unwrap_or(usize::MAX));
+        if let (true, Some(oldest)) = (full, starts.front()) {
+            let until = *oldest + WINDOW;
+            let wait = WaitingFor {
+                key,
+                until: Some(until),
+            };
+            // The status line counts the wait down each second.
+            let hold = (wait, HoldOf(call), KeepAwake(Duration::from_secs(1)));
+            let hold = commands.spawn(hold).id();
+            commands
+                .delayed()
+                .duration(until.saturating_sub(now))
+                .entity(hold)
+                .try_despawn();
+            continue;
         }
-        *running += 1;
-        let work = run(call.handler.clone(), call.kind.clone(), call.effect);
-        let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
-        let task = Running::spawn_into::<ToolOutput, _>(pool, &wake, work);
-        commands
-            .entity(entity)
-            .remove::<(Waiting, KeepAwake)>()
-            .insert((Started, task));
-    }
-    if let Some(wait) = next {
-        commands.delayed().duration(wait).trigger(Release);
+        starts.push_back(now);
+        *busy += 1;
+        if !restored {
+            if let Some(mut turn) = turn.and_then(|turn| turns.get_mut(turn).ok()) {
+                *turn.0.entry(tool.to_owned()).or_default() += 1;
+            }
+            if limit.shared {
+                *shared.0.entry(tool.to_owned()).or_default() += 1;
+            } else if let Ok(mut own) = agents.get_mut(agent) {
+                *own.0.entry(tool.to_owned()).or_default() += 1;
+            }
+        }
+        commands.entity(call).insert(Slot(key));
     }
 }
 
-/// Runs a call on its tool's handler, as the kernel runs an ordinary tool.
-async fn run(handler: Handler, kind: EffectKind, effect: EffectId) -> ToolResult {
-    let dispatch = Dispatch::new(effect, kind.streams());
-    let reply = handler.0.handle(kind, dispatch).await;
-    match reply.into_outcome().await {
-        Ok(Outcome::ToolResult { result }) => result,
-        Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-            "the tool answered with a {} outcome",
-            other.family()
-        ))),
-        Err(report) => ToolResult::failed(report.into()),
+/// An answered call frees its slot: the calls waiting for one are gated
+/// again.
+fn free_on_answer(
+    answered: On<Insert<Outcome>>,
+    slots: Query<&Slot>,
+    waits: Query<(Entity, &WaitingFor)>,
+    commands: Commands,
+) {
+    if let Ok(Slot(key)) = slots.get(answered.entity) {
+        free(key, &waits, commands);
+    }
+}
+
+/// So does one despawned unanswered, as an interrupt does.
+fn free_on_removal(
+    removed: On<Remove<Slot>>,
+    slots: Query<&Slot, Without<Outcome>>,
+    waits: Query<(Entity, &WaitingFor)>,
+    commands: Commands,
+) {
+    if let Ok(Slot(key)) = slots.get(removed.entity) {
+        free(key, &waits, commands);
+    }
+}
+
+/// Releases the calls of `key` waiting for a running one.
+fn free(key: &Key, waits: &Query<(Entity, &WaitingFor)>, mut commands: Commands) {
+    for (hold, wait) in waits {
+        if wait.until.is_none() && wait.key == *key {
+            commands.entity(hold).despawn();
+        }
     }
 }
 
@@ -378,29 +286,32 @@ fn show_limits(
     agents: Query<(&SessionUsage, Option<&ActiveTurn>)>,
     turns: Query<&TurnUsage>,
     shared: Res<SharedUsage>,
-    recent: Res<Recent>,
-    calls: Query<(&Limited, Has<Waiting>), Without<ToolOutput>>,
+    mut recent: ResMut<Recent>,
+    slots: Query<&Slot, Without<Outcome>>,
+    waits: Query<&WaitingFor>,
     time: Res<Time>,
     mut notices: MessageWriter<Notice>,
 ) {
     if limits.0.is_empty() {
-        notices.write(Notice::info(
-            args.agent,
-            "No tool limits: RIG_HOME/limits.toml sets none.",
-        ));
+        let none = "No tool limits: RIG_HOME/limits.toml sets none.";
+        notices.write(Notice::info(args.agent, none));
         return;
     }
     let (session, turn) = agents
         .get(args.agent)
-        .map(|(session, active)| (Some(session), active.and_then(|a| turns.get(a.turn()).ok())))
+        .map(|(session, active)| {
+            let turn = active.and_then(|active| turns.get(active.turn()).ok());
+            (Some(&session.0), turn.map(|turn| &turn.0))
+        })
         .unwrap_or_default();
+    let count = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
     let mut lines = vec!["Tool limits:".to_owned()];
     for (tool, limit) in &limits.0 {
-        let budget = (!limit.shared).then_some(args.agent);
+        let key = ((!limit.shared).then_some(args.agent), tool.clone());
         let sessions = if limit.shared {
             Some(&shared.0)
         } else {
-            session.map(|s| &s.0)
+            session
         };
         let used = |usage: Option<&HashMap<String, u32>>| {
             usage
@@ -408,30 +319,21 @@ fn show_limits(
                 .copied()
                 .unwrap_or(0)
         };
-        let key = (budget, tool.clone());
-        let ours = calls.iter().filter(|(call, _)| call.key() == key);
-        let (waiting, running): (Vec<_>, Vec<_>) = ours.partition(|(_, waits)| *waits);
-        let minute = recent.within(&key, time.elapsed()).count();
+        let running = slots.iter().filter(|Slot(of)| *of == key).count();
+        let waiting = waits.iter().filter(|wait| wait.key == key).count();
+        let minute = recent.within(&key, time.elapsed()).len();
         let parts = [
-            (limit.per_turn, used(turn.map(|turn| &turn.0)), "this turn"),
-            (
-                limit.per_minute,
-                u32::try_from(minute).unwrap_or(u32::MAX),
-                "this minute",
-            ),
+            (limit.per_turn, used(turn), "this turn"),
+            (limit.per_minute, count(minute), "this minute"),
             (limit.per_session, used(sessions), "this session"),
-            (
-                limit.concurrent,
-                u32::try_from(running.len()).unwrap_or(u32::MAX),
-                "running",
-            ),
+            (limit.concurrent, count(running), "running"),
         ];
         let mut said: Vec<String> = parts
             .into_iter()
             .filter_map(|(most, used, what)| most.map(|most| format!("{used}/{most} {what}")))
             .collect();
-        if !waiting.is_empty() {
-            said.push(format!("{} waiting", waiting.len()));
+        if waiting > 0 {
+            said.push(format!("{waiting} waiting"));
         }
         let whose = if limit.shared { "shared" } else { "per agent" };
         lines.push(format!("  {tool} ({whose}): {}", said.join(", ")));
@@ -448,38 +350,37 @@ mod status {
     /// After the other agents at work; gone before them.
     const WAITING: StatusItem = StatusItem::at(Side::Left, 75, 12);
 
-    /// "fetch: waiting 12 s" on each turn with a waiting call: the seconds
-    /// until the minute frees a slot, or until a running call ends.
+    /// "fetch: waiting 12 s" on each turn with a call waiting for the
+    /// minute; "fetch: waiting for a running call" for one waiting on
+    /// `concurrent`.
     pub(super) fn show(
-        mut turns: Query<(Entity, &Calls, &mut StatusItems), With<TurnOf>>,
-        waiting: Query<&Limited, With<Waiting>>,
-        limits: Res<Limits>,
-        recent: Res<Recent>,
+        mut turns: Query<(Entity, &mut StatusItems), With<TurnOf>>,
+        waits: Query<(&WaitingFor, &HoldOf)>,
+        of: Query<&CallOf>,
         time: Res<Time>,
         mut shown: Local<HashMap<Entity, String>>,
     ) {
         let now = time.elapsed();
-        for (turn, calls, mut items) in &mut turns {
-            let mut said: Vec<String> = Vec::new();
-            for call in waiting.iter_many(calls.iter()).flatten() {
-                let full = limits
-                    .of(&call.tool)
-                    .per_minute
-                    .and_then(|most| usize::try_from(most).ok())
-                    .is_some_and(|most| recent.within(&call.key(), now).count() >= most);
-                let oldest = recent.within(&call.key(), now).next().filter(|_| full);
-                let text = match oldest {
-                    Some(oldest) => {
-                        let left = (oldest + WINDOW).saturating_sub(now).as_secs().max(1);
-                        format!("{}: waiting {left} s", call.tool)
-                    }
-                    None => format!("{}: waiting for a running call", call.tool),
-                };
-                if !said.contains(&text) {
-                    said.push(text);
+        let mut said: HashMap<Entity, Vec<String>> = HashMap::new();
+        for (wait, &HoldOf(call)) in &waits {
+            let Ok(&CallOf(turn)) = of.get(call) else {
+                continue;
+            };
+            let tool = &wait.key.1;
+            let text = match wait.until {
+                Some(until) => {
+                    let left = until.saturating_sub(now).as_secs().max(1);
+                    format!("{tool}: waiting {left} s")
                 }
+                None => format!("{tool}: waiting for a running call"),
+            };
+            let texts = said.entry(turn).or_default();
+            if !texts.contains(&text) {
+                texts.push(text);
             }
-            let text = said.join(", ");
+        }
+        for (turn, mut items) in &mut turns {
+            let text = said.remove(&turn).unwrap_or_default().join(", ");
             if shown.get(&turn) != Some(&text) {
                 items.show(WAITING.says(text.clone(), Tone::Dim));
                 shown.insert(turn, text);

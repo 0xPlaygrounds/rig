@@ -158,6 +158,7 @@ fn finds_the_failed_read_and_still_does_after_a_restart() {
     let row = found.first().cloned().unwrap_or_default();
     assert_eq!(row.get(4), Some(&"read"), "{table}");
     assert_eq!(row.get(5), Some(&"error"), "{table}");
+    assert_eq!(row.get(2), Some(&"1"), "the first turn's: {table}");
     // When it started, and how long it took.
     assert!(row.get(6).is_some_and(|start| start.len() == 8), "{table}");
     assert!(

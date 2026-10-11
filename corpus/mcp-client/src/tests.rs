@@ -1,8 +1,8 @@
 use std::io::{BufRead, Write};
-use std::path::PathBuf;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::services::ServicesPlugin;
 use serde_json::{Value, json};
 
 use super::*;
@@ -11,12 +11,13 @@ use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
 /// Set in the environment of the stub server this test binary runs as.
 const STUB: &str = "CORPUS_MCP_STUB";
 
-/// Each tool output, rendered.
+/// Each settled tool call's result, rendered.
 #[derive(Resource, Default)]
 struct Outputs(Vec<String>);
 
-/// The test binary as an MCP server with the tool `add(a, b)`: run by the
-/// other test as a child, it answers JSON-RPC lines on stdin. The lines
+/// The test binary as an MCP server with the tools `add(a, b)` and `hang`,
+/// which never answers: run by the other test as a child, it answers
+/// JSON-RPC lines on stdin. The lines
 /// libtest prints on stdout are not JSON, and the client skips them.
 #[test]
 #[ignore = "the stub MCP server the other test starts"]
@@ -53,7 +54,12 @@ fn stub() {
                     "required": ["a", "b"],
                 },
                 "annotations": { "readOnlyHint": true },
+            }, {
+                "name": "hang",
+                "description": "Never answers.",
+                "inputSchema": { "type": "object" },
             }]}),
+            Some("tools/call") if params.get("name") == Some(&json!("hang")) => continue,
             Some("tools/call") => {
                 let number = |key| {
                     params
@@ -76,14 +82,7 @@ fn stub() {
     }
 }
 
-/// The names of the tools registered now.
-fn tools(world: &mut World) -> Vec<String> {
-    let mut defs = world.query::<&ToolDef>();
-    defs.iter(world)
-        .map(|def| def.0.name.as_str().to_owned())
-        .collect()
-}
-
+/// Whether `stub__add` is registered now.
 fn has_add(world: &World) -> bool {
     world.try_query::<&ToolDef>().is_some_and(|mut defs| {
         defs.iter(world)
@@ -93,41 +92,50 @@ fn has_add(world: &World) -> bool {
 
 #[test]
 fn stub_tools_come_and_go_with_its_server() {
-    // The config names the stub: this test binary, running only `stub`.
-    let dir = std::env::current_exe()
+    // The project's `.rig/mcp.json` names the stub: this test binary,
+    // running only `stub`.
+    let project = std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(|deps| deps.join("corpus-mcp-client")))
-        .unwrap_or_else(|| PathBuf::from("corpus-mcp-client"));
-    std::fs::create_dir_all(&dir).ok();
+        .unwrap_or_default()
+        .join(std::process::id().to_string());
+    std::fs::create_dir_all(project.join(".rig")).ok();
     let exe = std::env::current_exe().unwrap_or_default();
     let config = json!({ "mcpServers": { "stub": {
         "command": exe,
         "args": ["tests::stub", "--exact", "--ignored", "--nocapture", "--test-threads=1"],
         "env": { STUB: "1" },
     }}});
-    let file = dir.join(format!("mcp-{}.json", std::process::id()));
-    std::fs::write(&file, config.to_string()).ok();
+    std::fs::write(project.join(".rig/mcp.json"), config.to_string()).ok();
 
     let model = MockCompletionModel::from_stream_turns([
         calls("c1", "stub__add", json!({ "a": 2, "b": 3 })),
         reply("2 + 3 = 5."),
+        calls("c2", "stub__hang", json!({})),
+        reply("It went away."),
         reply("Nothing to add with."),
     ]);
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(McpConfig {
-        files: vec![file.clone()],
+    app.insert_resource(ProjectRoot(project.clone()))
+        .insert_resource(RigHome(Home::at(project.join("home"))))
         // No second attempt while the test runs.
-        first_retry: Duration::from_secs(3600),
-    })
-    .add_plugins((AgentPlugin, JournalPlugin, McpClientPlugin))
-    .init_resource::<Outputs>()
-    .add_observer(
-        |output: On<Insert<ToolOutput>>, calls: Query<&ToolOutput>, mut log: ResMut<Outputs>| {
-            if let Ok(output) = calls.get(output.entity) {
-                log.0.push(output.0.output().render());
-            }
-        },
-    );
+        .insert_resource(Settings::from_toml("[mcp]\nfirst_retry_secs = 3600"))
+        .add_plugins((ServicesPlugin, AgentPlugin, JournalPlugin, McpClientPlugin))
+        .init_resource::<Outputs>()
+        .add_observer(
+            |settled: On<Add<Settled>>,
+             calls: Query<&Outcome, With<ToolRequest>>,
+             mut log: ResMut<Outputs>| {
+                if let Ok(outcome) = calls.get(settled.entity) {
+                    let result = outcome.tool_result();
+                    let text = result.error().map_or_else(
+                        || result.output().render(),
+                        |error| error.message().to_owned(),
+                    );
+                    log.0.push(text);
+                }
+            },
+        );
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -144,7 +152,7 @@ fn stub_tools_come_and_go_with_its_server() {
 
     // The agent is usable at once; the tool comes once the server listed it.
     run_until(&mut app, &wakes, has_add);
-    assert!(has_add(app.world()), "tools: {:?}", tools(app.world_mut()));
+    assert!(has_add(app.world()));
     app.world_mut()
         .trigger(Deliver::new(agent, "Add 2 and 3.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
@@ -161,7 +169,19 @@ fn stub_tools_come_and_go_with_its_server() {
     assert!(offered(0));
     assert_eq!(app.world().resource::<Outputs>().0, ["5"]);
 
-    // Killed, the server's tools are gone from the next request.
+    // Killed while a call runs, the call fails for that, and the server's
+    // tools are gone from the next request.
+    app.world_mut()
+        .trigger(Deliver::new(agent, "Hang.", DeliveryMode::Queue));
+    run_until(&mut app, &wakes, |world| {
+        world
+            .try_query_filtered::<&ToolRequest, (With<Started>, Without<Outcome>)>()
+            .is_some_and(|mut calls| {
+                calls
+                    .iter(world)
+                    .any(|call| call.call.function.name.as_str() == "stub__hang")
+            })
+    });
     let world = app.world_mut();
     let pid = world
         .query::<&McpStatus>()
@@ -173,15 +193,20 @@ fn stub_tools_come_and_go_with_its_server() {
         .arg(pid.to_string())
         .status();
     assert!(killed.is_ok_and(|status| status.success()));
+    run_until(&mut app, &wakes, |world| {
+        model.request_count() == 4 && !world.entity(agent).contains::<ActiveTurn>()
+    });
+    let outputs = &app.world().resource::<Outputs>().0;
+    assert_eq!(outputs, &["5", "server `stub` disconnected"]);
     run_until(&mut app, &wakes, |world| !has_add(world));
     app.world_mut()
         .trigger(Deliver::new(agent, "And now?", DeliveryMode::Queue));
-    run_until(&mut app, &wakes, |_| model.request_count() == 3);
-    assert_eq!(model.request_count(), 3);
-    assert!(!offered(2));
+    run_until(&mut app, &wakes, |_| model.request_count() == 5);
+    assert_eq!(model.request_count(), 5);
+    assert!(!offered(4));
     let world = app.world_mut();
     let status = world.query::<&McpStatus>().iter(world).next().cloned();
     let error = status.and_then(|status| status.last_error);
     assert_eq!(error.as_deref(), Some("server `stub` disconnected"));
-    std::fs::remove_file(file).ok();
+    std::fs::remove_dir_all(project).ok();
 }

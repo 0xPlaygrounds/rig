@@ -1,19 +1,25 @@
 //! Plugin corpus: 40. Handoff to a fresh agent (spec `40-handoff.md`).
 //!
-//! `/handoff <next goal>` asks the agent's model, or the model named in
-//! [`HandoffSettings`], for a brief of its conversation for that goal, in a
-//! [`ModelRequest`] of a turn of its own, so the brief's usage counts like
-//! any call and an interrupt cancels it. A new top-level agent on the same
-//! model, reasoning setting, system prompt and tools then starts from the
-//! brief alone: it is put in the input line to edit and send, or sent at
-//! once with `--now` (and in a run without the terminal view). The old
-//! agent stays, idle; the new one is [`HandedOffFrom`] it, which names it.
+//! `/handoff [--now] <next goal>` asks the agent's model, or the model the
+//! `[handoff]` settings name, for a brief of its conversation for that
+//! goal. The brief is a [`ModelRequest`] of a turn of the agent's own, made
+//! for the purpose `handoff`, so its usage counts like any call and an
+//! interrupt cancels it. A new top-level agent on the same model, reasoning
+//! setting, system prompt and tools then starts from the brief alone, shown
+//! in the terminal view: the brief waits in the input line to be edited and
+//! sent, or is sent at once with `--now` (and in a run without the view).
+//! The old agent stays, idle; the new one is [`HandedOffFrom`] it, which
+//! names it.
 
 use std::borrow::Cow;
 
 use rig_harness::prelude::*;
 use rig_memory::{Summarizer, SummaryLimits, SummaryPrompts};
-use rig_tui::Focus;
+use rig_tui::{Focus, TuiInput};
+use serde::Deserialize;
+
+/// The purpose the brief's call is made for, in usage.
+pub const PURPOSE: &str = "handoff";
 
 /// The longest brief asked for, in tokens.
 const BRIEF_TOKENS: u64 = 4_000;
@@ -38,7 +44,7 @@ pub struct HandoffPlugin;
 
 impl Plugin for HandoffPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<HandoffSettings>()
+        app.add_setting::<HandoffSettings>("handoff")
             .add_command(
                 "handoff",
                 "Start a fresh agent from a brief for the next goal; --now sends it unedited",
@@ -47,11 +53,17 @@ impl Plugin for HandoffPlugin {
             .add_observer(take_brief)
             .add_observer(name_successor);
     }
+
+    fn finish(&self, app: &mut App) {
+        let editable = app.runs_front(rig_tui::FRONT);
+        app.insert_resource(EditableBrief(editable));
+    }
 }
 
-/// Which model writes briefs: the catalog model named (`vendor/model`), or
-/// the agent's own when `None`.
-#[derive(Resource, Clone, Debug, Default)]
+/// The `[handoff]` settings table: `model = "vendor/model"` writes briefs
+/// on that catalog model rather than the agent's own.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct HandoffSettings {
     /// The summarizer's model.
     pub model: Option<String>,
@@ -78,6 +90,10 @@ pub struct Briefing {
     pub now: bool,
 }
 
+/// Whether the terminal view runs, whose input line a brief can wait in.
+#[derive(Resource)]
+struct EditableBrief(bool);
+
 /// `/handoff [--now] <next goal>`: starts the brief's call in a turn of
 /// the agent's own. Refused while a turn runs.
 fn handoff(
@@ -90,7 +106,6 @@ fn handoff(
     )>,
     settings: Res<HandoffSettings>,
     models: Res<Models>,
-    invoked: Option<Res<Invoked>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -111,14 +126,12 @@ fn handoff(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    let summarizer = match &settings.model {
-        Some(model) => match models.connect(model) {
-            Ok(connection) => Some(connection),
-            Err(why) => {
-                notices.write(Notice::error(agent, why));
-                return;
-            }
-        },
+    let summarizer = match settings.model.as_deref().map(|model| models.connect(model)) {
+        Some(Ok(connection)) => Some(connection),
+        Some(Err(why)) => {
+            notices.write(Notice::error(agent, why));
+            return;
+        }
         None => None,
     };
     let Some(spec) = summarizer.as_ref().or(own).map(|c| c.spec.clone()) else {
@@ -133,26 +146,26 @@ fn handoff(
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;
     }
-    let request = brief_writer(&goal).request(&messages, "", "", &spec);
-    let request = match request {
+    let request = match brief_writer(&goal).request(&messages, "", "", &spec) {
         Ok(request) => request,
         Err(why) => {
             notices.write(Notice::error(agent, format!("Cannot hand off: {why}.")));
             return;
         }
     };
-    // The editing step needs the terminal view's input line.
-    let now = now || !invoked.is_some_and(|invoked| invoked.interactive());
+    let request = match summarizer {
+        Some(summarizer) => ModelRequest::new(request).on(summarizer),
+        None => ModelRequest::new(request),
+    };
     let turn = commands.spawn((Name::new("handoff"), TurnOf(agent))).id();
-    let mut call = commands.spawn((
+    commands.spawn((
         Name::new("handoff brief"),
         Briefing { goal, now },
-        ModelRequest { request },
+        request,
+        Effect::default().with_purpose(PURPOSE),
+        ForAgent(agent),
         CallOf(turn),
     ));
-    if let Some(connection) = summarizer {
-        call.insert(connection);
-    }
 }
 
 /// rig-memory's summarizer, asked for a brief for `goal`.
@@ -175,41 +188,40 @@ fn brief_writer(goal: &str) -> Summarizer {
     }
 }
 
-/// Takes a finished brief: ends the handoff's turn and starts the new
+/// The settings a new agent takes over from the one handed off from.
+type Inherited<'a> = (
+    &'a AgentId,
+    Option<&'a ModelChoice>,
+    &'a Effort,
+    &'a SystemPrompt,
+    &'a ToolAccess,
+    Option<&'a Connection>,
+);
+
+/// Takes a settled brief: ends the handoff's turn and starts the new
 /// agent with the old one's settings, shown with the brief in the input
 /// line, or sent the brief at once.
 fn take_brief(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&CallOf, &Briefing, &Done<ModelReply>)>,
-    turns: Query<&TurnOf>,
-    agents: Query<(
-        &AgentId,
-        Option<&ModelChoice>,
-        &Effort,
-        &SystemPrompt,
-        &ToolAccess,
-        Option<&Connection>,
-    )>,
+    settled: On<Add<Settled>>,
+    calls: Query<(&CallOf, &ForAgent, &Briefing, &Outcome)>,
+    agents: Query<Inherited>,
+    editable: Res<EditableBrief>,
+    input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
-    mut recalled: MessageWriter<Recalled>,
 ) {
-    let call = done.entity;
-    let Ok((&CallOf(turn), briefing, Done(reply))) = calls.get(call) else {
+    let Ok((&CallOf(turn), &ForAgent(agent), briefing, outcome)) = calls.get(settled.entity) else {
         return;
     };
-    commands.entity(call).despawn();
-    commands.entity(turn).despawn();
-    let Ok(&TurnOf(agent)) = turns.get(turn) else {
-        return;
+    let handed_off = TurnOutcome::Stopped(Some("handed off".to_owned()));
+    commands.entity(turn).try_insert(handed_off);
+    let brief = match (&outcome.0, outcome.completion()) {
+        (Err(report), _) => Err(report.to_string()),
+        (Ok(_), None) => Err("the model did not answer with a completion".to_owned()),
+        (Ok(_), Some(response)) => {
+            Summarizer::summary_text(response).map_err(|why| why.to_string())
+        }
     };
-    let Ok((id, model, effort, prompt, access, connection)) = agents.get(agent) else {
-        return;
-    };
-    let brief = reply
-        .as_ref()
-        .map_err(ToString::to_string)
-        .and_then(|response| Summarizer::summary_text(response).map_err(|why| why.to_string()));
     let brief = match brief {
         Ok(brief) => brief,
         Err(why) => {
@@ -217,12 +229,15 @@ fn take_brief(
             return;
         }
     };
+    let Ok((id, model, effort, prompt, access, connection)) = agents.get(agent) else {
+        return;
+    };
     let from = HandedOffFrom {
         agent: id.clone(),
         goal: briefing.goal.clone(),
     };
     let mut successor = commands.spawn_empty();
-    // With the model choice, so the shared connection is kept.
+    // Before the model choice, so the shared connection is kept.
     if let Some(connection) = connection {
         successor.insert(connection.clone());
     }
@@ -231,19 +246,12 @@ fn take_brief(
         successor.insert(model.clone());
     }
     let successor = successor.id();
-    if briefing.now {
-        let origin = Origin::agent(id.clone(), None).titled("handoff");
-        let deliver = Deliver::new(successor, brief, DeliveryMode::Queue).with_origin(origin);
-        commands.trigger(deliver);
-    } else {
-        // Workaround: the only public way to fill the view's input line.
-        recalled.write(Recalled {
-            agent: successor,
-            text: brief,
-            why: None,
-        });
-    }
     commands.trigger(Focus { entity: successor });
+    match input.filter(|_| editable.0 && !briefing.now) {
+        Some(mut input) => input.set(brief),
+        // The model's text, never a command.
+        None => commands.trigger(Deliver::new(successor, brief, DeliveryMode::Queue).literal()),
+    }
     notices.write(Notice::info(
         agent,
         "Handed off to a new agent; this one stays idle in /agents.",

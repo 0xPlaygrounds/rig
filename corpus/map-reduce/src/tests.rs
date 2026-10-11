@@ -108,11 +108,12 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
     let call = start_call(app.world_mut(), parent, (MAP_FILES, "m1"), args);
     let call = call.unwrap_or(Entity::PLACEHOLDER);
     run_until(&mut app, &wakes, |world| {
-        world.get::<ToolOutput>(call).is_some()
+        let mut workers = world.iter_entities().filter(|e| e.contains::<MapWorker>());
+        world.get::<Outcome>(call).is_some() && workers.next().is_none()
     });
 
-    let output = app.world().get::<ToolOutput>(call);
-    let said = output.map(|output| output.0.output().render());
+    let output = app.world().get::<Outcome>(call);
+    let said = output.map(|output| output.tool_result().output().render());
     let said = said.unwrap_or_default();
     let read = |name: &str| std::fs::read_to_string(dir.join(name)).unwrap_or_default();
     let documented: Vec<&str> = names

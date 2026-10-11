@@ -6,10 +6,9 @@
 //! user with `/skill <name> [text]`, which sends it with their message.
 //! `/skills` lists them and which were loaded this session.
 //!
-//! The skill directories are read again when a turn starts (as the project
-//! instructions are), by `/skills`, and by each load, so skills appear and
-//! disappear as their directories change; a `SKILL.md` whose frontmatter
-//! is broken is skipped and reported once.
+//! Both skill directories are watched, so skills appear and disappear as
+//! they change; a `SKILL.md` whose frontmatter is broken is skipped and
+//! reported once. A skill loaded in a turn is not loaded again in it.
 
 use std::collections::{BTreeMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -31,9 +30,13 @@ pub struct SkillsPlugin;
 
 impl Plugin for SkillsPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SkillRoots>()
-            .init_resource::<Reported>()
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<RigHome>()
+            .init_resource::<Skills>()
+            .add_message::<FileChanges>()
             .register_required_components::<Agent, LoadedSkills>()
+            .register_required_components::<Agent, Coming>()
+            .register_required_components::<TurnOf, LoadedInTurn>()
             .add_open_tool(
                 LOAD_SKILL,
                 "Load a skill listed under \"Skills you can load\": returns its instructions, \
@@ -58,57 +61,29 @@ impl Plugin for SkillsPlugin {
                 "List the skills and which were loaded this session",
                 list_skills,
             )
-            .add_observer(refresh_on_turn)
-            .add_observer(forget_turn)
-            .add_observer(forget_condensed);
+            .add_observer(take_coming)
+            .add_observer(forget_condensed)
+            .add_systems(Startup, watch_roots)
+            .add_systems(Update, refresh.before(AgentLoop));
         let section = PromptSection::new(PromptSection::ORDER_PROJECT + 10, "skills", "");
         app.world_mut()
             .spawn((Name::new("prompt:skills"), SkillsSection, section));
     }
 }
 
-/// The directories whose subdirectories are skills, most general first: a
-/// skill of a later one replaces a skill of the same name.
-#[derive(Resource, Clone, Debug)]
-pub struct SkillRoots(pub Vec<PathBuf>);
-
-impl Default for SkillRoots {
-    /// `RIG_HOME/skills`, then the working directory's `.rig/skills`.
-    fn default() -> Self {
-        let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-        let home = Home::from_env().root().join("skills");
-        Self(vec![home, cwd.join(".rig").join("skills")])
-    }
-}
-
-/// The skills an agent loaded, kept with the session.
-#[derive(Component, Reflect, Default, Debug)]
-#[reflect(Component, Saved, Default)]
-pub struct LoadedSkills {
-    /// Every skill loaded this session, in order.
-    pub session: Vec<String>,
-    /// The skills loaded since the agent's last turn ended.
-    pub turn: Vec<String>,
-}
-
-impl LoadedSkills {
-    /// Marks `name` loaded.
-    fn add(&mut self, name: &str) {
-        for list in [&mut self.session, &mut self.turn] {
-            if !list.iter().any(|loaded| loaded == name) {
-                list.push(name.to_owned());
-            }
-        }
-    }
-}
-
-/// The prompt section listing the skills.
+/// A watched directory whose subdirectories are skills; a skill of a
+/// higher `0` replaces one of the same name.
 #[derive(Component)]
-struct SkillsSection;
+struct SkillRoot(u8);
 
-/// The broken `SKILL.md` files already reported.
+/// The skills found, by name, and the `SKILL.md` files skipped, with why.
 #[derive(Resource, Default)]
-struct Reported(HashSet<PathBuf>);
+struct Skills {
+    found: BTreeMap<String, Skill>,
+    broken: Vec<(PathBuf, String)>,
+    /// The broken files reported already.
+    reported: HashSet<PathBuf>,
+}
 
 /// A skill found on disk.
 #[derive(Debug)]
@@ -118,13 +93,22 @@ struct Skill {
     file: PathBuf,
 }
 
-/// The skills of every root, by name, and the `SKILL.md` files skipped,
-/// with why.
-#[derive(Default)]
-struct Found {
-    skills: BTreeMap<String, Skill>,
-    broken: Vec<(PathBuf, String)>,
-}
+/// The skills an agent loaded this session, in order, kept with it.
+#[derive(Component, Reflect, Default, Debug)]
+#[reflect(Component, Saved, Default)]
+pub struct LoadedSkills(pub Vec<String>);
+
+/// The skills loaded in a turn, on the turn.
+#[derive(Component, Default, Debug)]
+pub struct LoadedInTurn(pub Vec<String>);
+
+/// The skills `/skill` sent an idle agent, for the turn its message starts.
+#[derive(Component, Default)]
+struct Coming(Vec<String>);
+
+/// The prompt section listing the skills.
+#[derive(Component)]
+struct SkillsSection;
 
 /// A `SKILL.md`'s frontmatter.
 #[derive(Deserialize)]
@@ -133,11 +117,19 @@ struct Frontmatter {
     description: String,
 }
 
-impl Found {
-    /// Reads the skill directories of `roots` now.
-    fn scan(roots: &SkillRoots) -> Self {
-        let mut found = Self::default();
-        for root in &roots.0 {
+/// Pushes `name` onto `list` unless it is there.
+fn add(list: &mut Vec<String>, name: &str) {
+    if !list.iter().any(|done| done == name) {
+        list.push(name.to_owned());
+    }
+}
+
+impl Skills {
+    /// Reads the skill directories of `roots`, most general first.
+    fn scan<'a>(&mut self, roots: impl IntoIterator<Item = &'a Path>) {
+        self.found.clear();
+        self.broken.clear();
+        for root in roots {
             let Ok(entries) = std::fs::read_dir(root) else {
                 continue;
             };
@@ -150,26 +142,22 @@ impl Found {
             for file in files {
                 match read(&file) {
                     Ok((front, _)) => {
-                        let skill = Skill {
-                            description: front.description,
-                            file,
-                        };
-                        found.skills.insert(front.name, skill);
+                        let description = front.description;
+                        self.found.insert(front.name, Skill { description, file });
                     }
-                    Err(why) => found.broken.push((file, why)),
+                    Err(why) => self.broken.push((file, why)),
                 }
             }
         }
-        found
     }
 
     /// The prompt section's text: each skill's name and description.
     fn listing(&self) -> String {
-        if self.skills.is_empty() {
+        if self.found.is_empty() {
             return String::new();
         }
         let mut lines = vec![format!("{HEADING} (with `{LOAD_SKILL}`):")];
-        for (name, skill) in &self.skills {
+        for (name, skill) in &self.found {
             lines.push(format!("- {name}: {}", skill.description));
         }
         lines.join("\n")
@@ -178,8 +166,8 @@ impl Found {
     /// The skill `name`'s body for the model, its relative paths made
     /// absolute, or why it cannot be loaded.
     fn load(&self, name: &str) -> Result<String, String> {
-        let Some(skill) = self.skills.get(name) else {
-            let names: Vec<&str> = self.skills.keys().map(String::as_str).collect();
+        let Some(skill) = self.found.get(name) else {
+            let names: Vec<&str> = self.found.keys().map(String::as_str).collect();
             return Err(format!(
                 "No skill `{name}`. The skills: {}.",
                 names.join(", ")
@@ -234,13 +222,8 @@ fn resolve(body: &str, dir: &Path) -> String {
         if index > 0 {
             spans.push('`');
         }
-        let code = index % 2 == 1;
-        spans.push_str(
-            &code
-                .then(|| absolute(piece))
-                .flatten()
-                .unwrap_or_else(|| piece.to_owned()),
-        );
+        let code = (index % 2 == 1).then(|| absolute(piece)).flatten();
+        spans.push_str(code.as_deref().unwrap_or(piece));
     }
     let mut pieces = spans.split("](");
     let mut out = pieces.next().unwrap_or_default().to_owned();
@@ -248,7 +231,7 @@ fn resolve(body: &str, dir: &Path) -> String {
         out.push_str("](");
         match piece.split_once(')') {
             Some((target, rest)) => {
-                out.push_str(&absolute(target).unwrap_or_else(|| target.to_owned()));
+                out.push_str(absolute(target).as_deref().unwrap_or(target));
                 out.push(')');
                 out.push_str(rest);
             }
@@ -258,59 +241,82 @@ fn resolve(body: &str, dir: &Path) -> String {
     out
 }
 
-/// Reads the skills again, puts their list in the prompt section and
-/// reports each newly broken `SKILL.md` once, about `agent`.
-fn refresh(
-    roots: &SkillRoots,
-    sections: &mut Query<&mut PromptSection, With<SkillsSection>>,
-    reported: &mut Reported,
-    notices: &mut MessageWriter<Notice>,
-    agent: Option<Entity>,
-) -> Found {
-    let found = Found::scan(roots);
-    for mut section in sections.iter_mut() {
-        let listing = found.listing();
-        if section.text != listing {
-            section.text = listing;
-        }
+/// Watches `RIG_HOME/skills` and the project's `.rig/skills`.
+fn watch_roots(home: Res<RigHome>, project: Res<ProjectRoot>, mut commands: Commands) {
+    let roots = [
+        home.0.root().join("skills"),
+        project.0.join(".rig").join("skills"),
+    ];
+    for (order, root) in (0..).zip(roots) {
+        commands.spawn((SkillRoot(order), FileWatch::tree(root)));
     }
-    reported
-        .0
-        .retain(|file| found.broken.iter().any(|(broken, _)| broken == file));
-    for (file, why) in &found.broken {
-        if reported.0.insert(file.clone()) {
-            let text = format!("Skill {} skipped: {why}.", file.display());
-            notices.write(Notice::info(agent, text));
-        }
-    }
-    found
 }
 
-/// Reads the skills again when a turn starts, before its first request.
-fn refresh_on_turn(
-    started: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    roots: Res<SkillRoots>,
+/// Reads the skills again when a root is watched or something under one
+/// changed, keeps the prompt's list current, and reports each newly broken
+/// `SKILL.md` once.
+fn refresh(
+    roots: Query<(&SkillRoot, Ref<FileWatch>)>,
+    mut changes: MessageReader<FileChanges>,
+    mut skills: ResMut<Skills>,
     mut sections: Query<&mut PromptSection, With<SkillsSection>>,
-    mut reported: ResMut<Reported>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = turns.get(started.entity).ok().map(|of| of.0);
-    refresh(&roots, &mut sections, &mut reported, &mut notices, agent);
+    let changed = changes.read().any(|change| roots.contains(change.watch));
+    if !changed && !roots.iter().any(|(_, watch)| watch.is_added()) {
+        return;
+    }
+    let mut ordered: Vec<_> = roots.iter().collect();
+    ordered.sort_by_key(|(root, _)| root.0);
+    skills.scan(ordered.iter().map(|(_, watch)| watch.path.as_path()));
+    let listing = skills.listing();
+    for mut section in &mut sections {
+        if section.text != listing {
+            section.text.clone_from(&listing);
+        }
+    }
+    let Skills {
+        broken, reported, ..
+    } = &mut *skills;
+    reported.retain(|file| broken.iter().any(|(gone, _)| gone == file));
+    for (file, why) in broken.iter() {
+        if reported.insert(file.clone()) {
+            let text = format!("Skill {} skipped: {why}.", file.display());
+            notices.write(Notice::error(None, text));
+        }
+    }
 }
 
-/// A turn's end ends what was loaded in it.
-fn forget_turn(ended: On<TurnEnded>, mut loaded: Query<&mut LoadedSkills>) {
-    if let Ok(mut loaded) = loaded.get_mut(ended.entity) {
-        loaded.turn.clear();
+/// A turn started by a `/skill` message holds that skill.
+fn take_coming(
+    started: On<Add<TurnOf>>,
+    turns: Query<&TurnOf>,
+    mut coming: Query<&mut Coming>,
+    mut loaded: Query<&mut LoadedInTurn>,
+) {
+    let Ok(&TurnOf(agent)) = turns.get(started.entity) else {
+        return;
+    };
+    if let (Ok(mut coming), Ok(mut loaded)) =
+        (coming.get_mut(agent), loaded.get_mut(started.entity))
+    {
+        for name in coming.0.drain(..) {
+            add(&mut loaded.0, &name);
+        }
     }
 }
 
 /// A conversation condensed, such as by compaction, may have lost the
-/// bodies loaded in this turn, so they may be loaded again.
-fn forget_condensed(condensed: On<Insert<Condensed>>, mut loaded: Query<&mut LoadedSkills>) {
-    if let Ok(mut loaded) = loaded.get_mut(condensed.entity) {
-        loaded.turn.clear();
+/// bodies loaded in the running turn, so they may be loaded again.
+fn forget_condensed(
+    condensed: On<Insert<Condensed>>,
+    agents: Query<&ActiveTurn>,
+    mut loaded: Query<&mut LoadedInTurn>,
+) {
+    if let Ok(turn) = agents.get(condensed.entity)
+        && let Ok(mut loaded) = loaded.get_mut(turn.turn())
+    {
+        loaded.0.clear();
     }
 }
 
@@ -322,30 +328,38 @@ pub struct LoadSkill {
     pub name: String,
 }
 
-/// Answers a `load_skill` call with the skill's body, or says it is in the
-/// turn already.
+/// Answers a `load_skill` call with the skill's body, or says its turn
+/// has it already.
 fn load_skill(
     called: On<ToolCalled<LoadSkill>>,
-    roots: Res<SkillRoots>,
-    mut loaded: Query<&mut LoadedSkills>,
+    skills: Res<Skills>,
+    calls: Query<&CallOf>,
+    mut turns: Query<&mut LoadedInTurn>,
+    mut session: Query<&mut LoadedSkills>,
     mut commands: Commands,
 ) {
     let name = called.args.name.trim();
-    let mut loaded = loaded.get_mut(called.agent).ok();
-    let already = loaded
+    let mut turn = calls
+        .get(called.call)
+        .ok()
+        .and_then(|&CallOf(turn)| turns.get_mut(turn).ok());
+    let already = turn
         .as_ref()
-        .is_some_and(|loaded| loaded.turn.iter().any(|done| done == name));
+        .is_some_and(|turn| turn.0.iter().any(|done| done == name));
     let result = if already {
         Ok(format!(
             "The skill `{name}` is already loaded above in this turn; follow it from there."
         ))
     } else {
-        Found::scan(&roots).load(name)
+        skills.load(name)
     };
     let output = match result {
         Ok(text) => {
-            if let Some(loaded) = loaded.as_mut() {
-                loaded.add(name);
+            if let Some(turn) = turn.as_mut() {
+                add(&mut turn.0, name);
+            }
+            if let Ok(mut session) = session.get_mut(called.agent) {
+                add(&mut session.0, name);
             }
             ToolResult::success(text.into())
         }
@@ -353,15 +367,16 @@ fn load_skill(
     };
     commands
         .entity(called.call)
-        .insert_if_new(ToolOutput(output));
+        .insert_if_new(Outcome::from(output));
 }
 
 /// `/skill <name> [text]`: sends the skill's body with the text, as the
-/// user's message.
+/// user's message, into the running turn or the one it starts.
 fn send_skill(
     In(args): In<CommandArgs>,
-    roots: Res<SkillRoots>,
-    mut loaded: Query<&mut LoadedSkills>,
+    skills: Res<Skills>,
+    mut agents: Query<(&mut LoadedSkills, &mut Coming, Option<&ActiveTurn>)>,
+    mut turns: Query<&mut LoadedInTurn>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -371,15 +386,19 @@ fn send_skill(
         notices.write(Notice::error(args.agent, "/skill needs a skill's name."));
         return;
     }
-    let body = match Found::scan(&roots).load(name) {
+    let body = match skills.load(name) {
         Ok(body) => body,
         Err(why) => {
             notices.write(Notice::error(args.agent, why));
             return;
         }
     };
-    if let Ok(mut loaded) = loaded.get_mut(args.agent) {
-        loaded.add(name);
+    if let Ok((mut session, mut coming, running)) = agents.get_mut(args.agent) {
+        add(&mut session.0, name);
+        match running.and_then(|running| turns.get_mut(running.turn()).ok()) {
+            Some(mut turn) => add(&mut turn.0, name),
+            None => add(&mut coming.0, name),
+        }
     }
     let message = format!("{body}\n\n{}", text.trim());
     let message = Deliver::new(args.agent, message.trim(), DeliveryMode::Steer);
@@ -390,33 +409,27 @@ fn send_skill(
 /// ones skipped.
 fn list_skills(
     In(args): In<CommandArgs>,
-    roots: Res<SkillRoots>,
-    mut sections: Query<&mut PromptSection, With<SkillsSection>>,
-    mut reported: ResMut<Reported>,
+    skills: Res<Skills>,
+    roots: Query<&FileWatch, With<SkillRoot>>,
     loaded: Query<&LoadedSkills>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = Some(args.agent);
-    let found = refresh(&roots, &mut sections, &mut reported, &mut notices, agent);
-    let session = loaded
-        .get(args.agent)
-        .map(|loaded| loaded.session.as_slice());
+    let session = loaded.get(args.agent).map(|loaded| loaded.0.as_slice());
     let session = session.unwrap_or_default();
     let mut lines = vec![format!("Skills ({} loaded this session):", session.len())];
-    for (name, skill) in &found.skills {
+    for (name, skill) in &skills.found {
         let mark = if session.contains(name) { "*" } else { " " };
         let file = skill.file.display();
         lines.push(format!("{mark} {name}: {} ({file})", skill.description));
     }
-    if found.skills.is_empty() {
+    if skills.found.is_empty() {
         let roots: Vec<String> = roots
-            .0
             .iter()
-            .map(|root| root.display().to_string())
+            .map(|root| root.path.display().to_string())
             .collect();
         lines.push(format!("  none in {}", roots.join(", ")));
     }
-    for (file, why) in &found.broken {
+    for (file, why) in &skills.broken {
         lines.push(format!("  skipped {}: {why}", file.display()));
     }
     notices.write(Notice::info(args.agent, lines.join("\n")));

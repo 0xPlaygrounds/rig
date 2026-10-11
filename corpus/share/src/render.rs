@@ -3,7 +3,7 @@
 
 use std::fmt::Write as _;
 
-use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
+use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 
 /// What a secret's prefix is followed by, at least, to count as one.
 const MIN_SECRET_TAIL: usize = 16;

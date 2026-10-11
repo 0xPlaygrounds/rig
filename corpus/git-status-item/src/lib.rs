@@ -5,15 +5,15 @@
 //! every turn, and after every call of a tool that may change files, at
 //! most once a second, with git run off the main thread. A detached HEAD
 //! shows its short commit, and a rebase under way `REBASE`; outside a
-//! repository the item is hidden. Without the terminal view (the `tui`
-//! feature off, `rig-tui` not added, or a `--print` run) the plugin does
-//! nothing: no item and no git.
+//! repository the item is hidden. Its place is the `[git_status]` table of
+//! the settings. Without the terminal view (the `tui` feature off, or a run
+//! another front takes) the plugin does nothing: no item and no git.
 
 #[cfg(feature = "tui")]
 mod item;
 
 #[cfg(feature = "tui")]
-pub use item::{GitRunner, GitStatusConfig};
+pub use item::{Edge, GitRunner, GitStatusSettings};
 
 use rig_harness::prelude::*;
 
@@ -24,8 +24,7 @@ pub struct GitStatusItemPlugin;
 impl Plugin for GitStatusItemPlugin {
     fn build(&self, _app: &mut App) {}
 
-    /// Once every plugin is built, so the terminal view is known whatever
-    /// the order of the plugins.
+    /// Once every plugin offered its front, so the run's is known.
     fn finish(&self, app: &mut App) {
         #[cfg(feature = "tui")]
         item::add(app);

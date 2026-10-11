@@ -1,25 +1,19 @@
 //! Plugin corpus: 20. Ask the user (spec `20-ask-user.md`).
 //!
 //! The `ask_user` tool stops the turn on a question for the user. It is an
-//! open tool: its call stays open with a [`Question`] on the call's
-//! entity until the user answers, and the answer is its result. One
-//! question is shown at a time, the oldest first, as [`AskedUser`], which
-//! the terminal view turns into a picker of the choices (plus "Other…"
-//! for free text). The user answers by picking, by typing a message while
-//! a free-text question waits, or with `/answer`. Without someone at the
-//! terminal the tool answers at once that no user is available, and an
-//! [`AskUserSettings::timeout`] answers "no answer" to a question left
-//! waiting. Interrupting the turn despawns the call, which the kernel
-//! answers as interrupted by the user, and the next question shows.
-//! The calls of one reply are exclusive, so the kernel asks them one after
-//! another.
+//! open tool: each call spawns an [`Ask`] that holds the call (`HoldOf`), so
+//! every front that answers questions shows it (the terminal view as a
+//! picker of the choices, with a typed answer for free text), and its
+//! answer becomes the call's result. Nobody to answer (`--print`, no
+//! front) answers at once [`NO_USER`]. An interrupt despawns the turn's
+//! holds, which closes the question everywhere, and the kernel answers the
+//! call as interrupted. The `[ask_user] timeout` setting refuses a question
+//! left waiting, answered [`NO_ANSWER`]. The tool is exclusive, so the
+//! calls of one reply are asked one after another.
 
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
 use serde::Deserialize;
-
-#[cfg(feature = "tui")]
-mod tui;
 
 /// The tool's result without anyone to ask.
 pub const NO_USER: &str = "No user is available; make a reasonable assumption and state it.";
@@ -36,19 +30,19 @@ const DESCRIPTION: &str = "Ask the user a question and wait for the answer, whic
 const RULE: &str = "Use `ask_user` when a choice is the user's to make and guessing would be \
     costly; otherwise decide and say what you assumed.";
 
-/// How the plugin waits for answers; insert it to change it.
-#[derive(Resource, Reflect, Clone, Debug, Default)]
-#[reflect(Resource, Default)]
+/// The `[ask_user]` table of the user's settings.
+#[derive(Resource, Deserialize, Clone, Debug, Default)]
+#[serde(default, deny_unknown_fields)]
 pub struct AskUserSettings {
-    /// How long a question waits before it is answered [`NO_ANSWER`];
-    /// `None` waits for the user however long it takes.
-    pub timeout: Option<Duration>,
+    /// Seconds a question waits before it is answered [`NO_ANSWER`]; none
+    /// waits however long it takes.
+    pub timeout: Option<u64>,
 }
 
 /// The arguments of `ask_user`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct Ask {
+struct Args {
     /// The question.
     question: String,
     /// The answers to pick from, if any.
@@ -60,37 +54,9 @@ struct Ask {
     allow_free_text: bool,
 }
 
-/// A question waiting for the user, on its `ask_user` call's entity.
-#[derive(Component, Clone, Debug)]
-pub struct Question {
-    /// Its number, in the order asked; the oldest is shown first.
-    pub id: u64,
-    /// The agent that asks.
-    pub agent: Entity,
-    /// The question, naming a subagent that asks it.
-    pub text: String,
-    /// The answers to pick from.
-    pub choices: Vec<String>,
-    /// Whether any text answers it.
-    pub free_text: bool,
-}
-
-/// Show `question` to the user: the question of call `call` is the one
-/// waiting now. A front (the terminal view's picker) observes it.
-#[derive(Event, Clone, Debug)]
-pub struct AskedUser {
-    /// The `ask_user` call.
-    pub call: Entity,
-    /// The question.
-    pub question: Question,
-}
-
-/// The question shown, and the number of the last one asked.
-#[derive(Resource, Default)]
-struct Shown {
-    call: Option<Entity>,
-    last_id: u64,
-}
+/// On the [`Ask`] of an `ask_user` call: its answer is the call's result.
+#[derive(Component)]
+struct AskedByTool;
 
 #[derive(Default)]
 pub struct AskUserPlugin;
@@ -101,176 +67,87 @@ impl Plugin for AskUserPlugin {
             rules: &[RULE],
             footprint: Some(Footprint::Exclusive),
         };
-        app.init_resource::<AskUserSettings>()
-            .init_resource::<Shown>()
+        app.add_setting::<AskUserSettings>("ask_user")
             .add_open_tool("ask_user", DESCRIPTION, options, ask)
-            .add_command(
-                "answer",
-                "Answer the agent's question: /answer <text>, or alone to show it again",
-                answer,
-            )
-            .add_observer(answer_typed)
-            .add_observer(show_next);
+            .add_systems(AgentPass, answered.in_set(Stage::Review));
         #[cfg(feature = "tui")]
-        tui::build(app);
+        {
+            use rig_tui::{AppToolRenderersExt, RESULT_LINES};
+            app.add_tool_renderer("ask_user", |call| {
+                let question = call.argument("question").unwrap_or_default();
+                let mut lines = vec![call.header("Ask", question)];
+                lines.extend(call.result_lines(RESULT_LINES));
+                lines
+            });
+        }
     }
 }
 
-/// Answers at once without a user at the terminal; otherwise keeps the
-/// call open with its question, shown now unless another one is.
+/// Answers at once when nobody can answer; otherwise holds the call with
+/// its question, named after a subagent that asks it, and refuses the
+/// question once it waited past the timeout.
 fn ask(
-    called: On<ToolCalled<Ask>>,
-    invoked: Option<Res<Invoked>>,
+    called: On<ToolCalled<Args>>,
+    answerers: Answerers,
     settings: Res<AskUserSettings>,
     subagents: Query<&Name, With<SpawnedBy>>,
-    mut shown: ResMut<Shown>,
     mut commands: Commands,
 ) {
     let call = called.call;
-    if !invoked.is_some_and(|invoked| invoked.interactive()) {
-        commands
-            .entity(call)
-            .insert(ToolOutput(ToolResult::success(NO_USER.to_owned().into())));
+    if !answerers.can_answer(Some(called.agent)) {
+        let result = ToolResult::success(NO_USER.to_owned().into());
+        commands.entity(call).insert_if_new(Outcome::from(result));
         return;
     }
     let args = &called.args;
-    let question = args.question.trim();
-    shown.last_id += 1;
-    let question = Question {
-        id: shown.last_id,
-        agent: called.agent,
-        text: match subagents.get(called.agent) {
-            Ok(name) => format!("{name} asks: {question}"),
-            Err(_) => question.to_owned(),
-        },
-        choices: args.choices.clone(),
-        free_text: args.allow_free_text || args.choices.is_empty(),
+    let title = match subagents.get(called.agent) {
+        Ok(name) => format!("{name} asks: {}", args.question.trim()),
+        Err(_) => args.question.trim().to_owned(),
     };
-    commands.entity(call).insert(question.clone());
-    if shown.call.is_none() {
-        shown.call = Some(call);
-        commands.trigger(AskedUser { call, question });
+    let mut question = args
+        .choices
+        .iter()
+        .fold(Ask::new(title), |ask, choice| ask.choice(choice, choice));
+    if args.allow_free_text || args.choices.is_empty() {
+        question = question.free_text();
     }
-    if let Some(timeout) = settings.timeout {
+    let asked = commands
+        .spawn((
+            question,
+            AskedByTool,
+            ForAgent(called.agent),
+            HoldOf(call),
+            Effect::child_of(Some(called.effect)),
+        ))
+        .id();
+    if let Some(seconds) = settings.timeout {
         commands
             .delayed()
-            .duration(timeout)
-            .queue(move |world: &mut World| settle(world, call, NO_ANSWER));
+            .duration(Duration::from_secs(seconds))
+            .queue(move |world: &mut World| {
+                if let Ok(mut asked) = world.get_entity_mut(asked) {
+                    asked.insert_if_new(Outcome::refused(NO_ANSWER));
+                }
+            });
     }
 }
 
-/// Answers the question of `call` with `answer`, unless it was answered.
-fn settle(world: &mut World, call: Entity, answer: &str) {
-    let Ok(mut call) = world.get_entity_mut(call) else {
-        return;
-    };
-    if call.take::<Question>().is_some() {
-        call.insert(ToolOutput(ToolResult::success(answer.to_owned().into())));
-    }
-}
-
-/// Once the shown question is answered or its call is gone, shows the
-/// oldest one still waiting.
-fn show_next(
-    removed: On<Remove<Question>>,
-    questions: Query<(Entity, &Question)>,
-    mut shown: ResMut<Shown>,
+/// Gives each answered question's call its answer, the choice or the text,
+/// or why it was not answered (closed, timed out), and lets go of the call.
+fn answered(
+    asks: Query<(Entity, &Outcome, &HoldOf), (With<AskedByTool>, Added<Outcome>)>,
     mut commands: Commands,
 ) {
-    if shown.call != Some(removed.entity) {
-        return;
+    for (asked, outcome, &HoldOf(call)) in &asks {
+        let text = match (Answer::of(outcome), &outcome.0) {
+            (Some(Answer::Choice(text) | Answer::Text(text)), _) => text,
+            (None, Err(report)) => report.message.clone(),
+            (None, Ok(_)) => NO_ANSWER.to_owned(),
+        };
+        let result = ToolResult::success(text.into());
+        commands.entity(call).insert_if_new(Outcome::from(result));
+        commands.entity(asked).remove::<HoldOf>();
     }
-    let next = questions
-        .iter()
-        .filter(|(call, _)| *call != removed.entity)
-        .min_by_key(|(_, question)| question.id);
-    shown.call = next.map(|(call, _)| call);
-    if let Some((call, question)) = next {
-        let question = question.clone();
-        commands.trigger(AskedUser { call, question });
-    }
-}
-
-/// `/answer [#id] [text]`: answers the question numbered `id`, or the one
-/// shown. Without text it shows the question again, or for a free-text
-/// one picked as "Other…", asks for the text.
-fn answer(
-    In(args): In<CommandArgs>,
-    shown: Res<Shown>,
-    questions: Query<(Entity, &Question)>,
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
-) {
-    let (id, text) = match args.args.strip_prefix('#') {
-        Some(rest) => {
-            let (id, text) = rest.split_once(' ').unwrap_or((rest, ""));
-            (id.parse::<u64>().ok(), text.trim())
-        }
-        None => (None, args.args.as_str()),
-    };
-    let asked = match id {
-        Some(id) => questions.iter().find(|(_, question)| question.id == id),
-        None => shown.call.and_then(|call| questions.get(call).ok()),
-    };
-    let Some((call, question)) = asked else {
-        notices.write(Notice::info(args.agent, "No such question is waiting."));
-        return;
-    };
-    if text.is_empty() {
-        if id.is_some() && question.free_text {
-            notices.write(Notice::info(
-                args.agent,
-                format!("{} Type your answer and press Enter.", question.text),
-            ));
-        } else {
-            let question = question.clone();
-            commands.trigger(AskedUser { call, question });
-        }
-        return;
-    }
-    if !question.free_text && !question.choices.iter().any(|choice| choice == text) {
-        let choices = question.choices.join(", ");
-        notices.write(Notice::error(
-            args.agent,
-            format!("Answer one of: {choices}."),
-        ));
-        return;
-    }
-    let text = text.to_owned();
-    commands.queue(move |world: &mut World| settle(world, call, &text));
-}
-
-/// What the user sends to the asking agent, or to an agent it was spawned
-/// by, while a free-text question is shown answers it instead of going to
-/// the model.
-fn answer_typed(
-    mut typed: On<Deliver>,
-    shown: Res<Shown>,
-    questions: Query<&Question>,
-    parents: Query<&SpawnedBy>,
-    mut commands: Commands,
-) {
-    if typed.origin.kind != OriginKind::User
-        || typed.command().is_some()
-        || typed.text.trim().is_empty()
-    {
-        return;
-    }
-    let Some(call) = shown.call else {
-        return;
-    };
-    let Ok(question) = questions.get(call) else {
-        return;
-    };
-    let to_asker = question.agent == typed.entity
-        || parents
-            .iter_ancestors(question.agent)
-            .any(|agent| agent == typed.entity);
-    if !question.free_text || !to_asker {
-        return;
-    }
-    let text = std::mem::take(&mut typed.text);
-    commands.queue(move |world: &mut World| settle(world, call, text.trim()));
 }
 
 #[cfg(test)]

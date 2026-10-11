@@ -1,21 +1,49 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpStream};
+use std::path::PathBuf;
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::settings::Settings;
 use rig_harness_test_support::{app_on, connect, reply};
+use std::sync::mpsc::Receiver;
 
 use super::*;
 
-/// What the client saw.
-#[derive(Debug, Default)]
-struct Seen {
-    unauthorized: Option<String>,
-    posted: Option<String>,
-    deltas: String,
-    turn_ended: bool,
+/// An app serving on a free localhost port, its token written under a
+/// scratch `RIG_HOME`.
+fn serving(test: &str) -> (App, Receiver<()>, PathBuf) {
+    let home = std::env::temp_dir().join(format!("corpus-http-api-{test}-{}", std::process::id()));
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.insert_resource(Settings::from_toml("[serve]\naddr = \"127.0.0.1:0\""))
+        .insert_resource(RigHome(Home::at(&home)))
+        .add_plugins((AgentPlugin, JournalPlugin, HttpApiPlugin));
+    app.finish();
+    app.update();
+    (app, wakes, home)
+}
+
+/// Runs frames until the client thread sends what it saw.
+fn drive<T>(app: &mut App, wakes: &Receiver<()>, client: impl FnOnce() -> T + Send + 'static) -> T
+where
+    T: Send + 'static,
+{
+    let (sender, seen) = mpsc::channel();
+    std::thread::spawn(move || sender.send(client()).ok());
+    let started = Instant::now();
+    loop {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(20)).ok();
+        if let Ok(seen) = seen.try_recv() {
+            return seen;
+        }
+        assert!(
+            started.elapsed() < Duration::from_secs(20),
+            "the client hung"
+        );
+    }
 }
 
 /// Sends a request and returns the response's status line and the rest.
@@ -29,66 +57,59 @@ fn send(addr: SocketAddr, request: &str) -> std::io::Result<(String, BufReader<T
     Ok((status.trim_end().to_owned(), reader))
 }
 
-/// The test's client: a request without the token, the event stream, and
-/// "hi" posted to `agent`.
-fn client(api: &HttpApi, agent: &str) -> std::io::Result<Seen> {
-    let mut seen = Seen::default();
-    let (status, _) = send(api.addr, "GET /agents HTTP/1.1\r\nHost: x\r\n\r\n")?;
-    seen.unauthorized = Some(status);
-    let auth = format!("Authorization: Bearer {}", api.token);
-    let (_, mut events) = send(
-        api.addr,
-        &format!("GET /events HTTP/1.1\r\nHost: x\r\n{auth}\r\n\r\n"),
-    )?;
-    let body = r#"{"text":"hi","mode":"queue"}"#;
-    let post = format!(
-        "POST /agents/{agent}/messages HTTP/1.1\r\nHost: x\r\n{auth}\r\n\
+/// The status line of an authorized `POST` of `body` to `path`.
+fn post(api: &HttpApi, path: &str, body: &str) -> std::io::Result<String> {
+    let request = format!(
+        "POST {path} HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\n\
          Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
+        api.token,
         body.len()
     );
-    let (status, mut rest) = send(api.addr, &post)?;
+    let (status, mut rest) = send(api.addr, &request)?;
     rest.read_to_end(&mut Vec::new())?;
-    seen.posted = Some(status);
-    let mut kind = String::new();
-    let mut line = String::new();
-    while events.read_line(&mut line)? > 0 {
+    Ok(status)
+}
+
+/// The authorized event stream.
+fn events(api: &HttpApi) -> std::io::Result<BufReader<TcpStream>> {
+    let request = format!(
+        "GET /events HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\n\r\n",
+        api.token
+    );
+    Ok(send(api.addr, &request)?.1)
+}
+
+/// Reads events until `done` says the stream told enough.
+fn read_events(
+    stream: &mut BufReader<TcpStream>,
+    mut done: impl FnMut(&str, &Value) -> bool,
+) -> std::io::Result<()> {
+    let (mut kind, mut line) = (String::new(), String::new());
+    while stream.read_line(&mut line)? > 0 {
         if let Some(name) = line.trim_end().strip_prefix("event: ") {
             kind = name.to_owned();
-        } else if let Some(data) = line.trim_end().strip_prefix("data: ") {
-            let data: Value = serde_json::from_str(data).unwrap_or_default();
-            match kind.as_str() {
-                "text_delta" => {
-                    let text = data.get("text").and_then(Value::as_str);
-                    seen.deltas.push_str(text.unwrap_or_default());
-                }
-                "turn_end" => {
-                    seen.turn_ended = true;
-                    break;
-                }
-                _ => {}
-            }
+        } else if let Some(data) = line.trim_end().strip_prefix("data: ")
+            && done(&kind, &serde_json::from_str(data).unwrap_or_default())
+        {
+            return Ok(());
         }
         line.clear();
     }
-    Ok(seen)
+    Ok(())
+}
+
+/// What the client saw.
+#[derive(Debug, Default)]
+struct Seen {
+    unauthorized: String,
+    posted: String,
+    deltas: String,
+    turn_ended: bool,
 }
 
 #[test]
 fn a_posted_message_streams_its_reply_and_the_token_is_required() {
-    let store = MemoryStore::default();
-    let (mut app, wakes) = app_on(&store);
-    let serve = Serve {
-        addr: "127.0.0.1:0".to_owned(),
-        allow_remote: false,
-        token_file: None,
-    };
-    app.add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        HttpApiPlugin { serve: Some(serve) },
-    ));
-    app.finish();
-    app.update();
+    let (mut app, wakes, home) = serving("message");
     let model = MockCompletionModel::from_stream_turns([reply("hello")]);
     let world = app.world_mut();
     let agent = world
@@ -96,8 +117,11 @@ fn a_posted_message_streams_its_reply_and_the_token_is_required() {
         .iter(world)
         .next()
         .map(|(agent, id)| (agent, id.0.clone()));
-    let api = world.get_resource::<HttpApi>().cloned();
-    let ready = (agent, api, connect(&model));
+    let ready = (
+        agent,
+        world.get_resource::<HttpApi>().cloned(),
+        connect(&model),
+    );
     assert!(
         matches!(ready, (Some(_), Some(_), Some(_))),
         "an agent, the server and the model"
@@ -107,123 +131,102 @@ fn a_posted_message_streams_its_reply_and_the_token_is_required() {
     };
     world.entity_mut(agent).insert(connection);
     assert_ne!(api.addr.port(), 0, "the bound port is exposed");
+    let token = std::fs::read_to_string(home.join("serve-token")).ok();
+    std::fs::remove_dir_all(&home).ok();
+    assert_eq!(token.as_deref(), Some(api.token.as_str()));
 
-    let (sender, seen) = mpsc::channel();
-    std::thread::spawn(move || sender.send(client(&api, &id)).ok());
-    let started = Instant::now();
-    let seen = loop {
-        app.update();
-        wakes.recv_timeout(Duration::from_millis(50)).ok();
-        if let Ok(seen) = seen.try_recv() {
-            break seen;
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "the client hung"
-        );
-    };
+    let seen = drive(&mut app, &wakes, move || {
+        let mut seen = Seen {
+            unauthorized: send(api.addr, "GET /agents HTTP/1.1\r\nHost: x\r\n\r\n")?.0,
+            ..Seen::default()
+        };
+        let mut stream = events(&api)?;
+        let body = r#"{"text":"hi","mode":"queue"}"#;
+        seen.posted = post(&api, &format!("/agents/{id}/messages"), body)?;
+        read_events(&mut stream, |kind, data| {
+            if kind == "text_delta" {
+                let text = data.get("text").and_then(Value::as_str);
+                seen.deltas.push_str(text.unwrap_or_default());
+            }
+            seen.turn_ended = kind == "turn_end";
+            seen.turn_ended
+        })?;
+        std::io::Result::Ok(seen)
+    });
     assert!(seen.is_ok(), "the client failed: {seen:?}");
     let Ok(seen) = seen else {
         return;
     };
-    assert_eq!(
-        seen.unauthorized.as_deref(),
-        Some("HTTP/1.1 401 Unauthorized")
-    );
-    assert_eq!(seen.posted.as_deref(), Some("HTTP/1.1 202 Accepted"));
+    assert_eq!(seen.unauthorized, "HTTP/1.1 401 Unauthorized");
+    assert_eq!(seen.posted, "HTTP/1.1 202 Accepted");
     assert!(seen.deltas.contains("hello"), "{seen:?}");
     assert!(seen.turn_ended, "{seen:?}");
 }
 
-/// The commands run, by their arguments.
+/// How each question was answered.
 #[derive(Resource, Default)]
-struct Ran(Vec<String>);
-
-/// What the pickers reported.
-#[derive(Resource, Default)]
-struct Reported(Vec<Option<Chosen>>);
-
-/// The status line of `POST /approvals/0` choosing `choice`.
-fn approve(api: &HttpApi, choice: &str) -> std::io::Result<String> {
-    let body = format!(r#"{{"choice":"{choice}"}}"#);
-    let post = format!(
-        "POST /approvals/0 HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer {}\r\n\
-         Content-Type: application/json\r\nContent-Length: {}\r\n\r\n{body}",
-        api.token,
-        body.len()
-    );
-    let (status, mut rest) = send(api.addr, &post)?;
-    rest.read_to_end(&mut Vec::new())?;
-    Ok(status)
-}
+struct Answers(Vec<Option<Answer>>);
 
 #[test]
-fn a_plugins_picker_is_answered_over_http_and_closed() {
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    let serve = Serve {
-        addr: "127.0.0.1:0".to_owned(),
-        allow_remote: false,
-        token_file: None,
-    };
-    app.add_plugins((AgentPlugin, HttpApiPlugin { serve: Some(serve) }))
-        .init_resource::<Ran>()
-        .init_resource::<Reported>()
-        .add_command(
-            "note",
-            "Notes its arguments",
-            |In(args): In<CommandArgs>, mut ran: ResMut<Ran>| ran.0.push(args.args),
-        )
-        .add_observer(|picked: On<Picked>, mut reported: ResMut<Reported>| {
-            reported.0.push(picked.chosen.clone());
-        });
-    app.finish();
-    app.update();
-    let world = app.world_mut();
-    let agent = world.spawn(Agent).id();
-    let picker = Picker::new("Size")
-        .for_agent(agent)
-        .item("small", "note small")
-        .item("large", "note large");
-    let picker = world.spawn(picker).id();
-    let api = world.get_resource::<HttpApi>().cloned();
+fn a_plugins_question_is_answered_over_http() {
+    let (mut app, wakes, home) = serving("ask");
+    std::fs::remove_dir_all(&home).ok();
+    let api = app.world().get_resource::<HttpApi>().cloned();
     assert!(api.is_some(), "the server runs");
     let Some(api) = api else {
         return;
     };
-    app.update();
+    let world = app.world_mut();
+    let answerers = world.query::<&Answerer>().iter(world).count();
+    assert_eq!(answerers, 1, "the server answers questions");
 
-    let (sender, statuses) = mpsc::channel();
-    std::thread::spawn(move || {
-        let choices = ["huge", "large", "small"];
-        let statuses: std::io::Result<Vec<String>> =
-            choices.iter().map(|choice| approve(&api, choice)).collect();
-        sender.send(statuses).ok();
+    // The question is asked once the client listens; its answers are kept.
+    app.init_resource::<Answers>().add_observer(
+        |answered: On<Add<Outcome>>,
+         asks: Query<&Outcome, With<Ask>>,
+         mut answers: ResMut<Answers>| {
+            if let Ok(outcome) = asks.get(answered.entity) {
+                answers.0.push(Answer::of(outcome));
+            }
+        },
+    );
+    app.add_systems(
+        Update,
+        |subscribers: Res<Subscribers>, mut asked: Local<bool>, mut commands: Commands| {
+            if !*asked && !subscribers.0.is_empty() {
+                *asked = true;
+                commands.spawn(Ask::yes_no("Deploy?"));
+            }
+        },
+    );
+    let status = drive(&mut app, &wakes, move || {
+        let mut stream = events(&api)?;
+        let mut id = None;
+        read_events(&mut stream, |kind, data| {
+            id = data.get("id").and_then(Value::as_u64);
+            kind == "approval_request"
+        })?;
+        let path = format!("/approvals/{}", id.unwrap_or_default());
+        let statuses = [
+            post(&api, &path, r#"{"choice":"maybe"}"#)?,
+            post(&api, &path, r#"{"choice":"yes"}"#)?,
+        ];
+        let mut closed = false;
+        read_events(&mut stream, |kind, _| {
+            closed = kind == "approval_closed";
+            closed
+        })?;
+        std::io::Result::Ok((statuses, closed))
     });
-    let started = Instant::now();
-    let statuses = loop {
-        app.update();
-        wakes.recv_timeout(Duration::from_millis(50)).ok();
-        if let Ok(statuses) = statuses.try_recv() {
-            break statuses;
-        }
-        assert!(
-            started.elapsed() < Duration::from_secs(20),
-            "the client hung"
-        );
+    assert!(status.is_ok(), "the client failed: {status:?}");
+    let Ok((statuses, closed)) = status else {
+        return;
     };
-    let statuses = statuses.unwrap_or_default();
     assert_eq!(
         statuses,
-        [
-            "HTTP/1.1 400 Bad Request",
-            "HTTP/1.1 202 Accepted",
-            "HTTP/1.1 404 Not Found"
-        ]
+        ["HTTP/1.1 400 Bad Request", "HTTP/1.1 202 Accepted"]
     );
-    assert_eq!(app.world().resource::<Ran>().0, ["large"]);
-    assert_eq!(
-        app.world().resource::<Reported>().0,
-        [Some(Chosen::Item(1))]
-    );
-    assert!(app.world().get_entity(picker).is_err(), "closed");
+    assert!(closed, "the stream says the question closed");
+    let answers = &app.world().resource::<Answers>().0;
+    assert_eq!(answers, &[Some(Answer::Choice("yes".to_owned()))]);
 }

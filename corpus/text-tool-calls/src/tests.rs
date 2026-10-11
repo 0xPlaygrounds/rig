@@ -3,7 +3,7 @@ use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness_test_support::{app_on, connect, reply, run_until};
+use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -19,15 +19,6 @@ fn chunked_call() -> Vec<MockStreamEvent> {
     ]
 }
 
-/// `model` as a catalog model that cannot call tools.
-fn without_tools(model: &MockCompletionModel) -> Option<Connection> {
-    let mut connection = connect(model)?;
-    let mut spec = connection.spec.as_ref().clone();
-    spec.tools = false;
-    connection.spec = Arc::new(spec);
-    Some(connection)
-}
-
 #[derive(Deserialize, JsonSchema)]
 struct ReadArgs {
     /// The file.
@@ -38,13 +29,9 @@ struct ReadArgs {
 #[derive(Resource, Default)]
 struct Reads(Vec<String>);
 
-/// Every streamed text of a model call a front could draw.
+/// Each streamed text a front could have drawn.
 #[derive(Resource, Default)]
 struct Shown(Vec<String>);
-
-/// Turns ended.
-#[derive(Resource, Default)]
-struct Ended(usize);
 
 /// The kernel and the plugin on `store`, with a `read` tool that answers
 /// "x", after the first frame restored the session.
@@ -56,7 +43,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<Ended>()
         .add_open_tool("read", "Read a file.", ToolOptions::default(), read)
         .add_systems(Update, watch.after(PollCalls))
-        .add_observer(|_: On<TurnEnded>, mut ended: ResMut<Ended>| ended.0 += 1);
+        .add_observer(log_ended);
     app.finish();
     app.update();
     (app, wakes)
@@ -64,10 +51,11 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
 
 fn read(called: On<ToolCalled<ReadArgs>>, mut reads: ResMut<Reads>, mut commands: Commands) {
     reads.0.push(called.args.path.clone());
-    let output = ToolOutput(ToolResult::success("x".into()));
-    commands.entity(called.call).insert(output);
+    let read = Outcome::from(ToolResult::success("x".into()));
+    commands.entity(called.call).insert_if_new(read);
 }
 
+/// A front drawing each call's `Partial` as it streams in.
 fn watch(partials: Query<&Partial, Changed<Partial>>, mut shown: ResMut<Shown>) {
     shown
         .0
@@ -81,14 +69,13 @@ fn first_agent(world: &mut World) -> Option<Entity> {
         .next()
 }
 
-/// The `read` calls in `messages`, by their arguments.
+/// The arguments of the `read` calls in `messages`.
 fn read_calls(messages: &[Message]) -> Vec<String> {
-    messages
-        .iter()
-        .filter_map(|message| match message {
-            Message::Assistant(assistant) => Some(assistant.tool_calls()),
-            _ => None,
-        })
+    let calls = messages.iter().filter_map(|message| match message {
+        Message::Assistant(assistant) => Some(assistant.tool_calls()),
+        _ => None,
+    });
+    calls
         .flatten()
         .filter(|call| call.function.name.as_str() == "read")
         .map(|call| call.function.raw_arguments())
@@ -100,7 +87,13 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
     let model = MockCompletionModel::from_stream_turns([chunked_call(), reply("It says x.")]);
-    let connection = without_tools(&model);
+    // The catalog's DeepSeek model, flagged as calling no tools.
+    let connection = connect(&model).map(|mut connection| {
+        let mut spec = connection.spec.as_ref().clone();
+        spec.tools = false;
+        connection.spec = Arc::new(spec);
+        connection
+    });
     let agent = first_agent(app.world_mut());
     assert!(
         connection.is_some() && agent.is_some(),
@@ -115,7 +108,9 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
         "What is in a.txt?",
         DeliveryMode::Queue,
     ));
-    run_until(&mut app, &wakes, |world| world.resource::<Ended>().0 > 0);
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
 
     let requests = model.requests();
     assert_eq!(requests.len(), 2, "{requests:?}");
@@ -127,90 +122,74 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
     assert!(preamble.contains("<tool name="), "{preamble}");
     assert!(preamble.contains("## read"), "{preamble}");
     assert_eq!(app.world().resource::<Reads>().0, ["a.txt"]);
-    // Whatever text a front drew, it never showed any of the block.
-    for shown in &app.world().resource::<Shown>().0 {
-        let replies = ["Let me look.", "It says x."];
-        assert!(
-            replies
-                .iter()
-                .any(|reply| reply.starts_with(shown.as_str())),
-            "{shown}"
-        );
-    }
-    // The result went back as user text, and no message holds a native
-    // tool call or result.
-    let user_text = |message: &Message| {
-        match message {
-        Message::User { content } => content.iter().any(|content| {
-            matches!(content, UserContent::Text(text) if text.text() == "Result of read: x")
-        }),
+
+    // Whatever a front drew of the replies as they streamed, it never
+    // showed a bit of the block. (A scripted reply often streams whole
+    // between two frames, so the exact text is checked on the handler in
+    // `a_block_split_mid_tag_never_streams`.)
+    let shown = &app.world().resource::<Shown>().0;
+    let flashed = shown.iter().find(|text| text.contains('<'));
+    assert_eq!(flashed, None);
+
+    // The result went back as user text, with no native call or result.
+    let result_as_text = second.chat_history.iter().any(|message| match message {
+        Message::User { content } => content.iter().any(
+            |content| matches!(content, UserContent::Text(text) if text.text() == "Result of read: x"),
+        ),
         _ => false,
-    }
-    };
-    assert!(second.chat_history.iter().any(user_text), "{second:?}");
+    });
+    assert!(result_as_text, "{second:?}");
     assert!(read_calls(&second.chat_history).is_empty());
     let sent = serde_json::to_string(second).unwrap_or_default();
     assert!(!sent.contains("tool_result"), "{sent}");
-
-    // The conversation keeps a real call and its result, and the answer.
-    let conversation = app
-        .world()
-        .get::<Conversation>(agent)
-        .map(Conversation::messages);
-    let messages = conversation.unwrap_or_default().to_vec();
-    assert_eq!(read_calls(&messages), [r#"{"path":"a.txt"}"#]);
-    let shown_first = messages.iter().find_map(|message| match message {
-        Message::Assistant(assistant) => Some(assistant.content.clone()),
-        _ => None,
-    });
-    let text = shown_first.and_then(|content| {
-        content.into_iter().find_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text().to_owned()),
-            _ => None,
-        })
-    });
-    assert_eq!(text.as_deref(), Some("Let me look."));
-    assert!(messages.iter().any(|message| matches!(message,
-        Message::User { content } if content.iter().any(|c| matches!(c, UserContent::ToolResult(_))))));
     drop(app);
 
-    // ...as saved: a restart restores the real call.
+    // The saved conversation keeps a real call and its result.
     let (mut restarted, _wakes) = start(&store);
     let world = restarted.world_mut();
-    let agent = first_agent(world);
-    let restored = agent.and_then(|agent| world.get::<Conversation>(agent));
-    let restored = restored.map(|conversation| read_calls(conversation.messages()));
-    assert_eq!(restored.unwrap_or_default(), [r#"{"path":"a.txt"}"#]);
+    let restored = first_agent(world).and_then(|agent| world.get::<Conversation>(agent));
+    let messages = restored
+        .map(|conversation| conversation.messages().to_vec())
+        .unwrap_or_default();
+    assert_eq!(read_calls(&messages), [r#"{"path":"a.txt"}"#]);
+    let has_result = messages.iter().any(|message| {
+        matches!(message, Message::User { content }
+            if content.iter().any(|content| matches!(content, UserContent::ToolResult(_))))
+    });
+    assert!(has_result, "{messages:?}");
 }
 
-/// The streamed text of the reply, as the turn reads it: the block never
-/// reaches it, though the chunks cut it mid-tag.
+/// The reply as the kernel streams it from the wrapped handler: the block
+/// never reaches it, though the chunks cut it mid-tag, and the response
+/// holds the real call.
 #[test]
 fn a_block_split_mid_tag_never_streams() {
     let model = MockCompletionModel::from_stream_turns([chunked_call()]);
-    let connection = without_tools(&model);
-    assert!(connection.is_some(), "the catalog lists the model");
-    let Some(connection) = connection else {
+    let handler = connect(&model).map(|connection| FromText(connection.handler.0));
+    assert!(handler.is_some(), "the catalog lists the model");
+    let Some(handler) = handler else {
         return;
     };
-    let handler = adapter(&connection).handler.0;
-    let request = CompletionRequest::new(Message::user("What is in a.txt?"));
+    let request = rig_core::completion::CompletionRequest::new(Message::user("What is in a.txt?"));
     let kind = EffectKind::Completion {
         request,
         stream: true,
     };
+    let dispatch = Dispatch::new(rig_core::effect::EffectId::from_raw(1), true);
     let items: Vec<_> = futures::executor::block_on(async {
-        let reply = handler
-            .handle(kind, Dispatch::new(EffectId::from_raw(1), true))
-            .await;
-        reply.into_stream().collect().await
+        handler
+            .serve(kind, dispatch)
+            .await
+            .into_stream()
+            .collect()
+            .await
     });
     let mut streamed = String::new();
     let mut calls = Vec::new();
     for item in items {
         match item {
             Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => {
-                streamed.push_str(&text);
+                streamed.push_str(&text)
             }
             Ok(Relayed::Done(response)) => {
                 calls.extend(

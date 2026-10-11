@@ -11,6 +11,8 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
+# Named by the derives of the saved turn starts.
+bevy_reflect = { workspace = true }
 # The pool an open tool call's work runs on.
 bevy_tasks = { workspace = true }
 # The session's effect log, read back from its JSON lines.

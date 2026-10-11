@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
@@ -6,7 +7,7 @@ use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use serde_json::json;
 
 use super::*;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 /// The model every subagent is answered by; one at a time takes its turns.
 #[derive(Resource)]
@@ -25,14 +26,14 @@ struct Session {
 
 impl Session {
     fn new(
-        policy: SubagentPolicy,
+        policy: SubagentsConfig,
         parent: &MockCompletionModel,
         subagents: &MockCompletionModel,
     ) -> Self {
         let (mut app, wakes) = app_on(&MemoryStore::default());
         let read = |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
-            let output = ToolOutput(ToolResult::success("Nothing here.".into()));
-            commands.entity(called.call).insert(output);
+            let output = Outcome::from(ToolResult::success("Nothing here.".into()));
+            commands.entity(called.call).insert_if_new(output);
         };
         app.insert_resource(Models(Connector::new(Catalog::default())))
             .insert_resource(policy)
@@ -75,16 +76,14 @@ impl Session {
 
     /// Asks the parent to start, and runs until its model was asked `calls`
     /// times.
-    fn run(&mut self, parent: &MockCompletionModel, calls: usize) {
+    fn run(&mut self, done: impl Fn(&World) -> bool) {
         let world = self.app.world_mut();
         let mut roots = world.query_filtered::<Entity, (With<Agent>, Without<SpawnedBy>)>();
         let first = roots.iter(world).next();
         if let Some(agent) = first {
             world.trigger(Deliver::new(agent, "Go.", DeliveryMode::Queue));
         }
-        run_until(&mut self.app, &self.wakes, |_| {
-            parent.request_count() >= calls
-        });
+        run_until(&mut self.app, &self.wakes, done);
     }
 
     /// The subagents.
@@ -96,26 +95,32 @@ impl Session {
 }
 
 fn task(id: &str, prompt: &str) -> MockStreamEvent {
-    MockStreamEvent::tool_call(id, TASK, json!({ "prompt": prompt }))
+    MockStreamEvent::tool_call(id, TASK, json!({ "description": id, "prompt": prompt }))
+}
+
+/// A reply that calls `task` once.
+fn one_task(id: &str, prompt: &str) -> Vec<MockStreamEvent> {
+    vec![
+        task(id, prompt),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]
 }
 
 #[test]
 fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
-    let policy = SubagentPolicy {
+    let policy = SubagentsConfig {
         max_depth: 1,
-        ..SubagentPolicy::default()
+        ..SubagentsConfig::default()
     };
     let parent = MockCompletionModel::from_stream_turns([
-        calls("t1", TASK, json!({ "prompt": "x" })),
+        one_task("t1", "x"),
         reply("Waiting."),
         reply("Done."),
     ]);
-    let subagent = MockCompletionModel::from_stream_turns([
-        calls("t2", TASK, json!({ "prompt": "y" })),
-        reply("Did it myself."),
-    ]);
+    let subagent =
+        MockCompletionModel::from_stream_turns([one_task("t2", "y"), reply("Did it myself.")]);
     let mut session = Session::new(policy, &parent, &subagent);
-    session.run(&parent, 3);
+    session.run(|_| parent.request_count() >= 3);
 
     assert_eq!(session.subagents().len(), 1);
     let requests = subagent.requests();
@@ -136,18 +141,18 @@ fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
 
 #[test]
 fn a_new_subagent_gets_the_default_tools() {
-    let policy = SubagentPolicy {
+    let policy = SubagentsConfig {
         default_tools: Some(vec!["read".to_owned()]),
-        ..SubagentPolicy::default()
+        ..SubagentsConfig::default()
     };
     let parent = MockCompletionModel::from_stream_turns([
-        calls("t1", TASK, json!({ "prompt": "x" })),
+        one_task("t1", "x"),
         reply("Waiting."),
         reply("Done."),
     ]);
     let subagent = MockCompletionModel::from_stream_turns([reply("Read it.")]);
     let mut session = Session::new(policy, &parent, &subagent);
-    session.run(&parent, 3);
+    session.run(|_| parent.request_count() >= 3);
 
     let first = subagent.requests().into_iter().next();
     let offered: Vec<String> = first
@@ -164,50 +169,50 @@ fn a_new_subagent_gets_the_default_tools() {
 
 #[test]
 fn spawns_beyond_max_concurrent_wait_for_a_slot() {
-    let policy = SubagentPolicy {
+    let policy = SubagentsConfig {
         max_concurrent: Some(1),
-        ..SubagentPolicy::default()
+        ..SubagentsConfig::default()
     };
     let both = vec![
         task("t1", "First."),
         task("t2", "Second."),
         MockStreamEvent::final_response_with_default_usage(),
     ];
-    let parent =
-        MockCompletionModel::from_stream_turns([both, reply("Waiting."), reply("Both done.")]);
+    let parent = MockCompletionModel::from_stream_turns(
+        std::iter::once(both).chain((0..4).map(|_| reply("Noted."))),
+    );
     let subagents =
         MockCompletionModel::from_stream_turns([reply("First done."), reply("Second done.")]);
     let mut session = Session::new(policy, &parent, &subagents);
-    session.run(&parent, 3);
+    // The parent's status line said one task was queued meanwhile.
+    let queued = Cell::new(0);
+    session.run(|world| {
+        let counts = world.iter_entities().filter_map(|e| e.get::<QueuedTasks>());
+        queued.set(queued.get().max(counts.map(|q| q.0).max().unwrap_or(0)));
+        let steps = world.resource::<Steps>().0.len();
+        steps == 4 && parent.request_count() >= 3
+    });
 
-    // The second was queued, and started only once the first finished.
-    let results = parent
-        .requests()
-        .get(1)
-        .map(|r| json!(r.chat_history).to_string());
-    assert!(results.unwrap_or_default().contains("Queued subagent"));
+    assert_eq!(queued.get(), 1);
+    // The second started only once the first finished.
     let steps = &session.app.world().resource::<Steps>().0;
     let order: Vec<&str> = steps.iter().map(|(step, _)| *step).collect();
     assert_eq!(order, ["started", "finished", "started", "finished"]);
     let agents: Vec<Entity> = steps.iter().map(|(_, agent)| *agent).collect();
     assert_eq!(agents.first(), agents.get(1));
     assert_ne!(agents.first(), agents.get(2));
-    let report = parent
-        .requests()
-        .get(2)
-        .map(|r| json!(r.chat_history).to_string());
-    let report = report.unwrap_or_default();
-    assert!(report.contains("First done.") && report.contains("Second done."));
+    let read = format!("{:?}", parent.requests());
+    assert!(read.contains("First done.") && read.contains("Second done."));
 }
 
 #[test]
 fn a_subagent_over_max_turn_calls_is_stopped_and_reported_with_its_partial_answer() {
-    let policy = SubagentPolicy {
+    let policy = SubagentsConfig {
         max_turn_calls: Some(1),
-        ..SubagentPolicy::default()
+        ..SubagentsConfig::default()
     };
     let parent = MockCompletionModel::from_stream_turns([
-        calls("t1", TASK, json!({ "prompt": "x" })),
+        one_task("t1", "x"),
         reply("Waiting."),
         reply("Done."),
     ]);
@@ -218,7 +223,7 @@ fn a_subagent_over_max_turn_calls_is_stopped_and_reported_with_its_partial_answe
     ];
     let subagent = MockCompletionModel::from_stream_turns([read, reply("Never sent.")]);
     let mut session = Session::new(policy, &parent, &subagent);
-    session.run(&parent, 3);
+    session.run(|_| parent.request_count() >= 3);
 
     let report = parent
         .requests()

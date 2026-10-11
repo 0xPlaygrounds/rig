@@ -4,8 +4,9 @@ use std::sync::{Arc, Mutex};
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::harness_protocol::Invocation;
-use rig_harness_test_support::{app_on, calls, connect, reply, run_until};
+use rig_harness_test_support::{
+    AnswerAsks, Answers, Ended, app_on, calls, connect, log_ended, reply, run_until,
+};
 
 use super::*;
 
@@ -62,86 +63,70 @@ fn stub(received: &Received) -> Option<String> {
     Some(url)
 }
 
-/// What the plugin showed the user.
+/// What the plugin showed the user: its questions' bodies and notices.
 #[derive(Resource, Default)]
 struct Shown {
-    picks: Vec<PickRequest>,
+    asked: Vec<String>,
     notices: Vec<String>,
-    ended: usize,
 }
 
-fn record(
-    mut picks: MessageReader<PickRequest>,
-    mut notices: MessageReader<Notice>,
-    mut shown: ResMut<Shown>,
-) {
-    shown.picks.extend(picks.read().cloned());
+fn record(mut notices: MessageReader<Notice>, mut shown: ResMut<Shown>) {
     shown
         .notices
         .extend(notices.read().map(|notice| notice.text.clone()));
 }
 
-/// Runs `/share`, then picks the picker's first item, as the user would.
-fn share_and_confirm(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>, agent: Entity) {
-    let before = app.world().resource::<Shown>().picks.len();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "share".to_owned(),
-    });
-    run_until(app, wakes, |world| {
-        world.resource::<Shown>().picks.len() > before
-    });
-    let shown = app.world().resource::<Shown>();
-    let confirm = shown
-        .picks
-        .last()
-        .and_then(|pick| pick.items.first())
-        .map(|item| item.command.clone());
-    assert_eq!(confirm.as_deref(), Some("share confirm"));
-    let label = shown
-        .picks
-        .last()
-        .and_then(|pick| pick.items.first())
-        .map(|item| item.label.clone())
-        .unwrap_or_default();
-    assert!(label.contains("1 secrets redacted: sk-tes…"), "{label}");
-    assert!(!label.contains(KEY), "{label}");
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: confirm.unwrap_or_default(),
-    });
+fn shared_links(world: &World) -> usize {
+    let shown = world.resource::<Shown>();
+    shown
+        .notices
+        .iter()
+        .filter(|notice| notice.starts_with("Shared:"))
+        .count()
+}
+
+/// Types `/share`, which the front's script confirms, and waits for the
+/// link.
+fn share(app: &mut App, wakes: &std::sync::mpsc::Receiver<()>, agent: Entity) {
+    let links = shared_links(app.world());
+    app.world_mut()
+        .trigger(Deliver::new(agent, "/share", DeliveryMode::Queue));
+    run_until(app, wakes, |world| shared_links(world) > links);
 }
 
 #[test]
 fn share_posts_a_redacted_page_then_updates_the_same_one() {
     let received = Received::default();
-    let url = stub(&received);
-    assert!(url.is_some(), "the stub server listens");
+    let url = stub(&received).unwrap_or_default();
+    assert!(!url.is_empty(), "the stub server listens");
+    let settings = format!("[share]\ntarget = \"http\"\nurl = \"{url}\"\nclipboard = false\n");
     let store = MemoryStore::default();
     let (mut app, wakes) = app_on(&store);
-    app.set_error_handler(bevy_ecs::error::warn)
-        .insert_resource(Invoked {
-            args: Invocation::default(),
-            terminal: true,
-        })
-        .insert_resource(ShareConfig {
-            target: ShareTarget::Http {
-                url: url.unwrap_or_default(),
-            },
-            clipboard: false,
-        })
+    let confirm = Answer::Choice("share".to_owned());
+    app.insert_resource(Settings::from_toml(&settings))
+        .insert_resource(Answers::new([confirm.clone(), confirm]))
         .init_resource::<Shown>()
-        .add_plugins((AgentPlugin, JournalPlugin, SharePlugin))
+        .init_resource::<Ended>()
+        .add_plugins((AgentPlugin, JournalPlugin, AnswerAsks, SharePlugin))
         .add_systems(Last, record)
-        .add_observer(|_: On<TurnEnded>, mut shown: ResMut<Shown>| shown.ended += 1)
+        .add_observer(log_ended)
+        .add_observer(
+            |asked: On<Add<Ask>>, asks: Query<&Ask>, mut shown: ResMut<Shown>| {
+                shown
+                    .asked
+                    .extend(asks.get(asked.entity).map(|ask| ask.body.clone()));
+            },
+        )
         .add_open_tool(
             "env",
             "The environment.",
             ToolOptions::default(),
             |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
                 let text = format!("OPENAI_API_KEY={KEY}\nHOME=/home/u");
-                let result = ToolResult::success(rig_core::tool::ToolOutput::text(text));
-                commands.entity(called.call).insert(ToolOutput(result));
+                let result = ToolResult::success(text.into());
+                commands
+                    .entity(called.call)
+                    .insert_if_new(Outcome::from(result));
             },
         );
     app.finish();
@@ -154,45 +139,55 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
     let agent = world
         .query_filtered::<Entity, With<Agent>>()
         .iter(world)
-        .next();
-    assert!(agent.is_some(), "the agent");
-    let (Some(agent), Some(connection)) = (agent, connect(&model)) else {
-        return;
-    };
-    world.entity_mut(agent).insert(connection);
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    if let Some(connection) = connect(&model) {
+        world.entity_mut(agent).insert(connection);
+    }
     world.trigger(Deliver::new(agent, ASKED, DeliveryMode::Steer));
     run_until(&mut app, &wakes, |world| {
-        world.resource::<Shown>().ended > 0
+        !world.resource::<Ended>().0.is_empty()
     });
 
-    share_and_confirm(&mut app, &wakes, agent);
-    run_until(&mut app, &wakes, |world| {
-        world.get::<Shared>(agent).is_some()
-    });
-    let notices = &app.world().resource::<Shown>().notices;
+    share(&mut app, &wakes, agent);
+    let shown = app.world().resource::<Shown>();
     assert!(
-        notices.iter().any(|notice| notice == "Shared: http://x/1"),
-        "{notices:?}"
-    );
-
-    share_and_confirm(&mut app, &wakes, agent);
-    run_until(&mut app, &wakes, |world| {
-        let shown = world.resource::<Shown>();
         shown
             .notices
             .iter()
-            .filter(|notice| notice.starts_with("Shared:"))
-            .count()
-            == 2
-    });
+            .any(|notice| notice == "Shared: http://x/1"),
+        "{:?}",
+        shown.notices
+    );
+    let body = shown.asked.first().cloned().unwrap_or_default();
+    assert!(
+        body.contains("sk-tes… (27 chars)") && !body.contains(KEY),
+        "{body}"
+    );
+    let id = app
+        .world()
+        .get::<Shared>(agent)
+        .map(|shared| shared.id.clone());
+    assert_eq!(id.as_deref(), Some("1"));
+
+    share(&mut app, &wakes, agent);
+    let asked = &app.world().resource::<Answers>().asked;
+    assert_eq!(asked.len(), 2, "each /share asks: {asked:?}");
     let received = received.lock().map(|got| got.clone()).unwrap_or_default();
-    assert_eq!(received.len(), 2, "a create and an update: {received:?}");
-    let [(first, first_path, page), (second, second_path, _)] = received.as_slice() else {
-        return;
-    };
-    assert_eq!((first.as_str(), first_path.as_str()), ("POST", "/"));
+    let requests: Vec<(&str, &str)> = received
+        .iter()
+        .map(|(method, path, _)| (method.as_str(), path.as_str()))
+        .collect();
+    assert_eq!(
+        requests,
+        [("POST", "/"), ("PUT", "/1")],
+        "a create, then an update"
+    );
+    let page = received
+        .first()
+        .map(|(.., page)| page.as_str())
+        .unwrap_or_default();
     assert!(page.contains("<html>") && page.contains(ASKED), "{page}");
     assert!(page.contains("OPENAI_API_KEY=[REDACTED]"), "{page}");
     assert!(!page.contains(KEY), "the key is not shared");
-    assert_eq!((second.as_str(), second_path.as_str()), ("PUT", "/1"));
 }

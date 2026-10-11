@@ -1,8 +1,8 @@
 //! Plugin corpus: 34. Todo tracker (spec `34-todo-tracker.md`).
 //!
 //! The `todo` tool keeps a todo list per agent ([`Todos`], saved with the
-//! session), which the terminal view shows in a panel (`/todo panel`
-//! toggles it) and as `todo 3/7` in the status line. An agent whose turn
+//! session), which the terminal view shows in a panel (Alt+T or
+//! `/todo panel` toggles it) and as `todo 3/7` in the status line. An agent whose turn
 //! ends with an answer while items are still open is nudged once per
 //! user message to carry on. `/todo` shows the list and `/todo clear`
 //! clears it; a `--print` run prints the final list after the answer.
@@ -12,8 +12,8 @@ use rig_print::PrintSection;
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::widgets::{Block, Paragraph};
 use rig_tui::{
-    Focused, PanelCanvas, Placement, RequestRedraw, Side, StatusItem, StatusItems, StatusSystems,
-    Tone, TuiPanel, TuiSystems,
+    AppKeyBindingsExt, Focused, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw, Side,
+    StatusItem, StatusItems, StatusSystems, Tone, TuiPanel, TuiSystems, run_command,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -64,7 +64,11 @@ impl Plugin for TodoPlugin {
             .add_systems(Update, redraw)
             .add_systems(PostUpdate, show_status.in_set(StatusSystems))
             .add_systems(PostUpdate, place_panel.in_set(TuiSystems::Prepare))
-            .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw));
+            .add_systems(PostUpdate, draw_panel.in_set(TuiSystems::Draw))
+            .add_key_binding(
+                KeyBinding::new(KeyPress::alt('t'), "Show or hide the todo list"),
+                run_command("todo panel"),
+            );
         app.world_mut()
             .spawn((PrintSection::new("todo", ""), PrintedList));
         app.add_systems(PostUpdate, print_list);

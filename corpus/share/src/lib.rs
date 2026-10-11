@@ -1,36 +1,38 @@
 //! Plugin corpus: 42. Share a session (spec `42-share.md`).
 //!
 //! `/share` renders the agent's conversation as an HTML page with every
-//! secret found redacted, and asks with a picker whether to publish it,
-//! listing what goes and the secrets taken out. Confirmed, it uploads in
-//! the background to the configured target: a secret GitHub gist (with a
-//! token from the config, `GH_TOKEN`/`GITHUB_TOKEN`, or `gh auth token`),
-//! or an `http` paste server that answers a POST with `{"url": …}`. The
-//! link is shown, copied to the clipboard when a clipboard tool is there,
-//! and saved with the session, so `/share` again updates the same page and
-//! `/unshare` deletes it. A run nobody sits at shares only with
-//! `/share --yes`.
+//! secret found redacted, and spawns the upload as a `share` effect held
+//! by a question listing what goes and the secrets taken out. Confirmed,
+//! the effect starts and uploads in the background to the `[share]`
+//! target: a secret GitHub gist (with a token from `GH_TOKEN`,
+//! `GITHUB_TOKEN` or `gh auth token`), or an `http` paste server that
+//! answers a POST with `{"url": …}`. The link is shown, copied to the
+//! clipboard when a clipboard tool is there, and saved with the session,
+//! so `/share` again updates the same page and `/unshare` deletes it. A
+//! run nobody answers questions in shares only when started with `--yes`.
 
 use std::io::Write as _;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_core::http_client::{self, HttpClientExt, Method, Request};
-use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::*;
-use rig_tui::{PickItem, PickRequest};
-use serde::Deserialize;
+use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
+use rig_harness::rig_core::http_client::{self, HttpClientExt, Method, Request};
+use rig_harness::rig_core::{ErrorKind, ErrorReport};
+use serde::{Deserialize, Serialize};
 
 mod render;
 
 #[cfg(test)]
 mod tests;
 
-/// The file in `RIG_HOME` the configuration is read from, when no
-/// [`ShareConfig`] was inserted.
-const CONFIG_FILE: &str = "share.json";
+/// The effect kind of an upload or a deletion.
+const KIND: &str = "share";
+
+/// The option that shares without asking.
+const YES: &str = "yes";
 
 /// The name of the page in a gist.
 const GIST_FILE: &str = "session.html";
@@ -38,52 +40,49 @@ const GIST_FILE: &str = "session.html";
 /// Where GitHub's gist API is.
 const GIST_API: &str = "https://api.github.com/gists";
 
-/// Where shared sessions go, and how.
+/// The `[share]` settings: `target = "gist"`, or `target = "http"` with
+/// `url = "https://paste.example/"`; `clipboard = false` keeps links off
+/// the clipboard.
 #[derive(Resource, Clone, Debug, Deserialize)]
-pub struct ShareConfig {
-    /// The target.
-    #[serde(default)]
-    pub target: ShareTarget,
-    /// Whether the link is copied to the clipboard.
-    #[serde(default = "copy_by_default")]
+#[serde(default, deny_unknown_fields)]
+pub struct ShareSettings {
+    /// Where pages go.
+    pub target: Target,
+    /// The paste server, for `http`: `POST url` creates (answering
+    /// `{"url": …, "id"?: …}`), `PUT url/id` updates, `DELETE url/id`
+    /// deletes.
+    pub url: String,
+    /// Whether links are copied to the clipboard.
     pub clipboard: bool,
 }
 
-fn copy_by_default() -> bool {
-    true
-}
-
-impl Default for ShareConfig {
+impl Default for ShareSettings {
     fn default() -> Self {
         Self {
-            target: ShareTarget::default(),
+            target: Target::Gist,
+            url: String::new(),
             clipboard: true,
         }
     }
 }
 
 /// Where a session is published.
-#[derive(Clone, Debug, Default, Deserialize)]
-#[serde(tag = "kind", rename_all = "lowercase")]
-pub enum ShareTarget {
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Target {
     /// A secret GitHub gist.
     #[default]
     Gist,
-    /// A paste server: `POST url` with the page creates (answering
-    /// `{"url": …, "id"?: …}`), `PUT url/id` updates, `DELETE url/id`
-    /// deletes.
-    Http {
-        /// The server's URL.
-        url: String,
-    },
+    /// The paste server at `url`.
+    Http,
 }
 
-impl ShareTarget {
+impl ShareSettings {
     /// What names the target in a [`Shared`] and to the user.
     fn label(&self) -> String {
-        match self {
-            Self::Gist => "gist".to_owned(),
-            Self::Http { url } => url.clone(),
+        match self.target {
+            Target::Gist => "gist".to_owned(),
+            Target::Http => self.url.clone(),
         }
     }
 }
@@ -100,23 +99,27 @@ pub struct Shared {
     pub url: String,
 }
 
-/// On an agent: the page `/share` asked the user to confirm.
+/// On a `share` effect: what it does, and where.
 #[derive(Component)]
-struct PendingShare {
-    html: String,
+struct Upload {
+    settings: ShareSettings,
+    op: Op,
 }
 
-/// An upload or deletion running for `agent`, on an entity of its own.
-#[derive(Component)]
-struct ShareJob {
-    agent: Entity,
+/// What an upload does.
+#[derive(Clone)]
+enum Op {
+    /// Publishes `html`, as a new page or in place of the page `update`.
+    Publish {
+        html: String,
+        update: Option<String>,
+    },
+    /// Deletes the page `id`.
+    Delete { id: String },
 }
 
-/// How a job ended: the page's place, none once deleted, or the target's
-/// error.
-struct JobResult(Result<Option<Link>, String>);
-
-/// A published page.
+/// A published page: a `share` effect's answer.
+#[derive(Serialize, Deserialize)]
 struct Link {
     id: String,
     url: String,
@@ -124,150 +127,97 @@ struct Link {
     copied: bool,
 }
 
-/// What a job does.
-enum Op {
-    Publish {
-        html: String,
-        update: Option<String>,
-    },
-    Delete {
-        id: String,
-    },
-}
-
-/// Adds `/share` and `/unshare`.
+/// Adds `/share`, `/unshare` and `--yes`.
 #[derive(Default)]
 pub struct SharePlugin;
 
 impl Plugin for SharePlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<ShareConfig>() {
-            let path = Home::from_env().root().join(CONFIG_FILE);
-            let config = std::fs::read_to_string(path)
-                .ok()
-                .and_then(|text| serde_json::from_str(&text).ok())
-                .unwrap_or_default();
-            app.insert_resource::<ShareConfig>(config);
-        }
-        app.add_message::<PickRequest>()
+        app.add_setting::<ShareSettings>("share")
+            .add_flag(Flag::new(YES, "Let /share publish without asking"))
+            .init_resource::<Processes>()
+            .register_type::<Shared>()
             .add_command(
                 "share",
-                "Publish this session as a link (a secret gist, or the configured server); \
-                 again to update it. --yes skips the confirmation",
+                "Publish this session as a link (a secret gist, or the [share] server); \
+                 again to update it",
                 share,
             )
             .add_command("unshare", "Delete the page /share published", unshare)
-            .add_observer(on_job_done);
+            .add_observer(upload)
+            .add_observer(report);
     }
 }
 
-/// `/share [--yes]`, and the picker's `/share confirm` and `/share cancel`.
+/// The agents' `share` effects that did not settle yet.
+type InFlight<'w, 's> = Query<'w, 's, &'static ForAgent, (With<Upload>, Without<Settled>)>;
+
+/// `/share`: asks to publish the session, or publishes it at once under
+/// `--yes` when nobody can answer.
 fn share(
     In(args): In<CommandArgs>,
-    agents: Query<(
-        &Conversation,
-        Option<&Name>,
-        Option<&Shared>,
-        Option<&PendingShare>,
-    )>,
-    jobs: Query<&ShareJob>,
-    config: Res<ShareConfig>,
+    agents: Query<(&Conversation, Option<&Name>, Option<&Shared>)>,
+    in_flight: InFlight,
+    settings: Res<ShareSettings>,
+    answerers: Answerers,
     invoked: Option<Res<Invoked>>,
-    wake: Res<Wake>,
     mut commands: Commands,
-    mut picks: MessageWriter<PickRequest>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
-    let Ok((conversation, name, shared, pending)) = agents.get(agent) else {
+    let Ok((conversation, name, shared)) = agents.get(agent) else {
         return;
     };
-    if jobs.iter().any(|job| job.agent == agent) {
-        notices.write(Notice::error(agent, "A share of this session is running."));
+    if !args.args.is_empty() {
+        notices.write(Notice::error(agent, "/share takes no arguments."));
         return;
     }
+    if in_flight.iter().any(|of| of.0 == agent) {
+        notices.write(Notice::error(
+            agent,
+            "A share of this session is under way.",
+        ));
+        return;
+    }
+    let ask = answerers.can_answer(Some(agent));
+    if !ask && !invoked.is_some_and(|invoked| invoked.flag(YES)) {
+        let why = "Not shared: nobody can confirm in this run; start it with --yes to share.";
+        notices.write(Notice::error(agent, why));
+        return;
+    }
+    let target = settings.label();
     let update = shared
-        .filter(|shared| shared.target == config.target.label())
+        .filter(|shared| shared.target == target)
         .map(|shared| shared.id.clone());
-    match args.args.as_str() {
-        "cancel" => {
-            commands.entity(agent).remove::<PendingShare>();
-            notices.write(Notice::info(agent, "Not shared."));
+    let title = name.map_or("rig session", Name::as_str);
+    let rendered = render::render(title, conversation.messages());
+    let action = if update.is_some() { "Update" } else { "Share" };
+    let mut body = format!(
+        "{action} the {} messages of this session on {target}, as an HTML page.",
+        rendered.messages
+    );
+    if rendered.secrets.is_empty() {
+        body.push_str("\nNo secrets found.");
+    } else {
+        body.push_str("\nSecrets found, redacted in the page:");
+        for secret in &rendered.secrets {
+            body.push_str("\n  ");
+            body.push_str(secret);
         }
-        "confirm" => match pending {
-            Some(pending) => {
-                let html = pending.html.clone();
-                commands.entity(agent).remove::<PendingShare>();
-                start(
-                    &mut commands,
-                    &wake,
-                    &config,
-                    agent,
-                    Op::Publish { html, update },
-                );
-                notices.write(Notice::info(agent, "Sharing…"));
-            }
-            None => {
-                notices.write(Notice::error(agent, "Nothing to share: run /share first."));
-            }
-        },
-        "" | "--yes" => {
-            let title = name.map_or("rig session", Name::as_str);
-            let rendered = render::render(title, conversation.messages());
-            if args.args == "--yes" {
-                let op = Op::Publish {
-                    html: rendered.html,
-                    update,
-                };
-                start(&mut commands, &wake, &config, agent, op);
-                notices.write(Notice::info(agent, "Sharing…"));
-                return;
-            }
-            if invoked.is_some_and(|invoked| !invoked.interactive()) {
-                notices.write(Notice::error(
-                    agent,
-                    "Not shared without a confirmation: use /share --yes.",
-                ));
-                return;
-            }
-            let action = if update.is_some() { "Update" } else { "Share" };
-            let mut label = format!(
-                "{action} {} messages on {}",
-                rendered.messages,
-                config.target.label()
-            );
-            if !rendered.secrets.is_empty() {
-                label.push_str(&format!(
-                    ", {} secrets redacted: {}",
-                    rendered.secrets.len(),
-                    rendered.secrets.join(", ")
-                ));
-            }
-            commands.entity(agent).insert(PendingShare {
-                html: rendered.html,
-            });
-            picks.write(PickRequest {
-                agent,
-                title: "Share this session?".to_owned(),
-                items: vec![
-                    PickItem {
-                        label,
-                        command: "share confirm".to_owned(),
-                    },
-                    PickItem {
-                        label: "Cancel".to_owned(),
-                        command: "share cancel".to_owned(),
-                    },
-                ],
-                selected: 1,
-            });
-        }
-        other => {
-            notices.write(Notice::error(
-                agent,
-                format!("/share takes no `{other}`: /share, or /share --yes."),
-            ));
-        }
+    }
+    let op = Op::Publish {
+        html: rendered.html,
+        update,
+    };
+    let effect = spawn_upload(&mut commands, agent, &settings, op);
+    if ask {
+        let question = Ask::new("Share this session?")
+            .body(body)
+            .choice("cancel", "Cancel")
+            .choice("share", format!("{action} on {target}"));
+        commands
+            .spawn((question, ForAgent(agent), HoldOf(effect)))
+            .observe(answered);
     }
 }
 
@@ -275,9 +225,8 @@ fn share(
 fn unshare(
     In(args): In<CommandArgs>,
     agents: Query<&Shared>,
-    jobs: Query<&ShareJob>,
-    config: Res<ShareConfig>,
-    wake: Res<Wake>,
+    in_flight: InFlight,
+    settings: Res<ShareSettings>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -286,140 +235,210 @@ fn unshare(
         notices.write(Notice::error(agent, "This session is not shared."));
         return;
     };
-    if shared.target != config.target.label() {
-        notices.write(Notice::error(
-            agent,
-            format!(
-                "Shared on {}, not on the configured {}.",
-                shared.target,
-                config.target.label()
-            ),
-        ));
+    let target = settings.label();
+    if shared.target != target {
+        let why = format!(
+            "Shared on {}, not on the configured {target}.",
+            shared.target
+        );
+        notices.write(Notice::error(agent, why));
         return;
     }
-    if jobs.iter().any(|job| job.agent == agent) {
-        notices.write(Notice::error(agent, "A share of this session is running."));
+    if in_flight.iter().any(|of| of.0 == agent) {
+        notices.write(Notice::error(
+            agent,
+            "A share of this session is under way.",
+        ));
         return;
     }
     let op = Op::Delete {
         id: shared.id.clone(),
     };
-    start(&mut commands, &wake, &config, agent, op);
-    notices.write(Notice::info(agent, "Unsharing…"));
+    spawn_upload(&mut commands, agent, &settings, op);
 }
 
-/// Spawns the job doing `op` for `agent` on the IO pool.
-fn start(commands: &mut Commands, wake: &Wake, config: &ShareConfig, agent: Entity, op: Op) {
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
-    let clipboard = config.clipboard;
-    let work = run(config.clone(), op);
-    let work = async move {
-        let mut result = work.await;
-        if clipboard && let Ok(Some(link)) = &mut result {
-            let url = link.url.clone();
-            link.copied = blocking(move || Ok(copy(&url))).await.unwrap_or(false);
-        }
-        JobResult(result)
+/// Spawns the open `share` effect doing `op` for `agent`: it starts when
+/// nothing holds it, and is recorded with what it did.
+fn spawn_upload(
+    commands: &mut Commands,
+    agent: Entity,
+    settings: &ShareSettings,
+    op: Op,
+) -> Entity {
+    let (action, id) = match &op {
+        Op::Publish { update, .. } => ("publish", update.clone()),
+        Op::Delete { id } => ("delete", Some(id.clone())),
     };
-    commands.spawn((
-        Name::new("share"),
-        ShareJob { agent },
-        Running::spawn(pool, wake, work),
-    ));
+    let payload = serde_json::json!({ "action": action, "target": settings.label(), "id": id });
+    let kind = EffectKind::Custom {
+        kind: KIND.into(),
+        payload,
+    };
+    let upload = Upload {
+        settings: settings.clone(),
+        op,
+    };
+    let request = EffectRequest {
+        kind,
+        handler: None,
+    };
+    commands.spawn((request, upload, ForAgent(agent))).id()
 }
 
-/// Reports a finished job, and keeps or forgets the link.
-fn on_job_done(
-    done: On<Add<Done<JobResult>>>,
-    jobs: Query<(&ShareJob, &Done<JobResult>)>,
-    config: Res<ShareConfig>,
+/// Lets the upload the question holds start, or refuses it, once the user
+/// answered; the question lets go of it either way.
+fn answered(answer: On<Add<Outcome>>, asks: Query<(&Outcome, &HoldOf)>, mut commands: Commands) {
+    let Ok((outcome, &HoldOf(effect))) = asks.get(answer.entity) else {
+        return;
+    };
+    if !Answer::of(outcome).is_some_and(|answer| answer.is("share")) {
+        commands
+            .entity(effect)
+            .insert_if_new(Outcome::refused("not shared"));
+    }
+    commands.entity(answer.entity).remove::<HoldOf>();
+}
+
+/// Runs each upload that started on the IO pool; its result is its
+/// outcome.
+fn upload(
+    started: On<Add<Started>>,
+    uploads: Query<&Upload>,
+    processes: Res<Processes>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+) {
+    let Ok(upload) = uploads.get(started.entity) else {
+        return;
+    };
+    let (settings, op) = (upload.settings.clone(), upload.op.clone());
+    let processes = processes.clone();
+    let work = async move {
+        let link = run(&settings, op, &processes).await;
+        let outcome = match link {
+            Ok(Some(mut link)) => {
+                if settings.clipboard {
+                    let url = link.url.clone();
+                    link.copied = blocking(move || Ok(copy(&processes, &url)))
+                        .await
+                        .unwrap_or(false);
+                }
+                Ok(Answered::Custom {
+                    payload: serde_json::to_value(link).unwrap_or_default(),
+                })
+            }
+            Ok(None) => Ok(Answered::Custom {
+                payload: serde_json::Value::Null,
+            }),
+            Err(why) => Err(ErrorReport::new(ErrorKind::Other, why)),
+        };
+        Outcome(outcome)
+    };
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    commands
+        .entity(started.entity)
+        .insert(Running::answering(pool, &wake, work));
+}
+
+/// Says how each settled upload went, and keeps or forgets the link.
+fn report(
+    settled: On<Add<Settled>>,
+    uploads: Query<(&Upload, &Outcome, &ForAgent)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((job, Done(JobResult(result)))) = jobs.get(done.entity) else {
+    let Ok((upload, outcome, &ForAgent(agent))) = uploads.get(settled.entity) else {
         return;
     };
-    let agent = job.agent;
-    match result {
-        Ok(Some(link)) => {
-            let copied = if link.copied { " (copied)" } else { "" };
-            notices.write(Notice::info(agent, format!("Shared: {}{copied}", link.url)));
-            commands.entity(agent).insert(Shared {
-                target: config.target.label(),
-                id: link.id.clone(),
-                url: link.url.clone(),
-            });
+    match (&upload.op, &outcome.0) {
+        (_, Err(report)) if report.refusal => {
+            notices.write(Notice::info(
+                agent,
+                format!("Not shared: {}.", report.message),
+            ));
         }
-        Ok(None) => {
+        (_, Err(report)) => {
+            notices.write(Notice::error(
+                agent,
+                format!("Share failed: {}", report.message),
+            ));
+        }
+        (Op::Delete { .. }, Ok(_)) => {
             notices.write(Notice::info(agent, "Unshared."));
             commands.entity(agent).remove::<Shared>();
         }
-        Err(why) => {
-            notices.write(Notice::error(agent, format!("Share failed: {why}")));
+        (Op::Publish { .. }, Ok(Answered::Custom { payload })) => {
+            if let Ok(link) = Link::deserialize(payload) {
+                let copied = if link.copied { " (copied)" } else { "" };
+                notices.write(Notice::info(agent, format!("Shared: {}{copied}", link.url)));
+                commands.entity(agent).insert(Shared {
+                    target: upload.settings.label(),
+                    id: link.id,
+                    url: link.url,
+                });
+            }
         }
+        (Op::Publish { .. }, Ok(_)) => {}
     }
-    commands.entity(done.entity).despawn();
 }
 
-/// Does `op` at the configured target.
-async fn run(config: ShareConfig, op: Op) -> Result<Option<Link>, String> {
-    match config.target {
-        ShareTarget::Http { url } => {
-            let base = url.trim_end_matches('/').to_owned();
-            let html_type = vec![("content-type", "text/html; charset=utf-8".to_owned())];
-            let (method, uri, body) = match op {
-                Op::Publish { html, update: None } => (Method::POST, url, html),
-                Op::Publish {
-                    html,
-                    update: Some(id),
-                } => (Method::PUT, format!("{base}/{id}"), html),
-                Op::Delete { id } => {
-                    send(
-                        Method::DELETE,
-                        format!("{base}/{id}"),
-                        Vec::new(),
-                        String::new(),
-                    )
-                    .await?;
-                    return Ok(None);
-                }
-            };
-            let answer = send(method, uri, html_type, body).await?;
-            parse_link(&answer, "url", "id").map(Some)
+/// Does `op` at the configured target: the page's link, none once
+/// deleted, or the target's error.
+async fn run(
+    settings: &ShareSettings,
+    op: Op,
+    processes: &Processes,
+) -> Result<Option<Link>, String> {
+    let (base, headers, (url_key, id_key)) = match settings.target {
+        Target::Http => {
+            let base = settings.url.trim_end_matches('/').to_owned();
+            let html = vec![("content-type", "text/html; charset=utf-8".to_owned())];
+            (base, html, ("url", "id"))
         }
-        ShareTarget::Gist => {
-            let token = gist_token().await?;
+        Target::Gist => {
+            let token = gist_token(processes.clone()).await?;
             let headers = vec![
                 ("authorization", format!("Bearer {token}")),
                 ("accept", "application/vnd.github+json".to_owned()),
                 ("user-agent", "rig-share".to_owned()),
             ];
-            let (method, uri, html) = match op {
-                Op::Publish { html, update: None } => (Method::POST, GIST_API.to_owned(), html),
-                Op::Publish {
-                    html,
-                    update: Some(id),
-                } => (Method::PATCH, format!("{GIST_API}/{id}"), html),
-                Op::Delete { id } => {
-                    send(
-                        Method::DELETE,
-                        format!("{GIST_API}/{id}"),
-                        headers,
-                        String::new(),
-                    )
-                    .await?;
-                    return Ok(None);
-                }
-            };
-            let body = serde_json::json!({
-                "description": "A rig session",
-                "public": false,
-                "files": { GIST_FILE: { "content": html } },
-            });
-            let answer = send(method, uri, headers, body.to_string()).await?;
-            parse_link(&answer, "html_url", "id").map(Some)
+            (GIST_API.to_owned(), headers, ("html_url", "id"))
         }
-    }
+    };
+    let (method, uri, html) = match op {
+        Op::Publish { html, update: None } => (Method::POST, base, html),
+        Op::Publish {
+            html,
+            update: Some(id),
+        } => {
+            let method = match settings.target {
+                Target::Http => Method::PUT,
+                Target::Gist => Method::PATCH,
+            };
+            (method, format!("{base}/{id}"), html)
+        }
+        Op::Delete { id } => {
+            send(
+                Method::DELETE,
+                format!("{base}/{id}"),
+                headers,
+                String::new(),
+            )
+            .await?;
+            return Ok(None);
+        }
+    };
+    let body = match settings.target {
+        Target::Http => html,
+        Target::Gist => serde_json::json!({
+            "description": "A rig session",
+            "public": false,
+            "files": { GIST_FILE: { "content": html } },
+        })
+        .to_string(),
+    };
+    let answer = send(method, uri, headers, body).await?;
+    parse_link(&answer, url_key, id_key).map(Some)
 }
 
 /// The link in a target's JSON answer: its `url_key`, and its `id_key`
@@ -479,7 +498,7 @@ async fn send(
 }
 
 /// A GitHub token: `GH_TOKEN`, `GITHUB_TOKEN`, or the `gh` CLI's.
-async fn gist_token() -> Result<String, String> {
+async fn gist_token(processes: Processes) -> Result<String, String> {
     for name in ["GH_TOKEN", "GITHUB_TOKEN"] {
         if let Ok(token) = std::env::var(name)
             && !token.is_empty()
@@ -487,8 +506,10 @@ async fn gist_token() -> Result<String, String> {
             return Ok(token);
         }
     }
-    blocking(|| {
-        let output = Command::new("gh")
+    blocking(move || {
+        let output = processes
+            .launcher()
+            .command("gh")
             .args(["auth", "token"])
             .output()
             .map_err(ToolExecutionError::from_error)?;
@@ -496,9 +517,8 @@ async fn gist_token() -> Result<String, String> {
         if output.status.success() && !token.is_empty() {
             Ok(token)
         } else {
-            Err(ToolExecutionError::other(
-                String::from_utf8_lossy(&output.stderr).trim().to_owned(),
-            ))
+            let why = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+            Err(ToolExecutionError::other(why))
         }
     })
     .await
@@ -506,14 +526,16 @@ async fn gist_token() -> Result<String, String> {
 }
 
 /// Copies `text` with the first clipboard tool found; whether it did.
-fn copy(text: &str) -> bool {
+fn copy(processes: &Processes, text: &str) -> bool {
     let tools: [(&str, &[&str]); 3] = [
         ("wl-copy", &[]),
         ("xclip", &["-selection", "clipboard"]),
         ("pbcopy", &[]),
     ];
+    let launcher = processes.launcher();
     tools.iter().any(|(tool, args)| {
-        let Ok(mut child) = Command::new(tool)
+        let Ok(mut child) = launcher
+            .command(tool)
             .args(*args)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())

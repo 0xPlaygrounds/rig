@@ -1,37 +1,33 @@
 //! A supervisor agent: `/supervise <goal>` gives the agent it is typed for
-//! (the worker) a supervisor of its own, an agent [`SpawnedBy`] it with its
-//! own conversation, model and one tool, `verdict`. Every `calls` tool calls
-//! of the worker (10 by default), and every `minutes` while it works when
-//! that is set, the supervisor is sent the goal and a digest of what the
-//! worker did since the last check: what it was asked, the tools it called
-//! with short results, and what it said. It answers with `verdict`:
-//! `continue`, `steer` with a message the worker's running turn reads with
-//! its next model call, or `stop` with a reason, which interrupts the
-//! worker's turn and tells the user why. The worker never waits for it.
+//! (the worker) a supervisor of its own, a rig-subagents helper
+//! ([`SpawnSubagent::helper`]) with its own conversation, model and one
+//! tool, `verdict`. Every `calls` tool calls of the worker (10 by default),
+//! and every `minutes` when that is set, the supervisor is sent the goal and
+//! a digest of what the worker did since the last check: what it was asked,
+//! the tools it called with short results, and what it said. It answers
+//! with `verdict`: `continue`, `steer` with a message the worker's running
+//! turn reads with its next model call, or `stop` with a reason, which
+//! interrupts the worker's turn and tells the user why. The worker never
+//! waits for it.
 //!
-//! [`Supervised`] on the worker and [`Supervisor`] on its supervisor are
-//! saved with the session, and so is the supervisor's conversation, so it
-//! remembers its earlier checks. `/supervise off` detaches it; the
-//! supervisor stays in the session, idle, and the next `/supervise` of
-//! that worker takes it on again.
+//! The [`Supervisor`] component on the supervisor is saved with the session,
+//! and so is its conversation, so it remembers its earlier checks.
+//! `/supervise off` retires it.
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::transcript::assistant_text_from_choice;
+use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 /// The supervisor's tool.
 pub const VERDICT: &str = "verdict";
 
-/// Who the checks and steering messages come from.
+/// The supervisor's name, and who its checks and steering come from.
 const NAME: &str = "supervisor";
 
 /// Tool calls between checks unless `/supervise` says `calls=N`.
 pub const EVERY_CALLS: u32 = 10;
-
-/// How often a supervised turn is looked at for a check that is due by
-/// time.
-const TICK: Duration = Duration::from_secs(15);
 
 /// Lines of activity a check holds at most: the latest.
 const MAX_LINES: usize = 60;
@@ -58,75 +54,58 @@ const PROMPT: &str = "You supervise another coding agent, the worker, on behalf 
     harmful or far outside the goal.\n\
     - The worker keeps working while you think: judge the trend, not one step.";
 
-const RULE: &str = "Answer every check with one `verdict` call.";
-
 /// Adds `/supervise`, the `verdict` tool and the checks.
 #[derive(Default)]
 pub struct SupervisorPlugin;
 
 impl Plugin for SupervisorPlugin {
     fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<SubagentsPlugin>() {
+            app.add_plugins(SubagentsPlugin);
+        }
         let options = ToolOptions {
-            rules: &[RULE],
+            rules: &["Answer every check with one `verdict` call."],
             footprint: Some(Footprint::Independent),
         };
         let describe = "Give your verdict on the worker's progress: continue, steer it with a \
                         message, or stop its turn with a reason.";
         app.add_open_tool(VERDICT, describe, options, on_verdict)
             .add_command("supervise", HELP, supervise)
-            .add_observer(count_call)
-            .add_observer(keep_awake)
-            .add_observer(verdict_for_supervisors)
-            .add_observer(retry_after_check)
+            .add_observer(arm_clock)
+            .add_observer(check_by_time)
             .add_systems(
-                Update,
-                (due_by_time.run_if(on_real_timer(TICK)), send_checks)
-                    .chain()
-                    .after(PollCalls),
+                AgentPass,
+                (
+                    verdict_for_supervisors.in_set(Stage::Prepare),
+                    (hired, count_calls).in_set(Stage::Review),
+                ),
             );
     }
 }
 
-/// On a supervised agent: what its supervisor watches for, and how often
-/// it looks.
+/// On a supervisor, a helper [`SpawnedBy`] the agent it supervises: what it
+/// holds the worker to, how often it looks, and where its last check left
+/// off.
 #[derive(Component, Reflect, Clone, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
-#[require(Tally)]
-pub struct Supervised {
+pub struct Supervisor {
     /// The goal the supervisor holds the worker to.
     pub goal: String,
     /// Tool calls between checks; 0 checks by time only.
     pub every_calls: u32,
-    /// Minutes between checks while a turn runs; 0 checks by calls only.
+    /// Minutes between checks; 0 checks by calls only.
     pub every_minutes: u32,
-    /// The supervisor's model, when it is not the worker's.
-    pub model: Option<String>,
-    /// The messages of the worker's conversation the supervisor has seen.
+    /// The messages of the worker's conversation it has seen.
     pub seen: usize,
-}
-
-/// On a supervisor, which is [`SpawnedBy`] the agent it supervises.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Supervisor {
+    /// The worker's tool calls since the last check.
+    pub calls: u32,
     /// The checks it was sent.
     pub checks: u32,
 }
 
-/// On a supervised agent: the tool calls since the last check, and when
-/// that was (by the real clock). Not saved: a restart starts counting
-/// again.
-#[derive(Component, Debug, Default)]
-struct Tally {
-    calls: u32,
-    since: Duration,
-}
-
-/// On a supervised agent whose check is due; it goes once its supervisor
-/// is idle.
-#[derive(Component, Debug)]
-#[component(storage = "SparseSet")]
-struct CheckDue;
+/// On the request for a supervisor: the [`Supervisor`] it becomes.
+#[derive(Component)]
+struct Hire(Supervisor);
 
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -146,160 +125,108 @@ enum Decision {
     Stop,
 }
 
-/// The worker's model, reasoning setting and connection.
-type Staff<'a> = (Option<&'a ModelChoice>, Effort, Option<&'a Connection>);
-
-/// The supervisor's model and reasoning setting: `model` when given, else
-/// the worker's, whose connection it then shares.
-fn staff(
-    models: &Models,
-    (choice, effort, connection): Staff,
-    model: Option<&str>,
-) -> Result<(ModelChoice, Effort, Option<Connection>), String> {
-    let (picked, effort) = ModelChoice::inherit(&models.0, (choice, effort), model, None)?;
-    let picked =
-        picked.ok_or("The agent has no model to give its supervisor; add model=vendor/model")?;
-    let shared = connection.filter(|_| choice == Some(&picked)).cloned();
-    Ok((picked, effort, shared))
-}
-
-/// Spawns the supervisor of `worker`.
-fn hire(
-    commands: &mut Commands,
-    worker: Entity,
-    (choice, effort, shared): (ModelChoice, Effort, Option<Connection>),
-) {
-    let mut agent = commands.spawn_empty();
-    // Before the model choice, so connecting it keeps this connection.
-    if let Some(connection) = shared {
-        agent.insert(connection);
-    }
-    agent.insert((
-        Agent,
-        Name::new(NAME),
-        SpawnedBy(worker),
-        Supervisor::default(),
-        ToolAccess::Only(vec![VERDICT.to_owned()]),
-        SystemPrompt(PROMPT.to_owned()),
-        choice,
-        effort,
-    ));
-}
-
-/// The supervisor among `spawned`, the agents a worker spawned.
-fn find_supervisor(
+/// The supervisor among the agents `worker` spawned.
+fn supervisor_of(
     spawned: Option<&Spawned>,
-    is_supervisor: impl Fn(Entity) -> bool,
+    supervisors: &Query<&mut Supervisor>,
 ) -> Option<Entity> {
     spawned
         .into_iter()
-        .flat_map(|spawned| spawned.iter())
-        .find(|&agent| is_supervisor(agent))
+        .flat_map(Spawned::iter)
+        .find(|&agent| supervisors.contains(agent))
+}
+
+/// The pace and goal `/supervise` was given, and the model, if any.
+fn parse(args: &str) -> Result<(u32, u32, Option<String>, String), String> {
+    let (mut calls, mut minutes, mut model) = (EVERY_CALLS, 0, None);
+    let mut rest = args.trim();
+    while let Some((word, after)) = rest.split_once(char::is_whitespace).or(Some((rest, ""))) {
+        let number = |value: &str| value.parse().map_err(|_| format!("{word}: not a number"));
+        match word.split_once('=') {
+            Some(("calls", value)) => calls = number(value)?,
+            Some(("minutes", value)) => minutes = number(value)?,
+            Some(("model", value)) => model = Some(value.to_owned()),
+            _ => break,
+        }
+        rest = after.trim_start();
+    }
+    if rest.is_empty() {
+        return Err(format!("/supervise needs a goal. {HELP}."));
+    }
+    if calls == 0 && minutes == 0 {
+        return Err("calls=0 needs minutes=M.".to_owned());
+    }
+    Ok((calls, minutes, model, rest.to_owned()))
 }
 
 /// `/supervise [calls=N] [minutes=M] [model=vendor/model] <goal>`, or
 /// `/supervise off`.
 fn supervise(
     In(args): In<CommandArgs>,
-    workers: Query<(
-        Option<&ModelChoice>,
-        &Effort,
-        Option<&Connection>,
-        &Conversation,
-        Option<&Spawned>,
-    )>,
-    marked: Query<(Has<Supervised>, Has<Supervisor>)>,
-    supervisors: Query<(), With<Supervisor>>,
-    models: Res<Models>,
-    time: Res<Time<Real>>,
+    workers: Query<(&Conversation, Option<&Spawned>)>,
+    supervisors: Query<&mut Supervisor>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let worker = args.agent;
-    let (supervised, is_supervisor) = marked.get(worker).unwrap_or_default();
-    if args.args == "off" {
-        if supervised {
-            commands
-                .entity(worker)
-                .remove::<(Supervised, Tally, CheckDue)>();
-            notices.write(Notice::info(worker, "Supervision off."));
-        } else {
-            notices.write(Notice::error(worker, "This agent has no supervisor."));
+    let Ok((conversation, spawned)) = workers.get(worker) else {
+        return;
+    };
+    let current = supervisor_of(spawned, &supervisors);
+    if args.args.trim() == "off" {
+        match current {
+            Some(supervisor) => {
+                commit.retire(supervisor);
+                notices.write(Notice::info(worker, "Supervision off."));
+            }
+            None => {
+                notices.write(Notice::error(worker, "This agent has no supervisor."));
+            }
         }
         return;
     }
-    if is_supervisor {
+    if supervisors.contains(worker) {
         notices.write(Notice::error(worker, "A supervisor is not supervised."));
         return;
     }
-    let Ok((choice, &effort, connection, conversation, spawned)) = workers.get(worker) else {
-        return;
-    };
-    let (mut every_calls, mut every_minutes, mut model) = (EVERY_CALLS, 0, None);
-    let mut rest = args.args.as_str();
-    while let Some((word, after)) = rest.split_once(char::is_whitespace).or(Some((rest, ""))) {
-        let number = |value: &str| {
-            value
-                .parse::<u32>()
-                .map_err(|_| format!("{word}: not a number"))
-        };
-        let set = match word.split_once('=') {
-            Some(("calls", value)) => number(value).map(|n| every_calls = n),
-            Some(("minutes", value)) => number(value).map(|n| every_minutes = n),
-            Some(("model", value)) => {
-                model = Some(value.to_owned());
-                Ok(())
-            }
-            _ => break,
-        };
-        if let Err(why) = set {
+    let (every_calls, every_minutes, model, goal) = match parse(&args.args) {
+        Ok(parsed) => parsed,
+        Err(why) => {
             notices.write(Notice::error(worker, why));
             return;
         }
-        rest = after.trim_start();
-    }
-    let goal = rest.trim();
-    if goal.is_empty() {
-        notices.write(Notice::error(
-            worker,
-            format!("/supervise needs a goal. {HELP}."),
-        ));
-        return;
-    }
-    if every_calls == 0 && every_minutes == 0 {
-        notices.write(Notice::error(worker, "calls=0 needs minutes=M."));
-        return;
-    }
-    match find_supervisor(spawned, |agent| supervisors.contains(agent)) {
+    };
+    let settings = Supervisor {
+        goal: goal.clone(),
+        every_calls,
+        every_minutes,
+        seen: conversation.messages().len(),
+        calls: 0,
+        checks: 0,
+    };
+    match current {
         Some(supervisor) => {
-            if let Some(model) = &model {
+            let checks = supervisors.get(supervisor).map_or(0, |old| old.checks);
+            commands
+                .entity(supervisor)
+                .insert(Supervisor { checks, ..settings });
+            if let Some(model) = model {
                 commands.trigger(SetModel {
                     entity: supervisor,
-                    model: model.clone(),
+                    model,
                 });
             }
         }
-        None => match staff(&models, (choice, effort, connection), model.as_deref()) {
-            Ok(staffed) => hire(&mut commands, worker, staffed),
-            Err(why) => {
-                notices.write(Notice::error(worker, why));
-                return;
-            }
-        },
+        None => {
+            let request = SpawnSubagent {
+                tools: Some(vec![VERDICT.to_owned()]),
+                model,
+                ..SpawnSubagent::helper(NAME).system_prompt(PROMPT)
+            };
+            commands.spawn((request, ForAgent(worker), Hire(settings)));
+        }
     }
-    commands.entity(worker).insert((
-        Supervised {
-            goal: goal.to_owned(),
-            every_calls,
-            every_minutes,
-            model,
-            seen: conversation.messages().len(),
-        },
-        Tally {
-            calls: 0,
-            since: time.elapsed(),
-        },
-    ));
     let mut pace = Vec::new();
     if every_calls > 0 {
         pace.push(format!("every {every_calls} tool calls"));
@@ -314,169 +241,126 @@ fn supervise(
     notices.write(Notice::info(worker, said));
 }
 
-/// Counts each finished tool call of a supervised agent; a check is due
-/// every `every_calls`.
-fn count_call(
-    done: On<Add<ToolOutput>>,
-    calls: Query<&CallOf, With<ToolCallRun>>,
-    turns: Query<&TurnOf>,
-    mut workers: Query<(&Supervised, &mut Tally)>,
-    mut commands: Commands,
-) {
-    let Ok(&CallOf(turn)) = calls.get(done.entity) else {
-        return;
-    };
-    let Ok(&TurnOf(worker)) = turns.get(turn) else {
-        return;
-    };
-    let Ok((supervised, mut tally)) = workers.get_mut(worker) else {
-        return;
-    };
-    tally.calls += 1;
-    if supervised.every_calls > 0 && tally.calls >= supervised.every_calls {
-        commands.entity(worker).insert(CheckDue);
-    }
-}
-
-/// A supervised turn checked by time keeps the loop awake for its clock.
-fn keep_awake(
-    started: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    workers: Query<&Supervised>,
-    mut commands: Commands,
-) {
-    let timed = turns
-        .get(started.entity)
-        .and_then(|&TurnOf(worker)| workers.get(worker))
-        .is_ok_and(|supervised| supervised.every_minutes > 0);
-    if timed {
-        commands.entity(started.entity).insert(KeepAwake(TICK));
-    }
-}
-
-/// A check is due for a working agent whose last one is `every_minutes`
-/// old.
-fn due_by_time(
-    workers: Query<(Entity, &Supervised, &Tally), With<ActiveTurn>>,
-    time: Res<Time<Real>>,
-    mut commands: Commands,
-) {
-    for (worker, supervised, tally) in &workers {
-        let every = Duration::from_secs(60 * u64::from(supervised.every_minutes));
-        if supervised.every_minutes > 0 && time.elapsed().saturating_sub(tally.since) >= every {
-            commands.entity(worker).insert(CheckDue);
-        }
-    }
-}
-
-/// Sends each due check to its idle supervisor: the goal and what the
-/// worker did since the last one. A supervisor gone, such as one that
-/// had not logged a message before a restart, is hired again first.
-fn send_checks(
-    mut due: Query<
-        (
-            Entity,
-            &mut Supervised,
-            &mut Tally,
-            &Conversation,
-            Option<&Spawned>,
-            (Option<&ModelChoice>, &Effort, Option<&Connection>),
-        ),
-        With<CheckDue>,
-    >,
-    mut supervisors: Query<(&mut Supervisor, Has<ActiveTurn>)>,
-    models: Res<Models>,
-    time: Res<Time<Real>>,
-    wake: Res<Wake>,
+/// Makes each helper spawned for a `/supervise` its worker's supervisor,
+/// or tells the user why none was.
+fn hired(
+    requests: Query<(&Hire, &Outcome, Option<&SpawnedAgent>, &ForAgent), Added<Outcome>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (worker, mut supervised, mut tally, conversation, spawned, (choice, &effort, connection)) in
-        &mut due
-    {
-        let Some(supervisor) = find_supervisor(spawned, |agent| supervisors.contains(agent)) else {
-            match staff(
-                &models,
-                (choice, effort, connection),
-                supervised.model.as_deref(),
-            ) {
-                Ok(staffed) => {
-                    hire(&mut commands, worker, staffed);
-                    wake.wake();
-                }
-                Err(why) => {
-                    notices.write(Notice::error(worker, why));
-                    commands.entity(worker).remove::<CheckDue>();
-                }
+    for (Hire(settings), outcome, spawned, &ForAgent(worker)) in &requests {
+        match (spawned, &outcome.0) {
+            (Some(&SpawnedAgent(supervisor)), _) => {
+                commands.entity(supervisor).insert(settings.clone());
             }
-            continue;
-        };
-        let Ok((mut checks, busy)) = supervisors.get_mut(supervisor) else {
-            continue;
-        };
-        if busy {
-            continue;
+            (None, Err(report)) => {
+                let why = format!("No supervisor was started: {}", report.message);
+                notices.write(Notice::error(worker, why));
+            }
+            (None, Ok(_)) => {}
         }
-        let messages = conversation.messages();
-        let text = check(&supervised.goal, messages, supervised.seen);
-        let check = Deliver::new(supervisor, text, DeliveryMode::Queue);
-        commands.trigger(check.with_origin(Origin::plugin(NAME)));
-        checks.checks += 1;
-        supervised.seen = messages.len();
-        *tally = Tally {
-            calls: 0,
-            since: time.elapsed(),
-        };
-        commands.entity(worker).remove::<CheckDue>();
     }
 }
 
-/// A check whose supervisor was busy goes once it is idle.
-fn retry_after_check(
-    end: On<TurnEnded>,
-    supervisors: Query<(), With<Supervisor>>,
-    wake: Res<Wake>,
+/// Counts the tool results committed to each supervised worker's
+/// conversation, and sends its supervisor a check every `every_calls`.
+fn count_calls(
+    mut committed: MessageReader<Committed>,
+    workers: Query<(&Conversation, Option<&Spawned>)>,
+    mut supervisors: Query<&mut Supervisor>,
+    mut commands: Commands,
 ) {
-    if supervisors.contains(end.entity) {
-        wake.wake();
+    for change in committed.read() {
+        let Committed::Message {
+            agent,
+            message: message::Message::User { content },
+            ..
+        } = change
+        else {
+            continue;
+        };
+        let results = content
+            .iter()
+            .filter(|item| matches!(item, UserContent::ToolResult(_)))
+            .count();
+        let Ok((conversation, spawned)) = workers.get(*agent) else {
+            continue;
+        };
+        let Some(supervisor) = supervisor_of(spawned, &supervisors) else {
+            continue;
+        };
+        let Ok(mut settings) = supervisors.get_mut(supervisor) else {
+            continue;
+        };
+        settings.calls += u32::try_from(results).unwrap_or(u32::MAX);
+        if settings.every_calls > 0 && settings.calls >= settings.every_calls {
+            send_check(&mut commands, supervisor, &mut settings, conversation);
+        }
     }
+}
+
+/// A supervisor that checks by time is due `every_minutes` from when it
+/// was given its settings, on its own entity.
+fn arm_clock(set: On<Insert<Supervisor>>, supervisors: Query<&Supervisor>, mut commands: Commands) {
+    if let Ok(settings) = supervisors.get(set.entity)
+        && settings.every_minutes > 0
+    {
+        commands.entity(set.entity).insert(minutes(settings));
+    }
+}
+
+fn minutes(settings: &Supervisor) -> WakeAt {
+    WakeAt::after(Duration::from_secs(60 * u64::from(settings.every_minutes)))
+}
+
+/// Sends a supervisor whose time came a check, when its worker did
+/// anything since the last one, and arms its clock again.
+fn check_by_time(
+    due: On<Add<Due>>,
+    mut supervisors: Query<(&mut Supervisor, &SpawnedBy)>,
+    workers: Query<&Conversation>,
+    mut commands: Commands,
+) {
+    let supervisor = due.entity;
+    let Ok((mut settings, &SpawnedBy(worker))) = supervisors.get_mut(supervisor) else {
+        return;
+    };
+    if let Ok(conversation) = workers.get(worker)
+        && conversation.messages().len() > settings.seen
+    {
+        send_check(&mut commands, supervisor, &mut settings, conversation);
+    }
+    commands.entity(supervisor).insert(minutes(&settings));
+}
+
+/// Sends `supervisor` the goal and what the worker did since the last
+/// check. A busy supervisor reads it once its turn would end.
+fn send_check(
+    commands: &mut Commands,
+    supervisor: Entity,
+    settings: &mut Supervisor,
+    conversation: &Conversation,
+) {
+    let messages = conversation.messages();
+    let text = digest(&settings.goal, messages, settings.seen);
+    let check = Deliver::new(supervisor, text, DeliveryMode::Queue);
+    commands.trigger(check.with_origin(Origin::plugin(NAME)));
+    settings.checks += 1;
+    settings.seen = messages.len();
+    settings.calls = 0;
 }
 
 /// The text of a check: the goal, the worker's activity in `messages` from
 /// `seen` on, and its last text.
-fn check(goal: &str, messages: &[message::Message], seen: usize) -> String {
+fn digest(goal: &str, messages: &[message::Message], seen: usize) -> String {
     let mut lines = Vec::new();
     for message in messages.get(seen.min(messages.len())..).unwrap_or_default() {
-        if let message::Message::User { content } = message {
-            for item in content {
-                if let UserContent::Text(text) = item {
-                    lines.push(format!("- request: {}", clip(&text.text, TEXT)));
-                } else if let UserContent::ToolResult(result) = item {
-                    let text: String = result
-                        .content
-                        .iter()
-                        .filter_map(|part| match part {
-                            message::ToolResultContent::Text(text) => Some(text.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>()
-                        .join(" ");
-                    let failed = if result.is_error { "failed: " } else { "" };
-                    let name = result.name.as_str();
-                    lines.push(format!("  {name} -> {failed}{}", clip(&text, RESULT)));
-                }
+        match message {
+            message::Message::User { content } => lines.extend(content.iter().filter_map(asked)),
+            message::Message::Assistant(reply) => {
+                lines.extend(reply.content.iter().filter_map(did))
             }
-        } else if let message::Message::Assistant(reply) = message {
-            for item in &reply.content {
-                if let AssistantContent::Text(text) = item
-                    && !text.text.trim().is_empty()
-                {
-                    lines.push(format!("- said: {}", clip(&text.text, TEXT)));
-                } else if let AssistantContent::ToolCall(call) = item {
-                    let args = clip(&call.function.raw_arguments(), ARGS);
-                    lines.push(format!("- called {} {args}", call.function.name.as_str()));
-                }
-            }
+            message::Message::System { .. } => {}
         }
     }
     let left_out = lines.len().saturating_sub(MAX_LINES);
@@ -492,13 +376,51 @@ fn check(goal: &str, messages: &[message::Message], seen: usize) -> String {
             let text = assistant_text_from_choice(&reply.content);
             (!text.trim().is_empty()).then(|| clip(&text, TEXT))
         }
-        _ => None,
+        message::Message::User { .. } | message::Message::System { .. } => None,
     });
     let last = last.unwrap_or_else(|| "(none yet)".to_owned());
     format!(
         "Goal: {goal}\n\nThe worker's activity since your last check:\n{activity}\n\nIts last \
          text: {last}\n\nGive your `verdict`."
     )
+}
+
+/// A line for what the worker was asked, or a tool's result.
+fn asked(item: &UserContent) -> Option<String> {
+    match item {
+        UserContent::Text(text) => Some(format!("- request: {}", clip(&text.text, TEXT))),
+        UserContent::ToolResult(result) => {
+            let text: Vec<&str> = result
+                .content
+                .iter()
+                .filter_map(|part| match part {
+                    message::ToolResultContent::Text(text) => Some(text.text.as_str()),
+                    _ => None,
+                })
+                .collect();
+            let failed = if result.is_error { "failed: " } else { "" };
+            let name = result.name.as_str();
+            Some(format!(
+                "  {name} -> {failed}{}",
+                clip(&text.join(" "), RESULT)
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// A line for what the worker said, or a tool it called.
+fn did(item: &AssistantContent) -> Option<String> {
+    match item {
+        AssistantContent::Text(text) if !text.text.trim().is_empty() => {
+            Some(format!("- said: {}", clip(&text.text, TEXT)))
+        }
+        AssistantContent::ToolCall(call) => {
+            let args = clip(&call.function.raw_arguments(), ARGS);
+            Some(format!("- called {} {args}", call.function.name.as_str()))
+        }
+        _ => None,
+    }
 }
 
 /// `text` on one line, cut to `max` characters.
@@ -513,45 +435,48 @@ fn clip(text: &str, max: usize) -> String {
 /// `verdict` is offered to supervisors only: every other agent may use
 /// every tool.
 fn verdict_for_supervisors(
-    mut prepare: On<PrepareRequest>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     supervisors: Query<(), With<Supervisor>>,
 ) {
-    if !supervisors.contains(prepare.agent) {
-        prepare.tools.retain(|tool| tool.name.as_str() != VERDICT);
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        let offered = |call: &ModelRequest| {
+            let tools = &call.request.tools;
+            tools.iter().any(|tool| tool.name.as_str() == VERDICT)
+        };
+        if !supervisors.contains(agent) && offered(&call) {
+            call.request
+                .tools
+                .retain(|tool| tool.name.as_str() != VERDICT);
+        }
     }
 }
 
 /// Carries out a supervisor's verdict on the worker it supervises.
 fn on_verdict(
     called: On<ToolCalled<VerdictArgs>>,
-    supervisors: Query<(&SpawnedBy, &AgentId), With<Supervisor>>,
-    workers: Query<Has<ActiveTurn>, With<Supervised>>,
+    supervisors: Query<&SpawnedBy, With<Supervisor>>,
+    workers: Query<Has<ActiveTurn>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let call = called.call;
     let mut answer = |said: Result<&str, &str>| {
-        let result = match said {
-            Ok(said) => ToolResult::success(said.to_owned().into()),
-            Err(why) => ToolResult::failed(ToolExecutionError::other(why.to_owned())),
+        let outcome = match said {
+            Ok(said) => Outcome::from(ToolResult::success(said.to_owned().into())),
+            Err(why) => Outcome::refused(why),
         };
-        commands.entity(call).insert_if_new(ToolOutput(result));
+        commands.entity(call).insert_if_new(outcome);
     };
-    let Ok((&SpawnedBy(worker), id)) = supervisors.get(called.agent) else {
+    let Ok(&SpawnedBy(worker)) = supervisors.get(called.agent) else {
         answer(Err("Only a supervisor gives verdicts."));
         return;
     };
-    let Ok(busy) = workers.get(worker) else {
-        answer(Ok("The worker is no longer supervised; nothing was done."));
-        return;
-    };
-    let message = called
-        .args
-        .message
-        .as_deref()
-        .map(str::trim)
-        .filter(|text| !text.is_empty());
-    match (called.args.decision, message) {
+    let busy = workers.get(worker).unwrap_or_default();
+    let message = called.args.message.as_deref().map(str::trim);
+    match (
+        called.args.decision,
+        message.filter(|text| !text.is_empty()),
+    ) {
         (Decision::Continue, _) => answer(Ok("Noted: the worker carries on.")),
         (Decision::Steer | Decision::Stop, None) => {
             answer(Err(
@@ -566,20 +491,20 @@ fn on_verdict(
             } else {
                 DeliveryMode::Note
             };
-            let origin = Origin::agent(id.clone(), None).titled(NAME);
-            let steer = Deliver::new(worker, text, mode).with_origin(origin);
+            let origin = Origin::agent(called.caller.clone(), None).titled(NAME);
             answer(Ok("Sent; the worker reads it with its next model call."));
-            commands.trigger(steer);
+            commands.trigger(Deliver::new(worker, text, mode).with_origin(origin));
         }
         (Decision::Stop, Some(reason)) => {
             answer(Ok("The worker's turn is stopped and the user told why."));
             if busy {
-                commands.trigger(Interrupt::new(worker));
+                commands.trigger(Interrupt {
+                    entity: worker,
+                    reason: Some(format!("the supervisor stopped it: {reason}")),
+                });
             }
-            notices.write(Notice::info(
-                worker,
-                format!("The supervisor stopped the turn: {reason}"),
-            ));
+            let told = format!("The supervisor stopped the turn: {reason}");
+            notices.write(Notice::info(worker, told));
         }
     }
 }

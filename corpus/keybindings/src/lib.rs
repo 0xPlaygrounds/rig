@@ -1,282 +1,77 @@
 //! Plugin corpus: 53. Custom key bindings (spec `53-keybindings.md`).
 //!
-//! `RIG_HOME/keys.toml` maps keys to actions:
+//! `RIG_HOME/keys.toml` binds keys of the terminal view's input:
 //!
 //! ```toml
 //! "alt+m" = { cycle_model = ["deepseek/deepseek-flash", "deepseek/deepseek-v4-pro"] }
 //! "ctrl+g" = { command = "/compact" }
 //! "ctrl+t" = { insert = "Think step by step." }
-//! "ctrl+o" = { send = "Go on.", label = "continue" }
+//! "ctrl+o" = { send = "Go on.", label = "Continue" }
 //! "ctrl+e" = { editor = true, override = true }
 //! ```
 //!
-//! A binding of a key the terminal view already uses is refused at startup
-//! with a notice, unless it says `override = true`. Other plugins add
-//! bindings with [`AppKeyBindingsExt::add_key_binding`]; `/keys` lists them
-//! all with where each came from. The file is read at startup, so `/reload`
-//! picks up a change.
-//!
-//! A front hands a key to the bindings with [`KeyPressed`]. The terminal
-//! view (`rig-tui`) reads its keys privately and never does, and its input
-//! line is private too, so `insert` and `editor` cannot reach it.
+//! Each is a `rig_tui` [`KeyBinding`] in the input's scope. One whose keys
+//! another binding takes, such as the view's own `ctrl+e` (the end of the
+//! line), replaces it only with `override = true`; otherwise it is refused
+//! at startup with a notice naming the binding in the way. Other plugins
+//! bind keys with `rig_tui`'s `add_key_binding`, and `/keys` lists every
+//! binding with the plugin it came from. The file is read when the app is
+//! built, so `/reload` takes a change.
 
-use std::fmt;
 use std::path::PathBuf;
+use std::process::Command;
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rig_harness::prelude::*;
+use rig_tui::{
+    AppKeyBindingsExt, KeyBinding, KeyPressed, KeyScope, Keys, RunInTerminal, TerminalExit,
+    TuiInput, TuiPlugin, run_command,
+};
 use serde::Deserialize;
 
-/// Where the user's bindings come from in `/keys`.
-const USER_FILE: &str = "keys.toml";
+/// The user's bindings, in `RIG_HOME`.
+pub const USER_FILE: &str = "keys.toml";
 
-/// A key with its modifiers, as `ctrl+e`, `alt+m`, `enter` or `f5`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct KeyChord {
-    /// The key; a letter is lowercase.
-    pub code: KeyCode,
-    /// Control, Alt and Shift only.
-    pub modifiers: KeyModifiers,
-}
-
-impl KeyChord {
-    /// Parses `ctrl+alt+x`, `shift+up`, `enter`, `f5`, `space`.
-    pub fn parse(text: &str) -> Result<Self, String> {
-        let text = text.trim().to_lowercase();
-        let mut parts: Vec<&str> = text.split('+').collect();
-        let key = parts.pop().filter(|key| !key.is_empty());
-        let key = key.ok_or_else(|| format!("`{text}` names no key"))?;
-        let mut modifiers = KeyModifiers::NONE;
-        for part in parts {
-            modifiers |= match part {
-                "ctrl" | "control" => KeyModifiers::CONTROL,
-                "alt" | "meta" => KeyModifiers::ALT,
-                "shift" => KeyModifiers::SHIFT,
-                other => return Err(format!("`{other}` in `{text}` is not a modifier")),
-            };
-        }
-        let code = match key {
-            "enter" | "return" => KeyCode::Enter,
-            "esc" | "escape" => KeyCode::Esc,
-            "tab" => KeyCode::Tab,
-            "backspace" => KeyCode::Backspace,
-            "delete" | "del" => KeyCode::Delete,
-            "up" => KeyCode::Up,
-            "down" => KeyCode::Down,
-            "left" => KeyCode::Left,
-            "right" => KeyCode::Right,
-            "home" => KeyCode::Home,
-            "end" => KeyCode::End,
-            "pageup" => KeyCode::PageUp,
-            "pagedown" => KeyCode::PageDown,
-            "space" => KeyCode::Char(' '),
-            _ => match (key.chars().next(), key.chars().count()) {
-                (Some(character), 1) => KeyCode::Char(character),
-                (Some('f'), _) => match key.get(1..).and_then(|n| n.parse().ok()) {
-                    Some(n) if (1..=24).contains(&n) => KeyCode::F(n),
-                    _ => return Err(format!("`{key}` is not a key")),
-                },
-                _ => return Err(format!("`{key}` is not a key")),
-            },
-        };
-        Ok(Self { code, modifiers })
-    }
-
-    /// The chord of a key event.
-    pub fn of(key: &KeyEvent) -> Self {
-        let code = match key.code {
-            KeyCode::Char(character) => KeyCode::Char(character.to_ascii_lowercase()),
-            code => code,
-        };
-        let modifiers =
-            key.modifiers & (KeyModifiers::CONTROL | KeyModifiers::ALT | KeyModifiers::SHIFT);
-        Self { code, modifiers }
-    }
-
-    /// What the terminal view does with this chord in its input line, if
-    /// anything: a copy of `rig-tui`'s `input_key`, which is private.
-    pub fn built_in(&self) -> Option<&'static str> {
-        let control = self.modifiers.contains(KeyModifiers::CONTROL);
-        let alt = self.modifiers.contains(KeyModifiers::ALT);
-        let shift = self.modifiers.contains(KeyModifiers::SHIFT);
-        let plain = !control && !alt;
-        Some(match self.code {
-            KeyCode::Char(character) if control && !alt => match character {
-                'c' => "clear the input",
-                'j' => "new line",
-                'a' => "line start",
-                'e' => "line end",
-                'b' => "cursor left",
-                'f' => "cursor right",
-                'k' => "delete to line end",
-                'u' => "delete to line start",
-                'w' => "delete word",
-                'p' => "line up",
-                'n' => "line down",
-                'v' => "paste an image",
-                _ => return None,
-            },
-            KeyCode::Char(character) if alt && !control => match character {
-                'b' => "word left",
-                'f' => "word right",
-                'd' => "delete next word",
-                _ => return None,
-            },
-            KeyCode::Char(_) if plain => "typing",
-            KeyCode::Backspace | KeyCode::Delete | KeyCode::Left | KeyCode::Right => "editing",
-            KeyCode::Home | KeyCode::End if plain => "editing",
-            KeyCode::Tab if plain => "completion and queueing",
-            KeyCode::Enter if shift || alt => "new line",
-            KeyCode::Enter if plain => "send",
-            KeyCode::Esc if plain => "interrupt",
-            KeyCode::Up | KeyCode::Down if plain => "history and scrolling",
-            KeyCode::PageUp | KeyCode::PageDown if plain => "scrolling",
-            _ => return None,
-        })
-    }
-}
-
-impl fmt::Display for KeyChord {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (modifier, name) in [
-            (KeyModifiers::CONTROL, "ctrl+"),
-            (KeyModifiers::ALT, "alt+"),
-            (KeyModifiers::SHIFT, "shift+"),
-        ] {
-            if self.modifiers.contains(modifier) {
-                f.write_str(name)?;
-            }
-        }
-        match self.code {
-            KeyCode::Char(' ') => f.write_str("space"),
-            KeyCode::Char(character) => write!(f, "{character}"),
-            KeyCode::F(n) => write!(f, "f{n}"),
-            code => f.write_str(&format!("{code:?}").to_lowercase()),
-        }
-    }
-}
-
-/// What a key does.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum KeyAction {
-    /// Edit the input in `$EDITOR`.
-    Editor,
-    /// Run a slash command, such as `/compact`.
-    Command(String),
-    /// Insert text at the cursor.
-    Insert(String),
-    /// Step the agent's model through these `vendor/model` references.
-    CycleModel(Vec<String>),
-    /// Send a message.
-    Send(String),
-}
-
-impl fmt::Display for KeyAction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Editor => f.write_str("edit in $EDITOR"),
-            Self::Command(line) => write!(f, "run {line}"),
-            Self::Insert(text) => write!(f, "insert {text:?}"),
-            Self::CycleModel(models) => write!(f, "cycle {}", models.join(", ")),
-            Self::Send(text) => write!(f, "send {text:?}"),
-        }
-    }
-}
-
-/// A key bound to an action, with its label and where it came from.
-#[derive(Clone, Debug)]
-pub struct KeyBinding {
-    /// The key.
-    pub chord: KeyChord,
-    /// What it does.
-    pub action: KeyAction,
-    /// A short label for `/keys`.
-    pub label: String,
-    /// `keys.toml`, or the plugin that added it.
-    pub source: String,
-    /// Whether it may replace the terminal view's own use of the key.
-    pub overrides: bool,
-}
-
-impl KeyBinding {
-    /// `key` doing `action`, labelled `label`, added by `source`.
-    pub fn new(key: &str, action: KeyAction, label: &str, source: &str) -> Result<Self, String> {
-        Ok(Self {
-            chord: KeyChord::parse(key)?,
-            action,
-            label: label.to_owned(),
-            source: source.to_owned(),
-            overrides: false,
-        })
-    }
-
-    /// This binding, allowed to replace a built-in key.
-    pub fn overriding(self) -> Self {
-        Self {
-            overrides: true,
-            ..self
-        }
-    }
-}
-
-/// The bindings in force: after startup, only those accepted.
-#[derive(Resource, Default, Debug)]
-pub struct KeyBindings(pub Vec<KeyBinding>);
-
-impl KeyBindings {
-    /// The binding of `chord`.
-    pub fn get(&self, chord: KeyChord) -> Option<&KeyBinding> {
-        self.0.iter().find(|binding| binding.chord == chord)
-    }
-}
-
-/// The file the user's bindings are read from: `RIG_HOME/keys.toml`.
-#[derive(Resource, Clone, Debug)]
-pub struct KeysFile(pub PathBuf);
-
-/// Adds key bindings from another plugin.
-pub trait AppKeyBindingsExt {
-    /// Adds `binding`; it is checked with the user's at startup.
-    fn add_key_binding(&mut self, binding: KeyBinding) -> &mut Self;
-}
-
-impl AppKeyBindingsExt for App {
-    fn add_key_binding(&mut self, binding: KeyBinding) -> &mut Self {
-        self.init_resource::<KeyBindings>();
-        self.world_mut()
-            .resource_mut::<KeyBindings>()
-            .0
-            .push(binding);
-        self
-    }
-}
-
-/// A key pressed in a front's input for the agent `entity`.
-#[derive(EntityEvent, Clone, Debug)]
-pub struct KeyPressed {
-    /// The agent shown.
-    pub entity: Entity,
-    /// The key.
-    pub key: KeyEvent,
-}
-
-/// Reads `keys.toml` at startup, runs bound keys, and adds `/keys`.
+/// Binds the keys of `RIG_HOME/keys.toml` and adds `/keys`.
 #[derive(Default)]
 pub struct KeyBindingsPlugin;
 
+/// On a binding from [`USER_FILE`].
+#[derive(Component, Debug)]
+pub struct UserKey;
+
+/// A program writing the input's draft in this file.
+#[derive(Component)]
+struct Draft(PathBuf);
+
 impl Plugin for KeyBindingsPlugin {
     fn build(&self, app: &mut App) {
-        if !app.world().contains_resource::<KeysFile>() {
-            app.insert_resource(KeysFile(Home::from_env().root().join(USER_FILE)));
+        if !app.is_plugin_added::<TuiPlugin>() {
+            app.add_plugins(TuiPlugin);
         }
-        app.init_resource::<KeyBindings>()
-            .add_systems(Startup, load)
-            .add_observer(press)
+        app.init_resource::<RigHome>()
             .add_command(
                 "keys",
                 "List the key bindings and where they came from",
-                keys,
-            );
+                list,
+            )
+            .add_systems(Update, take_draft);
+    }
+
+    /// Binds the user's keys once every plugin's `build` spawned its own,
+    /// so a conflict with any of them is found.
+    fn finish(&self, app: &mut App) {
+        let path = RigHome::of(app.world()).root().join(USER_FILE);
+        let mut refused: Vec<String> = Vec::new();
+        for (key, entry) in read(&path, &mut refused) {
+            if let Err(why) = entry.bind(app, &key) {
+                refused.push(format!("{USER_FILE}: `{key}` refused: {why}."));
+            }
+        }
+        if !refused.is_empty() {
+            app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
+                notices.write_batch(refused.drain(..).map(|why| Notice::error(None, why)));
+            });
+        }
     }
 }
 
@@ -295,155 +90,223 @@ struct Entry {
     overrides: bool,
 }
 
-impl Entry {
-    fn binding(self, key: &str) -> Result<KeyBinding, String> {
-        let mut actions = Vec::new();
-        if self.editor {
-            actions.push(KeyAction::Editor);
-        }
-        actions.extend(self.command.map(KeyAction::Command));
-        actions.extend(self.insert.map(KeyAction::Insert));
-        actions.extend(self.cycle_model.map(KeyAction::CycleModel));
-        actions.extend(self.send.map(KeyAction::Send));
-        let action = match actions.pop() {
-            Some(action) if actions.is_empty() => action,
-            _ => return Err(format!("`{key}` needs exactly one action")),
-        };
-        if let KeyAction::CycleModel(models) = &action
-            && models.is_empty()
-        {
-            return Err(format!("`{key}` cycles through no models"));
-        }
-        let label = self.label.unwrap_or_else(|| action.to_string());
-        let binding = KeyBinding::new(key, action, &label, USER_FILE)?;
-        Ok(if self.overrides {
-            binding.overriding()
-        } else {
-            binding
-        })
-    }
-}
-
-/// Reads the user's bindings, then keeps each binding, the plugins' and
-/// the user's, that neither takes a built-in key without `override` nor
-/// one bound before it; each refused one is a notice.
-fn load(
-    file: Res<KeysFile>,
-    mut bindings: ResMut<KeyBindings>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let mut candidates = std::mem::take(&mut bindings.0);
-    match std::fs::read_to_string(&file.0) {
-        Ok(text) => match toml::from_str::<toml::Table>(&text) {
-            Ok(table) => {
-                for (key, value) in table {
-                    let entry = value.try_into::<Entry>().map_err(|why| why.to_string());
-                    match entry.and_then(|entry| entry.binding(&key)) {
-                        Ok(binding) => candidates.push(binding),
-                        Err(why) => {
-                            notices.write(Notice::error(None, format!("{USER_FILE}: {why}.")));
-                        }
-                    }
-                }
-            }
+/// The entries of the file at `path`, with what is wrong with it in
+/// `refused`; none when there is no file.
+fn read(path: &std::path::Path, refused: &mut Vec<String>) -> Vec<(String, Entry)> {
+    let table = match std::fs::read_to_string(path) {
+        Ok(text) => text.parse::<toml::Table>().map_err(|why| why.to_string()),
+        Err(why) if why.kind() == std::io::ErrorKind::NotFound => Ok(toml::Table::new()),
+        Err(why) => Err(why.to_string()),
+    };
+    let table = table.unwrap_or_else(|why| {
+        refused.push(format!("{USER_FILE}: {why}"));
+        toml::Table::new()
+    });
+    table
+        .into_iter()
+        .filter_map(|(key, value)| match value.try_into::<Entry>() {
+            Ok(entry) => Some((key, entry)),
             Err(why) => {
-                notices.write(Notice::error(None, format!("{USER_FILE}: {why}")));
+                refused.push(format!("{USER_FILE}: `{key}`: {why}"));
+                None
             }
-        },
-        Err(why) if why.kind() == std::io::ErrorKind::NotFound => {}
-        Err(why) => {
-            notices.write(Notice::error(None, format!("{USER_FILE}: {why}.")));
-        }
-    }
-    for binding in candidates {
-        let refusal = match (binding.chord.built_in(), bindings.get(binding.chord)) {
-            (_, Some(taken)) => Some(format!("it is bound by {} already", taken.source)),
-            (Some(built_in), None) if !binding.overrides => Some(format!(
-                "the terminal view uses it for {built_in}; add `override = true` to replace it"
-            )),
-            _ => None,
+        })
+        .collect()
+}
+
+/// What a key of `keys.toml` does.
+enum Action {
+    Editor,
+    Command(String),
+    Insert(String),
+    CycleModel(Vec<String>),
+    Send(String),
+}
+
+impl Entry {
+    /// The entry's one action, and its label.
+    fn action(&mut self) -> Result<(Action, String), String> {
+        let actions = [
+            self.editor.then_some(Action::Editor),
+            self.command.take().map(Action::Command),
+            self.insert.take().map(Action::Insert),
+            self.cycle_model.take().map(Action::CycleModel),
+            self.send.take().map(Action::Send),
+        ];
+        let mut given = actions.into_iter().flatten();
+        let (Some(action), None) = (given.next(), given.next()) else {
+            return Err("it needs exactly one action".to_owned());
         };
-        match refusal {
-            Some(why) => {
-                let text = format!("Key {} ({}) refused: {why}.", binding.chord, binding.source);
-                notices.write(Notice::error(None, text));
+        let label = match &action {
+            Action::Editor => "Write the input in $EDITOR".to_owned(),
+            Action::Command(line) => format!("Run {line}"),
+            Action::Insert(text) => format!("Insert {text:?}"),
+            Action::CycleModel(models) if models.is_empty() => {
+                return Err("it cycles through no models".to_owned());
             }
-            None => bindings.0.push(binding),
+            Action::CycleModel(models) => format!("Cycle {}", models.join(", ")),
+            Action::Send(text) => format!("Send {text:?}"),
+        };
+        Ok((action, self.label.take().unwrap_or(label)))
+    }
+
+    /// Binds `key` in the input to this entry's action, replacing the
+    /// bindings in its way if it overrides them.
+    fn bind(mut self, app: &mut App, key: &str) -> Result<(), String> {
+        let keys: Keys = key.parse()?;
+        let (action, label) = self.action()?;
+        let binding = KeyBinding::new(keys, label).in_scope(KeyScope::Input);
+
+        let world = app.world_mut();
+        let mut bound = world.query::<(Entity, &KeyBinding)>();
+        let (taken, names): (Vec<Entity>, Vec<String>) = bound
+            .iter(world)
+            .filter(|(_, other)| other.conflicts(&binding))
+            .map(|(entity, other)| (entity, format!("`{}` ({})", other.keys, other.label)))
+            .unzip();
+        if !taken.is_empty() && !self.overrides {
+            return Err(format!(
+                "{} is bound; add `override = true` to replace it",
+                names.join(", ")
+            ));
+        }
+        for entity in taken {
+            world.entity_mut(entity).insert(Disabled);
+        }
+
+        let mark = binding.clone();
+        match action {
+            Action::Editor => app.add_key_binding(binding, edit),
+            Action::Command(line) => {
+                let line = line.trim_start_matches('/').to_owned();
+                app.add_key_binding(binding, run_command(line))
+            }
+            Action::Insert(text) => app.add_key_binding(binding, insert(text)),
+            Action::CycleModel(models) => app.add_key_binding(binding, cycle_model(models)),
+            Action::Send(text) => app.add_key_binding(binding, send(text)),
+        };
+        // `add_key_binding` does not return the binding's entity.
+        let world = app.world_mut();
+        let mut bound = world.query::<(Entity, &KeyBinding)>();
+        if let Some((entity, _)) = bound.iter(world).find(|(_, other)| **other == mark) {
+            world.entity_mut(entity).insert(UserKey);
+        }
+        Ok(())
+    }
+}
+
+/// Inserts `text` at the input's cursor.
+fn insert(text: String) -> impl FnMut(On<KeyPressed>, ResMut<TuiInput>) {
+    move |_: On<KeyPressed>, mut input: ResMut<TuiInput>| input.insert(&text)
+}
+
+/// Sends `text` to the agent shown, as the user.
+fn send(text: String) -> impl FnMut(On<KeyPressed>, Commands) {
+    move |pressed: On<KeyPressed>, mut commands: Commands| {
+        if let Some(agent) = pressed.agent {
+            commands.trigger(Deliver::new(agent, text.clone(), DeliveryMode::Steer));
         }
     }
 }
 
-/// Runs the action bound to a pressed key, if any.
-fn press(
+/// Steps the agent shown to the model after its own in `models`, or to the
+/// first; rig-models shows it in the status line.
+fn cycle_model(
+    models: Vec<String>,
+) -> impl FnMut(On<KeyPressed>, Query<&ModelChoice>, Res<Models>, Commands) {
+    move |pressed: On<KeyPressed>,
+          choices: Query<&ModelChoice>,
+          catalog: Res<Models>,
+          mut commands: Commands| {
+        let Some(agent) = pressed.agent else {
+            return;
+        };
+        let current = choices.get(agent).ok().map(|choice| choice.0.as_str());
+        let reference = |model: &String| {
+            let found = catalog.0.catalog().resolve(model).ok();
+            found.map(|found| found.spec.reference())
+        };
+        let at = models
+            .iter()
+            .position(|model| reference(model).as_deref() == current);
+        let next = at.map_or(0, |at| (at + 1) % models.len());
+        if let Some(model) = models.get(next) {
+            commands.trigger(SetModel {
+                entity: agent,
+                model: model.clone(),
+            });
+        }
+    }
+}
+
+/// Writes the input's draft to a file and opens `$VISUAL` or `$EDITOR`
+/// (else `vi`) on it, with the terminal.
+fn edit(
     pressed: On<KeyPressed>,
-    bindings: Res<KeyBindings>,
-    choices: Query<Option<&ModelChoice>, With<Agent>>,
-    models: Res<Models>,
+    input: Res<TuiInput>,
+    (paths, home): (Option<Res<SessionPaths>>, Res<RigHome>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = pressed.entity;
-    let Some(binding) = bindings.get(KeyChord::of(&pressed.key)) else {
+    let dir = paths.map_or_else(
+        || home.0.root().to_path_buf(),
+        |paths| paths.path().to_path_buf(),
+    );
+    let path = dir.join("draft.md");
+    if let Err(why) = std::fs::write(&path, input.text()) {
+        notices.write(Notice::error(
+            pressed.agent,
+            format!("Could not write the draft: {why}."),
+        ));
         return;
-    };
-    match &binding.action {
-        KeyAction::Command(line) | KeyAction::Send(line) => {
-            commands.trigger(Deliver::new(agent, line.clone(), DeliveryMode::Steer));
+    }
+    let editor = std::env::var("VISUAL")
+        .or_else(|_| std::env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_owned());
+    let mut words = editor.split_whitespace();
+    let mut command = Command::new(words.next().unwrap_or("vi"));
+    command.args(words).arg(&path);
+    commands.spawn((RunInTerminal(command), Draft(path)));
+}
+
+/// Puts the draft as the editor left it in the input, unless the editor
+/// failed.
+fn take_draft(
+    done: Query<(Entity, &TerminalExit, &Draft), Added<TerminalExit>>,
+    mut input: ResMut<TuiInput>,
+    mut commands: Commands,
+) {
+    for (run, exit, Draft(path)) in &done {
+        if let (true, Ok(text)) = (exit.success(), std::fs::read_to_string(path)) {
+            input.set(text.trim_end());
         }
-        KeyAction::CycleModel(list) => {
-            let Ok(current) = choices.get(agent) else {
-                return;
-            };
-            let resolve = |reference: &str| {
-                models
-                    .0
-                    .catalog()
-                    .resolve(reference)
-                    .map(|found| found.spec.reference())
-                    .ok()
-            };
-            let at = current.and_then(|current| {
-                list.iter()
-                    .position(|model| resolve(model).as_deref() == Some(current.0.as_str()))
-            });
-            let next = at.map_or(0, |at| (at + 1) % list.len());
-            if let Some(model) = list.get(next) {
-                commands.trigger(SetModel {
-                    entity: agent,
-                    model: model.clone(),
-                });
-            }
-        }
-        KeyAction::Insert(_) | KeyAction::Editor => {
-            let why = format!(
-                "{}: the terminal view's input line cannot be changed by a plugin.",
-                binding.chord
-            );
-            notices.write(Notice::error(agent, why));
-        }
+        std::fs::remove_file(path).ok();
+        commands.entity(run).despawn();
     }
 }
 
-/// `/keys`: every binding in force, with where it came from.
-fn keys(In(args): In<CommandArgs>, bindings: Res<KeyBindings>, mut notices: MessageWriter<Notice>) {
-    let text = if bindings.0.is_empty() {
-        format!("No key bindings: add some to {USER_FILE}.")
-    } else {
-        bindings
-            .0
-            .iter()
-            .map(|binding| {
-                format!(
-                    "{:<12} {}  ({})",
-                    binding.chord.to_string(),
-                    binding.label,
-                    binding.source
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-    };
-    notices.write(Notice::info(args.agent, text));
+/// `/keys`: every key binding with the plugin it came from.
+fn list(
+    In(args): In<CommandArgs>,
+    bindings: Query<(&KeyBinding, Option<&ProvidedBy>, Has<UserKey>)>,
+    names: Query<&Name>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let mut lines: Vec<String> = bindings
+        .iter()
+        .map(|(binding, by, user)| {
+            let plugin = by.and_then(|by| names.get(by.0).ok()).map(Name::as_str);
+            let source = if user { Some(USER_FILE) } else { plugin };
+            format!(
+                "{:<14} {}  ({})",
+                binding.keys.to_string(),
+                binding.label,
+                source.unwrap_or("unknown")
+            )
+        })
+        .collect();
+    lines.sort();
+    notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
 #[cfg(test)]
