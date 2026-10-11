@@ -680,7 +680,12 @@ a Prepare edit of that message: the plugin keeps it in its own state and
 adds it to the next `Incoming` from `OriginKind::User` as an
 `Attachment { label, content }` (`Added<Admitted>`). It then starts no
 turn of its own, needs no hold, and is taken back by clearing that state.
-To have the agent act on it at once, `Deliver` it instead.
+To have the agent act on it at once, `Deliver` it instead. A message the
+agent accepted and has not been given yet, such as a `Note` to a busy
+agent, is taken back by deciding it (`decision.decide(Outcome::custom(
+"withdrawn"))` on its entity): it leaves the inbox and never reaches the
+conversation. A busy agent is given its notes when its turn ends, so
+after that a later note says what changed.
 
 A plugin that needs a mark on its own message spawns it:
 `(Incoming::new(text, mode), ForAgent(agent), MyMark)` is all `Deliver`
@@ -817,9 +822,28 @@ tools misses the provider's prompt cache.
   (`inner.with_middleware(..)`) sees each request's headers and body and
   each response's status and headers, the place to rotate API keys; a
   wrapper of the whole `HttpClientExt` also sees the streamed bytes, such
-  as a raw log of the wire. A provider plugin that builds its own client
-  wraps it with the `Transport` its `Provide` or `SignIn` is handed
+  as a raw log of the wire (its methods are written in
+  `rig_core::http_client::Bytes`). A provider plugin that builds its own
+  client wraps it with the `Transport` its `Provide` or `SignIn` is handed
   (`transport.wrap(client)`). The effect log never holds the wire.
+- **Which call a request serves.** Every request a model call sends
+  carries a `rig_core::serve::Serving` in its extensions
+  (`request.extensions().get::<Serving>()`): the call's effect id, the
+  same as its entity's `Effect::id()`, the handler it went to, and the
+  provider it is reached through. A wrapper keeps what it learns per
+  call by that id, such as which key served it, and a system reads it
+  back when the call settles; a request without one serves no call, such
+  as a model listing. A wrapper runs on the IO task, not in a frame: to
+  tell the app at once, it sends into a channel whose receiver is a
+  `Running::stream` ([Files and
+  streams](#the-process-project-files-and-child-processes)), which wakes
+  the loop.
+- **Reaching a vendor.** `models.0.provide(vendor, provider)` reaches
+  every model of a vendor through a provider of the plugin's own, such as
+  `ConnectOptions` with a key: it replaces one provided before, which
+  `models.0.provider(vendor)` hands over first, for a provider that wraps
+  it. A model the provider has no key for (`ConnectError::MissingKey`)
+  falls back to the sign-ins, as one the environment has no key for does.
 - `rig_ecs::prompt::system_prompt` and `tool_rules` put a prompt together
   exactly as the kernel does, such as for a view of what an agent is told.
   `rig_memory::HeuristicTokenCounter` estimates tokens as rig-compaction
@@ -1622,10 +1646,12 @@ its own with `processes.launcher().command(program)`, or starts one whose
 output it reads as it comes with `.spawn(program, args, Spawn { stdin,
 merge_stderr })`: the `Process` hands its output over line by line
 (`lines()`), ends with SIGTERM then SIGKILL on `stop(grace)`, and is
-killed with its process group when dropped. A plugin's own file tool
-follows the coding tools' rules with rig-tools: `fs::resolve(base, path)`
-makes a path absolute as they and their footprints do, their `base` and
-`confine` say where they work, `edit::apply(path, text, edits)` is what
+killed with its process group when dropped (rig-tools' types, as
+`rig_harness::rig_tools::process`). A plugin's own file tool follows the
+coding tools' rules with rig-tools: `fs::resolve(base, path)` makes a
+path absolute as they and their footprints do, their `base` and
+`confine` say where they work, `fs::place(base, confine, path)` refuses
+a path outside `base` as they refuse it, `edit::apply(path, text, edits)` is what
 `edit` makes of a text, such as for a preview, and `ReadArgs::show(text)`
 what `read` shows.
 
@@ -1709,8 +1735,9 @@ writes itself, such as a window closing, cannot be held.
 
 `FirstStart` is a resource only in a session's first app, a fork's too,
 not after a `/reload` or `/resume`: the place for what a new session or
-a fork does once. `ForkSession { before }` copies this session into a
-new one (`SessionForked` names it; the copy names its parent and where it
+a fork does once. `ForkSession { before, asker }` copies this session
+into a new one (`SessionForked` names it, and the `asker` entity the
+request named, so a plugin knows its own fork; the copy names its parent and where it
 was cut, with the text the user wrote in the message it stopped before,
 `ForkedFrom::of(&dir)`, so a view of a session's family reads no other
 session's log), and `DeleteSession(id)` removes another
@@ -1737,7 +1764,9 @@ fn hold_exit(
     mut held: Local<bool>,
     mut commands: Commands,
 ) {
-    // Once: a second exit asked for passes, as "do not wait".
+    // Once: a second exit asked for passes, as "do not wait", and the app
+    // exits when it settles; a holder that still has to write something
+    // holds that one too.
     if let (false, Some(exit)) = (*held, exits.iter().next()) {
         *held = true;
         let deadline = WakeAt::after(Duration::from_secs(10));
