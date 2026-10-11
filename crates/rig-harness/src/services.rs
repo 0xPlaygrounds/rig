@@ -1,6 +1,7 @@
 //! What every plugin shares about the process it runs in, as resources:
 //! the `RIG_HOME` layout ([`RigHome`]), the project the session works on
-//! ([`ProjectRoot`]), how child processes start ([`Processes`]), and the
+//! ([`ProjectRoot`]) and the directory an agent works in when not that one
+//! ([`WorkDir`]), how child processes start ([`Processes`]), and the
 //! tokio runtime rig's HTTP requests run on ([`TokioRuntime`]). Each is
 //! taken from the environment unless the app inserted one first, which is
 //! how a test points a plugin at a directory of its own; a plugin that
@@ -23,7 +24,10 @@ use std::sync::{Arc, PoisonError, RwLock};
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use bevy_reflect::prelude::*;
 use rig::harness_protocol::{Home, env};
+use rig_ecs::agent::SpawnedBy;
+use rig_ecs::journal::ReflectSaved;
 use rig_tools::process::Launcher;
 
 /// The `RIG_HOME` this agent runs under: where its sessions, settings,
@@ -60,6 +64,16 @@ impl Default for ProjectRoot {
         Self(std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
     }
 }
+
+/// On an agent: the directory it works in, such as a worktree of its own,
+/// in place of the [`ProjectRoot`]. Its file tools resolve relative paths
+/// from it and refuse a path outside it, and its commands start in it
+/// (rig-coding-tools); what a command does once started is not confined.
+/// Saved with the agent. An agent it spawns works there too, unless given
+/// one of its own.
+#[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
+#[reflect(Component, Saved, Clone, Debug, PartialEq)]
+pub struct WorkDir(pub PathBuf);
 
 /// How every child process starts: under which wrapper, in which
 /// directory, with which environment. The shell tool and any plugin that
@@ -100,7 +114,8 @@ impl Default for Processes {
 pub struct TokioRuntime(pub tokio::runtime::Handle);
 
 /// Inserts [`RigHome`], [`ProjectRoot`], [`Processes`] and
-/// [`TokioRuntime`], each unless the app has it.
+/// [`TokioRuntime`], each unless the app has it, and gives an agent
+/// spawned by one with a [`WorkDir`] that directory.
 pub struct ServicesPlugin;
 
 impl Plugin for ServicesPlugin {
@@ -115,7 +130,23 @@ impl Plugin for ServicesPlugin {
         }
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
-            .init_resource::<Processes>();
+            .init_resource::<Processes>()
+            .add_observer(inherit_work_dir);
+    }
+}
+
+/// Gives a spawned agent its parent's [`WorkDir`], unless it has one.
+fn inherit_work_dir(
+    spawned: On<Add<SpawnedBy>>,
+    parents: Query<&SpawnedBy>,
+    dirs: Query<&WorkDir>,
+    mut commands: Commands,
+) {
+    let parent = parents.get(spawned.entity).map(|&SpawnedBy(parent)| parent);
+    if let Some(dir) = parent.ok().and_then(|parent| dirs.get(parent).ok()) {
+        commands
+            .entity(spawned.entity)
+            .try_insert_if_new(dir.clone());
     }
 }
 

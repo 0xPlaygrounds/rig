@@ -126,7 +126,7 @@ pub mod prelude {
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::ToolProgress;
-    pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime};
+    pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
     pub use crate::watch::{FileChanges, FileWatch};

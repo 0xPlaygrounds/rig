@@ -1642,7 +1642,13 @@ fn nightly(due: On<Add<Due>>, mut commands: Commands, mut notices: MessageWriter
 
 # The process: project, files and child processes
 
-`ProjectRoot` is the directory the session works in. `RigHome` is the
+`ProjectRoot` is the directory the session works in. An agent with a
+`WorkDir`, such as a worktree of its own, works there instead, and an
+agent it spawns does too: the coding tools resolve its paths from it and
+refuse a path outside it (what a command does once started is not
+confined), its commands start there, and its prompt names it. A plugin
+that wraps or replaces a call's `CallHandler` in Prepare orders
+`.after(rig_coding_tools::CodingToolsSystems)`. `RigHome` is the
 `RIG_HOME` layout (`home.0.session(..)`, `home.0.auth(..)`). `Processes`
 is how every child process starts, a rig-tools `Launcher` (a wrapper
 command, a directory, environment): the shell tool reads it for each
