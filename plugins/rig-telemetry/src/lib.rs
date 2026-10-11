@@ -8,5 +8,5 @@ pub mod effect_log;
 pub mod usage;
 
 pub use diagnostics::{Diagnostics, DiagnosticsPlugin};
-pub use effect_log::EffectLogPlugin;
+pub use effect_log::{EffectFilter, EffectLog, EffectLogPlugin};
 pub use usage::{SessionSpending, Spending, TurnSpending, UsagePlugin, UsageRow};
