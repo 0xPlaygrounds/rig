@@ -111,12 +111,15 @@ struct Truncated;
 
 /// Replaces each long result of a covered tool by its cut.
 fn cut_long_results(
-    calls: Query<(Entity, &ToolRequest, &Outcome), (Unreviewed, Without<Truncated>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &mut Outcome),
+        (Unreviewed, ToolCalls, Without<Truncated>),
+    >,
     config: Res<Truncate>,
     root: Res<ProjectRoot>,
     mut commands: Commands,
 ) {
-    for (call, ToolRequest { call: request }, outcome) in &calls {
+    for (call, ToolRequest { call: request }, mut outcome) in &mut calls {
         let Ok(effect::Outcome::ToolResult { result }) = &outcome.0 else {
             continue;
         };
@@ -124,9 +127,8 @@ fn cut_long_results(
             continue;
         }
         if let Some(cut) = shorten(result, &request.id.wire(), &config, &root.0) {
-            commands
-                .entity(call)
-                .insert((Outcome::from(cut), Truncated));
+            *outcome = Outcome::from(cut);
+            commands.entity(call).insert(Truncated);
         }
     }
 }
