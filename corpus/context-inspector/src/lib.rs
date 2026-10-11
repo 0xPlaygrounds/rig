@@ -7,8 +7,9 @@
 //! model and sends. The kernel's own request is kept as the call's
 //! [`Built`] when the `ModelRequest` is inserted, before any Prepare
 //! system ran; the request as sent is copied to the agent's
-//! [`LastRequest`] when the call is `Started`, with the prompt sections
-//! that applied and the plugin that spawned each ([`ProvidedBy`]). Each
+//! [`LastRequest`] when the call is `Started`, with the model it went to
+//! after every adapter ([`SentTo`]), the prompt sections that applied and
+//! the plugin that spawned each ([`ProvidedBy`]). Each
 //! part of the system prompt is rendered as the kernel renders it
 //! ([`system_prompt`], [`tool_rules`]) and found in the prompt sent.
 //!
@@ -35,16 +36,27 @@ const BAR: u64 = 40;
 #[derive(Default)]
 pub struct ContextInspectorPlugin;
 
+/// The plugin's stage system: `/context --last` taken over as `/why`,
+/// before the harness runs the line as `/context`.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ContextInspectorSystems;
+
 impl Plugin for ContextInspectorPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(keep_built)
-            .add_observer(keep_sent)
-            .add_systems(AgentPass, alias.in_set(Stage::Prepare))
-            .add_command(
-                "why",
-                "Show what the last model request held: `/why [full] [agent]`",
-                why,
-            );
+        app.configure_sets(
+            AgentPass,
+            ContextInspectorSystems
+                .in_set(Stage::Gate)
+                .before(CommandSystems),
+        )
+        .add_systems(AgentPass, alias.in_set(ContextInspectorSystems))
+        .add_observer(keep_built)
+        .add_observer(keep_sent)
+        .add_command(
+            "why",
+            "Show what the last model request held: `/why [full] [agent]`",
+            why,
+        );
     }
 }
 
@@ -70,8 +82,8 @@ pub struct LastRequest {
     pub rules: String,
     /// The prompt sections that applied.
     pub sections: Vec<SectionNote>,
-    /// The summary that replaced older messages, if any.
-    pub summary: Option<String>,
+    /// The texts of the summaries that replaced older messages.
+    pub summaries: Vec<String>,
 }
 
 /// A prompt section that applied to a request, and who spawned it.
@@ -109,8 +121,8 @@ fn keep_built(
 /// Copies each turn's call, as it starts, to its agent's [`LastRequest`].
 fn keep_sent(
     started: On<Add<Started>>,
-    calls: Query<(&ModelRequest, Option<&Built>, &ForAgent), With<TurnCall>>,
-    agents: Query<(&SystemPrompt, Option<&Connection>, &Conversation)>,
+    calls: Query<(&ModelRequest, &SentTo, Option<&Built>, &ForAgent), With<TurnCall>>,
+    agents: Query<(&SystemPrompt, &Conversation)>,
     sections: Query<(
         &PromptSection,
         Option<&SectionOf>,
@@ -121,13 +133,12 @@ fn keep_sent(
     names: Query<&Name>,
     mut commands: Commands,
 ) {
-    let Ok((call, built, &ForAgent(agent))) = calls.get(started.entity) else {
+    let Ok((call, SentTo(sent_to), built, &ForAgent(agent))) = calls.get(started.entity) else {
         return;
     };
-    let Ok((prompt, own, conversation)) = agents.get(agent) else {
+    let Ok((prompt, conversation)) = agents.get(agent) else {
         return;
     };
-    let connection = call.connection.as_ref().or(own);
     let rules = call.request.tools.iter().filter_map(|sent| {
         let rules = tools.iter().find(|(def, _)| def.0.name == sent.name);
         rules.map(|(_, rules)| rules)
@@ -144,44 +155,64 @@ fn keep_sent(
         .filter(|note| !note.block().is_empty())
         .collect();
     let last = LastRequest {
-        model: connection.map_or_else(String::new, |connection| connection.spec.reference()),
-        window: connection.and_then(|connection| connection.spec.context_window),
+        model: sent_to.spec.reference(),
+        window: sent_to.spec.context_window,
         sent: call.request.clone(),
         built: built.map(|built| built.0.clone()),
         role: system_prompt(&prompt.0, "", []),
         rules: tool_rules(rules),
         sections,
-        summary: summary_text(conversation),
+        summaries: summaries(conversation),
     };
     commands.entity(agent).try_insert(last);
 }
 
-/// The text of the compaction summary that stands first in `conversation`,
-/// in place of the messages it replaced, if any.
-fn summary_text(conversation: &Conversation) -> Option<String> {
+/// The texts of the compaction summaries in `conversation`, each
+/// spliced in place of the messages it replaced.
+fn summaries(conversation: &Conversation) -> Vec<String> {
+    // `rig_compaction::summary_origin()`, which this crate does not depend on.
     let summary = Origin::plugin("compaction");
-    let Some(Message::User { content }) = conversation.messages().first() else {
-        return None;
-    };
-    content
-        .iter()
-        .enumerate()
-        .find_map(|(item, content)| match content {
-            UserContent::Text(text) if conversation.origin(0, item) == Some(&summary) => {
+    let messages = conversation.messages().iter().enumerate();
+    let items = messages.filter_map(|(at, message)| match message {
+        Message::User { content } => Some(
+            content
+                .iter()
+                .enumerate()
+                .map(move |(item, part)| (at, item, part)),
+        ),
+        _ => None,
+    });
+    items
+        .flatten()
+        .filter_map(|(at, item, part)| match part {
+            UserContent::Text(text) if conversation.origin(at, item) == Some(&summary) => {
                 Some(text.text.clone())
             }
             _ => None,
         })
+        .collect()
 }
 
-/// `/context --last` is `/why`.
-fn alias(mut typed: Query<&mut Incoming, Added<Admitted>>) {
-    for mut typed in &mut typed {
-        if typed.origin.kind != OriginKind::User {
+/// `/context --last [full] [agent]` runs as `/why [full] [agent]`, taken
+/// over before the harness would run it as `/context`.
+fn alias(
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut commands: Commands,
+) {
+    for (typed, &ForAgent(agent), mut decision) in &mut typed {
+        let Some(rest) = typed
+            .command()
+            .and_then(|line| line.strip_prefix("context --last"))
+        else {
             continue;
-        }
-        if let Some(rest) = typed.text.trim().strip_prefix("/context --last") {
-            typed.text = format!("/why{rest}");
+        };
+        if (rest.is_empty() || rest.starts_with(' ')) && decision.decide(Outcome::custom("command"))
+        {
+            let mode = typed.mode;
+            commands.trigger(RunCommand {
+                mode,
+                ..RunCommand::new(agent, format!("why{rest}"))
+            });
         }
     }
 }
@@ -289,8 +320,9 @@ fn split(request: &CompletionRequest) -> (&str, &[Message]) {
 #[derive(Default, Clone, Copy)]
 struct Tally(usize, u64);
 
-/// The kind of a message, as `/why` groups them, given the summary text.
-fn kind(message: &Message, summary: Option<&str>) -> usize {
+/// The kind of a message, as `/why` groups them, given the summaries'
+/// texts.
+fn kind(message: &Message, summaries: &[String]) -> usize {
     match message {
         Message::Assistant(_) => 1,
         Message::System { .. } => 4,
@@ -302,7 +334,7 @@ fn kind(message: &Message, summary: Option<&str>) -> usize {
             {
                 2
             } else if parts.clone().any(
-                |part| matches!(part, UserContent::Text(text) if Some(text.text.as_str()) == summary),
+                |part| matches!(part, UserContent::Text(text) if summaries.contains(&text.text)),
             ) {
                 3
             } else {
@@ -359,7 +391,7 @@ fn report(
 
     let mut kinds = [Tally::default(); KINDS.len()];
     for message in messages {
-        if let Some(tally) = kinds.get_mut(kind(message, last.summary.as_deref())) {
+        if let Some(tally) = kinds.get_mut(kind(message, &last.summaries)) {
             tally.0 += 1;
             tally.1 += message_tokens(message);
         }
