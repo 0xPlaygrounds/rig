@@ -19,6 +19,8 @@ bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
+# The sets its request edit goes between.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
@@ -28,6 +30,7 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }

@@ -21,6 +21,7 @@ use std::time::UNIX_EPOCH;
 
 use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
+use rig_basics::ProjectContextSystems;
 use rig_compaction::CompactionSystems;
 use rig_core::DynModel;
 use rig_core::operation::Embedding;
@@ -77,14 +78,25 @@ impl Plugin for CodeSearchPlugin {
                 index,
             )
             .add_systems(Startup, start)
-            .configure_sets(AgentPass, CodeSearchSystems.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                (
+                    // A line the harness took over is no message to look up.
+                    CodeSearchSystems::LookUp
+                        .in_set(Stage::Gate)
+                        .after(AskSystems),
+                    // Compaction measures the request with the chunks in it.
+                    CodeSearchSystems::AddContext
+                        .in_set(Stage::Prepare)
+                        .after(ProjectContextSystems)
+                        .before(CompactionSystems::Prepare),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    look_up.in_set(Stage::Gate),
-                    add_context
-                        .in_set(CodeSearchSystems)
-                        .before(CompactionSystems::Prepare),
+                    look_up.in_set(CodeSearchSystems::LookUp),
+                    add_context.in_set(CodeSearchSystems::AddContext),
                 ),
             )
             .add_observer(listed)
@@ -98,10 +110,16 @@ impl Plugin for CodeSearchPlugin {
     }
 }
 
-/// The Prepare system that adds the chunks found for a user's message to
-/// its turn's requests, for other plugins to order against.
+/// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CodeSearchSystems;
+pub enum CodeSearchSystems {
+    /// In [`Stage::Gate`]: holds each new message of the user's while the
+    /// index is searched for it, after [`AskSystems`].
+    LookUp,
+    /// In [`Stage::Prepare`]: adds the chunks found for a user's message to
+    /// its turn's requests, before [`CompactionSystems::Prepare`].
+    AddContext,
+}
 
 /// The `[code_search]` settings.
 #[derive(Resource, Deserialize, Clone, Default)]
@@ -552,12 +570,12 @@ fn search(
 /// Takes in what a search indexed again, and answers its call.
 fn searched(
     add: On<Add<Searched>>,
-    mut done: Query<&mut Searched>,
+    mut done: Query<(&mut Searched, &mut Decision), ToolCalls>,
     mut index: ResMut<CodeIndex>,
     embedder: Res<Embedder>,
     mut commands: Commands,
 ) {
-    let Ok(mut searched) = done.get_mut(add.entity) else {
+    let Ok((mut searched, mut decision)) = done.get_mut(add.entity) else {
         return;
     };
     if searched.generation == index.generation
@@ -566,11 +584,8 @@ fn searched(
     {
         save(&index, &embedder);
     }
-    let result = searched.result.clone();
-    commands
-        .entity(add.entity)
-        .remove::<Searched>()
-        .insert_if_new(Outcome::from(result));
+    decision.decide(searched.result.clone());
+    commands.entity(add.entity).remove::<Searched>();
 }
 
 /// Indexes again the indexed files whose stamp changed, and, with a
@@ -662,10 +677,14 @@ fn describe(hits: &[Hit<'_>]) -> String {
     hits.collect::<Vec<_>>().join("\n\n")
 }
 
-/// Holds each new message the user sends while the index is searched for
-/// it, so the chunks found are ready when its turn's calls are prepared.
+/// Holds each new message the user sends, unless a gate decided it, while
+/// the index is searched for it, so the chunks found are ready when its
+/// turn's calls are prepared.
 fn look_up(
-    messages: Query<(Entity, &Incoming), (Undecided, Without<TurnContext>)>,
+    messages: Query<
+        (Entity, &Incoming, &Decision),
+        (Undecided, IncomingMessages, Without<TurnContext>),
+    >,
     settings: Res<CodeSearchSettings>,
     index: Res<CodeIndex>,
     embedder: Res<Embedder>,
@@ -676,9 +695,10 @@ fn look_up(
     if k == 0 || index.files.is_empty() {
         return;
     }
-    for (message, incoming) in &messages {
+    for (message, incoming, decision) in &messages {
         let key = incoming.text.trim();
         if incoming.origin.kind != OriginKind::User
+            || decision.is_decided()
             || incoming.command().is_some()
             || key.is_empty()
         {
