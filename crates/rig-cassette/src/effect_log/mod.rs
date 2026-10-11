@@ -23,7 +23,7 @@ mod log;
 mod recorder;
 mod replay;
 
-pub use answers::RecordedAnswers;
+pub use answers::{Divergence, RecordedAnswers};
 pub use log::{
     CHECKPOINT_FORMAT, Checkpoint, EffectLog, LogHeader, ProgramIdentity, RecordedStreamError,
     canonical_local_ids, stable_hash,

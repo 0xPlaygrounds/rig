@@ -191,17 +191,16 @@ impl Answers {
                 return Ok(record);
             }
             Ok(record) => vec![format!("model: recorded `{}`, now `{key}`", record.key)],
-            Err(report) => {
+            Err(diverged) => {
                 // The recorded call next in order, for a readable diff.
-                let mut next = self.record.clone().checking(RequestCheck::Skip);
-                let mut found = vec![report.message];
+                let mut found = vec![diverged.report.message];
                 if let (
-                    Ok(EffectRecord {
+                    Some(EffectRecord {
                         kind: EffectKind::Completion { request: was, .. },
                         ..
                     }),
                     EffectKind::Completion { request: now, .. },
-                ) = (next.answer(scope, kind), kind)
+                ) = (diverged.expected, kind)
                 {
                     found.extend(differences(&was, now));
                 }
@@ -222,12 +221,12 @@ impl Answers {
         scope: Option<&str>,
         kind: &EffectKind,
     ) -> Result<EffectRecord, Divergence> {
-        let answer = self.record.answer(scope, kind).map_err(|report| {
+        let answer = self.record.answer(scope, kind).map_err(|diverged| {
             let made = self.positions.get(&scope.map(Arc::from)).copied();
             Divergence {
                 agent: scope.unwrap_or_default().to_owned(),
                 position: made.unwrap_or_default().saturating_sub(1),
-                differences: vec![report.message],
+                differences: vec![diverged.report.message],
             }
         });
         self.answered.1 += usize::from(answer.is_ok());

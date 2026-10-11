@@ -1,7 +1,7 @@
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, HandlerKey, Outcome};
 use rig_core::error::ErrorKind;
 
-use super::RecordedAnswers;
+use super::{Divergence, RecordedAnswers};
 use crate::effect_log::{EffectLog, RequestCheck};
 
 fn call(args: &str) -> EffectKind {
@@ -31,7 +31,7 @@ fn record(id: u64, scope: Option<&str>, kind: EffectKind, answer: &str) -> Effec
     record
 }
 
-fn answered(record: Result<EffectRecord, rig_core::error::ErrorReport>) -> Option<String> {
+fn answered(record: Result<EffectRecord, Divergence>) -> Option<String> {
     match record.ok()?.outcome {
         Ok(Outcome::Custom { payload }) => payload.as_str().map(str::to_owned),
         _ => None,
@@ -73,15 +73,18 @@ fn answers_follow_each_scope_and_kind_in_order() {
         Some("app noted")
     );
     let exhausted = answers.answer(Some("helper"), &a);
-    assert!(exhausted.is_err_and(
-        |report| report.kind == ErrorKind::Divergence && report.message.contains("no more")
-    ));
+    assert!(
+        exhausted.is_err_and(|Divergence { expected, report }| expected.is_none()
+            && report.kind == ErrorKind::Divergence
+            && report.message.contains("no more"))
+    );
     assert_eq!(answers.remaining(), 1);
 }
 
 /// Calls made side by side match their records whatever order they come
-/// in; a call no record matches diverges, naming the difference, and takes
-/// nothing; without checks, records answer in order.
+/// in; a call no record matches diverges, carrying the next record and
+/// naming the difference, and takes nothing; without checks, records
+/// answer in order.
 #[test]
 fn a_call_takes_the_first_record_it_matches() {
     let log = EffectLog::from_records(vec![
@@ -94,10 +97,11 @@ fn a_call_takes_the_first_record_it_matches() {
         Some("B")
     );
     let diverged = answers.answer(Some("lead"), &call("{\"path\":\"c\"}"));
-    assert!(
-        diverged.is_err_and(|report| report.kind == ErrorKind::Divergence
-            && report.message.contains("arguments differ"))
-    );
+    assert!(diverged.is_err_and(|Divergence { expected, report }| {
+        expected.is_some_and(|record| record.id == EffectId::from_raw(0))
+            && report.kind == ErrorKind::Divergence
+            && report.message.contains("arguments differ")
+    }));
     assert_eq!(answers.remaining(), 1);
 
     let mut unchecked = RecordedAnswers::new(&log).checking(RequestCheck::Skip);
@@ -137,7 +141,7 @@ fn a_new_cache_key_alone_does_not_diverge() {
         assert!(
             answers
                 .answer(Some("lead"), &completion("agent-2", "bye"))
-                .is_err_and(|report| report.kind == ErrorKind::Divergence),
+                .is_err_and(|divergence| divergence.report.kind == ErrorKind::Divergence),
             "{check:?}"
         );
         assert_eq!(

@@ -91,14 +91,15 @@ impl RecordedAnswers {
     ///
     /// # Errors
     ///
-    /// [`ErrorKind::Divergence`] when the log has no remaining record of
-    /// that scope and kind, or none whose request matches `kind`; the
-    /// report names the first difference from the next one in order.
+    /// A [`Divergence`] when the log has no remaining record of that scope
+    /// and kind, or none whose request matches `kind`: the next record in
+    /// order, if any, and an [`ErrorKind::Divergence`] report naming the
+    /// first difference from it.
     pub fn answer(
         &mut self,
         scope: Option<&str>,
         kind: &EffectKind,
-    ) -> Result<EffectRecord, ErrorReport> {
+    ) -> Result<EffectRecord, Divergence> {
         let name = kind.name();
         let scope: Option<Arc<str>> = scope.map(Arc::from);
         let shown = scope.as_deref().unwrap_or("no scope");
@@ -106,13 +107,14 @@ impl RecordedAnswers {
             .queues
             .get_mut(&(scope.clone(), name.to_owned()))
             .filter(|queue| !queue.is_empty())
-            .ok_or_else(|| {
-                ErrorReport::new(
+            .ok_or_else(|| Divergence {
+                expected: None,
+                report: ErrorReport::new(
                     ErrorKind::Divergence,
                     format!(
                         "replay divergence: `{shown}` made a `{name}` effect the log has no more of"
                     ),
-                )
+                ),
             })?;
         let check = self.check;
         let matched = queue
@@ -121,14 +123,20 @@ impl RecordedAnswers {
         match matched.and_then(|at| queue.remove(at)) {
             Some(record) => Ok(record),
             None => {
-                let what = queue
-                    .front()
+                let expected = queue.front().cloned();
+                let what = expected
+                    .as_ref()
                     .and_then(|next| divergence_under(check, &next.kind, kind))
                     .unwrap_or_default();
-                Err(ErrorReport::new(
-                    ErrorKind::Divergence,
-                    format!("replay divergence: no recorded `{name}` of `{shown}` matches: {what}"),
-                ))
+                Err(Divergence {
+                    expected,
+                    report: ErrorReport::new(
+                        ErrorKind::Divergence,
+                        format!(
+                            "replay divergence: no recorded `{name}` of `{shown}` matches: {what}"
+                        ),
+                    ),
+                })
             }
         }
     }
@@ -141,3 +149,20 @@ impl RecordedAnswers {
 
 #[cfg(test)]
 mod tests;
+
+/// Why [`RecordedAnswers::answer`] has no record for an effect: the record
+/// it was compared with, for a host's own diff, and the report.
+#[derive(Clone, Debug)]
+pub struct Divergence {
+    /// The next record of the effect's scope and kind, in recorded order;
+    /// `None` when the log has no more of them.
+    pub expected: Option<EffectRecord>,
+    /// An [`ErrorKind::Divergence`] report naming the first difference.
+    pub report: ErrorReport,
+}
+
+impl From<Divergence> for ErrorReport {
+    fn from(divergence: Divergence) -> Self {
+        divergence.report
+    }
+}
