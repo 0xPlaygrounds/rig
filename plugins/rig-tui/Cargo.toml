@@ -18,6 +18,8 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_reflect = { workspace = true }
+# A copy to the clipboard through the terminal (OSC 52).
+base64 = { workspace = true }
 crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
 # Path completion in the input, as git ignores it.
@@ -31,6 +33,8 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
+# A status item's side read from settings.
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [target.'cfg(unix)'.dependencies]

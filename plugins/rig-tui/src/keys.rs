@@ -7,18 +7,21 @@
 //! As with tools, commands and tool renderers, the first binding of a key
 //! stays: [`AppKeyBindingsExt::add_key_binding`] refuses one whose keys
 //! another binding of an overlapping [`KeyScope`] takes, or starts, or is
-//! started by, with a warning. Bevy's `Disabled` on a binding frees its
-//! keys, such as the view's `ctrl+e` (the end of the line) for an editor
-//! key; do it in `Plugin::finish`, once every plugin's `build` ran.
+//! started by, with a warning. A global binding does not conflict with
+//! the input's own: it shadows the input's binding of the same keys, such
+//! as the view's `ctrl+e` (the end of the line) for an editor key, while
+//! no panel has the keys. Bevy's `Disabled` on a binding frees its keys;
+//! do it in `Plugin::finish`, once every plugin's `build` ran.
 //!
 //! A plugin's pressed binding triggers [`KeyPressed`] on its entity,
 //! which the observer given with it handles (the view's own act on the
 //! input instead); one made with
 //! [`KeyBinding::with_releases`] also triggers it when the key is let go,
 //! where the terminal reports that. A panel takes the keys while it is the
-//! [`KeyFocus`]: its own bindings ([`KeyScope::Panel`]) and the global
-//! ones apply, the input's do not, and Esc that it does not bind gives
-//! the keys back to the input.
+//! [`KeyFocus`], which only an entity with a [`TuiPanel`](crate::TuiPanel) can be: its own
+//! bindings ([`KeyScope::Panel`]) and the global ones apply, the input's
+//! do not, and Esc that it does not bind gives the keys back to the input,
+//! as does the panel going.
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -275,16 +278,22 @@ pub enum KeyScope {
     #[default]
     Global,
     /// In the input, while no panel has the [`KeyFocus`]: the view's own
-    /// editing keys.
+    /// editing keys. A global binding of the same keys shadows one.
     Input,
     /// In this panel, while it has the [`KeyFocus`].
     Panel(Entity),
 }
 
 impl KeyScope {
-    /// Whether a key can be in both scopes at once.
+    /// Whether a key can be bound in both scopes at once: not the same
+    /// keys in one scope, nor globally and in a panel. Globally and in the
+    /// input it can: the global binding shadows the input's.
     fn overlaps(self, other: Self) -> bool {
-        self == Self::Global || other == Self::Global || self == other
+        match (self, other) {
+            (Self::Global, Self::Input) | (Self::Input, Self::Global) => false,
+            (Self::Global, _) | (_, Self::Global) => true,
+            _ => self == other,
+        }
     }
 }
 
@@ -353,9 +362,9 @@ pub struct KeyPressed {
 }
 
 /// The panel that takes the keys, or `None` for the input. Set it to a
-/// panel's entity to give the panel the keys; the view sets it back to
-/// `None` when that entity is gone, and when Esc is pressed that the panel
-/// does not bind.
+/// [`TuiPanel`](crate::TuiPanel)'s entity to give the panel the keys; the view sets it back
+/// to `None` when that entity is no panel, or gone, and when Esc is
+/// pressed that the panel does not bind.
 #[derive(Resource, Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
 #[reflect(Resource, Clone, Debug, Default, PartialEq)]
 pub struct KeyFocus(pub Option<Entity>);
@@ -363,13 +372,14 @@ pub struct KeyFocus(pub Option<Entity>);
 /// Binds keys on an [`App`].
 pub trait AppKeyBindingsExt {
     /// Spawns `binding` with `on_press`, an observer of the [`KeyPressed`]
-    /// it triggers, unless another binding conflicts with it
-    /// ([`KeyBinding::conflicts`]): that one stays, with a warning.
+    /// it triggers, and returns its entity, unless another binding
+    /// conflicts with it ([`KeyBinding::conflicts`]): that one stays, with
+    /// a warning.
     fn add_key_binding<M>(
         &mut self,
         binding: KeyBinding,
         on_press: impl IntoObserverSystem<KeyPressed, M>,
-    ) -> &mut Self;
+    ) -> Option<Entity>;
 }
 
 impl AppKeyBindingsExt for App {
@@ -377,11 +387,10 @@ impl AppKeyBindingsExt for App {
         &mut self,
         binding: KeyBinding,
         on_press: impl IntoObserverSystem<KeyPressed, M>,
-    ) -> &mut Self {
-        if let Some(mut bound) = bind(self.world_mut(), binding) {
-            bound.observe(on_press);
-        }
-        self
+    ) -> Option<Entity> {
+        let mut bound = bind(self.world_mut(), binding)?;
+        bound.observe(on_press);
+        Some(bound.id())
     }
 }
 
@@ -557,39 +566,41 @@ pub(crate) enum Found {
     Nothing,
 }
 
-/// The binding that `typed` matches in `focus` (the input or a panel) and
-/// globally; the oldest entity of two bound around the conflict check. A
-/// single key that is no character, pressed with modifiers that nothing
-/// binds, is that key alone.
+/// The binding that `typed` matches globally, else in `focus` (the input
+/// or a panel), so a global binding shadows the input's; the oldest entity
+/// of two bound around the conflict check. A single key that is no
+/// character, pressed with modifiers that nothing binds, is that key
+/// alone.
 pub(crate) fn find(
     bindings: &[(Entity, &KeyBinding)],
     typed: &[KeyPress],
     focus: KeyScope,
 ) -> Found {
-    let active = || {
+    let scoped = |scope: KeyScope| {
         bindings
             .iter()
-            .filter(move |(_, binding)| binding.scope == KeyScope::Global || binding.scope == focus)
+            .filter(move |(_, binding)| binding.scope == scope)
     };
-    let exact = |typed: &[KeyPress]| {
-        active()
+    let exact = |typed: &[KeyPress], scope: KeyScope| {
+        scoped(scope)
             .filter(|(_, binding)| binding.keys.presses() == typed)
             .map(|(entity, _)| *entity)
             .min()
     };
-    if let Some(entity) = exact(typed) {
-        return Found::Binding(entity);
+    for scope in [KeyScope::Global, focus] {
+        if let Some(entity) = exact(typed, scope) {
+            return Found::Binding(entity);
+        }
+        if scoped(scope).any(|(_, binding)| binding.keys.starts_with(typed)) {
+            return Found::Partial;
+        }
     }
-    if active().any(|(_, binding)| binding.keys.starts_with(typed)) {
-        return Found::Partial;
-    }
-    match typed {
-        [press] => press
-            .bare()
-            .and_then(|bare| exact(&[bare]))
-            .map_or(Found::Nothing, Found::Binding),
-        _ => Found::Nothing,
-    }
+    let bare = match typed {
+        [press] => press.bare(),
+        _ => None,
+    };
+    bare.and_then(|bare| exact(&[bare], KeyScope::Global).or_else(|| exact(&[bare], focus)))
+        .map_or(Found::Nothing, Found::Binding)
 }
 
 #[cfg(test)]

@@ -20,7 +20,7 @@ use ratatui::layout::Rect;
 use super::clipboard::{self, Clipboard};
 use super::editor::TuiInput;
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
-use super::panel::TuiScreen;
+use super::panel::{TuiPanel, TuiScreen};
 use super::pick::{self, Choices};
 use super::view::TuiView;
 use rig_ecs::agent::{ActiveTurn, Interrupt};
@@ -114,12 +114,12 @@ pub(crate) fn receive_events(input: Res<TerminalInput>, mut events: MessageWrite
 pub(crate) struct Keymap<'w, 's> {
     bindings: Query<'w, 's, (Entity, &'static KeyBinding, Option<&'static InputAction>)>,
     focus: ResMut<'w, KeyFocus>,
-    panels: Query<'w, 's, ()>,
+    panels: Query<'w, 's, (), With<TuiPanel>>,
 }
 
 impl Keymap<'_, '_> {
     /// Where the keys go besides the global bindings: the focused panel
-    /// while it exists, else the input.
+    /// while it is one, else the input.
     fn scope(&mut self) -> KeyScope {
         match self.focus.0 {
             Some(panel) if self.panels.contains(panel) => KeyScope::Panel(panel),

@@ -264,15 +264,6 @@ impl Plugin for FilesPanelPlugin {
                 "The files the agents read and changed",
                 files_command,
             )
-            .add_key_binding(in_panel(KeyCode::Up, "Select the file above"), select(-1))
-            .add_key_binding(in_panel(KeyCode::Down, "Select the file below"), select(1))
-            .add_key_binding(
-                in_panel(KeyCode::Enter, "Show the file's session diff"),
-                open_diff,
-            )
-            .add_key_binding(in_diff(KeyCode::Up, "Scroll the diff up"), scroll(-1))
-            .add_key_binding(in_diff(KeyCode::Down, "Scroll the diff down"), scroll(1))
-            .add_key_binding(in_diff(KeyCode::Esc, "Close the diff"), close_diff)
             .add_observer(track)
             .add_observer(check_gone)
             .add_systems(AgentPass, keep_original.in_set(Stage::Gate))
@@ -283,6 +274,15 @@ impl Plugin for FilesPanelPlugin {
                     .in_set(TuiSystems::Prepare),
             )
             .add_systems(PostUpdate, (draw_panel, draw_diff).in_set(TuiSystems::Draw));
+        app.add_key_binding(in_panel(KeyCode::Up, "Select the file above"), select(-1));
+        app.add_key_binding(in_panel(KeyCode::Down, "Select the file below"), select(1));
+        app.add_key_binding(
+            in_panel(KeyCode::Enter, "Show the file's session diff"),
+            open_diff,
+        );
+        app.add_key_binding(in_diff(KeyCode::Up, "Scroll the diff up"), scroll(-1));
+        app.add_key_binding(in_diff(KeyCode::Down, "Scroll the diff down"), scroll(1));
+        app.add_key_binding(in_diff(KeyCode::Esc, "Close the diff"), close_diff);
     }
 
     /// Once every plugin was built, the view's own `ctrl+f` (a character

@@ -15191,6 +15191,7 @@ dependencies = [
 name = "rig-tui"
 version = "0.44.0"
 dependencies = [
+ "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
  "bevy_log",
@@ -15205,6 +15206,7 @@ dependencies = [
  "rig-ecs",
  "rig-harness",
  "rig-tools",
+ "serde",
  "serde_json",
  "unicode-width 0.2.2",
 ]

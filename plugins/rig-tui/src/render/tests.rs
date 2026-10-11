@@ -67,6 +67,19 @@ fn cache_and_a_long_session_name_go_before_what_the_session_spends() {
 }
 
 #[test]
+fn a_piece_that_shrinks_is_cut_before_it_goes() {
+    let goal = || Piece::new(20, Span::from("goal: ship the parser")).shrinking_to(8);
+    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
+    // "model  " is 7 wide; the goal is cut to the 13 columns left.
+    fit(&mut left, &mut Vec::new(), 20);
+    assert_eq!(text(&left, "  "), "model  goal: ship t…");
+    // Never below its least; then it goes.
+    let mut left = vec![Piece::new(ALWAYS, Span::from("model")), goal()];
+    fit(&mut left, &mut Vec::new(), 14);
+    assert_eq!(text(&left, "  "), "model");
+}
+
+#[test]
 fn the_model_and_status_always_stay() {
     let (mut left, mut right) = (left(), meter());
     fit(&mut left, &mut right, 10);

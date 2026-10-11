@@ -1578,21 +1578,31 @@ reads and changes, as it does for panels:
   or a sequence (`ctrl+x ctrl+e`) with `app.add_key_binding(binding,
   observer)`: the observer hears `KeyPressed` on the binding (and, for one
   `with_releases()`, the key let go), and `run_command("compact")` is an
-  observer that runs a slash command. As with commands, the first binding
-  of a key stays: a binding that another of an overlapping scope takes,
-  starts, or is started by, is refused with a warning, and `Disabled` on a
-  binding frees its keys, in `Plugin::finish`. `Keys` parse from text
-  (`"alt+m".parse()`), for keys from the user's settings.
-- **A panel's keys.** `KeyFocus(Some(panel))` gives a panel the keys: its
-  bindings in `KeyScope::Panel(panel)` and the global ones apply, not the
-  input's, and Esc it does not bind gives the keys back.
+  observer that runs a slash command; it returns the binding's entity. As
+  with commands, the first binding of a key stays: a binding that another
+  of an overlapping scope takes, starts, or is started by, is refused with
+  a warning, and `Disabled` on a binding frees its keys, in
+  `Plugin::finish`. A global binding shadows the input's binding of the
+  same keys instead. `Keys` parse from text (`"alt+m".parse()`), for keys
+  from the user's settings.
+- **A panel's keys.** `KeyFocus(Some(panel))` gives a `TuiPanel` the keys:
+  its bindings in `KeyScope::Panel(panel)` and the global ones apply, not
+  the input's, and Esc it does not bind, or the panel going, gives the
+  keys back.
+- **Completion.** An `ArgCompletion::new("/model").candidate(text,
+  detail)` entity offers candidates for a command's argument, which the
+  input completes as it does commands and `@` paths.
 - **The input.** `TuiInput` is the draft: `text()`, `cursor()`, `set`,
   `insert`, `take`, `set_cursor`; `is_changed()` says it was edited. Enter
   sends it to the agent shown (`Focused`).
 - **The terminal.** `TerminalEvent` messages are what the terminal
-  reported, keys and pastes; a plugin may read them, and write some. A
-  `RunInTerminal(command)` entity runs a program with the terminal (the
-  view steps aside and draws again after), and gets its `TerminalExit`.
+  reported, keys and pastes; a plugin may read them, and write some.
+  `TerminalFocus` says whether the terminal has the user's focus. A
+  `TerminalWrite(bytes)` message goes to the terminal between frames,
+  such as a notification's escape code, and `CopyToClipboard(text)` puts
+  text on the clipboard (OSC 52). A `RunInTerminal(command)` entity runs
+  a program with the terminal (the view steps aside and draws again
+  after), and gets its `TerminalExit`.
 - **Pickers and questions.** A `Picker` entity (rig-harness's `pick`,
   in the prelude) is a filterable list any front shows; the view shows it
   over the transcript, one at a time in the order they came, with every
@@ -1605,8 +1615,8 @@ reads and changes, as it does for panels:
   despawns it.
 
 These are there in any run, and inert without the terminal view's run.
-This plugin writes the draft in `$EDITOR` on Ctrl+E, which the view binds
-to the line's end, and offers a few prompts on Ctrl+T:
+This plugin writes the draft in `$EDITOR` on Ctrl+E, which shadows the
+view's end of the line, and offers a few prompts on Ctrl+T:
 
 ```rust,no_run
 use std::path::PathBuf;
@@ -1614,8 +1624,7 @@ use std::process::Command;
 
 use rig_harness::prelude::*;
 use rig_tui::{
-    AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, Keys, RunInTerminal, TerminalExit,
-    TuiInput,
+    AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, RunInTerminal, TerminalExit, TuiInput,
 };
 
 #[derive(Default)]
@@ -1630,23 +1639,8 @@ const PROMPTS: [&str; 2] = ["Explain this code: ", "Write a test for "];
 impl Plugin for DraftKeysPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Update, take_draft);
-    }
-
-    /// Once every plugin was built, the view's Ctrl+E is there to free.
-    fn finish(&self, app: &mut App) {
-        let ctrl_e = Keys::from(KeyPress::ctrl('e'));
-        let world = app.world_mut();
-        let mut bindings = world.query::<(Entity, &KeyBinding)>();
-        let taken: Vec<Entity> = bindings
-            .iter(world)
-            .filter(|(_, binding)| binding.keys == ctrl_e)
-            .map(|(entity, _)| entity)
-            .collect();
-        for binding in taken {
-            world.entity_mut(binding).insert(Disabled);
-        }
-        app.add_key_binding(KeyBinding::new(ctrl_e, "Write the draft in $EDITOR"), edit)
-            .add_key_binding(KeyBinding::new(KeyPress::ctrl('t'), "Start from a prompt"), prompts);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('e'), "Write the draft in $EDITOR"), edit);
+        app.add_key_binding(KeyBinding::new(KeyPress::ctrl('t'), "Start from a prompt"), prompts);
     }
 }
 

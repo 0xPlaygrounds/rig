@@ -10,6 +10,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 
 use rig_ecs::agent::{Agent, TurnOf};
+use serde::{Deserialize, Serialize};
 
 /// One piece of the status line: what it says, how, and its place.
 #[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
@@ -26,6 +27,9 @@ pub struct StatusItem {
     /// How long it stays when the line is too narrow: the items with the
     /// lowest go first, and one at `u8::MAX` never.
     pub keep: u8,
+    /// How narrow it may be cut, ending in `…`, when the line is too
+    /// narrow, before it goes (by `keep`); 0 for an item never cut.
+    pub min_width: u16,
 }
 
 impl StatusItem {
@@ -37,7 +41,15 @@ impl StatusItem {
             side,
             order,
             keep,
+            min_width: 0,
         }
+    }
+
+    /// This item, cut down to no fewer than `min_width` columns when the
+    /// line is too narrow, before it goes.
+    pub const fn shrinks_to(mut self, min_width: u16) -> Self {
+        self.min_width = min_width;
+        self
     }
 
     /// This item saying `text` in `tone`.
@@ -80,8 +92,10 @@ impl StatusItems {
 #[reflect(Resource, Clone, Debug, Default)]
 pub struct AppStatus(pub StatusItems);
 
-/// The side of the status line a [`StatusItem`] is on.
-#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// The side of the status line a [`StatusItem`] is on, read from settings
+/// as `left` or `right`.
+#[derive(Reflect, Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Side {
     /// After the items before it, from the left edge.
     #[default]

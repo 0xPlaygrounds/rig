@@ -1,18 +1,23 @@
 //! Terminal ownership: raw mode, the alternate screen, keeping stray
-//! output off the screen, and handing the terminal to a program for a
-//! while ([`RunInTerminal`]).
+//! output off the screen, handing the terminal to a program for a while
+//! ([`RunInTerminal`]), whether the terminal has the user's focus
+//! ([`TerminalFocus`]), and a plugin's own escape codes, such as a desktop
+//! notification ([`TerminalWrite`]) or a copy to the clipboard
+//! ([`CopyToClipboard`]), written between frames.
 
 use std::fs::File;
-use std::io::{self, BufWriter};
+use std::io::{self, BufWriter, Write};
 use std::path::Path;
 use std::process::{Command, ExitStatus, Stdio};
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::event::{
-    DisableBracketedPaste, EnableBracketedPaste, KeyboardEnhancementFlags,
-    PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
+    DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange, Event,
+    KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
 use crossterm::execute;
 use crossterm::terminal::{
@@ -23,7 +28,7 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 
 use super::editor::TuiInput;
-use super::input::TerminalInput;
+use super::input::{TerminalEvent, TerminalInput};
 use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
@@ -52,6 +57,37 @@ impl TerminalExit {
     /// Whether the program ran and exited with success.
     pub fn success(&self) -> bool {
         self.0.as_ref().is_ok_and(ExitStatus::success)
+    }
+}
+
+/// Whether the terminal has the user's focus, as the terminal reports it
+/// where it can; `true` until it says otherwise, and in a run without the
+/// terminal view.
+#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TerminalFocus(pub bool);
+
+impl Default for TerminalFocus {
+    fn default() -> Self {
+        Self(true)
+    }
+}
+
+/// Bytes for the terminal itself, such as an escape code that shows a
+/// desktop notification (OSC 9 or 777): the view writes them after its
+/// frame, through its own writer, so they never land inside a frame.
+/// Nothing writes them in a run without the terminal view.
+#[derive(Message, Clone, Debug, PartialEq, Eq)]
+pub struct TerminalWrite(pub Vec<u8>);
+
+/// Puts the text on the system clipboard through the terminal (OSC 52),
+/// which works over SSH too, where the terminal allows it.
+#[derive(Message, Clone, Debug, PartialEq, Eq)]
+pub struct CopyToClipboard(pub String);
+
+impl CopyToClipboard {
+    /// The escape code that copies it.
+    fn escape(&self) -> Vec<u8> {
+        format!("\x1b]52;c;{}\x07", STANDARD.encode(&self.0)).into_bytes()
     }
 }
 
@@ -101,7 +137,8 @@ impl Tui {
 
     /// Takes the screen: raw mode, the alternate screen cleared (after a
     /// reload it still shows the previous build's frame), pastes reported
-    /// whole, no cursor, and a whole frame drawn next.
+    /// whole, focus changes reported, no cursor, and a whole frame drawn
+    /// next.
     fn enter(&mut self) -> io::Result<()> {
         enable_raw_mode()?;
         let backend = self.terminal.backend_mut();
@@ -109,6 +146,7 @@ impl Tui {
             backend,
             EnterAlternateScreen,
             EnableBracketedPaste,
+            EnableFocusChange,
             Clear(ClearType::All)
         )?;
         if self.releases {
@@ -126,7 +164,7 @@ impl Tui {
             execute!(backend, PopKeyboardEnhancementFlags).ok();
         }
         // Every step is tried, so a failed one leaves no other undone.
-        let pastes = execute!(backend, DisableBracketedPaste);
+        let pastes = execute!(backend, DisableBracketedPaste, DisableFocusChange);
         let alternate = match keep_screen {
             true => Ok(()),
             false => execute!(backend, LeaveAlternateScreen),
@@ -195,6 +233,41 @@ pub(crate) fn keep_screen_on_reload(reason: Option<Res<ExitReason>>, tui: Option
         && matches!(*reason, ExitReason::Reload | ExitReason::Switch(_))
     {
         tui.keep_screen = true;
+    }
+}
+
+/// Keeps [`TerminalFocus`] as the terminal reports it.
+pub(crate) fn track_focus(
+    mut events: MessageReader<TerminalEvent>,
+    mut focus: ResMut<TerminalFocus>,
+) {
+    for TerminalEvent(event) in events.read() {
+        match event {
+            Event::FocusGained => focus.set_if_neq(TerminalFocus(true)),
+            Event::FocusLost => focus.set_if_neq(TerminalFocus(false)),
+            _ => false,
+        };
+    }
+}
+
+/// Writes the [`TerminalWrite`]s and [`CopyToClipboard`]s sent, in order
+/// each, after the frame.
+pub(crate) fn write_to_terminal(
+    mut tui: ResMut<Tui>,
+    mut writes: MessageReader<TerminalWrite>,
+    mut copies: MessageReader<CopyToClipboard>,
+) {
+    let bytes: Vec<u8> = writes
+        .read()
+        .flat_map(|write| write.0.iter().copied())
+        .chain(copies.read().flat_map(CopyToClipboard::escape))
+        .collect();
+    if bytes.is_empty() {
+        return;
+    }
+    let backend = tui.terminal.backend_mut();
+    if let Err(failure) = backend.write_all(&bytes).and_then(|()| backend.flush()) {
+        error!("could not write to the terminal: {failure}");
     }
 }
 

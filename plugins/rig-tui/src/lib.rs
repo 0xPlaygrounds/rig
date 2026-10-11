@@ -23,8 +23,10 @@
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
 //! ([`keys`]: the view's own keys are bindings as well), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
-//! terminal's events ([`TerminalEvent`]), a program run with the terminal
-//! ([`RunInTerminal`]), and a choice for the user, a
+//! candidates for a command's argument ([`ArgCompletion`]), the terminal's
+//! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
+//! codes ([`TerminalWrite`], [`CopyToClipboard`]), a program run with the
+//! terminal ([`RunInTerminal`]), and a choice for the user, a
 //! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
 //! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
 //! one at a time. These are there in every run, also
@@ -55,6 +57,7 @@ use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
+pub use complete::{ArgCompletion, Candidate};
 pub use crossterm;
 pub use editor::TuiInput;
 pub use input::TerminalEvent;
@@ -67,7 +70,7 @@ pub use renderers::{
     AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
-pub use terminal::{RunInTerminal, TerminalExit};
+pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
 pub use view::Focus;
 
 /// The terminal view's name as a front.
@@ -89,8 +92,11 @@ impl Plugin for TuiPlugin {
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
+            .init_resource::<TerminalFocus>()
             .add_message::<RequestRedraw>()
             .add_message::<TerminalEvent>()
+            .add_message::<TerminalWrite>()
+            .add_message::<CopyToClipboard>()
             .configure_sets(
                 PostUpdate,
                 (
@@ -136,6 +142,7 @@ fn add_view(app: &mut App) {
             (
                 input::receive_events.run_if(resource_exists::<input::TerminalInput>),
                 input::read_input,
+                terminal::track_focus,
                 complete::receive_paths,
                 clipboard::receive_images,
             )
@@ -170,6 +177,9 @@ fn add_view(app: &mut App) {
                 (terminal::report_releases, render::render)
                     .chain()
                     .in_set(TuiSystems::Render)
+                    .run_if(resource_exists::<terminal::Tui>),
+                terminal::write_to_terminal
+                    .after(TuiSystems::Render)
                     .run_if(resource_exists::<terminal::Tui>),
             ),
         )

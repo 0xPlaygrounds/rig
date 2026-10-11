@@ -111,3 +111,33 @@ fn typed_keys_edit_the_input_and_enter_sends_it() {
     assert_eq!(typed(&app), "");
     assert_eq!(app.world().resource::<Delivered>().0, ["> hello"]);
 }
+
+#[test]
+fn a_commands_argument_completes_to_a_contributed_candidate() {
+    let (mut app, _) = view_app();
+    app.add_command("model", "Choose the model", |_: In<CommandArgs>| {});
+    let models = ArgCompletion::new("/model")
+        .candidate("openai/gpt-5", "")
+        .candidate("acme/fast", "no key");
+    app.world_mut().spawn(models);
+    app.world_mut()
+        .spawn(ArgCompletion::new("other").candidate("acme/other", ""));
+    type_text(&mut app, "/model acme/");
+    press(&mut app, "tab");
+    assert_eq!(typed(&app), "/model acme/fast ");
+}
+
+#[test]
+fn the_terminal_says_when_it_has_the_users_focus() {
+    let (mut app, _) = view_app();
+    assert_eq!(
+        *app.world().resource::<TerminalFocus>(),
+        TerminalFocus(true)
+    );
+    for (event, focused) in [(Event::FocusLost, false), (Event::FocusGained, true)] {
+        app.world_mut().write_message(TerminalEvent(event));
+        app.update();
+        let focus = *app.world().resource::<TerminalFocus>();
+        assert_eq!(focus, TerminalFocus(focused));
+    }
+}

@@ -194,10 +194,6 @@ impl Plugin for PermissionModesPlugin {
                 "Set how much the agent may do without asking: read-only, ask, edits or auto",
                 set_mode,
             )
-            .add_key_binding(
-                KeyBinding::new(KeyPress::key(KeyCode::BackTab), "Cycle the permission mode"),
-                run_command("mode"),
-            )
             .add_systems(
                 AgentPass,
                 (
@@ -207,6 +203,10 @@ impl Plugin for PermissionModesPlugin {
             )
             .add_observer(inherit)
             .add_systems(PostUpdate, show_mode.in_set(StatusSystems));
+        app.add_key_binding(
+            KeyBinding::new(KeyPress::key(KeyCode::BackTab), "Cycle the permission mode"),
+            run_command("mode"),
+        );
     }
 }
 

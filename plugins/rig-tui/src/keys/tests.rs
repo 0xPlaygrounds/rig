@@ -2,8 +2,9 @@ use bevy_ecs::entity_disabling::Disabled;
 use crossterm::event::KeyEventKind;
 
 use super::*;
-use crate::TuiInput;
 use crate::tests::{Delivered, key_events, press, type_text, typed, view_app};
+use crate::{Placement, TuiInput, TuiPanel};
+use ratatui::layout::Constraint;
 
 /// What the test bindings heard: for each, whether it was a release.
 #[derive(Resource, Default)]
@@ -44,32 +45,24 @@ fn keys_read_as_they_are_written() {
 }
 
 #[test]
-fn a_taken_key_stays_until_its_binding_is_disabled() {
+fn a_global_binding_shadows_the_inputs_and_a_taken_key_stays_until_disabled() {
     let (mut app, _) = view_app();
     app.init_resource::<Heard>();
     let edit = || KeyBinding::new(KeyPress::ctrl('e'), "Edit in $EDITOR");
-    // Ctrl+E is the end of the line: the binding is refused.
-    app.add_key_binding(edit(), heard);
+    // Ctrl+E is the input's end of the line: a global binding shadows it.
+    let first = app.add_key_binding(edit(), heard);
+    assert!(first.is_some());
     type_text(&mut app, "ab");
     press(&mut app, "ctrl+a ctrl+e x");
-    assert_eq!(typed(&app), "abx");
-    assert_eq!(heard_count(&app), 0);
-    // Disabled, the view's binding frees the key.
-    let world = app.world_mut();
-    let built_in: Vec<Entity> = world
-        .query::<(Entity, &KeyBinding)>()
-        .iter(world)
-        .filter(|(_, binding)| binding.keys == Keys::from(KeyPress::ctrl('e')))
-        .map(|(entity, _)| entity)
-        .collect();
-    assert_eq!(built_in.len(), 1);
-    for entity in built_in {
-        world.entity_mut(entity).insert(Disabled);
+    assert_eq!((heard_count(&app), typed(&app)), (1, "xab".to_owned()));
+    // A second global one is refused until the first is disabled.
+    assert_eq!(app.add_key_binding(edit(), heard), None);
+    if let Some(first) = first {
+        app.world_mut().entity_mut(first).insert(Disabled);
     }
-    app.add_key_binding(edit(), heard);
-    press(&mut app, "ctrl+a ctrl+e y");
-    assert_eq!(typed(&app), "yabx");
-    assert_eq!(heard_count(&app), 1);
+    assert!(app.add_key_binding(edit(), heard).is_some());
+    press(&mut app, "ctrl+e");
+    assert_eq!(heard_count(&app), 2);
 }
 
 #[test]
@@ -119,7 +112,8 @@ fn a_sequence_waits_for_its_last_key() {
 fn a_focused_panel_takes_its_keys_and_esc_gives_them_back() {
     let (mut app, _) = view_app();
     app.init_resource::<Heard>();
-    let panel = app.world_mut().spawn_empty().id();
+    let panel = TuiPanel::new(Placement::Top(Constraint::Length(3)));
+    let panel = app.world_mut().spawn(panel).id();
     // Up in the panel is no conflict with Up in the input.
     let up = KeyBinding::new(KeyPress::key(KeyCode::Up), "Select the file above");
     app.add_key_binding(up.in_scope(KeyScope::Panel(panel)), heard);
@@ -129,11 +123,16 @@ fn a_focused_panel_takes_its_keys_and_esc_gives_them_back() {
     press(&mut app, "esc x up");
     assert_eq!(app.world().resource::<KeyFocus>().0, None);
     assert_eq!((heard_count(&app), typed(&app)), (1, "x".to_owned()));
-    // The keys come back to the input when the panel is gone, too.
+    // The keys come back to the input when the panel goes, too.
     app.world_mut().resource_mut::<KeyFocus>().0 = Some(panel);
-    app.world_mut().despawn(panel);
+    app.world_mut().entity_mut(panel).remove::<TuiPanel>();
     press(&mut app, "y");
     assert_eq!(typed(&app), "xy");
+    // Only a panel takes the keys.
+    let other = app.world_mut().spawn_empty().id();
+    app.world_mut().resource_mut::<KeyFocus>().0 = Some(other);
+    press(&mut app, "z");
+    assert_eq!(typed(&app), "xyz");
 }
 
 #[test]

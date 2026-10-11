@@ -12,8 +12,9 @@ use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
+use unicode_width::UnicodeWidthChar;
 
-use super::complete::{Completion, Kind as CompletionKind};
+use super::complete::Completion;
 use super::editor::{Layout as InputLayout, TuiInput};
 use super::keys::KeyFocus;
 use super::markdown;
@@ -407,10 +408,7 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
-    let marker = match completion.kind {
-        CompletionKind::Command => "/",
-        CompletionKind::Path => "@",
-    };
+    let marker = completion.kind.marker();
     let items: Vec<Line<'static>> = completion
         .items
         .iter()
@@ -437,19 +435,50 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
 }
 
 /// A piece of the status line, from a [`StatusItem`]. When the line does
-/// not fit, [`fit`] drops the pieces with the lowest `keep` first.
+/// not fit, [`fit`] cuts or drops the pieces with the lowest `keep` first.
 struct Piece {
     keep: u8,
+    /// How narrow it may be cut; 0 for never.
+    min: usize,
     span: Span<'static>,
 }
 
 impl Piece {
     fn new(keep: u8, span: Span<'static>) -> Self {
-        Self { keep, span }
+        Self { keep, min: 0, span }
+    }
+
+    /// The same piece, cut down to no fewer than `min` columns before it
+    /// goes.
+    fn shrinking_to(mut self, min: usize) -> Self {
+        self.min = min;
+        self
     }
 
     fn width(&self) -> usize {
         self.span.width()
+    }
+
+    /// Whether it can still be cut.
+    fn can_shrink(&self) -> bool {
+        self.min > 0 && self.width() > self.min
+    }
+
+    /// Cuts it by `over` columns, to no fewer than its `min`, ending in `…`.
+    fn shrink(&mut self, over: usize) {
+        let target = self.width().saturating_sub(over).max(self.min);
+        let mut text = String::new();
+        let mut width = 0;
+        for character in self.span.content.chars() {
+            let next = width + character.width().unwrap_or(0);
+            if next + 1 > target {
+                break;
+            }
+            text.push(character);
+            width = next;
+        }
+        text.push('…');
+        self.span.content = text.into();
     }
 }
 
@@ -465,34 +494,40 @@ fn joined_width(pieces: &[Piece], gap: &str) -> usize {
     pieces.iter().map(Piece::width).sum::<usize>() + gaps
 }
 
-/// Drops the pieces of `left` and of the meter on the `right` with the
-/// lowest `keep` until both fit `width` with a gap between them. What
-/// keeps `u8::MAX` stays; past that the line is cut at the edge.
+/// Cuts, then drops, the pieces of `left` and of the meter on the `right`
+/// with the lowest `keep` until both fit `width` with a gap between them:
+/// one that may shrink is cut to its `min` before it goes. What keeps
+/// `u8::MAX` stays, cut where it may; past that the line is cut at the
+/// edge.
 fn fit(left: &mut Vec<Piece>, right: &mut Vec<Piece>, width: usize) {
     loop {
         let separator = if right.is_empty() { 0 } else { LEFT_GAP.len() };
         let used = joined_width(left, LEFT_GAP) + separator + joined_width(right, RIGHT_GAP);
-        if used <= width {
+        let Some(over) = used.checked_sub(width).filter(|over| *over > 0) else {
             return;
-        }
+        };
         let lowest = |pieces: &[Piece]| {
             pieces
                 .iter()
                 .enumerate()
-                .filter(|(_, piece)| piece.keep < u8::MAX)
+                .filter(|(_, piece)| piece.keep < u8::MAX || piece.can_shrink())
                 .min_by_key(|(_, piece)| piece.keep)
                 .map(|(index, piece)| (piece.keep, index))
         };
-        match (lowest(right.as_slice()), lowest(left.as_slice())) {
+        let (side, index) = match (lowest(right.as_slice()), lowest(left.as_slice())) {
             (Some((on_right, index)), on_left)
                 if on_left.is_none_or(|(on_left, _)| on_right <= on_left) =>
             {
-                right.remove(index);
+                (&mut *right, index)
             }
-            (_, Some((_, index))) => {
-                left.remove(index);
-            }
+            (_, Some((_, index))) => (&mut *left, index),
             (_, None) => return,
+        };
+        match side.get_mut(index) {
+            Some(piece) if piece.can_shrink() => piece.shrink(over),
+            _ => {
+                side.remove(index);
+            }
         }
     }
 }
@@ -535,6 +570,7 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
             Tone::Magenta => Style::new().magenta(),
         };
         Piece::new(item.keep, Span::styled(item.text.clone(), style))
+            .shrinking_to(usize::from(item.min_width))
     };
     let (left, right): (Vec<_>, Vec<_>) =
         items.into_iter().partition(|item| item.side == Side::Left);

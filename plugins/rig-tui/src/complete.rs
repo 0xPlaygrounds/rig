@@ -1,5 +1,7 @@
-//! Completion in the input: `/` at the start completes a command name and
-//! `@` completes a path of the project. Paths come from a walk of the
+//! Completion in the input: `/` at the start completes a command name,
+//! a word after a command one of the candidates plugins contribute for
+//! its argument ([`ArgCompletion`]), and `@` completes a path of the
+//! project. Paths come from a walk of the
 //! working directory that honours `.gitignore`, done on a thread of its own
 //! and kept for a while. An item matches when it contains the query,
 //! ignoring case; the earlier the match, the higher it ranks.
@@ -8,6 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_log::warn;
 use crossbeam_channel::Receiver;
 
@@ -23,21 +26,71 @@ const MOST_PATHS: usize = 50_000;
 /// How long a walk's paths are used before the next `@` walks again.
 const FRESH: Duration = Duration::from_secs(30);
 
+/// Candidates for the argument of a slash command, such as `/model`'s
+/// models, on an entity of the plugin's: a word typed after the command
+/// completes to the ones it matches. Several for one command add up; keep
+/// one current by inserting it again.
+///
+/// ```
+/// use rig_harness::prelude::*;
+/// use rig_tui::ArgCompletion;
+///
+/// fn offer_branches(mut commands: Commands) {
+///     let branches = ArgCompletion::new("checkout").candidate("main", "").candidate("dev", "2 ahead");
+///     commands.spawn(branches);
+/// }
+/// ```
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ArgCompletion {
+    /// The command, with or without its `/`.
+    pub command: String,
+    /// The candidates, in the order they are listed when they match alike.
+    pub candidates: Vec<Candidate>,
+}
+
+impl ArgCompletion {
+    /// No candidates yet for `command`'s argument.
+    pub fn new(command: impl Into<String>) -> Self {
+        Self {
+            command: command.into(),
+            candidates: Vec::new(),
+        }
+    }
+
+    /// The same, also offering `text`, described by `detail` (may be
+    /// empty).
+    pub fn candidate(mut self, text: impl Into<String>, detail: impl Into<String>) -> Self {
+        self.candidates.push(Candidate {
+            text: text.into(),
+            detail: detail.into(),
+        });
+        self
+    }
+
+    /// Whether it completes the argument of `command` (without its `/`).
+    fn is_for(&self, command: &str) -> bool {
+        self.command.trim_start_matches('/') == command
+    }
+}
+
 /// What is being completed.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Kind {
     /// A command name after a leading `/`.
     Command,
+    /// An argument of the command at the start, `/name`.
+    Arg,
     /// A path after `@`.
     Path,
 }
 
-/// One candidate.
-pub(crate) struct Item {
+/// One candidate of a completion.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Candidate {
     /// What is shown and inserted, without the `/` or `@`.
-    pub(crate) text: String,
+    pub text: String,
     /// A description shown after it.
-    pub(crate) detail: String,
+    pub detail: String,
 }
 
 /// The open completion list.
@@ -47,7 +100,7 @@ pub(crate) struct Completion {
     pub(crate) start: usize,
     /// The text typed after it.
     query: String,
-    pub(crate) items: Vec<Item>,
+    pub(crate) items: Vec<Candidate>,
     pub(crate) selected: usize,
     /// Whether the items came from a finished walk.
     complete: bool,
@@ -58,12 +111,8 @@ impl Completion {
     /// marker, the item, and a space unless it is a directory.
     pub(crate) fn chosen(&self) -> Option<String> {
         let item = self.items.get(self.selected)?;
-        let marker = match self.kind {
-            Kind::Command => '/',
-            Kind::Path => '@',
-        };
         let space = if item.text.ends_with('/') { "" } else { " " };
-        Some(format!("{marker}{}{space}", item.text))
+        Some(format!("{}{}{space}", self.kind.marker(), item.text))
     }
 
     /// Whether the token already is the selected item exactly, so Enter
@@ -78,6 +127,17 @@ impl Completion {
         let count = self.items.len();
         if count > 0 {
             self.selected = self.selected.saturating_add_signed(step).min(count - 1);
+        }
+    }
+}
+
+impl Kind {
+    /// What the token starts with.
+    pub(crate) fn marker(self) -> &'static str {
+        match self {
+            Self::Command => "/",
+            Self::Arg => "",
+            Self::Path => "@",
         }
     }
 }
@@ -144,8 +204,9 @@ fn walk() -> Vec<String> {
     paths
 }
 
-/// The `/command` or `@path` token that ends at the cursor, if any.
-fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str)> {
+/// The `/command`, argument or `@path` token that ends at the cursor, if
+/// any; an argument's with the command's name.
+fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
     let before = text.get(..cursor)?;
     let start = before
         .char_indices()
@@ -155,10 +216,21 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str)> {
     if let Some(query) = word.strip_prefix('/')
         && start == 0
     {
-        return Some((Kind::Command, start, query));
+        return Some((Kind::Command, start, query, ""));
     }
-    let query = word.strip_prefix('@')?;
-    Some((Kind::Path, start, query))
+    if let Some(query) = word.strip_prefix('@') {
+        return Some((Kind::Path, start, query, ""));
+    }
+    let command = text.strip_prefix('/')?.split_whitespace().next()?;
+    (start > 0).then_some((Kind::Arg, start, word, command))
+}
+
+/// What completion lists: the slash commands, and the candidates plugins
+/// contribute for their arguments.
+#[derive(SystemParam)]
+pub(crate) struct Sources<'w, 's> {
+    commands: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
+    arguments: Query<'w, 's, &'static ArgCompletion>,
 }
 
 /// Opens, updates or closes the completion after the input or the paths
@@ -167,11 +239,11 @@ pub(crate) fn update(
     view: &mut TuiView,
     input: &TuiInput,
     index: &mut FileIndex,
-    commands: &Query<(&Name, &SlashCommand)>,
+    sources: &Sources,
     wake: &Wake,
 ) {
     let found = token(input.text(), input.cursor());
-    let Some((kind, start, query)) = found else {
+    let Some((kind, start, query, command)) = found else {
         view.completion = None;
         view.dismissed = None;
         return;
@@ -189,13 +261,14 @@ pub(crate) fn update(
         && open.kind == kind
         && open.start == start
         && open.query == query
-        && (kind == Kind::Command || open.complete == complete)
+        && (kind != Kind::Path || open.complete == complete)
     {
         return;
     }
     let items = match kind {
         Kind::Command => {
-            let mut ranked: Vec<(usize, &str, &SlashCommand)> = commands
+            let mut ranked: Vec<(usize, &str, &SlashCommand)> = sources
+                .commands
                 .iter()
                 .filter_map(|(name, command)| {
                     let name = name.as_str().trim_start_matches('/');
@@ -205,11 +278,23 @@ pub(crate) fn update(
             ranked.sort_by(|a, b| (a.0, a.1).cmp(&(b.0, b.1)));
             ranked
                 .into_iter()
-                .map(|(_, name, command)| Item {
+                .map(|(_, name, command)| Candidate {
                     text: name.to_owned(),
                     detail: command.help.clone(),
                 })
                 .collect()
+        }
+        Kind::Arg => {
+            let candidates = sources
+                .arguments
+                .iter()
+                .filter(|completion| completion.is_for(command))
+                .flat_map(|completion| &completion.candidates);
+            let mut ranked: Vec<(usize, &Candidate)> = candidates
+                .filter_map(|item| Some((match_at(query, &item.text)?, item)))
+                .collect();
+            ranked.sort_by_key(|(at, _)| *at);
+            ranked.into_iter().map(|(_, item)| item.clone()).collect()
         }
         Kind::Path => path_items(&index.paths, query),
     };
@@ -227,7 +312,7 @@ pub(crate) fn update(
 /// The best [`SHOWN`] paths for `query`: those whose file name matches
 /// before those where only a directory does, then by where it matches,
 /// shallower paths first.
-fn path_items(paths: &[String], query: &str) -> Vec<Item> {
+fn path_items(paths: &[String], query: &str) -> Vec<Candidate> {
     let mut ranked: Vec<((bool, usize, usize), &String)> = paths
         .iter()
         .filter_map(|path| {
@@ -244,7 +329,7 @@ fn path_items(paths: &[String], query: &str) -> Vec<Item> {
     ranked
         .into_iter()
         .take(SHOWN)
-        .map(|(_, path)| Item {
+        .map(|(_, path)| Candidate {
             text: path.clone(),
             detail: String::new(),
         })
@@ -256,13 +341,13 @@ pub(crate) fn receive_paths(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
-    commands: Query<(&Name, &SlashCommand)>,
+    sources: Sources,
     wake: Res<Wake>,
 ) {
     if index.walking.is_none() || !index.receive() {
         return;
     }
-    update(&mut view, &input, &mut index, &commands, &wake);
+    update(&mut view, &input, &mut index, &sources, &wake);
 }
 
 /// Brings the completion up to date with the input once it changed, by a
@@ -271,11 +356,11 @@ pub(crate) fn follow_input(
     mut index: ResMut<FileIndex>,
     mut view: ResMut<TuiView>,
     input: Res<TuiInput>,
-    commands: Query<(&Name, &SlashCommand)>,
+    sources: Sources,
     wake: Res<Wake>,
 ) {
     if input.is_changed() {
-        update(&mut view, &input, &mut index, &commands, &wake);
+        update(&mut view, &input, &mut index, &sources, &wake);
     }
 }
 
