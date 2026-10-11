@@ -41,6 +41,15 @@ const NETWORK_DENIED: &[&str] = &[
     "Connection refused",
 ];
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ShellSandboxSystems {
+    /// In [`Stage::Gate`]: refuses `shell` calls when there is no sandbox.
+    Gate,
+    /// In [`Stage::Review`]: says when the sandbox blocked a failed command.
+    Review,
+}
+
 /// Every child process in a sandbox, and `/sandbox`.
 #[derive(Default)]
 pub struct ShellSandboxPlugin;
@@ -63,11 +72,18 @@ impl Plugin for ShellSandboxPlugin {
                     .run_if(resource_changed::<SandboxNetwork>)
                     .before(AgentLoop),
             )
+            .configure_sets(
+                AgentPass,
+                (
+                    ShellSandboxSystems::Gate.in_set(Stage::Gate),
+                    ShellSandboxSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    refuse_unsandboxed.in_set(Stage::Gate),
-                    hint.in_set(Stage::Review),
+                    refuse_unsandboxed.in_set(ShellSandboxSystems::Gate),
+                    hint.in_set(ShellSandboxSystems::Review),
                 ),
             );
         app.world_mut().spawn(PromptSection::new(
@@ -285,21 +301,18 @@ fn confine(
 
 /// Refuses each `shell` call when there is no sandbox to run it in.
 fn refuse_unsandboxed(
-    calls: Query<(Entity, &ToolRequest), Undecided>,
+    mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
     sandbox: Res<Sandbox>,
-    mut commands: Commands,
 ) {
     if sandbox.backend.is_some() {
         return;
     }
-    for (call, request) in &calls {
+    for (request, mut decision) in &mut calls {
         if request.call.function.name.as_str() == SHELL {
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused(format!(
-                    "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and \
+            decision.decide(Outcome::refused(format!(
+                "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and \
                  commands never run unsandboxed. Ask the user to install one."
-                )));
+            )));
         }
     }
 }
@@ -312,11 +325,14 @@ struct Hinted;
 /// Adds a hint to each failed `shell` command the sandbox blocked, before
 /// it is committed.
 fn hint(
-    calls: Query<(Entity, &ToolRequest, &Outcome, &Published), (Unreviewed, Without<Hinted>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &mut Outcome, &Published),
+        (Unreviewed, ToolCalls, Without<Hinted>),
+    >,
     network: Res<SandboxNetwork>,
     mut commands: Commands,
 ) {
-    for (call, request, outcome, published) in &calls {
+    for (call, request, mut outcome, published) in &mut calls {
         let failed = published
             .0
             .get::<ExitStatus>()
@@ -338,10 +354,9 @@ fn hint(
             "{}\nblocked by the sandbox: {why}",
             result.output().render()
         );
-        let hinted = result.with_output(ToolOutput::text(text));
-        commands
-            .entity(call)
-            .insert((Outcome::from(hinted), Hinted));
+        *outcome = Outcome::from(result.with_output(ToolOutput::text(text)));
+        // Once: Review sees the outcome each pass until it settles.
+        commands.entity(call).insert(Hinted);
     }
 }
 

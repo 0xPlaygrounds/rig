@@ -147,3 +147,8 @@ fn without_a_sandbox_program_calls_are_refused() {
     assert!(!base.join("project/inside.txt").exists());
     std::fs::remove_dir_all(&base).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ShellSandboxPlugin);
+}
