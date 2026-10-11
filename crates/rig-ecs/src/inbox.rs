@@ -184,7 +184,8 @@ pub struct Attachment {
 /// A message to the agent it is [`ForAgent`]: `text`, from `origin`, that
 /// goes to the agent's model as `mode` says, after its `attachments`. An
 /// effect that moves through the stages (see the [module](self)): edit it
-/// in Prepare, take it over in Gate by answering it with an [`Outcome`];
+/// in Prepare, take it over in Gate by deciding it
+/// ([`Decision`](super::stage::Decision)) with an [`Outcome`];
 /// once accepted, it is [`Started`] until the kernel answers it. Empty
 /// text is ignored.
 ///

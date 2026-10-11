@@ -1,9 +1,10 @@
 //! The stage rules on their own: plugin effects ([`EffectRequest`]) and a
 //! scripted model's tool calls ([`ToolRequest`]) on a headless kernel app,
 //! with stage systems as plugins write them. Effects chain within the
-//! frame their outcomes arrive in, the first answer wins, holds add up,
-//! every Prepare and Gate system sees a late spawn before it starts, a
-//! review keeps the raw outcome in the record, a failing stage system
+//! frame their outcomes arrive in, the first decision wins, Bevy sees two
+//! unordered deciders of one kind, holds add up, every Prepare and Gate
+//! system sees a late spawn before it starts, reviewers edit an outcome in
+//! place in their order and the record keeps the raw one, a failing stage system
 //! closes its stage, and every way an effect ends is recorded. A reply's
 //! calls start, and their results go back, in the frames they arrive; a
 //! gate sees each call when it is about to run; a refusal answers in call
@@ -31,6 +32,10 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
+use bevy_ecs::schedule::{
+    LogLevel, ScheduleBuildError, ScheduleBuildSettings, ScheduleBuildWarning,
+};
+use bevy_ecs::system::ScheduleSystem;
 use bevy_time::TimeUpdateStrategy;
 use futures::StreamExt;
 use rig_core::ProviderResponseError;
@@ -290,28 +295,25 @@ fn effects_chain_in_the_frame_their_outcomes_arrive_and_time_steps_once() {
 }
 
 #[test]
-fn the_first_answer_wins() {
+fn the_first_decision_wins() {
     let mut app = app();
     app.add_systems(
         AgentPass,
         (
-            |effects: Query<Entity, Undecided>, mut commands: Commands| {
-                for effect in &effects {
-                    commands
-                        .entity(effect)
-                        .insert_if_new(Outcome::refused("not now"));
+            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
+                for mut decision in &mut effects {
+                    decision.decide(Outcome::refused("not now"));
                 }
             },
-            // Ordered after the refusal, and blind to it, this one answers
-            // too: it loses.
-            (|effects: Query<Entity, (With<EffectRequest>, Without<Settled>)>,
-              mut commands: Commands| {
-                for effect in &effects {
-                    let late = rig_core::tool::ToolResult::skipped("allowed");
-                    let late = rig_core::effect::Outcome::ToolResult { result: late };
-                    commands.entity(effect).insert_if_new(Outcome(Ok(late)));
+            // Ordered after the refusal, this one decides too: it loses,
+            // and it is told so.
+            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>,
+             mut seen: ResMut<Seen>| {
+                for mut decision in &mut effects {
+                    let won = decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+                    seen.0.push(format!("won: {won}"));
                 }
-            }),
+            },
         )
             .chain()
             .in_set(Stage::Gate),
@@ -320,6 +322,9 @@ fn the_first_answer_wins() {
     app.update();
     assert!(has::<Settled>(&app, effect), "settled in its first frame");
     assert!(!has::<Started>(&app, effect), "never started");
+    assert_eq!(seen(&app), ["won: false"]);
+    let decided = app.world().get::<Decision>(effect);
+    assert!(decided.is_some_and(Decision::is_decided), "still decided");
     let records = records(&app);
     assert_eq!(records.len(), 1, "{records:?}");
     let Some(record) = records.first() else {
@@ -330,7 +335,60 @@ fn the_first_answer_wins() {
         matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Denied),
         "{record:?}"
     );
+    assert!(record.reviewed.is_none(), "{record:?}");
     assert!(record.started_ms.is_none());
+}
+
+/// A gate that refuses every tool call.
+fn refuse_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+    for mut decision in &mut calls {
+        decision.decide(Outcome::refused("no"));
+    }
+}
+
+/// Another gate that allows every tool call.
+fn allow_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+    for mut decision in &mut calls {
+        decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+    }
+}
+
+/// A gate that takes every message over.
+fn take_messages(mut messages: Query<&mut Decision, (Undecided, IncomingMessages)>) {
+    for mut decision in &mut messages {
+        decision.decide(Outcome::custom("taken"));
+    }
+}
+
+/// Whether the agent loop with `gates` in Gate holds an unordered pair
+/// writing the same data, which `None` means it built without.
+fn unordered<M>(gates: impl IntoScheduleConfigs<ScheduleSystem, M>) -> Option<bool> {
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_systems(AgentPass, gates.in_set(Stage::Gate));
+    let built = app
+        .world_mut()
+        .try_schedule_scope(AgentPass, |world, pass| {
+            pass.set_build_settings(ScheduleBuildSettings {
+                ambiguity_detection: LogLevel::Error,
+                ..Default::default()
+            });
+            pass.initialize(world).map(drop)
+        })
+        .ok()?;
+    Some(matches!(
+        built,
+        Err(ScheduleBuildError::Elevated(
+            ScheduleBuildWarning::Ambiguity(_)
+        ))
+    ))
+}
+
+#[test]
+fn bevy_sees_two_unordered_deciders_of_one_kind_only() {
+    assert_eq!(unordered((refuse_calls, allow_calls)), Some(true));
+    assert_eq!(unordered((refuse_calls, allow_calls).chain()), Some(false));
+    assert_eq!(unordered((refuse_calls, take_messages)), Some(false));
 }
 
 #[test]
@@ -453,35 +511,47 @@ fn every_prepare_and_gate_system_sees_a_late_spawn_before_it_starts() {
     assert_eq!(seen(&app), order);
 }
 
-/// Marks an outcome the reviewer replaced.
+/// Marks an outcome the first reviewer edited.
 #[derive(Component)]
 struct Redacted;
 
-/// The reviewer's hold.
+/// Marks an outcome the second reviewer edited.
+#[derive(Component)]
+struct Checked;
+
+/// The first reviewer's hold.
 #[derive(Resource, Default)]
 struct ReviewHold(Option<Entity>);
 
 #[test]
-fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
+fn reviews_edit_in_place_in_order_and_the_record_keeps_the_raw_outcome() {
     let mut app = app();
-    let redact = |effects: Query<Entity, (Unreviewed, Without<Redacted>)>,
+    let redact = |mut effects: Query<(Entity, &mut Outcome), (Unreviewed, Without<Redacted>)>,
                   mut hold: ResMut<ReviewHold>,
                   mut commands: Commands| {
-        for effect in &effects {
-            let redacted = rig_core::tool::ToolResult::skipped("redacted");
-            let redacted = rig_core::effect::Outcome::ToolResult { result: redacted };
-            commands
-                .entity(effect)
-                .insert((Outcome(Ok(redacted)), Redacted));
+        for (effect, mut outcome) in &mut effects {
+            *outcome = Outcome::from(rig_core::tool::ToolResult::skipped("redacted"));
+            commands.entity(effect).insert(Redacted);
             hold.0 = Some(commands.spawn(HoldOf(effect)).id());
         }
     };
-    let read = |outcomes: Query<&Outcome, Unreviewed>, mut seen: ResMut<Seen>| {
-        seen.0
-            .extend(outcomes.iter().map(|outcome| output(&outcome.0)));
+    // Ordered after, it sees the first edit as it would any data.
+    let check = |mut effects: Query<
+        (Entity, &mut Outcome),
+        (Unreviewed, With<Redacted>, Without<Checked>),
+    >,
+                 mut seen: ResMut<Seen>,
+                 mut commands: Commands| {
+        for (effect, mut outcome) in &mut effects {
+            let before = outcome.tool_result().output().render();
+            seen.0.push(before.clone());
+            let checked = format!("{before}, checked");
+            *outcome = Outcome::from(rig_core::tool::ToolResult::skipped(checked));
+            commands.entity(effect).insert(Checked);
+        }
     };
     app.init_resource::<ReviewHold>()
-        .add_systems(AgentPass, (redact, read).chain().in_set(Stage::Review));
+        .add_systems(AgentPass, (redact, check).chain().in_set(Stage::Review));
     let effect = app.world_mut().spawn(add()).id();
     let held = run_until(&mut app, |world| world.resource::<ReviewHold>().0.is_some());
     assert!(held, "the tool answered");
@@ -498,7 +568,7 @@ fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
     let seen = seen(&app);
     assert!(
         matches!(seen.as_slice(), [only] if only.contains("redacted")),
-        "the later reviewer saw the replacement only: {seen:?}"
+        "the later reviewer saw the first edit: {seen:?}"
     );
     let records = records(&app);
     assert_eq!(records.len(), 1, "{records:?}");
@@ -511,8 +581,8 @@ fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
     );
     let reviewed = record.reviewed.as_ref().map(output);
     assert!(
-        reviewed.is_some_and(|reviewed| reviewed.contains("redacted")),
-        "{record:?}"
+        reviewed.is_some_and(|reviewed| reviewed.contains("redacted, checked")),
+        "both edits: {record:?}"
     );
     assert_eq!(record.disposition, Disposition::Ran);
 }
@@ -616,11 +686,12 @@ fn every_way_an_effect_ends_is_recorded() {
         .get::<Effect>(nested)
         .and_then(|effect| effect.parent);
     assert_eq!(child, parent, "a child effect's parent");
-    // Answered from outside while it runs: its task is cancelled.
+    // Decided from outside while it runs: its task is cancelled.
     let answer = rig_core::tool::ToolResult::skipped("answered");
-    let answer = rig_core::effect::Outcome::ToolResult { result: answer };
     let world = app.world_mut();
-    world.entity_mut(running).insert(Outcome(Ok(answer)));
+    if let Some(mut decision) = world.get_mut::<Decision>(running) {
+        decision.decide(answer);
+    }
     // Replaced while held: it never starts.
     let successor = world.spawn((open("successor"), Supersedes(replaced))).id();
     // Despawned before it settles.
@@ -828,12 +899,12 @@ struct Gated {
 
 /// Holds `held` once and refuses `refused`; logs every call it sees.
 fn gate(
-    calls: Query<(Entity, &ToolRequest), Undecided>,
+    mut calls: Query<(Entity, &ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
     settled: Query<&ToolRequest, With<Settled>>,
     mut gated: ResMut<Gated>,
     mut commands: Commands,
 ) {
-    for (call, request) in &calls {
+    for (call, request, mut decision) in &mut calls {
         let id = request.call.id.to_string();
         let done = settled.iter().map(|done| done.call.id.to_string());
         gated.seen.push((id.clone(), done.collect()));
@@ -843,9 +914,7 @@ fn gate(
                 gated.hold = Some(commands.spawn(HoldOf(call)).id());
             }
             "refused" => {
-                commands
-                    .entity(call)
-                    .insert_if_new(Outcome::refused("not this one"));
+                decision.decide(Outcome::refused("not this one"));
             }
             _ => {}
         }
@@ -1125,11 +1194,9 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
 #[test]
 fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
-    let refuse = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
-        for call in &calls {
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused("not now"));
+    let refuse = |mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>| {
+        for mut decision in &mut calls {
+            decision.decide(Outcome::refused("not now"));
         }
     };
     app.init_resource::<Ended>()
@@ -1458,12 +1525,10 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
 }
 
 /// Takes over the user's messages that start with `!`, as a shell would.
-fn run_in_shell(typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands) {
-    for (message, typed) in &typed {
+fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
+    for (typed, mut decision) in &mut typed {
         if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
-            commands
-                .entity(message)
-                .insert_if_new(Outcome::custom("ran in a shell"));
+            decision.decide(Outcome::custom("ran in a shell"));
         }
     }
 }

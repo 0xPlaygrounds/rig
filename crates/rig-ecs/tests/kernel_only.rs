@@ -526,15 +526,14 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
         }
     };
     // Taken over: nothing is sent.
-    let take_over = |typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands| {
-        for (message, typed) in &typed {
-            if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
-                commands
-                    .entity(message)
-                    .insert_if_new(Outcome::custom("shell"));
+    let take_over =
+        |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
+            for (typed, mut decision) in &mut typed {
+                if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+                    decision.decide(Outcome::custom("shell"));
+                }
             }
-        }
-    };
+        };
     app.add_systems(
         AgentPass,
         (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),

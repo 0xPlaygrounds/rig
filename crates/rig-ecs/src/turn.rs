@@ -10,12 +10,12 @@
 //! next [`TurnCall`] is spawned. rig-core's turn-failure rule decides when
 //! a reply ends the turn instead. A model call that failed gets the
 //! [`RETRY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
-//! replace or act on by superseding the call; Commit carries out what is
+//! edit in place or act on by superseding the call; Commit carries out what is
 //! left: a [`Backoff`] then a new call, or the turn's end. A call refused
 //! before it was sent ends the turn and keeps the user's message. Each
 //! turn counts its retries in its [`Recovery`]. Every end the kernel
 //! decides is a [`TurnOutcome`] proposed on the turn, which Review may
-//! replace, hold or carry on from; once nothing holds it and every call of
+//! edit in place, hold or carry on from; once nothing holds it and every call of
 //! the turn settled, Commit ends the turn and marks it [`Settled`] for
 //! the readers of how it ended. [`Interrupt`] ends it at once.
 
@@ -233,7 +233,7 @@ pub struct BuildFrom(pub Entity);
 
 /// On a model call whose handler failed: what the [`RETRY`] policy says,
 /// put by the kernel in Arrive with the turn's [`Recovery`]. Review may
-/// read it, replace it, or take the failure over by superseding the call;
+/// read it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over by superseding the call;
 /// for a [`TurnCall`], Commit carries out what is left: `Retry` waits a
 /// [`Backoff`] and sends a new call, `GaveUp` ends the turn and keeps the
 /// user's message, `Overflow` and `Final` end it and take the message out.

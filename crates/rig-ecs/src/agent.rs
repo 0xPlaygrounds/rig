@@ -536,13 +536,15 @@ impl Notice {
 }
 
 /// How a turn ends, on the turn. The kernel proposes `Answered` or `Failed`
-/// in Commit; in the next pass Review may replace it (`insert`), hold it
+/// in Commit; in the next pass Review may edit it in place
+/// (`Query<&mut TurnOutcome, With<TurnOf>>`), hold it
 /// ([`HoldOf`](super::stage::HoldOf) the turn), or carry the turn on by
 /// sending it a `Queue` or `Steer` message, which takes an `Answered`
 /// proposal away, or by spawning its next
 /// [`TurnCall`](super::turn::TurnCall), which takes any away once
 /// admitted; the holds on a proposal taken away are despawned with it. A
-/// plugin may insert `Failed` or `Stopped` at any time: the
+/// plugin may insert `Failed` or `Stopped` at any time, with a plain
+/// `insert`, so a stop is never lost to a pending proposal: the
 /// turn's calls that have not started then never start, the others are
 /// answered as stopped, and the turn ends once they settled. A turn that
 /// ended is [`Settled`](super::stage::Settled) with it, until the next

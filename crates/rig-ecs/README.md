@@ -22,15 +22,18 @@ What it holds, by module:
   it to that model. A failed call carries its `RetryVerdict`, which Review
   may act on by superseding the call, such as on another model. A turn
   ends with a `TurnOutcome` on it: the kernel proposes one, Review may
-  replace it, hold it or carry the turn on, a plugin may fail or stop the
+  edit it in place, hold it or carry the turn on, a plugin may fail or stop the
   turn, and once its calls settled the turn ends, `Settled`.
   `Condensed` sends a summary in place of older messages.
 - `stage`: effects as entities. An effect's components are its request
   and its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
   moves. A plugin steps in with a system in a stage: it edits a request in
-  Prepare, holds (`HoldOf`) or answers (`Outcome`) it in Gate, and reads or
-  replaces the outcome in Review. A tool call is such an effect
+  Prepare, holds (`HoldOf`) or decides it (`Decision`, the first decision
+  wins) in Gate, and reads or edits the `Outcome` in place in Review, so
+  Bevy reports two unordered deciders or reviewers. Kind filters
+  (`ToolCalls`, `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell
+  Bevy which effects two systems can never share. A tool call is such an effect
   (`ToolRequest`): Gate sees a reply's call when it is about to run, once
   every earlier call it must not run beside settled (`Waiting`). Every
   settled effect is `Recorded`, with its raw and reviewed outcome. A

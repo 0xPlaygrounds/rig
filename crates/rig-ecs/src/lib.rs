@@ -64,9 +64,10 @@ pub mod prelude {
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::stage::{
-        Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
-        IfStopped, Outcome, Published, Recorded, Settled, Stage, Started, SupersededBy, Supersedes,
-        Undecided, Unreviewed, Waiting,
+        Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRequest, ForAgent,
+        HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome, PluginEffects, Published,
+        Recorded, Settled, Stage, Started, SupersededBy, Supersedes, ToolCalls, Undecided,
+        Unreviewed, Waiting,
     };
     pub use crate::tools::{
         AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
@@ -134,6 +135,10 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
+            // Notices and commits are written by systems that never meet
+            // on one effect, and their order within a pass means nothing.
+            .allow_ambiguous_resource::<Messages<Notice>>()
+            .allow_ambiguous_resource::<Messages<journal::Committed>>()
             .configure_sets(
                 Last,
                 (StopTurns, WriteJournal)

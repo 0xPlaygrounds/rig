@@ -6,14 +6,14 @@
 //! and [`CallHandler`] when it is admitted, so Prepare may change them, and
 //! starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
 //! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
-//! and stays open until any system inserts its
-//! [`Outcome`](super::stage::Outcome).
+//! and stays open until any system decides it
+//! ([`Decision`](super::stage::Decision)).
 //!
 //! ```ignore
 //! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
 //! app.add_open_tool("wait", "Waits for a signal.", ToolOptions::default(),
 //!     |called: On<ToolCalled<Wait>>, mut commands: Commands| {
-//!         // Keep `called.call`; insert its `Outcome` once `called.args.signal` comes.
+//!         // Keep `called.call`; decide its `Decision` once `called.args.signal` comes.
 //!     });
 //! ```
 
@@ -124,8 +124,8 @@ pub struct CallHandler(pub Handler);
 
 /// A call of an open tool started, its arguments parsed into `A`: triggered
 /// on the tool's entity, so the observer [`AppToolsExt::add_open_tool`]
-/// registered handles it. The call stays open until an
-/// [`Outcome`](super::stage::Outcome) is inserted on it, such as
+/// registered handles it. The call stays open until its
+/// [`Decision`](super::stage::Decision) is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
 /// an [`Interrupt`](super::agent::Interrupt) does, cancels it.
 #[derive(EntityEvent, Clone)]
@@ -234,8 +234,9 @@ pub trait AppToolsExt {
     /// Make the open tool `name` available, its parameters derived from
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
     /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
-    /// watches, and ends when an [`Outcome`](super::stage::Outcome) is
-    /// inserted on the call, at once or much later; any other is refused.
+    /// watches, and ends when the call's
+    /// [`Decision`](super::stage::Decision) is decided, at once or much
+    /// later; any other is refused.
     /// Its calls are recorded like any other.
     fn add_open_tool<A, M>(
         &mut self,
