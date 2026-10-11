@@ -208,6 +208,7 @@ fn every_change_the_log_records_is_committed() {
     app.update();
     let note = Deliver::new(agent, "a note", DeliveryMode::Note);
     app.world_mut().trigger(note);
+    app.update();
     let committed = app.world().resource::<Messages<Committed>>();
     let mut cursor = committed.get_cursor();
     let changes = cursor.read(committed).map(|change| match change {
@@ -258,8 +259,8 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
     let live = session(&store, |world, agent| {
         for (at, text) in texts.into_iter().enumerate() {
             world.trigger(Deliver::new(agent, text, DeliveryMode::Steer));
-            // The observers' commands start the turn, and end it.
-            world.flush();
+            // A pass accepts the message and starts the turn.
+            world.run_schedule(AgentPass);
             world.trigger(Interrupt::new(agent));
             world.flush();
             if at == 1 {

@@ -4,7 +4,7 @@ use rig_ecs::prelude::*;
 use super::super::view::{self, TuiView};
 use super::send;
 
-/// The texts sent to agents' models.
+/// The texts agents accepted.
 #[derive(Resource, Default)]
 struct Delivered(Vec<String>);
 
@@ -37,12 +37,19 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         )
         .init_resource::<TuiView>()
         .init_resource::<Delivered>()
-        .add_observer(|deliver: On<Deliver>, mut delivered: ResMut<Delivered>| {
-            if deliver.command().is_none() {
-                delivered.0.push(deliver.text.clone());
-            }
-        })
-        .add_systems(Update, (view::collect_notices, view::recall_messages));
+        .add_observer(
+            |accepted: On<Add<Started>>,
+             messages: Query<&Incoming>,
+             mut delivered: ResMut<Delivered>| {
+                if let Ok(message) = messages.get(accepted.entity) {
+                    delivered.0.push(message.text.clone());
+                }
+            },
+        )
+        .add_systems(
+            Update,
+            (view::collect_notices, view::recall_messages).after(AgentLoop),
+        );
     app.update();
     let world = app.world_mut();
     let agent = world

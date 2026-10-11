@@ -153,13 +153,12 @@ impl Plugin for ConfirmDestructivePlugin {
         }
         app.add_message::<PickRequest>()
             .init_resource::<SessionAllowances>()
-            .add_systems(AgentPass, gate.in_set(Stage::Gate))
+            .add_systems(AgentPass, (gate, take_reason).in_set(Stage::Gate))
             .add_command(
                 "confirm",
                 "Answer a shell command waiting for approval; alone, asks again",
                 confirm,
             )
-            .add_observer(take_reason)
             .add_observer(ask_next);
     }
 }
@@ -288,23 +287,27 @@ fn confirm(
     }
 }
 
-/// The user's next message after "Deny with reason" is the reason: it
-/// denies the call and goes nowhere else.
+/// The user's next message after "Deny with reason" is the reason: this
+/// Gate system takes it over, so it denies the call and goes nowhere else.
 fn take_reason(
-    mut typed: On<Deliver>,
+    typed: Query<(Entity, &Incoming, &ForAgent), Undecided>,
     waiting: Query<(Entity, &HoldOf, &AwaitingApproval)>,
     mut commands: Commands,
 ) {
-    if typed.origin.kind != OriginKind::User || typed.command().is_some() {
-        return;
-    }
-    let agent = typed.entity;
-    let asked = waiting
-        .iter()
-        .find(|(.., awaiting)| awaiting.agent == agent && awaiting.reason_asked);
-    if let Some((hold, &HoldOf(call), _)) = asked {
-        let reason = std::mem::take(&mut typed.text);
-        deny(&mut commands, (hold, call), Some(&reason));
+    let mut denied = Vec::new();
+    for (message, typed, &ForAgent(agent)) in &typed {
+        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+            continue;
+        }
+        let asked = waiting.iter().find(|(hold, _, awaiting)| {
+            awaiting.agent == agent && awaiting.reason_asked && !denied.contains(hold)
+        });
+        if let Some((hold, &HoldOf(call), _)) = asked {
+            denied.push(hold);
+            let taken = Outcome::custom("the reason for a denial");
+            commands.entity(message).insert_if_new(taken);
+            deny(&mut commands, (hold, call), Some(typed.text.trim()));
+        }
     }
 }
 

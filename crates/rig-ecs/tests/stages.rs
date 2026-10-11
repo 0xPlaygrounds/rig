@@ -14,14 +14,15 @@
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
-//! cutoff; a turn a plugin fails starts nothing more; an interrupt ends a
+//! cutoff; a message taken over in Gate never reaches the agent, and one
+//! accepted carries an answered turn on; a turn a plugin fails starts nothing more; an interrupt ends a
 //! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
 //! (single-frame chaining, with a plugin effect and with a reply's calls),
 //! 2 (gate when ready), 3 (refusal order), 4 (the conflict rule), 5
-//! (admission), 6 (review), 7 (turn endings, but an `Incoming` taken over
-//! in Gate, which lands with incoming messages), 8 (re-entry), 9 (refusal
+//! (admission), 6 (review), 7 (turn endings, and an `Incoming` taken over
+//! in Gate is never delivered), 8 (re-entry), 9 (refusal
 //! is not failure), 10 (fail closed) and 11 (interrupt). 12 (restore)
 //! lands with the restore commit, in `src/restore/tests.rs`.
 
@@ -1355,6 +1356,105 @@ fn a_held_proposal_keeps_the_turn_until_a_reviewer_replaces_it() {
         ended(&app)
     );
     assert!(!has::<ActiveTurn>(&app, agent));
+}
+
+/// Takes over the user's messages that start with `!`, as a shell would.
+fn run_in_shell(typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands) {
+    for (message, typed) in &typed {
+        if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+            commands
+                .entity(message)
+                .insert_if_new(Outcome::custom("ran in a shell"));
+        }
+    }
+}
+
+/// The record of the message whose text is `text`.
+fn message_record(app: &App, text: &str) -> Option<EffectRecord> {
+    let sent = |record: &EffectRecord| match &record.kind {
+        EffectKind::Custom { kind, payload } => {
+            &**kind == "message"
+                && payload.get("text").and_then(serde_json::Value::as_str) == Some(text)
+        }
+        _ => false,
+    };
+    records(app).into_iter().find(sent)
+}
+
+#[test]
+fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_turn_on() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Judging>()
+        .add_observer(log_ended)
+        .add_systems(
+            AgentPass,
+            (
+                hold_answers.in_set(Stage::Review),
+                run_in_shell.in_set(Stage::Gate),
+            ),
+        );
+    let model = MockCompletionModel::from_stream_turns([answer("first"), answer("second")]);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| world.resource::<Judging>().0.is_some();
+    assert!(run_until(&mut app, held));
+    let typed = |text: &str| Deliver::new(agent, text, DeliveryMode::Steer);
+    // Taken over while the turn's answer is held: it neither reaches the
+    // model nor carries the turn on.
+    app.world_mut().trigger(typed("!ls"));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 1);
+    assert!(has::<ActiveTurn>(&app, agent));
+    let taken = message_record(&app, "!ls");
+    assert!(
+        taken.as_ref().is_some_and(|record| {
+            record.disposition == Disposition::AnsweredBeforeStart
+                && output(&record.outcome).contains("ran in a shell")
+        }),
+        "{taken:?}"
+    );
+    // Accepted, a message carries the answered turn on at once.
+    let first_hold = app.world().resource::<Judging>().0.map(|(_, hold)| hold);
+    app.world_mut().trigger(typed("and the tests?"));
+    let asked_again = |_: &mut World| model.request_count() == 2;
+    assert!(run_until(&mut app, asked_again), "{:?}", notices(&app));
+    let second = model.requests().get(1).map(serde_json::to_string);
+    assert!(
+        matches!(&second, Some(Ok(sent)) if sent.contains("and the tests?") && !sent.contains("!ls")),
+        "{second:?}"
+    );
+    let held_again =
+        |world: &mut World| world.resource::<Judging>().0.map(|(_, hold)| hold) != first_hold;
+    assert!(run_until(&mut app, held_again));
+    let holds = [
+        first_hold,
+        app.world().resource::<Judging>().0.map(|(_, hold)| hold),
+    ];
+    for hold in holds.into_iter().flatten() {
+        app.world_mut().despawn(hold);
+    }
+    let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended_once));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
+    let said = serde_json::to_string(&conversation(&app, agent)).unwrap_or_default();
+    assert!(
+        !said.contains("!ls") && said.contains("and the tests?"),
+        "{said}"
+    );
+    // An idle agent starts no turn with a message taken over.
+    app.world_mut().trigger(typed("!pwd"));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(!has::<ActiveTurn>(&app, agent));
+    assert_eq!(model.request_count(), 2);
+    assert!(message_record(&app, "!pwd").is_some());
 }
 
 /// A reply cut off at the length limit before it answered.

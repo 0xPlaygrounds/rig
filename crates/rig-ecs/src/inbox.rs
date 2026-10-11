@@ -1,50 +1,67 @@
-//! Delivering messages to agents. [`Deliver`] is the one way a message
-//! reaches an agent's conversation, whoever sends it: the user typing, an
-//! agent reporting, a plugin. An idle agent starts a turn with it, and
-//! every message that reaches it before that turn's first model call is
-//! built, at the next pass of the stages, goes to the model in that call. A busy one keeps it in its
-//! [`Inbox`]: a [`DeliveryMode::Steer`] message goes to the model with the
-//! turn's next call, after the tool results it waits for; the
-//! [`DeliveryMode::Queue`] ones carry the turn on together, as one step,
-//! once it would end. A [`DeliveryMode::Note`] needs no answer: it goes to
-//! the model with whatever call comes next and never starts or carries on
-//! a turn by itself. A turn that ends some other way (stopped, failed)
-//! hands what the user typed and was not sent back to the views as
-//! [`Recalled`], so nothing typed is lost or sent unasked, and puts what
-//! agents and plugins sent in the conversation for the next turn.
+//! Messages to agents. A message, whoever sends it (the user typing, an
+//! agent reporting, a plugin), is an effect entity: an [`Incoming`]
+//! [`ForAgent`] the agent, which moves through the stages like any other
+//! effect. [`Deliver`] spawns one. Plugins edit it in Prepare
+//! (`Added<Admitted>`), such as adding the files its text names as
+//! [`Attachment`]s, and take it over in Gate by answering it with an
+//! [`Outcome`]: it never reaches the agent then. At Start the kernel
+//! accepts what is left and marks it [`Started`]:
+//! - a user's text that starts with `/` runs as a slash command
+//!   ([`Incoming::command`]) instead of being sent;
+//! - an idle agent takes it into its conversation at once and starts a
+//!   turn with it, and every message accepted with it goes to the model
+//!   in that turn's first call; a [`DeliveryMode::Note`] starts no turn
+//!   and is kept in the conversation, logged as halted, for the next one;
+//! - a busy agent keeps it: a [`DeliveryMode::Steer`] message goes to the
+//!   model with the turn's next call, after the tool results it waits
+//!   for; the [`DeliveryMode::Queue`] ones carry the turn on together, as
+//!   one step, once it would end; a note goes with whatever call comes
+//!   next and never starts or carries on a turn by itself. A Steer or
+//!   Queue message accepted while the turn's proposed outcome is
+//!   [`TurnOutcome::Answered`] carries the turn on at once, and one still
+//!   on its way keeps such a turn from ending until it is accepted or
+//!   taken over.
+//!
+//! An agent's inbox is the messages it accepted that are not answered
+//! yet: `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`.
+//! The kernel answers a message once it delivered it, ran it as a
+//! command, or handed it back, and it settles. A turn that ends some other
+//! way (stopped, failed) hands what the user typed and was not sent back
+//! to the views as [`Recalled`], so nothing typed is lost or sent unasked,
+//! and puts what agents and plugins sent in the conversation for the next
+//! turn.
 //!
 //! Each message carries its [`Origin`], kept with the conversation and its
 //! log. Text that is not the user's own goes to the model as a user
 //! message headed by a line naming where it came from. A message may carry
 //! [`Attachment`]s its sender read, such as images, which go before its
 //! text when the agent's model reads them.
-//!
-//! What the user types is a [`Deliver`] from [`Origin::user`]. A plugin's
-//! observer of it (`app.add_observer`) may edit it before it is delivered:
-//! rewrite its text, add attachments, or take it over by emptying its
-//! text. The kernel delivers from an observer on the agent's entity, which
-//! Bevy runs after every global observer of the event
-//! (`EntityTrigger`, bevy_ecs 0.20 `event/trigger.rs`). Observers of one
-//! event run in no fixed order otherwise, so each does its own part and
-//! none depends on another. A user's text that starts with `/` then runs
-//! as a slash command ([`Deliver::command`]) instead of being sent.
 
-use std::collections::VecDeque;
+use std::collections::HashSet;
+use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
+use rig_core::effect::{EffectKind, HandlerKey};
+use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
+use web_time::SystemTime;
 
-use super::agent::{ActiveTurn, Agent, AgentId, CallOf, Conversation, Halt, Notice, TurnOf};
+use super::agent::{
+    ActiveTurn, Agent, AgentId, Conversation, EffectParent, Halt, Notice, TurnOf, TurnOutcome,
+};
 use super::calls::Wake;
 use super::commands::RunCommand;
 use super::journal::Commit;
 use super::model::Connection;
-use super::stage::ForAgent;
-use super::turn::{Exiting, TurnCall};
+use super::stage::{
+    AgentWork, Effect, ForAgent, Outcome, Settled, Stage, Started, Undecided, failed_in,
+};
+use super::turn::{Ending, Exiting, spawn_turn_call};
 
 /// The id of a request to an agent, which the reply to it names, such as
 /// the tool call that asked. Unique per sender, so it doubles as an
@@ -179,14 +196,16 @@ pub struct Attachment {
     pub content: UserContent,
 }
 
-/// Put `text` in the agent's conversation, from `origin`, as `mode` says,
-/// after its `attachments`. Empty text is ignored. Observers may edit it
-/// first (see the [module](self)).
-#[derive(EntityEvent, Reflect, Clone, Debug)]
-#[reflect(Event, Clone, Debug)]
-pub struct Deliver {
-    /// The agent.
-    pub entity: Entity,
+/// A message to the agent it is [`ForAgent`]: `text`, from `origin`, that
+/// goes to the agent's model as `mode` says, after its `attachments`. An
+/// effect that moves through the stages (see the [module](self)): edit it
+/// in Prepare, take it over in Gate by answering it with an [`Outcome`];
+/// once accepted, it is [`Started`] until the kernel answers it. Empty
+/// text is ignored.
+#[derive(Component, Reflect, Clone, Debug)]
+#[reflect(Component, Clone, Debug)]
+#[require(Effect, Name = Name::new("message"))]
+pub struct Incoming {
     /// The text.
     pub text: String,
     /// Where it came from.
@@ -201,12 +220,11 @@ pub struct Deliver {
     pub literal: bool,
 }
 
-impl Deliver {
-    /// `text` for `agent`, as `mode` says, as the user's own text unless
+impl Incoming {
+    /// `text`, as `mode` says, as the user's own text unless
     /// [`with_origin`](Self::with_origin) names who sent it.
-    pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
+    pub fn new(text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
-            entity: agent,
             text: text.into(),
             origin: Origin::user(),
             mode,
@@ -216,11 +234,13 @@ impl Deliver {
     }
 
     /// This message, from `origin`.
+    #[must_use]
     pub fn with_origin(self, origin: Origin) -> Self {
         Self { origin, ..self }
     }
 
     /// This message sent [`literal`](Self::literal)ly.
+    #[must_use]
     pub fn literal(self) -> Self {
         Self {
             literal: true,
@@ -228,7 +248,7 @@ impl Deliver {
         }
     }
 
-    /// The slash command line, without its `/`, that this delivery runs
+    /// The slash command line, without its `/`, that this message runs
     /// instead of being sent: the user's text that starts with `/`, unless
     /// it is [`literal`](Self::literal).
     pub fn command(&self) -> Option<&str> {
@@ -238,42 +258,48 @@ impl Deliver {
     }
 }
 
-/// A message waiting in an [`Inbox`].
-#[derive(Reflect, Clone, Debug)]
-pub struct Pending {
-    /// The text.
-    pub text: String,
-    /// Where it came from.
-    pub origin: Origin,
-    /// What goes before the text.
-    #[reflect(ignore)]
-    pub attachments: Vec<Attachment>,
+/// Send `message` to the agent `entity`: the kernel spawns it as an
+/// [`Incoming`] effect for that agent, under the effect the agent's work
+/// is recorded under ([`EffectParent`]), and the stages take it from there
+/// (see the [module](self)). A plugin changes or takes over a message
+/// through its `Incoming`, not this.
+#[derive(EntityEvent, Reflect, Clone, Debug)]
+#[reflect(Event, Clone, Debug)]
+pub struct Deliver {
+    /// The agent.
+    pub entity: Entity,
+    /// The message.
+    pub message: Incoming,
 }
 
-/// What was sent to the agent while it worked, not yet delivered.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Default)]
-pub struct Inbox {
-    /// Messages for the running turn, sent with its next model call.
-    pub steering: Vec<Pending>,
-    /// Messages for after the turn, sent together when it would end.
-    pub queued: VecDeque<Pending>,
-    /// Messages that need no answer, sent with the next model call that
-    /// something else makes.
-    pub notes: Vec<Pending>,
-}
+impl Deliver {
+    /// `text` for `agent`, as `mode` says, as the user's own text unless
+    /// [`with_origin`](Self::with_origin) names who sent it.
+    pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
+        Self {
+            entity: agent,
+            message: Incoming::new(text, mode),
+        }
+    }
 
-impl Inbox {
-    /// Whether nothing waits.
-    pub fn is_empty(&self) -> bool {
-        self.steering.is_empty() && self.queued.is_empty() && self.notes.is_empty()
+    /// This message, from `origin`.
+    #[must_use]
+    pub fn with_origin(self, origin: Origin) -> Self {
+        Self {
+            message: self.message.with_origin(origin),
+            ..self
+        }
+    }
+
+    /// This message sent [`literal`](Incoming::literal)ly.
+    #[must_use]
+    pub fn literal(self) -> Self {
+        Self {
+            message: self.message.literal(),
+            ..self
+        }
     }
 }
-
-/// On a turn whose first model call is not built yet: what reaches its
-/// agent until then goes with that call.
-#[derive(Component, Debug)]
-pub(crate) struct Starting;
 
 /// Text the user typed that was not sent: the messages the agent's turn
 /// ended without sending, joined in the order they were typed, or a
@@ -288,79 +314,195 @@ pub struct Recalled {
     pub why: Option<String>,
 }
 
-/// Gives each agent the observer that delivers to it, [`on_deliver`]. It
-/// watches that agent alone, so Bevy runs it after the global observers
-/// that may edit the delivery.
-pub(crate) fn watch_deliveries(added: On<Add<Agent>>, mut commands: Commands) {
-    commands.entity(added.entity).observe(on_deliver);
+/// Spawns a [`Deliver`]'s message for its agent, and wakes the loop: the
+/// frame that sent it may have run its stages already.
+pub(crate) fn on_deliver(
+    deliver: On<Deliver>,
+    agents: Query<Option<&EffectParent>, With<Agent>>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+) {
+    let agent = deliver.entity;
+    let Ok(parent) = agents.get(agent) else {
+        return;
+    };
+    commands.spawn((
+        deliver.message.clone(),
+        ForAgent(agent),
+        Effect::child_of(parent.map(|parent| parent.0)),
+    ));
+    wake.wake();
 }
 
-/// Runs a user's slash command, or starts a turn of an idle agent with the
-/// message, or keeps it in a busy one's inbox. A note to an idle agent
-/// goes in its conversation, logged as halted, for its next turn.
-fn on_deliver(
-    deliver: On<Deliver>,
-    mut agents: Query<
-        (
-            &mut Inbox,
-            &mut Conversation,
-            Option<&Connection>,
-            Option<&ActiveTurn>,
-        ),
-        With<Agent>,
-    >,
-    starting: Query<(), With<Starting>>,
+/// How the kernel answered a message it took: `delivered`, `command`,
+/// `recalled` or `empty`.
+fn handled(how: &'static str) -> Outcome {
+    Outcome::custom(how)
+}
+
+/// Accepts each message about to start, in the order they were sent,
+/// unless a Gate system failed this pass, in [`Stage::Start`]: runs a
+/// user's slash command; gives an idle agent the message at once and
+/// starts a turn with it, with every message accepted with it, unless it
+/// is a note, which is kept for the next turn; and keeps it, [`Started`],
+/// for a busy agent.
+pub(crate) fn accept(
+    ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), Undecided>,
+    mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
     mut commit: Commit,
-    wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let agent = deliver.entity;
-    if let Some(line) = deliver.command() {
-        commands.trigger(RunCommand {
-            entity: agent,
-            line: line.to_owned(),
-        });
+    if failed_in(Stage::Gate).is_some() {
         return;
     }
-    let Ok((mut inbox, mut conversation, connection, active)) = agents.get_mut(agent) else {
-        return;
-    };
-    let text = deliver.text.trim();
-    if text.is_empty() {
-        return;
-    }
-    let pending = Pending {
-        text: text.to_owned(),
-        origin: deliver.origin.clone(),
-        attachments: deliver.attachments.clone(),
-    };
-    if let Some(active) = active {
-        // A turn that has not called its model yet takes every message
-        // with its first call.
-        if starting.contains(active.turn()) {
-            inbox.steering.push(pending);
-            return;
+    let mut ready: Vec<_> = ready.iter().collect();
+    ready.sort_unstable_by_key(|(_, effect, ..)| effect.id());
+    let at = SystemTime::now();
+    // The agents whose turn starts with this pass's messages.
+    let mut starting = HashSet::new();
+    for (entity, _, message, agent) in ready {
+        let agent = agent.map(|agent| agent.0);
+        let Some((agent, (mut conversation, connection, busy))) =
+            agent.and_then(|agent| Some((agent, agents.get_mut(agent).ok()?)))
+        else {
+            let why = ErrorReport::new(ErrorKind::Internal, "a message needs an agent");
+            commands.entity(entity).try_insert_if_new(Outcome(Err(why)));
+            continue;
+        };
+        if let Some(line) = message.command() {
+            let line = line.to_owned();
+            commands.trigger(RunCommand {
+                entity: agent,
+                line,
+            });
+            commands
+                .entity(entity)
+                .try_insert_if_new(handled("command"));
+            continue;
         }
-        match deliver.mode {
-            DeliveryMode::Steer => inbox.steering.push(pending),
-            DeliveryMode::Queue => inbox.queued.push_back(pending),
-            DeliveryMode::Note => inbox.notes.push(pending),
+        if message.text.trim().is_empty() {
+            commands.entity(entity).try_insert_if_new(handled("empty"));
+            continue;
         }
-        return;
+        let first_call = starting.contains(&agent);
+        if busy && !first_call {
+            commands.entity(entity).try_insert(Started { at });
+            continue;
+        }
+        let spec = connection.map(|connection| &*connection.spec);
+        // After a failure that kept the user's message, the new text joins it.
+        let conversation = &mut *conversation;
+        commit.pending(agent, spec, [message], conversation, &mut notices);
+        commands
+            .entity(entity)
+            .try_insert((Started { at }, handled("delivered")));
+        if first_call {
+            continue;
+        }
+        if message.mode == DeliveryMode::Note {
+            commit.halt(agent, conversation, Halt::Kept);
+            continue;
+        }
+        starting.insert(agent);
+        let turn = commands.spawn(TurnOf(agent)).id();
+        spawn_turn_call(&mut commands, turn, agent);
     }
-    let spec = connection.map(|connection| &*connection.spec);
-    // After a failure that kept the user's message, the new text joins it.
-    let conversation = &mut *conversation;
-    commit.pending(agent, spec, [pending], conversation, &mut notices);
-    if deliver.mode == DeliveryMode::Note {
-        commit.halt(agent, conversation, Halt::Kept);
-        return;
+}
+
+/// Carries on each turn proposed [`TurnOutcome::Answered`] whose agent
+/// accepted a Steer or Queue message this pass, in [`Stage::Start`]: the
+/// outcome is taken off, what carries the turn on goes into the
+/// conversation, and the model is called again.
+pub(crate) fn carry_on_accepted(
+    accepted: Query<(&Incoming, &ForAgent), (Added<Started>, Without<Outcome>)>,
+    mut agents: Query<(&mut Conversation, Option<&Connection>, &ActiveTurn)>,
+    turns: Query<&TurnOutcome>,
+    inboxes: Inboxes,
+    mut commit: Commit,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let mut carried = HashSet::new();
+    for (message, &ForAgent(agent)) in &accepted {
+        if message.mode == DeliveryMode::Note || !carried.insert(agent) {
+            continue;
+        }
+        let Ok((mut conversation, connection, active)) = agents.get_mut(agent) else {
+            continue;
+        };
+        let turn = active.turn();
+        if !matches!(turns.get(turn), Ok(TurnOutcome::Answered(_))) {
+            continue;
+        }
+        let Some(next) = carry_on(inboxes.of(agent)) else {
+            continue;
+        };
+        let spec = connection.map(|connection| &*connection.spec);
+        let conversation = &mut *conversation;
+        commit.deliver(agent, spec, next, conversation, &mut notices, &mut commands);
+        commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
+        spawn_turn_call(&mut commands, turn, agent);
     }
-    let turn = commands.spawn((TurnOf(agent), Starting)).id();
-    commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
-    // The frame that starts it may have run its last systems already.
-    wake.wake();
+}
+
+/// The messages agents accepted and were not given yet, as the kernel
+/// reads them.
+#[derive(SystemParam)]
+pub(crate) struct Inboxes<'w, 's> {
+    work: Query<'w, 's, &'static AgentWork>,
+    accepted: Query<
+        'w,
+        's,
+        (Entity, &'static Effect, &'static Incoming),
+        (With<Started>, Without<Outcome>, Without<Settled>),
+    >,
+    on_the_way: Query<'w, 's, &'static Incoming, (Without<Started>, Without<Outcome>)>,
+}
+
+impl Inboxes<'_, '_> {
+    /// What `agent` accepted and was not given yet, oldest first.
+    pub(crate) fn of(&self, agent: Entity) -> Vec<(Entity, &Incoming)> {
+        let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
+        let mut waiting: Vec<_> = self.accepted.iter_many(work).flatten().collect();
+        waiting.sort_unstable_by_key(|(_, effect, _)| effect.id());
+        waiting
+            .into_iter()
+            .map(|(entity, _, message)| (entity, message))
+            .collect()
+    }
+
+    /// Whether a Steer or Queue message to `agent` is on its way: spawned,
+    /// not accepted, not answered.
+    pub(crate) fn coming(&self, agent: Entity) -> bool {
+        let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
+        self.on_the_way
+            .iter_many(work)
+            .flatten()
+            .any(|message| message.mode != DeliveryMode::Note)
+    }
+}
+
+/// What of `waiting` carries a turn on that would end: the notes with the
+/// steering messages, else with everything queued, in the order they came;
+/// none when neither waits.
+pub(crate) fn carry_on(waiting: Vec<(Entity, &Incoming)>) -> Option<Vec<(Entity, &Incoming)>> {
+    let steering = waiting
+        .iter()
+        .any(|(_, message)| message.mode == DeliveryMode::Steer);
+    let carries = match steering {
+        true => DeliveryMode::Steer,
+        false => DeliveryMode::Queue,
+    };
+    let next: Vec<_> = waiting
+        .into_iter()
+        .filter(|(_, message)| {
+            matches!(message.mode, DeliveryMode::Note) || message.mode == carries
+        })
+        .collect();
+    next.iter()
+        .any(|(_, message)| message.mode == carries)
+        .then_some(next)
 }
 
 /// Hands back what the user typed that a turn that just ended did not
@@ -370,59 +512,106 @@ fn on_deliver(
 /// the app is [`Exiting`].
 pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
-    mut agents: Query<(&mut Inbox, &mut Conversation, Option<&Connection>)>,
+    mut agents: Query<(&mut Conversation, Option<&Connection>)>,
+    inboxes: Inboxes,
     mut commit: Commit,
     exiting: Option<Res<Exiting>>,
+    mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = end.entity;
-    let Ok((mut inbox, mut conversation, connection)) = agents.get_mut(agent) else {
+    let Ok((mut conversation, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let inbox = &mut *inbox;
-    let waiting = inbox.notes.drain(..).chain(inbox.steering.drain(..));
-    let (typed, sent): (Vec<Pending>, Vec<Pending>) = waiting
-        .chain(inbox.queued.drain(..))
-        .partition(|pending| pending.origin.kind == OriginKind::User);
+    let (typed, sent): (Vec<_>, Vec<_>) = inboxes
+        .of(agent)
+        .into_iter()
+        .partition(|(_, message)| message.origin.kind == OriginKind::User);
     let spec = connection.map(|connection| &*connection.spec);
-    commit.pending(agent, spec, sent, &mut conversation, &mut notices);
+    let conversation = &mut *conversation;
+    commit.deliver(agent, spec, sent, conversation, &mut notices, &mut commands);
     if exiting.is_none() {
-        commit.halt(agent, &mut conversation, Halt::Kept);
+        commit.halt(agent, conversation, Halt::Kept);
     }
-    if !typed.is_empty() {
-        let typed: Vec<String> = typed.into_iter().map(|pending| pending.text).collect();
-        recalled.write(Recalled {
-            agent,
-            text: typed.join("\n\n"),
-            why: None,
-        });
+    if typed.is_empty() {
+        return;
     }
+    for &(entity, _) in &typed {
+        commands
+            .entity(entity)
+            .try_insert_if_new(handled("recalled"));
+    }
+    let typed: Vec<&str> = typed
+        .iter()
+        .map(|(_, message)| message.text.trim())
+        .collect();
+    recalled.write(Recalled {
+        agent,
+        text: typed.join("\n\n"),
+        why: None,
+    });
+}
+
+/// The record's handler key and kind of a message: its text, origin and
+/// mode, without its attachments.
+pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
+    let mut payload = serde_json::Map::new();
+    payload.insert("text".to_owned(), message.text.clone().into());
+    let origin = serde_json::to_value(&message.origin).unwrap_or_default();
+    payload.insert("origin".to_owned(), origin);
+    let mode = serde_json::to_value(message.mode).unwrap_or_default();
+    payload.insert("mode".to_owned(), mode);
+    let kind = EffectKind::Custom {
+        kind: Arc::from("message"),
+        payload: payload.into(),
+    };
+    (HandlerKey::new("message"), kind)
 }
 
 impl Commit<'_, '_> {
-    /// Commits each of `waiting` to `conversation`, that of `agent`, whose
-    /// model is `spec`, as a user message with its origin: its attachments
-    /// the model takes, then its text, headed by its origin's line when it
-    /// is not the user's own. Each goes into the last message when that is
-    /// the user's, such as the tool results the model waits for, so user
-    /// and model keep taking turns.
-    pub(crate) fn pending(
+    /// Commits each of `messages`, accepted by `agent`, to its
+    /// `conversation` as [`pending`](Self::pending) does, and answers it
+    /// as delivered.
+    pub(crate) fn deliver<'a>(
         &mut self,
         agent: Entity,
         spec: Option<&ModelSpec>,
-        waiting: impl IntoIterator<Item = Pending>,
+        messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
+        conversation: &mut Conversation,
+        notices: &mut MessageWriter<Notice>,
+        commands: &mut Commands,
+    ) {
+        for (entity, message) in messages {
+            self.pending(agent, spec, [message], conversation, notices);
+            commands
+                .entity(entity)
+                .try_insert_if_new(handled("delivered"));
+        }
+    }
+
+    /// Commits each of `messages` to `conversation`, that of `agent`, whose
+    /// model is `spec`, as a user message with its origin: its attachments
+    /// the model takes, then its text, trimmed, headed by its origin's line
+    /// when it is not the user's own. Each goes into the last message when
+    /// that is the user's, such as the tool results the model waits for, so
+    /// user and model keep taking turns.
+    pub(crate) fn pending<'a>(
+        &mut self,
+        agent: Entity,
+        spec: Option<&ModelSpec>,
+        messages: impl IntoIterator<Item = &'a Incoming>,
         conversation: &mut Conversation,
         notices: &mut MessageWriter<Notice>,
     ) {
-        for pending in waiting {
-            let mut content = Vec::with_capacity(pending.attachments.len() + 1);
+        for message in messages {
+            let mut content = Vec::with_capacity(message.attachments.len() + 1);
             for Attachment {
                 label,
                 content: item,
-            } in pending.attachments
+            } in &message.attachments
             {
-                let refused = match (&item, spec) {
+                let refused = match (item, spec) {
                     (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
                         "{} does not read images, so {label} is sent as its name only.",
                         spec.display_name
@@ -436,12 +625,13 @@ impl Commit<'_, '_> {
                     Some(note) => {
                         notices.write(Notice::info(agent, note));
                     }
-                    None => content.push(item),
+                    None => content.push(item.clone()),
                 }
             }
-            let (text, origin) = match pending.origin.header() {
-                None => (pending.text, None),
-                Some(header) => (format!("{header}\n{}", pending.text), Some(pending.origin)),
+            let text = message.text.trim();
+            let (text, origin) = match message.origin.header() {
+                None => (text.to_owned(), None),
+                Some(header) => (format!("{header}\n{text}"), Some(message.origin.clone())),
             };
             content.push(UserContent::text(text));
             self.message_from(agent, conversation, Message::User { content }, origin);

@@ -40,6 +40,7 @@ mod wrap;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
+use rig_ecs::stage::AgentLoop;
 use rig_harness::prelude::Invoked;
 
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
@@ -101,8 +102,12 @@ impl Plugin for TuiPlugin {
                 (
                     (view::focus_agent, view::mark_focused).chain(),
                     // A picker that cannot open writes a notice instead.
-                    (view::open_pickers, view::collect_notices).chain(),
-                    view::recall_messages,
+                    // A command typed this frame runs in the agent loop, so
+                    // its notices and a refusal come back in this frame.
+                    (view::open_pickers, view::collect_notices)
+                        .chain()
+                        .after(AgentLoop),
+                    view::recall_messages.after(AgentLoop),
                 ),
             )
             .add_systems(

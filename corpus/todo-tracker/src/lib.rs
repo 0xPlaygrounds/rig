@@ -238,12 +238,15 @@ fn nudge(
     }
 }
 
-/// A user's message allows one more nudge.
-fn reset_nudge(typed: On<Deliver>, mut agents: Query<&mut Nudged>) {
-    let user = typed.origin.kind == OriginKind::User && typed.command().is_none();
-    if user
-        && !typed.text.trim().is_empty()
-        && let Ok(mut nudged) = agents.get_mut(typed.entity)
+/// A user's message the agent accepted allows one more nudge.
+fn reset_nudge(
+    accepted: On<Add<Started>>,
+    messages: Query<(&Incoming, &ForAgent)>,
+    mut agents: Query<&mut Nudged>,
+) {
+    if let Ok((typed, &ForAgent(agent))) = messages.get(accepted.entity)
+        && typed.origin.kind == OriginKind::User
+        && let Ok(mut nudged) = agents.get_mut(agent)
     {
         nudged.0 = false;
     }

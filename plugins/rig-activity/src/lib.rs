@@ -104,10 +104,10 @@ pub struct ToolActivity {
 }
 
 /// Recent deliveries to agents, oldest first: the user's messages (not
-/// their slash commands), messages between agents and plugins' messages,
-/// at most [`FEED_LEN`].
-/// A delivery is recorded when it is sent, whether the agent reads it now
-/// or after its turn.
+/// their slash commands, nor what a plugin took over), messages between
+/// agents and plugins' messages, at most [`FEED_LEN`].
+/// A delivery is recorded when the agent accepts it, whether its model
+/// reads it now or after its turn.
 #[derive(Resource, Reflect, Default, Debug)]
 #[reflect(Resource)]
 pub struct MessageFeed {
@@ -134,15 +134,18 @@ pub struct FedMessage {
     pub text: String,
 }
 
+/// Feeds each message an agent accepted: what reached it, not what was
+/// taken over or ran as a command.
 fn feed_deliveries(
-    delivery: On<Deliver>,
+    accepted: On<Add<Started>>,
+    messages: Query<(&Incoming, &ForAgent)>,
     agents: Query<(Entity, &AgentId), With<Agent>>,
     mut feed: ResMut<MessageFeed>,
 ) {
-    if delivery.command().is_some() {
+    let Ok((message, &ForAgent(to))) = messages.get(accepted.entity) else {
         return;
-    }
-    let from = delivery.origin.from.as_ref().and_then(|from| {
+    };
+    let from = message.origin.from.as_ref().and_then(|from| {
         agents
             .iter()
             .find_map(|(entity, id)| (id == from).then_some(entity))
@@ -151,10 +154,10 @@ fn feed_deliveries(
         feed.entries.pop_front();
     }
     feed.entries.push_back(FedMessage {
-        to: delivery.entity,
+        to,
         from,
-        origin: delivery.origin.clone(),
-        text: delivery.text.chars().take(FEED_CHARS).collect(),
+        origin: message.origin.clone(),
+        text: message.text.chars().take(FEED_CHARS).collect(),
     });
 }
 

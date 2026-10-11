@@ -67,6 +67,7 @@ use super::agent::Notice;
 use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
+use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::SessionLog;
 use super::tools::{
     CallHandler, Footprint, Published, ToolRequest, ToolStart, ToolStarts, complete_calls,
@@ -121,10 +122,12 @@ pub enum Stage {
     /// start ([`Undecided`]).
     Gate,
     /// The kernel starts what is admitted, unheld and unanswered, but the
-    /// calls of a failed or stopped turn: it runs handlers, fits a model
-    /// call to its model and sends it, refuses a tool call its agent cannot
-    /// make, and opens an open tool's call. An effect it does not run stays
-    /// open, [`Started`], until answered.
+    /// calls of a failed or stopped turn: it accepts messages
+    /// ([`Incoming`]), runs a user's slash command, and starts an idle
+    /// agent's turn or carries on one that would end answered; it runs
+    /// handlers, fits a model call to its model and sends it, refuses a
+    /// tool call its agent cannot make, and opens an open tool's call. An
+    /// effect it does not run stays open, [`Started`], until answered.
     Start,
 }
 
@@ -279,6 +282,16 @@ impl Outcome {
             ))),
             Err(report) => ToolResult::failed(report.clone().into()),
         }
+    }
+}
+
+impl Outcome {
+    /// An answer of a kind of its own, rig-core's custom outcome with
+    /// `payload`, such as a plugin's taking over a message.
+    pub fn custom(payload: impl Into<serde_json::Value>) -> Self {
+        Self(Ok(effect::Outcome::Custom {
+            payload: payload.into(),
+        }))
     }
 }
 
@@ -475,7 +488,9 @@ pub(crate) fn build(app: &mut App) {
                     .chain()
                     .in_set(Stage::Admit),
                 answer_unprepared.in_set(Enter(Stage::Gate)),
-                start.in_set(Stage::Start),
+                (accept, carry_on_accepted, start)
+                    .chain()
+                    .in_set(Stage::Start),
             ),
         )
         .add_systems(
@@ -807,6 +822,10 @@ fn start(
         log.flush();
     }
     for item in &mut ready {
+        // Messages are accepted before.
+        if item.message {
+            continue;
+        }
         let ending = item.of.and_then(|of| turns.get(of.0).ok());
         if ending.and_then(TurnOutcome::stops).is_some() {
             continue;
@@ -909,6 +928,7 @@ struct StartItem {
     tool: Option<&'static ToolRequest>,
     model: Option<&'static mut ModelRequest>,
     turn_call: Has<TurnCall>,
+    message: Has<Incoming>,
     handler: Option<&'static CallHandler>,
     footprint: Option<&'static Footprint>,
     agent: Option<&'static ForAgent>,
@@ -1121,6 +1141,9 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
             stream: true,
         };
         return Some((key, kind));
+    }
+    if let Some(message) = world.get::<Incoming>(entity) {
+        return Some(message_kind(message));
     }
     let request = world.get::<EffectRequest>(entity)?;
     let key = match &request.handler {

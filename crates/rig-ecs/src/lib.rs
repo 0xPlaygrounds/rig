@@ -59,7 +59,7 @@ pub mod prelude {
     pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
     pub use crate::inbox::{
-        Attachment, Deliver, DeliveryMode, Inbox, Origin, OriginKind, Recalled, RequestId,
+        Attachment, Deliver, DeliveryMode, Incoming, Origin, OriginKind, Recalled, RequestId,
     };
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
@@ -156,7 +156,7 @@ impl Plugin for AgentPlugin {
                         .run_if(on_message::<AppExit>),
                 ),
             )
-            .add_observer(inbox::watch_deliveries)
+            .add_observer(inbox::on_deliver)
             .add_observer(commands::on_run_command)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)

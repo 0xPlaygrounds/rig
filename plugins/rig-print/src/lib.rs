@@ -92,6 +92,8 @@ struct Agents<'w, 's> {
     turns: Query<'w, 's, (), With<TurnOf>>,
     /// Work in progress, such as a sign-in.
     running: Query<'w, 's, (), With<Running>>,
+    /// Messages on their way to an agent, such as the prompt itself.
+    messages: Query<'w, 's, (), (With<Incoming>, Without<Settled>)>,
 }
 
 /// Chooses the model, sends the prompt, and exits after the turn.
@@ -165,10 +167,12 @@ fn drive(
             run.step = Step::Sent { agent, before };
         }
         Step::Sent { agent, before } => {
-            // The turn starts with the request; a command may start none,
-            // or other work, such as a sign-in. A subagent's answer starts
-            // another turn of the agent that started it.
-            if !agents.turns.is_empty() || !agents.running.is_empty() {
+            // The turn starts with the request once the agent accepted
+            // it; a command may start none, or other work, such as a
+            // sign-in. A subagent's answer starts another turn of the agent
+            // that started it.
+            if !agents.turns.is_empty() || !agents.running.is_empty() || !agents.messages.is_empty()
+            {
                 return;
             }
             let answer = agents

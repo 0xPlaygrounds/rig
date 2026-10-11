@@ -1,6 +1,5 @@
 //! The `task`, `message` and `wait` tools.
 
-use rig_ecs::inbox::Pending;
 use rig_ecs::tools::ToolDef;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -84,7 +83,7 @@ pub(super) fn add(app: &mut App) {
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
         .add_open_tool(WAIT, WAIT_DESCRIPTION, independent(&[]), on_wait)
-        .add_systems(PostUpdate, send_briefs);
+        .add_systems(Update, send_briefs.before(AgentLoop));
 }
 
 /// The arguments of a `task` call.
@@ -269,9 +268,10 @@ fn on_task(
     commands.entity(call).insert_if_new(answered(said));
 }
 
-/// Sends each subagent started this frame its task, naming its peers when
-/// it has [`Peers`]. Peers briefed in an earlier frame, such as those of an
-/// earlier reply, learn of it by a note.
+/// Sends each subagent started since it last ran its task, naming its
+/// peers when it has [`Peers`], before the agent loop, which starts the
+/// subagent's turn in the same frame. Peers briefed in an earlier frame,
+/// such as those of an earlier reply, learn of it by a note.
 fn send_briefs(
     briefs: Query<(Entity, &Brief, &SpawnedBy)>,
     families: Query<&Spawned>,
@@ -295,7 +295,7 @@ fn send_briefs(
             let names: Vec<String> = siblings.iter().map(|(_, peer)| named(*peer)).collect();
             if !names.is_empty() {
                 let peers = format!("\n\nYour peers, by id: {}.", names.join(", "));
-                brief.text.push_str(&peers);
+                brief.message.text.push_str(&peers);
             }
             for (sibling, _) in siblings.iter().filter(|(_, (.., briefing))| !briefing) {
                 let text = format!("A new peer works beside you: {}.", named(me));
@@ -338,13 +338,14 @@ impl Agents<'_, '_> {
         };
         // A message to an agent the caller owes answers its oldest request
         // the caller has read, one no longer in its inbox.
-        let inbox = self.inboxes.get(caller).ok();
-        let unread: Vec<&Pending> = inbox
-            .into_iter()
-            .flat_map(|inbox| inbox.steering.iter().chain(&inbox.queued))
+        let unread: Vec<&Incoming> = self
+            .inboxes
+            .iter()
+            .filter(|(sent, to, _)| to.0 == caller && sent.mode != DeliveryMode::Note)
+            .map(|(sent, ..)| sent)
             .collect();
         let read = |request: &&Request| {
-            let named = |sent: &&Pending| sent.origin.request.as_ref() == Some(&request.id);
+            let named = |sent: &&Incoming| sent.origin.request.as_ref() == Some(&request.id);
             !unread.iter().any(named)
         };
         let owed = self.open.get(caller).into_iter();
@@ -443,18 +444,22 @@ impl Agents<'_, '_> {
         answered(format!("Sent to {} {said}", target.named()))
     }
 
-    /// Whether a message from `from` came to `agent` and is not read yet;
-    /// one waiting for the end of its turn goes with its next model call.
-    fn came(&mut self, agent: Entity, from: &AgentId) -> bool {
-        let Ok(mut inbox) = self.inboxes.get_mut(agent) else {
-            return false;
-        };
-        let sent_by = |pending: &Pending| pending.origin.from.as_ref() == Some(from);
-        let (sent, rest): (Vec<_>, Vec<_>) = inbox.queued.drain(..).partition(sent_by);
-        inbox.queued.extend(rest);
-        let came = !sent.is_empty();
-        inbox.steering.extend(sent);
-        came || inbox.steering.iter().chain(&inbox.notes).any(sent_by)
+    /// Whether a message from `from` came to `agent` that its model has
+    /// not read yet: `Some(true)` once `agent` accepted one, which then
+    /// goes with its next model call even if it was to wait for the end
+    /// of its turn; `Some(false)` while one is on its way.
+    fn came(&mut self, agent: Entity, from: &AgentId) -> Option<bool> {
+        let mut came = None;
+        for (mut sent, to, accepted) in &mut self.inboxes {
+            if to.0 != agent || sent.origin.from.as_ref() != Some(from) {
+                continue;
+            }
+            came = Some(came == Some(true) || accepted);
+            if accepted && sent.mode == DeliveryMode::Queue {
+                sent.mode = DeliveryMode::Steer;
+            }
+        }
+        came
     }
 }
 
@@ -472,8 +477,9 @@ fn on_message(called: On<ToolCalled<MessageArgs>>, mut agents: Agents) {
 }
 
 /// Waits for a message from an agent the caller can reach: ends at once
-/// when one came already, else stays open until one comes or that agent
-/// finishes. Refused when the agent is idle, or waits on the caller.
+/// when the caller accepted one already, else stays open until it accepts
+/// one or that agent finishes. Refused when the agent is idle, or waits on
+/// the caller, and no message from it is on its way.
 fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
     let (call, caller) = (called.call, called.agent);
     let target = match agents.reachable(caller, &called.args.agent) {
@@ -491,19 +497,19 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
         );
         agent.busy || waits
     });
-    let output = if agents.came(caller, &target.id) {
-        answered(format!("`{short}` sent you a message; it follows."))
-    } else if !working {
-        refused(format!(
+    let output = match agents.came(caller, &target.id) {
+        Some(true) => answered(format!("`{short}` sent you a message; it follows.")),
+        None if !working => refused(format!(
             "`{short}` is idle, so nothing will come from it; `message` it."
-        ))
-    } else if agents.reaches(target.entity, caller) {
-        refused(format!(
+        )),
+        None if agents.reaches(target.entity, caller) => refused(format!(
             "`{short}` is waiting for you, so waiting for it would never end."
-        ))
-    } else {
-        agents.commands.entity(call).insert(Awaits(target.entity));
-        return;
+        )),
+        // A message on its way ends the wait once the caller accepts it.
+        Some(false) | None => {
+            agents.commands.entity(call).insert(Awaits(target.entity));
+            return;
+        }
     };
     agents.commands.entity(call).insert_if_new(output);
 }

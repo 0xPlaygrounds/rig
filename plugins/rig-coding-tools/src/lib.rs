@@ -8,8 +8,9 @@
 #[cfg(feature = "tui")]
 use rig_harness::prelude::Tool;
 use rig_harness::prelude::{
-    App, AppToolsExt, Attachment, Deliver, MessageWriter, Notice, On, OriginKind, Plugin,
-    SessionPaths, ToolOptions,
+    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, ForAgent, Incoming,
+    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Query, SessionPaths, Stage,
+    ToolOptions,
 };
 use rig_tools::process::Launcher;
 use rig_tools::{Edit, Read, Search, Shell, Write};
@@ -110,22 +111,27 @@ pub struct AttachPlugin;
 
 impl Plugin for AttachPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(attach);
+        app.add_systems(AgentPass, attach.in_set(Stage::Prepare));
     }
 }
 
-/// Reads the files a user's message names into its attachments, with a
-/// notice about each that could not be.
-fn attach(mut typed: On<Deliver>, mut notices: MessageWriter<Notice>) {
-    if typed.origin.kind != OriginKind::User || typed.command().is_some() {
-        return;
+/// Reads the files each user's message names into its attachments as it
+/// comes in, in Prepare, with a notice about each that could not be.
+fn attach(
+    mut typed: Query<(&mut Incoming, &ForAgent), Added<Admitted>>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (mut typed, &ForAgent(agent)) in &mut typed {
+        if typed.origin.kind != OriginKind::User || typed.command().is_some() {
+            continue;
+        }
+        let (attachments, notes) = rig_tools::attach::attachments(&typed.text);
+        for note in notes {
+            notices.write(Notice::info(agent, note));
+        }
+        let attachments = attachments
+            .into_iter()
+            .map(|(label, content)| Attachment { label, content });
+        typed.attachments.extend(attachments);
     }
-    let (attachments, notes) = rig_tools::attach::attachments(&typed.text);
-    for note in notes {
-        notices.write(Notice::info(typed.entity, note));
-    }
-    let attachments = attachments
-        .into_iter()
-        .map(|(label, content)| Attachment { label, content });
-    typed.attachments.extend(attachments);
 }

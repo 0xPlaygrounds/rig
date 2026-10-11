@@ -43,7 +43,10 @@ What it holds, by module:
   `AppCommandsExt`, `PromptSection`, for every agent or, `SectionOf` one,
   that agent alone); tools can also come and go while the app runs
   (`WorldToolsExt`).
-- `inbox`: `Deliver`, the one way a message reaches an agent.
+- `inbox`: a message to an agent is an effect too (`Incoming`, spawned by
+  `Deliver`): plugins edit it in Prepare and take it over in Gate; the
+  kernel accepts it at Start, runs a user's `/` line as a slash command,
+  and an agent's accepted, unanswered messages are its inbox.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer

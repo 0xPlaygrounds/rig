@@ -253,8 +253,9 @@ fn a_new_app_on_the_store_restores_the_conversation() {
     };
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
-    // Both model calls and both tool calls, the refused one too, were
-    // recorded as they settled, numbered after the given id.
+    // The user's message, both model calls and both tool calls, the
+    // refused one too, were recorded as they settled, numbered after the
+    // given id.
     let mut log = app.world().resource::<Settles>().0.clone();
     log.sort_by_key(|record| record.id);
     let recorded: Vec<_> = log
@@ -262,11 +263,12 @@ fn a_new_app_on_the_store_restores_the_conversation() {
         .map(|record| (record.id.as_u64(), &record.key, record.outcome.is_ok()))
         .collect();
     let tool = |key: &HandlerKey, name| *key == tool_key(name);
+    let message = HandlerKey::new("message");
     assert!(
         matches!(
             recorded.as_slice(),
-            [(42, model, true), (43, add, true), (44, sub, false), (45, again, true)]
-                if tool(add, "add") && tool(sub, "sub") && model == again
+            [(42, said, true), (43, model, true), (44, add, true), (45, sub, false), (46, again, true)]
+                if **said == message && tool(add, "add") && tool(sub, "sub") && model == again
         ),
         "{recorded:?}"
     );
@@ -532,26 +534,35 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
 struct Echoed(Vec<String>);
 
 #[test]
-fn observers_edit_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
+fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered_or_run_as_a_command() {
     let (mut app, _) = kernel(&MemoryStore::default());
+    let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
+        for mut typed in &mut typed {
+            if typed.origin.kind == OriginKind::User && typed.text == "hi" {
+                typed.text = "/echo hello".to_owned();
+            }
+        }
+    };
+    // Taken over: nothing is sent.
+    let take_over = |typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands| {
+        for (message, typed) in &typed {
+            if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+                commands
+                    .entity(message)
+                    .insert_if_new(Outcome::custom("shell"));
+            }
+        }
+    };
     app.init_resource::<Echoed>()
         .add_command(
             "echo",
             "Echoes",
             |In(args): In<CommandArgs>, mut echoed: ResMut<Echoed>| echoed.0.push(args.args),
         )
-        .add_observer(|mut typed: On<Deliver>| {
-            if typed.origin.kind != OriginKind::User {
-                return;
-            }
-            if typed.text == "hi" {
-                typed.text = "/echo hello".to_owned();
-            }
-            // Taken over: nothing is sent.
-            if typed.text.starts_with('!') {
-                typed.text.clear();
-            }
-        });
+        .add_systems(
+            AgentPass,
+            (edit.in_set(Stage::Prepare), take_over.in_set(Stage::Gate)),
+        );
     let agent = app.world_mut().spawn(Agent).id();
     app.update();
     let note = |text: &str| Deliver::new(agent, text, DeliveryMode::Note);

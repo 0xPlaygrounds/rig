@@ -42,7 +42,10 @@ pub(super) struct AgentData {
 pub(super) struct Agents<'w, 's> {
     pub(super) agents: Query<'w, 's, AgentData>,
     pub(super) open: Query<'w, 's, &'static mut OpenRequests>,
-    pub(super) inboxes: Query<'w, 's, &'static mut Inbox>,
+    /// The messages to each agent its model has not read yet: accepted
+    /// (`true`), or on their way.
+    pub(super) inboxes:
+        Query<'w, 's, (&'static mut Incoming, &'static ForAgent, Has<Started>), Without<Outcome>>,
     waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
     awaited_by: Query<'w, 's, &'static AwaitedBy>,
     turns: Query<'w, 's, &'static TurnOf>,
@@ -256,16 +259,28 @@ fn report_when_finished(
     }
 }
 
-/// Ends the `wait` calls of the agent a message is delivered to that wait
-/// for its sender. The message goes with the model call after them.
-fn end_waits(sent: On<Deliver>, mut agents: Agents) {
-    let Some(from) = sent.origin.from.as_ref() else {
+/// Ends the `wait` calls of the agent that accepted a message that wait
+/// for its sender. The message goes with the model call after them, even
+/// one sent to read after the agent's turn.
+fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
+    let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
         return;
     };
+    let Some(from) = message.origin.from.clone() else {
+        return;
+    };
+    let from = &from;
     let Some(sender) = agents.find(from) else {
         return;
     };
-    for call in agents.wait_calls(sent.entity, sender) {
+    let waits = agents.wait_calls(to, sender);
+    if !waits.is_empty()
+        && let Ok((mut message, ..)) = agents.inboxes.get_mut(accepted.entity)
+        && message.mode == DeliveryMode::Queue
+    {
+        message.mode = DeliveryMode::Steer;
+    }
+    for call in waits {
         let output = answered(format!(
             "`{}` sent you a message; it follows.",
             from.short()

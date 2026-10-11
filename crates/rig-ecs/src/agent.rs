@@ -8,7 +8,7 @@ use rig_core::effect::EffectId;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::inbox::{Inbox, Origin};
+use super::inbox::Origin;
 use super::journal::ReflectSaved;
 use super::model::Effort;
 use super::stage::moved;
@@ -23,7 +23,6 @@ use super::turn::{NO_MODEL, Recovery, number_turn};
     AgentId,
     Conversation,
     Effort,
-    Inbox,
     LastUsage,
     SystemPrompt,
     ToolAccess,

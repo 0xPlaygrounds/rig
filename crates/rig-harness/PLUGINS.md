@@ -208,14 +208,21 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
 
 # What the user types
 
-What the user types, in any front, is a `Deliver` from `Origin::user()`.
-An observer of it may change it before it is sent: rewrite its `text`,
-add `attachments` (the `rig-coding-tools` plugin reads `@path` files this
-way), or take it over by emptying `text`, and then nothing is sent. The
-kernel delivers it after every such observer, from an observer of its own
-on the agent's entity; then a user's text that starts with `/` runs as a
-command (`deliver.command()` is its line). Observers of one event run in no
-fixed order, so each does its own part and none depends on another's.
+What the user types, in any front, is a message to its agent from
+`Origin::user()`, and so is what an agent or a plugin sends. `Deliver`
+spawns it as an effect, an `Incoming` that is `ForAgent` the agent, and it
+moves through the stages like a tool call. A `Prepare` system may change
+it before it is sent (`Added<Admitted>`): rewrite its `text`, add
+`attachments` (the `rig-coding-tools` plugin reads `@path` files this
+way). A `Gate` system may take it over by answering it, such as with
+`Outcome::custom(..)`, and then it never reaches the agent. At `Start` the
+kernel accepts what is left: a user's text that starts with `/` runs as a
+command (`incoming.command()` is its line, unless it is `literal`);
+anything else goes to the agent, which starts a turn with it or keeps it
+for its running turn as its `mode` says. The messages an agent accepted
+and has not sent yet are its inbox,
+`Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`, and
+`On<Add<Started>>` sees each message as it is accepted.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -225,14 +232,34 @@ pub struct ShortcutsPlugin;
 
 impl Plugin for ShortcutsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(expand);
+        app.add_systems(
+            AgentPass,
+            (expand.in_set(Stage::Prepare), keep_asides.in_set(Stage::Gate)),
+        );
     }
 }
 
 /// `lgtm` typed alone asks the model to commit.
-fn expand(mut typed: On<Deliver>) {
-    if typed.origin.kind == OriginKind::User && typed.text.trim() == "lgtm" {
-        typed.text = "Looks good to me: commit it with a short message.".to_owned();
+fn expand(mut typed: Query<&mut Incoming, Added<Admitted>>) {
+    for mut typed in &mut typed {
+        if typed.origin.kind == OriginKind::User && typed.text.trim() == "lgtm" {
+            typed.text = "Looks good to me: commit it with a short message.".to_owned();
+        }
+    }
+}
+
+/// A line that starts with `#` is the user's own aside: it never reaches
+/// the model.
+fn keep_asides(
+    typed: Query<(Entity, &Incoming, &ForAgent), Undecided>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    for (message, typed, &ForAgent(agent)) in &typed {
+        if typed.origin.kind == OriginKind::User && typed.text.starts_with('#') {
+            commands.entity(message).insert_if_new(Outcome::custom("aside"));
+            notices.write(Notice::info(agent, "Noted; not sent."));
+        }
     }
 }
 ```
@@ -334,7 +361,7 @@ does to summarize first; otherwise the kernel retries after a `Backoff`
 or proposes the turn's end ([How a turn ends](#how-a-turn-ends)). A
 call refused before it was sent fails the turn and keeps the user's
 message. Before any of it, what the user typed can be
-changed as it is delivered ([What the user types](#what-the-user-types)).
+changed as it comes in ([What the user types](#what-the-user-types)).
 A part of the system prompt that does not change from request to request
 is a `PromptSection` entity, `PromptSection::new(order, tag, text)`, in
 every agent's prompt, or with a `SectionOf(agent)` in that agent's
@@ -431,8 +458,9 @@ model answers without calling tools, or the turn fails, the kernel
 proposes a `TurnOutcome` on the turn in `Commit` (`Answered(message)`,
 `Failed(reason)`), and a `Review` system sees it in the next pass. It may
 replace it (`insert`), hold it (spawn an entity `HoldOf(turn)`, despawn it
-when done), or carry the turn on: a `Queue` or `Steer` message delivered
-to the agent takes an `Answered` proposal away, and a new
+when done), or carry the turn on: a `Queue` or `Steer` message the agent
+accepts takes an `Answered` proposal away, one on its way keeps the turn
+from ending meanwhile, and a new
 `(TurnCall, CallOf(turn), ForAgent(agent))` takes any away once it is
 admitted. A plugin may insert `TurnOutcome::Failed(reason)` or
 `Stopped(Some(reason))` at any time, such as a budget: the turn's calls

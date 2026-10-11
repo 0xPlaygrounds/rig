@@ -41,7 +41,8 @@ impl Plugin for ScaffoldPlugin {
         //                       (prompt, tools, options, the model it goes to); one in
         //                       `Stage::Review` takes a failed call over ("Model requests")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
-        // - what the user types: an observer of `On<Deliver>` may change it first
+        // - what the user types: an `Incoming` message, changed by a system in
+        //                       `Stage::Prepare`, taken over in `Stage::Gate`
         //                       ("What the user types")
         // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
         //                       agent's StatusItems ("The status line")

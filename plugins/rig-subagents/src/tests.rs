@@ -33,9 +33,10 @@ impl Session {
             .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
             .init_resource::<Delivered>()
             .add_observer(|sent: On<Deliver>, mut delivered: ResMut<Delivered>| {
-                let request = sent.origin.request.clone().map(|request| request.0);
-                let text = sent.text.clone();
-                let entry = (sent.entity, request.unwrap_or_default(), sent.mode, text);
+                let message = &sent.message;
+                let request = message.origin.request.clone().map(|request| request.0);
+                let text = message.text.clone();
+                let entry = (sent.entity, request.unwrap_or_default(), message.mode, text);
                 delivered.0.push(entry);
             });
         if let Some(connection) = model.and_then(connect) {

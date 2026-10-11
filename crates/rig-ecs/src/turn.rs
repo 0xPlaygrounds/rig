@@ -53,7 +53,7 @@ use super::agent::{
 };
 use super::calls::{Running, Wake};
 use super::effects::Handler;
-use super::inbox::{Inbox, Pending, Starting};
+use super::inbox::{DeliveryMode, Inboxes, carry_on};
 use super::journal::{Commit, SessionLog};
 use super::model::{Connection, Effort};
 use super::prompt::{
@@ -202,7 +202,7 @@ pub(crate) fn model_pool() -> &'static IoTaskPool {
 }
 
 /// Spawns the next model call of `turn`, for `agent`.
-fn spawn_turn_call(commands: &mut Commands, turn: Entity, agent: Entity) {
+pub(crate) fn spawn_turn_call(commands: &mut Commands, turn: Entity, agent: Entity) {
     commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
 }
 
@@ -454,7 +454,6 @@ pub(crate) struct Builder {
     prompt: &'static SystemPrompt,
     access: &'static ToolAccess,
     conversation: &'static mut Conversation,
-    inbox: &'static mut Inbox,
     condensed: Option<&'static Condensed>,
     parent: Option<&'static EffectParent>,
 }
@@ -484,9 +483,9 @@ pub(crate) struct Parts<'w, 's> {
 /// prompt with the rules of the tools it is offered and its prompt
 /// sections, its conversation after its [`Condensed`] summary, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
-/// with its reasoning setting. A turn's call first delivers what was sent
-/// to the agent meanwhile. A call the kernel cannot build is answered with
-/// why.
+/// with its reasoning setting. A turn's call first delivers the steering
+/// messages and notes its agent accepted meanwhile. A call the kernel
+/// cannot build is answered with why.
 pub(crate) fn build_requests(
     mut unbuilt: Query<
         Unbuilt,
@@ -495,10 +494,12 @@ pub(crate) fn build_requests(
             Added<Admitted>,
             Without<ModelRequest>,
             Without<Outcome>,
+            Without<Started>,
         ),
     >,
     turns: Query<&TurnOf>,
     mut agents: Query<Builder>,
+    inboxes: Inboxes,
     parts: Parts,
     mut commit: Commit,
     mut commands: Commands,
@@ -529,13 +530,17 @@ pub(crate) fn build_requests(
         let spec = builder.connection.map(|connection| &*connection.spec);
         if call.turn_call {
             effect.purpose.get_or_insert("turn".into());
-            if let Some(turn) = turn {
-                commands.entity(turn).try_remove::<Starting>();
-            }
-            let inbox = &mut *builder.inbox;
-            let waiting = inbox.notes.drain(..).chain(inbox.steering.drain(..));
+            let waiting = inboxes.of(agent).into_iter();
+            let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
-            commit.pending(agent, spec, waiting, conversation, &mut notices);
+            commit.deliver(
+                agent,
+                spec,
+                waiting,
+                conversation,
+                &mut notices,
+                &mut commands,
+            );
         }
         let messages = match builder.condensed {
             Some(condensed) => condensed.request(builder.conversation.messages()),
@@ -849,6 +854,7 @@ pub(crate) fn commit_turn_calls(
     >,
     mut turns: Query<(&TurnOf, &mut Recovery, &mut Turn, Option<&TurnOutcome>)>,
     mut agents: Query<Answered>,
+    inboxes: Inboxes,
     mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -878,7 +884,15 @@ pub(crate) fn commit_turn_calls(
         let report = match outcome {
             Ok(effect::Outcome::Completion(response)) => {
                 recovery.retries = 0;
-                let next = commit_reply(agent, response, &mut answered, &mut commit, &mut notices);
+                let inbox = (&inboxes, &mut commands);
+                let next = commit_reply(
+                    agent,
+                    response,
+                    &mut answered,
+                    inbox,
+                    &mut commit,
+                    &mut notices,
+                );
                 match (next, stopped) {
                     (Next::End(outcome, kernel), _) => propose(&mut commands, outcome, kernel),
                     (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
@@ -953,23 +967,13 @@ enum Next {
     Run(Vec<ToolCall>),
 }
 
-/// The messages that carry a turn on that would end: steering first, else
-/// everything queued, as one step, with the notes; none when neither
-/// waits.
-fn carry_on(inbox: &mut Inbox) -> Option<Vec<Pending>> {
-    let next: Vec<Pending> = match inbox.steering.is_empty() {
-        true => inbox.queued.drain(..).collect(),
-        false => inbox.steering.drain(..).collect(),
-    };
-    (!next.is_empty()).then(|| inbox.notes.drain(..).chain(next).collect())
-}
-
 /// Appends `response`, the reply to `agent`, and says what its turn does
 /// next.
 fn commit_reply(
     agent: Entity,
     response: &CompletionResponse,
     answered: &mut AnsweredItem,
+    (inboxes, commands): (&Inboxes, &mut Commands),
     commit: &mut Commit,
     notices: &mut MessageWriter<Notice>,
 ) -> Next {
@@ -1002,9 +1006,10 @@ fn commit_reply(
     }
     // What was sent meanwhile carries the turn on. Notes go along but carry
     // nothing on.
-    if let Some(next) = carry_on(&mut answered.inbox) {
+    if let Some(next) = carry_on(inboxes.of(agent)) {
         let spec = answered.connection.map(|connection| &*connection.spec);
-        commit.pending(agent, spec, next, &mut answered.conversation, notices);
+        let conversation = &mut *answered.conversation;
+        commit.deliver(agent, spec, next, conversation, notices, commands);
         return Next::Call;
     }
     match answered.conversation.messages().last() {
@@ -1045,7 +1050,6 @@ fn drop_unanswered(
 #[query_data(mutable)]
 pub(crate) struct Answered {
     conversation: &'static mut Conversation,
-    inbox: &'static mut Inbox,
     connection: Option<&'static Connection>,
     last: &'static mut LastUsage,
 }
@@ -1190,8 +1194,8 @@ pub(crate) fn commit_replies(
 /// Review sees each proposal first: what the kernel proposed shows its
 /// error and may take the user's unanswered message out, the turn is no
 /// longer [`TurnOf`] its agent, and it is [`ForAgent`] it and [`Settled`].
-/// An `Answered` turn that messages were sent to meanwhile carries on with
-/// them instead. Not when a Review system failed.
+/// An `Answered` turn waits while a message that would carry it on is on
+/// its way to its agent. Not when a Review system failed.
 pub(crate) fn end_turns(
     turns: Query<
         (
@@ -1204,7 +1208,8 @@ pub(crate) fn end_turns(
         Without<Holds>,
     >,
     open: Query<(), (With<Effect>, Without<Settled>)>,
-    mut agents: Query<(&AgentId, &mut Conversation, &mut Inbox, Option<&Connection>)>,
+    mut agents: Query<(&AgentId, &mut Conversation)>,
+    inboxes: Inboxes,
     mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -1213,16 +1218,12 @@ pub(crate) fn end_turns(
         return;
     }
     for (turn, &TurnOf(agent), outcome, ending, calls) in &turns {
-        let Ok((id, mut conversation, mut inbox, connection)) = agents.get_mut(agent) else {
+        let Ok((id, mut conversation)) = agents.get_mut(agent) else {
             continue;
         };
         if let TurnOutcome::Answered(_) = outcome
-            && let Some(next) = carry_on(&mut inbox)
+            && inboxes.coming(agent)
         {
-            let spec = connection.map(|connection| &*connection.spec);
-            commit.pending(agent, spec, next, &mut conversation, &mut notices);
-            commands.entity(turn).try_remove::<(TurnOutcome, Ending)>();
-            spawn_turn_call(&mut commands, turn, agent);
             continue;
         }
         if calls.is_some_and(|calls| calls.iter().any(|call| open.contains(call))) {

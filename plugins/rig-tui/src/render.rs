@@ -24,7 +24,8 @@ use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
 use super::view::{Picker, ShownNotice, TuiView};
 use super::wrap::wrap_all;
 use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
-use rig_ecs::inbox::Inbox;
+use rig_ecs::inbox::{DeliveryMode, Incoming};
+use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
@@ -62,13 +63,13 @@ pub(crate) fn needs_redraw(
             Changed<Conversation>,
             Changed<ActiveTurn>,
             Changed<Condensed>,
-            Changed<Inbox>,
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
         )>,
     >,
     partials: Query<(), Changed<Partial>>,
+    messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
     app_status: Option<Res<AppStatus>>,
     mut requests: MessageReader<RequestRedraw>,
     mut removed: (RemovedComponents<TuiPanel>, RemovedComponents<StatusItems>),
@@ -81,7 +82,8 @@ pub(crate) fn needs_redraw(
         || removed
         || view.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
-        || !changed.is_empty();
+        || !changed.is_empty()
+        || !messages.is_empty();
     paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
@@ -153,11 +155,11 @@ pub(crate) fn layout(
 /// The transcript's parts after the shown agent's messages are laid out:
 /// each message, after the notices that came before it and the summary
 /// sent in place of the messages above; then the notices after the last message, the
-/// reply streaming in and what waits in the inbox. Without an agent, the
-/// app's notices.
+/// reply streaming in and the messages the agent accepted and has not
+/// sent yet. Without an agent, the app's notices.
 fn transcript_parts(
     view: &TuiView,
-    shown: Option<(&Conversation, Option<&Condensed>, &Inbox)>,
+    shown: Option<(&Conversation, Option<&Condensed>, &[&Incoming])>,
     partial: Option<&Partial>,
     width: usize,
 ) -> Vec<Part> {
@@ -223,9 +225,14 @@ pub(crate) fn render(
     mut view: ResMut<TuiView>,
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<(&Conversation, Option<&Condensed>, &Inbox)>,
+    agents: Query<(&Conversation, Option<&Condensed>)>,
     changed: Query<(), Changed<Conversation>>,
-    (turns, partials, active): (Query<&Calls>, Query<&Partial>, Query<&ActiveTurn>),
+    (turns, partials, active, accepted): (
+        Query<&Calls>,
+        Query<&Partial>,
+        Query<&ActiveTurn>,
+        Query<(&Effect, &Incoming, &ForAgent), (With<Started>, Without<Outcome>)>,
+    ),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
     renderers: Query<Ref<ToolRenderer>>,
@@ -244,6 +251,13 @@ pub(crate) fn render(
     let turn = view.agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let mut inbox: Vec<(&Effect, &Incoming)> = accepted
+        .iter()
+        .filter(|(.., to)| Some(to.0) == view.agent)
+        .map(|(effect, message, _)| (effect, message))
+        .collect();
+    inbox.sort_by_key(|(effect, _)| effect.id());
+    let inbox: Vec<&Incoming> = inbox.into_iter().map(|(_, message)| message).collect();
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
@@ -278,7 +292,7 @@ pub(crate) fn render(
             let layout = input_rows;
             // The input box scrolls to keep the cursor in sight.
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            if let Some((agent, (conversation, ..))) = shown {
+            if let Some((agent, (conversation, _))) = shown {
                 transcript.update(
                     agent,
                     conversation,
@@ -289,7 +303,7 @@ pub(crate) fn render(
             }
             let parts = transcript_parts(
                 view,
-                shown.map(|(_, shown)| shown),
+                shown.map(|(_, (conversation, condensed))| (conversation, condensed, &inbox[..])),
                 partial,
                 usize::from(transcript_area.width.max(1)),
             );
@@ -556,24 +570,20 @@ fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
     lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
-/// What waits in the agent's inbox, under the transcript.
-fn inbox_lines(inbox: &Inbox, lines: &mut Vec<Line<'static>>) {
+/// The messages the agent accepted and has not sent yet, under the
+/// transcript, in the order they came.
+fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
     if inbox.is_empty() {
         return;
     }
     lines.push(Line::default());
-    let waiting = inbox
-        .steering
-        .iter()
-        .map(|pending| ("steering", &pending.text))
-        .chain(
-            inbox
-                .queued
-                .iter()
-                .map(|pending| ("after this turn", &pending.text)),
-        )
-        .chain(inbox.notes.iter().map(|pending| ("noted", &pending.text)));
-    for (when, text) in waiting {
+    for message in inbox {
+        let when = match message.mode {
+            DeliveryMode::Steer => "steering",
+            DeliveryMode::Queue => "after this turn",
+            DeliveryMode::Note => "noted",
+        };
+        let text = &message.text;
         let first = text.lines().next().unwrap_or_default();
         let more = if text.lines().nth(1).is_some() {
             " …"
