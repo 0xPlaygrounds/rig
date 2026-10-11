@@ -48,7 +48,7 @@ use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::tool::{ContextValue, ExitStatus, ToolContext};
+use rig_core::tool::{ContextValue, ExitStatus, ToolContext, ToolOutput, ToolResult};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
@@ -1760,6 +1760,93 @@ fn an_agent_retired_as_its_turn_ends_goes_with_the_turn() {
     let world = app.world_mut();
     let turns = world.query_filtered::<(), With<Turn>>().iter(world).count();
     assert_eq!(turns, 0, "the turn went with its agent");
+}
+
+/// The agent of a turn whose reply called `stall`, once the call runs and
+/// says what its result is if stopped: its output so far.
+fn stalled(app: &mut App) -> Option<(Entity, Entity)> {
+    app.add_tool(Stall);
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("s1", "stall", serde_json::json!({})),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("unused"),
+    ]);
+    let agent = agent_on(app, &model);
+    let running = |world: &mut World| {
+        call_named(world, "s1").is_some_and(|call| world.get::<Started>(call).is_some())
+    };
+    assert!(run_until(app, running), "{:?}", notices(app));
+    let call = call_named(app.world_mut(), "s1")?;
+    let so_far = ToolResult::success(ToolOutput::text("partial"));
+    app.world_mut()
+        .entity_mut(call)
+        .insert(IfStopped(Outcome::from(so_far)));
+    Some((agent, call))
+}
+
+/// The record of the call of the tool `tool`: how it ended and its
+/// outcome.
+fn record_of(app: &App, tool: &str) -> Option<(Disposition, String)> {
+    let records = records(app);
+    let record = records
+        .iter()
+        .find(|record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == tool))?;
+    Some((record.disposition, output(&record.outcome)))
+}
+
+#[test]
+fn an_interrupted_call_answers_with_what_it_says_it_is_if_stopped() {
+    let mut app = app();
+    let Some((agent, _)) = stalled(&mut app) else {
+        return;
+    };
+    app.world_mut().trigger(Interrupt::new(agent));
+    app.update();
+    let said = conversation(&app, agent);
+    let results = results_at(&said, said.len().saturating_sub(1));
+    assert!(
+        matches!(results.as_slice(), [(false, result)] if result.contains("partial")),
+        "{said:?}"
+    );
+    let record = record_of(&app, "stall");
+    assert!(
+        matches!(&record, Some((Disposition::Cancelled, outcome)) if outcome.contains("partial")),
+        "{record:?}"
+    );
+}
+
+#[test]
+fn a_call_of_a_failed_turn_answers_with_what_it_says_it_is_if_stopped() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let Some((agent, call)) = stalled(&mut app) else {
+        return;
+    };
+    let turn = app.world().get::<CallOf>(call).map(|of| of.0);
+    let Some(turn) = turn else {
+        return;
+    };
+    let failed = TurnOutcome::Failed("over budget".to_owned());
+    app.world_mut().entity_mut(turn).insert(failed);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let record = record_of(&app, "stall");
+    assert!(
+        matches!(&record, Some((Disposition::AnsweredWhileRunning, outcome)) if outcome.contains("partial")),
+        "{record:?}"
+    );
+    let said = conversation(&app, agent);
+    let results = said
+        .iter()
+        .enumerate()
+        .flat_map(|(at, _)| results_at(&said, at))
+        .collect::<Vec<_>>();
+    assert!(
+        matches!(results.as_slice(), [(false, result)] if result.contains("partial")),
+        "{said:?}"
+    );
 }
 
 /// What model calls streamed, as a `PostUpdate` reader saw it, and each

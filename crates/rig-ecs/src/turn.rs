@@ -62,8 +62,8 @@ use super::prompt::{
     PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
 };
 use super::stage::{
-    Admitted, Effect, ForAgent, HoldOf, Holds, Outcome, Settled, Stage, Started, SupersededBy,
-    Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
+    Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
+    SupersededBy, Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -381,7 +381,7 @@ pub(crate) struct Ending {
 
 /// Stops a running turn at once. The text a streaming reply had sent is
 /// kept as the model's message, every tool call of the last reply gets a
-/// result, real or "interrupted", and every call of the turn that has not
+/// result, real, its [`IfStopped`] or "interrupted", and every call of the turn that has not
 /// settled is answered as interrupted and settled, whatever held it gone.
 /// The turn ends [`TurnOutcome::Stopped`]. The outcome is written to the
 /// log at once, so a log that ends mid-turn always means a crash or a
@@ -443,13 +443,15 @@ pub(crate) fn on_interrupt(
 }
 
 /// The results of a reply's tool calls, in call order: each answered
-/// call's result, and `missing` for the others, else nothing for them.
+/// call's result, else what it says its result is if stopped
+/// ([`IfStopped`]), and `missing` for the others, else nothing for them.
 /// `None` when that leaves no result.
 fn reply_results(calls: Vec<ReplyCallItem>, missing: Option<&ToolResult>) -> Option<Message> {
     let results: Vec<_> = calls
         .into_iter()
         .filter_map(|call| {
-            let result = call.outcome.map(Outcome::tool_result);
+            let outcome = call.outcome.or(call.if_stopped.map(|stopped| &stopped.0));
+            let result = outcome.map(Outcome::tool_result);
             Some(
                 call.request
                     .call
@@ -963,29 +965,33 @@ pub(crate) fn back_off(
 
 /// Answers every admitted call of a failed or stopped turn that has not
 /// settled, in [`Stage::Commit`] before the kernel settles: one not
-/// answered yet as stopped, which cancels it if it runs, and whatever holds
-/// them is despawned, so they settle in this pass and the turn can end. A
+/// answered yet with its [`IfStopped`], else as stopped, which cancels it
+/// if it runs, and whatever holds them is despawned, so they settle in this pass and the turn can end. A
 /// call spawned since the last pass is left for Admit, where a new
 /// [`TurnCall`] carries the turn on.
 pub(crate) fn stop_calls(
     turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
-    calls: Query<(Has<Outcome>, Option<&Holds>), (With<Admitted>, Without<Settled>)>,
+    calls: Query<
+        (Has<Outcome>, Option<&Holds>, Option<&IfStopped>),
+        (With<Admitted>, Without<Settled>),
+    >,
     mut commands: Commands,
 ) {
     for (ending, of) in &turns {
         let Some(why) = ending.stops() else {
             continue;
         };
-        for (call, (answered, holds)) in of
+        for (call, (answered, holds, if_stopped)) in of
             .iter()
             .filter_map(|call| Some((call, calls.get(call).ok()?)))
         {
             release(&mut commands, holds);
             if !answered {
-                let stopped = ErrorReport::new(ErrorKind::Cancelled, why.clone());
-                commands
-                    .entity(call)
-                    .try_insert_if_new(Outcome(Err(stopped)));
+                let stopped = match if_stopped {
+                    Some(IfStopped(outcome)) => outcome.clone(),
+                    None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, why.clone()))),
+                };
+                commands.entity(call).try_insert_if_new(stopped);
             }
         }
     }
@@ -1242,6 +1248,7 @@ pub(crate) struct ReplyCall {
     effect: &'static Effect,
     request: &'static ToolRequest,
     outcome: Option<&'static Outcome>,
+    if_stopped: Option<&'static IfStopped>,
     successor: Option<&'static SupersededBy>,
     footprint: Option<&'static Footprint>,
     settled: Has<Settled>,

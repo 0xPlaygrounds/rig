@@ -295,6 +295,15 @@ impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
     }
 }
 
+/// What the effect's answer is if it is stopped before it answers, such as
+/// a running command's output so far. Whoever runs the effect keeps it
+/// current; the kernel answers with it, in place of "interrupted" or
+/// "stopped", whenever it stops the effect: an
+/// [`Interrupt`](super::agent::Interrupt), its turn failing or stopping,
+/// its cancellation, and the app's exit, which logs it for the restart.
+#[derive(Component, Clone, Debug)]
+pub struct IfStopped(pub Outcome);
+
 /// What a handler published beside its answer, on its effect once
 /// answered, and recorded with it: a tool's facts, such as rig-core's
 /// `FilesChanged` and `ExitStatus`, or a fact a layer of a model call's
@@ -1009,8 +1018,8 @@ pub(crate) fn release(commands: &mut Commands, holds: Option<&Holds>) {
 
 /// Settles `entity` at once, cancelled, if it is an unsettled effect, such
 /// as a call of a turn being interrupted: whatever holds it is despawned,
-/// it is answered with `why` unless it has an answer, its task is
-/// cancelled, and its record is written.
+/// it is answered with its [`IfStopped`], else `why`, unless it has an
+/// answer, its task is cancelled, and its record is written.
 pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
     let unsettled = world
         .get_entity(entity)
@@ -1023,8 +1032,11 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
         return;
     };
     if !effect.contains::<Outcome>() {
-        let why = ErrorReport::new(ErrorKind::Cancelled, why);
-        effect.insert(Outcome(Err(why)));
+        let stopped = match effect.get::<IfStopped>() {
+            Some(IfStopped(outcome)) => outcome.clone(),
+            None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, why))),
+        };
+        effect.insert(stopped);
     }
     settle_now(world, entity, Some(Disposition::Cancelled));
 }

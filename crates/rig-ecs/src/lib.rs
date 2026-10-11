@@ -65,8 +65,8 @@ pub mod prelude {
     pub use crate::restore::Restored;
     pub use crate::stage::{
         Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
-        Outcome, Published, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
-        Unreviewed, Waiting,
+        IfStopped, Outcome, Published, Recorded, Settled, Stage, Started, SupersededBy, Supersedes,
+        Undecided, Unreviewed, Waiting,
     };
     pub use crate::tools::{
         AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
