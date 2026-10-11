@@ -268,6 +268,7 @@ fn effect_record_and_log_round_trip() {
     let log: EffectLog = EffectLog::from_records(vec![
         EffectRecord {
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,
@@ -292,6 +293,7 @@ fn effect_record_and_log_round_trip() {
         },
         EffectRecord {
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,
@@ -443,6 +445,7 @@ fn two_records() -> EffectLog {
     EffectLog::from_records(vec![
         EffectRecord {
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,
@@ -461,6 +464,7 @@ fn two_records() -> EffectLog {
         },
         EffectRecord {
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,

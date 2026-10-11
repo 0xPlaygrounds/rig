@@ -1005,6 +1005,11 @@ pub struct EffectRecord {
     /// it named no purpose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub purpose: Option<std::borrow::Cow<'static, str>>,
+    /// The turn of its dispatcher's conversation it was made in, as the
+    /// host numbers turns (the first is `0`). `None` when the host keeps no
+    /// turns or it belongs to none, such as a call made between turns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<u64>,
     /// When a handler started serving it, in milliseconds since the Unix
     /// epoch. `None` when no handler started it (it was answered before it
     /// started), or when the recorder keeps no times.
@@ -1049,7 +1054,7 @@ pub enum Disposition {
 
 impl EffectRecord {
     /// The record of effect `id`, `kind`, routed to `key` and answered with
-    /// `outcome`, and nothing else known: no parent, scope, purpose, times,
+    /// `outcome`, and nothing else known: no parent, scope, purpose, turn, times,
     /// tool output, kept items or review, and [`Disposition::Ran`]. A host
     /// that answers or cancels an effect itself builds its record from this
     /// and sets what it knows.
@@ -1070,6 +1075,7 @@ impl EffectRecord {
             parent: None,
             scope: None,
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,

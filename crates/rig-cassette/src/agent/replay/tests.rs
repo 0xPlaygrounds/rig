@@ -945,6 +945,7 @@ async fn a_tool_call_under_a_different_context_is_the_same_record() {
         header: LogHeader::default(),
         records: vec![EffectRecord {
             purpose: None,
+            turn: None,
             started_ms: None,
             finished_ms: None,
             reviewed: None,

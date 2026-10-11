@@ -7,6 +7,7 @@ use super::*;
 fn record(id: u64, key: &str) -> EffectRecord {
     EffectRecord {
         purpose: None,
+        turn: None,
         started_ms: None,
         finished_ms: None,
         reviewed: None,
@@ -128,6 +129,7 @@ fn completion_of(
     use rig_core::completion::{AssistantContent, CompletionRequest, CompletionResponse, Usage};
     EffectRecord {
         purpose: None,
+        turn: None,
         started_ms: None,
         finished_ms: None,
         reviewed: None,

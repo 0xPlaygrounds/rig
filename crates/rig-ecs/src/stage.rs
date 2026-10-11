@@ -1117,6 +1117,7 @@ fn assemble(
                 parent: effect.parent,
                 scope: scope_of(world, entity),
                 purpose: effect.purpose.clone(),
+                turn: None,
                 started_ms: world
                     .get::<Started>(entity)
                     .and_then(|started| millis(started.at)),

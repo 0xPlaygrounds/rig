@@ -79,6 +79,7 @@ impl Slot {
             parent: self.origin.parent,
             scope: self.origin.scope,
             purpose: self.origin.purpose,
+            turn: None,
             started_ms: self.started_ms,
             finished_ms: self.finished_ms,
             reviewed: None,

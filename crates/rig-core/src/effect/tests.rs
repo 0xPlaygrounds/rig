@@ -537,10 +537,10 @@ fn a_row_diff_names_every_difference() {
 }
 
 /// A record leaves out what it does not know, so one from before the times,
-/// purpose, review and disposition reads back as a plain handler run; set,
-/// they travel.
+/// purpose, turn, review and disposition reads back as a plain handler run;
+/// set, they travel.
 #[test]
-fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
+fn a_record_carries_its_purpose_turn_times_review_and_disposition_when_set() {
     let outcome = Ok(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("raw")),
     });
@@ -556,6 +556,7 @@ fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
     let plain = serde_json::to_value(&record).expect("serializes");
     for left_out in [
         "purpose",
+        "turn",
         "started_ms",
         "finished_ms",
         "reviewed",
@@ -567,6 +568,7 @@ fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
     assert_eq!(read.disposition, Disposition::Ran);
 
     record.purpose = Some("summary".into());
+    record.turn = Some(3);
     (record.started_ms, record.finished_ms) = (Some(1), Some(2));
     record.reviewed = Some(Err(ErrorReport::new(ErrorKind::Internal, "redacted")));
     record.disposition = Disposition::AnsweredWhileRunning;
@@ -576,4 +578,5 @@ fn a_record_carries_its_purpose_times_review_and_disposition_when_set() {
     let read: EffectRecord = serde_json::from_value(wire.clone()).expect("reads back");
     assert_eq!(serde_json::to_value(&read).expect("serializes"), wire);
     assert_eq!(read.purpose.as_deref(), Some("summary"));
+    assert_eq!((wire.get("turn"), read.turn), (Some(&json!(3)), Some(3)));
 }
