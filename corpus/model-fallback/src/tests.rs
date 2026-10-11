@@ -134,3 +134,8 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     assert_eq!(a.request_count(), 10, "A is back once it cooled down");
     assert_eq!(b.request_count(), 3);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ModelFallbackPlugin);
+}

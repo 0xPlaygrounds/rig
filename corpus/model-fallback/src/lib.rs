@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
+use rig_basics::ProjectContextSystems;
 use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
@@ -77,6 +78,7 @@ impl Plugin for ModelFallbackPlugin {
                 (
                     FallbackSystems::Route
                         .in_set(Stage::Prepare)
+                        .after(ProjectContextSystems)
                         .before(CompactionSystems::Prepare),
                     FallbackSystems::TakeOver
                         .in_set(Stage::Review)
@@ -162,7 +164,10 @@ fn switched(failed: &Connection, report: &ErrorReport, next: &Connection) -> Str
 /// A turn's call bound for a model that cools down, a new turn's or a
 /// retry's the kernel built from its agent, goes to the chain's first
 /// model that does not.
-fn route(mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>, chain: Chain) {
+fn route(
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, ModelCalls, With<TurnCall>)>,
+    chain: Chain,
+) {
     for mut call in &mut calls {
         if call
             .connection
@@ -190,7 +195,12 @@ fn fall_back(
             &CallOf,
             &ForAgent,
         ),
-        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+        (
+            Unreviewed,
+            ModelCalls,
+            With<TurnCall>,
+            Without<SupersededBy>,
+        ),
     >,
     mut turns: Query<&mut Recovery>,
     mut chain: Chain,
