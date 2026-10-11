@@ -9,6 +9,8 @@
 //! and the alternatives are saved with the session. The input completes
 //! `/retry-with`'s argument to the models the agent can reach.
 
+use rig_basics::ProjectContextSystems;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
@@ -27,7 +29,14 @@ impl Plugin for RetryWithModelPlugin {
             .register_required_components::<TurnOf, TurnChanges>()
             .add_observer(note_change)
             .add_observer(note_turn)
-            .add_systems(AgentPass, route.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                RetryWithModelSystems
+                    .in_set(Stage::Prepare)
+                    .after(ProjectContextSystems)
+                    .before(CompactionSystems::Prepare),
+            )
+            .add_systems(AgentPass, route.in_set(RetryWithModelSystems))
             .add_systems(Update, complete.run_if(resource_changed::<Models>))
             .add_command(
                 "retry-with",
@@ -46,6 +55,12 @@ impl Plugin for RetryWithModelPlugin {
             );
     }
 }
+
+/// The plugin's stage system, in [`Stage::Prepare`]: it routes a retried
+/// turn's calls, after the default prompt went in and before compaction
+/// measures them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RetryWithModelSystems;
 
 /// The agent's last turn, the answer the conversation holds to it, and the
 /// answers `/retry-with` replaced. Saved with the session.
@@ -69,11 +84,9 @@ impl Alternatives {
         Alternative {
             model: std::mem::take(&mut self.model),
             changed: std::mem::take(&mut self.changed),
-            messages: conversation
-                .messages()
-                .get(turn + 1..)
-                .unwrap_or_default()
-                .to_vec(),
+            messages: (turn + 1..conversation.messages().len())
+                .filter_map(|at| conversation.entry(at))
+                .collect(),
         }
     }
 }
@@ -85,14 +98,19 @@ pub struct Alternative {
     pub model: String,
     /// What its tool calls changed.
     pub changed: Vec<String>,
-    /// The answer's messages, the tool calls and results included.
-    pub messages: Vec<Message>,
+    /// The answer's messages, the tool calls and results included, with
+    /// their origins and ids.
+    pub messages: Vec<Entry>,
 }
 
 impl Alternative {
     /// The start of the answer's last text, on one line.
     fn excerpt(&self) -> String {
-        let text = self.messages.iter().rev().find_map(final_answer);
+        let text = self
+            .messages
+            .iter()
+            .rev()
+            .find_map(|entry| final_answer(&entry.message));
         let line = text
             .unwrap_or_default()
             .split_whitespace()
@@ -181,7 +199,7 @@ fn note_turn(
 
 /// Sends the calls of a turn `/retry-with` started to its model.
 fn route(
-    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     turns: Query<&RetryOn>,
 ) {
     for (mut call, &CallOf(turn)) in &mut calls {
@@ -382,10 +400,7 @@ fn pick(
         return;
     };
     let chosen = std::mem::replace(slot, current);
-    commit.splice(agent, &mut conversation, turn + 1.., []);
-    for message in chosen.messages {
-        commit.message(agent, &mut conversation, message);
-    }
+    commit.splice(agent, &mut conversation, turn + 1.., chosen.messages);
     notices.write(Notice::info(
         agent,
         format!("Picked the answer of {}.", chosen.model),
