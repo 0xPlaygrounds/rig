@@ -1,4 +1,5 @@
-//! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
+//! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
+//! [`NameSession`] for a plugin naming any session. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
 //! [`SessionTitle`], the [`ResumeLabel`]s other plugins add, cost and when
 //! it was updated), which `/resume` lists and a resumed session reads its
@@ -63,6 +64,7 @@ impl Plugin for SessionsPlugin {
                 name,
             )
             .add_observer(on_switch_session)
+            .add_observer(name_session)
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
@@ -122,6 +124,16 @@ impl ResumeLabel {
 pub struct SwitchSession {
     /// The [`SessionId`] to resume, or `None` for a new session.
     pub session: Option<String>,
+}
+
+/// Names a session: its title in `/resume`, and nothing else of its
+/// listing, such as what it cost. Naming this session is `/name`'s.
+#[derive(Event, Clone, Debug)]
+pub struct NameSession {
+    /// The session.
+    pub session: SessionId,
+    /// Its name.
+    pub name: String,
 }
 
 /// What a session's `meta.json` holds, for listing it.
@@ -367,6 +379,43 @@ fn name(
         format!("This session is now named “{name}”."),
     ));
     title.name = Some(name);
+}
+
+/// Names the session asked for: this one's [`SessionTitle`], another's
+/// listing cache, which keeps its counts.
+fn name_session(
+    named: On<NameSession>,
+    paths: Option<Res<SessionPaths>>,
+    home: Res<RigHome>,
+    mut title: ResMut<SessionTitle>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let name = one_line(&named.name);
+    if paths.and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
+        title.name = Some(name);
+        return;
+    }
+    let dir = home.0.session(&named.session);
+    let meta = read_json::<Meta>(&dir.meta()).unwrap_or_else(|| Meta {
+        updated: now_ms(),
+        ..Meta::default()
+    });
+    let meta = Meta {
+        title: SessionTitle {
+            name: Some(name),
+            ..meta.title
+        },
+        ..meta
+    };
+    let written = if dir.path().is_dir() {
+        write_json(&dir.meta(), &meta).map_err(|failure| failure.to_string())
+    } else {
+        Err("there is no such session".to_owned())
+    };
+    if let Err(why) = written {
+        let why = format!("Could not name session {}: {why}.", named.session);
+        notices.write(Notice::error(None, why));
+    }
 }
 
 /// Exits to run the session asked for next.
