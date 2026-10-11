@@ -63,9 +63,19 @@ impl Plugin for CheckpointRewindPlugin {
             .init_resource::<RigHome>()
             .add_message::<SessionDeleted>()
             .register_required_components::<Agent, Checkpoints>()
+            .configure_sets(
+                AgentPass,
+                (
+                    CheckpointSystems::Gate.in_set(Stage::Gate),
+                    CheckpointSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
-                (snapshot.in_set(Stage::Gate), settle.in_set(Stage::Review)),
+                (
+                    snapshot.in_set(CheckpointSystems::Gate),
+                    settle.in_set(CheckpointSystems::Review),
+                ),
             )
             .add_systems(Update, ((start, confirmed).after(AgentLoop), prune))
             .add_observer(taken)
@@ -77,6 +87,16 @@ impl Plugin for CheckpointRewindPlugin {
                 rewind,
             );
     }
+}
+
+/// The plugin's stage systems, by stage, to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum CheckpointSystems {
+    /// Holds a turn's first model call, unless a gate decided it, until
+    /// the files are snapshotted.
+    Gate,
+    /// Holds a turn's proposed end while it notes the files the turn left.
+    Review,
 }
 
 /// On a top-level agent's turn whose snapshot was taken or asked for: once
@@ -156,17 +176,21 @@ impl Repo<'_> {
 }
 
 /// Holds the first model call of each turn of a top-level agent that
-/// answers a message of the user's until the files are snapshotted.
+/// answers a message of the user's until the files are snapshotted, unless
+/// a gate before it decided the call.
 fn snapshot(
-    calls: Query<(Entity, &CallOf, &ForAgent), (With<TurnCall>, Undecided)>,
+    calls: Query<(Entity, &CallOf, &ForAgent, &Decision), (Undecided, ModelCalls, With<TurnCall>)>,
     turns: Query<&Turn, Without<Snapshotted>>,
     agents: Query<(&Conversation, &Checkpoints), Without<SpawnedBy>>,
     mut commands: Commands,
 ) {
-    for (call, &CallOf(turn_entity), &ForAgent(agent)) in &calls {
+    for (call, &CallOf(turn_entity), &ForAgent(agent), decision) in &calls {
         let Ok(turn) = turns.get(turn_entity) else {
             continue;
         };
+        if decision.is_decided() {
+            continue;
+        }
         let Ok((conversation, checkpoints)) = agents.get(agent) else {
             continue;
         };
