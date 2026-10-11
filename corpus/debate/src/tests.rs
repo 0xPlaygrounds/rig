@@ -60,7 +60,7 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     app.update();
 
     let line = "debate --rounds 2 Should the parser be hand-written?".to_owned();
-    app.world_mut().trigger(RunCommand { entity: host, line });
+    app.world_mut().trigger(RunCommand::new(host, line));
     let said = |world: &World| {
         let conversation = world.get::<Conversation>(host);
         format!("{:?}", conversation.map(Conversation::messages))

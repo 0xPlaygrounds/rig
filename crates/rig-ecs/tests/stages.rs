@@ -2006,3 +2006,120 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     assert!(tools.is_empty(), "{tools:?}");
     assert!(!rules);
 }
+
+/// A plugin's mark on the message it sends.
+#[derive(Component)]
+struct Templated;
+
+/// The turns messages were delivered in, and the parents of the turn
+/// calls, in the order they were admitted.
+#[derive(Resource, Default)]
+struct Delivery {
+    into: Vec<(Entity, Entity)>,
+    parents: Vec<Option<rig_core::effect::EffectId>>,
+}
+
+#[test]
+fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([reply(&[("look", "l1")]), answer("done")]);
+    let read_only = ToolOptions {
+        footprint: Some(Footprint::ReadOnly),
+        ..ToolOptions::default()
+    };
+    let parents = |calls: Query<&Effect, (Added<Admitted>, With<TurnCall>)>,
+                   mut delivery: ResMut<Delivery>| {
+        delivery
+            .parents
+            .extend(calls.iter().map(|call| call.parent));
+    };
+    app.add_tool_with(Look, read_only)
+        .init_resource::<Delivery>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_observer(
+            |delivered: On<Insert<DeliveredIn>>,
+             messages: Query<&DeliveredIn>,
+             mut delivery: ResMut<Delivery>| {
+                if let Ok(&DeliveredIn(turn)) = messages.get(delivered.entity) {
+                    delivery.into.push((delivered.entity, turn));
+                }
+            },
+        )
+        // A message that steers the turn while its tool call runs.
+        .add_observer(
+            |call: On<Add<ToolRequest>>, calls: Query<&ForAgent>, mut commands: Commands| {
+                if let Ok(&ForAgent(agent)) = calls.get(call.entity) {
+                    commands.trigger(Deliver::new(agent, "and then", DeliveryMode::Steer));
+                }
+            },
+        )
+        .add_systems(AgentPass, parents.in_set(Stage::Prepare));
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let task = rig_core::effect::EffectId::from_raw(1000);
+    let mut agent_mut = world.entity_mut(agent);
+    agent_mut.insert(EffectParent(task));
+    if let Some(connection) = connection(&model) {
+        agent_mut.insert(connection);
+    }
+    // The plugin's own message: spawning it is all it takes.
+    let typed =
+        Incoming::new("go", DeliveryMode::Steer).with_origin(Origin::user().titled("review"));
+    let sent = world.spawn((typed, ForAgent(agent), Templated)).id();
+    let message = world
+        .get::<Effect>(sent)
+        .map(|effect| (effect.id(), effect.parent));
+    assert_eq!(message.map(|(_, parent)| parent), Some(Some(task)));
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let delivery = app.world().resource::<Delivery>();
+    let [(first, turn), (steering, steered)] = delivery.into.as_slice() else {
+        return assert_eq!(delivery.into.len(), 2, "{:?}", delivery.into);
+    };
+    assert_eq!(
+        (*first, *turn),
+        (sent, *steered),
+        "both went with the one turn"
+    );
+    assert_ne!(steering, first);
+    // The turn's first call is the message's work; the next is the agent's.
+    let first_call = message.map(|(id, _)| id);
+    assert_eq!(delivery.parents, [first_call, Some(task)]);
+    // A user's message keeps its title, and goes to the model as typed.
+    let conversation = app.world().get::<Conversation>(agent);
+    let origin = conversation.and_then(|conversation| conversation.origin(0, 0));
+    assert_eq!(origin, Some(&Origin::user().titled("review")));
+    let said = conversation.map(|conversation| format!("{:?}", conversation.messages()));
+    assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
+}
+
+/// How the last command was sent.
+#[derive(Resource, Default)]
+struct SentAs(Option<DeliveryMode>);
+
+#[test]
+fn a_command_knows_how_its_line_was_sent() {
+    let mut app = app();
+    app.init_resource::<SentAs>().add_command(
+        "how",
+        "Says how it was sent",
+        |In(args): In<CommandArgs>, mut sent: ResMut<SentAs>| sent.0 = Some(args.mode),
+    );
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    world.trigger(Deliver::new(agent, "/how", DeliveryMode::Queue));
+    app.update();
+    assert_eq!(
+        app.world().resource::<SentAs>().0,
+        Some(DeliveryMode::Queue)
+    );
+}

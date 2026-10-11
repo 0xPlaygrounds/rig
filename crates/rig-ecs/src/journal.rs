@@ -122,7 +122,7 @@ pub(crate) enum Record<'a> {
     /// message goes into it.
     Message {
         message: Cow<'a, Message>,
-        /// Where it came from, when it was not the user's own text, the
+        /// Where it came from, when it was not the user's plain text, the
         /// model's reply or tool results.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         origin: Option<Origin>,

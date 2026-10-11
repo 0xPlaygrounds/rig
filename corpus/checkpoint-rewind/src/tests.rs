@@ -156,17 +156,13 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     // An edit of the user's since the last turn is undone only once they
     // said yes.
     fs::write(dirs.repo().join("notes.md"), "mine\n").ok();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "rewind".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "rewind".to_owned()));
     app.update();
     let command = picked(&mut app, "change a");
     assert_eq!(command.as_deref(), Some("rewind 2"));
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: command.unwrap_or_default(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, command.unwrap_or_default()));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Seen>().0.is_empty()
     });

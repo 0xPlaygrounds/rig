@@ -49,10 +49,8 @@ fn resume_label(app: &mut App) -> String {
 
 /// Runs `/line` for `agent` and returns its reply.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: line.to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, line.to_owned()));
     app.update();
     let replies = &mut app.world_mut().resource_mut::<Replies>().0;
     std::mem::take(replies).join("\n")

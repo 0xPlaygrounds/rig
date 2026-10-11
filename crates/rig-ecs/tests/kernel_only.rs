@@ -463,10 +463,8 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
         prompt.contains("the new rules") && !prompt.contains("the old rules"),
         "{prompt}"
     );
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "hi".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "hi".to_owned()));
     app.world_mut().flush();
     let notices = app.world().resource::<Messages<Notice>>();
     let said: Vec<&str> = notices

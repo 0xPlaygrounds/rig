@@ -30,10 +30,7 @@ fn routed() -> (App, Entity) {
 /// Runs `/line` for `agent`, with everything it triggers.
 fn run(app: &mut App, agent: Entity, line: &str) {
     let world = app.world_mut();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: line.to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, line.to_owned()));
     world.flush();
 }
 

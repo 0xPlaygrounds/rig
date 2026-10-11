@@ -615,14 +615,8 @@ pub(crate) fn build_requests(
             let waiting = inboxes.of(agent).into_iter();
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
-            commit.deliver(
-                agent,
-                spec,
-                waiting,
-                conversation,
-                &mut notices,
-                &mut commands,
-            );
+            let into = (turn, &mut commands);
+            commit.deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
         let messages = match builder.condensed {
             Some(condensed) => condensed.request(builder.conversation.messages()),
@@ -1002,7 +996,7 @@ pub(crate) fn commit_turn_calls(
                 recovery.retries = 0;
                 let inbox = (&inboxes, &mut commands);
                 let next = commit_reply(
-                    agent,
+                    (agent, turn),
                     response,
                     &mut answered,
                     inbox,
@@ -1086,7 +1080,7 @@ enum Next {
 /// Appends `response`, the reply to `agent`, and says what its turn does
 /// next.
 fn commit_reply(
-    agent: Entity,
+    (agent, turn): (Entity, Entity),
     response: &CompletionResponse,
     answered: &mut AnsweredItem,
     (inboxes, commands): (&Inboxes, &mut Commands),
@@ -1125,7 +1119,8 @@ fn commit_reply(
     if let Some(next) = carry_on(inboxes.of(agent)) {
         let spec = answered.connection.map(|connection| &*connection.spec);
         let conversation = &mut *answered.conversation;
-        commit.deliver(agent, spec, next, conversation, notices, commands);
+        let into = (Some(turn), commands);
+        commit.deliver(agent, spec, next, conversation, notices, into);
         return Next::Call;
     }
     match answered.conversation.messages().last() {

@@ -409,10 +409,7 @@ pub fn run_command(
     let line = line.into();
     move |pressed: On<KeyPressed>, mut commands: Commands| {
         if let (Some(entity), false) = (pressed.agent, pressed.released) {
-            commands.trigger(RunCommand {
-                entity,
-                line: line.clone(),
-            });
+            commands.trigger(RunCommand::new(entity, line.clone()));
         }
     }
 }

@@ -31,6 +31,7 @@ use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::commands::{AppCommandsExt, CommandArgs};
+use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::now_ms;
 use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
 use rig_harness::primary::primary_order;
@@ -318,7 +319,9 @@ fn first_typed(conversation: &Conversation) -> Option<String> {
             .find_map(|(index, item)| match item {
                 UserContent::Text(text)
                     if !text.text.trim().is_empty()
-                        && conversation.origin(at, index).is_none()
+                        && conversation
+                            .origin(at, index)
+                            .is_none_or(|origin| origin.kind == OriginKind::User)
                         && attached_file(&text.text).is_none() =>
                 {
                     Some(text.text.clone())

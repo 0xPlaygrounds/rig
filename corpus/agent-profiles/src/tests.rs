@@ -73,10 +73,7 @@ fn until_ended(app: &mut App, wakes: &Receiver<()>, turns: usize) {
 /// Runs `/line` for `agent`, then sends it a message and waits for its turn.
 fn command_then_ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
     let line = line.to_owned();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line,
-    });
+    app.world_mut().trigger(RunCommand::new(agent, line));
     app.update();
     let ended = app.world().resource::<Ended>().0.len();
     let ask = Deliver::new(agent, "Look at the code.", DeliveryMode::Queue);

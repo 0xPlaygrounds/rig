@@ -89,10 +89,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     // hard, which only `strong` takes.
     let high = Effort(Some(Reasoning::Effort(Level::High)));
     world.entity_mut(agent).insert(high);
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "model router".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "model router".to_owned()));
     app.update();
     assert_eq!(app.world().get::<Routing>(agent), Some(&Routing(true)));
 
@@ -135,10 +132,8 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     assert_eq!(label, Some("router → cheap"));
 
     // Any other model leaves the router.
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "model scripted/strong".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "model scripted/strong".to_owned()));
     app.update();
     assert_eq!(app.world().get::<Routing>(agent), Some(&Routing(false)));
     assert!(app.world().get::<ModelLabel>(agent).is_none());

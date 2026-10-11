@@ -12,10 +12,7 @@ fn agents_shows_the_columns_other_plugins_add_to_an_agents_line() {
     let agent = world.spawn((Agent, Name::new("main"))).id();
     world.spawn((AgentColumn::new("spent", "$0.10"), ColumnOf(agent)));
     world.spawn((AgentColumn::new("queued", "2 queued"), ColumnOf(agent)));
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "agents".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "agents".to_owned()));
     world.flush();
     let mut pickers = world.query::<&rig_tui::Picker>();
     let labels: Vec<&str> = pickers

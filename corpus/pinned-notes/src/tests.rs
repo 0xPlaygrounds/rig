@@ -44,10 +44,7 @@ fn start(
 /// Runs `/line` for `agent`.
 fn run(app: &mut App, agent: Entity, line: &str) {
     let line = line.to_owned();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line,
-    });
+    app.world_mut().trigger(RunCommand::new(agent, line));
 }
 
 /// Asks `agent` something and runs frames until its turn ended.

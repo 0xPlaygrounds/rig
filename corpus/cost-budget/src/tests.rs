@@ -46,10 +46,7 @@ fn first_agent(app: &mut App) -> Option<Entity> {
 fn command(app: &mut App, agent: Entity, line: &str) -> Vec<String> {
     let before = app.world().resource::<Seen>().0.len();
     let line = line.to_owned();
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line,
-    });
+    app.world_mut().trigger(RunCommand::new(agent, line));
     app.update();
     let seen = &app.world().resource::<Seen>().0;
     seen.get(before..)

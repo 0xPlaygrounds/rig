@@ -59,7 +59,8 @@ pub mod prelude {
     pub use crate::calls::{Done, KeepAwake, PollCalls, Running, Wake};
     pub use crate::commands::{AppCommandsExt, CommandArgs, RunCommand, SlashCommand};
     pub use crate::inbox::{
-        Attachment, Deliver, DeliveryMode, Incoming, Origin, OriginKind, Recalled, RequestId,
+        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, Origin, OriginKind, Recalled,
+        RequestId,
     };
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};

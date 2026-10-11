@@ -52,10 +52,7 @@ fn context_lists_what_other_plugins_put_in_the_context() {
     world.spawn(ContextEntry::new("nested rules", "src/AGENTS.md"));
     world.spawn(ContextEntry::new("unused", ""));
     let agent = world.spawn(Agent).id();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "context".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "context".to_owned()));
     world.flush();
     let mut notices = world.resource_mut::<Messages<Notice>>();
     let shown: Vec<String> = notices.drain().map(|notice| notice.text).collect();

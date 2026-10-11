@@ -142,10 +142,8 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         .collect();
     assert_eq!(items, ["keyless/small  (no key)"]);
 
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "model corp/big".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "model corp/big".to_owned()));
     app.update();
     assert_eq!(
         chosen(&app, agent),
@@ -185,10 +183,8 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
     );
 
     // Choosing the keyless model is refused when it connects.
-    app.world_mut().trigger(RunCommand {
-        entity: restored,
-        line: "model keyless/small".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(restored, "model keyless/small".to_owned()));
     app.update();
     assert_eq!(
         chosen(&app, restored),

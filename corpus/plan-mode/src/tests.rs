@@ -75,10 +75,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     app.update();
 
     let world = app.world_mut();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "plan".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "plan".to_owned()));
     world.trigger(Deliver::new(agent, "Create x.txt.", DeliveryMode::Queue));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Answers>().asked.is_empty()

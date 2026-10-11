@@ -133,8 +133,9 @@ impl Conversation {
     }
 
     /// Where content item `item` of message `message` came from, when it
-    /// was delivered by an agent or a plugin; `None` for the user's own
-    /// text, the model's messages and tool results.
+    /// was delivered by an agent or a plugin, or is the user's with a title
+    /// or a request id; `None` for the user's plain text, the model's
+    /// messages and tool results.
     pub fn origin(&self, message: usize, item: usize) -> Option<&Origin> {
         self.origins
             .iter()

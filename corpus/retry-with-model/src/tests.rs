@@ -62,10 +62,7 @@ fn asked(world: &World, agent: Entity) -> usize {
 /// Runs `line` for `agent` and returns the notices it wrote.
 fn command(app: &mut App, agent: Entity, line: &str) -> String {
     let world = app.world_mut();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: line.to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, line.to_owned()));
     world.flush();
     let mut notices = world.resource_mut::<Messages<Notice>>();
     let texts: Vec<String> = notices.drain().map(|notice| notice.text).collect();

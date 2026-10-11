@@ -238,10 +238,7 @@ fn an_interrupt_during_the_summary_cancels_the_compaction() {
         return;
     };
     let world = app.world_mut();
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "compact keep the sums".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "compact keep the sums".to_owned()));
     world.flush();
     let focus = world
         .query::<&ModelRequest>()

@@ -452,10 +452,10 @@ fn answer(
         (Some(index), _) => {
             let item = picker.items.get(index).ok_or("no such choice")?;
             if !item.command.is_empty() {
-                rpc.commands.trigger(RunCommand {
-                    entity: picker.agent.unwrap_or(agent),
-                    line: item.command.clone(),
-                });
+                rpc.commands.trigger(RunCommand::new(
+                    picker.agent.unwrap_or(agent),
+                    item.command.clone(),
+                ));
             }
             Chosen::Item(index)
         }

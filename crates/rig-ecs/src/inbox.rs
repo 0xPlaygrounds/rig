@@ -22,6 +22,9 @@
 //!   on its way keeps such a turn from ending until it is accepted or
 //!   taken over.
 //!
+//! A message delivered into a turn gets [`DeliveredIn`] that turn, and a
+//! turn's first model call is recorded under the message that started it.
+//!
 //! An agent's inbox is the messages it accepted that are not answered
 //! yet: `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`.
 //! The kernel answers a message once it delivered it, ran it as a
@@ -37,11 +40,13 @@
 //! [`Attachment`]s its sender read, such as images, which go before its
 //! text when the agent's model reads them.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
+use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
@@ -52,7 +57,8 @@ use serde::{Deserialize, Serialize};
 use web_time::SystemTime;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, Conversation, EffectParent, Halt, Notice, TurnOf, TurnOutcome,
+    ActiveTurn, Agent, AgentId, CallOf, Conversation, EffectParent, Halt, Notice, TurnOf,
+    TurnOutcome,
 };
 use super::calls::Wake;
 use super::commands::RunCommand;
@@ -61,7 +67,7 @@ use super::model::Connection;
 use super::stage::{
     AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
 };
-use super::turn::{Exiting, spawn_turn_call, take_outcome};
+use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
 
 /// The id of a request to an agent, which the reply to it names, such as
 /// the tool call that asked. Unique per sender, so it doubles as an
@@ -202,7 +208,14 @@ pub struct Attachment {
 /// in Prepare, take it over in Gate by answering it with an [`Outcome`];
 /// once accepted, it is [`Started`] until the kernel answers it. Empty
 /// text is ignored.
+///
+/// Spawning `(Incoming, ForAgent(agent))`, with any components of the
+/// sender's own, sends it: it is recorded under the effect the agent's
+/// work is recorded under ([`EffectParent`]), unless it names a parent,
+/// and the loop is woken. [`Deliver`] does the same for a sender that
+/// needs nothing else.
 #[derive(Component, Reflect, Clone, Debug)]
+#[component(on_add = sent)]
 #[reflect(Component, Clone, Debug)]
 #[require(Effect, Name = Name::new("message"))]
 pub struct Incoming {
@@ -259,10 +272,9 @@ impl Incoming {
 }
 
 /// Send `message` to the agent `entity`: the kernel spawns it as an
-/// [`Incoming`] effect for that agent, under the effect the agent's work
-/// is recorded under ([`EffectParent`]), and the stages take it from there
-/// (see the [module](self)). A plugin changes or takes over a message
-/// through its `Incoming`, not this.
+/// [`Incoming`] effect [`ForAgent`] that agent, and the stages take it
+/// from there (see the [module](self)). A plugin changes or takes over a
+/// message through its `Incoming`, not this.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Deliver {
@@ -314,24 +326,45 @@ pub struct Recalled {
     pub why: Option<String>,
 }
 
-/// Spawns a [`Deliver`]'s message for its agent, and wakes the loop: the
-/// frame that sent it may have run its stages already.
+/// On a message ([`Incoming`]) the kernel delivered into a turn: the turn
+/// whose model call it went with, the turn it started or the running turn
+/// it steered or carried on. Inserted when the message goes into the
+/// conversation, with its answer; read-only, so a turn's end does not wait
+/// for its messages. A note to an idle agent, and what a turn that ended
+/// some other way puts in the conversation, go with no turn and have none.
+#[derive(Component, Reflect, Clone, Copy, Debug)]
+#[reflect(Component, Clone, Debug)]
+pub struct DeliveredIn(pub Entity);
+
+/// Spawns a [`Deliver`]'s message for its agent.
 pub(crate) fn on_deliver(
     deliver: On<Deliver>,
-    agents: Query<Option<&EffectParent>, With<Agent>>,
-    wake: Res<Wake>,
+    agents: Query<(), With<Agent>>,
     mut commands: Commands,
 ) {
-    let agent = deliver.entity;
-    let Ok(parent) = agents.get(agent) else {
-        return;
-    };
-    commands.spawn((
-        deliver.message.clone(),
-        ForAgent(agent),
-        Effect::child_of(parent.map(|parent| parent.0)),
-    ));
-    wake.wake();
+    if agents.contains(deliver.entity) {
+        commands.spawn((deliver.message.clone(), ForAgent(deliver.entity)));
+    }
+}
+
+/// Puts a new message under the effect its agent's work is recorded
+/// under, unless it names a parent, and wakes the loop: the frame that
+/// sent it may have run its stages already.
+fn sent(mut world: DeferredWorld, context: HookContext) {
+    let entity = context.entity;
+    let parent = world
+        .get::<ForAgent>(entity)
+        .and_then(|agent| world.get::<EffectParent>(agent.0))
+        .map(|parent| parent.0);
+    if let Some(parent) = parent
+        && let Some(mut effect) = world.get_mut::<Effect>(entity)
+        && effect.parent.is_none()
+    {
+        effect.parent = Some(parent);
+    }
+    if let Some(wake) = world.get_resource::<Wake>() {
+        wake.wake();
+    }
 }
 
 /// How the kernel answered a message it took: `delivered`, `command`,
@@ -359,9 +392,9 @@ pub(crate) fn accept(
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_unstable_by_key(|(_, effect, ..)| effect.id());
     let at = SystemTime::now();
-    // The agents whose turn starts with this pass's messages.
-    let mut starting = HashSet::new();
-    for (entity, _, message, agent) in ready {
+    // The agents whose turn starts with this pass's messages, and the turn.
+    let mut starting = HashMap::new();
+    for (entity, effect, message, agent) in ready {
         let agent = agent.map(|agent| agent.0);
         let Some((agent, (mut conversation, connection, busy))) =
             agent.and_then(|agent| Some((agent, agents.get_mut(agent).ok()?)))
@@ -371,10 +404,9 @@ pub(crate) fn accept(
             continue;
         };
         if let Some(line) = message.command() {
-            let line = line.to_owned();
             commands.trigger(RunCommand {
-                entity: agent,
-                line,
+                mode: message.mode,
+                ..RunCommand::new(agent, line)
             });
             commands
                 .entity(entity)
@@ -385,8 +417,8 @@ pub(crate) fn accept(
             commands.entity(entity).try_insert_if_new(handled("empty"));
             continue;
         }
-        let first_call = starting.contains(&agent);
-        if busy && !first_call {
+        let joins = starting.get(&agent).copied();
+        if busy && joins.is_none() {
             commands.entity(entity).try_insert(Started { at });
             continue;
         }
@@ -394,19 +426,26 @@ pub(crate) fn accept(
         // After a failure that kept the user's message, the new text joins it.
         let conversation = &mut *conversation;
         commit.pending(agent, spec, [message], conversation, &mut notices);
-        commands
-            .entity(entity)
-            .try_insert((Started { at }, handled("delivered")));
-        if first_call {
+        let mut accepted = commands.entity(entity);
+        accepted.try_insert((Started { at }, handled("delivered")));
+        if let Some(turn) = joins {
+            accepted.try_insert(DeliveredIn(turn));
             continue;
         }
         if message.mode == DeliveryMode::Note {
             commit.halt(agent, conversation, Halt::Kept);
             continue;
         }
-        starting.insert(agent);
         let turn = commands.spawn(TurnOf(agent)).id();
-        spawn_turn_call(&mut commands, turn, agent);
+        commands.entity(entity).try_insert(DeliveredIn(turn));
+        starting.insert(agent, turn);
+        // The turn's first call is the message's work.
+        commands.spawn((
+            TurnCall,
+            CallOf(turn),
+            ForAgent(agent),
+            Effect::child_of(Some(effect.id())),
+        ));
     }
 }
 
@@ -440,7 +479,8 @@ pub(crate) fn carry_on_accepted(
         };
         let spec = connection.map(|connection| &*connection.spec);
         let conversation = &mut *conversation;
-        commit.deliver(agent, spec, next, conversation, &mut notices, &mut commands);
+        let into = (Some(turn), &mut commands);
+        commit.deliver(agent, spec, next, conversation, &mut notices, into);
         take_outcome(&mut commands, turn, holds);
         spawn_turn_call(&mut commands, turn, agent);
     }
@@ -530,7 +570,8 @@ pub(crate) fn recall_on_turn_end(
         .partition(|(_, message)| message.origin.kind == OriginKind::User);
     let spec = connection.map(|connection| &*connection.spec);
     let conversation = &mut *conversation;
-    commit.deliver(agent, spec, sent, conversation, &mut notices, &mut commands);
+    let into = (None, &mut commands);
+    commit.deliver(agent, spec, sent, conversation, &mut notices, into);
     if exiting.is_none() {
         commit.halt(agent, conversation, Halt::Kept);
     }
@@ -572,7 +613,7 @@ pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
 impl Commit<'_, '_> {
     /// Commits each of `messages`, accepted by `agent`, to its
     /// `conversation` as [`pending`](Self::pending) does, and answers it
-    /// as delivered.
+    /// as delivered, [`DeliveredIn`] the turn `into` names, if any.
     pub(crate) fn deliver<'a>(
         &mut self,
         agent: Entity,
@@ -580,22 +621,26 @@ impl Commit<'_, '_> {
         messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
         conversation: &mut Conversation,
         notices: &mut MessageWriter<Notice>,
-        commands: &mut Commands,
+        (into, commands): (Option<Entity>, &mut Commands),
     ) {
         for (entity, message) in messages {
             self.pending(agent, spec, [message], conversation, notices);
-            commands
-                .entity(entity)
-                .try_insert_if_new(handled("delivered"));
+            let mut delivered = commands.entity(entity);
+            delivered.try_insert_if_new(handled("delivered"));
+            if let Some(turn) = into {
+                delivered.try_insert(DeliveredIn(turn));
+            }
         }
     }
 
     /// Commits each of `messages` to `conversation`, that of `agent`, whose
     /// model is `spec`, as a user message with its origin: its attachments
     /// the model takes, then its text, trimmed, headed by its origin's line
-    /// when it is not the user's own. Each goes into the last message when
-    /// that is the user's, such as the tool results the model waits for, so
-    /// user and model keep taking turns.
+    /// when it is not the user's own. The origin is kept, and logged, unless
+    /// it is the plain user's, so a user's message with a title keeps it.
+    /// Each goes into the last message when that is the user's, such as
+    /// the tool results the model waits for, so user and model keep taking
+    /// turns.
     pub(crate) fn pending<'a>(
         &mut self,
         agent: Entity,
@@ -629,10 +674,11 @@ impl Commit<'_, '_> {
                 }
             }
             let text = message.text.trim();
-            let (text, origin) = match message.origin.header() {
-                None => (text.to_owned(), None),
-                Some(header) => (format!("{header}\n{text}"), Some(message.origin.clone())),
+            let text = match message.origin.header() {
+                None => text.to_owned(),
+                Some(header) => format!("{header}\n{text}"),
             };
+            let origin = (message.origin != Origin::user()).then(|| message.origin.clone());
             content.push(UserContent::text(text));
             self.message_from(agent, conversation, Message::User { content }, origin);
         }

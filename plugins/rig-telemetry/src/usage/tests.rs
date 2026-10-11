@@ -62,10 +62,7 @@ fn spending_is_split_per_model_and_purpose_and_outlives_its_agent() {
     let world = app.world_mut();
     world.spawn(UsageRow::new("budget", "Budget: 2 of 10 calls."));
     notices(world);
-    world.trigger(RunCommand {
-        entity: agent,
-        line: "usage".to_owned(),
-    });
+    world.trigger(RunCommand::new(agent, "usage".to_owned()));
     world.flush();
     let shown = notices(world).join("\n");
     assert!(shown.contains("  summary: "), "{shown}");

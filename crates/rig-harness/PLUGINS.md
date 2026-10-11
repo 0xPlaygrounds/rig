@@ -400,8 +400,10 @@ fn answered(
 # A slash command
 
 A command is a one-shot system, `app.add_command(name, help, system)`,
-taking `In<CommandArgs>`: the `agent` it was typed for and the `args`
-after its name. An error notice about the agent while the command runs,
+taking `In<CommandArgs>`: the `agent` it was typed for, the `args` after
+its name, and the `mode` its line was sent with (`Queue` when the user
+queued it; `Steer` from a key or a picker), for a command that sends text
+on. `RunCommand::new(agent, line)` runs one. An error notice about the agent while the command runs,
 from it or from what it triggers, refuses it: the line goes back in the
 input with the error, and Enter then sends it to the model as it is (a
 `literal` `Deliver`).
@@ -451,6 +453,19 @@ and has not sent yet are its inbox,
 `Query<(&Incoming, &ForAgent), (With<Started>, Without<Outcome>)>`, and
 `On<Add<Started>>` sees each message as it is accepted.
 
+A plugin that needs a mark on its own message spawns it:
+`(Incoming::new(text, mode), ForAgent(agent), MyMark)` is all `Deliver`
+does (the kernel records it under the agent's work and wakes the loop).
+Once the kernel delivers a message into a turn, the turn it started or
+the running turn it steered or carried on, the message gets
+`DeliveredIn(turn)`, and a turn's first model call is recorded under the
+message that started it. So a plugin that tags its message finds the
+turn, and from it the turn's calls (`CallOf(turn)`), such as to route
+them. A user's message may carry a title, `Origin::user().titled(..)`: it
+still goes to the model as the user's words, and the conversation keeps
+the origin (`Conversation::origin`), so a view can show where it came
+from.
+
 ```rust,no_run
 use rig_harness::prelude::*;
 
@@ -461,8 +476,40 @@ impl Plugin for ShortcutsPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(
             AgentPass,
-            (expand.in_set(Stage::Prepare), keep_asides.in_set(Stage::Gate)),
-        );
+            (
+                (expand, review_on_reviewer).in_set(Stage::Prepare),
+                keep_asides.in_set(Stage::Gate),
+            ),
+        )
+        .add_command("review", "Asks for a review, on the reviewing model", review);
+    }
+}
+
+/// On a message `/review` sent.
+#[derive(Component)]
+struct Review;
+
+/// `/review` asks the model for a review, titled so the transcript says so.
+fn review(In(args): In<CommandArgs>, mut commands: Commands) {
+    let text = "Review the change you just made.";
+    let origin = Origin::user().titled("review");
+    let message = Incoming::new(text, args.mode).with_origin(origin);
+    commands.spawn((message, ForAgent(args.agent), Review));
+}
+
+/// The model that reviews.
+const REVIEWER: &str = "deepseek/deepseek-flash";
+
+/// The calls of the turn a review went with go to the reviewing model.
+fn review_on_reviewer(
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    reviews: Query<&DeliveredIn, With<Review>>,
+    models: Res<Models>,
+) {
+    for (mut call, &CallOf(turn)) in &mut calls {
+        if reviews.iter().any(|&DeliveredIn(into)| into == turn) {
+            call.connection = models.connect(REVIEWER).ok();
+        }
     }
 }
 

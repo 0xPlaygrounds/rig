@@ -78,10 +78,10 @@ fn resume_picks_from_the_sessions_of_the_apps_home() {
     };
     let world = app.world_mut();
     let agent = world.spawn(Agent).id();
-    world.trigger(rig_ecs::commands::RunCommand {
-        entity: agent,
-        line: "resume".to_owned(),
-    });
+    world.trigger(rig_ecs::commands::RunCommand::new(
+        agent,
+        "resume".to_owned(),
+    ));
     world.flush();
     let mut pickers = world.query::<&rig_tui::Picker>();
     let items: Vec<_> = pickers

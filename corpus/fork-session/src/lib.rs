@@ -307,10 +307,7 @@ fn forked(
             continue;
         }
         if let Some(line) = asked.files {
-            commands.trigger(RunCommand {
-                entity: asked.agent,
-                line,
-            });
+            commands.trigger(RunCommand::new(asked.agent, line));
         }
         let made = format!("Made session {}. {FILES}", fork.to);
         notices.write(Notice::info(asked.agent, made));

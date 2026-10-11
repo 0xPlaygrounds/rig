@@ -116,10 +116,8 @@ fn a_job_runs_in_its_own_agent_on_its_tick_and_survives_a_restart() {
     // The restored session has the job, and not the finished run's agent.
     let (mut app, _wakes, agent) = session(&store, None);
     assert_eq!(count::<Agent>(&mut app), 1);
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "cron list".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "cron list".to_owned()));
     app.update();
     let notices = app.world().resource::<Messages<Notice>>();
     let mut cursor = notices.get_cursor();

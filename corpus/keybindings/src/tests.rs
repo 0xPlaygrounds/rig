@@ -106,10 +106,8 @@ fn keys_cycle_the_model_and_a_taken_key_needs_override() {
     press(&mut app, "ctrl+t", agent);
     assert_eq!(app.world().resource::<TuiInput>().text(), "Think.");
 
-    app.world_mut().trigger(RunCommand {
-        entity: agent,
-        line: "keys".to_owned(),
-    });
+    app.world_mut()
+        .trigger(RunCommand::new(agent, "keys".to_owned()));
     app.update();
     let seen = &app.world().resource::<Seen>().0;
     let listed = seen.last().map(String::as_str).unwrap_or_default();

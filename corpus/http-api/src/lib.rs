@@ -289,10 +289,7 @@ fn choose(
     if let (Some(item), Some(agent)) = (item, picker.agent.or(focused.iter().next()))
         && !item.command.is_empty()
     {
-        commands.trigger(RunCommand {
-            entity: agent,
-            line: item.command.clone(),
-        });
+        commands.trigger(RunCommand::new(agent, item.command.clone()));
     }
     commands.trigger(Picked {
         entity,

@@ -117,10 +117,7 @@ fn model(
         return;
     }
     if let Some(item) = items.iter().find(|item| item.name == args.args.trim()) {
-        commands.trigger(RunCommand {
-            entity: args.agent,
-            line: item.command.clone(),
-        });
+        commands.trigger(RunCommand::new(args.agent, item.command.clone()));
         return;
     }
     commands.trigger(SetModel {
