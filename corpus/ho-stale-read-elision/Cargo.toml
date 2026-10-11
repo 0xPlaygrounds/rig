@@ -12,7 +12,9 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# Runs before compaction measures a request.
+# Runs after the default prompt went in, and before compaction measures a
+# request.
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate compaction uses too.
@@ -26,4 +28,5 @@ serde_json = { workspace = true }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

@@ -141,3 +141,8 @@ fn superseded_reads_go_out_as_stubs_and_stay_whole_in_the_conversation() {
     assert_eq!(elided.results, 3);
     assert!(elided.tokens > 0);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(StaleReadElisionPlugin);
+}
