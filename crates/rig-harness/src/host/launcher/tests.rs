@@ -1,5 +1,4 @@
 use bevy_app::prelude::*;
-use bevy_ecs::prelude::*;
 use rig::harness_protocol::Invocation;
 use rig_ecs::agent::Notice;
 

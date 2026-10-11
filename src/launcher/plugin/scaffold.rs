@@ -1,11 +1,13 @@
 //! The `__name__` plugin of the rig agent, made by `rig plugin new`.
 //!
 //! The plugin guide, rig-harness's `PLUGINS.md` (its `plugin_guide` docs),
-//! has a short copy-ready example of each extension point: a tool and how
-//! its calls look, a slash command, what the user types, state kept with the
-//! session, turn hooks, a timer, turning off or replacing what another
-//! plugin added, the status line, what agents do and say in a terminal
-//! panel, and a window. Every
+//! states the rules every plugin follows (effects move through stages, and
+//! a hook is a system in one) and has a short copy-ready example of each
+//! extension point: a tool and gating its calls, asking the user, a slash
+//! command, what the user types, model requests, a turn's end, a plugin's
+//! own effects, settings and options, state kept with the session, time,
+//! the process, sessions, turning off or replacing what another plugin
+//! added, a front, the status line, a terminal panel, and a window. Every
 //! name they use comes from `rig_harness::prelude` or the plugin crate the
 //! example names, such as `rig_tui`; the optional `inspect` tool (crate
 //! `rig-inspect`) shows the rest.
@@ -40,6 +42,11 @@ impl Plugin for ScaffoldPlugin {
         // - each model request: a system in `Stage::Prepare` edits a turn's `ModelRequest`
         //                       (prompt, tools, options, the model it goes to); one in
         //                       `Stage::Review` takes a failed call over ("Model requests")
+        // - a tool call:        a system in `Stage::Gate` refuses or holds it, one in
+        //                       `Stage::Review` replaces its result ("Gating and reviewing")
+        // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
+        // - a setting:          app.add_setting::<MySettings>("my-plugin"), read from
+        //                       RIG_HOME/settings.toml ("Settings and command-line options")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
         // - what the user types: an `Incoming` message, changed by a system in
         //                       `Stage::Prepare`, taken over in `Stage::Gate`

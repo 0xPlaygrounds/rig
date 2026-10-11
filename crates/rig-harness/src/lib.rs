@@ -45,10 +45,14 @@
 //! }
 //! ```
 //!
-//! [`plugin_guide`] shows each kind of extension with an example: tools,
-//! slash commands, tool renderers, terminal panels, turns, saved state,
-//! timers, and a window beside the terminal ([`windowed`]). The `rig`
-//! launcher makes a plugin crate with `rig plugin new <name>`.
+//! [`plugin_guide`] states the rules every plugin follows (a hook is a
+//! system in a stage; holds add up and the first answer wins; a failing
+//! stage system closes its stage) and shows each kind of extension with an
+//! example: tools and gating their calls, questions for the user, slash
+//! commands, model requests, turn endings, a plugin's own effects,
+//! settings and options, saved state, time, fronts, terminal panels, and a
+//! window beside the terminal ([`windowed`]). The `rig` launcher makes a
+//! plugin crate with `rig plugin new <name>`.
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}

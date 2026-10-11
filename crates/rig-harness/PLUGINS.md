@@ -1,26 +1,28 @@
-Writing a plugin for the rig agent: one short, copy-ready example per
-extension point. Every name they use comes from
-`use rig_harness::prelude::*;`, except a plugin crate's own types, such as
-the terminal view's panels from `rig_tui`.
+Writing a plugin for the rig agent: the rules every plugin follows, then
+one short, copy-ready example per extension point. Every name they use
+comes from `use rig_harness::prelude::*;`, except a plugin crate's own
+types, such as the terminal view's panels from `rig_tui`.
 
 - [Making one](#making-one) and [finding names](#finding-names)
-- [A tool](#a-tool) and how its calls look
+- [How a plugin steps in: effects and stages](#how-a-plugin-steps-in-effects-and-stages): the rules
+- [A tool](#a-tool) and [gating and reviewing its calls](#gating-and-reviewing-tool-calls)
+- [Asking the user](#asking-the-user)
 - [A slash command](#a-slash-command) and [what the user types](#what-the-user-types)
-- [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
-- [Model requests](#model-requests), [timers](#timers)
+- [Model requests](#model-requests) and [how a turn ends](#how-a-turn-ends)
+- [Effects of a plugin's own](#effects-of-a-plugins-own)
+- [Settings and command-line options](#settings-and-command-line-options)
+- [Saved state](#saved-state-counting-every-tool-call), [time](#time), [the process: project, files and child processes](#the-process-project-files-and-child-processes), [sessions and exiting](#sessions-and-exiting)
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
-- [The status line](#the-status-line)
-- [What agents do and say, in a terminal panel](#what-agents-do-and-say-in-a-terminal-panel)
-- [A window](#a-window)
+- [A front](#a-front), [the status line](#the-status-line), [a terminal panel](#what-agents-do-and-say-in-a-terminal-panel), [a window](#a-window)
 
 A plugin is a Bevy plugin: a type implementing `Plugin + Default` in a
 crate that depends on `rig-harness`. The agent is a Bevy app, and its
 tools, commands, subagents, compaction, sessions and terminal view are
 plugins of the same kind, crates in the rig repository's `plugins/`
 folder, listed in `RIG_HOME/plugins.toml` beside any other and built only
-on the same public API. A plugin never edits
-rig-harness, rig-ecs or rig-tools. One that needs another adds it unless
-it is there, with Bevy's `app.is_plugin_added::<P>()`.
+on the same public API. A plugin never edits rig-harness, rig-ecs or
+rig-tools. One that needs another adds it unless it is there, with Bevy's
+`app.is_plugin_added::<P>()`.
 
 # Making one
 
@@ -57,15 +59,21 @@ at startup is rolled back.
 
 # Finding names
 
-The prelude holds Bevy's app, ECS, reflection and time preludes, and the
-agent runtime's components, events and registries (`rig_harness::rig_ecs`).
-rig-core is `rig_harness::rig_core`, and each default plugin's types are
-in its crate: the terminal view's panels, tool renderers, status line and
-pickers in `rig_tui` (ratatui is `rig_tui::ratatui`), what agents do in
-`rig_activity`, `/reload`'s state in `rig_reload`, and so on for each crate
-`plugins.toml` names. How the agent was started is the `Invoked` resource:
-its arguments (`args.print`, `args.model`) and whether someone sits at the
-terminal (`interactive()`).
+The prelude holds Bevy's app, ECS, reflection and time preludes, the agent
+runtime's components, stages and registries (`rig_harness::rig_ecs`), and
+the harness's services. rig-core is `rig_harness::rig_core`, and each
+default plugin's types are in its crate: the terminal view's panels, tool
+renderers, status line and pickers in `rig_tui` (ratatui is
+`rig_tui::ratatui`), what agents do in `rig_activity`, `/reload`'s state in
+`rig_reload`, and so on for each crate `plugins.toml` names.
+
+What every plugin shares lives in rig-harness, never in another plugin:
+how the agent was started (`Invoked`, with the plugins' options), the
+user's settings (`Settings`, `add_setting`), the fronts (`add_front`), the
+questions any front answers (`Ask`, `Answerer`), why the app exits
+(`ExitReason`), the project and `RIG_HOME` (`ProjectRoot`, `RigHome`),
+how child processes start (`Processes`), file watches (`FileWatch`),
+wall-clock wakes (`WakeAt`) and rig's tokio runtime (`TokioRuntime`).
 
 Every one of these types is reflected, so the running agent can list
 them with the `inspect` tool of the optional `rig-inspect` plugin (enable it
@@ -76,6 +84,134 @@ source. `world.list_components` and `world.list_resources` name what exists,
 `ProvidedBy` shows what each plugin added, and the `Diagnostics` resource
 holds the warnings logged. A plugin's own Bevy Remote method is sent by
 `inspect` once its system's entity has `rig_inspect::ReadOnlyMethod`.
+
+# How a plugin steps in: effects and stages
+
+Every step of an agent's work is an entity, an **effect**, whose
+components are its request and, once answered, its `Outcome`: a model call
+(`ModelRequest`), a tool call (`ToolRequest`), a message to an agent
+(`Incoming`), a question for the user (`Ask`), or a plugin's own
+(`EffectRequest`). Each works `ForAgent` an agent (or for the app, without
+one) and is recorded once it settles (`Recorded`, the session's effect
+log). Each frame, the `AgentLoop` system in `Update` runs the `AgentPass`
+schedule, one pass through the stages in this order, again and again until
+nothing moves, so an effect goes as far as it can in the frame:
+
+| Stage | Who | What happens there |
+|---|---|---|
+| `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
+| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, replace, hold, or take a failure over; a turn's proposed end |
+| `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
+| `Admit` | kernel | `Admitted` on every new effect; builds turn requests; `Waiting` on a call behind a conflicting one |
+| `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once |
+| `Gate` | plugins | what is about to start (`Undecided`): hold it or answer it |
+| `Start` | kernel | starts what is admitted, unheld and unanswered |
+
+**A hook is an ordinary system in a stage** that queries stage data:
+`app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`. There are no
+hook events. Order between plugins is Bevy's `.before` and `.after` on the
+systems. Every effect is admitted before it starts, wherever and whenever
+it was spawned, so every Prepare and Gate system sees it, in their order.
+Prepare sees an effect once; Gate sees it each pass it is ready to start,
+so once, and again after each hold on it is released; Review sees an
+outcome each pass until it settles.
+
+**An observer is for reactions that need no order**: counting, a status
+item, a span, the plugin's own entities (`On<Add<Started>>`,
+`On<Add<Settled>>`, `On<Add<ToolRequest>>`). Observers of one event run in
+no fixed order, so an observer never edits stage data another plugin
+edits; it may answer an effect, since the first answer wins.
+
+**The conflict rule.** A hold is any entity `HoldOf(effect)`: it keeps the
+effect from starting, or its outcome from settling, until the hold is
+despawned or loses its `HoldOf`. Holds add up: releasing yours never
+releases another plugin's, and "allow" means doing nothing. The first
+answer wins: a gate filters `Without<Outcome>` and answers with
+`insert_if_new`, so a later gate can never overturn a refusal. A reviewer
+replaces an outcome with `insert`, ordered against other reviewers, and
+the record keeps both the first and the reviewed outcome. Edits nobody
+ordered must commute; debug builds warn about two unordered stage systems
+writing the same request or outcome. Two unordered gates in one pass may
+hold and answer the same call: that is harmless, the hold goes when the
+call settles.
+
+**Deciding once.** A gate that only reads (a path rule) decides afresh
+each time it sees a call. One whose decision asks someone or has side
+effects marks the call it decided on (a `SparseSet` marker such as
+`Approved`), skips marked calls, and leaves held calls alone, so a gate
+ordered after it decides only once the first released the call.
+
+**Failing closed.** A stage system that fails or panics closes its stage
+for that pass, whatever the app's error handler: a failed Prepare system
+answers what that pass admitted with an error, a failed Gate system starts
+nothing, a failed Review system settles nothing. A notice names the
+system. So a broken guard never lets a call through.
+
+**Taking over and trying again.** A reviewer that takes a failure over
+spawns a successor that `Supersedes(failed)`, with the request it needs
+and the same `CallOf`: the failed effect is recorded as superseded and
+never reaches the conversation. Work that takes time holds the outcome
+first, then supersedes it.
+
+**The loop's edge.** Work spawned, answered or released after `AgentLoop`
+ran (in `PostUpdate` or `Last`) waits for the next frame. A system that
+sends messages, answers effects or releases holds every frame runs in
+`Update` `.before(AgentLoop)`.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::Outcome as Answered;
+use rig_harness::rig_core::tool::ToolOutput;
+
+#[derive(Default)]
+pub struct WriteGuardPlugin;
+
+impl Plugin for WriteGuardPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(
+            AgentPass,
+            (
+                src_only.in_set(Stage::Gate),
+                shorten_errors.in_set(Stage::Review),
+            ),
+        );
+    }
+}
+
+/// Refuses a `write` outside `src/` when it is about to run.
+fn src_only(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
+    for (call, request) in &calls {
+        let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
+        if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
+            commands.entity(call).insert_if_new(Outcome::refused("write only under src/"));
+        }
+    }
+}
+
+/// Keeps the first line of a failed `shell` call's output, before it is
+/// committed.
+fn shorten_errors(
+    calls: Query<(Entity, &ToolRequest, &Outcome), (Unreviewed, Without<Shortened>)>,
+    mut commands: Commands,
+) {
+    for (call, request, outcome) in &calls {
+        let Ok(Answered::ToolResult { result }) = &outcome.0 else {
+            continue;
+        };
+        let text = result.output().as_text().unwrap_or_default();
+        if request.call.function.name.as_str() == "shell" && !text.contains("[exit code 0]") {
+            let first = text.lines().next().unwrap_or_default().to_owned();
+            let shortened = ToolResult::success(ToolOutput::text(first));
+            commands.entity(call).insert((Outcome::from(shortened), Shortened));
+        }
+    }
+}
+
+/// On a call whose outcome was shortened: once is enough.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Shortened;
+```
 
 # A tool
 
@@ -167,6 +303,96 @@ fn build(app: &mut App) {
         lines.extend(call.result_lines(RESULT_LINES));
         lines
     });
+}
+```
+
+# Gating and reviewing tool calls
+
+A tool call is an effect with a `ToolRequest` (the model's `ToolCall`),
+its tool's `Footprint` and the `CallHandler` that will run it, all on the
+call's entity. A Prepare system edits them as the call is admitted: the
+arguments, the footprint, or the handler, wrapped with
+`ErasedHandler::layered` so the call runs through it (to give it a secret
+the model never sees, say). A Gate system sees each call when it is about
+to run: a call that conflicts with an earlier one of the same reply
+(`Footprint::waits_for`) is `Waiting` until that one settles, so a gate
+judges it with the earlier calls' effects done. It refuses it with
+`Outcome::refused(why)`, which the model reads as the tool's refusal, or
+answers it with any `Outcome` (a cached result), or holds it. A Review
+system reads or replaces each result before it is committed, as
+[above](#how-a-plugin-steps-in-effects-and-stages). The reply's results go
+back in the order the model asked for them, refused ones included. What a
+tool published beside its text, such as rig-tools' `FilesChanged` or
+`ExitStatus`, is the call's `Published` component.
+
+# Asking the user
+
+A question for the user is an `Ask` entity: a title, a body, the choices
+offered and whether a line of text answers it too. It is an effect like
+any, recorded with its answer, and any front answers it by inserting its
+`Outcome` (`Answer::Choice(id).outcome()` or `Answer::Text(..)`); the first
+answer counts and closes it in every other front. A plugin that waits on
+the answer spawns the `Ask` as a hold on what it asks about, so the call
+waits for it, and an interrupt, which despawns its turn's holds, takes the
+question away everywhere. A front that shows questions spawns an
+`Answerer` (for one agent, or `Answerer::default()` for all); a plugin
+asks only when `Answerers::can_answer` for the agent, and applies its own
+policy otherwise, such as refusing. While a question that takes text is
+open, the user's next line to its agent answers it instead of reaching the
+model. Tests answer with `rig_harness_test_support::AnswerAsks`.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct ApproveCommitsPlugin;
+
+impl Plugin for ApproveCommitsPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_systems(AgentPass, (answered, ask).chain().in_set(Stage::Gate));
+    }
+}
+
+/// On a call the user allowed.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Approved;
+
+/// Holds each `git commit` about to run with a question, or refuses it
+/// when nobody can answer.
+fn ask(
+    calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Approved>)>,
+    answerers: Answerers,
+    mut commands: Commands,
+) {
+    for (call, request, &ForAgent(agent)) in &calls {
+        let command = request.call.function.arguments["command"].as_str().unwrap_or_default();
+        if !command.contains("git commit") {
+            continue;
+        }
+        if !answerers.can_answer(Some(agent)) {
+            commands.entity(call).insert_if_new(Outcome::refused("nobody can approve a commit"));
+            continue;
+        }
+        let ask = Ask::yes_no("Commit?").body(command.to_owned());
+        commands.spawn((ask, ForAgent(agent), HoldOf(call)));
+    }
+}
+
+/// Lets the call run, or refuses it, once the user answered; the question
+/// lets go of it either way.
+fn answered(
+    asks: Query<(Entity, &Outcome, &HoldOf), (With<Ask>, Added<Outcome>)>,
+    mut commands: Commands,
+) {
+    for (ask, outcome, &HoldOf(call)) in &asks {
+        if Answer::of(outcome).is_some_and(|answer| answer.is("yes")) {
+            commands.entity(call).insert(Approved);
+        } else {
+            commands.entity(call).insert_if_new(Outcome::refused("the user said no"));
+        }
+        commands.entity(ask).remove::<HoldOf>();
+    }
 }
 ```
 
@@ -264,91 +490,6 @@ fn keep_asides(
 }
 ```
 
-# Saved state: counting every tool call
-
-An agent component that derives `Reflect` and says
-`#[reflect(Component, Saved)]` is kept with the session: each change is
-logged, and a restart, `/reload` or `/resume` brings the newest value
-back, inserted on the restored agent before `SessionRestored` exists, so
-an `On<Insert<T>>` observer can re-arm what it says. A resource that says
-`#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
-the whole session; the plugin inserts it in `build`, and the saved value
-replaces it. A tool call is an entity with a `ToolRequest` and the
-agent it works for (`ForAgent`), so `On<Add<ToolRequest>>` sees every
-tool call as the model asks for it; a call a restart runs again is
-marked `Restored`, like all the work a restart carries on. The calls
-made before the plugin was added are in the conversation, which a
-restored agent is spawned with: the observer that sees the plugin's
-component added counts them, and a saved count, if the session has one,
-replaces that right after. An assistant message is the tuple variant
-`Message::Assistant(AssistantMessage)`.
-
-```rust,no_run
-use std::collections::HashMap;
-
-use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-
-/// How often each agent called each tool, kept across `/compact`,
-/// `/reload` and `/resume`.
-#[derive(Component, Reflect, Default)]
-#[reflect(Component, Saved)]
-struct ToolCounts(HashMap<String, u32>);
-
-#[derive(Default)]
-pub struct ToolCountsPlugin;
-
-impl Plugin for ToolCountsPlugin {
-    fn build(&self, app: &mut App) {
-        app.register_required_components::<Agent, ToolCounts>()
-            .add_observer(count)
-            .add_observer(count_the_past);
-    }
-}
-
-/// Counts the calls already in an agent's conversation when it gets its
-/// count, as a restored agent does on the first restart with the plugin.
-fn count_the_past(added: On<Add<ToolCounts>>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
-    let Ok((conversation, mut counts)) = agents.get_mut(added.entity) else {
-        return;
-    };
-    for message in conversation.messages() {
-        if let Message::Assistant(assistant) = message {
-            for call in assistant.tool_calls() {
-                *counts.0.entry(call.function.name.as_str().to_owned()).or_default() += 1;
-            }
-        }
-    }
-}
-
-/// Counts each call as the model asks for it, once: not again when a
-/// restart runs it again.
-fn count(
-    call: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent), Without<Restored>>,
-    mut counts: Query<&mut ToolCounts>,
-) {
-    if let Ok((request, ForAgent(agent))) = calls.get(call.entity)
-        && let Ok(mut counts) = counts.get_mut(*agent)
-    {
-        let name = request.call.function.name.as_str().to_owned();
-        *counts.0.entry(name).or_default() += 1;
-    }
-}
-```
-
-A generic type is saved only once registered (`app.register_type::<T>()`).
-
-A conversation changes only through `Commit`, so the log records every
-change: `commit.truncate(agent, &mut conversation, len)` cuts it back,
-such as to rewind it, and `commit.retire(agent)` despawns an agent for
-good, so a restart brings back neither it nor the agents it spawned.
-`rig_ecs::journal::read_session(store)` reads a session's logs, another
-session's too, without restoring or writing anything: each agent's whole
-conversation, summary and saved components. `fork_session(from, to,
-before)` copies a session as of a message, `before` being its agent's id
-and `conversation.seq(index)`.
-
 # Model requests
 
 A model call is an effect entity with a `ModelRequest`: the rig-core
@@ -356,15 +497,16 @@ A model call is an effect entity with a `ModelRequest`: the rig-core
 messages, the tools offered, the options) and the `connection` it goes
 to, else its agent's model; `Models::connect` makes one. A turn's own call
 is a `TurnCall`, whose request the kernel builds from its agent when it
-is admitted. A plugin changes it with a system in the `Prepare` stage,
-which sees each call once (`Added<Admitted>`); Start then fits it to the
-model it goes to (an option that model cannot take is left out, plugin
-edits stay) and makes the tool rules in the prompt follow the tools it
-carries. A tool left out is not offered but still runs if called: a
-`Gate` system refuses a call (`Outcome::refused`), and `ToolAccess` on
-the agent is the hard limit. Changing the system prompt or the tools
-misses the provider's prompt cache. Order between plugins is `.before`
-and `.after` on the systems.
+is admitted; a call built from an agent outside its turns, such as a
+preview, is `BuildFrom(agent)`. A plugin changes a request with a system
+in the `Prepare` stage, which sees each call once (`Added<Admitted>`);
+Start then fits it to the model it goes to (an option that model cannot
+take is left out, plugin edits stay) and makes the tool rules in the
+prompt follow the tools it carries. Routing a call to another model is a
+Prepare edit of its `connection`. A tool left out is not offered but still
+runs if called: a `Gate` system refuses a call (`Outcome::refused`), and
+`ToolAccess` on the agent is the hard limit. Changing the system prompt or
+the tools misses the provider's prompt cache.
 
 A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
 `Overflow`, `Final`) in `Review`. A plugin that takes the failure over
@@ -467,23 +609,24 @@ fn fall_back(
 # How a turn ends
 
 A turn is an entity `TurnOf` its agent, with a `Turn`: its `index` among
-the agent's turns and its `first_message` in the conversation. When the
-model answers without calling tools, or the turn fails, the kernel
-proposes a `TurnOutcome` on the turn in `Commit` (`Answered(message)`,
-`Failed(reason)`), and a `Review` system sees it in the next pass. It may
-replace it (`insert`), hold it (spawn an entity `HoldOf(turn)`, despawn it
-when done), or carry the turn on: a `Queue` or `Steer` message the agent
-accepts takes an `Answered` proposal away, one on its way keeps the turn
-from ending meanwhile, and a new
-`(TurnCall, CallOf(turn), ForAgent(agent))` takes any away once it is
-admitted; a proposal taken away takes its holds with it (they are
-despawned), and the next proposal is reviewed afresh. A plugin may insert `TurnOutcome::Failed(reason)` or
-`Stopped(Some(reason))` at any time, such as a budget: the turn's calls
-that have not started never start, the others are answered as stopped,
-and the turn ends. Once nothing holds the outcome and every call of the
-turn settled, the turn ends: the agent is idle, and the turn entity is
-`Settled`, `ForAgent` its agent, until the next frame. `Interrupt` stops a
-turn at once; it cannot be held.
+the agent's turns and its `first_message` in the conversation. A turn's
+end is a proposal: when the model answers without calling tools, or the
+turn fails, the kernel proposes a `TurnOutcome` on the turn in `Commit`
+(`Answered(message)`, `Failed(reason)`), and a `Review` system sees it in
+the next pass (`Added<TurnOutcome>`). It may replace it (`insert`), hold
+it (spawn an entity `HoldOf(turn)`, despawn it when done), or carry the
+turn on: a `Queue` or `Steer` message the agent accepts takes an
+`Answered` proposal away, one on its way keeps the turn from ending
+meanwhile, and a new `(TurnCall, CallOf(turn), ForAgent(agent))` takes
+any away once it is admitted; a proposal taken away takes its holds with
+it (they are despawned), and the next proposal is reviewed afresh. A
+plugin may insert `TurnOutcome::Failed(reason)` or `Stopped(Some(reason))`
+at any time, such as a budget: the turn's calls that have not started
+never start, the others are answered as stopped, and the turn ends. Once
+nothing holds the outcome and every call of the turn settled, the turn
+ends: the agent is idle, and the turn entity is `Settled`, `ForAgent` its
+agent, until the next frame. `Interrupt` stops a turn at once; it cannot
+be held.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -532,14 +675,195 @@ fn announce(
 }
 ```
 
-# Timers
+# Effects of a plugin's own
+
+A plugin's own work gets the same stages, recording and visibility as the
+kernel's when it is an effect: an `EffectRequest` with its rig-core
+`EffectKind` (`EffectKind::Custom` for a kind of its own) and a
+`handler`, which the kernel runs at Start, or none, an open effect the
+plugin (or anyone) answers with an `Outcome` whenever it is done. Other
+plugins' Gate systems can refuse it, Review systems replace its outcome,
+and a replay answers it from the effect log; `CallOf(turn)` keeps a turn
+open until it settles. Work off the main thread is a `Running` task on the
+effect's entity, `Running::answering(pool, wake, future)`, whose output
+becomes its outcome.
+
+```rust,no_run
+use rig_harness::prelude::*;
+use rig_harness::rig_core::effect::EffectKind;
+
+/// `/deploy`: a deploy effect any plugin can gate, answered by the plugin
+/// itself once its pipeline reports back (here at once).
+fn deploy(In(args): In<CommandArgs>, mut commands: Commands) {
+    let kind = EffectKind::Custom {
+        kind: "deploy".into(),
+        payload: serde_json::json!({ "target": args.args }),
+    };
+    let request = EffectRequest { kind, handler: None };
+    commands.spawn((request, ForAgent(args.agent)));
+}
+
+/// Answers each deploy that started: nothing refused it.
+fn report(deploys: Query<(Entity, &EffectRequest), Added<Started>>, mut commands: Commands) {
+    for (deploy, request) in &deploys {
+        if request.kind.name() == "deploy" {
+            commands.entity(deploy).insert_if_new(Outcome::custom("deployed"));
+        }
+    }
+}
+
+fn build(app: &mut App) {
+    app.add_command("deploy", "Deploy a target", deploy)
+        .add_systems(AgentPass, report.in_set(Stage::Gate));
+}
+```
+
+# Settings and command-line options
+
+A plugin's settings are its table of the user's `RIG_HOME/settings.toml`:
+`app.add_setting::<T>("section")` in `build` inserts the resource `T`
+read from `[section]`, or `T::default()` when the user set nothing; a
+table that does not read as `T` keeps the default and is shown at startup.
+A test inserts `Settings::from_toml(..)` (or `Settings::default()`, which
+the test support's apps do) before adding the plugin, so it never reads
+the user's file.
+
+A plugin's command-line options are declared with `app.add_flag`:
+`rig --name` or `rig --name=VALUE` reaches the agent, which refuses an
+option no plugin of its build declared, and `rig help` lists them. The
+plugin reads them from `Invoked` (`flag(name)`, `flag_value(name)`).
+
+```rust,no_run
+use rig_harness::prelude::*;
+use serde::Deserialize;
+
+/// The `[budget]` table: `max_calls = 50`.
+#[derive(Resource, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct Budget {
+    pub max_calls: usize,
+}
+
+impl Default for Budget {
+    fn default() -> Self {
+        Self { max_calls: 100 }
+    }
+}
+
+#[derive(Default)]
+pub struct BudgetPlugin;
+
+impl Plugin for BudgetPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_setting::<Budget>("budget")
+            .add_flag(Flag::new("budget", "Stop a turn after N tool calls").value("N"));
+        let limit = app.world().get_resource::<Invoked>().and_then(|invoked| {
+            invoked.flag_value("budget").and_then(|n| n.parse().ok())
+        });
+        if let Some(max_calls) = limit {
+            app.insert_resource(Budget { max_calls });
+        }
+    }
+}
+```
+
+# Saved state: counting every tool call
+
+An agent component that derives `Reflect` and says
+`#[reflect(Component, Saved)]` is kept with the session: each change is
+logged, and a restart, `/reload` or `/resume` brings the newest value
+back, inserted on the restored agent before `SessionRestored` exists, so
+an `On<Insert<T>>` observer can re-arm what it says. A resource that says
+`#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
+the whole session; the plugin inserts it in `build`, and the saved value
+replaces it. A tool call is an entity with a `ToolRequest` and the
+agent it works for (`ForAgent`), so `On<Add<ToolRequest>>` sees every
+tool call as the model asks for it; a call a restart runs again is
+marked `Restored`, like all the work a restart carries on, and is gated
+again (holds and approvals are not saved). The calls
+made before the plugin was added are in the conversation, which a
+restored agent is spawned with: the observer that sees the plugin's
+component added counts them, and a saved count, if the session has one,
+replaces that right after. An assistant message is the tuple variant
+`Message::Assistant(AssistantMessage)`.
+
+```rust,no_run
+use std::collections::HashMap;
+
+use rig_harness::prelude::*;
+use rig_harness::rig_core::message::Message;
+
+/// How often each agent called each tool, kept across `/compact`,
+/// `/reload` and `/resume`.
+#[derive(Component, Reflect, Default)]
+#[reflect(Component, Saved)]
+struct ToolCounts(HashMap<String, u32>);
+
+#[derive(Default)]
+pub struct ToolCountsPlugin;
+
+impl Plugin for ToolCountsPlugin {
+    fn build(&self, app: &mut App) {
+        app.register_required_components::<Agent, ToolCounts>()
+            .add_observer(count)
+            .add_observer(count_the_past);
+    }
+}
+
+/// Counts the calls already in an agent's conversation when it gets its
+/// count, as a restored agent does on the first restart with the plugin.
+fn count_the_past(added: On<Add<ToolCounts>>, mut agents: Query<(&Conversation, &mut ToolCounts)>) {
+    let Ok((conversation, mut counts)) = agents.get_mut(added.entity) else {
+        return;
+    };
+    for message in conversation.messages() {
+        if let Message::Assistant(assistant) = message {
+            for call in assistant.tool_calls() {
+                *counts.0.entry(call.function.name.as_str().to_owned()).or_default() += 1;
+            }
+        }
+    }
+}
+
+/// Counts each call as the model asks for it, once: not again when a
+/// restart runs it again.
+fn count(
+    call: On<Add<ToolRequest>>,
+    calls: Query<(&ToolRequest, &ForAgent), Without<Restored>>,
+    mut counts: Query<&mut ToolCounts>,
+) {
+    if let Ok((request, ForAgent(agent))) = calls.get(call.entity)
+        && let Ok(mut counts) = counts.get_mut(*agent)
+    {
+        let name = request.call.function.name.as_str().to_owned();
+        *counts.0.entry(name).or_default() += 1;
+    }
+}
+```
+
+A generic type is saved only once registered (`app.register_type::<T>()`).
+
+A conversation changes only through `Commit`, so the log records every
+change: `commit.truncate(agent, &mut conversation, len)` cuts it back,
+such as to rewind it, and `commit.retire(agent)` despawns an agent for
+good, so a restart brings back neither it nor the agents it spawned.
+`rig_ecs::journal::read_session(store)` reads a session's logs, another
+session's too, without restoring or writing anything: each agent's whole
+conversation, summary and saved components. `fork_session(from, to,
+before)` copies a session as of a message, `before` being its agent's id
+and `conversation.seq(index)`.
+
+# Time
 
 Time is Bevy's `Time`. `.run_if(on_real_timer(Duration))` runs a system
 once per interval, and a one-off wait is a delayed command,
 `commands.delayed().duration(Duration)`. The loop sleeps when nothing
 happens and wakes on its own for a delayed command; for an interval, an
 entity with a `KeepAwake(Duration)` keeps it running at that pace while it
-lives. None needs a thread.
+lives. None needs a thread. Bevy's clock stops while the machine sleeps; a
+time of day is a `WakeAt(SystemTime)` on an entity, which gets `Due` in
+`First` once that time passed (the loop wakes for it), and is armed again
+by inserting a new `WakeAt`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -553,7 +877,11 @@ pub struct StillWorkingPlugin;
 impl Plugin for StillWorkingPlugin {
     fn build(&self, app: &mut App) {
         app.add_observer(keep_awake)
-            .add_systems(Update, still_working.run_if(on_real_timer(EVERY)));
+            .add_observer(nightly)
+            .add_systems(Update, still_working.run_if(on_real_timer(EVERY)))
+            .add_systems(Startup, |mut commands: Commands| {
+                commands.spawn(WakeAt::after(Duration::from_secs(24 * 3600)));
+            });
     }
 }
 
@@ -568,6 +896,89 @@ fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
         notices.write(Notice::info(*agent, "Still working."));
     }
 }
+
+/// Once a day, even across a suspend; then the next day.
+fn nightly(due: On<Add<Due>>, mut commands: Commands, mut notices: MessageWriter<Notice>) {
+    notices.write(Notice::info(None, "A day has passed."));
+    commands
+        .entity(due.entity)
+        .insert(WakeAt::after(Duration::from_secs(24 * 3600)));
+}
+```
+
+# The process: project, files and child processes
+
+`ProjectRoot` is the directory the session works in. `RigHome` is the
+`RIG_HOME` layout (`home.0.session(..)`, `home.0.auth(..)`). `Processes`
+is how every child process starts, a rig-tools `Launcher` (a wrapper
+command, a directory, environment): the shell tool reads it for each
+command, so a sandbox plugin that sets it (`processes.set(..)`) wraps
+every process from then on, and a plugin that starts processes builds
+them with `processes.launcher().command(program)`. An entity with a
+`FileWatch` gets `FileChanges` messages about the files changed under its
+path. `TokioRuntime` is rig's own tokio runtime, for a library that needs
+tokio. A plugin that should also run in an app without the harness's
+plugins inits the ones it reads (`app.init_resource::<ProjectRoot>()`).
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// The templates in `.rig/templates`, watched.
+#[derive(Component)]
+struct Templates;
+
+fn watch(mut commands: Commands, root: Res<ProjectRoot>) {
+    commands.spawn((Templates, FileWatch::tree(root.0.join(".rig/templates"))));
+}
+
+fn reload(
+    mut changes: MessageReader<FileChanges>,
+    templates: Query<(), With<Templates>>,
+    mut notices: MessageWriter<Notice>,
+) {
+    for change in changes.read().filter(|change| templates.contains(change.watch)) {
+        notices.write(Notice::info(None, format!("{} templates changed", change.paths.len())));
+    }
+}
+
+/// Runs every child process under `nice`.
+fn be_nice(processes: Res<Processes>) {
+    processes.set(processes.launcher().wrapped(["nice", "-n", "10"]));
+}
+```
+
+# Sessions and exiting
+
+A plugin that ends the run triggers `Exit(reason)`: `ExitReason::Quit`,
+`Reload` (the launcher restarts the session on its staged build),
+`Switch(Some(id))` or `Switch(None)` (the launcher runs another session,
+or a new one). The harness writes the exit code and tells the launcher
+what to run; any exit's reason is the `ExitReason` resource from then on,
+for code on the way out in Bevy's `OnAppExitSystems` (a background job
+kept across a reload, stopped on a quit). `ForkSession { before }` copies
+this session into a new one (`SessionForked` names it), and
+`DeleteSession(id)` removes another (`SessionDeleted`), for plugins that
+keep files of their own per session.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+/// `/fork`: continue in a copy of this session.
+fn fork(_: In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(ForkSession::default());
+}
+
+/// Switches to each fork once it is written.
+fn switch(mut forked: MessageReader<SessionForked>, mut commands: Commands) {
+    for fork in forked.read() {
+        commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone()))));
+    }
+}
+
+fn build(app: &mut App) {
+    app.add_command("fork", "Continue in a copy of this session", fork)
+        .add_systems(Update, switch);
+}
 ```
 
 # Turning off or replacing what another plugin added
@@ -579,7 +990,11 @@ the tool's calls are drawn plainly, and its name is free for a
 replacement (a second tool, command or renderer of a taken name is
 refused). Do it in `Plugin::finish`, which runs once every plugin's
 `build` did, so what they added exists whatever their order. What a
-plugin spawns in `finish` is not marked `ProvidedBy` it.
+plugin spawns in `build`, `finish` and `cleanup` is marked `ProvidedBy`
+it; what it spawns later it marks itself, with its entity from
+`Res<PluginEntity<MyPlugin>>`. Changing how another plugin's tool runs is
+rarely a replacement: a Prepare or Gate system on its calls does it
+without taking the tool over.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -601,6 +1016,59 @@ impl Plugin for NoShellPlugin {
         // A command is found by its `Name`, such as "/help", with
         // `SlashCommand`; a renderer by its `Name`, such as
         // "renderer:shell"; a section by its `PromptSection`'s `tag`.
+    }
+}
+```
+
+# A front
+
+A front shows the agents to someone and takes what they type: the
+terminal view (`rig-tui`), `--print` (`rig-print`), a window, a web
+server, a chat bot. It offers itself in `build` with `app.add_front(..)`,
+saying which runs it takes (`on_terminal()`, `headless()`, or
+`on_flag(name, help)` for a run given its option), and one front takes
+each run: the one whose option was given, else the first offered for the
+kind of run. It asks `app.runs_front(name)` in `finish` and sets itself
+up only then. It sends what the user types as `Deliver` from
+`Origin::user()`, shows `Notice`s and each agent's `Conversation` and
+`Partial` reply, and, if it can show questions, spawns an `Answerer` and
+answers `Ask`s. Several fronts may run side by side (a web server beside
+the terminal view); only the one that takes the run owns stdin and stdout.
+
+```rust,no_run
+use rig_harness::prelude::*;
+
+#[derive(Default)]
+pub struct JsonFrontPlugin;
+
+impl Plugin for JsonFrontPlugin {
+    fn build(&self, app: &mut App) {
+        app.add_front(Front::new("json").on_flag("json", "Print every message as a JSON line"));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front("json") {
+            app.world_mut().spawn(Answerer::default());
+            app.add_systems(Update, (print_messages, answer_yes));
+        }
+    }
+}
+
+fn print_messages(mut committed: MessageReader<Committed>) {
+    for change in committed.read() {
+        if let Committed::Message { message, .. } = change {
+            println!("{}", serde_json::to_string(message).unwrap_or_default());
+        }
+    }
+}
+
+/// Answers every question with its first choice, as `--yes` would.
+fn answer_yes(asks: Query<(Entity, &Ask), Without<Outcome>>, mut commands: Commands) {
+    for (ask, question) in &asks {
+        if let Some(first) = question.choices.first() {
+            let answer = Answer::Choice(first.id.clone());
+            commands.entity(ask).insert_if_new(answer.outcome());
+        }
     }
 }
 ```
@@ -752,8 +1220,9 @@ agent activity and terminal input wake the window instead of a poll. The
 crate depends on `bevy` at exactly the agent's version, with the features
 it draws with, such as
 `bevy = { version = "=0.20.0", default-features = false, features = ["ui"] }`
-for Bevy UI. (This example is not built with the agent's docs, which have
-no window.)
+for Bevy UI. A window beside the terminal view is no front; a window that
+is the front offers itself with `on_flag` (`--gui`). (This example is not
+built with the agent's docs, which have no window.)
 
 ```rust,ignore
 use std::time::Duration;
