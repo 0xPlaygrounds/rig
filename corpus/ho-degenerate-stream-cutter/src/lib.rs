@@ -31,6 +31,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::message::{Origin, Text};
@@ -89,7 +90,8 @@ impl StreamCutter {
 pub struct Cuts(pub HashMap<String, u32>);
 
 /// The cutter's stage system, which adds its adapter to each model call,
-/// for others to order against.
+/// for others to order against. It runs before compaction measures the
+/// call with its adapters.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StreamCutterSystems;
 
@@ -100,7 +102,12 @@ impl Plugin for StreamCutterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StreamCutter>("stream_cutter")
             .init_resource::<Cuts>()
-            .configure_sets(AgentPass, StreamCutterSystems.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                StreamCutterSystems
+                    .in_set(Stage::Prepare)
+                    .before(CompactionSystems::Prepare),
+            )
             .add_systems(AgentPass, adapt.in_set(StreamCutterSystems))
             .add_observer(announce)
             .add_command("cuts", "How many replies were cut, per model", cuts);
@@ -116,7 +123,10 @@ impl ContextValue for Cut {
 }
 
 /// Puts the cutter on each new model call, for whichever model it goes to.
-fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, settings: Res<StreamCutter>) {
+fn adapt(
+    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
+    settings: Res<StreamCutter>,
+) {
     if settings.models.is_empty() {
         return;
     }
