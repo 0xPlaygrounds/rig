@@ -165,6 +165,35 @@ fn a_cut_before_a_summary_undoes_it() {
 struct Counter(u32);
 
 #[test]
+fn a_saved_change_starts_the_agents_log_and_the_values_it_was_spawned_with_do_not() {
+    let store = MemoryStore::default();
+    let mut first = app(&store);
+    let Some(&agent) = agents(&mut first).first() else {
+        return;
+    };
+    first.update();
+    let id = first.world().get::<AgentId>(agent).cloned();
+    let log = |id: Option<AgentId>| id.and_then(|id| store.read(&id.0).ok());
+    assert_eq!(log(id.clone()), None, "a session nobody used is not kept");
+    // A plugin's state, such as a mode the user turned on before any
+    // message, is kept for the next start.
+    first.world_mut().entity_mut(agent).insert(Counter(1));
+    first.update();
+    assert!(log(id).is_some());
+    drop(first);
+
+    let mut second = app(&store);
+    let Some(&agent) = agents(&mut second).first() else {
+        return;
+    };
+    let counter = second
+        .world()
+        .get::<Counter>(agent)
+        .map(|counter| counter.0);
+    assert_eq!(counter, Some(1));
+}
+
+#[test]
 fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
     let store = MemoryStore::default();
     let mut app = app(&store);

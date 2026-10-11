@@ -71,11 +71,17 @@ pub const SESSION: &str = "session";
 
 /// Logs each change of the saved component `T` on the agents or as a
 /// resource, and its removal from an agent; reflection runs only for a
-/// change.
+/// change. A change starts its agent's log, as a message does, unless it
+/// is a value the agent was spawned with, so a session nobody used is not
+/// kept.
 fn log_changed<T: Component + Reflect + TypePath>(
-    changed: Query<(Option<&AgentId>, &T), (Or<(With<Agent>, With<IsResource>)>, Changed<T>)>,
+    changed: Query<
+        (Entity, Option<&AgentId>, &T),
+        (Or<(With<Agent>, With<IsResource>)>, Changed<T>),
+    >,
     mut removed: RemovedComponents<T>,
     agents: Query<&AgentId, With<Agent>>,
+    spawned: Query<(), Added<Agent>>,
     log: Res<SessionLog>,
     registry: Res<AppTypeRegistry>,
 ) {
@@ -84,11 +90,12 @@ fn log_changed<T: Component + Reflect + TypePath>(
     }
     let name = T::type_path();
     let registry = registry.read();
-    for (id, component) in &changed {
+    for (entity, id, component) in &changed {
         let value = TypedReflectSerializer::new(component.as_partial_reflect(), &registry);
         let key = id.map_or(SESSION, |id| id.0.as_str());
+        let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.component(key, name, Some(value)),
+            Ok(value) => log.component(key, name, Some(value), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -96,7 +103,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         if let Ok(id) = agents.get(entity)
             && !changed.contains(entity)
         {
-            log.component(&id.0, name, None);
+            log.component(&id.0, name, None, !spawned.contains(entity));
         }
     }
 }
@@ -180,7 +187,8 @@ pub(crate) struct AgentLog {
     /// 0 for an agent the user started, 1 for its subagents, and so on.
     pub(crate) depth: usize,
     pub(crate) next_seq: u64,
-    /// Whether the log holds a message, so it is written.
+    /// Whether the log holds a message or a saved change, so it is
+    /// written.
     pub(crate) started: bool,
     pub(crate) pending: Vec<u8>,
     pub(crate) components: HashMap<String, Value>,
@@ -335,8 +343,14 @@ impl SessionLog {
 
     /// Logs the saved component `component` in the log `agent`, an agent's
     /// id or [`SESSION`], when its value changed; `None` or `null` when it
-    /// was removed.
-    pub(crate) fn component(&self, agent: &str, component: &str, value: Option<Value>) {
+    /// was removed. With `starts`, the change starts the agent's log.
+    pub(crate) fn component(
+        &self,
+        agent: &str,
+        component: &str,
+        value: Option<Value>,
+        starts: bool,
+    ) {
         let mut book = self.book();
         let value = value.filter(|value| !value.is_null());
         let known = book
@@ -353,6 +367,7 @@ impl SessionLog {
         if book.record(agent, record).is_some()
             && let Some(log) = book.agents.get_mut(agent)
         {
+            log.started |= starts;
             match value {
                 Some(value) => log.components.insert(component.to_owned(), value),
                 None => log.components.remove(component),
