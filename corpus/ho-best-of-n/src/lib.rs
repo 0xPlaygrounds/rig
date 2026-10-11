@@ -686,6 +686,7 @@ async fn verify(
     let shell = Shell {
         launcher: launcher.in_dir(cwd),
         spill: None,
+        confine: false,
         cut: Some(Cut {
             lines: 20,
             bytes: MAX_BYTES,

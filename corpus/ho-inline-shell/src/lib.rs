@@ -192,6 +192,7 @@ fn expand(
         let shell = Shell {
             launcher,
             spill: None,
+            confine: false,
             cut: None,
         };
         let pool = IoTaskPool::get_or_init(TaskPool::default);
