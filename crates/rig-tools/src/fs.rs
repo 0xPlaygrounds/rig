@@ -210,8 +210,20 @@ pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
 
 /// `path` [`resolve`]d against `base`, as a file tool opens it; with
 /// `confine`, refused before any I/O when it lies outside `base` (`None`:
-/// the working directory).
-pub(crate) fn place(
+/// the working directory). The rule the file tools follow, for code that
+/// must decide as they would, such as a preview of a write.
+///
+/// ```
+/// use std::path::Path;
+/// use rig_tools::fs::place;
+///
+/// let base = std::fs::canonicalize(".")?;
+/// assert_eq!(place(Some(&base), true, "src/../a.rs")?, base.join("a.rs"));
+/// assert!(place(Some(&base), true, "../outside.rs").is_err());
+/// assert!(place(Some(&base), false, "../outside.rs").is_ok());
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+pub fn place(
     base: Option<&Path>,
     confine: bool,
     path: &str,
