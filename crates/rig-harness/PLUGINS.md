@@ -103,12 +103,12 @@ nothing moves, so an effect goes as far as it can in the frame:
 | Stage | Who | What happens there |
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
-| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, replace, hold, or take a failure over; a turn's proposed end |
+| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, edit in place, hold, or take a failure over; a turn's proposed end |
 | `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests; `Waiting` on a call behind a conflicting one |
 | `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once |
-| `Gate` | plugins | what is about to start (`Undecided`): hold it or answer it |
-| `Start` | kernel | starts what is admitted, unheld and unanswered |
+| `Gate` | plugins | what is about to start (`Undecided`): hold it or decide it (`Decision`) |
+| `Start` | kernel | applies the decisions as `Outcome`s, then starts what is admitted, unheld and unanswered |
 
 **A hook is an ordinary system in a stage** that queries stage data:
 `app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`. There are no
@@ -124,17 +124,19 @@ outcome each pass until it settles.
 item, a span, the plugin's own entities (`On<Add<Started>>`,
 `On<Add<Settled>>`, `On<Add<ToolRequest>>`). Observers of one event run in
 no fixed order, so an observer never edits stage data another plugin
-edits; it may answer an effect, since the first answer wins.
+edits; it may decide an effect, since the first decision wins.
 
 **The conflict rule.** A hold is any entity `HoldOf(effect)`: it keeps the
 effect from starting, or its outcome from settling, until the hold is
 despawned or loses its `HoldOf`. Holds add up: releasing yours never
 releases another plugin's, and "allow" means doing nothing. The first
-answer wins: a gate filters `Without<Outcome>` and answers with
-`insert_if_new`, so a later gate can never overturn a refusal. A reviewer
-replaces an outcome with `insert`, ordered against other reviewers, and
-the record keeps both the first and the reviewed outcome. Edits nobody
-ordered must commute. Two
+decision wins: a gate decides through the effect's `Decision`
+(`decision.decide(Outcome::refused(..))`), so a later gate can never
+overturn a refusal; the kernel applies it as the `Outcome` at Start. A
+reviewer edits the `Outcome` in place (`Query<&mut Outcome, Unreviewed>`),
+ordered against other reviewers, once (a marker), since Review sees it
+each pass; the record keeps both the first and the reviewed outcome.
+Edits nobody ordered must commute. Two
 unordered gates in one pass may hold and answer the same call: that is
 harmless, the hold goes when the call settles.
 
@@ -142,7 +144,10 @@ harmless, the hold goes when the call settles.
 each time it sees a call. One whose decision asks someone or has side
 effects marks the call it decided on (a `SparseSet` marker such as
 `Approved`), skips marked calls, and leaves held calls alone, so a gate
-ordered after it decides only once the first released the call.
+ordered after it decides only once the first released the call. A
+decision is applied when the pass reaches Start, so until then the call
+is still `Undecided` for the gates after the one that decided: a gate
+that holds or asks checks `decision.is_decided()` first.
 
 **Failing closed.** A stage system that fails or panics closes its stage
 for that pass, whatever the app's error handler: a failed Prepare system
@@ -182,11 +187,11 @@ impl Plugin for WriteGuardPlugin {
 }
 
 /// Refuses a `write` outside `src/` when it is about to run.
-fn src_only(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
-    for (call, request) in &calls {
+fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+    for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
-            commands.entity(call).insert_if_new(Outcome::refused("write only under src/"));
+            decision.decide(Outcome::refused("write only under src/"));
         }
     }
 }
@@ -194,18 +199,22 @@ fn src_only(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Comma
 /// Keeps the first line of a failed `shell` call's output, before it is
 /// committed.
 fn shorten_errors(
-    calls: Query<(Entity, &ToolRequest, &Outcome), (Unreviewed, Without<Shortened>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &mut Outcome),
+        (Unreviewed, ToolCalls, Without<Shortened>),
+    >,
     mut commands: Commands,
 ) {
-    for (call, request, outcome) in &calls {
+    for (call, request, mut outcome) in &mut calls {
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
         };
         let text = result.output().as_text().unwrap_or_default();
         if request.call.function.name.as_str() == "shell" && !text.contains("[exit code 0]") {
             let first = text.lines().next().unwrap_or_default().to_owned();
-            let shortened = ToolResult::success(ToolOutput::text(first));
-            commands.entity(call).insert((Outcome::from(shortened), Shortened));
+            *outcome = Outcome::from(ToolResult::success(ToolOutput::text(first)));
+            // Edit once: Review sees the outcome each pass until it settles.
+            commands.entity(call).insert(Shortened);
         }
     }
 }
@@ -218,13 +227,17 @@ struct Shortened;
 
 ## Ordering against other plugins
 
-Bevy does not find a missing order between plugins for you. Debug builds
-warn about two unordered stage systems that write the same component
-through their queries, such as two `Query<&mut ModelRequest>` in Prepare,
-but not about writes made through `Commands`, which is how answers and
-replacements are made (`insert`, `insert_if_new`): two unordered reviewers
-that replace the same outcome are not reported, and the last one wins,
-silently. So:
+Debug builds warn about two unordered stage systems that write the same
+component through their queries, such as two `Query<&mut ModelRequest>`
+in Prepare, two gates that decide (`&mut Decision`) or two reviewers that
+edit (`&mut Outcome`). Writes through `Commands`, such as holds, are not
+seen, and need no order. Queries of different kinds of effect never meet
+when they say so with a kind filter (`ToolCalls`, `ModelCalls`,
+`IncomingMessages`, `PluginEffects`), and two plugin effects when one
+names its marker (`With<Ask>`) and the other excludes it. Inside one
+system, two queries that write the same component must rule each other
+out this way, or Bevy refuses the system when it is initialized (error
+B0001). So:
 
 - **A stage system that edits or answers data another plugin may also
   edit goes in a public `SystemSet` of its plugin**, configured in its
@@ -241,6 +254,10 @@ sets:
 | `ProjectContextSystems` | `rig_basics` | Prepare | puts the default system prompt at the head of a request whose agent has none of its own | `.after` it to see the whole prompt |
 | `CompactionSystems::Prepare` | `rig_compaction` | Prepare | measures each turn's request against the window of the model it goes to, after the two sets above; clears old tool outputs or holds the call for a summary | `.before` it to route a call or change its request, so what it measures is what is sent |
 | `CompactionSystems::Recover` | `rig_compaction` | Review | takes over a turn's call the model refused as too long | `.before` or `.after` it to take a failed call over first or last |
+| `CommandSystems` | `rig_harness` | Gate | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
+| `AskSystems` | `rig_harness` | Gate | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
+| `PrintSystems` | `rig_print` | Gate | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
+| `SubagentSystems::Gate` | `rig_subagents` | Gate | refuses a `SpawnSubagent` deeper than the policy allows; stops the restored turn of an agent that owed reports | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
 use rig_basics::ProjectContextSystems;
@@ -367,9 +384,9 @@ A tool the plugin answers itself, later, is an open tool:
 `app.add_open_tool(name, description, options, observer)` parses each
 call's arguments into the type the observer takes and triggers
 `ToolCalled<Args>` with the call's entity (`call`), the calling `agent`
-and the `args`. The call ends when the plugin inserts its `Outcome`,
-such as `Outcome::from(ToolResult::success("Done.".into()))`, with
-`insert_if_new`: the first answer counts. A tool
+and the `args`. The call ends when the plugin decides it, through its
+`Decision` (`Query<&mut Decision, ToolCalls>`), such as with
+`ToolResult::success("Done.".into())`: the first decision counts. A tool
 found while the agent runs, such as one an MCP server lists, is
 registered from a system with
 `commands.queue(move |world: &mut World| { world.spawn_tool(definition, handler, options); })`:
@@ -405,10 +422,10 @@ as one agent's `shell` calls in their own directory or sandbox (below),
 while `Processes` stays the way every other call starts. A Gate system
 sees each call when it is about to run: a call that conflicts with an earlier one of the same reply
 (`Footprint::waits_for`) is `Waiting` until that one settles, so a gate
-judges it with the earlier calls' effects done. It refuses it with
+judges it with the earlier calls' effects done. It decides it with
 `Outcome::refused(why)`, which the model reads as the tool's refusal, or
-answers it with any `Outcome` (a cached result), or holds it. A Review
-system reads or replaces each result before it is committed, as
+with any `Outcome` (a cached result), or holds it. A Review
+system reads or edits each result in place before it is committed, as
 [above](#how-a-plugin-steps-in-effects-and-stages). The reply's results go
 back in the order the model asked for them, refused ones included. What a
 tool published beside its text, such as rig-tools' `FilesChanged` or
@@ -477,9 +494,9 @@ rather than holding: a refused call settles, and the next ones run.
 
 A question for the user is an `Ask` entity: a title, a body, the choices
 offered and whether a line of text answers it too. It is an effect like
-any, recorded with its answer, and any front answers it by inserting its
-`Outcome` (`Answer::Choice(id).outcome()` or `Answer::Text(..)`); the first
-answer counts and closes it in every other front. A plugin that waits on
+any, recorded with its answer, and any front answers it by deciding it
+(`Decision`, with `Answer::Choice(id).outcome()` or `Answer::Text(..)`);
+the first decision counts and closes it in every other front. A plugin that waits on
 the answer spawns the `Ask` as a hold on what it asks about, so the call
 waits for it, and an interrupt, which despawns its turn's holds, takes the
 question away everywhere. A front that shows questions spawns an
@@ -499,7 +516,7 @@ one, or an open `Ask`, by triggering `Pick { entity, chosen }`: on a
 picker, the harness runs the chosen item's command, if it has one, for
 the picker's agent or else the agent the user looks at (`Shown`), triggers
 `Picked` on it (`Chosen::Item(index)`, `Chosen::Text` for typed text,
-`None` when closed) and despawns it; on an `Ask`, it inserts the answer.
+`None` when closed) and despawns it; on an `Ask`, it decides the answer.
 So a plugin that offers a picker works in every front, and a front that
 answers with `Pick` works with every plugin.
 
@@ -523,17 +540,21 @@ struct Approved;
 /// Holds each `git commit` about to run with a question, or refuses it
 /// when nobody can answer.
 fn ask(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Approved>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &mut Decision),
+        (Undecided, ToolCalls, Without<Approved>),
+    >,
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent)) in &calls {
+    for (call, request, &ForAgent(agent), mut decision) in &mut calls {
         let command = request.call.function.arguments["command"].as_str().unwrap_or_default();
-        if !command.contains("git commit") {
+        // A gate before this one decided it already: nothing to ask.
+        if !command.contains("git commit") || decision.is_decided() {
             continue;
         }
         if !answerers.can_answer(Some(agent)) {
-            commands.entity(call).insert_if_new(Outcome::refused("nobody can approve a commit"));
+            decision.decide(Outcome::refused("nobody can approve a commit"));
             continue;
         }
         let ask = Ask::yes_no("Commit?").body(command.to_owned());
@@ -545,13 +566,14 @@ fn ask(
 /// lets go of it either way.
 fn answered(
     asks: Query<(Entity, &Outcome, &HoldOf), (With<Ask>, Added<Outcome>)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     for (ask, outcome, &HoldOf(call)) in &asks {
         if Answer::of(outcome).is_some_and(|answer| answer.is("yes")) {
             commands.entity(call).insert(Approved);
-        } else {
-            commands.entity(call).insert_if_new(Outcome::refused("the user said no"));
+        } else if let Ok(mut decision) = calls.get_mut(call) {
+            decision.decide(Outcome::refused("the user said no"));
         }
         commands.entity(ask).remove::<HoldOf>();
     }
@@ -611,7 +633,7 @@ spawns it as an effect, an `Incoming` that is `ForAgent` the agent, and it
 moves through the stages like a tool call. A `Prepare` system may change
 it before it is sent (`Added<Admitted>`): rewrite its `text`, add
 `attachments` (the `rig-coding-tools` plugin reads `@path` files this
-way). A `Gate` system may take it over by answering it, such as with
+way). A `Gate` system may take it over by deciding it, such as with
 `Outcome::custom(..)`, and then it never reaches the agent; the harness
 takes a user's `/` line over this way and runs it as a command (see
 above). At `Start` the kernel accepts what is left: it goes to the agent,
@@ -656,7 +678,8 @@ impl Plugin for ShortcutsPlugin {
             AgentPass,
             (
                 (expand, review_on_reviewer).in_set(Stage::Prepare),
-                keep_asides.in_set(Stage::Gate),
+                // Before the harness's systems that decide messages too.
+                keep_asides.in_set(Stage::Gate).before(CommandSystems),
             ),
         )
         .add_command("review", "Asks for a review, on the reviewing model", review);
@@ -703,13 +726,12 @@ fn expand(mut typed: Query<&mut Incoming, Added<Admitted>>) {
 /// A line that starts with `#` is the user's own aside: it never reaches
 /// the model.
 fn keep_asides(
-    typed: Query<(Entity, &Incoming, &ForAgent), Undecided>,
-    mut commands: Commands,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (message, typed, &ForAgent(agent)) in &typed {
+    for (typed, &ForAgent(agent), mut decision) in &mut typed {
         if typed.origin.kind == OriginKind::User && typed.text.starts_with('#') {
-            commands.entity(message).insert_if_new(Outcome::custom("aside"));
+            decision.decide(Outcome::custom("aside"));
             notices.write(Notice::info(agent, "Noted; not sent."));
         }
     }
@@ -1005,7 +1027,8 @@ loses `TurnOf` and keeps `ForAgent`. A turn's
 end is a proposal: when the model answers without calling tools, or the
 turn fails, the kernel proposes a `TurnOutcome` on the turn in `Commit`
 (`Answered(message)`, `Failed(reason)`), and a `Review` system sees it in
-the next pass (`Added<TurnOutcome>`). It may replace it (`insert`), hold
+the next pass (`Added<TurnOutcome>`). It may edit it in place
+(`Query<&mut TurnOutcome, With<TurnOf>>`), hold
 it (spawn an entity `HoldOf(turn)`, despawn it when done), or carry the
 turn on: a `Queue` or `Steer` message the agent accepts takes an
 `Answered` proposal away, one on its way keeps the turn from ending
@@ -1013,7 +1036,7 @@ meanwhile, and a new `(TurnCall, CallOf(turn), ForAgent(agent))` takes
 any away once it is admitted; a proposal taken away takes its holds with
 it (they are despawned), and the next proposal is reviewed afresh. A
 plugin may insert `TurnOutcome::Failed(reason)` or `Stopped(Some(reason))`
-at any time, such as a budget: the turn's calls that have not started
+at any time, with a plain `insert`, such as a budget: the turn's calls that have not started
 never start, the others are answered as stopped, and the turn ends. Once
 nothing holds the outcome and every call of the turn settled, the turn
 ends: the agent is idle, and the turn entity is `Settled` until the next
@@ -1022,7 +1045,7 @@ frame. An `On<Add<Settled>>` observer may retire the agent
 it. `Interrupt` stops a turn at once; it cannot be held.
 
 **Ending a turn with an answer already known**, such as the JSON a
-`submit` tool was called with: a Gate system answers the turn's next
+`submit` tool was called with: a Gate system decides the turn's next
 model call itself, with a completion of that text. Nothing is sent, the
 turn ends `Answered` with it, and `--print` prints it as the answer.
 
@@ -1038,16 +1061,15 @@ pub struct EndWith(pub String);
 
 /// Answers the turn's next model call with the known text.
 fn end_with(
-    calls: Query<(Entity, &CallOf), (With<TurnCall>, Undecided)>,
+    mut calls: Query<(&CallOf, &mut Decision), (Undecided, ModelCalls, With<TurnCall>)>,
     turns: Query<&EndWith>,
-    mut commands: Commands,
 ) {
-    for (call, &CallOf(turn)) in &calls {
+    for (&CallOf(turn), mut decision) in &mut calls {
         if let Ok(EndWith(text)) = turns.get(turn) {
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
             let made = Made::new("plugin", "submit", "submit");
             let reply = CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
-            commands.entity(call).insert_if_new(Outcome(Ok(effect::Outcome::Completion(reply))));
+            decision.decide(Outcome(Ok(effect::Outcome::Completion(reply))));
         }
     }
 }
@@ -1106,8 +1128,8 @@ A plugin's own work gets the same stages, recording and visibility as the
 kernel's when it is an effect: an `EffectRequest` with its rig-core
 `EffectKind` (`EffectKind::Custom` for a kind of its own) and a
 `handler`, which the kernel runs at Start, or none, an open effect the
-plugin (or anyone) answers with an `Outcome` whenever it is done. Other
-plugins' Gate systems can refuse it, Review systems replace its outcome,
+plugin (or anyone) decides (`Decision`) whenever it is done. Other
+plugins' Gate systems can refuse it, Review systems edit its outcome,
 and a replayer may answer it from the effect log; `CallOf(turn)` keeps a turn
 open until it settles. Work off the main thread is a `Running` task on the
 effect's entity, `Running::answering(pool, wake, future)`, whose output
@@ -1141,10 +1163,10 @@ fn deploy(In(args): In<CommandArgs>, mut commands: Commands) {
 }
 
 /// Answers each deploy that started: nothing refused it.
-fn report(deploys: Query<(Entity, &EffectRequest), Added<Started>>, mut commands: Commands) {
-    for (deploy, request) in &deploys {
+fn report(mut deploys: Query<(&EffectRequest, &mut Decision), (Added<Started>, PluginEffects)>) {
+    for (request, mut decision) in &mut deploys {
         if request.kind.name() == "deploy" {
-            commands.entity(deploy).insert_if_new(Outcome::custom("deployed"));
+            decision.decide(Outcome::custom("deployed"));
         }
     }
 }
@@ -1282,7 +1304,7 @@ so it sees the records a stop on exit makes too, and the log gets only
 what it left. A reader earlier in the frame sees the record unchanged.
 
 **Replaying.** A replayer answers effects from a recorded session's log
-before they start (a Gate system, `insert_if_new`), taking each agent's
+before they start (a Gate system that decides), taking each agent's
 recorded answers by kind, in order. Agent ids are new in each session, so
 it pairs each agent with the recorded one it stands for: the first agent
 with the first recorded agent, and a subagent through the `subagent` effect that
@@ -1771,16 +1793,15 @@ impl Plugin for BudgetPlugin {
 }
 
 fn refuse_over_budget(
-    calls: Query<Entity, (With<TurnCall>, Undecided)>,
+    mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>,
     spent: Option<Res<SessionSpending>>,
-    mut commands: Commands,
 ) {
     if spent.is_none_or(|spent| spent.0.total.cost < CAP) {
         return;
     }
-    for call in &calls {
+    for mut decision in &mut calls {
         let why = format!("The session spent its ${CAP:.2} budget.");
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        decision.decide(Outcome::refused(why));
     }
 }
 
@@ -1982,19 +2003,20 @@ impl Plugin for SrcOnlyPlugin {
     }
 }
 
-fn src_only(calls: Query<(Entity, &ToolRequest), Undecided>, mut commands: Commands) {
-    for (call, request) in &calls {
+fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
+    for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
-            commands.entity(call).insert_if_new(Outcome::refused("write only under src/"));
+            decision.decide(Outcome::refused("write only under src/"));
         }
     }
 }
 
 /// A `write` that only says it wrote.
-fn wrote(called: On<ToolCalled<serde_json::Value>>, mut commands: Commands) {
-    let written = Outcome::from(ToolResult::success("written".into()));
-    commands.entity(called.call).insert_if_new(written);
+fn wrote(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success("written".into()));
+    }
 }
 
 #[test]
