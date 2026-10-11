@@ -15018,6 +15018,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_tasks",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-tools",
  "rig-tui",
 ]

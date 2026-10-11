@@ -1,8 +1,9 @@
 //! The project context in every agent's system prompt: the instruction
-//! files (`AGENTS.md`, or `CLAUDE.md`) of `RIG_HOME` and of the working
-//! directory and each directory above it, and the environment (working
-//! directory, platform, date). Both are
-//! [`PromptSection`]s, re-read when a turn starts and by `/context`, so an
+//! files (`AGENTS.md`, or `CLAUDE.md`) of `RIG_HOME` and of the project's
+//! directory and each directory above it, and each agent's environment
+//! (its working directory, its [`WorkDir`] or else the project's, the
+//! platform and the date). Both are [`PromptSection`]s, the environment
+//! one per agent, re-read when a turn starts and by `/context`, so an
 //! edited `AGENTS.md` counts from the next message without a rebuild.
 //! A section only changes when its text does, so the prompt stays cached.
 //! An agent with no [`SystemPrompt`] of its own is told it is rig, a coding
@@ -10,19 +11,19 @@
 //! `/context` lists the prompt's sections and what other plugins put in
 //! the context besides, as [`ContextEntry`]s.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
 
-use rig_ecs::agent::{Notice, SystemPrompt, TurnOf};
-use rig_ecs::prompt::PromptSection;
+use rig_ecs::agent::{Agent, Notice, SystemPrompt, TurnOf};
+use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
 use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::services::{ProjectRoot, RigHome};
+use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
 
 /// What an agent with no [`SystemPrompt`] of its own is told it is.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
@@ -44,9 +45,9 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work i
     - Give that answer once, at the end of the turn: no running commentary or \
     interim summaries between tool calls.";
 
-/// Spawns the project and environment [`PromptSection`]s, re-reads them
-/// when a turn starts, adds `/context`, and gives an agent with no prompt
-/// of its own rig's ([`DEFAULT_SYSTEM_PROMPT`]).
+/// Spawns the project [`PromptSection`] and each agent's environment one,
+/// re-reads them when a turn starts, adds `/context`, and gives an agent
+/// with no prompt of its own rig's ([`DEFAULT_SYSTEM_PROMPT`]).
 #[derive(Default)]
 pub struct ProjectContextPlugin;
 
@@ -56,19 +57,15 @@ impl Plugin for ProjectContextPlugin {
             .init_resource::<ProjectRoot>();
         let world = app.world();
         let context = Context::read(world.resource(), world.resource());
-        for (name, which) in [
-            ("prompt:project", Section::Project),
-            ("prompt:environment", Section::Environment),
-        ] {
-            let section = context.section(which);
-            app.world_mut().spawn((Name::new(name), which, section));
-        }
+        let project = (Name::new("prompt:project"), Project, context.project());
+        app.world_mut().spawn(project);
         app.add_command(
             "context",
             "Re-read AGENTS.md and the environment, and list what the prompt holds",
             show_context,
         )
         .add_observer(refresh_on_turn)
+        .add_observer(environment_of_agent)
         .configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
         .add_systems(AgentPass, default_prompt.in_set(ProjectContextSystems));
     }
@@ -127,68 +124,122 @@ impl ContextEntry {
     }
 }
 
-/// Which of the context's [`PromptSection`]s this is.
-#[derive(Component, Clone, Copy, PartialEq, Eq)]
-enum Section {
-    /// The instruction files.
-    Project,
-    /// The working directory, platform and date.
-    Environment,
-}
+/// On the instruction files' [`PromptSection`].
+#[derive(Component)]
+struct Project;
 
-/// What the context sections are read from.
+/// On an agent's environment [`PromptSection`] ([`SectionOf`] it).
+#[derive(Component)]
+struct Environment;
+
+/// The instruction files of `RIG_HOME` and of the project's directory and
+/// each directory above it.
 struct Context {
-    /// The instruction files of `RIG_HOME` and of the working directory and
-    /// each directory above it.
     instructions: Instructions,
-    cwd: PathBuf,
+    root: PathBuf,
 }
 
 impl Context {
-    /// Reads the instruction files of `home` and of `root` and above, and
-    /// the environment, now.
+    /// Reads the instruction files of `home` and of `root` and above now.
     fn read(home: &RigHome, root: &ProjectRoot) -> Self {
         Self {
             instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0),
-            cwd: root.0.clone(),
+            root: root.0.clone(),
         }
     }
 
-    /// The section `which`; the instruction files go from the most general
-    /// to the most specific.
-    fn section(&self, which: Section) -> PromptSection {
-        if which == Section::Project {
-            return PromptSection::new(
-                PromptSection::ORDER_PROJECT,
-                "project_instructions",
-                self.instructions.prompt_text(),
-            );
-        }
-        let lines = [
-            format!("Working directory: {}", self.cwd.display()),
-            format!(
-                "Platform: {} ({})",
-                std::env::consts::OS,
-                std::env::consts::ARCH
-            ),
-            format!("Today's date: {}", chrono::Local::now().format("%Y-%m-%d")),
-        ];
+    /// The instruction files' section, from the most general to the most
+    /// specific.
+    fn project(&self) -> PromptSection {
         PromptSection::new(
-            PromptSection::ORDER_ENVIRONMENT,
-            "environment",
-            lines.join("\n"),
+            PromptSection::ORDER_PROJECT,
+            "project_instructions",
+            self.instructions.prompt_text(),
         )
     }
 
-    /// Puts what was read in `sections`; whether the instruction files
-    /// changed.
-    fn apply(&self, sections: &mut Query<(&Section, &mut PromptSection)>) -> bool {
+    /// The environment section of an agent working in `dir`, else in the
+    /// project's directory.
+    fn environment(&self, dir: Option<&WorkDir>) -> PromptSection {
+        environment(dir.map_or(&self.root, |dir| &dir.0))
+    }
+
+    /// Puts what was read in the project section and the environment
+    /// sections of `agents`, by their [`WorkDir`]s; whether the
+    /// instruction files changed.
+    fn apply(
+        &self,
+        sections: &mut Sections,
+        agents: &Query<Option<&WorkDir>, With<Agent>>,
+    ) -> bool {
         let mut changed = false;
-        for (which, mut section) in sections {
-            changed |= section.set_if_neq(self.section(*which)) && *which == Section::Project;
+        for (of, mut section) in sections {
+            let Some(SectionOf(agent)) = of else {
+                changed |= section.set_if_neq(self.project());
+                continue;
+            };
+            if let Ok(dir) = agents.get(*agent) {
+                section.set_if_neq(self.environment(dir));
+            }
         }
         changed
     }
+}
+
+/// The context's sections: the project one, without a [`SectionOf`], and
+/// the agents' environments.
+type Sections<'w, 's> = Query<
+    'w,
+    's,
+    (Option<&'static SectionOf>, &'static mut PromptSection),
+    Or<(With<Project>, With<Environment>)>,
+>;
+
+/// The environment section of an agent working in `dir`.
+fn environment(dir: &Path) -> PromptSection {
+    let lines = [
+        format!("Working directory: {}", dir.display()),
+        format!(
+            "Platform: {} ({})",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        ),
+        format!("Today's date: {}", chrono::Local::now().format("%Y-%m-%d")),
+    ];
+    PromptSection::new(
+        PromptSection::ORDER_ENVIRONMENT,
+        "environment",
+        lines.join("\n"),
+    )
+}
+
+/// Gives a new agent its environment section, and rewrites it when its
+/// [`WorkDir`] changes. Applied as a command, so a section spawned for an
+/// agent's [`Agent`] is found when its inherited `WorkDir` follows.
+fn environment_of_agent(changed: On<Insert<(Agent, WorkDir)>>, mut commands: Commands) {
+    let agent = changed.entity;
+    commands.queue(move |world: &mut World| {
+        let Some(root) = world.get_resource::<ProjectRoot>() else {
+            return;
+        };
+        let dir = world.get::<WorkDir>(agent).map_or(&root.0, |dir| &dir.0);
+        let section = environment(dir);
+        let sections = world.get::<AgentSections>(agent);
+        let mut sections = sections.into_iter().flat_map(|sections| sections.iter());
+        let mine = sections.find(|&of| world.get::<Environment>(of).is_some());
+        match mine {
+            Some(mine) => {
+                if let Some(mut current) = world.get_mut::<PromptSection>(mine) {
+                    current.set_if_neq(section);
+                }
+            }
+            None if world.get::<Agent>(agent).is_some() => {
+                let name = Name::new("prompt:environment");
+                world.spawn((name, Environment, section, SectionOf(agent)));
+            }
+            None => {}
+        }
+    });
 }
 
 /// Re-reads the sections when a turn starts, before its first model call,
@@ -196,13 +247,14 @@ impl Context {
 fn refresh_on_turn(
     started: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
-    mut sections: Query<(&Section, &mut PromptSection)>,
+    mut sections: Sections,
+    agents: Query<Option<&WorkDir>, With<Agent>>,
     home: Res<RigHome>,
     root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
     let context = Context::read(&home, &root);
-    if !context.apply(&mut sections) {
+    if !context.apply(&mut sections, &agents) {
         return;
     }
     let agent = turns.get(started.entity).ok().map(|of| of.0);
@@ -219,20 +271,29 @@ fn refresh_on_turn(
 }
 
 /// `/context`: re-reads the sections now and lists the instruction files,
-/// every section of the system prompt and the [`ContextEntry`]s.
+/// every section of the system prompt of the agent that asked, its
+/// environment and the [`ContextEntry`]s.
 fn show_context(
     In(args): In<CommandArgs>,
-    mut sections: Query<(&Section, &mut PromptSection)>,
-    others: Query<&PromptSection, Without<Section>>,
+    mut sections: Sections,
+    agents: Query<Option<&WorkDir>, With<Agent>>,
+    others: Query<(&PromptSection, Option<&SectionOf>), (Without<Project>, Without<Environment>)>,
     entries: Query<&ContextEntry>,
     home: Res<RigHome>,
     root: Res<ProjectRoot>,
     mut notices: MessageWriter<Notice>,
 ) {
     let context = Context::read(&home, &root);
-    context.apply(&mut sections);
-    let mut listed: Vec<&PromptSection> = sections.iter().map(|(_, section)| section).collect();
-    listed.extend(&others);
+    context.apply(&mut sections, &agents);
+    let mine = |of: Option<&SectionOf>| of.is_none_or(|of| of.0 == args.agent);
+    let ours = sections.iter().filter(|(of, _)| mine(*of));
+    let mut listed: Vec<&PromptSection> = ours.map(|(_, section)| section).collect();
+    listed.extend(
+        others
+            .iter()
+            .filter(|(_, of)| mine(*of))
+            .map(|(section, _)| section),
+    );
     listed.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.tag.cmp(&b.tag)));
     let mut lines = vec![format!(
         "Instruction files, most general first: {}.",
@@ -244,7 +305,8 @@ fn show_context(
     for section in listed {
         lines.push(format!("  {} ({} bytes)", section.tag, section.text.len()));
     }
-    lines.push(context.section(Section::Environment).text);
+    let dir = agents.get(args.agent).ok().flatten();
+    lines.push(context.environment(dir).text);
     let mut entries: Vec<&ContextEntry> = entries
         .iter()
         .filter(|entry| !entry.text.is_empty())

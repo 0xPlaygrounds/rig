@@ -5,6 +5,7 @@ use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_unt
 
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
+use rig_harness::services::WorkDir;
 
 use super::{
     ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, ProjectRoot, RigHome, default_prompt,
@@ -60,4 +61,37 @@ fn context_lists_what_other_plugins_put_in_the_context() {
     let shown = shown.join("\n");
     assert!(shown.ends_with("\nnested rules: src/AGENTS.md"), "{shown}");
     assert!(!shown.contains("unused"), "{shown}");
+}
+
+#[test]
+fn each_agent_is_told_its_own_working_directory() {
+    let root = std::env::temp_dir().join(format!("rig-basics-env-{}", std::process::id()));
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_plugins((
+            AgentPlugin,
+            rig_harness::services::ServicesPlugin,
+            ProjectContextPlugin,
+        ));
+    let world = app.world_mut();
+    let plain = world.spawn(Agent).id();
+    let worktree = root.join("worktree");
+    let working = world.spawn((Agent, WorkDir(worktree.clone()))).id();
+    let child = world.spawn((Agent, SpawnedBy(working))).id();
+    world.flush();
+    let mut sections = world.query::<(&SectionOf, &PromptSection)>();
+    let told: Vec<(Entity, String)> = sections
+        .iter(world)
+        .filter(|(_, section)| section.tag == "environment")
+        .filter_map(|(of, section)| Some((of.0, section.text.lines().next()?.to_owned())))
+        .collect();
+    let told = |agent: Entity| -> Vec<&str> {
+        let lines = told.iter().filter(|(of, _)| *of == agent);
+        lines.map(|(_, line)| line.as_str()).collect()
+    };
+    let line = |dir: &std::path::Path| format!("Working directory: {}", dir.display());
+    assert_eq!(told(plain), [line(&root)]);
+    assert_eq!(told(working), [line(&worktree)]);
+    assert_eq!(told(child), [line(&worktree)]);
 }
