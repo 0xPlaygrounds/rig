@@ -40,7 +40,7 @@ impl Status {
     }
 
     /// How `record`'s effect ended: interrupted when it was cancelled,
-    /// else as the answer that applied, a reviewer's when one replaced it.
+    /// else as the answer that applied, as a reviewer left it if one edited it.
     fn of_record(record: &EffectRecord) -> Self {
         match record.disposition {
             Disposition::Cancelled => Self::Interrupted,
