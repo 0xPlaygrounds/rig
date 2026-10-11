@@ -11,6 +11,9 @@ error[E0277]: `std::string::String` declares no `ToolContext` key
 help: the following other types implement trait `ContextValue`
  --> $WORKSPACE/crates/rig-core/src/tool/facts.rs
   |
+  | impl ContextValue for FilesRead {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FilesRead`
+...
   | impl ContextValue for FilesChanged {
   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `FilesChanged`
 ...
