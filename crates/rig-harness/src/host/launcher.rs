@@ -1,8 +1,8 @@
 //! The agent's side of the `rig` launcher protocol
 //! ([`rig::harness_protocol`]): how the agent was started ([`Invoked`]),
 //! the launcher's path for rebuilds, the launcher's startup notice, the
-//! failed build it started after, and the ready file that tells it this
-//! build started.
+//! failed build it started after, and the ready file, in the launcher's
+//! run directory ([`LauncherRun`]), that tells it this build started.
 //!
 //! The fronts plugins offer and the options they take
 //! ([`cli`]) are checked against how rig was started once
@@ -22,10 +22,10 @@ use std::io::IsTerminal;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
-use rig::harness_protocol::{Home, Invocation, env};
+use rig::harness_protocol::{Home, Invocation, RunDir, env};
 
 use super::cli::{self, Cli};
-use super::session::SessionPaths;
+use super::exit::{ExitReason, reason_from_exit};
 use crate::services::RigHome;
 use crate::settings::Settings;
 use rig_ecs::agent::Notice;
@@ -72,14 +72,26 @@ impl Invoked {
     }
 }
 
-/// Inserts [`Invoked`], shows the launcher's startup notice, hands a
-/// failed build to the primary agent, and writes the ready file.
+/// The run directory of the launcher that started this agent, from
+/// [`env::RUN`]. [`LauncherPlugin`] inserts it unless the app inserted one
+/// before.
+#[derive(Resource, Clone, Debug)]
+pub struct LauncherRun(pub RunDir);
+
+/// Inserts [`Invoked`] and [`LauncherRun`], shows the launcher's startup
+/// notice, hands a failed build to the primary agent, and writes the ready
+/// file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
     fn build(&self, app: &mut App) {
         if !app.world().contains_resource::<Invoked>() {
             app.insert_resource(Invoked::from_env());
+        }
+        if !app.world().contains_resource::<LauncherRun>()
+            && let Some(run) = RunDir::from_env()
+        {
+            app.insert_resource(LauncherRun(run));
         }
         app.add_systems(Startup, launcher_notice)
             .add_systems(
@@ -88,7 +100,7 @@ impl Plugin for LauncherPlugin {
                     .run_if(resource_exists::<SessionRestored>)
                     .run_if(resource_exists::<StartBuildFailure>),
             )
-            .add_systems(Last, signal_ready);
+            .add_systems(Last, signal_ready.before(reason_from_exit));
     }
 
     /// Refuses a run the build cannot take: see [`cli`].
@@ -203,23 +215,27 @@ fn deliver_build_failure(
 
 /// Tells the launcher, if one started this agent, that this build started:
 /// every plugin built, the session restored and the first frame drawn
-/// without an exit request. It also leaves the plugins' options for the
+/// without a plain `AppExit`. An exit asked for with
+/// [`Exit`](super::exit::Exit), which gives its [`ExitReason`] at once, is
+/// deliberate, such as a finished replay or a plugin's refusal to start,
+/// so it counts as started. It also leaves the plugins' options for the
 /// launcher's `rig help`.
 fn signal_ready(
     mut signalled: Local<bool>,
     exits: MessageReader<AppExit>,
-    paths: Option<Res<SessionPaths>>,
+    reason: Option<Res<ExitReason>>,
+    run: Option<Res<LauncherRun>>,
     cli: Option<Res<Cli>>,
     home: Option<Res<RigHome>>,
 ) {
-    if *signalled || !exits.is_empty() {
+    if *signalled || (!exits.is_empty() && reason.is_none()) {
         return;
     }
     *signalled = true;
-    let Some(paths) = paths.filter(|_| executable().is_some()) else {
+    let Some(run) = run else {
         return;
     };
-    if let Err(failure) = std::fs::write(paths.ready(), b"") {
+    if let Err(failure) = std::fs::write(run.0.ready(), b"") {
         error!("could not write the ready file: {failure}");
     }
     let flags = home

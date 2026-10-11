@@ -39,11 +39,14 @@ pub mod env {
     /// [`Home::build_log`](super::Home::build_log). The agent puts it in
     /// its conversation, for the model to read.
     pub const BUILD_FAILURE: &str = "RIG_BUILD_FAILURE";
+    /// The launcher's [`RunDir`](super::RunDir), where the agent says it
+    /// started.
+    pub const RUN: &str = "RIG_RUN";
     /// What the launcher tells the agent it runs, and only that agent: a
     /// command the agent runs, such as a nested agent while working on
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
-    pub const AGENT_ONLY: [&str; 3] = [SESSION, NOTICE, BUILD_FAILURE];
+    pub const AGENT_ONLY: [&str; 4] = [SESSION, NOTICE, BUILD_FAILURE, RUN];
 }
 
 /// At most `count` lines of a build's output from the first one that
@@ -251,6 +254,16 @@ impl Home {
         self.root.join("history.jsonl")
     }
 
+    /// The directory holding every running launcher's [`RunDir`].
+    pub fn runs(&self) -> PathBuf {
+        self.root.join("run")
+    }
+
+    /// The run directory of the launcher with the process id `launcher`.
+    pub fn run(&self, launcher: u32) -> RunDir {
+        RunDir(self.runs().join(launcher.to_string()))
+    }
+
     /// The directory holding every session's directory.
     pub fn sessions(&self) -> PathBuf {
         self.root.join("sessions")
@@ -262,9 +275,46 @@ impl Home {
     }
 }
 
+/// A launcher's own directory, outside every session, which lives while
+/// the launcher runs: the file that tells it the agent started, and the
+/// log of a sessionless run that failed, which outlives the launcher.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RunDir(PathBuf);
+
+impl RunDir {
+    /// The directory the launcher named in [`env::RUN`], or `None` when
+    /// it is unset or empty.
+    pub fn from_env() -> Option<Self> {
+        let path = std::env::var_os(env::RUN).filter(|path| !path.is_empty())?;
+        Some(Self(PathBuf::from(path)))
+    }
+
+    /// The directory itself.
+    pub fn path(&self) -> &Path {
+        &self.0
+    }
+
+    /// Written by the agent once its build started, or exited on purpose
+    /// before that; the launcher then keeps the build.
+    pub fn ready(&self) -> PathBuf {
+        self.0.join("ready")
+    }
+
+    /// The text log of a sessionless run that failed, moved here from its
+    /// session's directory, which is removed.
+    pub fn log(&self) -> PathBuf {
+        self.0.join("agent.log")
+    }
+
+    /// Held by the launcher while it lives.
+    pub fn lock(&self) -> PathBuf {
+        self.0.join("lock")
+    }
+}
+
 /// A session's directory: one append-only log per agent, the listing cache,
-/// the stored images, the effect log and text log, the file that tells the
-/// launcher the agent started, and the lock of the launcher running it.
+/// the stored images, the effect log and text log, and the lock of the
+/// launcher running it.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
@@ -296,12 +346,6 @@ impl SessionDir {
     /// The agent's text log.
     pub fn log(&self) -> PathBuf {
         self.0.join("agent.log")
-    }
-
-    /// Written by the agent once it started; the launcher then keeps the
-    /// build.
-    pub fn ready(&self) -> PathBuf {
-        self.0.join("ready")
     }
 
     /// Held by the launcher running the session while it lives.

@@ -113,7 +113,7 @@ fn on_exit(exit: On<Exit>, mut commands: Commands) {
 }
 
 /// Gives an `AppExit` that came without [`Exit`] its reason.
-fn reason_from_exit(
+pub(super) fn reason_from_exit(
     mut exits: MessageReader<AppExit>,
     reason: Option<Res<ExitReason>>,
     mut commands: Commands,
