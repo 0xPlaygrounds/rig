@@ -99,7 +99,7 @@ impl Plugin for AskUserPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: &[RULE],
-            footprint: Footprint::Exclusive,
+            footprint: Some(Footprint::Exclusive),
         };
         app.init_resource::<AskUserSettings>()
             .init_resource::<Shown>()

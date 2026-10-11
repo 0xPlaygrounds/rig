@@ -12,7 +12,6 @@
 use std::collections::VecDeque;
 use std::fmt;
 
-use rig_ecs::turn::ModelCall;
 use rig_harness::prelude::*;
 
 /// The most deliveries the [`MessageFeed`] keeps.
@@ -164,8 +163,9 @@ fn update_activity(
     mut agents: Query<(&mut Activity, Option<&ActiveTurn>), With<Agent>>,
     turns: Query<&Calls>,
     tools: Query<(&ToolRequest, Has<Waiting>, Has<Holds>, Has<Outcome>), Without<Settled>>,
+    holds: Query<&Holds>,
     waits: Query<&Backoff>,
-    others: Query<&Name, (Without<ModelCall>, Without<ToolRequest>, Without<Backoff>)>,
+    others: Query<&Name, (Without<TurnCall>, Without<ToolRequest>, Without<Settled>)>,
 ) {
     for (mut activity, turn) in &mut agents {
         let Some(turn) = turn else {
@@ -176,7 +176,12 @@ fn update_activity(
             .get(turn.turn())
             .map(|calls| calls.iter().collect())
             .unwrap_or_default();
-        let status = if let Some(wait) = calls.iter().find_map(|call| waits.get(*call).ok()) {
+        // A failed model call waits for its retry, held by its backoff.
+        let backoff = calls
+            .iter()
+            .filter_map(|call| holds.get(*call).ok())
+            .find_map(|held| held.iter().find_map(|hold| waits.get(hold).ok()));
+        let status = if let Some(wait) = backoff {
             Status::Retrying {
                 attempt: wait.attempt,
                 seconds: wait.seconds_left(),

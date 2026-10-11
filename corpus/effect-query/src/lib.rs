@@ -41,7 +41,7 @@ impl Plugin for EffectQueryPlugin {
             .map(|paths| paths.path().join(EFFECT_LOG));
         let read_only = || ToolOptions {
             rules: &[],
-            footprint: Footprint::ReadOnly,
+            footprint: Some(Footprint::ReadOnly),
         };
         app.insert_resource(LogFile(log))
             .add_open_tool(EFFECTS_TOOL, EFFECTS_DESCRIPTION, read_only(), on_effects)

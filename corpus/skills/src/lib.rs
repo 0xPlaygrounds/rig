@@ -44,7 +44,7 @@ impl Plugin for SkillsPlugin {
                          `load_skill` with its name before starting, and read the files it \
                          names with `read`.",
                     ],
-                    footprint: Footprint::ReadOnly,
+                    footprint: Some(Footprint::ReadOnly),
                 },
                 load_skill,
             )

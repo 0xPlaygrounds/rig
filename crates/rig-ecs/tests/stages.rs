@@ -7,33 +7,41 @@
 //! closes its stage, and every way an effect ends is recorded. A reply's
 //! calls start, and their results go back, in the frames they arrive; a
 //! gate sees each call when it is about to run; a refusal answers in call
-//! order and is recorded as one.
+//! order and is recorded as one. A model call that gave up is superseded
+//! on another model and the turn goes on; a retry waits on a hold that an
+//! interrupt takes away; a refused model call ends its turn and keeps the
+//! message. A side call is built from its agent like a turn's and leaves
+//! the conversation alone. A tool's annotations give its footprint, and what it publishes
+//! lands on its call.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
 //! (single-frame chaining, with a plugin effect and with a reply's calls),
 //! 2 (gate when ready), 3 (refusal order), 4 (the conflict rule), 5
-//! (admission), 6 (review) and 10 (fail closed). The rest land with the
-//! kernel's other effect kinds: 8 (re-entry) and 9 (refusal is not
-//! failure) with model calls; 7 (turn endings) and 11 (interrupt) with
-//! turn endings; 12 (restore) with the restore commit, in
-//! `src/restore/tests.rs`.
+//! (admission), 6 (review), 8 (re-entry), 9 (refusal is not failure) and
+//! 10 (fail closed). The rest land with the kernel's other effect kinds: 7
+//! (turn endings) and 11 (interrupt) with turn endings; 12 (restore) with
+//! the restore commit, in `src/restore/tests.rs`.
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
 use bevy_time::TimeUpdateStrategy;
+use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
+use rig_core::completion::ToolAnnotations;
 use rig_core::effect::{Disposition, EffectKind, EffectRecord};
 use rig_core::error::ErrorKind;
 use rig_core::message::Message;
 use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
-use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
+use rig_core::tool::{ExitStatus, ToolContext};
+use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
-use rig_ecs::turn::ModelCall;
+use rig_ecs::turn::RETRY;
 use serde::Deserialize;
 
 /// How long a test waits for a tool to answer.
@@ -682,7 +690,7 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         .resolve("deepseek/deepseek-flash")
         .map(|spec| spec.shared());
     let read_only = ToolOptions {
-        footprint: Footprint::ReadOnly,
+        footprint: Some(Footprint::ReadOnly),
         ..ToolOptions::default()
     };
     app.add_tool_with(Look, read_only)
@@ -750,7 +758,8 @@ fn a_replys_calls_start_and_their_results_go_back_in_the_frames_they_arrive() {
             .map_or(0, |c| c.messages().len());
         let mut calls = world.query_filtered::<(), (With<ToolRequest>, With<Started>)>();
         let running = calls.iter(world).count();
-        let mut models = world.query_filtered::<(), With<ModelCall>>();
+        let mut models =
+            world.query_filtered::<(), (With<TurnCall>, With<Started>, Without<Settled>)>();
         let calling = models.iter(world).count() > 0;
         replied = replied.or((said >= 2).then_some(frame));
         started = started.or((running == 3).then_some(frame));
@@ -929,4 +938,298 @@ fn a_refused_call_answers_in_call_order_and_is_recorded_as_refused() {
         ran.is_some_and(|record| record.disposition == Disposition::Ran && record.outcome.is_ok()),
         "{ran:?}"
     );
+}
+
+/// How each turn ended, in order.
+#[derive(Resource, Default)]
+struct Ended(Vec<TurnOutcome>);
+
+fn log_ended(ended: On<TurnEnded>, mut log: ResMut<Ended>) {
+    log.0.push(ended.outcome.clone());
+}
+
+fn ended(app: &App) -> Vec<TurnOutcome> {
+    app.world().resource::<Ended>().0.clone()
+}
+
+/// `model` as the catalog's DeepSeek model.
+fn connection(model: &MockCompletionModel) -> Option<Connection> {
+    let spec = Catalog::builtin()
+        .resolve("deepseek/deepseek-flash")
+        .ok()?
+        .shared();
+    let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
+    Some(Connection {
+        spec,
+        handler: Handler(ErasedHandler::new(handler)),
+    })
+}
+
+/// An overloaded provider's reply, worth retrying.
+fn overloaded() -> Vec<MockStreamEvent> {
+    let overloaded = ProviderResponseError::without_status("overloaded").with_transient(Some(true));
+    vec![MockStreamEvent::Error(MockError::ProviderResponse(
+        overloaded,
+    ))]
+}
+
+/// The records of the model calls, in settle order.
+fn model_records(app: &App) -> Vec<EffectRecord> {
+    let records = records(app).into_iter();
+    let models = records.filter(|record| matches!(record.kind, EffectKind::Completion { .. }));
+    models.collect()
+}
+
+/// Supersedes each turn call whose retries gave up with the same request
+/// on `to`.
+fn fall_back(
+    to: Option<Connection>,
+) -> impl FnMut(
+    Query<
+        (
+            Entity,
+            &RetryVerdict,
+            &ModelRequest,
+            &Effect,
+            &CallOf,
+            &ForAgent,
+        ),
+        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+    >,
+    Commands,
+) + Send
++ Sync
++ 'static {
+    move |failed, mut commands| {
+        for (call, verdict, request, effect, of, agent) in &failed {
+            let (Verdict::GaveUp(_), Some(to)) = (&verdict.0, to.clone()) else {
+                continue;
+            };
+            commands.spawn((
+                request.clone().on(to),
+                TurnCall,
+                Supersedes(call),
+                CallOf(of.0),
+                ForAgent(agent.0),
+                Effect::child_of(effect.parent),
+            ));
+        }
+    }
+}
+
+#[test]
+fn a_call_that_gave_up_is_superseded_on_another_model_and_the_turn_goes_on() {
+    let mut app = app();
+    let failing = MockCompletionModel::from_stream_turns([overloaded()]);
+    let fallback = MockCompletionModel::from_stream_turns([answer("ok")]);
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        // The retries ran out already: the first failure gives up.
+        .add_observer(|turn: On<Add<TurnOf>>, mut commands: Commands| {
+            let retries = RETRY.max_retries;
+            commands.entity(turn.entity).insert(Recovery { retries });
+        })
+        .add_systems(
+            AgentPass,
+            fall_back(connection(&fallback)).in_set(Stage::Review),
+        );
+    let agent = agent_on(&mut app, &failing);
+    let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
+    assert!(done, "{:?}", notices(&app));
+    let answer = match ended(&app).as_slice() {
+        [TurnOutcome::Answered(message)] => final_answer(message),
+        _ => None,
+    };
+    assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
+    assert_eq!((failing.request_count(), fallback.request_count()), (1, 1));
+    // The failed call never reached the conversation.
+    assert_eq!(conversation(&app, agent).len(), 2);
+    let models: Vec<_> = model_records(&app)
+        .iter()
+        .map(|record| (record.disposition, record.outcome.is_ok()))
+        .collect();
+    assert_eq!(
+        models,
+        [(Disposition::Superseded, false), (Disposition::Ran, true)]
+    );
+}
+
+#[test]
+fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
+    let mut app = app();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    let model = MockCompletionModel::from_stream_turns([overloaded(), answer("late")]);
+    let agent = agent_on(&mut app, &model);
+    let waits = |world: &mut World| world.query::<&Backoff>().iter(world).count();
+    assert!(run_until(&mut app, |world| waits(world) == 1));
+    let world = app.world_mut();
+    let mut held = world.query_filtered::<(), (With<TurnCall>, With<Holds>, Without<Settled>)>();
+    assert_eq!(held.iter(world).count(), 1, "the failed call waits, held");
+    world.trigger(Interrupt { entity: agent });
+    world.flush();
+    assert_eq!(waits(world), 0, "the wait went with the call");
+    // Long past the wait, nothing was sent again.
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::from_secs(120)));
+    app.update();
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(Duration::ZERO));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert_eq!(model.request_count(), 1);
+    let world = app.world_mut();
+    assert_eq!(world.query::<&TurnCall>().iter(world).count(), 0);
+}
+
+#[test]
+fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
+    let mut app = app();
+    let refuse = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
+        for call in &calls {
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::refused("not now"));
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, refuse.in_set(Stage::Gate));
+    let model = MockCompletionModel::from_stream_turns([answer("never")]);
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
+    assert!(done);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(
+        matches!(ended(&app).as_slice(), [TurnOutcome::Failed(why)] if why == "not now"),
+        "{:?}",
+        ended(&app)
+    );
+    assert_eq!(model.request_count(), 0);
+    assert_eq!(conversation(&app, agent).len(), 1, "the message is kept");
+    let models: Vec<_> = model_records(&app)
+        .iter()
+        .map(|record| (record.disposition, record.started_ms.is_none()))
+        .collect();
+    assert_eq!(models, [(Disposition::AnsweredBeforeStart, true)]);
+    let world = app.world_mut();
+    assert_eq!(world.query::<&Backoff>().iter(world).count(), 0);
+}
+
+/// Says it exited cleanly; only reads, as its annotations say.
+struct Probe;
+
+impl Tool for Probe {
+    const NAME: &'static str = "probe";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Probes.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    fn annotations(&self) -> ToolAnnotations {
+        ToolAnnotations::default().with_read_only(true)
+    }
+
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        _: serde_json::Value,
+    ) -> Result<String, ToolExecutionError> {
+        context.insert_result(ExitStatus::Exited(0))?;
+        Ok("probed".to_owned())
+    }
+}
+
+/// What settled tool calls published.
+#[derive(Resource, Default)]
+struct Facts(Vec<ExitStatus>);
+
+#[test]
+fn a_tools_annotations_give_its_footprint_and_what_it_publishes_lands_on_its_call() {
+    let mut app = app();
+    app.add_tool(Probe).init_resource::<Facts>().add_observer(
+        |settled: On<Add<Settled>>, calls: Query<&Published>, mut facts: ResMut<Facts>| {
+            let published = calls.get(settled.entity).ok();
+            let status = published.and_then(|published| published.0.get::<ExitStatus>().ok());
+            facts.0.extend(status.flatten());
+        },
+    );
+    let model = MockCompletionModel::from_stream_turns([reply(&[("probe", "p1")]), answer("done")]);
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let world = app.world_mut();
+    let mut tools = world.query::<(&ToolDef, &Footprint)>();
+    let footprint = tools
+        .iter(world)
+        .find(|(def, _)| def.0.name.as_str() == "probe")
+        .map(|(_, footprint)| *footprint);
+    assert_eq!(footprint, Some(Footprint::ReadOnly));
+    assert_eq!(app.world().resource::<Facts>().0, [ExitStatus::Exited(0)]);
+    let probe = records(&app).into_iter().find(
+        |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "probe"),
+    );
+    let recorded = probe
+        .and_then(|record| record.tool_output)
+        .and_then(|output| output.get::<ExitStatus>().ok().flatten());
+    assert_eq!(recorded, Some(ExitStatus::Exited(0)));
+}
+
+/// The answers of side calls, as they settled.
+#[derive(Resource, Default)]
+struct SideAnswers(Vec<String>);
+
+#[test]
+fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
+    let mut app = app();
+    let ask = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<BuildFrom>)>| {
+        for mut call in &mut calls {
+            let question = Message::user("And in one word?");
+            call.request.chat_history.push(question);
+        }
+    };
+    app.init_resource::<SideAnswers>()
+        .add_systems(AgentPass, ask.in_set(Stage::Prepare))
+        .add_observer(
+            |settled: On<Add<Settled>>,
+             calls: Query<&Outcome, With<BuildFrom>>,
+             mut answers: ResMut<SideAnswers>| {
+                let reply = calls.get(settled.entity).ok().and_then(Outcome::completion);
+                let text = reply.and_then(|reply| final_answer(&reply.message()?));
+                answers.0.extend(text);
+            },
+        );
+    let model = MockCompletionModel::from_stream_turns([answer("hello there"), answer("hi")]);
+    let agent = agent_on(&mut app, &model);
+    let said = |world: &mut World| world.get::<Conversation>(agent).map(|c| c.messages().len());
+    assert!(run_until(&mut app, |world| said(world) == Some(2)));
+    app.world_mut().spawn(BuildFrom(agent));
+    let answered = run_until(&mut app, |world| {
+        !world.resource::<SideAnswers>().0.is_empty()
+    });
+    assert!(answered, "{:?}", notices(&app));
+    assert_eq!(app.world().resource::<SideAnswers>().0, ["hi"]);
+    assert_eq!(
+        conversation(&app, agent).len(),
+        2,
+        "the conversation is left alone"
+    );
+    let requests = model.requests();
+    let (Some(turn), Some(side)) = (requests.first(), requests.get(1)) else {
+        return;
+    };
+    assert_eq!(side.system_instructions(), turn.system_instructions());
+    assert_eq!(side.tools.len(), turn.tools.len());
+    assert_eq!(side.chat_history.len(), 4, "{:?}", side.chat_history);
 }

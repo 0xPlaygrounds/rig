@@ -507,7 +507,7 @@ impl Plugin for SessionReplayPlugin {
                 put_live_tools_back.before(PollCalls),
             ),
         )
-        .add_observer(route_turn)
+        .add_systems(AgentPass, route_calls.in_set(Stage::Prepare))
         .add_observer(next_message);
     }
 
@@ -542,7 +542,7 @@ impl Plugin for SessionReplayPlugin {
             let rules: Vec<&str> = rules.0.iter().map(String::as_str).collect();
             let options = ToolOptions {
                 rules: &rules,
-                footprint,
+                footprint: Some(footprint),
             };
             if let Some(replaying) =
                 world.spawn_tool(definition, ErasedHandler::new(handler), options)
@@ -649,25 +649,34 @@ fn send_next(
     }
 }
 
-/// Sends a turn's model calls to its agent's replay.
-fn route_turn(
-    turn: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
+/// Sends each turn's model call to its agent's replay.
+fn route_calls(
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     agents: Query<(Option<&Connection>, Option<&ModelChoice>)>,
     models: Res<Models>,
     wake: Res<Wake>,
     mut replay: ResMut<Replay>,
-    mut commands: Commands,
 ) {
-    let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
-        return;
-    };
-    let Ok((connection, choice)) = agents.get(agent) else {
-        return;
-    };
-    let Some(scope) = replay.scope_of(agent) else {
-        return;
-    };
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        let Ok((connection, choice)) = agents.get(agent) else {
+            continue;
+        };
+        if let Some(routed) = replayed(&mut replay, agent, (connection, choice), &models, &wake) {
+            call.connection = Some(routed);
+        }
+    }
+}
+
+/// The connection that answers `agent`'s model calls from the recording,
+/// with its own model, `connection`, or else its `choice`'s.
+fn replayed(
+    replay: &mut Replay,
+    agent: Entity,
+    (connection, choice): (Option<&Connection>, Option<&ModelChoice>),
+    models: &Models,
+    wake: &Wake,
+) -> Option<Connection> {
+    let scope = replay.scope_of(agent)?;
     let recorded_key = lock(&replay.script)
         .models
         .get(&scope)
@@ -675,15 +684,9 @@ fn route_turn(
     let (spec, descriptor) = match (connection, choice) {
         (Some(connection), _) => (connection.spec.clone(), connection.handler.0.descriptor()),
         (None, Some(choice)) => {
-            let Ok(found) = models.0.catalog().resolve(&choice.0) else {
-                return;
-            };
-            let spec = found.shared();
-            let Some(key) = recorded_key else {
-                return;
-            };
+            let spec = models.0.catalog().resolve(&choice.0).ok()?.shared();
             let descriptor = HandlerDescriptor {
-                key,
+                key: recorded_key?,
                 family: FamilyDescriptor::Completion {
                     model: ModelRef::new(spec.reference()),
                     capabilities: ProviderCapabilities::default(),
@@ -692,7 +695,7 @@ fn route_turn(
             };
             (spec, descriptor)
         }
-        (None, None) => return,
+        (None, None) => return None,
     };
     let continue_live = replay.flags.continue_live;
     let handler = ReplayModel {
@@ -706,9 +709,7 @@ fn route_turn(
             .then(|| (replay.go_live.clone(), wake.clone())),
     };
     let handler = rig_harness::rig_ecs::effects::Handler(ErasedHandler::new(handler));
-    commands
-        .entity(turn.entity)
-        .insert(Connection { spec, handler });
+    Some(Connection { spec, handler })
 }
 
 /// After each turn of the replayed agent, stops at a divergence or sends

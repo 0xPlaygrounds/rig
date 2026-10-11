@@ -1,7 +1,7 @@
 //! The kernel on its own: a headless app with Bevy's task pools, the agent
 //! runtime and its session journal, and nothing else: no effect log. A
-//! scripted model asks for one tool call, then answers; with a recorder,
-//! every call is recorded; a second app on the same store gets the
+//! scripted model asks for one tool call, then answers; every call is
+//! recorded as it settles, with ids after the ones given; a second app on the same store gets the
 //! conversation back; a failed call is sent again once its backoff passed
 //! on Bevy's clock; a reasoning setting the model does not take is reset.
 //! Only rig-ecs's public API is used, as a third-party plugin would.
@@ -12,7 +12,6 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::effect_log::EffectLogRecorder;
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
@@ -242,12 +241,8 @@ fn a_turn_ends_answered_after_one_tool_round() {
 #[test]
 fn a_new_app_on_the_store_restores_the_conversation() {
     let store = MemoryStore::default();
-    let recorder = EffectLogRecorder::new();
     let last = Some(EffectId::from_raw(41));
-    let turn = one_turn(
-        &store,
-        Effects::recorded_by(Arc::new(recorder.clone()), last),
-    );
+    let turn = one_turn(&store, Effects::continue_after(last));
     assert!(turn.is_some(), "the built-in catalog lists the model");
     let Some((mut app, agent, _, _)) = turn else {
         return;
@@ -255,10 +250,8 @@ fn a_new_app_on_the_store_restores_the_conversation() {
     let said = messages(&app, agent);
     assert_eq!(said.len(), 4, "{said:?}");
     // Both model calls and both tool calls, the refused one too, were
-    // recorded, numbered after the given id: the model calls by the
-    // recorder, the tool calls, effect entities, as they settled.
-    let mut log = recorder.log().records;
-    log.extend(app.world().resource::<Settles>().0.iter().cloned());
+    // recorded as they settled, numbered after the given id.
+    let mut log = app.world().resource::<Settles>().0.clone();
     log.sort_by_key(|record| record.id);
     let recorded: Vec<_> = log
         .iter()
@@ -477,10 +470,10 @@ fn a_disabled_tool_command_or_section_gives_way_to_its_replacement() {
     assert_eq!(said, ["new"]);
 }
 
-/// A `PrepareRequest` observer changes the system prompt, the tools and
-/// the options, the rules of a tool it drops leave the prompt, and a
-/// `Connection` on the turn sends the request to another model than the
-/// agent's.
+/// A Prepare system changes the system prompt, the tools and the options,
+/// and sends the turn's call to another model than the agent's; the rules
+/// of a tool it drops leave the prompt, and a reasoning setting the other
+/// model does not take is left out.
 #[test]
 fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let (mut app, wakes) = kernel(&MemoryStore::default());
@@ -500,18 +493,18 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         MockCompletionModel::from_stream_turns([answer()]),
     );
     let route = connection(&routed);
-    app.add_observer(
-        move |turn: On<bevy_ecs::lifecycle::Add<TurnOf>>, mut commands: Commands| {
-            if let Some(route) = route.clone() {
-                commands.entity(turn.entity).insert(route);
+    let reshape = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(prompt) = call.system_prompt_mut() {
+                prompt.push_str("\n\nPlan only.");
             }
-        },
-    )
-    .add_observer(|mut prepare: On<PrepareRequest>| {
-        prepare.preamble.push_str("\n\nPlan only.");
-        prepare.tools.clear();
-        prepare.options.seed = Some(7);
-    });
+            call.request.tools.clear();
+            call.request.options.seed = Some(7);
+            call.request.options.reasoning = Some(Reasoning::Budget { tokens: 1000 });
+            call.connection = route.clone();
+        }
+    };
+    app.add_systems(AgentPass, reshape.in_set(Stage::Prepare));
     let agent = connected(&mut app, &own);
     assert!(agent.is_some(), "the built-in catalog lists the model");
     let Some(agent) = agent else { return };
@@ -525,9 +518,9 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
         prompt.is_some_and(|prompt| prompt.ends_with("Plan only.") && !prompt.contains("`add`")),
         "{prompt:?}"
     );
-    assert!(
-        sent.is_some_and(|request| request.tools.is_empty() && request.options.seed == Some(7))
-    );
+    assert!(sent.is_some_and(|request| request.tools.is_empty()
+        && request.options.seed == Some(7)
+        && request.options.reasoning.is_none()));
 }
 
 /// The command lines `/echo` ran with.

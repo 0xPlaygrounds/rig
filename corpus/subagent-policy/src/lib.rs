@@ -154,7 +154,7 @@ impl Plugin for SubagentPolicyPlugin {
         }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Footprint::Independent,
+            footprint: Some(Footprint::Independent),
         };
         app.add_open_tool(TASK, TASK_DESCRIPTION, options, on_task)
             .add_command(

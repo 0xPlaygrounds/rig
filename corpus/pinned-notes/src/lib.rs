@@ -54,7 +54,7 @@ impl Plugin for PinnedNotesPlugin {
                         "Use `pin_note` for a decision or constraint that must outlive the \
                          conversation, such as one the user asks you to remember.",
                     ],
-                    footprint: Footprint::Independent,
+                    footprint: Some(Footprint::Independent),
                 },
                 on_pin_note,
             );

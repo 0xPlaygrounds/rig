@@ -68,7 +68,7 @@ impl Plugin for SupervisorPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: &[RULE],
-            footprint: Footprint::Independent,
+            footprint: Some(Footprint::Independent),
         };
         let describe = "Give your verdict on the worker's progress: continue, steer it with a \
                         message, or stop its turn with a reason.";

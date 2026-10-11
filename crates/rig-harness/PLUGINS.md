@@ -7,7 +7,7 @@ the terminal view's panels from `rig_tui`.
 - [A tool](#a-tool) and how its calls look
 - [A slash command](#a-slash-command) and [what the user types](#what-the-user-types)
 - [Saved state: counting every tool call](#saved-state-counting-every-tool-call)
-- [Turn hooks](#turn-hooks), [timers](#timers)
+- [Model requests](#model-requests), [timers](#timers)
 - [Turning off or replacing what another plugin added](#turning-off-or-replacing-what-another-plugin-added)
 - [The status line](#the-status-line)
 - [What agents do and say, in a terminal panel](#what-agents-do-and-say-in-a-terminal-panel)
@@ -81,7 +81,8 @@ holds the warnings logged. A plugin's own Bevy Remote method is sent by
 
 Any `PortableTool` (or `rig_core::tool::Tool`). Its rules go into the
 system prompt of every agent it is offered to; `Footprint::ReadOnly` lets
-its calls run beside others. Blocking work goes in `blocking`, on a thread
+its calls run beside others (a tool whose annotations say it only reads
+is read-only unless `footprint` says otherwise). Blocking work goes in `blocking`, on a thread
 of its own. `args_schema` derives the parameters from the arguments type,
 whose field doc comments describe them.
 
@@ -99,7 +100,7 @@ impl Plugin for WordCountPlugin {
             WordCount,
             ToolOptions {
                 rules: &["Use `word_count` to count a file's words."],
-                footprint: Footprint::ReadOnly,
+                footprint: Some(Footprint::ReadOnly),
             },
         );
     }
@@ -307,36 +308,41 @@ fn count(
 
 A generic type is saved only once registered (`app.register_type::<T>()`).
 
-# Turn hooks
+# Model requests
 
-`PrepareRequest` is triggered on a turn right before its model request,
-with everything it sends, which an observer may change: the system prompt
-(`preamble`), the `messages`, the `tools` offered and the generation
-`options`. The request is checked against the model afterwards. Changing
-the preamble or the tools misses the provider's prompt cache, and a tool
-left out is not offered but still runs if called: `ToolAccess` on the
-agent is the hard limit. Once the observers ran, the tool rules in the
-preamble follow the tools the request carries (a dropped tool's rules
-leave it), and the rest of the preamble is sent as they left it. A `Connection` on a turn sends its requests to
-that model instead of the agent's, and one on a plugin's `ModelRequest`
-call that call; `Models::connect` makes one. `ModelFailed` is triggered on
-a turn whose model call failed for good; an observer that takes the turn
-over sets `handled` and triggers `CallModel` once it is ready. Observers
-of one event run in no set order. The compaction plugin (the
-`rig-compaction` crate) is the full example: it summarizes on
-`PrepareRequest` with a `ModelRequest` call of its own, and on a
-`ModelFailed` overflow. Before any of it, what the user typed can be
+A model call is an effect entity with a `ModelRequest`: the rig-core
+`CompletionRequest` it sends (system prompt as its first message, the
+messages, the tools offered, the options) and the `connection` it goes
+to, else its agent's model; `Models::connect` makes one. A turn's own call
+is a `TurnCall`, whose request the kernel builds from its agent when it
+is admitted. A plugin changes it with a system in the `Prepare` stage,
+which sees each call once (`Added<Admitted>`); Start then fits it to the
+model it goes to (an option that model cannot take is left out, plugin
+edits stay) and makes the tool rules in the prompt follow the tools it
+carries. A tool left out is not offered but still runs if called: a
+`Gate` system refuses a call (`Outcome::refused`), and `ToolAccess` on
+the agent is the hard limit. Changing the system prompt or the tools
+misses the provider's prompt cache. Order between plugins is `.before`
+and `.after` on the systems.
+
+A failed call carries the kernel's `RetryVerdict` (`Retry`, `GaveUp`,
+`Overflow`, `Final`) in `Review`. A plugin that takes the failure over
+spawns a new call that `Supersedes` the failed one (the old one is
+recorded as superseded and never reaches the conversation), or holds it
+(`HoldOf`) while it works, as compaction (the `rig-compaction` crate)
+does to summarize first; otherwise the kernel retries after a `Backoff`
+or ends the turn. A call refused before it was sent ends the turn and
+keeps the user's message. Before any of it, what the user typed can be
 changed as it is delivered ([What the user types](#what-the-user-types)).
-A part of
-the system prompt that does not change from request to request is a
-`PromptSection` entity, `PromptSection::new(order, tag, text)`, in every
-agent's prompt, or with a `SectionOf(agent)` in that agent's alone,
-despawned with it.
+A part of the system prompt that does not change from request to request
+is a `PromptSection` entity, `PromptSection::new(order, tag, text)`, in
+every agent's prompt, or with a `SectionOf(agent)` in that agent's
+alone, despawned with it.
 
 ```rust,no_run
 use rig_harness::prelude::*;
 
-/// The model a turn falls back to when its own fails for good.
+/// The model a turn falls back to when its own gave up.
 const FALLBACK: &str = "deepseek/deepseek-flash";
 
 /// On an agent that only plans.
@@ -344,51 +350,75 @@ const FALLBACK: &str = "deepseek/deepseek-flash";
 pub struct PlanMode;
 
 #[derive(Default)]
-pub struct TurnHooksPlugin;
+pub struct ModelRequestsPlugin;
 
-impl Plugin for TurnHooksPlugin {
+impl Plugin for ModelRequestsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_observer(add_the_time)
-            .add_observer(plan_only)
-            .add_observer(fall_back);
+        app.add_systems(
+            AgentPass,
+            (
+                (add_the_time, plan_only).in_set(Stage::Prepare),
+                fall_back.in_set(Stage::Review),
+            ),
+        );
     }
 }
 
-/// Every request tells the model how long the agent has run, at its end,
-/// where the prompt cache is not disturbed.
-fn add_the_time(mut prepare: On<PrepareRequest>, time: Res<Time<Real>>) {
+/// The turns' calls, as Prepare sees each once.
+type NewTurnCalls<'w, 's> =
+    Query<'w, 's, (&'static mut ModelRequest, &'static ForAgent), (Added<Admitted>, With<TurnCall>)>;
+
+/// Every turn's request tells the model how long the agent has run, at
+/// its end, where the prompt cache is not disturbed.
+fn add_the_time(mut calls: NewTurnCalls, time: Res<Time<Real>>) {
     let note = format!("(The agent has run for {} s.)", time.elapsed().as_secs());
-    if let Some(message::Message::User { content }) = prepare.messages.last_mut() {
-        content.push(UserContent::text(note));
+    for (mut call, _) in &mut calls {
+        if let Some(message::Message::User { content }) = call.request.chat_history.last_mut() {
+            content.push(UserContent::text(note.clone()));
+        }
     }
 }
 
 /// An agent in plan mode is offered only the tools that read, and told so.
-fn plan_only(mut prepare: On<PrepareRequest>, planning: Query<(), With<PlanMode>>) {
-    if planning.contains(prepare.agent) {
-        prepare.tools.retain(|tool| matches!(tool.name.as_str(), "read" | "search"));
-        prepare.preamble.push_str("\n\nPlan only: change nothing yet.");
+fn plan_only(mut calls: NewTurnCalls, planning: Query<(), With<PlanMode>>) {
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        if planning.contains(agent) {
+            let reads = |name: &str| matches!(name, "read" | "search");
+            call.request.tools.retain(|tool| reads(tool.name.as_str()));
+            if let Some(prompt) = call.system_prompt_mut() {
+                prompt.push_str("\n\nPlan only: change nothing yet.");
+            }
+        }
     }
 }
 
-/// A model call that failed for good, other than on a conversation too
-/// long, is sent again once, on the fallback model, for this turn only.
+/// A turn's call whose retries gave up is sent again at once, on the
+/// fallback model, unless it went there already.
 fn fall_back(
-    mut failed: On<ModelFailed>,
-    routed: Query<(), With<Connection>>,
+    failed: Query<
+        (Entity, &RetryVerdict, &ModelRequest, &Effect, &CallOf, &ForAgent),
+        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+    >,
     models: Res<Models>,
     mut commands: Commands,
 ) {
-    let turn = failed.entity;
-    if failed.handled || failed.report.is_context_overflow() || routed.contains(turn) {
-        return;
+    for (call, verdict, request, effect, of, agent) in &failed {
+        let retried = request.connection.is_some();
+        if !matches!(verdict.0, Verdict::GaveUp(_)) || retried {
+            continue;
+        }
+        let Ok(fallback) = models.connect(FALLBACK) else {
+            continue;
+        };
+        commands.spawn((
+            request.clone().on(fallback),
+            TurnCall,
+            Supersedes(call),
+            CallOf(of.0),
+            ForAgent(agent.0),
+            Effect::child_of(effect.parent),
+        ));
     }
-    let Ok(fallback) = models.connect(FALLBACK) else {
-        return;
-    };
-    failed.handled = true;
-    commands.entity(turn).insert(fallback);
-    commands.trigger(CallModel { entity: turn });
 }
 ```
 

@@ -9,7 +9,7 @@ description = "Plugin corpus: 10. Secret redaction"
 workspace = true
 
 [dependencies]
-# The component hook a model reply is redacted in.
+# Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 # Warnings about what could not be redacted.
 bevy_log = { workspace = true }
@@ -20,8 +20,6 @@ rig-cassette = { workspace = true }
 rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
-# The coding tools, registered again behind the placeholder swap.
-rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 

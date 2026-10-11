@@ -37,9 +37,9 @@ impl Plugin for ScaffoldPlugin {
         // - a command's event:  trigger it from the command, commands.trigger(MyEvent { .. })
         // - a tool:             app.add_tool(MyTool), a `PortableTool`; one found at run time
         //                       with app.add_open_tool or world.spawn_tool ("A tool")
-        // - each model request: an observer of `On<PrepareRequest>` changes its preamble,
-        //                       tools or options; a `Connection` on a turn or call picks
-        //                       another model ("Turn hooks")
+        // - each model request: a system in `Stage::Prepare` edits a turn's `ModelRequest`
+        //                       (prompt, tools, options, the model it goes to); one in
+        //                       `Stage::Review` takes a failed call over ("Model requests")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
         // - what the user types: an observer of `On<Deliver>` may change it first
         //                       ("What the user types")

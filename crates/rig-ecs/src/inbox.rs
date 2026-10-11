@@ -1,8 +1,8 @@
 //! Delivering messages to agents. [`Deliver`] is the one way a message
 //! reaches an agent's conversation, whoever sends it: the user typing, an
-//! agent reporting, a plugin. An idle agent starts a turn with it, at the
-//! end of the frame, so every message that reaches it in the same frame
-//! goes to the model in that turn's first call. A busy one keeps it in its
+//! agent reporting, a plugin. An idle agent starts a turn with it, and
+//! every message that reaches it before that turn's first model call is
+//! built, at the next pass of the stages, goes to the model in that call. A busy one keeps it in its
 //! [`Inbox`]: a [`DeliveryMode::Steer`] message goes to the model with the
 //! turn's next call, after the tool results it waits for; the
 //! [`DeliveryMode::Queue`] ones carry the turn on together, as one step,
@@ -38,12 +38,13 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde::{Deserialize, Serialize};
 
-use super::agent::{ActiveTurn, Agent, AgentId, Conversation, Halt, Notice, TurnOf};
+use super::agent::{ActiveTurn, Agent, AgentId, CallOf, Conversation, Halt, Notice, TurnOf};
 use super::calls::Wake;
 use super::commands::RunCommand;
 use super::journal::Commit;
 use super::model::Connection;
-use super::turn::{CallModel, Exiting};
+use super::stage::ForAgent;
+use super::turn::{Exiting, TurnCall};
 
 /// The id of a request to an agent, which the reply to it names, such as
 /// the tool call that asked. Unique per sender, so it doubles as an
@@ -269,9 +270,8 @@ impl Inbox {
     }
 }
 
-/// On a turn that has not called its model yet: it does at the end of the
-/// frame ([`start_turns`]), and what reaches its agent until then goes
-/// with that first call.
+/// On a turn whose first model call is not built yet: what reaches its
+/// agent until then goes with that call.
 #[derive(Component, Debug)]
 pub(crate) struct Starting;
 
@@ -357,18 +357,10 @@ fn on_deliver(
         commit.halt(agent, conversation, Halt::Kept);
         return;
     }
-    commands.spawn((TurnOf(agent), Starting));
+    let turn = commands.spawn((TurnOf(agent), Starting)).id();
+    commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
     // The frame that starts it may have run its last systems already.
     wake.wake();
-}
-
-/// Calls the model for each turn [`Starting`] this frame, once every
-/// message of the frame reached its agent.
-pub(crate) fn start_turns(turns: Query<Entity, With<Starting>>, mut commands: Commands) {
-    for turn in &turns {
-        commands.entity(turn).remove::<Starting>();
-        commands.trigger(CallModel { entity: turn });
-    }
 }
 
 /// Hands back what the user typed that a turn that just ended did not

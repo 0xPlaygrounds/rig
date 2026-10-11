@@ -45,7 +45,7 @@ impl Plugin for CronPlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: RULES,
-            footprint: Footprint::Independent,
+            footprint: Some(Footprint::Independent),
         };
         app.init_resource::<CronJobs>()
             .init_resource::<Clock>()

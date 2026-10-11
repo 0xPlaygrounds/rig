@@ -115,7 +115,7 @@ impl Plugin for ToolSearchPlugin {
                         "Some tools are deferred: not listed until found. When no listed tool \
                          fits, call `tool_search` with a few keywords before giving up.",
                     ],
-                    footprint: Footprint::ReadOnly,
+                    footprint: Some(Footprint::ReadOnly),
                 },
                 search,
             )

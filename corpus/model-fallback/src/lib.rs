@@ -3,9 +3,13 @@
 //! When a model call fails for good with a rate limit, an overload, a
 //! server error or a refused key, the turn goes on with the next model of
 //! the chain that is not cooling down, and the model that failed is skipped
-//! for the cooldown; after it, new turns go back to it. A context overflow
-//! is left to compaction, and a failure another plugin took over is left
-//! to it. The chain is `RIG_HOME/fallback.json`:
+//! for the cooldown; after it, new turns go back to it. A Review system
+//! reads the kernel's [`RetryVerdict`] (the retries gave up, or a retry
+//! would not help) and supersedes the call with the same request on the
+//! next model; a Prepare system sends a call bound for a cooling model to
+//! the chain instead. A context overflow is left to compaction, and a
+//! failure another plugin took over is left to it. The chain is
+//! `RIG_HOME/fallback.json`:
 //!
 //! ```json
 //! { "chain": ["anthropic/claude-opus-4-5", "openai/gpt-5"], "cooldown": "5m" }
@@ -16,7 +20,6 @@ use std::collections::HashMap;
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_ecs::turn::ModelCall;
 use serde::Deserialize;
 
 #[cfg(test)]
@@ -54,11 +57,6 @@ pub struct Cooling(pub HashMap<String, Duration>);
 #[derive(Resource, Default, Clone)]
 pub struct Connected(pub HashMap<String, Connection>);
 
-/// Each agent's last failed model call of its turn, and the model it was
-/// sent to; a reply clears it.
-#[derive(Resource, Default)]
-struct LastFailure(HashMap<Entity, (String, ErrorReport)>);
-
 #[derive(Default)]
 pub struct ModelFallbackPlugin;
 
@@ -67,12 +65,14 @@ impl Plugin for ModelFallbackPlugin {
         app.init_resource::<FallbackChain>()
             .init_resource::<Cooling>()
             .init_resource::<Connected>()
-            .init_resource::<LastFailure>()
             .add_systems(Startup, read_config)
-            .add_observer(route)
-            .add_observer(remember)
-            .add_observer(fall_back)
-            .add_observer(fall_back_after_retries);
+            .add_systems(
+                AgentPass,
+                (
+                    route.in_set(Stage::Prepare),
+                    fall_back.in_set(Stage::Review),
+                ),
+            );
     }
 }
 
@@ -191,114 +191,70 @@ fn switched(failed: &str, report: &ErrorReport, next: &Connection) -> String {
     format!("{} {why}; continuing on {next}", short(failed))
 }
 
-/// A new turn of an agent whose model cools down goes to the chain's first
-/// model that does not, unless the turn has a model of its own.
+/// A turn's call bound for a model that cools down goes to the chain's
+/// first model that does not.
 fn route(
-    added: On<Add<TurnOf>>,
-    turns: Query<(&TurnOf, Has<Connection>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     agents: Query<&Connection, With<Agent>>,
     mut chain: Chain,
-    mut commands: Commands,
 ) {
-    let turn = added.entity;
-    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
-        return;
-    };
-    let Ok(own) = agents.get(agent) else {
-        return;
-    };
-    if routed || !chain.is_cooling(&own.spec.reference()) {
-        return;
-    }
-    if let Some(next) = chain.next() {
-        commands.entity(turn).insert(next);
-    }
-}
-
-/// Remembers each turn's last failed model call and its model, for the
-/// failures the kernel ends a turn for without [`ModelFailed`].
-fn remember(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&CallOf, &Done<ModelReply>), With<ModelCall>>,
-    turns: Query<(&TurnOf, Option<&Connection>)>,
-    agents: Query<&Connection, With<Agent>>,
-    mut last: ResMut<LastFailure>,
-) {
-    let Ok((&CallOf(turn), Done(reply))) = calls.get(done.entity) else {
-        return;
-    };
-    let Ok((&TurnOf(agent), routed)) = turns.get(turn) else {
-        return;
-    };
-    match reply {
-        Ok(_) => {
-            last.0.remove(&agent);
-        }
-        Err(report) => {
-            if let Some(model) = routed.or(agents.get(agent).ok()) {
-                last.0
-                    .insert(agent, (model.spec.reference(), report.clone()));
-            }
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        let bound = call.connection.as_ref().or(agents.get(agent).ok());
+        let Some(bound) = bound.map(|connection| connection.spec.reference()) else {
+            continue;
+        };
+        if chain.is_cooling(&bound)
+            && let Some(next) = chain.next()
+        {
+            call.connection = Some(next);
         }
     }
 }
 
-/// A call that failed in a way a retry does not fix, such as a refused key,
-/// is sent again at once on the next model of the chain, in the same turn.
+/// A turn's call that failed for good, its retries spent or not worth
+/// trying, is sent again at once on the next model of the chain, in the
+/// same turn: a new call with the same request supersedes it.
 fn fall_back(
-    mut failed: On<ModelFailed>,
-    turns: Query<Option<&Connection>, With<TurnOf>>,
+    failed: Query<
+        (
+            Entity,
+            &RetryVerdict,
+            &Outcome,
+            &ModelRequest,
+            &Effect,
+            &CallOf,
+            &ForAgent,
+        ),
+        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+    >,
     agents: Query<&Connection, With<Agent>>,
     mut chain: Chain,
-    mut last: ResMut<LastFailure>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    let (turn, agent) = (failed.entity, failed.agent);
-    if failed.handled || !falls_back(&failed.report) {
-        return;
+    for (call, verdict, outcome, request, effect, of, &ForAgent(agent)) in &failed {
+        let Err(report) = &outcome.0 else {
+            continue;
+        };
+        if !matches!(verdict.0, Verdict::GaveUp(_) | Verdict::Final) || !falls_back(report) {
+            continue;
+        }
+        let Some(model) = request.connection.as_ref().or(agents.get(agent).ok()) else {
+            continue;
+        };
+        let model = model.spec.reference();
+        chain.cool(&model);
+        let Some(next) = chain.next() else {
+            continue;
+        };
+        notices.write(Notice::info(agent, switched(&model, report, &next)));
+        commands.spawn((
+            request.clone().on(next),
+            TurnCall,
+            Supersedes(call),
+            CallOf(of.0),
+            ForAgent(agent),
+            Effect::child_of(effect.parent),
+        ));
     }
-    let routed = turns.get(turn).ok().flatten();
-    let Some(model) = routed.or(agents.get(agent).ok()) else {
-        return;
-    };
-    let model = model.spec.reference();
-    chain.cool(&model);
-    let Some(next) = chain.next() else {
-        return;
-    };
-    last.0.remove(&agent);
-    failed.handled = true;
-    notices.write(Notice::info(agent, switched(&model, &failed.report, &next)));
-    commands.entity(turn).insert(next);
-    commands.trigger(CallModel { entity: turn });
-}
-
-/// A call that failed as long as the retries lasted (a rate limit, an
-/// overload, a server error) ends the turn without [`ModelFailed`]; the
-/// user's message is kept, so the agent retries it, and [`route`] sends
-/// the new turn to the next model of the chain.
-fn fall_back_after_retries(
-    ended: On<TurnEnded>,
-    agents: Query<Has<ActiveTurn>, With<Agent>>,
-    mut chain: Chain,
-    mut last: ResMut<LastFailure>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let agent = ended.entity;
-    let failure = last.0.remove(&agent);
-    let (TurnOutcome::Failed(_), Some((model, report))) = (&ended.outcome, failure) else {
-        return;
-    };
-    // A failure a retry does not fix went to `ModelFailed`.
-    if !report.is_retryable() || !falls_back(&report) || agents.get(agent).unwrap_or(true) {
-        return;
-    }
-    chain.cool(&model);
-    let Some(next) = chain.next() else {
-        return;
-    };
-    notices.write(Notice::info(agent, switched(&model, &report, &next)));
-    commands.trigger(Retry { entity: agent });
 }

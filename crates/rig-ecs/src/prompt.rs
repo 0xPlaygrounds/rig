@@ -108,8 +108,7 @@ pub(crate) fn system_prompt<'a>(
 }
 
 /// `preamble` with its tool rules `written` swapped for `rules`, those of
-/// the tools the request carries once `PrepareRequest` observers changed
-/// it: taken out with the blank line before them, or appended to a
+/// the tools the request carries once Prepare systems changed it: taken out with the blank line before them, or appended to a
 /// preamble that had none. The rest of the preamble is left as it is.
 pub(crate) fn swap_tool_rules(mut preamble: String, written: &str, rules: &str) -> String {
     if written.is_empty() {

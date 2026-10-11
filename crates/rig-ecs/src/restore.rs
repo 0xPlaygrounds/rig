@@ -33,14 +33,17 @@ use serde::Deserialize;
 use serde::de::{DeserializeSeed, IgnoredAny};
 use serde_json::Value;
 
-use super::agent::{Agent, AgentId, Condensed, Conversation, Notice, SpawnedBy, Turn, TurnOf};
+use super::agent::{
+    Agent, AgentId, CallOf, Condensed, Conversation, Notice, SpawnedBy, Turn, TurnOf,
+};
 use super::effects::Effects;
 use super::journal::{
     AgentLog, Commit, Header, Line, Record, ReflectSaved, SESSION, SessionLog, SessionRestored,
     SessionStore,
 };
+use super::stage::ForAgent;
 use super::tools::{Footprint, Serves, ToolDef};
-use super::turn::{CallModel, spawn_reply};
+use super::turn::{TurnCall, spawn_reply};
 
 /// The result of a call that may change something and was running when
 /// the session stopped.
@@ -429,7 +432,7 @@ fn settle(
         spawn_reply(&mut commands, (agent, turn), reruns, reply);
     } else if conversation.awaits_model() {
         let turn = commands.spawn(TurnOf(agent)).id();
-        commands.trigger(CallModel { entity: turn });
+        commands.spawn((TurnCall, CallOf(turn), ForAgent(agent)));
     }
 }
 

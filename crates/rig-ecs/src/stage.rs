@@ -54,22 +54,28 @@ use bevy_log::{info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
+use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
     self, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::serve::{Origin, Recorder, cancelled};
+use rig_core::serve::{Origin, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{AgentId, Notice};
 use super::calls::{Running, Wake, arrive};
-use super::effects::{Effects, Handler};
+use super::effects::{Effects, Handler, Ran};
 use super::journal::SessionLog;
 use super::tools::{
-    CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, tool_kind,
+    CallHandler, Footprint, Published, ToolRequest, ToolStart, ToolStarts, complete_calls,
+    tool_kind,
 };
-use super::turn::{commit_replies, keeps_settled, wait_in_order};
+use super::turn::{
+    ModelRequest, ModelStart, ModelStarts, TurnCall, back_off, build_requests, commit_replies,
+    commit_turn_calls, feed, judge_failures, keeps_settled, model_pool, stream_reply,
+    wait_in_order,
+};
 
 /// One pass over the stages. Plugins add their systems to it in a
 /// [`Stage`]: `app.add_systems(AgentPass, gate.in_set(Stage::Gate))`.
@@ -86,20 +92,23 @@ pub struct AgentLoop;
 /// The stages of a pass, run in this order.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Stage {
-    /// The kernel: finished tasks become their effects' [`Outcome`]s.
+    /// The kernel: finished tasks become their effects' [`Outcome`]s, and
+    /// a model call whose handler failed gets its
+    /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, replace (`insert`) or hold an [`Outcome`]
     /// ([`Unreviewed`]).
     Review,
-    /// The kernel settles the answered effects nothing holds, and the
-    /// superseded ones, and writes their [`Recorded`]; once every call of
-    /// a model's reply settled, it commits their results and calls the
-    /// model again.
+    /// The kernel waits out a failed turn call's retry, settles the
+    /// answered effects nothing holds, and the superseded ones, and writes
+    /// their [`Recorded`]; it commits a turn call's reply, and once every
+    /// call of a reply settled, their results, and calls the model again.
     Commit,
     /// The kernel admits the effects spawned since the last pass, gives
-    /// each tool call its tool's [`Footprint`] and [`CallHandler`], and
-    /// marks the calls of a reply that must wait for an earlier one
-    /// [`Waiting`].
+    /// each tool call its tool's [`Footprint`] and [`CallHandler`], builds
+    /// the request of a [`TurnCall`] or
+    /// [`BuildFrom`](super::turn::BuildFrom), and marks the calls of a
+    /// reply that must wait for an earlier one [`Waiting`].
     Admit,
     /// Plugins edit the requests admitted this pass (`Added<Admitted>`).
     Prepare,
@@ -107,9 +116,9 @@ pub enum Stage {
     /// start ([`Undecided`]).
     Gate,
     /// The kernel starts what is admitted, unheld and unanswered: it runs
-    /// handlers, refuses a tool call its agent cannot make, and opens an
-    /// open tool's call. An effect it does not run stays open,
-    /// [`Started`], until answered.
+    /// handlers, fits a model call to its model and sends it, refuses a
+    /// tool call its agent cannot make, and opens an open tool's call. An
+    /// effect it does not run stays open, [`Started`], until answered.
     Start,
 }
 
@@ -181,6 +190,11 @@ impl Effect {
     pub fn id(&self) -> EffectId {
         self.id
     }
+
+    /// Whether its first answer came from its handler, which ran.
+    pub(crate) fn ran(&self) -> bool {
+        self.answered == Some(Disposition::Ran)
+    }
 }
 
 /// A plugin's rig-core effect: the kernel dispatches `kind` to `handler` at
@@ -238,6 +252,14 @@ impl Outcome {
     /// refusal reaches the model as the tool's refusal.
     pub fn refused(why: impl Into<String>) -> Self {
         Self(Err(ErrorReport::new(ErrorKind::Denied, why).refused()))
+    }
+
+    /// The response a model call answered with, if it did.
+    pub fn completion(&self) -> Option<&CompletionResponse> {
+        match &self.0 {
+            Ok(effect::Outcome::Completion(response)) => Some(response),
+            _ => None,
+        }
     }
 
     /// What a tool call answered this way returns to the model: its
@@ -426,9 +448,11 @@ pub(crate) fn build(app: &mut App) {
         .add_systems(
             AgentPass,
             (
-                arrive.in_set(Stage::Arrive),
-                (settle, commit_replies).chain().in_set(Stage::Commit),
-                (complete_calls, admit, wait_in_order)
+                (arrive, judge_failures).chain().in_set(Stage::Arrive),
+                (back_off, settle, commit_turn_calls, commit_replies)
+                    .chain()
+                    .in_set(Stage::Commit),
+                (complete_calls, admit, build_requests, wait_in_order)
                     .chain()
                     .in_set(Stage::Admit),
                 answer_unprepared.in_set(Enter(Stage::Gate)),
@@ -591,7 +615,7 @@ fn fail_closed(error: BevyError, context: ErrorContext) {
 
 /// A system that failed in a stage.
 #[derive(Clone)]
-struct Failure {
+pub(crate) struct Failure {
     stage: Stage,
     /// Which system, as Bevy names it: "System `name` failed".
     system: String,
@@ -600,7 +624,7 @@ struct Failure {
 }
 
 /// The first system that failed in `stage` this pass.
-fn failed_in(stage: Stage) -> Option<Failure> {
+pub(crate) fn failed_in(stage: Stage) -> Option<Failure> {
     FAILED.with_borrow(|failed| failed.iter().find(|failed| failed.stage == stage).cloned())
 }
 
@@ -733,12 +757,12 @@ fn answer_unprepared(
 
 /// Starts every admitted, unheld, unanswered effect, unless a Gate system
 /// failed this pass: an effect request with a handler is dispatched on the
-/// kernel's recorded path, a tool call as [`ToolStarts`] says, and any
-/// other effect stays open.
+/// kernel's recorded path, a model call and a tool call as [`ModelStarts`]
+/// and [`ToolStarts`] say, and any other effect stays open.
 fn start(
-    ready: Query<StartItem, Undecided>,
+    mut ready: Query<StartItem, Undecided>,
     agents: Query<&AgentId>,
-    tools: ToolStarts,
+    (tools, models): (ToolStarts, ModelStarts),
     effects: Res<Effects>,
     wake: Res<Wake>,
     log: Res<SessionLog>,
@@ -762,16 +786,38 @@ fn start(
     if changes {
         log.flush();
     }
-    for item in &ready {
+    for item in &mut ready {
         let (entity, effect) = (item.entity, item.effect);
         let agent = item.agent.map(|agent| agent.0);
         let caller = agent.and_then(|agent| agents.get(agent).ok());
+        let scope = caller.map(|id| id.0.as_str()).unwrap_or_default();
         let origin = Origin {
             parent: effect.parent,
             scope: caller.map(|id| Arc::from(id.0.as_str())),
             purpose: effect.purpose.clone(),
         };
         let mut started = commands.entity(entity);
+        if let Some(mut model) = item.model {
+            let (handler, kind, reference) = match models.start(&mut model, agent) {
+                ModelStart::Run(handler, kind, reference) => (handler, kind, reference),
+                ModelStart::Refused(report) => {
+                    started.try_insert_if_new(Outcome(Err(report)));
+                    continue;
+                }
+            };
+            let span =
+                info_span!("model_call", agent = scope, effect = %effect.id, model = reference);
+            let (sender, feed) = item.turn_call.then(feed).unzip();
+            let wake_up = wake.clone();
+            let consume = move |reply| stream_reply(reply, sender, wake_up);
+            let work = effects.run(effect.id, origin, handler.0, kind, consume);
+            let running = Running::finishing(model_pool(), &wake, work.instrument(span), answer);
+            started.try_insert((Started { at }, running));
+            if let Some(feed) = feed {
+                started.try_insert(feed);
+            }
+            continue;
+        }
         let (handler, kind) = match (item.request, item.tool) {
             (
                 Some(EffectRequest {
@@ -807,24 +853,38 @@ fn start(
         };
         let span = match &kind {
             EffectKind::ToolCall { name, .. } => {
-                let agent = origin.scope.as_deref().unwrap_or_default();
-                info_span!("tool_call", agent, tool = name.as_str(), parent = ?effect.parent)
+                info_span!("tool_call", agent = scope, tool = name.as_str(), parent = ?effect.parent)
             }
             other => info_span!("effect", kind = other.name()),
         };
-        let work = effects.run(effect.id, origin, handler.0, kind);
-        let running = Running::answering(effect_pool(), &wake, work.instrument(span));
+        let work = effects.run(effect.id, origin, handler.0, kind, Reply::into_outcome);
+        let running = Running::finishing(effect_pool(), &wake, work.instrument(span), answer);
         started.try_insert((Started { at }, running));
     }
 }
 
+/// Puts what a handler's run left on its effect, unless it was answered
+/// meanwhile: what a tool published, then the outcome.
+fn answer(mut entity: EntityWorldMut, (outcome, published): Ran) {
+    if entity.contains::<Outcome>() {
+        return;
+    }
+    if let Some(published) = published {
+        entity.insert(Published(published));
+    }
+    entity.insert(Outcome(outcome));
+}
+
 /// An effect as Start finds it.
 #[derive(QueryData)]
+#[query_data(mutable)]
 struct StartItem {
     entity: Entity,
     effect: &'static Effect,
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
+    model: Option<&'static mut ModelRequest>,
+    turn_call: Has<TurnCall>,
     handler: Option<&'static CallHandler>,
     footprint: Option<&'static Footprint>,
     agent: Option<&'static ForAgent>,
@@ -991,6 +1051,17 @@ fn kind_of(world: &World, entity: Entity) -> Option<(HandlerKey, EffectKind)> {
             .get::<CallHandler>(entity)
             .map_or_else(|| tool_key(name), |handler| handler.0.0.descriptor().key);
         return Some((key, tool_kind(call)));
+    }
+    if let Some(model) = world.get::<ModelRequest>(entity) {
+        let key = model.connection.as_ref().map_or_else(
+            || HandlerKey::new("completion"),
+            |connection| connection.handler.0.descriptor().key,
+        );
+        let kind = EffectKind::Completion {
+            request: model.request.clone(),
+            stream: true,
+        };
+        return Some((key, kind));
     }
     let request = world.get::<EffectRequest>(entity)?;
     let key = match &request.handler {

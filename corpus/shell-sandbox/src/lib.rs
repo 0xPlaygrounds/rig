@@ -83,7 +83,7 @@ impl Plugin for ShellSandboxPlugin {
         let rules: Vec<&str> = Shell::RULES.iter().copied().chain([SANDBOX_RULE]).collect();
         let options = ToolOptions {
             rules: &rules,
-            footprint: Footprint::Exclusive,
+            footprint: Some(Footprint::Exclusive),
         };
         app.add_open_tool(SHELL, &description, options, run_shell);
     }

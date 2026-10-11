@@ -33,7 +33,7 @@ pub(crate) fn add(app: &mut App) {
             ToolOptions {
                 rules: &[],
                 // Never run again after the restart it causes.
-                footprint: Footprint::Independent,
+                footprint: Some(Footprint::Independent),
             },
             on_reload_tool,
         );

@@ -23,6 +23,9 @@ use crate::journal::{
 };
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::Restored;
+use crate::stage::{AgentPass, Stage, Unreviewed};
+use crate::turn::{RetryVerdict, TurnCall};
+use rig_core::error::retry::Verdict;
 
 /// An app on `store`, after its first frame restored the session. Like
 /// the harness, it only warns about a command on a despawned entity. The
@@ -185,10 +188,17 @@ fn a_restored_model_that_cannot_be_used_is_reported_once() {
 #[test]
 fn every_change_the_log_records_is_committed() {
     let mut app = app(&MemoryStore::default());
+    // No model answers it, and a reviewer takes that as final, so the
+    // message is taken out; a note is left halted.
+    let finally = |calls: Query<Entity, (Unreviewed, With<TurnCall>)>, mut commands: Commands| {
+        for call in &calls {
+            commands.entity(call).insert(RetryVerdict(Verdict::Final));
+        }
+    };
+    app.add_systems(AgentPass, finally.in_set(Stage::Review));
     let agent = first_agent(&mut app);
     assert!(agent.is_some());
     let Some(agent) = agent else { return };
-    // No model answers it, so it is taken out; a note is left halted.
     let hello = Deliver::new(agent, "hello", DeliveryMode::Steer);
     app.world_mut().trigger(hello);
     app.update();

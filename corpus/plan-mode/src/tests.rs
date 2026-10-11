@@ -102,6 +102,7 @@ fn a_plan_is_made_without_changes_then_executed_with_the_tools_back() {
     assert!(told(0).contains("Plan mode: you may read"));
     let refused = format!("{:?}", requests.get(1).map(|r| &r.chat_history));
     assert!(refused.contains("is_error: true"), "{refused}");
+    assert!(refused.contains(REFUSED), "{refused}");
     assert!(!target.exists());
     let plan = std::fs::read_to_string(dir.join(".rig").join("plan.md")).unwrap_or_default();
     assert_eq!(plan, "Plan: 1. create x.txt");

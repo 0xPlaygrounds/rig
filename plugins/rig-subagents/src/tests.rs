@@ -170,9 +170,16 @@ fn peers_agree_and_the_one_that_waited_reports_its_later_answer_with_the_batch()
 #[test]
 fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_interrupted() {
     let store = MemoryStore::default();
-    // Its turns are never read: the session stops before a reply arrives.
+    // Its turns are never read: every model call is held, and the session
+    // stops before any is sent.
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let mut session = Session::new(&store, Some(&model));
+    let hold = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
+        for call in &calls {
+            commands.spawn(HoldOf(call));
+        }
+    };
+    session.app.add_systems(AgentPass, hold.in_set(Stage::Gate));
     let asked = Message::user("Find a name.");
     commit_message(session.app.world_mut(), session.parent, asked);
     let (a, b, c) = (session.task("ta"), session.task("tb"), session.task("tc"));

@@ -1,12 +1,10 @@
 //! The effect log: every model and tool call the agents make, recorded
 //! with rig-core's effect types into the session directory's
-//! [`EFFECT_LOG`], so rig-cassette's replayer replays the session: model
-//! calls by the recorder, and effect entities, such as tool calls, by
-//! their [`Recorded`] records. Its header describes the tools and the
-//! models the agents connect to. Ids continue after the highest one the
-//! log already holds, so a resumed session keeps adding to the same log.
-
-use std::sync::Arc;
+//! [`EFFECT_LOG`], so rig-cassette's replayer replays the session: each
+//! effect's [`Recorded`] record as it settles. Its header describes the
+//! tools and the models the agents connect to. Ids continue after the
+//! highest one the log already holds, so a resumed session keeps adding to
+//! the same log.
 
 use bevy_log::error;
 use rig_cassette::effect_log::{EffectLogRecorder, jsonl};
@@ -33,7 +31,7 @@ impl Plugin for EffectLogPlugin {
         let mut writer = jsonl::Writer::new(paths.path().join(EFFECT_LOG));
         let last = writer.last_id().ok().flatten();
         let recorder = EffectLogRecorder::new();
-        app.insert_resource(Effects::recorded_by(Arc::new(recorder.clone()), last))
+        app.insert_resource(Effects::continue_after(last))
             .insert_resource(EffectLog { recorder, writer })
             .add_systems(Startup, describe_tools)
             .add_systems(Last, write_effects.in_set(WriteJournal))
@@ -41,7 +39,7 @@ impl Plugin for EffectLogPlugin {
     }
 }
 
-/// The recorder and the file it is written to.
+/// The log's header, kept by a recorder, and the file it is written to.
 #[derive(Resource)]
 struct EffectLog {
     recorder: EffectLogRecorder,
@@ -84,7 +82,7 @@ fn write_effects(
 ) {
     let settled: Vec<_> = recorded.read().map(|recorded| recorded.0.clone()).collect();
     // Taking copies the header, tools' schemas and all, every frame.
-    if log.recorder.resolved() == 0 && settled.is_empty() {
+    if settled.is_empty() {
         return;
     }
     let EffectLog { recorder, writer } = &mut *log;

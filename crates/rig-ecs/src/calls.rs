@@ -160,7 +160,7 @@ impl Running {
     }
 
     /// Spawns `work` on `pool`; `finish` puts its output on the entity.
-    fn finishing<T: Send + 'static>(
+    pub(crate) fn finishing<T: Send + 'static>(
         pool: &TaskPool,
         wake: &Wake,
         work: impl ConditionalSendFuture<Output = T> + 'static,

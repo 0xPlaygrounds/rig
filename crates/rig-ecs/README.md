@@ -15,11 +15,13 @@ What it holds, by module:
   their parent.
 - `turn`: the turn loop (model request, tool calls, results, the next
   request or the end), steering, interrupts, and retries that wait on
-  Bevy's clock. Plugins extend a turn with `PrepareRequest` (before each
-  request: its system prompt, messages, tools and options), `ModelFailed`
-  (after a call a retry does not fix) and `ModelRequest` calls of their
-  own; a `Connection` on a turn or call sends it to another model than the
-  agent's. `Condensed` sends a summary in place of older messages.
+  Bevy's clock. A model call is an effect (`ModelRequest`): the turn's own
+  (`TurnCall`) and a side call built from an agent (`BuildFrom`) have
+  their request built by the kernel, a plugin edits it in Prepare (system
+  prompt, messages, tools, options, the model it goes to), and Start fits
+  it to that model. A failed call carries its `RetryVerdict`, which Review
+  may act on by superseding the call, such as on another model.
+  `Condensed` sends a summary in place of older messages.
 - `stage`: effects as entities. An effect's components are its request
   and its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
@@ -41,8 +43,8 @@ What it holds, by module:
 - `inbox`: `Deliver`, the one way a message reaches an agent.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
-- `effects`: one dispatch path for every model call, which a plugin may
-  record; effect entities record into the kernel's own buffer.
+- `effects`: the one dispatch path, recorded into the kernel's own buffer
+  and written as `Recorded` when each effect settles.
 - `journal`, `restore`: the append-only session log and its restore. Every
   conversation change goes through `Commit` and is seen as a `Committed`
   message; a component that says `#[reflect(Component, Saved)]`, or a

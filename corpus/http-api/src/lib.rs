@@ -22,8 +22,6 @@ use std::path::PathBuf;
 
 use crossbeam_channel::Sender;
 use rig_activity::Activity;
-use rig_ecs::calls::Done;
-use rig_ecs::turn::{ModelCall, ModelReply};
 use rig_harness::prelude::*;
 use rig_tui::{PickItem, PickRequest};
 use serde_json::{Value, json};
@@ -353,7 +351,7 @@ fn tool_ended(
 
 /// Sends the text each streaming model call added since the last frame.
 fn stream_text(
-    calls: Query<(Entity, &Partial, &CallOf), (With<ModelCall>, Changed<Partial>)>,
+    calls: Query<(Entity, &Partial, &CallOf), (With<TurnCall>, Changed<Partial>)>,
     turns: Query<&TurnOf>,
     ids: Query<&AgentId>,
     mut streamed: ResMut<Streamed>,
@@ -369,18 +367,21 @@ fn stream_text(
     }
 }
 
-/// Sends what a finished model call's reply has beyond what was streamed:
-/// the call is despawned in the frame its reply arrives, often before
-/// [`stream_text`] saw its last fragments.
+/// Sends what a settled model call's reply has beyond what was streamed:
+/// its reply often arrives before [`stream_text`] saw its last fragments.
 fn reply_done(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&Done<ModelReply>, &CallOf), With<ModelCall>>,
+    done: On<Add<Settled>>,
+    calls: Query<(&Outcome, &CallOf), With<TurnCall>>,
     turns: Query<&TurnOf>,
     ids: Query<&AgentId>,
     mut streamed: ResMut<Streamed>,
     mut subscribers: ResMut<Subscribers>,
 ) {
-    let Ok((Done(Ok(response)), of)) = calls.get(done.entity) else {
+    let Some((response, of)) = calls
+        .get(done.entity)
+        .ok()
+        .and_then(|(outcome, of)| Some((outcome.completion()?, of)))
+    else {
         return;
     };
     let text: String = response
@@ -401,7 +402,7 @@ fn reply_done(
     }
 }
 
-fn forget_call(gone: On<Remove<ModelCall>>, mut streamed: ResMut<Streamed>) {
+fn forget_call(gone: On<Remove<TurnCall>>, mut streamed: ResMut<Streamed>) {
     streamed.0.remove(&gone.entity);
 }
 

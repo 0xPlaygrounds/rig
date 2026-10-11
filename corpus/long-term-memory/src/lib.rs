@@ -61,7 +61,7 @@ impl Plugin for LongTermMemoryPlugin {
                         "Memories recalled for a message come in a <memory> block after it; \
                          `forget` one by its id when it is wrong or the user asks.",
                     ],
-                    footprint: Footprint::default(),
+                    footprint: Some(Footprint::default()),
                 },
             )
             .add_tool(Forget(files))

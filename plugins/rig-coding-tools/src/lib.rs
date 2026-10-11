@@ -8,8 +8,8 @@
 #[cfg(feature = "tui")]
 use rig_harness::prelude::Tool;
 use rig_harness::prelude::{
-    App, AppToolsExt, Attachment, Deliver, Footprint, MessageWriter, Notice, On, OriginKind,
-    Plugin, SessionPaths, ToolOptions,
+    App, AppToolsExt, Attachment, Deliver, MessageWriter, Notice, On, OriginKind, Plugin,
+    SessionPaths, ToolOptions,
 };
 use rig_tools::process::Launcher;
 use rig_tools::{Edit, Read, Search, Shell, Write};
@@ -19,19 +19,12 @@ use rig_tui::AppToolRenderersExt;
 #[cfg(feature = "tui")]
 mod looks;
 
-/// Options for a tool that runs alone.
-fn alone(rules: &'static [&'static str]) -> ToolOptions<'static> {
+/// Options with `rules`; whether a tool's calls run beside others comes
+/// from its annotations: `read` and `search` only read.
+fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
     ToolOptions {
         rules,
         ..ToolOptions::default()
-    }
-}
-
-/// Options for a tool that only reads, so it runs beside the others that do.
-fn read_only(rules: &'static [&'static str]) -> ToolOptions<'static> {
-    ToolOptions {
-        rules,
-        footprint: Footprint::ReadOnly,
     }
 }
 
@@ -41,7 +34,7 @@ pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Read, read_only(Read::RULES));
+        app.add_tool_with(Read, options(Read::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
     }
@@ -53,7 +46,7 @@ pub struct SearchTool;
 
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Search, read_only(Search::RULES));
+        app.add_tool_with(Search, options(Search::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
     }
@@ -65,7 +58,7 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Edit, alone(Edit::RULES));
+        app.add_tool_with(Edit, options(Edit::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
     }
@@ -77,7 +70,7 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Write, alone(Write::RULES));
+        app.add_tool_with(Write, options(Write::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
     }
@@ -101,7 +94,7 @@ impl Plugin for ShellTool {
                 .map(SessionPaths::spill),
             ..Shell::default()
         };
-        app.add_tool_with(shell, alone(Shell::RULES));
+        app.add_tool_with(shell, options(Shell::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);
     }

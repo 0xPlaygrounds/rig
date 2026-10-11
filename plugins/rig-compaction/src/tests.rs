@@ -15,7 +15,7 @@ use super::*;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 use rig_telemetry::{Spending, UsagePlugin};
 
-/// What a second `PrepareRequest` observer adds to every request.
+/// What a second Prepare system adds to every turn's request.
 const INJECTED: &str = "Context from another plugin.";
 
 /// How each turn ended, in order.
@@ -110,12 +110,15 @@ fn sent(model: &MockCompletionModel) -> Vec<String> {
 fn a_conversation_near_the_window_is_summarized_before_the_request_and_restored() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
-    // A second observer of every request, beside the plugin's.
-    app.add_observer(|mut prepare: On<PrepareRequest>| {
-        if let Some(Message::User { content }) = prepare.event_mut().messages.last_mut() {
-            content.push(UserContent::text(INJECTED));
+    // A second Prepare system on every turn's request, beside the plugin's.
+    let inject = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
+        for mut call in &mut calls {
+            if let Some(Message::User { content }) = call.request.chat_history.last_mut() {
+                content.push(UserContent::text(INJECTED));
+            }
         }
-    });
+    };
+    app.add_systems(AgentPass, inject.in_set(Stage::Prepare));
     let mut messages = vec![Message::user("What does the crate do?")];
     messages.extend(read("1", "src/lib.rs", "pub fn answer() -> u32 { 42 }"));
     let long = "word ".repeat(4_000);

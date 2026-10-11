@@ -79,7 +79,7 @@ pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside yo
 pub(super) fn add(app: &mut App) {
     let independent = |rules| ToolOptions {
         rules,
-        footprint: Footprint::Independent,
+        footprint: Some(Footprint::Independent),
     };
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)

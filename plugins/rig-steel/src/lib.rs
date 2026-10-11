@@ -130,7 +130,7 @@ impl Plugin for SteelPlugin {
             DESCRIPTION,
             ToolOptions {
                 rules: RULES,
-                footprint: Footprint::Exclusive,
+                footprint: Some(Footprint::Exclusive),
             },
             on_run_steel,
         );

@@ -1,29 +1,31 @@
-//! The one dispatch path. Every model call goes through
-//! [`Effects::dispatch`] under the agent's stable id and an effect id. A
-//! plugin that keeps an effect log, such as rig-harness's, inserts
-//! [`Effects::recorded_by`] its recorder, which then sees those calls with
-//! rig-core's effect types; without one they are not recorded. An effect
-//! entity ([`stage`](super::stage)), such as a tool call, is recorded in
-//! the kernel's own [`RecordBuffer`] instead, and its record written as a
-//! [`Recorded`](super::stage::Recorded) when it settles.
+//! The one dispatch path. Every effect entity ([`stage`](super::stage)),
+//! a model call, a tool call or a plugin's effect, runs through
+//! [`Effects`] under its effect id, recorded in the kernel's own
+//! [`RecordBuffer`], and its record is written as a
+//! [`Recorded`](super::stage::Recorded) when it settles. A plugin that
+//! keeps an effect log reads those, and continues the ids of the log it
+//! appends to with [`Effects::continue_after`].
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use bevy_ecs::prelude::*;
+use bevy_tasks::ConditionalSendFuture;
 use rig_core::effect::Outcome;
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::serve::{
     Dispatch, ErasedHandler, Origin, RecordBuffer, Recorder, Reply, catch_panics,
 };
+use rig_core::tool::{PublishedContext, ToolResultContext};
 
-use bevy_tasks::ConditionalSendFuture;
+/// What a handler's run left: its answer, and what a tool published beside
+/// it, if anything.
+pub(crate) type Ran = (Result<Outcome, ErrorReport>, Option<ToolResultContext>);
 
-/// The effect ids, and the recorder of every effect, if any.
+/// The effect ids, and the records of the effects running.
 #[derive(Resource)]
 pub struct Effects {
-    recorder: Option<Arc<dyn Recorder + Send + Sync>>,
     /// The last id taken.
     last: AtomicU64,
     /// The records of effect entities' dispatches, timed, until they settle.
@@ -33,7 +35,6 @@ pub struct Effects {
 impl Default for Effects {
     fn default() -> Self {
         Self {
-            recorder: None,
             last: AtomicU64::new(0),
             buffer: RecordBuffer::new().timed(),
         }
@@ -41,56 +42,47 @@ impl Default for Effects {
 }
 
 impl Effects {
-    /// Effects recorded by `recorder`, with ids after `last`, such as the
-    /// highest id of the log it continues, so ids keep increasing across
-    /// restarts.
-    pub fn recorded_by(recorder: Arc<dyn Recorder + Send + Sync>, last: Option<EffectId>) -> Self {
+    /// Effects with ids after `last`, such as the highest id of the effect
+    /// log a plugin continues, so ids keep increasing across restarts.
+    pub fn continue_after(last: Option<EffectId>) -> Self {
         Self {
-            recorder: Some(recorder),
             last: AtomicU64::new(last.map_or(0, EffectId::as_u64)),
             ..Self::default()
         }
     }
 
-    /// Dispatch `kind` to `handler`, recorded under `scope` (the agent's
-    /// id) with `parent` as the dispatch that asked for it. Returns the
-    /// effect id and the reply. Dropping the reply before it resolves
-    /// records the effect as cancelled.
-    pub fn dispatch(
-        &self,
-        scope: &str,
-        parent: Option<EffectId>,
-        handler: ErasedHandler,
-        kind: EffectKind,
-    ) -> (
-        EffectId,
-        impl ConditionalSendFuture<Output = Reply> + 'static,
-    ) {
-        let id = self.next_id();
-        let mut dispatch = Dispatch::new(id, kind.streams());
-        if let Some(recorder) = &self.recorder {
-            let key = handler.descriptor().key;
-            recorder.begin(id, key, kind.clone(), origin(scope, parent));
-            dispatch = dispatch.recorded_by(recorder.clone());
-        }
-        (id, async move { handler.handle(kind, dispatch).await })
-    }
-
     /// Runs `kind` through `handler` as the effect `id` of an entity, from
-    /// `origin`, recorded in the kernel's buffer. A panic in the handler or
-    /// its stream becomes an internal error, recorded as its outcome.
-    pub(crate) fn run(
+    /// `origin`, recorded in the kernel's buffer; `consume` turns the reply
+    /// into the outcome, such as `Reply::into_outcome`. A panic in the
+    /// handler or its stream becomes an internal error, recorded as its
+    /// outcome. What a tool publishes into its context comes back beside it.
+    pub(crate) fn run<F>(
         &self,
         id: EffectId,
         origin: Origin,
         handler: ErasedHandler,
         kind: EffectKind,
-    ) -> impl ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static {
+        consume: impl FnOnce(Reply) -> F + Send + 'static,
+    ) -> impl ConditionalSendFuture<Output = Ran> + 'static
+    where
+        F: ConditionalSendFuture<Output = Result<Outcome, ErrorReport>> + 'static,
+    {
         let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(self.buffer.clone());
         recorder.begin(id, handler.descriptor().key, kind.clone(), origin);
-        let dispatch = Dispatch::new(id, kind.streams()).recorded_by(recorder.clone());
-        let work = async move { handler.handle(kind, dispatch).await.into_outcome().await };
-        catch_panics(Some(recorder), id, work)
+        let published = PublishedContext::new();
+        let dispatch = Dispatch::new(id, kind.streams())
+            .with_scope(published.clone())
+            .recorded_by(recorder.clone());
+        let work = async move { consume(handler.handle(kind, dispatch).await).await };
+        let work = catch_panics(Some(recorder), id, work);
+        async move {
+            let outcome = work.await;
+            let facts = published.take().map(|context| context.result_context());
+            (
+                outcome,
+                facts.filter(|facts| *facts != ToolResultContext::default()),
+            )
+        }
     }
 
     /// The records of effect entities' dispatches.
@@ -101,17 +93,6 @@ impl Effects {
     /// Takes the next effect id.
     pub(crate) fn next_id(&self) -> EffectId {
         EffectId::from_raw(self.last.fetch_add(1, Ordering::Relaxed) + 1)
-    }
-
-    /// Run `work`, the task that drives the effect `id`. A panic in it, in
-    /// the handler or in the reply's stream, becomes an internal error that
-    /// is also recorded as the effect's outcome.
-    pub(crate) fn caught<T: 'static>(
-        &self,
-        id: EffectId,
-        work: impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static,
-    ) -> impl ConditionalSendFuture<Output = Result<T, ErrorReport>> + 'static {
-        catch_panics(self.recorder.clone(), id, work)
     }
 }
 
@@ -137,12 +118,3 @@ unsafe impl Send for Handler {}
     not(target_feature = "atomics")
 ))]
 unsafe impl Sync for Handler {}
-
-/// Where an effect of the agent `scope` comes from.
-fn origin(scope: &str, parent: Option<EffectId>) -> Origin {
-    Origin {
-        parent,
-        scope: Some(Arc::from(scope)),
-        purpose: None,
-    }
-}

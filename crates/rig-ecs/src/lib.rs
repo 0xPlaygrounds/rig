@@ -2,8 +2,8 @@
 //! components hold their conversation, model, reasoning setting, system
 //! prompt and tool access; a running turn is an entity of its agent, and
 //! its model and tool calls are entities of the turn that run on Bevy's
-//! task pools. Every call goes through one effect dispatch path, which a
-//! plugin may record ([`effects`]). Tools and commands are registered by
+//! task pools. Every call goes through one effect dispatch path, recorded
+//! as it settles ([`effects`]). Tools and commands are registered by
 //! plugins, and the session journal is kept in the
 //! [`journal::SessionStore`] the app inserts. Time is Bevy's: a retried
 //! model call waits on a delayed command, and plugins that animate or poll
@@ -71,12 +71,11 @@ pub mod prelude {
         Unreviewed, Waiting, record_of,
     };
     pub use crate::tools::{
-        AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
-        WorldToolsExt,
+        AppToolsExt, CallHandler, Footprint, Published, ToolCalled, ToolDef, ToolOptions,
+        ToolRequest, WorldToolsExt,
     };
-    pub use crate::turn::{
-        Backoff, CallModel, ModelFailed, ModelReply, ModelRequest, PrepareRequest, Recovery,
-    };
+    pub use crate::turn::{Backoff, BuildFrom, ModelRequest, Recovery, RetryVerdict, TurnCall};
+    pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
     pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
 }
@@ -151,7 +150,6 @@ impl Plugin for AgentPlugin {
             .add_systems(
                 Last,
                 (
-                    inbox::start_turns.before(settle).before(WriteJournal),
                     settle,
                     turn::stop_turns_on_exit
                         .in_set(StopTurns)
@@ -160,9 +158,6 @@ impl Plugin for AgentPlugin {
             )
             .add_observer(inbox::watch_deliveries)
             .add_observer(commands::on_run_command)
-            .add_observer(turn::on_call_model)
-            .add_observer(turn::on_model_done)
-            .add_observer(turn::on_model_request)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
             .add_observer(turn::on_turn_despawn)

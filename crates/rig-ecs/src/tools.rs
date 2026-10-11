@@ -28,7 +28,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, ToolName};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::tool::{Tool, ToolErrorKind, args_schema};
+use rig_core::tool::{Tool, ToolErrorKind, ToolResultContext, args_schema, tool_definition};
 use rig_core::transcript::arguments_refusal;
 use schemars::JsonSchema;
 use serde::de::DeserializeOwned;
@@ -187,10 +187,17 @@ pub struct ToolOptions<'a> {
     /// `shell`". The tool's description says what it does; its rules say
     /// when to pick it.
     pub rules: &'a [&'a str],
-    /// Whether its calls run beside others; the default runs each call on
-    /// its own.
-    pub footprint: Footprint,
+    /// Whether its calls run beside others. `None` takes it from the tool's
+    /// annotations: [`Footprint::ReadOnly`] for a tool that says it only
+    /// reads, else [`Footprint::Exclusive`].
+    pub footprint: Option<Footprint>,
 }
+
+/// What a tool published beside its result, on its call once answered,
+/// such as rig-core's `FilesChanged` and `ExitStatus`: read a value with
+/// `published.0.get::<FilesChanged>()`. It is recorded with the call.
+#[derive(Component, Clone, Debug)]
+pub struct Published(pub ToolResultContext);
 
 /// Registers tools on an [`App`].
 pub trait AppToolsExt {
@@ -225,7 +232,7 @@ pub trait AppToolsExt {
     /// ```ignore
     /// app.add_tool_with(Outline, ToolOptions {
     ///     rules: &["Use `outline` before reading a large file."],
-    ///     footprint: Footprint::ReadOnly,
+    ///     footprint: Some(Footprint::ReadOnly),
     /// });
     /// ```
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self;
@@ -249,13 +256,11 @@ pub trait AppToolsExt {
 
 impl AppToolsExt for App {
     fn add_tool_with<T: Tool + 'static>(&mut self, tool: T, options: ToolOptions<'_>) -> &mut Self {
-        let (description, parameters) = (tool.description(), tool.parameters());
+        let definition = tool_definition(&tool);
         let handler = Handler(ErasedHandler::new(ToolAdapter::new(tool)));
         register_tool(
             self.world_mut(),
-            T::NAME,
-            description,
-            parameters,
+            definition,
             Serves::Handler(handler),
             options,
         );
@@ -273,14 +278,12 @@ impl AppToolsExt for App {
         A: DeserializeOwned + JsonSchema + Send + Sync + 'static,
     {
         let world = self.world_mut();
-        if let Some(tool) = register_tool(
-            world,
-            name,
-            description.to_owned(),
-            args_schema::<A>(),
-            Serves::Open(open::<A>),
-            options,
-        ) {
+        let Ok(tool_name) = ToolName::new(name) else {
+            warn!("tool not registered: `{name}` is not a valid tool name");
+            return self;
+        };
+        let definition = ToolDefinition::new(tool_name, description, args_schema::<A>());
+        if let Some(tool) = register_tool(world, definition, Serves::Open(open::<A>), options) {
             world.entity_mut(tool).observe(observer);
         }
         self
@@ -297,8 +300,9 @@ pub trait WorldToolsExt {
     /// Make the tool `definition` describes available as
     /// [`AppToolsExt::add_tool_with`] does, its calls answered by `handler`
     /// on the one dispatch path (a rig-core `Serve` of the tool family,
-    /// such as a `ToolAdapter`). Its entity, or `None`, with a warning,
-    /// when its name is taken.
+    /// such as a `ToolAdapter`), its footprint from its annotations unless
+    /// `options` names one. Its entity, or `None`, with a warning, when its
+    /// name is taken.
     fn spawn_tool(
         &mut self,
         definition: ToolDefinition,
@@ -314,44 +318,35 @@ impl WorldToolsExt for World {
         handler: ErasedHandler,
         options: ToolOptions<'_>,
     ) -> Option<Entity> {
-        let ToolDefinition {
-            name,
-            description,
-            parameters,
-            ..
-        } = definition;
         let serves = Serves::Handler(Handler(handler));
-        register_tool(self, &name, description, parameters, serves, options)
+        register_tool(self, definition, serves, options)
     }
 }
 
-/// Spawns the entity of the tool `name`, whose calls run as `serves` says,
-/// and returns it; `None`, with a warning, when the name is invalid or
+/// Spawns the entity of the tool `definition` names, whose calls run as
+/// `serves` says, and returns it; `None`, with a warning, when the name is
 /// taken.
 fn register_tool(
     world: &mut World,
-    name: &str,
-    description: String,
-    parameters: serde_json::Value,
+    definition: ToolDefinition,
     serves: Serves,
     options: ToolOptions<'_>,
 ) -> Option<Entity> {
-    let tool_name = match ToolName::new(name) {
-        Ok(tool_name) => tool_name,
-        Err(error) => {
-            warn!("tool not registered: {error}");
-            return None;
-        }
-    };
+    let name = definition.name.as_str().to_owned();
     if world
         .query::<&ToolDef>()
         .iter(world)
-        .any(|def| def.0.name == tool_name)
+        .any(|def| def.0.name == definition.name)
     {
         warn!("tool not registered: `{name}` exists; insert `Disabled` on it to replace it");
         return None;
     }
-    let definition = ToolDefinition::new(tool_name, description, parameters);
+    let footprint = options
+        .footprint
+        .unwrap_or(match definition.annotations.read_only() {
+            true => Footprint::ReadOnly,
+            false => Footprint::Exclusive,
+        });
     let entity = world.spawn((
         Name::new(format!("tool:{name}")),
         ToolDef(definition),
@@ -362,7 +357,7 @@ fn register_tool(
                 .map(|rule| (*rule).to_owned())
                 .collect(),
         ),
-        options.footprint,
+        footprint,
         serves,
     ));
     Some(entity.id())

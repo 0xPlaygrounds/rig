@@ -3,26 +3,28 @@
 //! Secrets (API keys, tokens, private keys, `PASSWORD=…` values and the
 //! values of the env vars named in `RIG_REDACT_ENV`) never leave the
 //! machine: each distinct one becomes a stable placeholder `‹SECRET_n›` in
-//! every request, in the session log and in the results of the coding
-//! tools. A tool call that names a placeholder gets the real value. The
+//! every request, in the session log and in the results of every tool. A
+//! tool call that names a placeholder gets the real value. The
 //! placeholders live in memory only; `/secrets` lists them.
+//!
+//! It is three stage systems: in Prepare, every model request is redacted
+//! and every tool call's handler is wrapped ([`Unmasked`]) so the call runs
+//! with the secrets and answers with placeholders, recorded as the model
+//! sent it; in Review, a model reply is redacted before it reaches the
+//! conversation. The session log is redacted as it is written.
 
 use std::io;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
-use bevy_ecs::lifecycle::HookContext;
-use bevy_ecs::world::DeferredWorld;
 use bevy_log::warn;
 use regex::Regex;
 use rig_cassette::journal::JournalStore;
 use rig_core::effect::family;
-use rig_core::effect::{EffectKind, HandlerDescriptor, Outcome};
-use rig_core::serve::adapters::ToolAdapter;
+use rig_core::effect::{EffectKind, HandlerDescriptor, Outcome as EffectOutcome};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_ecs::effects::Handler;
 use rig_ecs::journal::SessionStore;
-use rig_harness::harness_protocol::env::AGENT_ONLY;
 use rig_harness::prelude::*;
-use rig_tools::{Edit, Read, Search, Shell, Write};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -69,7 +71,13 @@ impl Plugin for SecretRedactionPlugin {
             }
         }
         app.insert_resource(secrets)
-            .add_observer(redact_request)
+            .add_systems(
+                AgentPass,
+                (
+                    (redact_request, unmask_calls).in_set(Stage::Prepare),
+                    redact_reply.in_set(Stage::Review),
+                ),
+            )
             .add_command("secrets", "List the placeholders secrets are sent as", list);
     }
 
@@ -85,23 +93,6 @@ impl Plugin for SecretRedactionPlugin {
                 secrets: secrets.clone(),
             };
             world.insert_resource(SessionStore::new(store));
-        }
-        let spill = world
-            .get_resource::<SessionPaths>()
-            .map(SessionPaths::spill);
-        wrap(world, &secrets, Read);
-        wrap(world, &secrets, Write);
-        wrap(world, &secrets, Edit);
-        wrap(world, &secrets, Search);
-        let shell = Shell {
-            launcher: rig_tools::process::Launcher::default().without_env(AGENT_ONLY),
-            spill,
-            ..Shell::default()
-        };
-        wrap(world, &secrets, shell);
-        let hooks = world.register_component_hooks::<Done<ModelReply>>();
-        if hooks.try_on_insert(redact_reply).is_none() {
-            warn!("secret redaction: model replies already have an insert hook; not redacted");
         }
     }
 }
@@ -298,31 +289,47 @@ impl Secrets {
     }
 }
 
-/// Every request goes out with placeholders: its system prompt and
+/// Every model request goes out with placeholders: its system prompt and
 /// messages, whatever put the secrets there.
-fn redact_request(mut prepare: On<PrepareRequest>, secrets: Res<Secrets>) {
-    let redacted = secrets
-        .vault()
-        .redact(&prepare.preamble, "the system prompt");
-    if let Some(preamble) = redacted {
-        prepare.preamble = preamble;
+fn redact_request(mut calls: Query<&mut ModelRequest, Added<Admitted>>, secrets: Res<Secrets>) {
+    for mut call in &mut calls {
+        for message in &mut call.request.chat_history {
+            secrets.redact_data(message, "the conversation");
+        }
     }
-    for message in &mut prepare.messages {
-        secrets.redact_data(message, "the conversation");
+}
+
+/// Every tool call with a handler runs with the secrets its placeholders
+/// name, and answers with placeholders.
+fn unmask_calls(
+    mut calls: Query<&mut CallHandler, (Added<Admitted>, With<ToolRequest>)>,
+    secrets: Res<Secrets>,
+) {
+    for mut handler in &mut calls {
+        let inner = handler.0.0.clone();
+        let secrets = secrets.clone();
+        handler.0 = Handler(ErasedHandler::new(Unmasked { inner, secrets }));
     }
 }
 
 /// A model reply shows placeholders, to the user and in the conversation:
-/// redacted as it is inserted, before the turn's observer takes it.
-fn redact_reply(mut world: DeferredWorld, context: HookContext) {
-    let Some(secrets) = world.get_resource::<Secrets>().cloned() else {
-        return;
-    };
-    if let Some(mut done) = world.get_mut::<Done<ModelReply>>(context.entity)
-        && let Ok(response) = &mut done.0
-    {
-        for content in &mut response.choice {
+/// redacted in Review, before the kernel commits it.
+fn redact_reply(
+    replies: Query<(Entity, &Outcome), (Added<Outcome>, With<ModelRequest>, Without<Settled>)>,
+    secrets: Res<Secrets>,
+    mut commands: Commands,
+) {
+    for (call, outcome) in &replies {
+        let Some(response) = outcome.completion() else {
+            continue;
+        };
+        let mut redacted = response.clone();
+        for content in &mut redacted.choice {
             secrets.redact_data(content, "a model reply");
+        }
+        if redacted.choice != response.choice {
+            let outcome = Outcome(Ok(EffectOutcome::Completion(redacted)));
+            commands.entity(call).insert(outcome);
         }
     }
 }
@@ -342,44 +349,18 @@ fn list(In(args): In<CommandArgs>, secrets: Res<Secrets>, mut notices: MessageWr
     notices.write(Notice::info(args.agent, text));
 }
 
-/// Registers `tool` again behind [`Unmasked`] in place of the same tool
-/// another plugin registered, with its rules and footprint, if it did.
-fn wrap<T: Tool + 'static>(world: &mut World, secrets: &Secrets, tool: T) {
-    let (description, parameters) = (tool.description(), tool.parameters());
-    let mut tools = world.query::<(Entity, &ToolDef, &ToolRules, &Footprint)>();
-    let found = tools.iter(world).find(|(_, def, ..)| {
-        def.0.name.as_str() == T::NAME
-            && def.0.description == description
-            && def.0.parameters == parameters
-    });
-    let Some((entity, def, rules, &footprint)) = found else {
-        return;
-    };
-    let (def, rules) = (def.0.clone(), rules.0.clone());
-    world.entity_mut(entity).insert(Disabled);
-    let handler = ErasedHandler::new(Unmasked {
-        inner: ToolAdapter::new(tool),
-        secrets: secrets.clone(),
-    });
-    let rules: Vec<&str> = rules.iter().map(String::as_str).collect();
-    let options = ToolOptions {
-        rules: &rules,
-        footprint,
-    };
-    world.spawn_tool(def, handler, options);
-}
-
 /// A tool handler that runs its calls with the placeholders in their
 /// arguments replaced by the secrets, and answers with the secrets in its
 /// result replaced by placeholders. The call is recorded as the model
-/// sent it, the result as redacted.
-struct Unmasked<S> {
-    inner: S,
+/// sent it, the result as redacted: the inner handler runs on a dispatch
+/// of its own, which records nothing, with the same scopes.
+pub struct Unmasked {
+    inner: ErasedHandler,
     secrets: Secrets,
 }
 
-impl<S: Serve<Family = family::Tool>> Serve for Unmasked<S> {
-    type Family = family::Tool;
+impl Serve for Unmasked {
+    type Family = family::Dynamic;
 
     fn descriptor(&self) -> HandlerDescriptor {
         self.inner.descriptor()
@@ -398,25 +379,29 @@ impl<S: Serve<Family = family::Tool>> Serve for Unmasked<S> {
                      value again."
                 );
                 let result = ToolResult::failed(ToolExecutionError::other(why));
-                return Reply::Outcome(Ok(Outcome::ToolResult { result }));
+                return Reply::Outcome(Ok(EffectOutcome::ToolResult { result }));
             }
         };
         let source = format!("the result of `{name}`");
+        let unrecorded = dispatch.scopes().into_iter().fold(
+            Dispatch::new(dispatch.id(), dispatch.is_stream()),
+            Dispatch::with_scope,
+        );
         let reply = self
             .inner
-            .serve(EffectKind::ToolCall { name, args }, dispatch);
+            .handle(EffectKind::ToolCall { name, args }, unrecorded);
         let outcome = reply.await.into_outcome().await;
         Reply::Outcome(outcome.map(|outcome| match outcome {
-            Outcome::ToolResult { mut result } => {
+            EffectOutcome::ToolResult { mut result } => {
                 self.secrets.redact_data(&mut result, &source);
-                Outcome::ToolResult { result }
+                EffectOutcome::ToolResult { result }
             }
             other => other,
         }))
     }
 }
 
-impl<S> Unmasked<S> {
+impl Unmasked {
     /// The JSON arguments `args` with their placeholders revealed.
     fn reveal(&self, args: &str) -> Result<String, String> {
         if !args.contains(OPEN) {

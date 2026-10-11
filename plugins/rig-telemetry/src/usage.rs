@@ -1,8 +1,8 @@
-//! What each agent's model calls used and cost, and `/usage`. Every
-//! finished model call of a turn, a plugin's [`ModelRequest`] too, adds
-//! the usage its provider reported to its agent's [`Spending`], which its
-//! log saves, and to its turn's [`TurnSpending`], also when the
-//! turn-failure rule rejects the reply. rig-core prices a reply its
+//! What each agent's model calls used and cost, and `/usage`. Every model
+//! call ([`ModelRequest`]) that settles with a reply, a turn's or a
+//! plugin's, adds the usage its provider reported to its agent's
+//! [`Spending`], which its log saves, and to its turn's [`TurnSpending`],
+//! also when the turn-failure rule rejects the reply. rig-core prices a reply its
 //! provider did not price at the model's catalog
 //! [`Pricing`](rig_core::catalog::Pricing), so the cost here is the
 //! provider's figure or the catalog's list price. The context in use is the
@@ -48,20 +48,22 @@ pub struct Spending(pub UsageTotals);
 #[reflect(opaque, Component, Default, Clone, Debug, Serialize, Deserialize)]
 pub struct TurnSpending(pub UsageTotals);
 
-/// Adds a finished model call's usage to its agent's and its turn's.
+/// Adds a settled model call's usage to its agent's and its turn's.
 fn record_spending(
-    done: On<Add<Done<ModelReply>>>,
-    calls: Query<(&CallOf, &Done<ModelReply>)>,
-    mut turns: Query<(&TurnOf, &mut TurnSpending)>,
+    settled: On<Add<Settled>>,
+    calls: Query<(&Outcome, &ForAgent, Option<&CallOf>), With<ModelRequest>>,
+    mut turns: Query<&mut TurnSpending>,
     mut agents: Query<&mut Spending>,
 ) {
-    let Ok((&CallOf(turn), Done(Ok(response)))) = calls.get(done.entity) else {
+    let Ok((outcome, &ForAgent(agent), of)) = calls.get(settled.entity) else {
         return;
     };
-    let Ok((&TurnOf(agent), mut turn_spent)) = turns.get_mut(turn) else {
+    let Some(response) = outcome.completion() else {
         return;
     };
-    turn_spent.0.record(&response.usage);
+    if let Some(mut turn_spent) = of.and_then(|of| turns.get_mut(of.0).ok()) {
+        turn_spent.0.record(&response.usage);
+    }
     if let Ok(mut spent) = agents.get_mut(agent) {
         spent.0.record(&response.usage);
     }

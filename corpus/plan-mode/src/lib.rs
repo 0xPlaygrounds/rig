@@ -1,10 +1,12 @@
 //! Plan mode (corpus spec `09-plan-mode.md`). `/plan` lets the shown agent
-//! read but not change anything: its [`ToolAccess`] narrows to the tools
-//! that change nothing, the tools it had are kept in its [`PlanMode`], and
-//! each request tells the model to plan only. The answer that ends a
-//! planning turn is the plan, kept with the mode and written to
-//! `.rig/plan.md`; a picker then offers to execute it, keep planning or
-//! discard it. Leaving gives the agent back exactly the tools it had.
+//! read but not change anything: a Prepare system offers its model calls
+//! only the tools that change nothing and tells the model to plan, and a
+//! Gate system refuses, with its own reason, a call that may change
+//! something of the agent or of a subagent it started while planning. The
+//! answer that ends a planning turn is the plan, kept with the mode and
+//! written to `.rig/plan.md`; a picker then offers to execute it, keep
+//! planning or discard it. The agent's tools are never changed, so leaving
+//! gives it back exactly what it had.
 
 use std::path::PathBuf;
 
@@ -23,17 +25,17 @@ pub const PLAN_ONLY: &str = "\n\nPlan mode: you may read and search, but change 
     Explore what you need, then end your turn with a step-by-step plan as your answer. \
     The plan is carried out only once the user approves it.";
 
+/// Why a call that may change something is refused in plan mode.
+pub const REFUSED: &str = "plan mode: changes are not allowed";
+
 /// What the plan is sent with once the user executes it.
 pub const EXECUTE: &str = "Execute this plan: ";
 
-/// On an agent in plan mode: the tools it had before, given back when it
-/// leaves, and the plan of its last planning turn. Saved with the session,
-/// and its removal too.
+/// On an agent in plan mode: the plan of its last planning turn. Saved
+/// with the session, and its removal too.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct PlanMode {
-    /// The agent's tool access before plan mode.
-    pub before: ToolAccess,
     /// The last planning turn's answer.
     pub plan: Option<String>,
 }
@@ -63,7 +65,13 @@ impl Plugin for PlanModePlugin {
                 "Plan before changing anything: /plan, /plan off",
                 plan,
             )
-            .add_observer(plan_only)
+            .add_systems(
+                AgentPass,
+                (
+                    plan_only.in_set(Stage::Prepare),
+                    no_changes.in_set(Stage::Gate),
+                ),
+            )
             .add_observer(capture)
             .add_systems(PostUpdate, show.in_set(StatusSystems));
     }
@@ -73,13 +81,12 @@ impl Plugin for PlanModePlugin {
 /// `/plan keep` stays, and `/plan execute` leaves it and sends the plan.
 fn plan(
     In(args): In<CommandArgs>,
-    mut agents: Query<(&mut ToolAccess, Option<&PlanMode>, Has<ActiveTurn>)>,
-    tools: Query<(&ToolDef, &Footprint)>,
+    agents: Query<(Option<&PlanMode>, Has<ActiveTurn>)>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
-    let Ok((mut access, planning, busy)) = agents.get_mut(agent) else {
+    let Ok((planning, busy)) = agents.get(agent) else {
         return;
     };
     // The tools change for the whole of a turn, never in its middle.
@@ -89,20 +96,7 @@ fn plan(
     }
     match (args.args.as_str(), planning) {
         ("", None) => {
-            let before = access.clone();
-            // Tools that change nothing; a subagent started now gets at
-            // most these.
-            let allowed = tools
-                .iter()
-                .filter(|(def, footprint)| {
-                    **footprint != Footprint::Exclusive && before.allows(def.0.name.as_str())
-                })
-                .map(|(def, _)| def.0.name.as_str().to_owned())
-                .collect();
-            *access = ToolAccess::Only(allowed);
-            commands
-                .entity(agent)
-                .insert(PlanMode { before, plan: None });
+            commands.entity(agent).insert(PlanMode { plan: None });
             notices.write(Notice::info(agent, "Plan mode: nothing can be changed."));
         }
         ("", Some(_)) => {
@@ -111,8 +105,7 @@ fn plan(
         ("keep", Some(_)) => {
             notices.write(Notice::info(agent, "Still planning."));
         }
-        ("off" | "discard", Some(mode)) => {
-            *access = mode.before.clone();
+        ("off" | "discard", Some(_)) => {
             commands.entity(agent).remove::<PlanMode>();
             notices.write(Notice::info(agent, "Left plan mode."));
         }
@@ -121,7 +114,6 @@ fn plan(
                 notices.write(Notice::error(agent, "There is no plan to execute yet."));
                 return;
             };
-            *access = mode.before.clone();
             commands.entity(agent).remove::<PlanMode>();
             // The user chose to execute it: their request, word for word.
             let text = format!("{EXECUTE}{plan}");
@@ -139,12 +131,53 @@ fn plan(
     }
 }
 
-/// A planning agent's requests tell the model to plan only. Its tools are
-/// already narrowed by its [`ToolAccess`], which also refuses a call of
-/// any other.
-fn plan_only(mut prepare: On<PrepareRequest>, planning: Query<(), With<PlanMode>>) {
-    if planning.contains(prepare.agent) {
-        prepare.preamble.push_str(PLAN_ONLY);
+/// Whether `agent` plans: it is in plan mode, or an agent that started it
+/// is.
+fn plans(agent: Entity, planning: &Query<(), With<PlanMode>>, parents: &Query<&SpawnedBy>) -> bool {
+    std::iter::once(agent)
+        .chain(parents.iter_ancestors(agent))
+        .any(|agent| planning.contains(agent))
+}
+
+/// A planning agent's turn calls offer only the tools that change nothing,
+/// and tell the model to plan only.
+fn plan_only(
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    tools: Query<(&ToolDef, &Footprint)>,
+    planning: Query<(), With<PlanMode>>,
+    parents: Query<&SpawnedBy>,
+) {
+    for (mut call, &ForAgent(agent)) in &mut calls {
+        if !plans(agent, &planning, &parents) {
+            continue;
+        }
+        let changes = |name: &str| {
+            let tool = tools.iter().find(|(def, _)| def.0.name.as_str() == name);
+            tool.is_none_or(|(_, footprint)| *footprint == Footprint::Exclusive)
+        };
+        call.request
+            .tools
+            .retain(|tool| !changes(tool.name.as_str()));
+        if let Some(prompt) = call.system_prompt_mut() {
+            prompt.push_str(PLAN_ONLY);
+        }
+    }
+}
+
+/// Refuses each call that may change something, of a planning agent, when
+/// it is about to run.
+fn no_changes(
+    calls: Query<(Entity, &Footprint, &ForAgent), (Undecided, With<ToolRequest>)>,
+    planning: Query<(), With<PlanMode>>,
+    parents: Query<&SpawnedBy>,
+    mut commands: Commands,
+) {
+    for (call, footprint, &ForAgent(agent)) in &calls {
+        if *footprint == Footprint::Exclusive && plans(agent, &planning, &parents) {
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::refused(REFUSED));
+        }
     }
 }
 

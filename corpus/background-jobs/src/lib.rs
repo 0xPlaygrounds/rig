@@ -221,7 +221,7 @@ impl Plugin for BackgroundJobsPlugin {
     fn build(&self, app: &mut App) {
         let options = |rules| ToolOptions {
             rules,
-            footprint: Footprint::Exclusive,
+            footprint: Some(Footprint::Exclusive),
         };
         app.init_resource::<JobSettings>()
             .register_required_components::<Agent, AgentJobs>()
@@ -241,7 +241,7 @@ impl Plugin for BackgroundJobsPlugin {
                 "The last lines a background job printed.",
                 ToolOptions {
                     rules: &[],
-                    footprint: Footprint::ReadOnly,
+                    footprint: Some(Footprint::ReadOnly),
                 },
                 on_output,
             )
@@ -256,7 +256,7 @@ impl Plugin for BackgroundJobsPlugin {
                 "List your background jobs.",
                 ToolOptions {
                     rules: &[],
-                    footprint: Footprint::ReadOnly,
+                    footprint: Some(Footprint::ReadOnly),
                 },
                 on_list,
             )

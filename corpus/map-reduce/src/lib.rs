@@ -84,7 +84,7 @@ impl Plugin for MapReducePlugin {
     fn build(&self, app: &mut App) {
         let options = ToolOptions {
             rules: RULES,
-            footprint: Footprint::Exclusive,
+            footprint: Some(Footprint::Exclusive),
         };
         app.init_resource::<MapConfig>()
             .add_open_tool(MAP_FILES, DESCRIPTION, options, on_map)
