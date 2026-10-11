@@ -181,7 +181,9 @@ fn a_local_model_is_found_answers_and_is_marked_unavailable_once_its_server_stop
             status_after_stop: Some(ModelStatus::Unavailable(format!(
                 "Ollama not running at {url}"
             ))),
-            failed_after_stop: Some(format!("Ollama not running at {url}")),
+            failed_after_stop: Some(format!(
+                "The model call failed: Ollama not running at {url}"
+            )),
         })
     );
 }
@@ -302,4 +304,13 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
         status_after_stop,
         failed_after_stop,
     })
+}
+
+/// The adapter pushes need `.before(rig_compaction::CompactionSystems::Prepare)`,
+/// since compaction reads `Adapters`; this crate cannot depend on
+/// rig-compaction while the rework keeps `Cargo.lock` fixed.
+#[test]
+#[ignore = "needs rig-compaction as a dependency to order before compaction"]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(LocalModelsPlugin);
 }
