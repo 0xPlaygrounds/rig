@@ -14,6 +14,8 @@ bevy_ecs = { workspace = true }
 # The commands' tasks and their race against the timeout.
 bevy_tasks = { workspace = true }
 futures-timer = { workspace = true }
+# Commands expand before the files a message names are attached.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 # How the commands run: `sh -c`, its process group, killed when dropped.
 rig-tools = { path = "../../crates/rig-tools" }
@@ -22,6 +24,7 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
