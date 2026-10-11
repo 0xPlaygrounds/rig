@@ -18,8 +18,11 @@ What it holds, by module:
   Bevy's clock. A model call is an effect (`ModelRequest`): the turn's own
   (`TurnCall`) and a side call built from an agent (`BuildFrom`) have
   their request built by the kernel, a plugin edits it in Prepare (system
-  prompt, messages, tools, options, the model it goes to), and Start fits
-  it to that model. A failed call carries its `RetryVerdict`, which Review
+  prompt, messages, tools, options, the model it goes to) and pushes its
+  `Adapters` (an `outermost()` one wraps all the others), and Start fits
+  it to that model. Its stream is written as `StreamDelta`s (text,
+  reasoning and tool-call argument fragments) and stamped on the call
+  (`Streamed`). A failed call carries its `RetryVerdict`, which Review
   may act on by superseding the call, such as on another model. A turn
   ends with a `TurnOutcome` on it: the kernel proposes one, Review may
   edit it in place, hold it or carry the turn on, a plugin may fail or stop the
@@ -32,11 +35,15 @@ What it holds, by module:
   wins) in Gate, and reads or edits the `Outcome` in place in Review, so
   Bevy reports two unordered deciders or reviewers. Kind filters
   (`ToolCalls`, `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell
-  Bevy which effects two systems can never share. A tool call is such an effect
-  (`ToolRequest`): Gate sees a reply's call when it is about to run, once
-  every earlier call it must not run beside settled (`Waiting`). Every
-  settled effect is `Recorded`, with its raw and reviewed outcome. A
-  failing Prepare, Gate or Review system closes its stage for that pass.
+  Bevy which effects two systems can never share. A tool call is such an
+  effect (`ToolRequest`): as Gate opens, the kernel gives it the
+  `Footprint` of what it reads and writes (rig-core's `Touches`), and Gate
+  sees it when it is about to run, once every earlier call of its reply
+  it conflicts with settled (`Waiting`). A running effect's owner keeps
+  `IfStopped` current, the answer the kernel gives if it stops the effect
+  first. Every settled effect is `Recorded`, with its raw and reviewed
+  outcome. A failing Prepare, Gate or Review system closes its stage for
+  that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens.
 - `tools`, `prompt`: tools and system prompt sections are entities that
