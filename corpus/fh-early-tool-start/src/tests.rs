@@ -12,6 +12,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{Message as ChatMessage, Origin as Made, ToolResultContent};
 use rig_core::operation::Finish;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
+use rig_harness::rig_ecs::effects::Handler;
 use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
 use schemars::JsonSchema;
 use serde_json::json;
