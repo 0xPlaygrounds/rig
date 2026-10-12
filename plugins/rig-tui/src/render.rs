@@ -28,8 +28,8 @@ use super::renderers::{
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
-    Below, CallFacts, EntryRenderers, Look, Marks, Part, Renderers, StreamingCalls, Transcript,
-    call_lines, entry_lines, notice_lines, plain_lines,
+    Below, CallFacts, EntryRenderers, Inside, Look, Marks, Part, Renderers, StreamingCalls,
+    Transcript, call_lines, entry_lines, notice_lines, plain_lines,
 };
 use super::view::{
     Highlight, ShownNotice, Slot, TranscriptItem, TranscriptView, TuiView, entry_slot,
@@ -355,7 +355,7 @@ pub(crate) fn lay_out_transcript(
         renderers: sources.renderers,
         entries: sources.entry_renderers,
         calls: sources.calls,
-        notices: HashMap::new(),
+        inside: HashMap::new(),
         expanded: &view.expanded,
         facts: sources.facts,
     };
@@ -365,7 +365,8 @@ pub(crate) fn lay_out_transcript(
             Some(Slot::Top) => 0,
             Some(Slot::After(index)) => index + 1,
             Some(Slot::Inside(index, item)) => {
-                look.notices.entry(index).or_default().push((item, notice));
+                let inside = look.inside.entry(index).or_default();
+                inside.push((item, Inside::Notice(notice)));
                 continue;
             }
         };
@@ -375,8 +376,13 @@ pub(crate) fn lay_out_transcript(
     }
     for &(entity, entry) in sources.entries {
         let before = match entry_slot(entry.after, conversation) {
+            Slot::Top => 0,
             Slot::After(index) => index + 1,
-            _ => 0,
+            Slot::Inside(index, item) => {
+                let inside = look.inside.entry(index).or_default();
+                inside.push((item, Inside::Entry(entity, entry)));
+                continue;
+            }
         };
         if let Some(at) = entries_after.get_mut(before) {
             at.push((entity, entry));

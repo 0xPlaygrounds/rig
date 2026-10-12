@@ -34,6 +34,7 @@ use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
 use rig_ecs::stage::{Published, Settled, Started};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
+use rig_harness::transcript::TranscriptEntry;
 use rig_tools::attach::attached_file;
 
 /// The tool renderers by tool name.
@@ -149,27 +150,47 @@ pub(crate) struct Look<'a> {
     pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
-    /// The notices written inside a message, by its index, each with the
-    /// content item it goes before.
-    pub(crate) notices: HashMap<usize, Vec<(usize, &'a ShownNotice)>>,
+    /// The notices and entries drawn inside a message, by its index, each
+    /// with the content item it goes before.
+    pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
     /// The items drawn whole.
     pub(crate) expanded: &'a HashSet<TranscriptItem>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
 }
 
+/// What is drawn inside a message, before one of its items.
+#[derive(Clone, Copy)]
+pub(crate) enum Inside<'a> {
+    /// A notice written there.
+    Notice(&'a ShownNotice),
+    /// An entry whose message was taken out, after the start of what
+    /// stands for it.
+    Entry(Entity, &'a TranscriptEntry),
+}
+
 impl Look<'_> {
-    /// The notices inside message `index`.
-    fn notices(&self, index: usize) -> &[(usize, &ShownNotice)] {
-        self.notices.get(&index).map_or(&[], Vec::as_slice)
+    /// The notices and entries inside message `index`.
+    fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
+        self.inside.get(&index).map_or(&[], Vec::as_slice)
     }
 
-    /// Hashes the notices inside message `index`.
-    fn hash_notices(&self, index: usize, hasher: &mut DefaultHasher) {
-        for (item, notice) in self.notices(index) {
+    /// Hashes the notices and entries inside message `index`.
+    fn hash_inside(&self, index: usize, hasher: &mut DefaultHasher) {
+        for (item, inside) in self.inside(index) {
             item.hash(hasher);
-            level_code(notice.level).hash(hasher);
-            notice.text.hash(hasher);
+            match inside {
+                Inside::Notice(notice) => {
+                    level_code(notice.level).hash(hasher);
+                    notice.text.hash(hasher);
+                }
+                Inside::Entry(entity, entry) => {
+                    entity.hash(hasher);
+                    (&entry.origin, &entry.title, &entry.text).hash(hasher);
+                    let expanded = TranscriptItem::Entry(*entity);
+                    self.expanded.contains(&expanded).hash(hasher);
+                }
+            }
         }
     }
 
@@ -192,7 +213,7 @@ impl Look<'_> {
         message: &Message,
         hasher: &mut DefaultHasher,
     ) {
-        self.hash_notices(index, hasher);
+        self.hash_inside(index, hasher);
         id.map(|id| self.expanded.contains(&TranscriptItem::Message(id)))
             .hash(hasher);
         if let Message::Assistant(assistant) = message {
@@ -211,11 +232,11 @@ impl Look<'_> {
     /// [`Transcript::clear`] handles.
     fn digest(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        let mut indices: Vec<&usize> = self.notices.keys().collect();
+        let mut indices: Vec<&usize> = self.inside.keys().collect();
         indices.sort();
         for index in indices {
             index.hash(&mut hasher);
-            self.hash_notices(*index, &mut hasher);
+            self.hash_inside(*index, &mut hasher);
         }
         self.calls.hash(&mut hasher);
         // Sets in no order: a sum of each one's hash.
@@ -652,9 +673,9 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
     }
 }
 
-/// Draws `message`, the `at`-th of `conversation`, with the notices
-/// written inside it before their items, and says which lines are the
-/// message and which each of its calls. A tool call's result, which comes
+/// Draws `message`, the `at`-th of `conversation`, with the notices and
+/// entries inside it before their items, and says which lines are the
+/// message and which each of its calls and entries. A tool call's result, which comes
 /// in the `next` message, is drawn with the call, so the results of a
 /// reply's calls are not drawn after all of its calls.
 fn message_lines(
@@ -668,17 +689,32 @@ fn message_lines(
     let mut marks = Marks::new();
     let id = conversation.id(at);
     let expanded = id.is_some_and(|id| look.expanded.contains(&TranscriptItem::Message(id)));
-    let notices = look.notices(at);
-    let notices_before = |item: usize, lines: &mut Vec<Line<'static>>| {
-        for (_, notice) in notices.iter().filter(|(before, _)| *before == item) {
-            notice_lines(notice, lines);
+    let inside = look.inside(at);
+    let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
+        for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
+            match inside {
+                Inside::Notice(notice) => notice_lines(notice, lines),
+                Inside::Entry(entity, entry) => {
+                    let item = TranscriptItem::Entry(*entity);
+                    let view = EntryView {
+                        origin: &entry.origin,
+                        title: &entry.title,
+                        text: &entry.text,
+                        expanded: look.expanded.contains(&item),
+                    };
+                    let start = lines.len();
+                    lines.push(Line::default());
+                    lines.extend(entry_lines(&view, look.entries));
+                    marks.push((item, start..lines.len()));
+                }
+            }
         }
     };
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
-                notices_before(item_at, &mut lines);
+                inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     UserContent::Text(text) => {
                         if let Some((label, count)) = attached_file(&text.text) {
@@ -711,7 +747,7 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
-                notices_before(item_at, &mut lines);
+                inside_before(item_at, &mut lines, &mut marks);
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());

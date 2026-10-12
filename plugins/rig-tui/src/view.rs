@@ -211,15 +211,24 @@ impl ShownNotice {
 }
 
 /// Where an entry that follows the message `after` is drawn: after it
-/// while it is in `conversation`, else after the message that stands for
-/// it now, such as the summary of a compaction that took it out.
+/// while it is in `conversation`, else after the first item of the message
+/// that stands for it now, such as the summary of a compaction that took
+/// it out, which a kept prompt may have joined.
 pub(crate) fn entry_slot(after: Option<MessageId>, conversation: &Conversation) -> Slot {
-    let last = conversation.messages().len().checked_sub(1);
-    let at = after.and_then(|after| {
-        let standing = last.map(|last| conversation.start_of(after).min(last));
-        conversation.index_of(after).or(standing)
-    });
-    at.map_or(Slot::Top, Slot::After)
+    let Some(after) = after else {
+        return Slot::Top;
+    };
+    if let Some(index) = conversation.index_of(after) {
+        return Slot::After(index);
+    }
+    let Some(last) = conversation.messages().len().checked_sub(1) else {
+        return Slot::Top;
+    };
+    let standing = conversation.start_of(after).min(last);
+    match items(conversation, standing) {
+        0 | 1 => Slot::After(standing),
+        _ => Slot::Inside(standing, 1),
+    }
 }
 
 /// The content items of message `index`.

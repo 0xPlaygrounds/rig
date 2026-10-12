@@ -12,7 +12,7 @@ use rig_core::message::{
 use rig_core::streaming::{PartKind, StreamEvent};
 use rig_ecs::agent::Conversation;
 use rig_ecs::agent::Partial;
-use rig_ecs::prelude::MessageId;
+use rig_ecs::prelude::{Entry, MessageId, Origin};
 use rig_ecs::stage::{HoldOf, Started};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
@@ -101,7 +101,7 @@ fn drawn(
         renderers: &renderers,
         entries: &entries,
         calls,
-        notices: HashMap::new(),
+        inside: HashMap::new(),
         expanded: &expanded,
         facts: &facts,
     };
@@ -223,6 +223,34 @@ fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
         line_of(&lines, "btw: The style says so.").is_some(),
         "{lines:#?}"
     );
+}
+
+#[test]
+fn an_entry_whose_message_was_summarized_is_drawn_right_after_the_summary() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("old question"));
+    say(&mut app, agent, Message::assistant("old answer"));
+    say(&mut app, agent, Message::user("kept prompt"));
+    say(&mut app, agent, Message::assistant("kept answer"));
+    let after = message_id(&app, agent, 1);
+    let entry = TranscriptEntry::new("btw", after, "marked", "");
+    app.world_mut().spawn((entry, EntryOf(agent)));
+    // A compaction: the summary takes the first two messages' place, and
+    // the kept prompt joins it.
+    let compact = move |mut commit: rig_ecs::journal::Commit,
+                        mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            let summary = Entry::from(Message::user("the summary"), Origin::plugin("compaction"));
+            commit.splice(agent, &mut conversation, ..2, [summary]);
+        }
+    };
+    assert!(app.world_mut().run_system_once(compact).is_ok());
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    let order = ["the summary", "marked", "kept prompt", "kept answer"];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
 }
 
 #[test]

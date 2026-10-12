@@ -49,7 +49,7 @@ pub struct TranscriptEntry {
     pub origin: String,
     /// The message it follows; `None` puts it before the first. While an
     /// edit such as a compaction has taken that message out, it follows
-    /// the message that stands for it.
+    /// the start of what stands for it, such as the summary.
     pub after: Option<MessageId>,
     /// What it shows collapsed, in a line.
     pub title: String,
