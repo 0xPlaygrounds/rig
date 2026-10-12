@@ -42,25 +42,31 @@ fn progress(world: &mut World) -> Option<Progress> {
     read_progress(&*world.get_resource::<SessionStore>()?.0, &id)
 }
 
-/// The agent's model, `model`, on its first call stalling after its text
-/// when `stall` is set.
-fn use_model(world: &mut World, model: &MockCompletionModel, stall: bool) {
+/// The agent's model, `model`, its call number `stall` (from 0) stalling
+/// after its text.
+fn use_model(world: &mut World, model: &MockCompletionModel, stall: Option<usize>) {
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
     let Some(mut connection) = connect(model) else {
         return;
     };
-    if stall {
+    if let Some(stall) = stall {
         let inner = connection.handler.0.clone();
         let served = AtomicUsize::new(0);
-        connection.handler = Handler(ErasedHandler::new(StallsAfterText { inner, served }));
+        let stalls = StallsAfterText {
+            inner,
+            served,
+            stall,
+        };
+        connection.handler = Handler(ErasedHandler::new(stalls));
     }
     world.entity_mut(agent).insert(connection);
 }
 
-/// A model whose first reply sends its text, then nothing more.
+/// A model whose reply number `stall` sends its text, then nothing more.
 struct StallsAfterText {
     inner: ErasedHandler,
     served: AtomicUsize,
+    stall: usize,
 }
 
 impl Serve for StallsAfterText {
@@ -73,7 +79,7 @@ impl Serve for StallsAfterText {
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let reply = self.inner.serve(kind, dispatch).await;
         match reply {
-            Reply::Stream(events) if self.served.fetch_add(1, Ordering::SeqCst) == 0 => {
+            Reply::Stream(events) if self.served.fetch_add(1, Ordering::SeqCst) == self.stall => {
                 let opening = |item: &Result<Relayed, _>| {
                     let event = |event: &StreamEvent| {
                         matches!(event, StreamEvent::Start { .. } | StreamEvent::Text { .. })
@@ -128,7 +134,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
     ]);
 
     let (mut first, wakes) = app(&home, &session);
-    use_model(first.world_mut(), &model, false);
+    use_model(first.world_mut(), &model, None);
     let agent = first_agent(first.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     first
         .world_mut()
@@ -175,7 +181,7 @@ fn a_killed_turn_continues_with_real_and_unknown_results() {
         1,
         "nothing is sent before the user chose"
     );
-    use_model(second.world_mut(), &model, false);
+    use_model(second.world_mut(), &model, None);
     assert!(answer_open(
         second.world_mut(),
         TITLE,
@@ -203,7 +209,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     ]);
 
     let (mut first, wakes) = app(&home, &session);
-    use_model(first.world_mut(), &model, true);
+    use_model(first.world_mut(), &model, Some(0));
     let agent = first_agent(first.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     first.world_mut().trigger(Deliver::new(
         agent,
@@ -244,7 +250,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
         shown.contains("Partial reply (incomplete): Step one is done. Now"),
         "{shown}"
     );
-    use_model(second.world_mut(), &model, false);
+    use_model(second.world_mut(), &model, None);
     assert!(answer_open(
         second.world_mut(),
         TITLE,
@@ -269,6 +275,59 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     assert!(sent.contains("Start over."), "{sent}");
     assert!(
         !sent.contains("Explain the plan") && !sent.contains("Step one"),
+        "{sent}"
+    );
+}
+
+/// Killed while the turn's second model call streams, after the first
+/// reply's call finished and its result was committed: Continue keeps that
+/// real result and the partial text, marked incomplete.
+#[test]
+fn a_turn_killed_in_a_later_model_call_keeps_its_results_and_text() {
+    let home = scratch_home("crash-resume-later-call");
+    let session = SessionId::generate();
+    let file = home.root().join("b.txt");
+    let echo = format!("echo b > {}", file.display());
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("c1", "shell", serde_json::json!({ "command": echo })),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        reply("Halfway through"),
+        reply("Carrying on."),
+    ]);
+
+    let (mut first, wakes) = app(&home, &session);
+    use_model(first.world_mut(), &model, Some(1));
+    let agent = first_agent(first.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    first
+        .world_mut()
+        .trigger(Deliver::new(agent, "Do the work.", DeliveryMode::Steer));
+    let streamed = |world: &World| {
+        world.get::<AgentId>(agent).is_some_and(|id| {
+            let store = world.get_resource::<SessionStore>();
+            let progress = store.and_then(|store| read_progress(&*store.0, id));
+            progress.is_some_and(|progress| progress.text == "Halfway through")
+        })
+    };
+    run_until(&mut first, &wakes, streamed);
+    assert!(streamed(first.world()));
+    drop(first);
+
+    let (mut second, wakes) = app(&home, &session);
+    use_model(second.world_mut(), &model, None);
+    assert!(answer_open(
+        second.world_mut(),
+        TITLE,
+        &Answer::Choice("continue".into())
+    ));
+    run_until(&mut second, &wakes, |_| model.requests().len() >= 3);
+
+    let sent = request(&model, 2);
+    assert!(sent.contains("exit code 0"), "{sent}");
+    assert!(!sent.contains(super::NOT_RUN), "{sent}");
+    assert!(
+        sent.contains("Halfway through") && sent.contains("[incomplete"),
         "{sent}"
     );
 }

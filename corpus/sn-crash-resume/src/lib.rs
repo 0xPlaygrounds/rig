@@ -600,15 +600,15 @@ fn resolve(
 }
 
 /// Answers the interrupted reply's calls, each with its real result, else
-/// as started or never started, and keeps the partial text marked
-/// incomplete when the conversation still ends at the turn.
+/// as started or never started, and keeps the partial text of the model
+/// call the crash cut short, marked incomplete.
 fn carry_on(
     agent: Entity,
     progress: &Progress,
     conversation: &mut Conversation,
     commit: &mut Commit,
 ) {
-    let (from, calls) = interrupted_calls(conversation.messages());
+    let (from, calls) = interrupted_calls(conversation.messages(), progress);
     if !calls.is_empty() {
         let results = calls
             .iter()
@@ -628,10 +628,11 @@ fn carry_on(
         commit.message(agent, conversation, Chat::tool_results(results));
         return;
     }
-    let ends_at_turn = progress
-        .first_message
-        .is_some_and(|first| conversation.start_of(first) + 1 >= conversation.messages().len());
-    if !progress.text.trim().is_empty() && ends_at_turn && conversation.awaits_model() {
+    // The text is the current model call's: a reply's calls clear it, and
+    // the next model call starts it afresh. The conversation is halted, as
+    // the restored turn was stopped, so its last message is what counts.
+    let owed = matches!(conversation.messages().last(), Some(Chat::User { .. }));
+    if !progress.text.trim().is_empty() && owed {
         let text = format!("{}\n\n{INCOMPLETE}", progress.text.trim_end());
         commit.message(agent, conversation, Chat::assistant(text));
     }
@@ -644,8 +645,10 @@ fn failed(call: &ToolCall, why: &str) -> Answered {
 
 /// The calls of the conversation's last reply that the crash left
 /// unanswered or the restore answered, and where their results begin:
-/// its end when none are answered yet.
-fn interrupted_calls(messages: &[Chat]) -> (usize, Vec<ToolCall>) {
+/// its end when none are answered yet. Answered calls the turn's
+/// `progress` does not track are an earlier reply's, whose real results
+/// were committed before the next model call started: not interrupted.
+fn interrupted_calls(messages: &[Chat], progress: &Progress) -> (usize, Vec<ToolCall>) {
     let pending = pending_calls(messages);
     if !pending.is_empty() {
         return (messages.len(), pending);
@@ -657,7 +660,11 @@ fn interrupted_calls(messages: &[Chat]) -> (usize, Vec<ToolCall>) {
         .iter()
         .all(|item| matches!(item, UserContent::ToolResult(_)));
     let calls: Vec<ToolCall> = reply.tool_calls().cloned().collect();
-    if results_only && !calls.is_empty() {
+    let tracked = calls.iter().any(|call| {
+        let known = progress.calls.iter();
+        known.into_iter().any(|known| known.call.id == call.id)
+    });
+    if results_only && tracked {
         (messages.len().saturating_sub(1), calls)
     } else {
         (messages.len(), Vec::new())
