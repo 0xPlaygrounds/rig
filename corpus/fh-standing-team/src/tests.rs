@@ -4,6 +4,7 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::services::ServicesPlugin;
 use rig_harness_test_support::{
     ToolOutputs, app_on, calls, log_tool_outputs, reply, run_until, scratch_home, scripted_models,
 };
@@ -54,7 +55,8 @@ fn settled(
 }
 
 /// The lead's model, the members' and the write tool, on `store`, in
-/// `project`, after the first frame; and the lead, on its model.
+/// `project`, after the first frame; and the lead, on its model, working
+/// in `project`, as its members do (`ServicesPlugin` passes it on).
 fn start(
     store: &MemoryStore,
     project: &Path,
@@ -62,12 +64,14 @@ fn start(
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(project.to_owned()))
+        .insert_resource(RigHome(Home::at(project.join("home"))))
         .insert_resource(scripted_models([
             ("test/lead", lead),
             ("test/backend", backend),
             ("test/frontend", frontend),
         ]))
-        .add_plugins((AgentPlugin, JournalPlugin, WriteTool, StandingTeamPlugin))
+        .add_plugins((ServicesPlugin, AgentPlugin, JournalPlugin))
+        .add_plugins((WriteTool, StandingTeamPlugin))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs)
         .init_resource::<Timeline>()
@@ -82,6 +86,9 @@ fn start(
         .iter(app.world())
         .next()
         .unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut()
+        .entity_mut(lead)
+        .insert(WorkDir(project.to_owned()));
     let model = "test/lead".to_owned();
     app.world_mut().trigger(SetModel {
         entity: lead,
@@ -138,7 +145,19 @@ fn members_work_side_by_side_keep_their_memory_and_their_scope_across_a_resume()
     ]);
     let backend = MockCompletionModel::from_stream_turns([
         reply("Added users.last_login (timestamp)."),
-        calls("w1", "write", json!({ "path": "web/x.js", "content": "x" })),
+        vec![
+            MockStreamEvent::tool_call(
+                "w0",
+                "write",
+                json!({ "path": "server/x.rs", "content": "x" }),
+            ),
+            MockStreamEvent::tool_call(
+                "w1",
+                "write",
+                json!({ "path": "web/x.js", "content": "x" }),
+            ),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
         reply("web/ is not mine."),
         reply("Documented last_login."),
     ]);
@@ -205,6 +224,8 @@ fn members_work_side_by_side_keep_their_memory_and_their_scope_across_a_resume()
         "{write}"
     );
     assert!(!project.join("web/x.js").exists());
+    let inside = outputs.get("w0").cloned().unwrap_or_default();
+    assert!(project.join("server/x.rs").exists(), "{inside}");
 
     // A new app on the same session: the members come back with their
     // conversations, and the next assignment continues them.
