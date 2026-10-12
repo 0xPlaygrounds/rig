@@ -58,6 +58,8 @@ impl Plugin for CompactionPlugin {
         .add_observer(take_summary)
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(provided_by_compaction);
+        #[cfg(feature = "tui")]
+        tui::add(app);
     }
 }
 
@@ -564,6 +566,9 @@ fn take_summary(
         }
     }
 }
+
+#[cfg(feature = "tui")]
+mod tui;
 
 #[cfg(test)]
 mod tests;
