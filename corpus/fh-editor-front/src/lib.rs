@@ -1016,15 +1016,16 @@ fn forward(
     clients: Query<&EditorClient>,
 ) {
     for delta in deltas.read() {
-        let kind = match delta.kind {
-            DeltaKind::Text => "text",
-            DeltaKind::Reasoning => "reasoning",
-            DeltaKind::Arguments => "arguments",
+        let (kind, text) = match &delta.event {
+            StreamEvent::Text { text, .. } => ("text", text),
+            StreamEvent::Reasoning { text, .. } => ("reasoning", text),
+            StreamEvent::Arguments { json, .. } => ("arguments", json),
+            _ => continue,
         };
         let message = ToEditor::Delta {
             agent: delta.agent.and_then(|agent| id_of(&ids, agent)),
             kind: kind.to_owned(),
-            text: delta.text.clone(),
+            text: text.clone(),
         };
         broadcast(&clients, &message);
     }

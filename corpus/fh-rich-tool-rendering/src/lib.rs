@@ -213,8 +213,8 @@ fn collect_arguments(
     answered: Query<Has<Outcome>>,
 ) {
     for delta in deltas.read() {
-        if delta.kind == DeltaKind::Arguments {
-            streaming.push(delta.effect, delta.part.index(), &delta.text);
+        if let StreamEvent::Arguments { part, json } = &delta.event {
+            streaming.push(delta.effect, part.index(), json);
         }
     }
     if streaming.calls.is_empty() {

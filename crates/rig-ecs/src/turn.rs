@@ -44,7 +44,7 @@ use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_core::transcript::close_pending_with;
 use web_time::Instant;
@@ -276,40 +276,26 @@ pub(crate) struct Feed(Receiver<Fed>);
 pub(crate) enum Fed {
     /// An item of any kind came at this time, the reply's end too.
     Item(web_time::SystemTime),
-    /// A fragment of text, reasoning or tool-call arguments, of a part.
-    Delta(DeltaKind, Part, String),
+    /// An event of the stream.
+    Event(StreamEvent),
 }
 
-/// What a [`StreamDelta`] streamed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeltaKind {
-    /// Answer text.
-    Text,
-    /// Reasoning text.
-    Reasoning,
-    /// A tool call's raw argument JSON.
-    Arguments,
-}
-
-/// A fragment of text, reasoning or tool-call arguments a model call
-/// streamed, any model call, written in [`Stage::Arrive`] in the order it
-/// came, before the call's outcome is applied. Bevy keeps a message at
-/// least two frames, so a reader in `PostUpdate` sees the last fragments
-/// of a reply that settled this frame. A [`TurnCall`]'s text and reasoning
-/// also add up in its [`Partial`].
+/// An event a model call streamed, any model call, written in
+/// [`Stage::Arrive`] in the order it came, before the call's outcome is
+/// applied: a part's start (a tool call's name), its fragments of text,
+/// reasoning or argument JSON, and its end (a finished tool call, with its
+/// id and arguments). The event's part tells parallel tool calls apart.
+/// Bevy keeps a message at least two frames, so a reader in `PostUpdate`
+/// sees the last events of a reply that settled this frame. A
+/// [`TurnCall`]'s text and reasoning also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
     pub effect: Entity,
     /// The agent it is [`ForAgent`], if any.
     pub agent: Option<Entity>,
-    /// What it is.
-    pub kind: DeltaKind,
-    /// The part of the reply it belongs to, which tells the arguments of
-    /// parallel tool calls apart.
-    pub part: Part,
-    /// The text.
-    pub text: String,
+    /// What streamed.
+    pub event: StreamEvent,
 }
 
 /// When a model call's stream sent its first and its latest item of any
@@ -784,7 +770,7 @@ impl ModelStarts<'_, '_> {
 }
 
 /// Streams the reply, feeding `feed` when each item comes and with its
-/// text, reasoning and tool-call arguments, waking the loop for each, and
+/// events, waking the loop for each, and
 /// returns the response the provider ended it with.
 pub(crate) async fn stream_reply(
     reply: Reply,
@@ -805,20 +791,8 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Item(item)) => item,
         };
         feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-        let delta = match event {
-            Item::Event(StreamEvent::Text { part, text }) => {
-                Some(Fed::Delta(DeltaKind::Text, part, text))
-            }
-            Item::Event(StreamEvent::Reasoning { part, text }) => {
-                Some(Fed::Delta(DeltaKind::Reasoning, part, text))
-            }
-            Item::Event(StreamEvent::Arguments { part, json }) => {
-                Some(Fed::Delta(DeltaKind::Arguments, part, json))
-            }
-            _ => None,
-        };
-        if let Some(delta) = delta {
-            feed.send(delta).ok();
+        if let Item::Event(event) = event {
+            feed.send(Fed::Event(event)).ok();
         }
         wake.wake();
     }
@@ -834,7 +808,7 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`Streamed`], a [`StreamDelta`] per fragment, in order, and the text
+/// [`Streamed`], a [`StreamDelta`] per event, in order, and the text
 /// and reasoning into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
     mut calls: Query<(
@@ -851,7 +825,7 @@ pub(crate) fn stream_partials(
         // The stamp of a call whose first item came now.
         let mut first: Option<Streamed> = None;
         for fed in feed.0.try_iter() {
-            let (kind, part, text) = match fed {
+            let event = match fed {
                 Fed::Item(at) => {
                     match streamed.as_deref_mut().or(first.as_mut()) {
                         Some(stamp) => {
@@ -868,22 +842,20 @@ pub(crate) fn stream_partials(
                     }
                     continue;
                 }
-                Fed::Delta(kind, part, text) => (kind, part, text),
+                Fed::Event(event) => event,
             };
             if let Some(partial) = partial.as_mut() {
-                match kind {
-                    DeltaKind::Text => partial.text.push_str(&text),
-                    DeltaKind::Reasoning => partial.reasoning.push_str(&text),
-                    DeltaKind::Arguments => {}
+                match &event {
+                    StreamEvent::Text { text, .. } => partial.text.push_str(text),
+                    StreamEvent::Reasoning { text, .. } => partial.reasoning.push_str(text),
+                    _ => {}
                 }
             }
             let agent = agent.map(|agent| agent.0);
             deltas.write(StreamDelta {
                 effect,
                 agent,
-                kind,
-                part,
-                text,
+                event,
             });
         }
         if let Some(first) = first {

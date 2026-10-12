@@ -209,9 +209,10 @@ fn a_streaming_write_shows_its_path_before_its_last_chunk() {
         app.world_mut().write_message(StreamDelta {
             effect: reply,
             agent: None,
-            kind: DeltaKind::Arguments,
-            part: Part::new(1),
-            text,
+            event: StreamEvent::Arguments {
+                part: Part::new(1),
+                json: text,
+            },
         });
         app.update();
         let preview = app.world().resource::<StreamingCalls>().preview();

@@ -20,8 +20,8 @@ What it holds, by module:
   their request built by the kernel, a plugin edits it in Prepare (system
   prompt, messages, tools, options, the model it goes to) and pushes its
   `Adapters` (an `outermost()` one wraps all the others), and Start fits
-  it to that model. Its stream is written as `StreamDelta`s (text,
-  reasoning and tool-call argument fragments) and stamped on the call
+  it to that model. Its stream is written as `StreamDelta`s (rig-core's
+  `StreamEvent`s: a part's start, its fragments, its end) and stamped on the call
   (`Streamed`). A failed call carries its `RetryVerdict`, which Review
   may act on by superseding the call, such as on another model. A turn
   ends with a `TurnOutcome` on it: the kernel proposes one, Review may

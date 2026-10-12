@@ -2179,12 +2179,12 @@ fn a_call_of_a_failed_turn_answers_with_what_it_says_it_is_if_stopped() {
 /// call's latest stream stamp.
 #[derive(Resource, Default)]
 struct Streams {
-    deltas: Vec<(Entity, DeltaKind, Part, String)>,
+    events: Vec<(Entity, StreamEvent)>,
     stamps: Vec<(Entity, Streamed)>,
 }
 
 #[test]
-fn every_streamed_fragment_reaches_a_late_reader_in_order() {
+fn every_streamed_event_reaches_a_late_reader_in_order() {
     let mut app = app();
     let thought = MockStreamEvent::ReasoningDelta {
         id: "r".to_owned(),
@@ -2220,8 +2220,8 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
              mut seen: ResMut<Streams>| {
                 let read = deltas
                     .read()
-                    .map(|delta| (delta.effect, delta.kind, delta.part, delta.text.clone()));
-                seen.deltas.extend(read);
+                    .map(|delta| (delta.effect, delta.event.clone()));
+                seen.events.extend(read);
                 for (call, stamp) in &calls {
                     seen.stamps.retain(|(seen, _)| *seen != call);
                     seen.stamps.push((call, *stamp));
@@ -2237,47 +2237,62 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
     let [(tools, tools_stamp), (text, text_stamp)] = seen.stamps.as_slice() else {
         return;
     };
-    let of = |call: &Entity| -> Vec<(DeltaKind, Part, &str)> {
-        let of_call = seen.deltas.iter().filter(|(effect, ..)| effect == call);
-        of_call
-            .map(|(_, kind, part, text)| (*kind, *part, text.as_str()))
-            .collect()
+    let of = |call: &Entity| -> Vec<&StreamEvent> {
+        let of_call = seen.events.iter().filter(|(effect, _)| effect == call);
+        of_call.map(|(_, event)| event).collect()
     };
-    let arguments = of(tools);
-    let parts: Vec<Part> = arguments.iter().map(|(_, part, _)| *part).collect();
-    assert_eq!(parts.len(), 3, "{arguments:?}");
-    let [look, touch, again] = parts.as_slice() else {
+    // Each tool call starts named, streams its arguments, and ends with
+    // its id: the parts tell the interleaved calls apart.
+    let mut started = Vec::new();
+    let mut arguments = Vec::new();
+    let mut ended = Vec::new();
+    for event in of(tools) {
+        match event {
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => started.push((*part, name.to_string())),
+            StreamEvent::Arguments { part, json } => arguments.push((*part, json.as_str())),
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(call),
+            } => ended.push((*part, call.id.to_string(), call.function.name.to_string())),
+            _ => {}
+        }
+    }
+    assert_eq!(started.len(), 2, "{started:?}");
+    let [(look, look_name), (touch, touch_name)] = started.as_slice() else {
         return;
     };
-    assert!(look == again && look != touch, "{parts:?}");
-    let fragments: Vec<(DeltaKind, &str)> = arguments
-        .iter()
-        .map(|(kind, _, text)| (*kind, *text))
-        .collect();
+    assert!(look != touch && look_name == "look" && touch_name == "touch");
     assert_eq!(
-        fragments,
+        arguments,
+        [(*look, "{\"a\":"), (*touch, "{}"), (*look, "1}")]
+    );
+    assert_eq!(
+        ended,
         [
-            (DeltaKind::Arguments, "{\"a\":"),
-            (DeltaKind::Arguments, "{}"),
-            (DeltaKind::Arguments, "1}")
+            (*look, "l1".to_owned(), "look".to_owned()),
+            (*touch, "t1".to_owned(), "touch".to_owned())
         ]
     );
-    let fragments: Vec<(DeltaKind, &str)> = of(text)
+    let fragments: Vec<(&str, &str)> = of(text)
         .into_iter()
-        .map(|(kind, _, text)| (kind, text))
+        .filter_map(|event| match event {
+            StreamEvent::Reasoning { text, .. } => Some(("reasoning", text.as_str())),
+            StreamEvent::Text { text, .. } => Some(("text", text.as_str())),
+            _ => None,
+        })
         .collect();
     assert_eq!(
         fragments,
-        [
-            (DeltaKind::Reasoning, "hm"),
-            (DeltaKind::Text, "Hel"),
-            (DeltaKind::Text, "lo")
-        ]
+        [("reasoning", "hm"), ("text", "Hel"), ("text", "lo")]
     );
-    // Every fragment was an item, and so was the end.
+    // Every event was an item, and so was the end.
     for (call, stamp) in [(tools, tools_stamp), (text, text_stamp)] {
-        let fragments = of(call).len() as u64;
-        assert!(stamp.items > fragments, "{stamp:?}");
+        let events = of(call).len() as u64;
+        assert!(stamp.items > events, "{stamp:?}");
         assert!(stamp.last >= stamp.first, "{stamp:?}");
     }
     let said = conversation(&app, agent);

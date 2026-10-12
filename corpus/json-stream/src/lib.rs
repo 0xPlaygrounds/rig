@@ -274,12 +274,12 @@ fn stream_deltas(
         if !turn_calls.contains(delta.effect) {
             continue;
         }
-        let kind = match delta.kind {
-            DeltaKind::Text => "text_delta",
-            DeltaKind::Reasoning => "reasoning_delta",
-            DeltaKind::Arguments => continue,
+        let (kind, text) = match &delta.event {
+            StreamEvent::Text { text, .. } => ("text_delta", text),
+            StreamEvent::Reasoning { text, .. } => ("reasoning_delta", text),
+            _ => continue,
         };
-        out.emit(kind, delta.agent, json!({ "text": delta.text }));
+        out.emit(kind, delta.agent, json!({ "text": text }));
     }
 }
 

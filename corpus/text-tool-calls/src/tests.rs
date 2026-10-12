@@ -57,10 +57,13 @@ fn read(called: On<ToolCalled<ReadArgs>>, mut reads: ResMut<Reads>, mut commands
 
 /// A front drawing each call's text as it streams in.
 fn watch(mut deltas: MessageReader<StreamDelta>, mut shown: ResMut<Shown>) {
-    for delta in deltas.read().filter(|delta| delta.kind == DeltaKind::Text) {
+    for delta in deltas.read() {
+        let StreamEvent::Text { text: fragment, .. } = &delta.event else {
+            continue;
+        };
         match shown.0.iter_mut().find(|(call, _)| *call == delta.effect) {
-            Some((_, text)) => text.push_str(&delta.text),
-            None => shown.0.push((delta.effect, delta.text.clone())),
+            Some((_, text)) => text.push_str(fragment),
+            None => shown.0.push((delta.effect, fragment.clone())),
         }
     }
 }

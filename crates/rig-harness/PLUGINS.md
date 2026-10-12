@@ -971,12 +971,14 @@ fn fall_back(
 
 # What a model streams
 
-Every model call streams, a turn's and a plugin's own alike. Each fragment
-of text, reasoning or a tool call's argument JSON is a `StreamDelta {
-effect, agent, kind, part, text }` message (`part` tells parallel tool
-calls apart), written in `Arrive` in the order it came, before the call's
+Every model call streams, a turn's and a plugin's own alike. Each event
+is a `StreamDelta { effect, agent, event }` message carrying rig-core's
+`StreamEvent`: a part's `Start` (a tool call's name), its `Text`,
+`Reasoning` or `Arguments` fragments, and its `End` (a finished tool
+call with its id); the event's `part` tells parallel tool calls apart.
+It is written in `Arrive` in the order it came, before the call's
 outcome is applied; Bevy keeps a message at least two frames, so a reader
-in `PostUpdate` gets the last fragments of a reply that settled in the
+in `PostUpdate` gets the last events of a reply that settled in the
 same frame. They are what the call's adapters left: a `map_stream` rewrite
 comes before them. A turn's call also adds its text and reasoning up in
 its `Partial`, which is gone once the reply is in the conversation. From
@@ -999,8 +1001,8 @@ impl Plugin for StreamTapPlugin {
 /// Prints every model call's answer text as it comes.
 fn print_text(mut deltas: MessageReader<StreamDelta>) {
     for delta in deltas.read() {
-        if delta.kind == DeltaKind::Text {
-            print!("{}", delta.text);
+        if let StreamEvent::Text { text, .. } = &delta.event {
+            print!("{text}");
         }
     }
 }

@@ -357,11 +357,14 @@ fn stream_answer(
 ) {
     for delta in deltas.read() {
         let side = delta.agent.is_some() && delta.agent == chat.agent;
-        if delta.kind != DeltaKind::Text || !side || !answering.contains(delta.effect) {
+        let StreamEvent::Text { text, .. } = &delta.event else {
+            continue;
+        };
+        if !side || !answering.contains(delta.effect) {
             continue;
         }
         if let Some(last) = chat.exchanges.last_mut() {
-            last.answer.push_str(&delta.text);
+            last.answer.push_str(text);
         }
     }
 }
