@@ -6095,9 +6095,11 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "corpus-confirm-destructive",
+ "corpus-ho-exit-notes",
  "corpus-permission-modes",
  "corpus-plan-mode",
  "corpus-protected-paths",
+ "rig-basics",
  "rig-cassette",
  "rig-core",
  "rig-defaults-test-support",

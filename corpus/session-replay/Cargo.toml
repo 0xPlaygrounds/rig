@@ -19,6 +19,9 @@ serde_json = { workspace = true }
 rig-subagents = { path = "../../plugins/rig-subagents" }
 
 [dev-dependencies]
+# A session quit under exit-notes, with `/quit`.
+corpus-ho-exit-notes = { path = "../ho-exit-notes" }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 # The tool guards a replayed session may have run with.
 corpus-confirm-destructive = { path = "../confirm-destructive" }
 corpus-permission-modes = { path = "../permission-modes" }

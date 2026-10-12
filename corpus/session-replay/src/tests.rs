@@ -3,6 +3,8 @@ use std::sync::mpsc::Receiver;
 use rig_cassette::journal::MemoryStore;
 use std::borrow::Cow;
 
+use corpus_ho_exit_notes::ExitNotesPlugin;
+use rig_basics::BasicCommandsPlugin;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
@@ -88,13 +90,34 @@ fn run_replay(
     Some((replay.status(), replay.divergences(), replay.answered()))
 }
 
+/// The summary exit-notes' call answers.
+const SUMMARY: &str = "## Goal\nWrite a.txt.";
+
+/// Exit-notes, and `/quit`, writing their notes in the project `root`.
+fn with_exit_notes(app: &mut App, root: &std::path::Path) {
+    app.insert_resource(ProjectRoot(root.to_path_buf()))
+        .add_plugins((ExitPlugin, BasicCommandsPlugin, ExitNotesPlugin));
+}
+
+/// The notes exit-notes wrote in the project `root`.
+fn notes_in(root: &std::path::Path) -> Vec<String> {
+    let notes = std::fs::read_dir(root.join(".rig").join("notes"));
+    let notes = notes.into_iter().flatten().flatten();
+    notes
+        .filter_map(|note| std::fs::read_to_string(note.path()).ok())
+        .collect()
+}
+
 /// Records one turn that writes `path`, then answers "done", in the session
-/// `id` of `home`, the model connected by `to`; its conversation.
+/// `id` of `home`, the model connected by `to`; its conversation. Under
+/// exit-notes for the project `quit_in`, the session then ends with
+/// `/quit`, whose summary call answers [`SUMMARY`].
 fn record(
     home: &Home,
     id: &SessionId,
     path: &str,
     to: fn(&MockCompletionModel) -> Option<Connection>,
+    quit_in: Option<&std::path::Path>,
 ) -> Vec<serde_json::Value> {
     let model = MockCompletionModel::from_stream_turns([
         calls(
@@ -103,10 +126,14 @@ fn record(
             serde_json::json!({"path": path, "content": "x"}),
         ),
         reply("done"),
+        reply(SUMMARY),
     ]);
     let (mut app, wakes) = app_in(home, id);
     with_agents(&mut app, to(&model));
     app.add_plugins(EffectLogPlugin);
+    if let Some(root) = quit_in {
+        with_exit_notes(&mut app, root);
+    }
     app.finish();
     app.update();
     if let Some(agent) = first_agent(app.world_mut()) {
@@ -120,6 +147,13 @@ fn record(
             conversations.any(|conversation| conversation.messages().len() == 4)
         })
     });
+    if let (Some(agent), Some(_)) = (first_agent(app.world_mut()), quit_in) {
+        let quit = Deliver::new(agent, "/quit", DeliveryMode::Queue).with_origin(Origin::user());
+        app.world_mut().trigger(quit);
+        run_until(&mut app, &wakes, |world| {
+            !world.resource::<Messages<AppExit>>().is_empty()
+        });
+    }
     // The effect log is written at the end of the frame.
     app.update();
     conversation(&mut app)
@@ -132,7 +166,7 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     // Two ids of one second: `SessionId::generate` would give the same.
     let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
     let (recorded_id, replay_id) = (id("1-1"), id("1-2"));
-    let recorded = record(&home, &recorded_id, &file.to_string_lossy(), connect);
+    let recorded = record(&home, &recorded_id, &file.to_string_lossy(), connect, None);
     assert_eq!(recorded.len(), 4, "{recorded:?}");
     assert_eq!(std::fs::read_to_string(&file).ok().as_deref(), Some("x"));
     std::fs::remove_file(&file).ok();
@@ -239,7 +273,7 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     let file = home.root().join("b.txt");
     let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
     let recorded_id = id("2-1");
-    let recorded = record(&home, &recorded_id, &file.to_string_lossy(), keyed);
+    let recorded = record(&home, &recorded_id, &file.to_string_lossy(), keyed, None);
     assert_eq!(recorded.len(), 4, "{recorded:?}");
     std::fs::remove_file(&file).ok();
     let recorded_dir = home.session(&recorded_id).path().to_owned();
@@ -307,6 +341,61 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     assert_eq!(exit, Some(ExitReason::Failed(1)));
 }
 
+/// A session that ended with `/quit` under exit-notes replays whole: the
+/// replay quits where the recording did, and exit-notes' summary call made
+/// then is answered from the record too.
+#[test]
+fn a_session_quit_under_exit_notes_replays_its_summary_call() {
+    let home = scratch_home("session-replay-quit");
+    let (recorded_root, replay_root) = (home.root().join("recorded"), home.root().join("replay"));
+    let file = home.root().join("a.txt");
+    let id = |id: &str| id.parse().unwrap_or_else(|_| SessionId::generate());
+    let (recorded_id, replay_id) = (id("4-1"), id("4-2"));
+    let path = file.to_string_lossy();
+    let recorded = record(&home, &recorded_id, &path, connect, Some(&recorded_root));
+    assert_eq!(recorded.len(), 4, "{recorded:?}");
+    std::fs::remove_file(&file).ok();
+    let summarized = notes_in(&recorded_root);
+    assert!(
+        summarized.iter().any(|note| note.contains(SUMMARY)),
+        "{summarized:?}"
+    );
+
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_in(&home, &replay_id);
+    let dir = home
+        .session(&recorded_id)
+        .path()
+        .to_string_lossy()
+        .into_owned();
+    app.insert_resource(Invoked {
+        args: Invocation {
+            flags: vec![(REPLAY.to_owned(), Some(dir))],
+            ..Invocation::default()
+        },
+        terminal: false,
+    })
+    .add_plugins(SessionReplayPlugin);
+    with_agents(&mut app, connect(&model));
+    with_exit_notes(&mut app, &replay_root);
+    // The turn's two model calls and the summary call, and the write.
+    let outcome = run_replay(&mut app, &wakes);
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (3, 1))));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Messages<AppExit>>().is_empty()
+    });
+    let exits = app.world().resource::<Messages<AppExit>>();
+    let exits: Vec<AppExit> = exits.iter_current_update_messages().cloned().collect();
+    assert_eq!(exits, [AppExit::Success]);
+    assert_eq!(conversation(&mut app), recorded);
+    assert!(model.requests().is_empty(), "the model was called");
+    let replayed = notes_in(&replay_root);
+    assert!(
+        replayed.iter().any(|note| note.contains(SUMMARY)),
+        "{replayed:?}"
+    );
+}
+
 /// A call recorded without a question replays where a guard would now ask
 /// and, with nobody to answer, refuse: the record answers it first.
 #[test]
@@ -314,7 +403,7 @@ fn a_recorded_call_is_answered_before_a_guard_decides_it() {
     let home = scratch_home("session-replay-guarded");
     let file = home.root().join("a.txt");
     let id = "3-1".parse().unwrap_or_else(|_| SessionId::generate());
-    let recorded = record(&home, &id, &file.to_string_lossy(), connect);
+    let recorded = record(&home, &id, &file.to_string_lossy(), connect, None);
     std::fs::remove_file(&file).ok();
     let source = recorded_source(home.session(&id).path());
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
