@@ -4,9 +4,10 @@
 //! takes the keys). What is typed searches as it is typed, ignoring case
 //! unless the query has a capital letter; `re:` makes the rest a regular
 //! expression. It searches the transcript as the view lays it out
-//! ([`TranscriptLayout`]), every item whole: each row, wrapped, as its
-//! renderer draws it, a collapsed output's cut lines included, the
-//! notices where they are drawn and the reply streaming in.
+//! ([`TranscriptLayout`]), every item whole, at the width it draws at:
+//! each line as its renderer draws it, its wrapped rows rejoined, a
+//! collapsed output's cut lines included, the notices where they are drawn
+//! and the reply streaming in.
 //!
 //! The matches are lit in the transcript ([`TranscriptView::highlights`],
 //! matching case as the search does). Moving to one scrolls the view to
@@ -27,8 +28,8 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnTranscript, Expanded, Highlight, ItemRow, KeyBinding, KeyFocus,
-    KeyPress, KeyPressed, PanelCanvas, Placement, RequestRedraw, ScrollTo, TerminalEvent,
+    AppKeyBindingsExt, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow, KeyBinding,
+    KeyFocus, KeyPress, KeyPressed, PanelCanvas, Placement, RequestRedraw, ScrollTo, TerminalEvent,
     TranscriptItem, TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
 };
 
@@ -53,7 +54,8 @@ pub struct Hit {
     pub within: Vec<TranscriptItem>,
     /// Which of its item's matches it is, top to bottom.
     pub nth: usize,
-    /// Its row in its item drawn whole (in the transcript with no item).
+    /// The row it starts in, in its item drawn whole (in the transcript
+    /// with no item).
     pub row: usize,
     /// The text it matched.
     pub text: String,
@@ -94,37 +96,57 @@ pub fn compile(query: &str) -> Result<Option<(Regex, bool)>, regex::Error> {
 }
 
 /// The non-empty matches of `regex` in `agent`'s transcript `laid_out`,
-/// row by row, top to bottom.
+/// line by line, top to bottom: each line as it was before the view
+/// wrapped it, so a match a wrap split is found, at the row it starts in.
 pub fn find(regex: &Regex, agent: Entity, laid_out: &DrawnTranscript) -> Vec<Hit> {
     let mut counted: HashMap<Option<TranscriptItem>, usize> = HashMap::new();
     let mut hits = Vec::new();
-    for (at, row) in laid_out.rows().iter().enumerate() {
-        let mut found = regex.find_iter(&row.text).filter(|found| !found.is_empty());
-        let Some(first) = found.next() else {
-            continue;
-        };
-        let within: Vec<TranscriptItem> = laid_out
-            .items()
-            .iter()
-            .filter(|(_, rows)| rows.contains(&at))
-            .map(|(item, _)| item.clone())
-            .collect();
-        let item = within.last().cloned();
-        let rows = item.as_ref().and_then(|item| laid_out.rows_of(item));
-        let row_in_item = at.saturating_sub(rows.map_or(0, |rows| rows.start));
-        for found in std::iter::once(first).chain(found) {
-            let count = counted.entry(item.clone()).or_default();
+    for (rows, text) in laid_out.lines() {
+        let starts = row_starts(laid_out.rows().get(rows.clone()).unwrap_or_default());
+        for found in regex.find_iter(&text).filter(|found| !found.is_empty()) {
+            let past = starts.iter().filter(|&&start| start <= found.start());
+            let at = rows.start + past.count().saturating_sub(1);
+            let within: Vec<TranscriptItem> = laid_out
+                .items()
+                .iter()
+                .filter(|(_, rows)| rows.contains(&at))
+                .map(|(item, _)| item.clone())
+                .collect();
+            let item = within.last().cloned();
+            let first = item.as_ref().and_then(|item| laid_out.rows_of(item));
+            let row = at.saturating_sub(first.map_or(0, |rows| rows.start));
+            let count = counted.entry(item).or_default();
             hits.push(Hit {
                 agent,
-                within: within.clone(),
+                within,
                 nth: *count,
-                row: row_in_item,
+                row,
                 text: found.as_str().to_owned(),
             });
             *count += 1;
         }
     }
     hits
+}
+
+/// Where each of a line's `rows` starts in the line's text, the rows
+/// rejoined as [`DrawnTranscript::lines`] rejoins them: the blanks a wrap
+/// dropped belong to the row before.
+fn row_starts(rows: &[DrawnRow]) -> Vec<usize> {
+    let mut end = 0;
+    let mut starts = Vec::with_capacity(rows.len());
+    for row in rows {
+        let text = match &row.continues {
+            Some(joint) => {
+                end += joint.gap.len();
+                row.text.get(joint.indent..).unwrap_or(&row.text)
+            }
+            None => &row.text,
+        };
+        starts.push(end);
+        end += text.len();
+    }
+    starts
 }
 
 /// The open search bar, on its [`TuiPanel`]'s entity.
@@ -145,8 +167,6 @@ pub struct TranscriptSearch {
     taken: bool,
     /// The query or scope changed since the last search.
     dirty: bool,
-    /// The width it searched the transcript laid out at.
-    width: Option<u16>,
     /// The agent shown and where the view was scrolled when it opened.
     back: Option<(Entity, Option<(TranscriptItem, usize)>)>,
     /// The match the view was last scrolled to, and its row then.
@@ -173,7 +193,6 @@ impl TranscriptSearch {
             editing: true,
             taken: false,
             dirty: true,
-            width: None,
             back,
             went: None,
             expanded: Vec::new(),
@@ -218,7 +237,6 @@ impl TranscriptSearch {
             self.match_case = compiled.as_ref().is_some_and(|(_, case)| *case);
             self.regex = compiled.map(|(regex, _)| regex);
         }
-        self.width = view.width();
         self.hits = self
             .regex
             .as_ref()
@@ -441,8 +459,8 @@ fn type_in_bar(
         close(bar, &mut search, &mut view, &mut commands);
         return;
     }
-    let resized = view.width() != search.width;
-    if !search.dirty && (transcripts.changed() || view.is_changed() || resized) {
+    // The view changes with its width too, which the layout wraps at.
+    if !search.dirty && (transcripts.changed() || view.is_changed()) {
         search.search(&transcripts, &view);
         typed = true;
     }
@@ -455,7 +473,9 @@ fn type_in_bar(
 /// Lights the matches in the transcript, ahead of other plugins'
 /// highlights, and, when the match shown moved, scrolls to its row,
 /// expanding the items it is in that are drawn cut, in place of those the
-/// search expanded before. The frame that draws them draws it at that row.
+/// search expanded before. The row is the match's as the view draws its
+/// item with those expanded, not whole: a call cut before the match in
+/// the same message still draws cut.
 fn show(
     search: &mut TranscriptSearch,
     view: &mut ResMut<TranscriptView>,
@@ -486,7 +506,9 @@ fn show(
         view.expanded.remove(&item);
     }
     let width = view.width().unwrap_or(u16::MAX);
-    let shown = layout.lay_out(view, hit.agent, width, Expanded::AsShown);
+    let as_shown =
+        |view: &TranscriptView| layout.lay_out(view, hit.agent, width, Expanded::AsShown);
+    let shown = as_shown(view);
     let cut = hit
         .within
         .iter()
@@ -496,11 +518,15 @@ fn show(
             search.expanded.push(item.clone());
         }
     }
+    let drawn = search.regex.as_ref().zip(as_shown(view));
+    let drawn = drawn.map(|(regex, drawn)| find(regex, hit.agent, &drawn));
+    let same = |found: &Hit| found.item() == hit.item() && found.nth == hit.nth;
+    let row = drawn.and_then(|drawn| drawn.into_iter().find(same));
     let (agent, item) = (hit.agent, hit.item().cloned());
     commands.trigger(ScrollTo {
         agent,
         item,
-        row: ItemRow::Top(hit.row),
+        row: ItemRow::Top(row.map_or(hit.row, |found| found.row)),
     });
 }
 

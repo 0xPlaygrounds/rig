@@ -76,10 +76,10 @@ fn typed(text: &str) -> Vec<KeyCode> {
 }
 
 /// `agent`'s transcript as the view lays it out with its items
-/// `expanded`, one line a row.
-fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> DrawnTranscript {
+/// `expanded`, `width` columns wide.
+fn laid_out(app: &mut App, agent: Entity, expanded: Expanded, width: u16) -> DrawnTranscript {
     let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
-        layout.lay_out(&view, agent, u16::MAX, expanded)
+        layout.lay_out(&view, agent, width, expanded)
     };
     let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
     laid_out.unwrap_or_default()
@@ -134,11 +134,11 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
 
     // Turn 2's `shell` output is drawn cut, without the error.
     let call = TranscriptItem::Call(CallId::from_wire("c1"));
-    let shown = laid_out(&mut app, agent, Expanded::AsShown);
+    let shown = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
     assert!(shown.is_cut(&call));
     let cut = shown.item(&call).unwrap_or_default();
     assert!(cut.rows().iter().all(|row| !row.text.contains("E0425")));
-    let whole = laid_out(&mut app, agent, Expanded::All);
+    let whole = laid_out(&mut app, agent, Expanded::All, u16::MAX);
     let rows = whole.rows_of(&call).unwrap_or_default();
     let before: Vec<&str> = whole
         .rows()
@@ -172,7 +172,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let at = row.map(|row| (Some(call.clone()), ItemRow::Top(row)));
     assert_eq!(scrolls.first(), at.as_ref());
     assert_eq!(scrolls.len(), 1);
-    let drawn = laid_out(&mut app, agent, Expanded::AsShown);
+    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
     assert!(!drawn.is_cut(&call));
     assert_eq!(drawn.lit_in(&call), 1);
 
@@ -197,7 +197,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // A regular expression counts what the same expression finds in the
     // rendered transcript, every item whole.
     search(&mut app, agent, typed(r"re:fn \w+\("));
-    let whole = laid_out(&mut app, agent, Expanded::All);
+    let whole = laid_out(&mut app, agent, Expanded::All, u16::MAX);
     let reference = Regex::new(r"fn \w+\(").map_or(0, |regex| {
         let rows = whole.rows().iter();
         rows.map(|row| regex.find_iter(&row.text).count()).sum()
@@ -205,6 +205,22 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(reference, 5, "{whole:#?}");
     let counted = format!("{reference}/{reference}");
     assert_eq!(counter(&mut app), Some(counted));
+
+    // Laid out narrow, the error's line wraps: the search rejoins it,
+    // finding the text the wrap split at the row it starts in.
+    let split = "cannot find function";
+    let narrow = laid_out(&mut app, agent, Expanded::All, 24);
+    assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));
+    let hits = Regex::new(split).map_or_else(|_| Vec::new(), |regex| find(&regex, agent, &narrow));
+    let narrow = narrow.item(&call).unwrap_or_default();
+    let starts = |hit: &Hit| {
+        let row = narrow.rows().get(hit.row);
+        hit.item() == Some(&call) && row.is_some_and(|row| row.text.contains("cannot"))
+    };
+    assert!(
+        matches!(hits.as_slice(), [hit] if starts(hit)),
+        "{narrow:#?}"
+    );
 
     // Esc without Enter: what the search expanded collapses and the view
     // scrolls back to where it was, following the newest output.
