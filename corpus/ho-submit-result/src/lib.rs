@@ -267,7 +267,7 @@ fn submit(
         }
     };
     if let Ok(mut decision) = calls.get_mut(called.call) {
-        decision.decide(result);
+        decision.decide(Decider::plugin("ho-submit-result"), result);
     }
 }
 
@@ -373,7 +373,10 @@ fn end_with_result(
         let choice = vec![AssistantContent::Text(Text::new(answer.clone()))];
         let made = Made::new("plugin", "submit-result", TOOL);
         let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
-        decision.decide(Outcome(Ok(effect::Outcome::Completion(reply))));
+        decision.decide(
+            Decider::plugin("ho-submit-result"),
+            Outcome(Ok(effect::Outcome::Completion(reply))),
+        );
     }
 }
 

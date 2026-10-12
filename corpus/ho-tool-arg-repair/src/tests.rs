@@ -20,7 +20,7 @@ struct Pick {
 fn picked(called: On<ToolCalled<Pick>>, mut calls: Query<&mut Decision, ToolCalls>) {
     let text = format!("{} x{}", called.args.path, called.args.count);
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(text.into()));
+        call.decide(Decider::plugin("test"), ToolResult::success(text.into()));
     }
 }
 
