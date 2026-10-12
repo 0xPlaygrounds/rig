@@ -892,9 +892,10 @@ fn progress(
         }
         Step::Done(finish) => finish,
     };
-    decision.decide(Outcome::custom(
-        serde_json::to_value(finish).unwrap_or_default(),
-    ));
+    decision.decide(
+        Decider::plugin("fh-open-pr"),
+        Outcome::custom(serde_json::to_value(finish).unwrap_or_default()),
+    );
     commands.entity(reported.entity).despawn();
     let mut keep = |url: &str| {
         if !url.is_empty() && !work.prs.iter().any(|pr| pr == url) {

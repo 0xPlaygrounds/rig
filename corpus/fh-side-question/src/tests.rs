@@ -176,7 +176,10 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     if let Some(call) = open_shell(app.world_mut())
         && let Some(mut decision) = app.world_mut().get_mut::<Decision>(call)
     {
-        decision.decide(ToolResult::success("migrated".into()));
+        decision.decide(
+            Decider::plugin("fh-side-question"),
+            ToolResult::success("migrated".into()),
+        );
     }
     run_until(&mut app, &wakes, idle_after(&main, 2, agent));
     let main_requests = main.requests();

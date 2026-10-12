@@ -383,7 +383,10 @@ fn answered(
         };
         match choice.as_str() {
             "skip" => {
-                decision.decide(Outcome::from(ToolResult::success(SKIPPED.into())));
+                decision.decide(
+                    Decider::plugin("fh-step-mode"),
+                    Outcome::from(ToolResult::success(SKIPPED.into())),
+                );
             }
             "edit" => {
                 let hold = StepHold {
@@ -433,7 +436,10 @@ fn take_edits(
                 && !runs.iter().any(|run| run.hold == *hold)
         });
         if let Some((hold, _)) = editing {
-            decision.decide(Outcome::custom("step: edited arguments"));
+            decision.decide(
+                Decider::plugin("fh-step-mode"),
+                Outcome::custom("step: edited arguments"),
+            );
             let text = incoming.text.clone();
             commands.trigger(ArgsTyped { hold, text });
         }
