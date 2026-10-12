@@ -2293,3 +2293,28 @@ fn a_cache_point_respects_markers_thinking_and_the_budget() {
     assert!(!system_has_cache_control(&value) && !last_message_has_cache_control(&value));
     assert_eq!(markers(&value), 4);
 }
+
+/// A repeated cache point marks its block once, a point past the history
+/// marks nothing, and a tools point with only deferred tools has no tool
+/// to mark.
+#[test]
+fn repeated_missing_and_deferred_cache_points_mark_nothing_more() {
+    use completion::CachePoint::{Messages, Tools};
+
+    let deferred = json!({"name": "later", "description": "d",
+        "input_schema": {"type": "object"}, "defer_loading": true});
+    let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": [deferred]})));
+    request.cache_points = vec![Messages(1), Tools, Messages(9), Messages(1)];
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request,
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    assert_eq!(value["tools"][0]["defer_loading"], true);
+    assert!(value["tools"][0].get("cache_control").is_none());
+    assert!(last_message_has_cache_control(&value));
+    assert_eq!(value.to_string().matches("cache_control").count(), 1);
+}

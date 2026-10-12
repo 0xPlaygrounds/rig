@@ -589,17 +589,16 @@ pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Opt
 /// later tool result answers, in call order: what a conversation cut short
 /// still owes the model.
 pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
-    let Some(at) = messages
+    let Some((at, Message::Assistant(reply))) = messages
         .iter()
-        .rposition(|message| matches!(message, Message::Assistant(_)))
+        .enumerate()
+        .rfind(|(_, message)| matches!(message, Message::Assistant(_)))
     else {
         return Vec::new();
     };
-    let mut later = messages.iter().skip(at);
-    let Some(Message::Assistant(reply)) = later.next() else {
-        return Vec::new();
-    };
-    let answered: Vec<&CallId> = later
+    let answered: Vec<&CallId> = messages
+        .iter()
+        .skip(at + 1)
         .flat_map(|message| match message {
             Message::User { content } => content.as_slice(),
             _ => &[],

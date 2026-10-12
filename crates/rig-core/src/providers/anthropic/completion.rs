@@ -797,18 +797,16 @@ fn apply_cache_control(
             remaining -= 1;
         }
     }
+    // Furthest into the request first. Distinct spots are distinct blocks,
+    // so a repeated spot finds its block already marked.
     points.sort_unstable();
-    points.dedup();
-    let mut open = Vec::new();
-    for spot in points {
-        if spot_block(spot, system, messages, tools)
-            .is_some_and(|block| !block.contains_key("cache_control"))
-        {
-            open.push(spot);
+    for spot in points.into_iter().rev() {
+        if remaining == 0 {
+            break;
         }
-    }
-    for spot in open.iter().skip(open.len().saturating_sub(remaining)) {
-        if let Some(block) = spot_block(*spot, system, messages, tools) {
+        if let Some(block) = spot_block(spot, system, messages, tools)
+            && !block.contains_key("cache_control")
+        {
             block.insert("cache_control".into(), ephemeral(top_ttl.as_ref()));
             remaining -= 1;
         }
