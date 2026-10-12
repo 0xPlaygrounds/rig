@@ -24,8 +24,12 @@ bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 # Named by Bevy's derives.
 bevy_reflect = { workspace = true }
+# The pool the instruction files are read on in a workspace that is not
+# this machine.
+bevy_tasks = { workspace = true }
 # The local date in the system prompt.
 chrono = { workspace = true, features = ["clock"] }
+rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }

@@ -1,14 +1,22 @@
+use std::ffi::{OsStr, OsString};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_ecs::prelude::*;
 use rig_harness_test_support::{Ended, app_on, connect, log_ended, reply, run_until};
+use rig_tools::process::{Launcher, Process, Spawn};
+use rig_tools::workspace::{Contents, Stat, Workspace};
 
 use rig_harness::commands::RunCommand;
 use rig_harness::harness_protocol::Home;
 use rig_harness::services::WorkDir;
 
 use super::{
-    ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, ProjectRoot, RigHome, default_prompt,
+    ContextEntry, DEFAULT_SYSTEM_PROMPT, PROJECT, ProjectContextPlugin, ProjectRoot,
+    ProjectWorkspace, RefreshProjectContext, RigHome, default_prompt,
 };
 
 #[test]
@@ -94,4 +102,139 @@ fn each_agent_is_told_its_own_working_directory() {
     assert_eq!(told(plain), [line(&root)]);
     assert_eq!(told(working), [line(&worktree)]);
     assert_eq!(told(child), [line(&worktree)]);
+}
+
+/// The project section's text.
+fn project_text(world: &mut World) -> String {
+    let mut sections = world.query::<&PromptSection>();
+    let project = sections.iter(world).find(|section| section.tag == PROJECT);
+    project
+        .map(|section| section.text.clone())
+        .unwrap_or_default()
+}
+
+#[test]
+fn a_refresh_puts_an_edited_agents_md_in_the_prompt() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let root = exe.with_file_name(format!("refresh-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    std::fs::write(root.join("AGENTS.md"), "Use tabs.").ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(Home::at(root.join("home"))))
+        .insert_resource(ProjectRoot(root.clone()))
+        .add_plugins((AgentPlugin, ProjectContextPlugin));
+    app.finish();
+    let world = app.world_mut();
+    assert!(project_text(world).contains("Use tabs."));
+    std::fs::write(root.join("AGENTS.md"), "Use spaces.").ok();
+    world.trigger(RefreshProjectContext);
+    world.flush();
+    let text = project_text(world);
+    assert!(
+        text.contains("Use spaces.") && !text.contains("Use tabs."),
+        "{text}"
+    );
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A workspace that is not this machine: it has one file,
+/// `/remote/AGENTS.md`, and runs nothing.
+#[derive(Debug)]
+struct Remote;
+
+impl Remote {
+    const RULES: &str = "/remote/AGENTS.md";
+    const TEXT: &[u8] = b"Run the remote's tests.";
+}
+
+impl Workspace for Remote {
+    fn host(&self) -> Option<&str> {
+        Some("ssh://dev@box")
+    }
+
+    fn stat(&self, path: &Path) -> io::Result<Stat> {
+        if path == Path::new(Self::RULES) {
+            return Ok(Stat::File {
+                size: Self::TEXT.len() as u64,
+                read_only: false,
+            });
+        }
+        Ok(Stat::Missing)
+    }
+
+    fn read(&self, path: &Path, _: u64) -> io::Result<Contents> {
+        if path != Path::new(Self::RULES) {
+            return Err(io::ErrorKind::NotFound.into());
+        }
+        Ok(Contents {
+            bytes: Self::TEXT.to_vec(),
+            size: Self::TEXT.len() as u64,
+        })
+    }
+
+    fn write(&self, _: &Path, _: &[u8]) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn remove(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn canonical(&self, path: &Path) -> PathBuf {
+        path.to_path_buf()
+    }
+
+    fn files(&self, _: &Path, _: Option<&str>) -> io::Result<Vec<PathBuf>> {
+        Ok(Vec::new())
+    }
+
+    fn spawn(
+        &self,
+        _: &Launcher,
+        _: Option<&Path>,
+        _: &OsStr,
+        _: &[OsString],
+        _: Spawn,
+    ) -> io::Result<Process> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+}
+
+#[test]
+fn in_another_workspace_the_first_request_waits_for_its_instruction_files() {
+    let model = MockCompletionModel::from_stream_turns([reply("ok")]);
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let home = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name("no-home");
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(ProjectRoot("/remote".into()))
+        .insert_resource(ProjectWorkspace(Arc::new(Remote)))
+        .add_plugins((AgentPlugin, JournalPlugin, ProjectContextPlugin))
+        .init_resource::<Ended>()
+        .add_observer(log_ended);
+    app.finish();
+    app.update();
+    let Some(connection) = connect(&model) else {
+        return;
+    };
+    let world = app.world_mut();
+    let agent = world.spawn((Agent, connection)).id();
+    world.trigger(Deliver::new(agent, "hello", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+    let sent: Vec<String> = model
+        .requests()
+        .iter()
+        .map(|request| request.system_instructions().unwrap_or_default().to_owned())
+        .collect();
+    assert_eq!(sent.len(), 1, "{sent:?}");
+    let prompt = sent.first().cloned().unwrap_or_default();
+    assert!(prompt.contains("Run the remote's tests."), "{prompt}");
+    assert!(prompt.contains("Host: ssh://dev@box"), "{prompt}");
 }

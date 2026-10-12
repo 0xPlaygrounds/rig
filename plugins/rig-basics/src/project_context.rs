@@ -1,30 +1,39 @@
 //! The project context in every agent's system prompt: the instruction
 //! files (`AGENTS.md`, or `CLAUDE.md`) of `RIG_HOME` and of the project's
-//! directory and each directory above it, and each agent's environment
-//! (its working directory, its [`WorkDir`] or else the project's, the
-//! platform and the date). Both are [`PromptSection`]s, the environment
-//! one per agent, re-read when a turn starts and by `/context`, so an
-//! edited `AGENTS.md` counts from the next message without a rebuild.
-//! A section only changes when its text does, so the prompt stays cached.
-//! An agent with no [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is rig, a coding
-//! agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its system prompt.
-//! `/context` lists the prompt's sections and what other plugins put in
-//! the context besides, as [`ContextEntry`]s.
+//! directory and each directory above it, in the app's
+//! [`ProjectWorkspace`], and each agent's environment (its working
+//! directory, its [`WorkDir`] or else the project's, the host when the
+//! workspace is not this machine, the platform and the date). Both are
+//! [`PromptSection`]s, the environment one per agent, re-read when a turn
+//! starts, by `/context` and by any plugin that triggers
+//! [`RefreshProjectContext`], so an edited `AGENTS.md` counts from the next
+//! message without a rebuild. A section only changes when its text does,
+//! so the prompt stays cached. An agent with no
+//! [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is
+//! rig, a coding agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its
+//! system prompt. `/context` lists the prompt's sections and what other
+//! plugins put in the context besides, as [`ContextEntry`]s.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_core::tool::ToolExecutionError;
+use rig_tools::blocking;
 use rig_tools::context::Instructions;
-use rig_tools::workspace::Local;
+use rig_tools::workspace::Workspace;
 
 use rig_ecs::agent::{Agent, Notice, TurnOf};
+use rig_ecs::calls::{Running, Wake};
 use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
-use rig_ecs::stage::{Admitted, AgentPass, PrepareSystems};
+use rig_ecs::stage::{Admitted, AgentPass, HoldOf, PrepareSystems};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
+use rig_harness::workspace::ProjectWorkspace;
 
 /// What an agent with no [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
@@ -46,19 +55,41 @@ pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work i
     - Give that answer once, at the end of the turn: no running commentary or \
     interim summaries between tool calls.";
 
+/// Re-reads the project's instruction files and every agent's environment
+/// into their prompt sections, saying so when the files changed. rig-basics
+/// triggers it as each turn starts and on `/context`; a plugin that changes
+/// an instruction file triggers it too:
+///
+/// ```
+/// use rig_basics::RefreshProjectContext;
+/// use rig_harness::prelude::*;
+///
+/// fn after_saving_a_rule(mut commands: Commands) {
+///     // ... the rule was appended to AGENTS.md
+///     commands.trigger(RefreshProjectContext);
+/// }
+/// ```
+///
+/// In this machine's workspace the files are read at once. In another,
+/// they are read off the main thread, and every model call built from an
+/// agent meanwhile waits for them (a [`HoldOf`] it).
+#[derive(Event, Clone, Copy, Debug, Default)]
+pub struct RefreshProjectContext;
+
 /// Spawns the project [`PromptSection`] and each agent's environment one,
-/// re-reads them when a turn starts, adds `/context`, and gives an agent
-/// with no prompt of its own rig's ([`DEFAULT_SYSTEM_PROMPT`]).
+/// re-reads them when a turn starts and on [`RefreshProjectContext`], adds
+/// `/context`, and gives an agent with no prompt of its own rig's
+/// ([`DEFAULT_SYSTEM_PROMPT`]).
 #[derive(Default)]
 pub struct ProjectContextPlugin;
 
 impl Plugin for ProjectContextPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<RigHome>()
-            .init_resource::<ProjectRoot>();
-        let world = app.world();
-        let context = Context::read(world.resource(), world.resource());
-        let project = (Name::new("prompt:project"), Project, context.project());
+            .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>();
+        let section = PromptSection::new(PromptSection::ORDER_PROJECT, PROJECT, "");
+        let project = (Name::new("prompt:project"), Project::default(), section);
         app.world_mut().spawn(project);
         app.add_command(
             "context",
@@ -66,8 +97,35 @@ impl Plugin for ProjectContextPlugin {
             show_context,
         )
         .add_observer(refresh_on_turn)
+        .add_observer(refresh)
+        .add_observer(read_off_thread)
         .add_observer(environment_of_agent)
-        .add_systems(AgentPass, default_prompt.in_set(PrepareSystems::Compose));
+        .add_systems(
+            AgentPass,
+            (default_prompt, wait_for_instructions).in_set(PrepareSystems::Compose),
+        );
+    }
+
+    /// Reads the instruction files once every plugin is in, so the
+    /// workspace is the one the app runs in: at once in this machine's,
+    /// else as the first turn starts.
+    fn finish(&self, app: &mut App) {
+        let world = app.world_mut();
+        let (Some(home), Some(root), Some(workspace)) = (
+            world.get_resource::<RigHome>(),
+            world.get_resource::<ProjectRoot>(),
+            world.get_resource::<ProjectWorkspace>(),
+        ) else {
+            return;
+        };
+        if workspace.0.host().is_some() {
+            return;
+        }
+        let read = discover(home.0.root(), &root.0, &*workspace.0);
+        let mut projects = world.query::<(&mut PromptSection, &mut Project)>();
+        for (mut section, mut project) in projects.iter_mut(world) {
+            project.put(&mut section, &read);
+        }
     }
 }
 
@@ -111,91 +169,94 @@ impl ContextEntry {
     }
 }
 
-/// On the instruction files' [`PromptSection`].
-#[derive(Component)]
-struct Project;
+/// The tag of the instruction files' [`PromptSection`].
+const PROJECT: &str = "project_instructions";
+
+/// The tag of an agent's environment [`PromptSection`].
+const ENVIRONMENT: &str = "environment";
+
+/// On the instruction files' [`PromptSection`]: what was read last.
+#[derive(Component, Default)]
+struct Project {
+    /// The files' paths, as [`Instructions::paths`] says.
+    paths: String,
+    /// Files that exist but could not be read, with why.
+    unreadable: Vec<String>,
+}
+
+impl Project {
+    /// Puts `read` in the project's `section`; whether its text changed.
+    fn put(&mut self, section: &mut Mut<PromptSection>, read: &Instructions) -> bool {
+        self.paths = read.paths();
+        self.unreadable.clone_from(&read.unreadable);
+        let text = read.prompt_text();
+        section.set_if_neq(PromptSection::new(
+            PromptSection::ORDER_PROJECT,
+            PROJECT,
+            text,
+        ))
+    }
+
+    /// The notices of a read that changed the files: which were read, and
+    /// which could not be.
+    fn notices(&self) -> Vec<Notice> {
+        let mut notices = vec![Notice::info(
+            None,
+            format!("Instruction files re-read: {}.", self.paths),
+        )];
+        let unreadable = self.unreadable.iter();
+        notices.extend(
+            unreadable.map(|problem| Notice::error(None, format!("Cannot read {problem}."))),
+        );
+        notices
+    }
+}
 
 /// On an agent's environment [`PromptSection`] ([`SectionOf`] it).
 #[derive(Component)]
 struct Environment;
 
-/// The instruction files of `RIG_HOME` and of the project's directory and
-/// each directory above it.
-struct Context {
-    instructions: Instructions,
-    root: PathBuf,
-}
+/// The instruction files read off the main thread, for a workspace that
+/// is not this machine; every model call admitted meanwhile is held by a
+/// child of it.
+#[derive(Component)]
+struct Reading;
 
-impl Context {
-    /// Reads the instruction files of `home` and of `root` and above now.
-    fn read(home: &RigHome, root: &ProjectRoot) -> Self {
-        Self {
-            instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0, &Local),
-            root: root.0.clone(),
-        }
-    }
+/// What [`Reading`] read.
+#[derive(Component)]
+struct Read(Result<Instructions, ToolExecutionError>);
 
-    /// The instruction files' section, from the most general to the most
-    /// specific.
-    fn project(&self) -> PromptSection {
-        PromptSection::new(
-            PromptSection::ORDER_PROJECT,
-            "project_instructions",
-            self.instructions.prompt_text(),
-        )
-    }
-
-    /// The environment section of an agent working in `dir`, else in the
-    /// project's directory.
-    fn environment(&self, dir: Option<&WorkDir>) -> PromptSection {
-        environment(dir.map_or(&self.root, |dir| &dir.0))
-    }
-
-    /// Puts what was read in the project section and the environment
-    /// sections of `agents`, by their [`WorkDir`]s; whether the
-    /// instruction files changed.
-    fn apply(
-        &self,
-        sections: &mut Sections,
-        agents: &Query<Option<&WorkDir>, With<Agent>>,
-    ) -> bool {
-        let mut changed = false;
-        for (of, mut section) in sections {
-            let Some(SectionOf(agent)) = of else {
-                changed |= section.set_if_neq(self.project());
-                continue;
-            };
-            if let Ok(dir) = agents.get(*agent) {
-                section.set_if_neq(self.environment(dir));
-            }
-        }
-        changed
+impl From<Result<Instructions, ToolExecutionError>> for Read {
+    fn from(read: Result<Instructions, ToolExecutionError>) -> Self {
+        Self(read)
     }
 }
 
-/// The context's sections: the project one, without a [`SectionOf`], and
-/// the agents' environments.
-type Sections<'w, 's> = Query<
-    'w,
-    's,
-    (Option<&'static SectionOf>, &'static mut PromptSection),
-    Or<(With<Project>, With<Environment>)>,
->;
+/// The instruction files of `home` on this machine and of `root` and
+/// above in `workspace`, read now.
+fn discover(home: &Path, root: &Path, workspace: &dyn Workspace) -> Instructions {
+    Instructions::discover([home.to_path_buf()], root, workspace)
+}
 
-/// The environment section of an agent working in `dir`.
-fn environment(dir: &Path) -> PromptSection {
-    let lines = [
-        format!("Working directory: {}", dir.display()),
-        format!(
+/// The environment section of an agent working in `dir`, in the
+/// workspace on `host` (`None`: this machine).
+fn environment(dir: &Path, host: Option<&str>) -> PromptSection {
+    let mut lines = vec![format!("Working directory: {}", dir.display())];
+    match host {
+        Some(host) => lines.push(format!("Host: {host}, not this machine")),
+        None => lines.push(format!(
             "Platform: {} ({})",
             std::env::consts::OS,
             std::env::consts::ARCH
-        ),
-        format!("Today's date: {}", chrono::Local::now().format("%Y-%m-%d")),
-    ];
+        )),
+    }
+    lines.push(format!(
+        "Today's date: {}",
+        chrono::Local::now().format("%Y-%m-%d")
+    ));
     PromptSection::new(
         PromptSection::ORDER_ENVIRONMENT,
-        "environment",
+        ENVIRONMENT,
         lines.join("\n"),
     )
 }
@@ -206,11 +267,14 @@ fn environment(dir: &Path) -> PromptSection {
 fn environment_of_agent(changed: On<Insert<(Agent, WorkDir)>>, mut commands: Commands) {
     let agent = changed.entity;
     commands.queue(move |world: &mut World| {
-        let Some(root) = world.get_resource::<ProjectRoot>() else {
+        let (Some(root), Some(workspace)) = (
+            world.get_resource::<ProjectRoot>(),
+            world.get_resource::<ProjectWorkspace>(),
+        ) else {
             return;
         };
         let dir = world.get::<WorkDir>(agent).map_or(&root.0, |dir| &dir.0);
-        let section = environment(dir);
+        let section = environment(dir, workspace.0.host());
         let sections = world.get::<AgentSections>(agent);
         let mut sections = sections.into_iter().flat_map(|sections| sections.iter());
         let mine = sections.find(|&of| world.get::<Environment>(of).is_some());
@@ -229,71 +293,164 @@ fn environment_of_agent(changed: On<Insert<(Agent, WorkDir)>>, mut commands: Com
     });
 }
 
-/// Re-reads the sections when a turn starts, before its first model call,
-/// and says so when the instruction files changed.
-fn refresh_on_turn(
-    started: On<Add<TurnOf>>,
-    turns: Query<&TurnOf>,
-    mut sections: Sections,
+/// Re-reads the context when a turn starts, before its first model call.
+fn refresh_on_turn(_: On<Add<TurnOf>>, mut commands: Commands) {
+    commands.trigger(RefreshProjectContext);
+}
+
+/// Re-reads the context ([`RefreshProjectContext`]): the environments at
+/// once, and the instruction files at once in this machine's workspace,
+/// else off the main thread, unless a read runs.
+fn refresh(
+    _: On<RefreshProjectContext>,
+    mut projects: Query<(&mut PromptSection, &mut Project), Without<Environment>>,
+    mut environments: Query<(&SectionOf, &mut PromptSection), With<Environment>>,
     agents: Query<Option<&WorkDir>, With<Agent>>,
-    home: Res<RigHome>,
-    root: Res<ProjectRoot>,
+    reading: Query<(), With<Reading>>,
+    (home, root, workspace, wake): (
+        Res<RigHome>,
+        Res<ProjectRoot>,
+        Res<ProjectWorkspace>,
+        Res<Wake>,
+    ),
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    let context = Context::read(&home, &root);
-    if !context.apply(&mut sections, &agents) {
+    let host = workspace.0.host();
+    for (&SectionOf(agent), mut section) in &mut environments {
+        if let Ok(dir) = agents.get(agent) {
+            let dir = dir.map_or(&root.0, |dir| &dir.0);
+            section.set_if_neq(environment(dir, host));
+        }
+    }
+    if host.is_none() {
+        let read = discover(home.0.root(), &root.0, &*workspace.0);
+        for (mut section, mut project) in &mut projects {
+            if project.put(&mut section, &read) {
+                notices.write_batch(project.notices());
+            }
+        }
         return;
     }
-    let agent = turns.get(started.entity).ok().map(|of| of.0);
-    notices.write(Notice::info(
-        agent,
-        format!(
-            "Instruction files re-read: {}.",
-            context.instructions.paths()
-        ),
+    if !reading.is_empty() {
+        return;
+    }
+    let (home, root) = (home.0.root().to_path_buf(), root.0.clone());
+    let workspace: Arc<dyn Workspace> = workspace.0.clone();
+    let read = blocking(move || Ok(discover(&home, &root, &*workspace)));
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    commands.spawn((
+        Name::new("project instructions"),
+        Reading,
+        Running::spawn_into::<Read, _>(pool, &wake, read),
     ));
-    for problem in context.instructions.unreadable {
-        notices.write(Notice::error(agent, format!("Cannot read {problem}.")));
+}
+
+/// Holds each model call built from an agent while the instruction files
+/// are read off the main thread, in [`PrepareSystems::Compose`].
+fn wait_for_instructions(
+    calls: Query<Entity, (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>)>,
+    reading: Query<Entity, With<Reading>>,
+    mut commands: Commands,
+) {
+    let Some(reading) = reading.iter().next() else {
+        return;
+    };
+    for call in &calls {
+        let hold = (Name::new("hold: project instructions"), HoldOf(call));
+        commands.entity(reading).with_child(hold);
     }
 }
 
-/// `/context`: re-reads the sections now and lists the instruction files,
-/// every section of the system prompt of the agent that asked, its
-/// environment and the [`ContextEntry`]s.
-fn show_context(
-    In(args): In<CommandArgs>,
-    mut sections: Sections,
-    agents: Query<Option<&WorkDir>, With<Agent>>,
-    others: Query<(&PromptSection, Option<&SectionOf>), (Without<Project>, Without<Environment>)>,
+/// Puts the instruction files read off the main thread in the project
+/// section and in the requests of the calls that waited for them, then
+/// releases those calls.
+fn read_off_thread(
+    done: On<Insert<Read>>,
+    reads: Query<(&Read, Option<&Children>)>,
+    holds: Query<&HoldOf>,
+    mut projects: Query<(&mut PromptSection, &mut Project)>,
+    mut requests: Query<&mut ModelRequest>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let Ok((Read(read), held)) = reads.get(done.entity) else {
+        return;
+    };
+    match read {
+        Ok(read) => {
+            for (mut section, mut project) in &mut projects {
+                if project.put(&mut section, read) {
+                    notices.write_batch(project.notices());
+                }
+            }
+            let text = read.prompt_text();
+            let calls = held.into_iter().flatten();
+            let calls = calls.filter_map(|&hold| holds.get(hold).ok());
+            for &HoldOf(call) in calls {
+                let Ok(mut request) = requests.get_mut(call) else {
+                    continue;
+                };
+                let prompt = request.prompt.as_mut().into_iter();
+                let sections = prompt.flat_map(|prompt| &mut prompt.sections);
+                for section in sections.filter(|section| section.tag == PROJECT) {
+                    section.text.clone_from(&text);
+                }
+            }
+        }
+        Err(failure) => {
+            let why = format!("Cannot read the instruction files: {failure}");
+            notices.write(Notice::error(None, why));
+        }
+    }
+    commands.entity(done.entity).despawn();
+}
+
+/// `/context`: re-reads the context now ([`RefreshProjectContext`]), then
+/// lists the instruction files, every section of the system prompt of the
+/// agent that asked, its environment and the [`ContextEntry`]s.
+fn show_context(In(args): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(RefreshProjectContext);
+    let agent = args.agent;
+    commands.queue(move |world: &mut World| {
+        let _ = world.run_system_cached_with(list_context, agent);
+    });
+}
+
+/// Lists what `/context` shows to `agent`.
+fn list_context(
+    In(agent): In<Entity>,
+    sections: Query<(&PromptSection, Option<&SectionOf>)>,
+    projects: Query<&Project>,
     entries: Query<&ContextEntry>,
-    home: Res<RigHome>,
+    agents: Query<Option<&WorkDir>, With<Agent>>,
     root: Res<ProjectRoot>,
+    workspace: Res<ProjectWorkspace>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let context = Context::read(&home, &root);
-    context.apply(&mut sections, &agents);
-    let mine = |of: Option<&SectionOf>| of.is_none_or(|of| of.0 == args.agent);
-    let ours = sections.iter().filter(|(of, _)| mine(*of));
-    let mut listed: Vec<&PromptSection> = ours.map(|(_, section)| section).collect();
-    listed.extend(
-        others
-            .iter()
-            .filter(|(_, of)| mine(*of))
-            .map(|(section, _)| section),
-    );
+    let mine = |of: Option<&SectionOf>| of.is_none_or(|of| of.0 == agent);
+    let mut listed: Vec<&PromptSection> = sections
+        .iter()
+        .filter(|(_, of)| mine(*of))
+        .map(|(section, _)| section)
+        .collect();
     listed.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.tag.cmp(&b.tag)));
-    let mut lines = vec![format!(
-        "Instruction files, most general first: {}.",
-        context.instructions.paths()
-    )];
-    let unreadable = context.instructions.unreadable.iter();
-    lines.extend(unreadable.map(|problem| format!("Cannot read {problem}.")));
+    let mut lines = Vec::new();
+    for project in &projects {
+        lines.push(format!(
+            "Instruction files, most general first: {}.",
+            project.paths
+        ));
+        let unreadable = project.unreadable.iter();
+        lines.extend(unreadable.map(|problem| format!("Cannot read {problem}.")));
+    }
     lines.push("The system prompt's sections:".to_owned());
     for section in listed {
         lines.push(format!("  {} ({} bytes)", section.tag, section.text.len()));
     }
-    let dir = agents.get(args.agent).ok().flatten();
-    lines.push(context.environment(dir).text);
+    let dir = agents.get(agent).ok().flatten();
+    let dir = dir.map_or(&root.0, |dir| &dir.0);
+    lines.push(environment(dir, workspace.0.host()).text);
     let mut entries: Vec<&ContextEntry> = entries
         .iter()
         .filter(|entry| !entry.text.is_empty())
@@ -302,7 +459,7 @@ fn show_context(
     for entry in entries {
         lines.push(format!("{}: {}", entry.tag, entry.text));
     }
-    notices.write(Notice::info(args.agent, lines.join("\n")));
+    notices.write(Notice::info(agent, lines.join("\n")));
 }
 
 #[cfg(test)]
