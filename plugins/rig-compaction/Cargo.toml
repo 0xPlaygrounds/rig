@@ -13,6 +13,12 @@ publish = false
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The summary drawn as an expandable entry in the terminal view. An app
+# without the terminal view leaves it out with `default-features = false`.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
@@ -23,6 +29,7 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate and the checkpoint compaction decides by.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
+rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
