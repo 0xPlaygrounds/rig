@@ -4884,6 +4884,7 @@ dependencies = [
  "rig-cassette",
  "rig-coding-tools",
  "rig-core",
+ "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tools",

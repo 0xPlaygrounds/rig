@@ -141,6 +141,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     // reconnect.
     let dropped = output(outputs, "c3");
     assert!(dropped.contains("connection to dev@fake lost"), "{dropped}");
+    assert!(!dropped.contains("[exit code"), "{dropped}");
     let back = output(outputs, "c4");
     assert!(
         back.contains("back") && back.contains("[exit code 0]"),
@@ -166,4 +167,9 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
         pid.trim()
     );
     std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(RemoteWorkspacePlugin);
 }

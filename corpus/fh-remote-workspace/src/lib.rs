@@ -8,8 +8,9 @@
 //! and the project's instruction files act there, as does any plugin that
 //! goes through the workspace; the others learn it is remote from its
 //! `host()`. Every call goes over one multiplexed connection; a dropped one
-//! fails what was running with "connection to host lost", is reconnected
-//! with backoff, and the next calls wait for it (30 s by default). The
+//! fails what was running with "connection to host lost" (a command's call
+//! in Review, from its exit status), is reconnected with backoff, and the
+//! next calls wait for it (30 s by default). The
 //! target is saved with the session, so `/resume` points at it again. The
 //! status line shows `⇄ host:/path`.
 
@@ -19,6 +20,8 @@ use std::sync::Arc;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 use rig_harness::prelude::*;
+use rig_harness::rig_core::tool::{ExitStatus, ToolExecutionError, ToolResult};
+use rig_tools::split_status;
 use serde::Deserialize;
 
 mod ssh;
@@ -98,6 +101,11 @@ pub fn quote_path(path: &str) -> String {
     }
 }
 
+/// The plugin's stage system: failing a call whose command lost the
+/// connection, in [`ReviewSystems::Edit`].
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RemoteSystems;
+
 /// The remote workspace, `/remote` and `--remote`.
 #[derive(Default)]
 pub struct RemoteWorkspacePlugin;
@@ -134,6 +142,8 @@ impl Plugin for RemoteWorkspacePlugin {
             "Work on another machine: /remote user@host:/path, /remote off",
             remote_command,
         )
+        .configure_sets(AgentPass, RemoteSystems.in_set(ReviewSystems::Edit))
+        .add_systems(AgentPass, fail_lost.in_set(RemoteSystems))
         .add_systems(Startup, listen)
         .add_systems(
             Update,
@@ -155,12 +165,12 @@ impl Plugin for RemoteWorkspacePlugin {
     }
 }
 
-/// Where the workspace was last pointed, the local project directory to
-/// come back to, and where an [`Ssh`]'s reconnects are told.
+/// The remote workspace put in last, the local project directory to come
+/// back to, and where an [`Ssh`]'s reconnects are told.
 #[derive(Resource)]
 struct Pointed {
     news: UnboundedSender<String>,
-    at: Option<Target>,
+    at: Option<Ssh>,
     local_root: Option<PathBuf>,
 }
 
@@ -191,21 +201,21 @@ fn point(world: &mut World) {
     let Some(mut pointed) = world.get_resource_mut::<Pointed>() else {
         return;
     };
-    if pointed.at == remote {
+    if pointed.at.as_ref().map(Ssh::target) == remote.as_ref() {
         return;
     }
     let was_remote = pointed.at.is_some();
     if !was_remote {
         pointed.local_root = root;
     }
-    pointed.at.clone_from(&remote);
-    let news = pointed.news.clone();
+    let ssh = remote.map(|target| Ssh::new(target, settings, launcher, pointed.news.clone()));
+    pointed.at.clone_from(&ssh);
     let local_root = pointed.local_root.clone().unwrap_or_default();
-    let said = match remote {
-        Some(target) => {
+    let said = match ssh {
+        Some(ssh) => {
+            let target = ssh.target();
             let said = Notice::info(None, format!("Working in {target}, over SSH."));
             let root = ProjectRoot(PathBuf::from(&target.dir));
-            let ssh = Ssh::new(target, settings, launcher, news);
             world.insert_resource(ProjectWorkspace(Arc::new(ssh)));
             world.insert_resource(root);
             said
@@ -218,6 +228,39 @@ fn point(world: &mut World) {
     };
     if telling {
         world.write_message(said);
+    }
+}
+
+/// On a call failed for the connection it lost.
+#[derive(Component)]
+#[component(storage = "SparseSet")]
+struct Lost;
+
+/// Fails a call whose command `ssh` ended with its own exit code while
+/// remote, since the connection, not the command, failed: "connection to
+/// host lost", with what the command printed before, and starts the
+/// reconnect. Once: Review sees the outcome each pass until it settles.
+fn fail_lost(
+    mut calls: Query<(Entity, &mut Outcome, &Published), (Unreviewed, ToolCalls, Without<Lost>)>,
+    pointed: Res<Pointed>,
+    mut commands: Commands,
+) {
+    let Some(ssh) = &pointed.at else {
+        return;
+    };
+    for (call, mut outcome, published) in &mut calls {
+        let status = published.0.get::<ExitStatus>().ok().flatten();
+        if status != Some(ExitStatus::Exited(ssh::SSH_FAILED)) {
+            continue;
+        }
+        let result = outcome.tool_result();
+        let (printed, _) = split_status(result.output().as_text().unwrap_or_default());
+        let why = match printed.trim_end() {
+            "" => ssh.lost().to_string(),
+            printed => format!("{}; it printed before:\n{printed}", ssh.lost()),
+        };
+        *outcome = Outcome::from(ToolResult::failed(ToolExecutionError::other(why)));
+        commands.entity(call).insert(Lost);
     }
 }
 

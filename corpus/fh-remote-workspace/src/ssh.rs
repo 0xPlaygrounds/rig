@@ -2,8 +2,9 @@
 //! operation is a short `sh` script run there, and every process a local
 //! `ssh` that runs it there, all over one multiplexed connection (OpenSSH's
 //! `ControlMaster`). A dropped connection fails what was running with
-//! "connection to host lost", is reconnected with backoff, and what comes
-//! next waits for the reconnect.
+//! "connection to host lost" (a file operation here, a command in Review,
+//! from its exit status), is reconnected with backoff, and what comes next
+//! waits for the reconnect.
 
 use std::ffi::{OsStr, OsString};
 use std::fmt;
@@ -22,7 +23,7 @@ use rig_tools::workspace::{Contents, Stat, Workspace};
 use crate::{RemoteSettings, Target, quote, quote_path};
 
 /// The exit code with which `ssh` says the connection failed.
-const SSH_FAILED: i32 = 255;
+pub(crate) const SSH_FAILED: i32 = 255;
 /// The first wait before a reconnect attempt; it doubles up to
 /// [`MOST_BACKOFF`].
 const FIRST_BACKOFF: Duration = Duration::from_millis(100);
@@ -115,6 +116,18 @@ impl Ssh {
             Some(A_DIRECTORY) => Err(ErrorKind::IsADirectory.into()),
             _ => Err(io::Error::other(ran.err.trim().to_owned())),
         }
+    }
+
+    /// Where it is.
+    pub fn target(&self) -> &Target {
+        &self.0.target
+    }
+
+    /// Marks the connection lost by a command it ran, starting a reconnect,
+    /// and says what that command's call fails with.
+    pub(crate) fn lost(&self) -> io::Error {
+        self.0.went_down();
+        self.0.lost()
     }
 
     /// A path quoted for the remote `sh`.
@@ -424,13 +437,7 @@ impl Workspace for Ssh {
         args: &[OsString],
         how: Spawn,
     ) -> io::Result<Process> {
-        // A process cannot tell this workspace how it ended, so a dropped
-        // connection is found here, before it starts.
         self.0.ready()?;
-        if self.0.once(":", None)?.code == Some(SSH_FAILED) {
-            self.0.went_down();
-            self.0.ready()?;
-        }
         let tty = how.stdin.is_none();
         let dir = dir
             .or(launcher.cwd.as_deref())
@@ -448,15 +455,13 @@ impl Workspace for Ssh {
         for word in std::iter::once(program).chain(args.iter().map(OsString::as_os_str)) {
             line.push_str(&format!(" {}", quote(&word.to_string_lossy())));
         }
-        // The local `sh` says when the connection, not the command, failed.
-        let says_lost = "h=$1; shift; \"$@\"; c=$?; \
-                         [ \"$c\" -eq 255 ] && echo \"connection to $h lost\" >&2; exit \"$c\"";
-        let mut local: Vec<String> = vec!["-c".into(), says_lost.into(), "sh".into()];
-        local.push(self.0.target.host.clone());
-        local.extend(self.0.argv(tty));
-        local.push(line);
+        let mut argv = self.0.argv(tty);
+        argv.push(line);
+        let Some((ssh, args)) = argv.split_first() else {
+            return Err(io::Error::other("the `ssh` setting is empty"));
+        };
         let mut launcher = launcher.clone();
         launcher.cwd = None;
-        launcher.spawn("sh", local, how)
+        launcher.spawn(ssh, args, how)
     }
 }
