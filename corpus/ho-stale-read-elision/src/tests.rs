@@ -120,7 +120,10 @@ fn superseded_reads_go_out_as_stubs_and_stay_whole_in_the_conversation() {
 
     // The conversation still holds every result whole.
     let kept = app.world().get::<Conversation>(agent);
-    let kept = results(kept.map(Conversation::messages).unwrap_or_default());
+    let kept = results(
+        kept.map(|conversation| conversation.messages())
+            .unwrap_or_default(),
+    );
     let kept = |id: &str| kept.get(id).cloned().unwrap_or_default();
     assert!(kept("r1").contains("A-BODY"), "{}", kept("r1"));
     assert!(kept("r3").contains("B-BODY"), "{}", kept("r3"));

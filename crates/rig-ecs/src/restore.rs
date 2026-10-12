@@ -1,9 +1,10 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
 //! pass that settles what a crash or a restart left half done, with
-//! ordinary records, so the next restore finds nothing left to fix. Each
-//! log is read as [`read_session`](super::journal::read_session) reads it,
-//! a torn last line cut off; a retired
-//! agent and the agents it spawned are not restored.
+//! ordinary records, so the next restore finds nothing left to fix. The
+//! logs are read as rig-cassette's
+//! [`Writer::restore`](rig_cassette::journal::Writer::restore) reads them,
+//! a torn last line cut off; a retired agent and the agents it spawned are
+//! not restored.
 //!
 //! A call left without a result whose tool may change something is
 //! answered as interrupted; the work an agent carries on is spawned as
@@ -35,8 +36,7 @@
 //! App::new().add_systems(AgentPass, stay_paused.in_set(Stage::Gate));
 //! ```
 
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
+use std::collections::HashMap;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
@@ -44,7 +44,6 @@ use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
-use rig_cassette::journal::{JournalStore, LogLines};
 use rig_core::message::ToolCall;
 use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::de::DeserializeSeed;
@@ -52,10 +51,7 @@ use serde_json::Value;
 
 use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
-use super::journal::{
-    AgentLog, Commit, Folded, ReflectSaved, SESSION, SessionLog, SessionRestored, SessionStore,
-    fold, load_images,
-};
+use super::journal::{Commit, ReflectSaved, SessionLog, SessionRestored, SessionStore};
 use super::stage::{Effect, ForAgent};
 use super::tools::{Declared, Footprint, Serves, ToolDef, ToolRequest, footprint_of};
 use super::turn::TurnCall;
@@ -79,69 +75,49 @@ pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 pub struct Restored;
 
 /// Spawns the agents of the session's logs, with their conversations and
-/// saved components, links each agent to the agent that
-/// spawned it, restores the saved resources, and starts logging. Anything that does not load is skipped
-/// with a notice.
+/// saved components, links each agent to the agent that spawned it,
+/// restores the saved resources, and starts logging. Anything that does
+/// not load is skipped with a notice.
 pub(crate) fn restore_session(world: &mut World) {
-    let (Some(log), Some(SessionStore(store))) = (
+    let (Some(SessionLog(log)), Some(SessionStore(store))) = (
         world.get_resource::<SessionLog>().cloned(),
         world.get_resource::<SessionStore>().cloned(),
     ) else {
         return;
     };
     let mut notices: Vec<String> = Vec::new();
-    let mut folded: Vec<Folded> = Vec::new();
-    let agents = store.agents().unwrap_or_else(|failure| {
+    let session = log.restore(store).unwrap_or_else(|failure| {
         notices.push(format!("Could not list the agent logs: {failure}."));
-        Vec::new()
+        Default::default()
     });
-    for agent in agents {
-        match read_log(&*store, &agent) {
-            Ok(agent) => folded.push(agent),
-            Err(failure) => notices.push(format!(
-                "Could not restore the log of agent {agent}: {failure}."
-            )),
-        }
+    for (agent, failure) in session.unreadable {
+        notices.push(format!(
+            "Could not restore the log of agent {agent}: {failure}."
+        ));
     }
-    let next_n = folded.iter().map(|agent| agent.next_n).max();
-    let retired = retired(&folded);
-    folded.retain(|agent| !retired.contains(&agent.header.agent));
+    for (agent, failure) in session.lost_images {
+        warn!("an image agent {agent} logged is gone: {failure}");
+    }
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
+    for (path, value) in &session.resources {
+        let restored = saved(path, value, &registry).and_then(|(component, value)| {
+            let mut resource = resource_entity(world, component)?;
+            component.insert(&mut resource, value.as_partial_reflect(), &registry);
+            Ok(())
+        });
+        if let Err(failure) = restored {
+            notices.push(format!("Skipped saved resource `{path}`: {failure}."));
+        }
+    }
     let mut entities = HashMap::new();
     let mut links = Vec::new();
-    let mut logs = Vec::new();
-    let mut session = None;
-    for agent in folded {
-        let log = AgentLog {
-            next_seq: agent.next_seq,
-            started: true,
-            components: agent.components,
-            ..AgentLog::default()
-        };
-        let Folded {
-            header,
-            conversation,
-            ..
-        } = agent;
-        if header.agent == SESSION {
-            for (path, value) in &log.components {
-                let restored = saved(path, value, &registry).and_then(|(component, value)| {
-                    let mut resource = resource_entity(world, component)?;
-                    component.insert(&mut resource, value.as_partial_reflect(), &registry);
-                    Ok(())
-                });
-                if let Err(failure) = restored {
-                    notices.push(format!("Skipped saved resource `{path}`: {failure}."));
-                }
-            }
-            session = Some((header.agent, log));
-            continue;
-        }
-        let id = AgentId(header.agent.clone());
+    for agent in session.agents {
+        let conversation = Conversation(agent.conversation);
+        let id = AgentId(agent.id);
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
-        for (path, value) in &log.components {
+        for (path, value) in &agent.saved {
             let restored = saved(path, value, &registry).map(|(component, value)| {
                 component.insert(&mut spawned, value.as_partial_reflect(), &registry);
             });
@@ -150,36 +126,30 @@ pub(crate) fn restore_session(world: &mut World) {
             }
         }
         let entity = spawned.id();
-        entities.insert(id.0.clone(), entity);
-        links.push((entity, header.parent));
-        logs.push((entity, id.0, log));
+        entities.insert(id.0, entity);
+        links.push((entity, agent.parent));
     }
-    for (child, parent) in links {
-        if let Some(&parent) = parent.and_then(|parent| entities.get(&parent))
-            && let Ok(mut child) = world.get_entity_mut(child)
+    for (child, parent) in &links {
+        if let Some(&parent) = parent.as_ref().and_then(|parent| entities.get(parent))
+            && let Ok(mut child) = world.get_entity_mut(*child)
         {
             child.insert(SpawnedBy(parent));
         }
     }
     let mut parents = world.query::<&SpawnedBy>();
     let parents = parents.query(world);
-    let bound = logs.len();
-    let restored = logs
-        .iter_mut()
-        .map(|(entity, _, log)| {
+    let bound = links.len();
+    let restored = links
+        .into_iter()
+        .map(|(entity, _)| {
             // A loop cannot happen, but a bound costs nothing.
-            log.depth = parents.iter_ancestors(*entity).take(bound).count();
-            (log.depth, *entity)
+            let depth = parents.iter_ancestors(entity).take(bound).count();
+            (depth, entity)
         })
         .collect();
     // What restoring set off, such as connecting each model, is not logged.
     world.flush();
-    let logs = logs.into_iter().map(|(_, id, log)| (id, log));
-    log.resume(
-        store,
-        logs.chain(session).collect(),
-        next_n.unwrap_or_default(),
-    );
+    log.start();
     world.insert_resource(RestoredAgents(restored));
     world.insert_resource(SessionRestored);
     for notice in notices {
@@ -224,48 +194,6 @@ fn resource_entity<'w>(
     world
         .get_entity_mut(entity)
         .map_err(|failure| failure.to_string())
-}
-
-/// Reads and folds the log of `agent` in `store`, cutting off a torn last
-/// line there first. Images come back from the store's blobs.
-fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
-    let log = LogLines::read(store, agent)?;
-    if log.torn() {
-        store.truncate(agent, log.len())?;
-    }
-    let mut folded = fold(&log)?;
-    load_images(&mut folded, store);
-    Ok(folded)
-}
-
-/// The ids of the agents a restore skips: those retired, and the agents
-/// they spawned, all the way down.
-fn retired(agents: &[Folded]) -> HashSet<String> {
-    let parents: HashMap<&str, Option<&str>> = agents
-        .iter()
-        .map(|agent| (agent.header.agent.as_str(), agent.header.parent.as_deref()))
-        .collect();
-    let gone: HashSet<&str> = agents
-        .iter()
-        .filter(|agent| agent.retired)
-        .map(|agent| agent.header.agent.as_str())
-        .collect();
-    let mut skipped = HashSet::new();
-    for agent in agents {
-        let mut at = Some(agent.header.agent.as_str());
-        // A loop cannot happen, but a bound costs nothing.
-        for _ in 0..=agents.len() {
-            let Some(id) = at else {
-                break;
-            };
-            if gone.contains(id) {
-                skipped.insert(agent.header.agent.clone());
-                break;
-            }
-            at = parents.get(id).copied().flatten();
-        }
-    }
-    skipped
 }
 
 /// Settles what the restored agents left half done, parents before the

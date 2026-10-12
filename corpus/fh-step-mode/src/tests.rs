@@ -6,7 +6,7 @@ use rig_coding_tools::{ReadTool, ShellTool, WriteTool};
 use rig_core::completion::{CompletionRequest, Message as Chat};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
-use rig_harness::rig_ecs::journal::read_session;
+use rig_harness::prelude::read_session;
 use rig_harness_test_support::{
     Collected, Ended, answer_open, app_on, collect, connect, first_agent, log_ended, reply,
     run_until,

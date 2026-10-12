@@ -21,7 +21,7 @@ use rig_cassette::effect_log::jsonl;
 use rig_cassette::journal::{EFFECT_LOG, JournalStore, JsonlDirStore};
 use rig_core::completion::{Usage, UsageTotals};
 use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome as Answered};
-use rig_ecs::journal::{SavedAgent, SessionStore, read_session};
+use rig_ecs::journal::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_sessions::{Meta, SessionTitle};
@@ -270,7 +270,7 @@ fn load(
             model: saved_value::<ModelChoice>(&saved.saved, registry).map(|choice| choice.0),
             calls: records
                 .iter()
-                .filter(|record| record.scope.as_deref() == Some(saved.id.0.as_str()))
+                .filter(|record| record.scope.as_deref() == Some(saved.id.as_str()))
                 .filter_map(model_call)
                 .collect(),
             saved,

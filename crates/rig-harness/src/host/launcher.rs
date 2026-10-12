@@ -28,10 +28,11 @@ use super::cli::{self, Cli};
 use super::exit::{Exit, ExitReason, reason_from_exit};
 use crate::services::RigHome;
 use crate::settings::Settings;
+use rig_cassette::journal::Origin;
 use rig_ecs::agent::Notice;
 
 use crate::primary::{PrimaryQuery, primary};
-use rig_ecs::inbox::{Deliver, DeliveryMode, Origin};
+use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::journal::SessionRestored;
 
 /// The plugin name in the [`Origin`] of a failed build's note.

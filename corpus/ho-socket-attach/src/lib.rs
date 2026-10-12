@@ -299,7 +299,7 @@ fn handle(
 
 /// The `backlog` event: the last [`BACKLOG`] messages of the focused agent.
 fn backlog(agent: Option<String>, conversation: Option<&Conversation>) -> Value {
-    let messages = conversation.map_or(&[][..], Conversation::messages);
+    let messages = conversation.map_or(&[][..], |conversation| conversation.messages());
     let first = messages.len().saturating_sub(BACKLOG);
     let items: Vec<Value> = messages.iter().skip(first).map(item).collect();
     json!({ "type": "backlog", "agent": agent, "items": items })

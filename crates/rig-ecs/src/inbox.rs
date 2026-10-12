@@ -28,6 +28,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
+use rig_cassette::journal::{Halt, Origin, OriginKind};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
 use rig_core::effect::{EffectKind, HandlerKey};
@@ -37,8 +38,7 @@ use serde::{Deserialize, Serialize};
 use web_time::SystemTime;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Conversation, EffectParent, Halt, Notice, TurnOf,
-    TurnOutcome,
+    ActiveTurn, Agent, CallOf, Conversation, EffectParent, Notice, TurnOf, TurnOutcome,
 };
 use super::calls::Wake;
 use super::journal::Commit;
@@ -47,109 +47,6 @@ use super::stage::{
     AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
 };
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
-
-/// The id of a request to an agent, which the reply to it names, such as
-/// the tool call that asked. Unique per sender, so it doubles as an
-/// idempotency key.
-#[derive(Reflect, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct RequestId(pub String);
-
-/// Who sent a message.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum OriginKind {
-    /// The user, typing.
-    #[default]
-    User,
-    /// An agent, such as a subagent answering or an agent handing out a
-    /// task.
-    Agent,
-    /// The plugin named.
-    Plugin(String),
-}
-
-/// Where a message came from: who sent it, the agent it came from, and the
-/// request it answers or makes.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Origin {
-    /// Who sent it.
-    #[serde(default)]
-    pub kind: OriginKind,
-    /// The agent it came from.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub from: Option<AgentId>,
-    /// The request it answers or makes. Kept for correlation, such as a
-    /// report to the call that asked; not shown in its header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub request: Option<RequestId>,
-    /// What it is about, such as a subagent's task title, shown in its
-    /// header.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-}
-
-impl Origin {
-    /// The user's own text.
-    pub fn user() -> Self {
-        Self::default()
-    }
-
-    /// Output of the agent `from`.
-    pub fn agent(from: AgentId, request: Option<RequestId>) -> Self {
-        Self {
-            kind: OriginKind::Agent,
-            from: Some(from),
-            request,
-            title: None,
-        }
-    }
-
-    /// Output of the plugin `name`.
-    pub fn plugin(name: impl Into<String>) -> Self {
-        Self {
-            kind: OriginKind::Plugin(name.into()),
-            ..Self::default()
-        }
-    }
-
-    /// This origin about `title`, such as a task's.
-    pub fn titled(self, title: impl Into<String>) -> Self {
-        Self {
-            title: Some(title.into()),
-            ..self
-        }
-    }
-
-    /// Who sent it, for views: such as `agent 1a2b3c4d "Fix the parser"`.
-    /// The request id is left out; it stays in [`Origin::request`].
-    pub fn label(&self) -> String {
-        let who = match &self.kind {
-            OriginKind::User => "you".to_owned(),
-            OriginKind::Agent => {
-                format!("agent {}", self.from.as_ref().map_or("?", AgentId::short))
-            }
-            OriginKind::Plugin(name) => format!("plugin {name}"),
-        };
-        match &self.title {
-            Some(title) => format!("{who} \"{title}\""),
-            None => who,
-        }
-    }
-
-    /// The line that heads text of this origin for the model, or `None`
-    /// for the user's own: it names the sender and says the text is not
-    /// the user's words.
-    pub fn header(&self) -> Option<String> {
-        match self.kind {
-            OriginKind::User => None,
-            _ => Some(format!(
-                "[Output of {}, not the user's words]",
-                self.label()
-            )),
-        }
-    }
-}
 
 /// When a message goes to the agent's model, and whether it asks for an
 /// answer. An idle agent starts a turn with a [`Steer`](Self::Steer) or

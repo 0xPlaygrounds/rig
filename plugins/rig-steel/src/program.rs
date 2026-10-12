@@ -11,7 +11,7 @@ use futures::channel::oneshot;
 use futures::future::Shared;
 use rig_core::transcript::final_answer;
 use rig_ecs::agent::{AgentId, TurnOutcome};
-use rig_ecs::inbox::{Origin, RequestId};
+use rig_ecs::prelude::{Origin, RequestId};
 use serde_json::{Map, Value};
 use steel::SteelVal;
 use steel::parser::lexer::TokenStream;

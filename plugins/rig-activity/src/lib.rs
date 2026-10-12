@@ -164,7 +164,7 @@ fn feed_deliveries(
     let from = message.origin.from.as_ref().and_then(|from| {
         agents
             .iter()
-            .find_map(|(entity, id)| (id == from).then_some(entity))
+            .find_map(|(entity, id)| (id.0 == *from).then_some(entity))
     });
     if feed.entries.len() >= FEED_LEN {
         feed.entries.pop_front();

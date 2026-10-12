@@ -305,7 +305,7 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
     let Ok((message, &ForAgent(to), _)) = agents.inboxes.get(accepted.entity) else {
         return;
     };
-    let Some(from) = message.origin.from.clone() else {
+    let Some(from) = message.origin.from.clone().map(AgentId) else {
         return;
     };
     let from = &from;

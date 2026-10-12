@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::now_ms;
+use rig_ecs::prelude::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths, first_typed};
 use rig_harness::primary::primary_order;

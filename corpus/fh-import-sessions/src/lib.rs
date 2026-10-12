@@ -34,7 +34,6 @@ use rig_core::message::{Message, Origin as MadeBy};
 use rig_core::transcript::{close_pending_with, pending_calls};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::agent::{Halt, MessageId};
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_sessions::{Meta, SessionTitle};
 use rig_tools::fs::{read_json, write_json};

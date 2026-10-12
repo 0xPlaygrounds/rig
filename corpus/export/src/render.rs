@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
+use rig_cassette::journal::short_id;
 use rig_core::message::{DocumentData, DocumentSourceKind, Image, MimeType, ToolResultContent};
 use rig_harness::prelude::*;
 use serde_json::{Value, json};
@@ -153,13 +154,15 @@ fn walk<'s>(
     depth: usize,
     walked: &mut HashSet<&'s str>,
 ) {
-    if !walked.insert(agent.saved.id.0.as_str()) {
+    if !walked.insert(agent.saved.id.as_str()) {
         return;
     }
     let mut title = match (&agent.saved.parent, spawned_by(agent)) {
-        (Some(_), Some((_, Some(task)))) => format!("Subagent {} “{task}”", agent.saved.id.short()),
-        (Some(_), _) => format!("Subagent {}", agent.saved.id.short()),
-        (None, _) => format!("Agent {}", agent.saved.id.short()),
+        (Some(_), Some((_, Some(task)))) => {
+            format!("Subagent {} “{task}”", short_id(&agent.saved.id))
+        }
+        (Some(_), _) => format!("Subagent {}", short_id(&agent.saved.id)),
+        (None, _) => format!("Agent {}", short_id(&agent.saved.id)),
     };
     if let Some(model) = &agent.model {
         title.push_str(&format!(" ({model})"));
@@ -253,7 +256,7 @@ fn sender(origin: Option<&Origin>) -> String {
     let Some(origin) = origin else {
         return "User".to_owned();
     };
-    let from = origin.from.as_ref().map(|from| from.short().to_owned());
+    let from = origin.from.as_deref().map(|from| short_id(from).to_owned());
     match (&origin.kind, from) {
         (OriginKind::User, _) => "User".to_owned(),
         (OriginKind::Agent, Some(from)) => format!("Agent {from}"),
@@ -325,8 +328,8 @@ fn to_json(session: &Export) -> Value {
                 })
                 .collect();
             json!({
-                "id": agent.saved.id.0,
-                "parent": agent.saved.parent.as_ref().map(|parent| &parent.0),
+                "id": agent.saved.id,
+                "parent": agent.saved.parent,
                 "task_call": spawned.as_ref().map(|(call, _)| call),
                 "title": spawned.and_then(|(_, title)| title),
                 "model": agent.model,

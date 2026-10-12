@@ -61,6 +61,7 @@ use bevy_log::{info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
+use rig_cassette::journal::now_ms;
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
     self, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
@@ -75,7 +76,7 @@ use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
-use super::journal::{SessionLog, millis, now_ms};
+use super::journal::{SessionLog, millis};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
 };

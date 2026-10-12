@@ -50,14 +50,13 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Entry, Interrupt,
-        LastUsage, MessageId, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
-        SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt,
+        LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy, SystemPrompt,
+        ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
     pub use crate::inbox::{
-        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessageRecord, Origin,
-        OriginKind, Recalled, RequestId,
+        Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessageRecord, Recalled,
     };
     pub use crate::journal::{Commit, Committed, JournalPlugin, ReflectSaved, SessionRestored};
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
@@ -76,6 +75,10 @@ pub mod prelude {
     pub use crate::turn::{
         Adapter, Adapters, Backoff, BuildFrom, ModelRequest, Recovery, RetryVerdict, SentTo,
         StreamDelta, Streamed, TurnCall,
+    };
+    pub use rig_cassette::journal::{
+        Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, SavedAgent, SavedSession,
+        fork_session, now_ms, read_session, write_session,
     };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};

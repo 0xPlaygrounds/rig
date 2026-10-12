@@ -22,8 +22,8 @@ use super::renderers::{
 };
 use super::view::ShownNotice;
 use super::wrap::wrap_all;
-use rig_ecs::agent::{Conversation, NoticeLevel, STOPPED};
-use rig_ecs::inbox::{Origin, OriginKind};
+use rig_ecs::agent::{Conversation, NoticeLevel};
+use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_tools::attach::attached_file;
 

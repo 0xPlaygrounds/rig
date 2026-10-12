@@ -63,7 +63,10 @@ What it holds, by module:
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
   and written as `Recorded` when each effect settles.
-- `journal`, `restore`: the append-only session log and its restore. Every
+- `journal`, `restore`: the append-only session log and its restore. The
+  conversation model and the log format, its writer and readers, are
+  rig-cassette's `journal`; the kernel's `Conversation` component wraps
+  the library's, read-only. Every
   conversation change goes through `Commit` (add a message, splice
   messages after the fact, halt, retire the agent) and is seen as a
   `Committed` message. A splice replaces a range of messages: a cut, a
@@ -71,9 +74,9 @@ What it holds, by module:
   `MessageId` across splices and restores; a component that says
   `#[reflect(Component, Saved)]`, or a resource that says
   `#[reflect(Resource, Saved)]`, is logged and restored by reflection.
-  `read_session` reads a session's logs without restoring or writing, and
-  `fork_session` copies a session as it was when one of its messages was
-  made. The work a
+  rig-cassette's `read_session` reads a session's logs without restoring
+  or writing, `write_session` writes one from data, and `fork_session`
+  copies a session as it was when one of its messages was made. The work a
   restart carries on is marked `Restored` and gated like any. The store is
   one of rig-cassette's `journal` stores (`MemoryStore`, or `JsonlDirStore`
   with its feature `jsonl`).

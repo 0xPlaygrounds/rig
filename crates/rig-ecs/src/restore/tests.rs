@@ -6,18 +6,17 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
-use rig_cassette::journal::{JournalStore, MemoryStore};
+use rig_cassette::journal::{Entry, Halt, JournalStore, MemoryStore, Origin, STOPPED};
 use rig_core::completion::{Message, Reasoning, Usage};
 use rig_core::message::UserContent;
 use serde_json::Value;
 
 use crate::AgentPlugin;
 use crate::agent::{
-    Agent, AgentId, Conversation, Entry, Halt, Interrupt, LastUsage, Notice, STOPPED, SystemPrompt,
-    ToolAccess, TurnOf, TurnOutcome,
+    Agent, AgentId, Conversation, Interrupt, LastUsage, Notice, SystemPrompt, ToolAccess, TurnOf,
+    TurnOutcome,
 };
 use crate::effects::Handler;
-use crate::inbox::Origin;
 use crate::inbox::{Deliver, DeliveryMode};
 use crate::journal::tests::commit_message;
 use crate::journal::{

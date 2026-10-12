@@ -37,6 +37,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
+use rig_cassette::journal::{Halt, now_ms};
 use rig_core::completion::message::turn_failure;
 use rig_core::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Message};
 use rig_core::effect::{self, EffectId, EffectKind};
@@ -50,13 +51,12 @@ use rig_core::transcript::close_pending_with;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Halt, Interrupt,
-    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
-    TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
+    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome, TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
-use super::journal::{Commit, SessionLog, now_ms};
+use super::journal::{Commit, SessionLog};
 use super::model::{Connection, Effort};
 use super::prompt::{
     PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
@@ -366,7 +366,7 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .try_insert(ForAgent(agent));
     let first_message = world
         .get::<Conversation>(agent)
-        .map(Conversation::turn_start)
+        .map(|conversation| conversation.turn_start())
         .unwrap_or_default();
     let index = match world.get_mut::<TurnsStarted>(agent) {
         Some(mut started) => {

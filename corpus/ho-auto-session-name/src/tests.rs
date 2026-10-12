@@ -65,7 +65,9 @@ fn the_first_exchange_names_the_session_outside_the_conversation() {
     // One turn call and one naming call.
     assert_eq!(model.request_count(), 2);
     let conversation = app.world().get::<Conversation>(agent);
-    let messages = conversation.map(Conversation::messages).unwrap_or_default();
+    let messages = conversation
+        .map(|conversation| conversation.messages())
+        .unwrap_or_default();
     assert_eq!(messages.len(), 2, "{messages:?}");
     assert_eq!(
         messages.last().and_then(final_answer).as_deref(),

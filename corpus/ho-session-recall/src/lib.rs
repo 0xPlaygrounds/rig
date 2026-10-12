@@ -26,7 +26,6 @@ use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
 use rig_harness::rig_core::tool::ToolOutput;
-use rig_harness::rig_ecs::journal::{SavedSession, read_session};
 use rig_sessions::Meta;
 use rig_tools::attach::attached_file;
 use rig_tools::fs::{read_json, write_json};
@@ -538,7 +537,7 @@ fn docs(session: &SavedSession) -> Vec<Doc> {
             }
             // Every message keeps its place, so a reference counts messages.
             docs.push(Doc {
-                agent: agent.id.0.clone(),
+                agent: agent.id.clone(),
                 text: parts.join("\n"),
             });
         }

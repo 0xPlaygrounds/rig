@@ -27,7 +27,6 @@ use rig_activity::{Activity, ActivityPlugin, ActivitySystems, Status};
 use rig_harness::prelude::*;
 use rig_harness::primary::primary_order;
 use rig_harness::rig_core::message::{Message, ToolResult as CallResult};
-use rig_harness::rig_ecs::agent::STOPPED;
 
 /// The window's name as a front, and its option: `rig --gui`.
 pub const FRONT: &str = "gui";

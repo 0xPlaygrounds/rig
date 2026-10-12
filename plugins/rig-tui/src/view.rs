@@ -19,8 +19,9 @@ use super::keys::KeyPress;
 use super::panel::Focused;
 use super::pick::Choosing;
 use super::transcript::Scroll;
-use rig_ecs::agent::{Agent, AgentId, Conversation, MessageId, Notice, NoticeLevel};
+use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
+use rig_ecs::prelude::MessageId;
 use rig_harness::prelude::{ExitReason, SessionPaths};
 use rig_harness::primary::Shown;
 

@@ -57,7 +57,9 @@ fn read_file(
 
 /// The text of each assistant message, in order.
 fn answers(world: &World, agent: Entity) -> Vec<String> {
-    let messages = world.get::<Conversation>(agent).map(Conversation::messages);
+    let messages = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.messages());
     let assistant = messages
         .unwrap_or_default()
         .iter()

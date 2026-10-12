@@ -42,8 +42,9 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
+use rig_cassette::journal::OriginKind;
 use rig_core::effect::{EffectKind, Outcome as EffectOutcome};
-use rig_ecs::inbox::{Incoming, OriginKind};
+use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
     AgentPass, Decision, Effect, EffectRequest, ForAgent, IncomingMessages, Outcome, PluginEffects,
     Settled, Stage, Undecided,

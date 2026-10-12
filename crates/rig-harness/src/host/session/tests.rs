@@ -278,7 +278,7 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
 
 #[test]
 fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
-    use rig_ecs::inbox::Origin;
+    use rig_cassette::journal::Origin;
     use rig_ecs::journal::Commit;
 
     let mut app = App::new();

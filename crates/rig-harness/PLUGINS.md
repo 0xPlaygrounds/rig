@@ -1528,9 +1528,9 @@ place of the messages it summarized, and requests send the conversation
 as it is. A splice before the end costs the provider's prompt cache from
 there on: that is the splicing plugin's choice. `commit.retire(agent)`
 despawns an agent for good, so a restart brings back neither it nor the
-agents it spawned. `rig_ecs::journal::read_session(store)` reads a
-session's logs, another session's too, without restoring or writing
-anything: each agent's conversation as it is and its saved components.
+agents it spawned. `read_session(store)` (rig-cassette's, as is the log
+format) reads a session's logs without restoring or writing anything, and
+`write_session(store, &session)` writes one from data, such as an import.
 `fork_session(from, to, before)` copies a session as it was when a
 message was made, `before` being its agent's id and the message's id:
 every log up to the records made before that message's first record.
@@ -2056,18 +2056,17 @@ answer, and the `ExitReason`); one whose runs leave nothing to resume is
 the terminal view); only the one that takes the run owns stdin and stdout.
 
 When the user stops a turn before it answered, `Committed::Halt { agent,
-reason }` says so with `Some(Halt::Stopped)` (`rig_ecs::agent::Halt`;
+reason }` says so with `Some(Halt::Stopped)` (`rig_cassette::journal::Halt`;
 `Kept` when the message was left for the next turn, such as after its turn
 failed, and `None` when it was asked for again; `halted()` on the
 conversation says it now): a front shows a stopped request from that,
 never by reading text. For the model, the kernel puts the `STOPPED` text
 between the stopped request and the next message that joins it; a view
 that draws a whole conversation, such as a restored one, recognizes that
-item by the constant `rig_ecs::agent::STOPPED`, not by its words.
+item by the constant `STOPPED`, not by its words.
 
 ```rust,no_run
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::agent::Halt;
 
 #[derive(Default)]
 pub struct JsonFrontPlugin;

@@ -25,13 +25,12 @@ use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
-use rig_cassette::journal::JsonlDirStore;
+use rig_cassette::journal::{JsonlDirStore, MessageId, OriginKind, fork_session};
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Conversation, MessageId, Notice};
-use rig_ecs::inbox::OriginKind;
-use rig_ecs::journal::{SessionStore, fork_session};
+use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::journal::SessionStore;
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
@@ -345,7 +344,7 @@ fn fork_into(
         before: before.cloned(),
         text,
     };
-    let before = before.map(|(agent, message)| (agent, *message));
+    let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
     let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
         .map_err(|failure| failure.to_string())
         .and_then(|()| parent.write(&target))

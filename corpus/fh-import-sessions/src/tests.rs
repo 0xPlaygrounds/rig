@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use rig_core::message::{Message, ToolResultContent};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_ecs::journal::read_session;
+use rig_harness::prelude::read_session;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,

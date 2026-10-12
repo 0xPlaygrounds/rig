@@ -35,7 +35,10 @@ fn debaters_answer_each_other_and_the_judges_verdict_reaches_the_agent() {
     app.world_mut().trigger(RunCommand::new(host, line));
     let said = |world: &World| {
         let conversation = world.get::<Conversation>(host);
-        format!("{:?}", conversation.map(Conversation::messages))
+        format!(
+            "{:?}",
+            conversation.map(|conversation| conversation.messages())
+        )
     };
     run_until(&mut app, &wakes, |world| {
         !world.entity(host).contains::<Debate>() && said(world).contains("Verdict: P")

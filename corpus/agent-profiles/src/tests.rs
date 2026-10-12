@@ -126,7 +126,10 @@ fn a_profile_applies_survives_a_restart_and_comes_off() {
     assert!(prompt.contains("Be terse."), "{prompt}");
     assert_eq!(tools, ["read", "search"]);
     let conversation = app.world().get::<Conversation>(agent);
-    let history = format!("{:?}", conversation.map(Conversation::messages));
+    let history = format!(
+        "{:?}",
+        conversation.map(|conversation| conversation.messages())
+    );
     assert!(history.contains("no tool named `write`"), "{history}");
     drop(app);
 
