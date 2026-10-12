@@ -467,7 +467,10 @@ fn answer(
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(map.look_up(&called.args).into()));
+        call.decide(
+            Decider::plugin("ho-repo-map"),
+            ToolResult::success(map.look_up(&called.args).into()),
+        );
     }
 }
 
