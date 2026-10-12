@@ -266,3 +266,28 @@ fn a_frame_with_nothing_typed_changes_nothing_the_redraw_check_reads() {
     app.update();
     assert!(!app.world().resource::<ChangedLastFrame>().0);
 }
+
+/// Whether the transcript view counted as changed in the last frame, as a
+/// plugin that redoes work when it changes reads it.
+#[derive(Resource, Default)]
+struct TranscriptChanged(bool);
+
+/// A key that leaves the transcript view as it is, such as one typed into
+/// the input, does not change it, so a plugin watching it does no work.
+#[test]
+fn a_key_typed_leaves_the_transcript_view_unchanged() {
+    let (mut app, _) = view_app();
+    app.init_resource::<TranscriptChanged>().add_systems(
+        bevy_app::Last,
+        |transcript: Res<crate::view::TranscriptView>, mut changed: ResMut<TranscriptChanged>| {
+            changed.0 = transcript.is_changed();
+        },
+    );
+    app.update();
+    type_text(&mut app, "a");
+    assert_eq!(
+        app.world().resource::<crate::editor::TuiInput>().text(),
+        "a"
+    );
+    assert!(!app.world().resource::<TranscriptChanged>().0);
+}

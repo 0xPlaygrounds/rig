@@ -148,11 +148,12 @@ pub(crate) struct Context<'a, 'w, 's> {
     choices: &'a Choices<'w, 's>,
 }
 
-/// What a built-in key changes.
+/// What a built-in key changes. The transcript view is marked changed
+/// only when a key really changes it, as plugins rerun on its changes.
 pub(crate) struct Target<'a> {
     view: &'a mut TuiView,
     input: &'a mut TuiInput,
-    transcript: &'a mut TranscriptView,
+    transcript: Mut<'a, TranscriptView>,
 }
 
 /// Handles every terminal event written since the last frame, then every
@@ -215,7 +216,7 @@ pub(crate) fn read_input(
                 let mut target = Target {
                     view: &mut view,
                     input: &mut input,
-                    transcript: &mut transcript,
+                    transcript: transcript.reborrow(),
                 };
                 pressed(*key, &mut target, &mut keymap, &context, &mut commands);
             }
@@ -249,7 +250,7 @@ pub(crate) fn read_input(
         let mut target = Target {
             view: &mut view,
             input: &mut input,
-            transcript: &mut transcript,
+            transcript: transcript.reborrow(),
         };
         act(*action, &mut target, &context, &mut commands);
     }
@@ -426,7 +427,9 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
                 .clipboard
                 .paste_image(images, launcher, context.wake.clone());
         }
-        Do::SelectUp | Do::SelectDown => select(action == Do::SelectUp, view, transcript),
+        Do::SelectUp | Do::SelectDown => {
+            select(action == Do::SelectUp, view, transcript.reborrow());
+        }
         Do::Expand => {
             let newest_call = || {
                 let mut calls = view.items.iter().rev();
@@ -467,7 +470,7 @@ fn close(
 /// Moves the selection up or down the items of the transcript drawn last:
 /// up from none selects the newest, down past the newest selects none. The
 /// item selected is brought on screen.
-fn select(up: bool, view: &mut TuiView, transcript: &mut TranscriptView) {
+fn select(up: bool, view: &mut TuiView, mut transcript: Mut<TranscriptView>) {
     let at = transcript
         .selected
         .as_ref()
@@ -478,9 +481,12 @@ fn select(up: bool, view: &mut TuiView, transcript: &mut TranscriptView) {
         (Some(at), true) => Some(at.saturating_sub(1)),
         (Some(at), false) => Some(at + 1),
     };
-    transcript.selected = next.and_then(|next| view.items.get(next)).cloned();
-    if let Some(item) = &transcript.selected {
+    let selected = next.and_then(|next| view.items.get(next)).cloned();
+    if let Some(item) = &selected {
         view.scroll.to(item.clone(), ItemRow::Reveal);
+    }
+    if transcript.selected != selected {
+        transcript.selected = selected;
     }
 }
 
