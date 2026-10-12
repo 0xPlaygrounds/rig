@@ -1,17 +1,42 @@
-//! Where an agent session's journal is kept: one append-only log per
-//! agent and content-addressed blobs such as images, behind a
-//! [`JournalStore`]. [`MemoryStore`] keeps a session in memory;
-//! with feature `jsonl`, [`JsonlDirStore`] keeps it as JSON-lines files in
-//! a directory. A logged message names its images' blobs in place of their
-//! data ([`store_images`]), and gets the data back on reading
-//! ([`load_images`]). [`LogLines`] reads a log's complete lines without
-//! writing to it, whatever their records are, and [`fork`] copies a
-//! session, each log up to a point.
+//! An agent session's journal: each agent's [`Conversation`], and the
+//! session log that keeps it, one append-only log per agent and
+//! content-addressed blobs such as images, behind a [`JournalStore`]. A
+//! [`Writer`] logs a running session's changes, [`read_session`] reads a
+//! session back, [`write_session`] writes one from data, and
+//! [`fork_session`] copies one as of a message. [`MemoryStore`] keeps a
+//! session in memory; with feature `jsonl`, [`JsonlDirStore`] keeps it as
+//! JSON-lines files in a directory. With feature `reflect`, the types a
+//! Bevy app keeps in its components are reflected.
+//!
+//! ```
+//! use rig_cassette::journal::{MemoryStore, Origin, SavedAgent, SavedSession};
+//! use rig_cassette::journal::{read_session, write_session};
+//! use rig_core::completion::Message;
+//!
+//! let mut agent = SavedAgent { id: "imported".to_owned(), ..SavedAgent::default() };
+//! agent.conversation.append(Message::user("Fix the parser"), None);
+//! agent.conversation.append(Message::user("From the CI bot"), Some(Origin::plugin("ci")));
+//! let session = SavedSession { agents: vec![agent], ..SavedSession::default() };
+//! let store = MemoryStore::default();
+//! write_session(&store, &session)?;
+//! let read = read_session(&store)?;
+//! assert_eq!(read.agents[0].conversation, session.agents[0].conversation);
+//! # Ok::<(), std::io::Error>(())
+//! ```
 
+mod conversation;
 #[cfg(feature = "jsonl")]
 mod jsonl;
+mod session;
+
+pub use conversation::{
+    Conversation, Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, Spliced, short_id,
+};
 #[cfg(feature = "jsonl")]
 pub use jsonl::{EFFECT_LOG, JsonlDirStore};
+pub use session::{
+    SESSION, SavedAgent, SavedSession, Writer, fork_session, now_ms, read_session, write_session,
+};
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;

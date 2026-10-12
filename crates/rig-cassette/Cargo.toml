@@ -46,6 +46,8 @@ default = []
 agent = ["dep:rig-agent"]
 # Effect logs and session journals as JSON-lines files (native file I/O).
 jsonl = []
+# Bevy reflection for the journal types a Bevy app keeps in its components.
+reflect = ["dep:bevy_reflect"]
 http = [
     "dep:rig-reqwest",
     "dep:axum",
@@ -68,6 +70,7 @@ aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
 axum = { workspace = true, optional = true }
 base64 = { workspace = true }
+bevy_reflect = { workspace = true, optional = true }
 futures = { workspace = true }
 httpdate = { workspace = true, optional = true }
 httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
@@ -79,6 +82,8 @@ sha2 = { workspace = true }
 thiserror = { workspace = true, optional = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs", "time"], optional = true }
 url = { workspace = true, optional = true }
+# A session log line's time, also on the web.
+web-time = { workspace = true }
 
 # Repository-only provider and verification dependencies. Downstream users select
 # the independent runtime integrations and native engine through features above.

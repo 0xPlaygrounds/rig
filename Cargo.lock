@@ -15529,6 +15529,7 @@ dependencies = [
  "aws-smithy-types",
  "axum 0.8.9",
  "base64 0.22.1",
+ "bevy_reflect",
  "bytes",
  "futures",
  "http 1.4.2",
@@ -15554,6 +15555,7 @@ dependencies = [
  "tokio-test",
  "tracing",
  "url",
+ "web-time",
 ]
 
 [[package]]
