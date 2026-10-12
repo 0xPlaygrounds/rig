@@ -1,11 +1,12 @@
 //! Plugin corpus: 10. Secret redaction (spec `10-secret-redaction.md`).
 //!
-//! Secrets (API keys, tokens, private keys, `PASSWORD=…` values and the
-//! values of the env vars the `[secret-redaction]` table of the user's
-//! `settings.toml` names, `env_vars = ["DB_PASSWORD"]`) never leave the
-//! machine: each distinct one becomes a stable placeholder `‹SECRET_n›` in
-//! what is sent and kept. A tool call that names a placeholder runs with
-//! the real value. The secrets live in memory only; `/secrets` lists them.
+//! Secrets (the API keys, tokens and private keys `rig_core::redact`
+//! finds, `PASSWORD=…` values and the values of the env vars the
+//! `[secret-redaction]` table of the user's `settings.toml` names,
+//! `env_vars = ["DB_PASSWORD"]`) never leave the machine: each distinct
+//! one becomes a stable placeholder `‹SECRET_n›` in what is sent and kept.
+//! A tool call that names a placeholder runs with the real value. The
+//! secrets live in memory only; `/secrets` lists them.
 //!
 //! - Prepare: messages are redacted once their files are attached; every
 //!   model call gets an adapter that redacts its request as it is sent and
@@ -24,6 +25,7 @@ use regex::{Captures, Regex};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::redact;
 use rig_harness::rig_core::serve::{self, Intercept, Verdict as Answer};
 use rig_harness::rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_harness::rig_ecs::effects::Handler;
@@ -119,28 +121,14 @@ pub struct Secrets(Arc<Mutex<Vault>>);
 #[reflect(Resource, Saved)]
 struct Issued(usize);
 
-/// What each kind of secret looks like: its name, and a pattern whose
-/// first group, or else whole match, is the secret.
-static PATTERNS: LazyLock<Vec<(&str, Regex)>> = LazyLock::new(|| {
-    [
-        (
-            "a private key",
-            r"(?s)-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-        ),
-        ("an AWS access key", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"),
-        (
-            "a GitHub token",
-            r"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{22,})\b",
-        ),
-        ("an API key", r"\bsk-[A-Za-z0-9_-]{20,}"),
-        (
-            "a password",
-            r#"(?i)\b[a-z0-9_]*(?:password|passwd|secret|token|api_?key)=["']?([^\s"'‹›,;&]{6,})"#,
-        ),
-    ]
-    .into_iter()
-    .filter_map(|(kind, pattern)| Some((kind, Regex::new(pattern).ok()?)))
-    .collect()
+/// A password-like assignment, `PASSWORD=…` or `api_key="…"`, its value
+/// the first group: a secret with no key shape, so not one
+/// [`redact`] finds.
+static PASSWORD: LazyLock<Option<Regex>> = LazyLock::new(|| {
+    Regex::new(
+        r#"(?i)\b[a-z0-9_]*(?:password|passwd|secret|token|api_?key)=["']?([^\s"'‹›,;&]{6,})"#,
+    )
+    .ok()
 });
 
 /// A placeholder, its number the first group.
@@ -190,12 +178,16 @@ impl Vault {
     /// `text` with every secret in it replaced by its placeholder, the
     /// ones it shows first learned as seen in `source`; whether any was.
     fn redact(&mut self, text: &mut String, source: &str) -> bool {
-        for (kind, pattern) in PATTERNS.iter() {
-            for found in pattern.captures_iter(text) {
-                if let Some(secret) = found.get(1).or_else(|| found.get(0)) {
-                    self.learn(secret.as_str(), &format!("{kind} in {source}"));
-                }
+        for secret in redact::find(text) {
+            if let Some(value) = text.get(secret.range) {
+                self.learn(value, &format!("{} in {source}", secret.kind));
             }
+        }
+        let passwords = PASSWORD
+            .iter()
+            .flat_map(|pattern| pattern.captures_iter(text));
+        for value in passwords.filter_map(|found| found.get(1)) {
+            self.learn(value.as_str(), &format!("password in {source}"));
         }
         // The longest first, so one inside another goes with it.
         let mut known: Vec<(usize, &str)> = (1..)
