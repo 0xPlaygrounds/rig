@@ -53,7 +53,8 @@ const BROKEN: &str = "*** Begin Patch
 +3
 *** End Patch";
 
-/// Applies, but a gate refuses the `write` of `secret.txt`.
+/// Applies, but a gate refuses the `write` of `secret.txt`, and another
+/// asks the user about `asked.txt`'s.
 const GUARDED: &str = "*** Begin Patch
 *** Update File: a.txt
 @@
@@ -61,6 +62,8 @@ const GUARDED: &str = "*** Begin Patch
 +2
 *** Add File: secret.txt
 +key
+*** Add File: asked.txt
++maybe
 *** End Patch";
 
 /// Applies, but `slow.txt`'s write waits a frame for an approval.
@@ -105,7 +108,8 @@ struct Approval;
 #[derive(Component)]
 struct Asked;
 
-/// Another plugin's approval of `slow.txt`: held until the next frame.
+/// Another plugin's approval of `slow.txt`: held until the next frame;
+/// and a question to the user about `asked.txt`, which nobody answers.
 fn ask_for_slow(
     calls: Query<(Entity, &Footprint, &Decision), (Undecided, ToolCalls, Without<Asked>)>,
     mut commands: Commands,
@@ -114,6 +118,10 @@ fn ask_for_slow(
         if !decision.is_decided() && writes(footprint, "slow.txt") {
             commands.entity(call).insert(Asked);
             commands.spawn((Approval, HoldOf(call)));
+        }
+        if !decision.is_decided() && writes(footprint, "asked.txt") {
+            commands.entity(call).insert(Asked);
+            commands.spawn((Ask::yes_no("Write asked.txt?"), HoldOf(call)));
         }
     }
 }
@@ -196,6 +204,10 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
+    // Once a patch was refused, nobody is asked about its other files.
+    let world = app.world_mut();
+    let mut open = world.query_filtered::<(), (With<Ask>, Without<Outcome>)>();
+    assert_eq!(open.iter(world).count(), 0, "a question stays open");
 
     let first = offered(&gpt, 0);
     assert!(first.iter().any(|name| name == APPLY_PATCH), "{first:?}");

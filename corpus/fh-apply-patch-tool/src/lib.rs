@@ -320,10 +320,12 @@ fn checked(
 
 /// After every gate, keeps a patch's members together: while any is held
 /// or waits, holds the others about to start; once a gate or the kernel
-/// refused one, refuses the rest; once all are past their gates, releases
-/// them, so they start in one pass.
+/// refused one, refuses the rest and closes the questions still open about
+/// them; once all are past their gates, releases them, so they start in one
+/// pass.
 fn gate_together(
     mut patches: Query<&mut Patching>,
+    questions: Query<(), (With<Ask>, Without<Outcome>)>,
     mut members: Query<
         (
             &mut Decision,
@@ -355,9 +357,13 @@ fn gate_together(
             patching.refused = true;
             let each = patching.members.iter().zip(&mut patching.withheld);
             for ((member, label), withheld) in each {
-                if let Ok((mut decision, None, ..)) = members.get_mut(*member) {
+                if let Ok((mut decision, None, holds, _)) = members.get_mut(*member) {
                     let why = format!("{label}: not run, as another file of the patch was refused");
                     *withheld = decision.decide(Decider::plugin(NAME), Outcome::refused(why));
+                    let asking = holds.into_iter().flat_map(Holds::iter);
+                    for question in asking.filter(|hold| questions.contains(*hold)) {
+                        commands.entity(question).try_despawn();
+                    }
                 }
             }
         }
