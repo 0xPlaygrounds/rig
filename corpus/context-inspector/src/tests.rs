@@ -103,7 +103,8 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     for expected in [
         "<house_rules> \"House rules\"",
         "from HouseRulesPlugin",
-        "<tool_rules> of the tools offered",
+        "<tool_rules>: ~",
+        "of the tools offered",
         "Tools offered: 1",
         "lookup",
         "+ 2 messages added before the conversation (user, assistant;",
