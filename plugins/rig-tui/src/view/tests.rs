@@ -3,37 +3,7 @@ use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::*;
 
 use super::*;
-use crate::render::{ShownAgent, lay_out_transcript};
-use crate::tests::{scratch, view_app};
-use crate::transcript::{Scroll, Transcript};
-
-/// The shown agent's transcript, as text, a line per row.
-fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
-    let world = app.world_mut();
-    let mut agents = world.query::<(&AgentId, &Conversation)>();
-    let Ok((id, conversation)) = agents.get(world, agent) else {
-        return Vec::new();
-    };
-    let shown = ShownAgent {
-        entity: agent,
-        id,
-        conversation,
-        changed: true,
-        inbox: &[],
-    };
-    let mut rows = Transcript::default();
-    let view = world.resource::<TuiView>();
-    let (renderers, calls) = (Default::default(), Default::default());
-    let parts = lay_out_transcript(
-        &mut rows,
-        view,
-        Some(&shown),
-        (&renderers, &calls, None),
-        80,
-    );
-    let (lines, _) = rows.visible(&parts, (80, 100), &mut Scroll::default());
-    lines.iter().map(ToString::to_string).collect()
-}
+use crate::tests::{scratch, transcript, view_app};
 
 /// Where in `lines` the first that contains `text` is.
 fn line_of(lines: &[String], text: &str) -> Option<usize> {

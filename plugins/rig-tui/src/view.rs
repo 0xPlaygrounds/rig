@@ -1,15 +1,20 @@
 //! View state, kept apart from the agent core: the agent shown (the
 //! harness's [`Shown`]), the input's completion, scrolling, the pickers and questions waiting to be
-//! shown, and recent notices, which are kept in the session's directory
-//! for the next build.
+//! shown, and the transcript as plugins read and steer it
+//! ([`TranscriptView`]): what is expanded and selected, the text lit,
+//! where it is scrolled, and recent notices, which are kept in the
+//! session's directory for the next build.
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
+use ratatui::style::Style;
 use rig_core::completion::Message;
+use rig_core::message::CallId;
 use serde::{Deserialize, Serialize};
 
 use super::complete::Completion;
@@ -61,29 +66,97 @@ pub(crate) struct TuiView {
     pub(crate) choosing: Option<Choosing>,
     /// The keys pressed so far of a binding of several.
     pub(crate) pending: Vec<KeyPress>,
-    /// Recent notices, oldest first.
-    pub(crate) notices: Vec<ShownNotice>,
-    /// Where they are kept for the next build of the session.
-    notices_file: Option<PathBuf>,
     /// A refused command put back in the input: sent again unchanged, it
     /// goes to the model as a message.
     pub(crate) refused: Option<String>,
+    /// The open questions shown beside the work, oldest first; the first
+    /// is shown.
+    pub(crate) inline: Vec<Entity>,
+    /// The items of the transcript drawn last, top to bottom, which the
+    /// selection moves through.
+    pub(crate) items: Vec<TranscriptItem>,
+}
+
+/// An item of a transcript, as plugins name it.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum TranscriptItem {
+    /// A message, by id.
+    Message(MessageId),
+    /// A tool call, by its call id.
+    Call(CallId),
+    /// A plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry).
+    Entry(Entity),
+}
+
+/// The terminal view's transcript, as plugins read and steer it. A change
+/// to it draws the transcript again. It is there in any run.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::ratatui::style::{Style, Stylize};
+/// use rig_tui::{Highlight, ScrollTo, TranscriptItem, TranscriptView};
+///
+/// /// Lights a search's matches and shows the message of the first.
+/// fn show_match(agent: Entity, hit: MessageId, mut view: ResMut<TranscriptView>, mut commands: Commands) {
+///     view.highlights = vec![Highlight { text: "flaky".into(), style: Style::new().on_yellow() }];
+///     commands.trigger(ScrollTo { agent, item: Some(TranscriptItem::Message(hit)), line: 0 });
+/// }
+/// ```
+#[derive(Resource, Default)]
+pub struct TranscriptView {
+    /// Items drawn whole; the rest are drawn cut, as their look says.
+    pub expanded: HashSet<TranscriptItem>,
+    /// The item the user selected, drawn marked; Ctrl+O expands it.
+    pub selected: Option<TranscriptItem>,
+    /// Text lit wherever the transcript draws it, such as a search's
+    /// matches.
+    pub highlights: Vec<Highlight>,
+    /// The item and the row of it at the top while the view is scrolled
+    /// up; `None` while it follows the newest output.
+    top: Option<(TranscriptItem, usize)>,
+    /// Recent notices, oldest first.
+    notices: Vec<ShownNotice>,
+    /// Where they are kept for the next build of the session.
+    notices_file: Option<PathBuf>,
+}
+
+/// Text to light in the transcript, matched without regard to case.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Highlight {
+    /// The text.
+    pub text: String,
+    /// The style laid over it.
+    pub style: Style,
+}
+
+/// Scrolls the terminal view to `agent`'s transcript, showing that agent
+/// if another is shown, so that row `line` of `item` is at the top, as far
+/// as the transcript reaches; `item: None` follows the newest output again.
+/// [`TranscriptView::top`] reads where it is.
+#[derive(Event, Clone, Debug)]
+pub struct ScrollTo {
+    /// The agent.
+    pub agent: Entity,
+    /// The item to show, or `None` for the newest output.
+    pub item: Option<TranscriptItem>,
+    /// The row of the item to put at the top.
+    pub line: usize,
 }
 
 /// A notice placed in a transcript.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ShownNotice {
+pub struct ShownNotice {
     /// The agent it is about, or `None` for every agent.
-    agent: Option<AgentId>,
+    pub agent: Option<AgentId>,
     /// Where it was written in its agent's transcript (the one shown, for
     /// a notice about every agent); `None` before that agent had a
     /// message, or with no agent shown.
     at: Option<Anchor>,
     /// Whether it informs, warns or reports a failure.
     #[serde(with = "level")]
-    pub(crate) level: NoticeLevel,
+    pub level: NoticeLevel,
     /// The text.
-    pub(crate) text: String,
+    pub text: String,
 }
 
 /// Where a notice was written: after the first `items` content items of
@@ -138,6 +211,18 @@ impl ShownNotice {
     }
 }
 
+/// Where an entry that follows the message `after` is drawn: after it
+/// while it is in `conversation`, else after the message that stands for
+/// it now, such as the summary of a compaction that took it out.
+pub(crate) fn entry_slot(after: Option<MessageId>, conversation: &Conversation) -> Slot {
+    let last = conversation.messages().len().checked_sub(1);
+    let at = after.and_then(|after| {
+        let standing = last.map(|last| conversation.start_of(after).min(last));
+        conversation.index_of(after).or(standing)
+    });
+    at.map_or(Slot::Top, Slot::After)
+}
+
 /// The content items of message `index`.
 fn items(conversation: &Conversation, index: usize) -> usize {
     match conversation.messages().get(index) {
@@ -181,7 +266,31 @@ mod level {
     }
 }
 
-impl TuiView {
+impl TranscriptView {
+    /// The item and its row at the top while the view is scrolled up;
+    /// `None` while it follows the newest output.
+    pub fn top(&self) -> Option<&(TranscriptItem, usize)> {
+        self.top.as_ref()
+    }
+
+    /// The notices shown, oldest first, those an earlier build of the
+    /// session showed included.
+    pub fn notices(&self) -> &[ShownNotice] {
+        &self.notices
+    }
+
+    /// Notes where the view is scrolled, as it was drawn.
+    pub(crate) fn set_top(&mut self, top: Option<(TranscriptItem, usize)>) {
+        self.top = top;
+    }
+
+    /// Expands `item` when collapsed, collapses it when expanded.
+    pub(crate) fn toggle(&mut self, item: TranscriptItem) {
+        if !self.expanded.remove(&item) {
+            self.expanded.insert(item);
+        }
+    }
+
     /// Keeps `notice` for display and for the next build, dropping the
     /// oldest past [`KEPT_NOTICES`].
     fn keep(&mut self, notice: ShownNotice) {
@@ -198,7 +307,7 @@ impl TuiView {
 
 /// Reads back the notices an earlier build of the session showed, and
 /// keeps the next ones in the session's directory.
-pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<TuiView>) {
+pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<TranscriptView>) {
     let Some(paths) = paths else {
         return;
     };
@@ -209,22 +318,26 @@ pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<Tu
 
 /// Keeps what was typed and not sent for the build a reload starts, such
 /// as a command typed during the rebuild that only the new build knows.
+/// While a question is answered in the input, what was typed before it.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
     paths: Option<Res<SessionPaths>>,
-    input: Res<TuiInput>,
+    (input, view): (Res<TuiInput>, Option<Res<TuiView>>),
 ) {
     let (Some(reason), Some(paths)) = (reason, paths) else {
         return;
     };
-    if *reason != ExitReason::Reload || input.is_empty() {
+    let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
+    let draft = answering.and_then(|choosing| choosing.draft.as_deref());
+    let text = draft.unwrap_or(input.text());
+    if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
     let file = paths.path().join(DRAFT_FILE);
     let kept = file
         .parent()
         .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fs::write(&file, input.text()));
+        .and_then(|()| fs::write(&file, text));
     if let Err(failure) = kept {
         warn!("could not keep the input for the next build: {failure}");
     }
@@ -278,13 +391,34 @@ pub(crate) fn on_focus(
     view.completion = None;
 }
 
+/// Shows the agent a [`ScrollTo`] names, scrolled to its item, which the
+/// next frame finds.
+pub(crate) fn on_scroll_to(
+    scroll: On<ScrollTo>,
+    agents: Query<(), With<Agent>>,
+    mut shown: ResMut<Shown>,
+    mut view: ResMut<TuiView>,
+) {
+    if !agents.contains(scroll.agent) {
+        return;
+    }
+    if shown.0 != Some(scroll.agent) {
+        shown.0 = Some(scroll.agent);
+        view.completion = None;
+    }
+    match &scroll.item {
+        Some(item) => view.scroll.to(item.clone(), scroll.line),
+        None => view.scroll.follow(),
+    }
+}
+
 /// Keeps the latest notices for display, each placed where its agent's
 /// conversation ended when it arrived.
 pub(crate) fn collect_notices(
     mut notices: MessageReader<Notice>,
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<Shown>,
-    mut view: ResMut<TuiView>,
+    mut view: ResMut<TranscriptView>,
 ) {
     if notices.is_empty() {
         return;
@@ -310,7 +444,7 @@ pub(crate) fn recall_messages(
     mut recalled: MessageReader<Recalled>,
     agents: Query<(&AgentId, &Conversation)>,
     shown: Res<Shown>,
-    mut view: ResMut<TuiView>,
+    (mut view, mut transcript): (ResMut<TuiView>, ResMut<TranscriptView>),
     mut input: ResMut<TuiInput>,
 ) {
     for recalled in recalled.read() {
@@ -319,7 +453,7 @@ pub(crate) fn recall_messages(
         }
         if let Some(why) = &recalled.why {
             let agent = agents.get(recalled.agent).ok();
-            view.keep(ShownNotice {
+            transcript.keep(ShownNotice {
                 agent: agent.map(|(id, _)| id.clone()),
                 at: agent.and_then(|(id, conversation)| anchor(id, conversation)),
                 level: NoticeLevel::Error,

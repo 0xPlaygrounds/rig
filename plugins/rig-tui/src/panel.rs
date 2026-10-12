@@ -73,9 +73,10 @@ pub struct Focused;
 
 /// A panel of a plugin in the terminal view. Panels are laid out one after
 /// another, in entity order, each taking its side of what is left above the
-/// status line; a panel that would leave the transcript less than 20
-/// columns or 3 rows gets no area this frame. Despawn the entity, or
-/// remove the component, to remove the panel.
+/// status line, or rows under the input ([`Placement::BelowInput`]); a
+/// panel that would leave the transcript less than 20 columns or 3 rows
+/// gets no area this frame. Despawn the entity, or remove the component,
+/// to remove the panel.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq)]
 #[require(PanelCanvas)]
 #[reflect(opaque, Component, Clone, Debug, PartialEq)]
@@ -102,6 +103,9 @@ pub enum Placement {
     Left(Constraint),
     /// Columns right of the transcript.
     Right(Constraint),
+    /// Rows under the input box, at the bottom of the screen, such as a row
+    /// of suggestions; several stack in entity order.
+    BelowInput(Constraint),
     /// A box centred over the whole screen, drawn over everything but the
     /// view's own overlays (the picker and the completion list).
     Over {
@@ -158,18 +162,51 @@ impl PanelCanvas {
 }
 
 /// The smallest transcript a panel may leave.
-const MIN_MAIN: (u16, u16) = (20, 3);
+pub(super) const MIN_MAIN: (u16, u16) = (20, 3);
 
-/// Lays the panels out in `main`, the area above the status line, and
-/// `screen`, the whole screen; returns what is left for the transcript.
+/// The rows a panel below the input asks for on a screen `height` rows
+/// high.
+pub(super) fn rows_of(size: Constraint, height: u16) -> u16 {
+    let [rows, _] = Layout::vertical([size, Constraint::Fill(1)]).areas(Rect::new(0, 0, 1, height));
+    rows.height
+}
+
+/// The rows each of the panels below the input that asked for `asked`
+/// rows gets, in order, out of `room`: a panel that does not fit whole is
+/// skipped.
+pub(super) fn below_rows(asked: impl IntoIterator<Item = u16>, mut room: u16) -> Vec<u16> {
+    asked
+        .into_iter()
+        .map(|rows| match room.checked_sub(rows) {
+            Some(left) => {
+                room = left;
+                rows
+            }
+            None => 0,
+        })
+        .collect()
+}
+
+/// Lays the panels out in `main`, the area above the status line,
+/// `below`, the rows under the input, and `screen`, the whole screen;
+/// returns what is left for the transcript.
 pub(super) fn lay_out<'a>(
     panels: impl Iterator<Item = (&'a TuiPanel, Mut<'a, PanelCanvas>)>,
     mut main: Rect,
+    mut below: Rect,
     screen: Rect,
 ) -> Rect {
     for (panel, mut canvas) in panels {
         let area = match panel.placement {
             Placement::Over { width, height } => screen.centered(width, height),
+            Placement::BelowInput(size) => {
+                let rows = below_rows([rows_of(size, screen.height)], below.height);
+                let rows = rows.first().copied().unwrap_or(0);
+                let [panel, rest] =
+                    Layout::vertical([Constraint::Length(rows), Constraint::Min(0)]).areas(below);
+                below = rest;
+                if rows == 0 { Rect::default() } else { panel }
+            }
             Placement::Top(size) => {
                 let [panel, rest] = Layout::vertical([size, Constraint::Min(0)]).areas(main);
                 take(&mut main, panel, rest)

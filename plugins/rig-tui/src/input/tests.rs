@@ -3,7 +3,7 @@ use rig_ecs::prelude::*;
 
 use super::super::editor::TuiInput;
 use super::super::history::Sent;
-use super::super::view::{self, TuiView};
+use super::super::view::{self, TranscriptView, TuiView};
 use super::send;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::primary::Shown;
@@ -44,6 +44,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         )
         .add_message::<Sent>()
         .init_resource::<TuiView>()
+        .init_resource::<TranscriptView>()
         .init_resource::<Shown>()
         .init_resource::<TuiInput>()
         .init_resource::<Delivered>()
@@ -73,10 +74,10 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
     ];
     for (typed, why) in refused {
         enter(&mut app, typed);
-        let view = app.world().resource::<TuiView>();
+        let view = app.world().resource::<TranscriptView>();
         let input = app.world().resource::<TuiInput>();
         let shown: Vec<&str> = view
-            .notices
+            .notices()
             .iter()
             .map(|notice| notice.text.as_str())
             .collect();
@@ -87,7 +88,7 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         );
     }
     assert_eq!(
-        app.world().resource::<TuiView>().notices.len(),
+        app.world().resource::<TranscriptView>().notices().len(),
         refused.len()
     );
     enter(&mut app, "/gui still doesnt do anything");

@@ -1,44 +1,161 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
 //! on its neighbours: a tool call is drawn with the result the next message
-//! carries, and on the notices written inside it), re-wraps without
-//! re-rendering when the width changed, and copies out only the rows on
-//! screen. Before, every frame and every streamed delta re-wrapped the
-//! whole history.
+//! carries, and on the notices written inside it, and on what is expanded),
+//! re-wraps without re-rendering when the width changed, and copies out
+//! only the rows on screen. Each message keeps where its items are (the
+//! message, its calls), so the view can scroll to one, select it and say
+//! which is at the top. Before, every frame and every streamed delta
+//! re-wrapped the whole history.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Range;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-use bevy_ecs::entity::Entity;
+use bevy_ecs::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{CallId, ToolResult, UserContent};
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolResult, UserContent};
+use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
+use rig_core::tool::ToolResultContext;
 
 use super::markdown;
 use super::renderers::{
-    CallState, RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
+    CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
+    result_style, result_text,
 };
-use super::view::ShownNotice;
-use super::wrap::wrap_all;
-use rig_ecs::agent::{Conversation, NoticeLevel};
+use super::view::{ShownNotice, TranscriptItem};
+use super::wrap::wrap;
+use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
 use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
-use rig_harness::prelude::launcher::BUILD_ORIGIN;
+use rig_ecs::stage::{Published, Settled, Started};
+use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::StreamDelta;
 use rig_tools::attach::attached_file;
 
-/// The renderers by tool name.
+/// The tool renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
+
+/// The entry renderers by origin.
+pub(crate) type EntryRenderers<'a> = HashMap<&'a str, &'a Arc<RenderEntry>>;
+
+/// An item's rows (or lines) within a part.
+pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
+
+/// What this run knows of the tool calls that settled in it: what each
+/// published and how long it ran, by call id.
+#[derive(Resource, Default)]
+pub(crate) struct CallFacts(HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>);
+
+impl CallFacts {
+    /// What `call` published and how long it ran, as far as known.
+    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
+        self.0
+            .get(call)
+            .map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    }
+}
+
+/// Notes what a tool call published and how long it ran, as it settles.
+pub(crate) fn note_call_facts(
+    settled: On<Add<Settled>>,
+    calls: Query<(&ToolRequest, Option<&Published>, Option<&Started>)>,
+    mut facts: ResMut<CallFacts>,
+) {
+    let Ok((request, published, started)) = calls.get(settled.entity) else {
+        return;
+    };
+    let took = started.and_then(|started| SystemTime::now().duration_since(started.at).ok());
+    let published = published.map(|Published(context)| context.clone());
+    facts.0.insert(request.call.id.clone(), (published, took));
+}
+
+/// The tool calls a model call is streaming, by the model call, in the
+/// order they opened: each as far as its arguments came, or finished.
+#[derive(Resource, Default)]
+pub(crate) struct StreamingCalls(HashMap<Entity, Vec<(rig_core::streaming::Part, ToolCall)>>);
+
+/// The JSON of a streaming call's arguments so far, by model call and part.
+#[derive(Default)]
+pub(crate) struct Fragments(HashMap<(Entity, rig_core::streaming::Part), String>);
+
+impl StreamingCalls {
+    /// The calls `effect` streams.
+    pub(crate) fn of(&self, effect: Entity) -> &[(rig_core::streaming::Part, ToolCall)] {
+        self.0.get(&effect).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// Follows the tool calls models stream: a call opens with its tool's
+/// name, its arguments grow, and it ends with the finished call. A model
+/// call's go once it is in the conversation, its [`Partial`] gone.
+pub(crate) fn follow_streams(
+    mut deltas: MessageReader<StreamDelta>,
+    live: Query<(), With<Partial>>,
+    mut streaming: ResMut<StreamingCalls>,
+    mut fragments: Local<Fragments>,
+) {
+    let calls = streaming.bypass_change_detection();
+    let mut changed = false;
+    for delta in deltas.read() {
+        let effect = delta.effect;
+        match &delta.event {
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => {
+                let id = CallId::from_wire(format!("streaming-{}", part.index()));
+                let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
+                calls.0.entry(effect).or_default().push((*part, call));
+            }
+            StreamEvent::Arguments { part, json } => {
+                let text = fragments.0.entry((effect, *part)).or_default();
+                text.push_str(json);
+                let found = calls.0.get_mut(&effect).into_iter().flatten();
+                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                    call.function.arguments = parse_partial_arguments(text);
+                }
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            } => {
+                let found = calls.0.get_mut(&effect).into_iter().flatten();
+                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                    *call = done.clone();
+                }
+            }
+            _ => continue,
+        }
+        changed = true;
+    }
+    let before = calls.0.len();
+    calls.0.retain(|effect, _| live.contains(*effect));
+    fragments.0.retain(|(effect, _), _| live.contains(*effect));
+    if changed || calls.0.len() != before {
+        streaming.set_changed();
+    }
+}
 
 /// What the messages' look depends on besides the messages.
 pub(crate) struct Look<'a> {
-    /// The renderers by tool name.
+    /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
+    /// The entry renderers by origin.
+    pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
     /// The notices written inside a message, by its index, each with the
     /// content item it goes before.
     pub(crate) notices: HashMap<usize, Vec<(usize, &'a ShownNotice)>>,
+    /// The items drawn whole.
+    pub(crate) expanded: &'a HashSet<TranscriptItem>,
+    /// What settled calls published and how long they ran.
+    pub(crate) facts: &'a CallFacts,
 }
 
 impl Look<'_> {
@@ -66,14 +183,25 @@ impl Look<'_> {
         }
     }
 
-    /// Hashes what message `index` looks like besides its messages: its
-    /// notices and the states of its calls.
-    fn hash_message(&self, index: usize, message: &Message, hasher: &mut DefaultHasher) {
+    /// Hashes what message `index` (with `id`) looks like besides its
+    /// messages: its notices, whether it is expanded, and its calls' states,
+    /// expansion and running times.
+    fn hash_message(
+        &self,
+        (index, id): (usize, Option<rig_ecs::prelude::MessageId>),
+        message: &Message,
+        hasher: &mut DefaultHasher,
+    ) {
         self.hash_notices(index, hasher);
+        id.map(|id| self.expanded.contains(&TranscriptItem::Message(id)))
+            .hash(hasher);
         if let Message::Assistant(assistant) = message {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
+                    let expanded = TranscriptItem::Call(call.id.clone());
+                    self.expanded.contains(&expanded).hash(hasher);
+                    self.facts.of(&call.id).1.hash(hasher);
                 }
             }
         }
@@ -90,6 +218,20 @@ impl Look<'_> {
             self.hash_notices(*index, &mut hasher);
         }
         self.calls.hash(&mut hasher);
+        // Sets in no order: a sum of each one's hash.
+        let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
+            let mut hasher = DefaultHasher::new();
+            item(&mut hasher);
+            hasher.finish()
+        };
+        let expanded = self
+            .expanded
+            .iter()
+            .map(|item| unordered(&|h| item.hash(h)));
+        expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
+        let facts = self.facts.0.iter();
+        let facts = facts.map(|(call, (_, took))| unordered(&|h| (call, took).hash(h)));
+        facts.fold(0u64, u64::wrapping_add).hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -103,11 +245,14 @@ fn level_code(level: NoticeLevel) -> u8 {
     }
 }
 
-/// One message's look: its lines, and those lines wrapped to the width.
-struct Entry {
+/// One message's look: its lines and where its items are in them, and
+/// those lines wrapped to the width with where its items are in the rows.
+struct Cached {
     fingerprint: u64,
-    rows: Vec<Line<'static>>,
     lines: Vec<Line<'static>>,
+    line_marks: Marks,
+    rows: Vec<Line<'static>>,
+    marks: Marks,
 }
 
 /// The wrapped rows of the shown agent's messages.
@@ -117,14 +262,31 @@ pub(crate) struct Transcript {
     width: u16,
     /// The [`Look::digest`] the rows were made with.
     look: u64,
-    entries: Vec<Entry>,
+    messages: Vec<Cached>,
 }
 
 /// A part of the transcript, in order: a message's cached rows, or rows
-/// made for this frame (notices, a summary, the reply streaming in).
+/// made for this frame (notices, an entry, the reply streaming in), with
+/// the item they are, if any.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Vec<Line<'static>>),
+    Rows(Vec<Line<'static>>, Option<TranscriptItem>),
+}
+
+/// The rows of the transcript on screen, and where it is.
+pub(crate) struct Visible {
+    /// The rows shown.
+    pub(crate) rows: Vec<Line<'static>>,
+    /// What is below them.
+    pub(crate) below: Below,
+    /// The first one's row in the whole transcript.
+    pub(crate) first: usize,
+    /// Every item's rows in the whole transcript, top to bottom; a call's
+    /// are within its message's.
+    pub(crate) marks: Marks,
+    /// The item at the top and the row of it there, while the view is
+    /// scrolled up.
+    pub(crate) top: Option<(TranscriptItem, usize)>,
 }
 
 impl Transcript {
@@ -143,73 +305,108 @@ impl Transcript {
     ) {
         if self.agent != Some(agent) {
             self.agent = Some(agent);
-            self.entries.clear();
+            self.messages.clear();
         }
         let usable = usize::from(width.max(1));
         if self.width != width {
             self.width = width;
-            for entry in &mut self.entries {
-                entry.rows = wrap_all(&entry.lines, usable);
+            for cached in &mut self.messages {
+                (cached.rows, cached.marks) =
+                    wrap_marked(&cached.lines, &cached.line_marks, usable);
             }
         }
         let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed && looks_alike && self.entries.len() == messages.len() {
+        if !changed && looks_alike && self.messages.len() == messages.len() {
             return;
         }
-        self.entries.truncate(messages.len());
+        self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             let next = messages.get(index + 1);
-            let fingerprint = fingerprint([previous, Some(message), next], look, index);
+            let id = conversation.id(index);
+            let fingerprint = fingerprint([previous, Some(message), next], look, (index, id));
             if self
-                .entries
+                .messages
                 .get(index)
-                .is_some_and(|entry| entry.fingerprint == fingerprint)
+                .is_some_and(|cached| cached.fingerprint == fingerprint)
             {
                 continue;
             }
-            let lines = message_lines(message, (conversation, index), previous, next, look);
-            let entry = Entry {
+            let (lines, line_marks) =
+                message_lines(message, (conversation, index), previous, next, look);
+            let (rows, marks) = wrap_marked(&lines, &line_marks, usable);
+            let cached = Cached {
                 fingerprint,
-                rows: wrap_all(&lines, usable),
                 lines,
+                line_marks,
+                rows,
+                marks,
             };
-            match self.entries.get_mut(index) {
-                Some(slot) => *slot = entry,
-                None => self.entries.push(entry),
+            match self.messages.get_mut(index) {
+                Some(slot) => *slot = cached,
+                None => self.messages.push(cached),
             }
         }
     }
 
     /// Drops every cached row, after the renderers changed.
     pub(crate) fn clear(&mut self) {
-        self.entries.clear();
+        self.messages.clear();
     }
 
     /// A part's rows.
     fn rows<'a>(&'a self, part: &'a Part) -> &'a [Line<'static>] {
         match part {
             Part::Message(index) => self
-                .entries
+                .messages
                 .get(*index)
-                .map(|entry| entry.rows.as_slice())
+                .map(|cached| cached.rows.as_slice())
                 .unwrap_or_default(),
-            Part::Rows(rows) => rows.as_slice(),
+            Part::Rows(rows, _) => rows.as_slice(),
+        }
+    }
+
+    /// Where a part's items are in its rows.
+    fn marks(&self, part: &Part) -> Marks {
+        match part {
+            Part::Message(index) => self
+                .messages
+                .get(*index)
+                .map(|cached| cached.marks.clone())
+                .unwrap_or_default(),
+            Part::Rows(rows, Some(item)) => vec![(item.clone(), 0..rows.len())],
+            Part::Rows(_, None) => Vec::new(),
         }
     }
 
     /// The rows of `parts` that fit `height` rows at `width`, where
-    /// `scroll` places them, and what is below them.
+    /// `scroll` places them, what is below them, and where the items are.
     pub(crate) fn visible(
         &self,
         parts: &[Part],
         (width, height): (u16, usize),
         scroll: &mut Scroll,
-    ) -> (Vec<Line<'static>>, Below) {
+    ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
-        let (top, below) = scroll.place(&counts, height, width);
+        let mut marks = Marks::new();
+        let mut start = 0;
+        for (part, count) in parts.iter().zip(&counts) {
+            let shifted = self.marks(part).into_iter();
+            marks.extend(shifted.map(|(item, rows)| (item, rows.start + start..rows.end + start)));
+            start += count;
+        }
+        scroll.find(&marks);
+        let (mut top, mut below) = scroll.place(&counts, height, width);
+        if let Some(Jump::Reveal(item)) = scroll.jump.take() {
+            let rows = marks.iter().find(|(marked, _)| *marked == item);
+            let hidden = rows.filter(|(_, rows)| !(top..top + height).contains(&rows.start));
+            if let Some((_, rows)) = hidden {
+                scroll.at = Some(rows.start);
+                (top, below) = scroll.place(&counts, height, width);
+            }
+        }
         let mut shown = Vec::with_capacity(height);
         let mut start = 0;
         for (part, count) in parts.iter().zip(&counts) {
@@ -230,8 +427,43 @@ impl Transcript {
                 break;
             }
         }
-        (shown, below)
+        let at_top = scroll.held.is_some().then(|| {
+            // The innermost item there: the one that starts last.
+            let holding = marks.iter().filter(|(_, rows)| rows.contains(&top));
+            let item = holding.max_by_key(|(_, rows)| rows.start);
+            item.map(|(item, rows)| (item.clone(), top - rows.start))
+        });
+        Visible {
+            rows: shown,
+            below,
+            first: top,
+            marks,
+            top: at_top.flatten(),
+        }
     }
+}
+
+/// `lines` wrapped to `width`, and `marks` of lines moved to the rows
+/// they wrap to.
+fn wrap_marked(
+    lines: &[Line<'static>],
+    marks: &[(TranscriptItem, Range<usize>)],
+    width: usize,
+) -> (Vec<Line<'static>>, Marks) {
+    let mut rows = Vec::with_capacity(lines.len());
+    // The first row of each line, and past the last.
+    let mut starts = Vec::with_capacity(lines.len() + 1);
+    for line in lines {
+        starts.push(rows.len());
+        rows.extend(wrap(line, width));
+    }
+    starts.push(rows.len());
+    let row = |line: usize| starts.get(line).copied().unwrap_or(rows.len());
+    let marks = marks
+        .iter()
+        .map(|(item, lines)| (item.clone(), row(lines.start)..row(lines.end)))
+        .collect();
+    (rows, marks)
 }
 
 /// Where the transcript is scrolled: following its bottom, or held at the
@@ -242,6 +474,18 @@ pub(crate) struct Scroll {
     held: Option<Held>,
     /// Rows the keys moved the view since the last frame, up positive.
     moved: isize,
+    /// An item to go to at the next frame.
+    jump: Option<Jump>,
+    /// The row to put at the top at the next frame, where a jump found it.
+    at: Option<usize>,
+}
+
+/// An item to scroll to.
+enum Jump {
+    /// Put row `.1` of the item at the top.
+    To(TranscriptItem, usize),
+    /// Bring the item on screen, at the top when it is not.
+    Reveal(TranscriptItem),
 }
 
 /// The top row of a view scrolled up.
@@ -291,17 +535,45 @@ impl Scroll {
         *self = Self::default();
     }
 
+    /// Puts row `line` of `item` at the top at the next frame, as far as
+    /// the transcript reaches.
+    pub(crate) fn to(&mut self, item: TranscriptItem, line: usize) {
+        self.jump = Some(Jump::To(item, line));
+    }
+
+    /// Brings `item` on screen at the next frame.
+    pub(crate) fn reveal(&mut self, item: TranscriptItem) {
+        self.jump = Some(Jump::Reveal(item));
+    }
+
+    /// Finds the row a jump to an item goes to among `marks`: the item's
+    /// first row and the row asked for, within the item. An item not
+    /// there leaves the view where it is.
+    fn find(&mut self, marks: &[(TranscriptItem, Range<usize>)]) {
+        if let Some(Jump::To(item, line)) = &self.jump {
+            let found = marks.iter().find(|(marked, _)| marked == item);
+            self.at = found.map(|(_, rows)| {
+                let last = rows.end.saturating_sub(1).max(rows.start);
+                (rows.start + line).min(last)
+            });
+            self.jump = None;
+        }
+    }
+
     /// The top row of a view `height` rows high over parts of `counts`
-    /// rows at `width`, after the keys' moves; holds it while it is above
-    /// the bottom.
+    /// rows at `width`, after the keys' moves or a jump; holds it while it
+    /// is above the bottom.
     fn place(&mut self, counts: &[usize], height: usize, width: u16) -> (usize, Below) {
         let total: usize = counts.iter().sum();
         let bottom = total.saturating_sub(height);
         let moved = std::mem::take(&mut self.moved);
-        let (top, grew) = match &self.held {
-            None => (bottom, false),
-            Some(held) if held.width == width => (held.top, held.grew || total > held.total),
-            Some(held) => {
+        let (top, grew) = match (self.at.take(), &self.held) {
+            (Some(at), _) => (at, false),
+            (None, None) => (bottom, false),
+            (None, Some(held)) if held.width == width => {
+                (held.top, held.grew || total > held.total)
+            }
+            (None, Some(held)) => {
                 let start: usize = counts.iter().take(held.part).sum();
                 let rows = counts.get(held.part).copied().unwrap_or(0);
                 let row = (held.row * rows / held.rows.max(1)).min(rows.saturating_sub(1));
@@ -336,10 +608,14 @@ impl Scroll {
 
 /// A hash of what message `index`'s look depends on: it and its
 /// neighbours, and `look`'s part for it.
-fn fingerprint(messages: [Option<&Message>; 3], look: &Look<'_>, index: usize) -> u64 {
+fn fingerprint(
+    messages: [Option<&Message>; 3],
+    look: &Look<'_>,
+    at: (usize, Option<rig_ecs::prelude::MessageId>),
+) -> u64 {
     let mut hasher = DefaultHasher::new();
     if let [_, Some(message), _] = messages {
-        look.hash_message(index, message, &mut hasher);
+        look.hash_message(at, message, &mut hasher);
     }
     for message in messages {
         match message {
@@ -377,18 +653,21 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
 }
 
 /// Draws `message`, the `at`-th of `conversation`, with the notices
-/// written inside it before their items. A tool
-/// call's result, which comes in the `next` message, is drawn with the
-/// call, so the results of a reply's calls are not drawn after all of its
-/// calls.
+/// written inside it before their items, and says which lines are the
+/// message and which each of its calls. A tool call's result, which comes
+/// in the `next` message, is drawn with the call, so the results of a
+/// reply's calls are not drawn after all of its calls.
 fn message_lines(
     message: &Message,
     (conversation, at): (&Conversation, usize),
     previous: Option<&Message>,
     next: Option<&Message>,
     look: &Look<'_>,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Marks) {
     let mut lines = Vec::new();
+    let mut marks = Marks::new();
+    let id = conversation.id(at);
+    let expanded = id.is_some_and(|id| look.expanded.contains(&TranscriptItem::Message(id)));
     let notices = look.notices(at);
     let notices_before = |item: usize, lines: &mut Vec<Line<'static>>| {
         for (_, notice) in notices.iter().filter(|(before, _)| *before == item) {
@@ -412,7 +691,9 @@ fn message_lines(
                         }
                         lines.push(Line::default());
                         match conversation.origin(at, item_at) {
-                            Some(origin) => delivered_lines(origin, &text.text, &mut lines),
+                            Some(origin) => {
+                                lines.extend(delivered_lines(origin, &text.text, expanded, look));
+                            }
                             None => user_lines(&text.text, &mut lines),
                         }
                     }
@@ -420,7 +701,7 @@ fn message_lines(
                     UserContent::ToolResult(result) if answers(previous, result) => {}
                     UserContent::ToolResult(result) => lines.extend(excerpt(
                         &result_text(result),
-                        RESULT_LINES,
+                        if expanded { usize::MAX } else { RESULT_LINES },
                         result_style(result.is_error),
                     )),
                     UserContent::Image(_) => lines.push(Line::from("  [image]").dim()),
@@ -441,22 +722,48 @@ fn message_lines(
                     }
                     AssistantContent::ToolCall(call) => {
                         let result = tool_results(next).find(|result| result.call == call.id);
+                        let (facts, took) = look.facts.of(&call.id);
+                        let item = TranscriptItem::Call(call.id.clone());
                         let view = ToolCallView {
                             call,
                             result,
                             state: look.state(&call.id, result),
+                            expanded: look.expanded.contains(&item),
+                            facts,
+                            took,
                         };
-                        match look.renderers.get(call.function.name.as_str()) {
-                            Some(render) => lines.extend(render(&view)),
-                            None => lines.extend(view.default_lines()),
-                        }
+                        let start = lines.len();
+                        lines.extend(call_lines(&view, look.renderers));
+                        marks.push((item, start..lines.len()));
                     }
                     _ => {}
                 }
             }
         }
     }
-    lines
+    if let Some(id) = id {
+        marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));
+    }
+    (lines, marks)
+}
+
+/// A tool call's lines, by its tool's renderer or the default look.
+pub(crate) fn call_lines(view: &ToolCallView<'_>, renderers: &Renderers<'_>) -> Vec<Line<'static>> {
+    match renderers.get(view.name()) {
+        Some(render) => render(view),
+        None => view.default_lines(),
+    }
+}
+
+/// An entry's lines, by its origin's renderer or the default look.
+pub(crate) fn entry_lines(
+    view: &EntryView<'_>,
+    renderers: &EntryRenderers<'_>,
+) -> Vec<Line<'static>> {
+    match renderers.get(view.origin) {
+        Some(render) => render(view),
+        None => view.default_lines(),
+    }
 }
 
 /// What the user typed, under a `›`.
@@ -471,46 +778,31 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
     }
 }
 
-/// The origin of rig-compaction's summary, which stands in the conversation
-/// for the messages it replaced.
-const SUMMARY_ORIGIN: &str = "compaction";
-
-/// Lines of a compaction's summary shown in the transcript.
-const SUMMARY_LINES: usize = 12;
-
-/// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads; a compaction's summary as a block
-/// that says it stands for the earlier messages.
-/// `/agents` shows an agent's whole transcript.
-fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
+/// Text an agent or a plugin sent, without the header the model reads:
+/// drawn by the renderer of the plugin that sent it, if it has one, else
+/// as where it came from and its start.
+fn delivered_lines(
+    origin: &Origin,
+    text: &str,
+    expanded: bool,
+    look: &Look<'_>,
+) -> Vec<Line<'static>> {
     let body = origin
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    // A failed build's note, which the model reads: told apart by its
-    // origin.
-    if matches!(&origin.kind, OriginKind::Plugin(name) if name == SUMMARY_ORIGIN) {
-        let style = Style::new().magenta();
-        lines.push(Line::styled(
-            "── the earlier messages were compacted into this summary ──",
-            style.bold(),
-        ));
-        lines.extend(excerpt(body, SUMMARY_LINES, style.dim()));
-        return;
-    }
-    if matches!(&origin.kind, OriginKind::Plugin(name) if name == BUILD_ORIGIN) {
-        lines.push(Line::styled(
-            "✗ build failed (noted for the agent)",
-            Style::new().red().bold(),
-        ));
-        lines.extend(excerpt(body, RESULT_LINES, Style::new().red().dim()));
-        return;
-    }
-    lines.push(Line::styled(
-        format!("⤶ {}", origin.label()),
-        Style::new().magenta().bold(),
-    ));
-    lines.extend(excerpt(body, RESULT_LINES, Style::new().dim()));
+    let label = origin.label();
+    let name = match &origin.kind {
+        OriginKind::Plugin(name) => name.as_str(),
+        _ => "",
+    };
+    let view = EntryView {
+        origin: name,
+        title: &label,
+        text: body,
+        expanded,
+    };
+    entry_lines(&view, look.entries)
 }
 
 /// A notice's lines, coloured by its level.

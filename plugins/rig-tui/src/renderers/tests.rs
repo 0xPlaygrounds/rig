@@ -15,11 +15,7 @@ fn drawn(tool: &str, args: Value, output: &str) -> Vec<String> {
     let result = call.answer(&rig_core::tool::ToolResult::success(
         output.to_owned().into(),
     ));
-    let view = ToolCallView {
-        call: &call,
-        result: Some(&result),
-        state: CallState::Done,
-    };
+    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
     let lines = match tool {
         "shell" => view.tail_lines(RESULT_LINES + 2),
         _ => view.default_lines(),
@@ -56,11 +52,7 @@ fn a_tool_keeps_its_first_renderer_until_that_one_is_disabled() {
         return;
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({})));
-    let view = ToolCallView {
-        call: &call,
-        result: None,
-        state: CallState::Running(None),
-    };
+    let view = ToolCallView::new(&call, None, CallState::Running(None));
     let drawn = |app: &mut App| -> Vec<String> {
         let world = app.world_mut();
         let mut renderers = world.query::<&ToolRenderer>();

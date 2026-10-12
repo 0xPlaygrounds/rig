@@ -4,6 +4,13 @@
 //! waits until it is closed. A new [`Picker`] on the same entity starts it
 //! over. The user's choice is a [`Pick`](rig_harness::pick::Pick), which the harness
 //! carries out.
+//!
+//! A question with initial text or a multi-line answer is answered in the
+//! input instead: its text replaces the draft until Enter answers or Esc
+//! refuses, and the draft comes back. A question shown beside the work
+//! ([`Ask::inline`]) waits in a strip above the input, which keeps the
+//! keys; Alt+1 to Alt+9 pick its choices, or answer it in the input, and
+//! Alt+0 dismisses it.
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
@@ -16,6 +23,7 @@ use rig_harness::pick::{Chosen, Picker};
 use rig_tools::shorten;
 use unicode_width::UnicodeWidthStr;
 
+use super::editor::TuiInput;
 use super::view::TuiView;
 
 /// Lines a page key moves.
@@ -30,6 +38,9 @@ pub(crate) struct Choosing {
     pub(crate) filter: String,
     /// The selected position among the visible rows.
     pub(crate) selected: usize,
+    /// For a question answered in the input, what was typed there before,
+    /// which comes back once it is answered.
+    pub(crate) draft: Option<String>,
 }
 
 /// A picker or a question, as the view lists it.
@@ -39,6 +50,8 @@ pub(crate) struct Listing<'a> {
     pub(crate) items: Vec<Item<'a>>,
     pub(crate) free_text: bool,
     pub(crate) selected: usize,
+    /// For a question answered in the input, the text it starts from.
+    pub(crate) edit: Option<&'a str>,
 }
 
 /// An item or choice of a [`Listing`].
@@ -117,6 +130,7 @@ impl Choices<'_, '_> {
                     .collect(),
                 free_text: picker.free_text,
                 selected: picker.selected,
+                edit: None,
             });
         }
         let ask = self.asks.get(entity).ok()?;
@@ -133,50 +147,82 @@ impl Choices<'_, '_> {
                 .collect(),
             free_text: ask.free_text,
             selected: 0,
+            // One beside the work is answered in the input once the user
+            // chooses to type the answer.
+            edit: ask
+                .initial
+                .as_deref()
+                .or((ask.multiline || ask.inline).then_some("")),
         })
     }
 }
 
 /// Keeps the queue of pickers and questions in the order they came, and
 /// the first one shown: a new one waits, one closed or answered elsewhere
-/// leaves, and a replaced picker starts over.
+/// leaves, and a replaced picker starts over. A question shown beside the
+/// work waits in its own list.
 pub(crate) fn queue_choices(
     mut view: ResMut<TuiView>,
+    mut input: ResMut<TuiInput>,
     pickers: Query<Entity, Added<Picker>>,
     replaced: Query<(), Changed<Picker>>,
-    asks: Query<(Entity, &Effect), Added<Ask>>,
+    asks: Query<(Entity, &Effect, &Ask), Added<Ask>>,
     choices: Choices,
 ) {
     let state = view.bypass_change_detection();
     let before = state.choosing.as_ref().map(|choosing| choosing.entity);
-    let mut asked: Vec<(Entity, &Effect)> = asks.iter().collect();
-    asked.sort_by_key(|(_, effect)| effect.id());
-    state
-        .queue
-        .retain(|&entity| choices.shown(entity).is_some());
-    for entity in pickers.iter().chain(asked.into_iter().map(|(ask, _)| ask)) {
-        if !state.queue.contains(&entity) && choices.shown(entity).is_some() {
+    let inline_before = state.inline.clone();
+    let mut asked: Vec<(Entity, &Effect, &Ask)> = asks.iter().collect();
+    asked.sort_by_key(|(_, effect, _)| effect.id());
+    let open = |entity: &Entity| choices.shown(*entity).is_some();
+    state.queue.retain(open);
+    state.inline.retain(open);
+    let (inline, asked): (Vec<_>, Vec<_>) = asked.into_iter().partition(|(.., ask)| ask.inline);
+    for (entity, ..) in inline {
+        if !state.inline.contains(&entity) && open(&entity) {
+            state.inline.push(entity);
+        }
+    }
+    for entity in pickers.iter().chain(asked.into_iter().map(|(ask, ..)| ask)) {
+        if !state.queue.contains(&entity) && open(&entity) {
             state.queue.push(entity);
         }
     }
-    let front = state.queue.first().copied();
+    if state.inline != inline_before {
+        view.set_changed();
+    }
+    let front = view.queue.first().copied();
     let restart = front.is_some_and(|front| replaced.contains(front));
     if front == before && !restart {
         return;
     }
-    view.choosing = first(&view.queue, &choices);
+    show_first(&mut view, &choices, &mut input);
 }
 
-/// The first of `queue` still open, shown from the start.
-pub(crate) fn first(queue: &[Entity], choices: &Choices) -> Option<Choosing> {
-    queue.iter().find_map(|&entity| {
+/// Shows the first of the queue still open, from the start. A question
+/// answered in the input takes the input, keeping the draft, which comes
+/// back when it closes.
+pub(crate) fn show_first(view: &mut TuiView, choices: &Choices, input: &mut TuiInput) {
+    if let Some(Choosing {
+        draft: Some(draft), ..
+    }) = view.choosing.take()
+    {
+        input.set(draft);
+    }
+    view.choosing = view.queue.iter().find_map(|&entity| {
         let shown = choices.shown(entity)?;
+        let draft = shown.edit.map(|initial| {
+            let draft = input.take();
+            input.set(initial);
+            draft
+        });
         Some(Choosing {
             entity,
             filter: String::new(),
             selected: shown.selected.min(shown.items.len().saturating_sub(1)),
+            draft,
         })
-    })
+    });
 }
 
 /// Handles a key in the shown choice; returns what closes it: `Some(None)`

@@ -190,3 +190,82 @@ fn a_long_label_is_shortened_beside_its_whole_detail() {
     };
     assert_eq!(short.line(40).to_string(), "main");
 }
+
+#[test]
+fn a_question_with_initial_text_is_answered_in_the_input_and_the_draft_comes_back() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>().add_observer(record_answers);
+    type_text(&mut app, "half a thought");
+    let title = Ask::new("PR title").initial("Fix the parser");
+    app.world_mut().spawn((title, ForAgent(agent)));
+    let body = Ask::new("PR body").initial("It loops.").multiline();
+    app.world_mut().spawn((body, ForAgent(agent)));
+    app.update();
+    // The proposed answer is in the input, to edit; nothing is in front.
+    assert_eq!(crate::tests::typed(&app), "Fix the parser");
+    press(
+        &mut app,
+        "backspace backspace backspace backspace backspace backspace",
+    );
+    type_text(&mut app, "lexer");
+    press(&mut app, "enter");
+    // The next one takes the input; Shift+Enter adds a line, Esc refuses.
+    assert_eq!(crate::tests::typed(&app), "It loops.");
+    press(&mut app, "shift+enter");
+    type_text(&mut app, "Fixed.");
+    press(&mut app, "esc");
+    assert_eq!(crate::tests::typed(&app), "half a thought");
+    let answered = |title: &str, answer: Option<Answer>| (title.to_owned(), answer);
+    assert_eq!(
+        app.world().resource::<Answered>().0,
+        [
+            answered("PR title", Some(Answer::Text("Fix the lexer".to_owned()))),
+            answered("PR body", None),
+        ]
+    );
+    // Nothing reached the agent.
+    assert!(
+        app.world()
+            .resource::<crate::tests::Delivered>()
+            .0
+            .is_empty()
+    );
+}
+
+#[test]
+fn a_question_beside_the_work_leaves_the_keys_to_the_input() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<Answered>().add_observer(record_answers);
+    let offer = Ask::new("Save rule “tabs”?")
+        .choice("save", "Save")
+        .choice("no", "Dismiss")
+        .free_text()
+        .inline();
+    app.world_mut().spawn((offer.clone(), ForAgent(agent)));
+    app.update();
+    assert_eq!(shown(&mut app), None);
+    type_text(&mut app, "go on");
+    assert_eq!(crate::tests::typed(&app), "go on");
+    press(&mut app, "alt+1");
+    let answered = |answer: &str| {
+        (
+            "Save rule “tabs”?".to_owned(),
+            Some(Answer::Choice(answer.to_owned())),
+        )
+    };
+    assert_eq!(app.world().resource::<Answered>().0, [answered("save")]);
+    // Its keys are free again once none shows.
+    press(&mut app, "alt+1");
+    assert_eq!(app.world().resource::<Answered>().0.len(), 1);
+    // The choice after its choices answers it in the input.
+    app.world_mut().spawn((offer, ForAgent(agent)));
+    app.update();
+    press(&mut app, "alt+3");
+    assert_eq!(crate::tests::typed(&app), "");
+    type_text(&mut app, "only in Go");
+    press(&mut app, "enter");
+    assert_eq!(crate::tests::typed(&app), "go on");
+    let last = app.world().resource::<Answered>().0.last().cloned();
+    let text = Some(Answer::Text("only in Go".to_owned()));
+    assert_eq!(last, Some(("Save rule “tabs”?".to_owned(), text)));
+}

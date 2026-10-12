@@ -1,21 +1,32 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::time::SystemTime;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
+use ratatui::style::Style;
+use ratatui::text::Line;
 use rig_core::completion::Message;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
+use rig_core::streaming::{PartKind, StreamEvent};
 use rig_ecs::agent::Conversation;
+use rig_ecs::agent::Partial;
+use rig_ecs::prelude::MessageId;
 use rig_ecs::stage::{HoldOf, Started};
 use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::StreamDelta;
+use rig_harness::prelude::App;
 use rig_harness::prelude::ToolProgress;
+use rig_harness::transcript::{EntryOf, TranscriptEntry};
 use serde_json::json;
 
-use super::{Below, Look, Part, Renderers, Scroll, Transcript};
-use crate::CallState;
+use super::{
+    Below, CallFacts, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
+};
 use crate::render::CallStates;
+use crate::tests::{drawn_rows, on_screen, press, view_app};
+use crate::{AppToolRenderersExt, CallState, Highlight, ScrollTo, TranscriptItem, TranscriptView};
 
 const WIDTH: u16 = 80;
 
@@ -84,17 +95,21 @@ fn drawn(
     conversation: &Conversation,
     calls: &BTreeMap<CallId, CallState>,
 ) -> String {
-    let renderers = Renderers::default();
+    let (renderers, entries) = (Renderers::default(), EntryRenderers::default());
+    let (expanded, facts) = (HashSet::new(), CallFacts::default());
     let look = Look {
         renderers: &renderers,
+        entries: &entries,
         calls,
         notices: HashMap::new(),
+        expanded: &expanded,
+        facts: &facts,
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
     let parts = [Part::Message(0)];
-    let (rows, _) = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default());
-    let rows: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default());
+    let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
     rows.join("\n")
 }
 
@@ -149,4 +164,195 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
         .insert(ToolProgress("13 of 40 files".to_owned()));
     let shown = drawn(&mut transcript, &conversation, &states(&mut world));
     assert!(shown.contains("⎿ 13 of 40 files"), "{shown}");
+}
+
+/// Adds `message` to `agent`'s conversation, as a commit does.
+fn say(app: &mut App, agent: Entity, message: Message) {
+    let commit = move |mut commit: rig_ecs::journal::Commit,
+                       mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            commit.message(agent, &mut conversation, message.clone());
+        }
+    };
+    assert!(app.world_mut().run_system_once(commit).is_ok());
+    app.update();
+}
+
+/// The id of message `index` of `agent`'s conversation.
+fn message_id(app: &App, agent: Entity, index: usize) -> Option<MessageId> {
+    let conversation = app.world().get::<Conversation>(agent)?;
+    conversation.id(index)
+}
+
+/// Where in `lines` the first that contains `text` is.
+fn line_of(lines: &[String], text: &str) -> Option<usize> {
+    lines.iter().position(|line| line.contains(text))
+}
+
+#[test]
+fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
+    let (mut app, agent) = view_app();
+    app.add_entry_renderer("btw", |entry| {
+        let text = if entry.expanded {
+            entry.text
+        } else {
+            entry.title
+        };
+        vec![Line::from(format!("btw: {text}"))]
+    });
+    say(&mut app, agent, Message::user("first question"));
+    say(&mut app, agent, Message::assistant("first answer"));
+    say(&mut app, agent, Message::user("second question"));
+    let after = message_id(&app, agent, 1);
+    let entry = TranscriptEntry::new("btw", after, "Why tabs?", "The style says so.");
+    let entry = app.world_mut().spawn((entry, EntryOf(agent))).id();
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    let order = ["first answer", "btw: Why tabs?", "second question"];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+    // Alt+Up selects the newest item, the last message; again, the entry.
+    press(&mut app, "alt+up alt+up");
+    let selected = app.world().resource::<TranscriptView>().selected.clone();
+    assert_eq!(selected, Some(TranscriptItem::Entry(entry)));
+    // Ctrl+O expands it: drawn whole.
+    press(&mut app, "ctrl+o");
+    let lines = on_screen(&mut app, agent, 100);
+    assert!(
+        line_of(&lines, "btw: The style says so.").is_some(),
+        "{lines:#?}"
+    );
+}
+
+#[test]
+fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
+    let (mut app, agent) = view_app();
+    for index in 0..30 {
+        say(&mut app, agent, Message::user(format!("question {index}")));
+        say(
+            &mut app,
+            agent,
+            Message::assistant(format!("answer {index}")),
+        );
+    }
+    let Some(hit) = message_id(&app, agent, 21) else {
+        return;
+    };
+    let item = TranscriptItem::Message(hit);
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: Some(item.clone()),
+        line: 1,
+    });
+    let lines = on_screen(&mut app, agent, 10);
+    // The answer's first row is blank; its second, the text.
+    assert_eq!(lines.first().map(String::as_str), Some("answer 10"));
+    let top = app.world().resource::<TranscriptView>().top().cloned();
+    assert_eq!(top, Some((item, 1)));
+    // `None` follows the newest output again.
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: None,
+        line: 0,
+    });
+    let lines = on_screen(&mut app, agent, 10);
+    assert_eq!(lines.last().map(String::as_str), Some("answer 29"));
+    assert_eq!(app.world().resource::<TranscriptView>().top(), None);
+}
+
+#[test]
+fn a_highlight_lights_a_renderers_text_and_draws_again() {
+    let (mut app, agent) = view_app();
+    app.add_tool_renderer("shell", |call| {
+        vec![call.header("shell", call.argument("command").unwrap_or_default())]
+    });
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire(
+        "c1",
+        ToolFunction::new(name, json!({ "command": "cargo test" })),
+    );
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let redraw = |app: &mut App| {
+        let due = app
+            .world_mut()
+            .run_system_cached(crate::render::needs_redraw);
+        due.unwrap_or(false)
+    };
+    redraw(&mut app);
+    assert!(!redraw(&mut app));
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "TEST".to_owned(),
+        style: lit,
+    }];
+    assert!(redraw(&mut app));
+    let rows = drawn_rows(&mut app, agent, 100, Vec::new());
+    let spans = rows.iter().flat_map(|row| row.spans.iter());
+    let lit: Vec<&str> = spans
+        .filter(|span| span.style.bg == lit.bg)
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(lit, ["test"]);
+}
+
+#[test]
+fn a_tool_call_is_drawn_while_its_arguments_stream() {
+    let (mut app, agent) = view_app();
+    app.add_tool_renderer("write", |call| {
+        let path = call.argument("path").unwrap_or("…");
+        vec![Line::from(format!("{:?} write {path}", call.state))]
+    });
+    let Ok(name) = ToolName::new("write") else {
+        return;
+    };
+    let effect = app.world_mut().spawn(Partial::default()).id();
+    let part = rig_core::streaming::Part::new(1);
+    let stream = |app: &mut App, event: StreamEvent| {
+        app.world_mut().write_message(StreamDelta {
+            effect,
+            agent: Some(agent),
+            event,
+        });
+        app.update();
+        let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+        let calls = calls.into_iter().map(|(_, call)| call).collect();
+        drawn_rows(app, agent, 100, calls)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    let opened = StreamEvent::Start {
+        part,
+        kind: PartKind::ToolCall,
+        name: Some(name.clone()),
+    };
+    let lines = stream(&mut app, opened);
+    assert!(line_of(&lines, "Streaming write …").is_some(), "{lines:#?}");
+    let json = r#"{"path": "notes.md", "content": "Hel"#.to_owned();
+    let lines = stream(&mut app, StreamEvent::Arguments { part, json });
+    assert!(
+        line_of(&lines, "Streaming write notes.md").is_some(),
+        "{lines:#?}"
+    );
+    let done = ToolCall::from_wire("call-7", ToolFunction::new(name, json!({ "path": "a.md" })));
+    let content = AssistantContent::ToolCall(done.clone());
+    stream(&mut app, StreamEvent::End { part, content });
+    let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+    assert_eq!(
+        calls.first().map(|(_, call)| call.id.clone()),
+        Some(done.id)
+    );
+    // Once the reply is in the conversation, its streaming calls go.
+    app.world_mut().entity_mut(effect).remove::<Partial>();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<StreamingCalls>()
+            .of(effect)
+            .is_empty()
+    );
 }

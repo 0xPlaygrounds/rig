@@ -110,11 +110,13 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
             .into(),
         free_text: true,
         selected: 0,
+        edit: None,
     };
     let choosing = Choosing {
         entity: bevy_ecs::entity::Entity::PLACEHOLDER,
         filter: "allow".to_owned(),
         selected: 0,
+        draft: None,
     };
     // What is typed filters the choices and is an answer of its own.
     assert_eq!(
@@ -151,4 +153,43 @@ fn a_question_shows_its_body_choices_and_typed_answer() {
         assert!(screen.contains(shown), "{shown} not in\n{screen}");
     }
     assert!(!screen.contains("Deny"), "{screen}");
+}
+
+#[test]
+fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
+    use bevy_ecs::prelude::*;
+    use ratatui::layout::{Constraint, Rect};
+
+    use super::super::panel::{self, PanelCanvas, Placement, TuiPanel};
+    use super::split;
+
+    let screen = Rect::new(0, 0, 80, 24);
+    let mut world = World::new();
+    let suggestions = world
+        .spawn(TuiPanel::new(Placement::BelowInput(Constraint::Length(1))))
+        .id();
+    // Too tall to leave the transcript its rows: skipped.
+    world.spawn(TuiPanel::new(Placement::BelowInput(Constraint::Length(30))));
+    let mut panels = world.query::<(Entity, &TuiPanel, &mut PanelCanvas)>();
+    let mut panels: Vec<_> = panels.iter_mut(&mut world).collect();
+    panels.sort_by_key(|(entity, ..)| *entity);
+    let asked: Vec<u16> = panels
+        .iter()
+        .filter_map(|(_, panel, _)| match panel.placement {
+            Placement::BelowInput(size) => Some(panel::rows_of(size, screen.height)),
+            _ => None,
+        })
+        .collect();
+    let [above, status, _, input, below] = split(screen, 1, 0, &asked);
+    assert_eq!(status.y + 1, input.y);
+    let transcript = panel::lay_out(
+        panels.into_iter().map(|(_, panel, canvas)| (panel, canvas)),
+        above,
+        below,
+        screen,
+    );
+    assert_eq!(transcript, above);
+    let area = |entity: Entity| world.get::<PanelCanvas>(entity).map(PanelCanvas::area);
+    assert_eq!(area(suggestions), Some(Rect::new(0, input.bottom(), 80, 1)));
+    assert_eq!(input.bottom() + 1, screen.bottom());
 }

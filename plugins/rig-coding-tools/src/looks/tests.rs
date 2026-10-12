@@ -18,11 +18,7 @@ fn drawn(
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let view = ToolCallView {
-        call: &call,
-        result: Some(&result),
-        state: CallState::Done,
-    };
+    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
     let lines: Vec<String> = look(&view).iter().map(ToString::to_string).collect();
     lines.join("\n")
 }

@@ -1,3 +1,4 @@
+use bevy_ecs::system::RunSystemOnce;
 use crossterm::event::{Event, KeyEvent, KeyEventKind};
 use rig_harness::ask::AskPlugin;
 use rig_harness::pick::PickPlugin;
@@ -82,6 +83,83 @@ pub(crate) fn type_text(app: &mut App, text: &str) {
         })
         .collect();
     press(app, &keys.join(" "));
+}
+
+/// The rows of `agent`'s transcript on a screen `height` rows high and 80
+/// wide, with `streaming` tool calls after the last message, as a frame
+/// draws them where the view is scrolled, selection and highlights
+/// included; notes where the view is, as a frame does.
+pub(crate) fn drawn_rows(
+    app: &mut App,
+    agent: Entity,
+    height: usize,
+    streaming: Vec<rig_core::message::ToolCall>,
+) -> Vec<ratatui::text::Line<'static>> {
+    use crate::render::{ShownAgent, Sources, decorate, lay_out_transcript};
+    use crate::transcript::{CallFacts, Transcript};
+    use rig_harness::transcript::{TranscriptEntries, TranscriptEntry};
+
+    let draw =
+        move |agents: Query<(&AgentId, &Conversation)>,
+              (mut view, mut transcript_view): (ResMut<view::TuiView>, ResMut<TranscriptView>),
+              (tools, origins): (Query<&ToolRenderer>, Query<&EntryRenderer>),
+              (lists, entries): (Query<&TranscriptEntries>, Query<&TranscriptEntry>)| {
+            let Ok((id, conversation)) = agents.get(agent) else {
+                return Vec::new();
+            };
+            let shown = ShownAgent {
+                entity: agent,
+                id,
+                conversation,
+                changed: true,
+                inbox: &[],
+            };
+            let renderers = tools.iter().map(|r| (r.tool.as_str(), &r.render)).collect();
+            let entry_renderers = origins
+                .iter()
+                .map(|r| (r.origin.as_str(), &r.render))
+                .collect();
+            let shown_entries: Vec<_> = lists
+                .get(agent)
+                .into_iter()
+                .flat_map(TranscriptEntries::iter)
+                .filter_map(|entry| Some((entry, entries.get(entry).ok()?)))
+                .collect();
+            let (calls, facts) = (Default::default(), CallFacts::default());
+            let sources = Sources {
+                view: &transcript_view,
+                renderers: &renderers,
+                entry_renderers: &entry_renderers,
+                calls: &calls,
+                facts: &facts,
+                partial: None,
+                streaming: &streaming,
+                entries: &shown_entries,
+            };
+            let mut rows = Transcript::default();
+            let parts = lay_out_transcript(&mut rows, &sources, Some(&shown), 80);
+            let visible = rows.visible(&parts, (80, height), &mut view.scroll);
+            let selected = (
+                transcript_view.selected.as_ref(),
+                transcript_view.highlights.as_slice(),
+            );
+            let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
+            view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
+            transcript_view.set_top(visible.top);
+            lines
+        };
+    app.world_mut().run_system_once(draw).unwrap_or_default()
+}
+
+/// [`drawn_rows`] as text, a line per row.
+pub(crate) fn on_screen(app: &mut App, agent: Entity, height: usize) -> Vec<String> {
+    let rows = drawn_rows(app, agent, height, Vec::new());
+    rows.iter().map(ToString::to_string).collect()
+}
+
+/// All of `agent`'s transcript, as text, a line per row.
+pub(crate) fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
+    on_screen(app, agent, 1000)
 }
 
 /// The input's text.
