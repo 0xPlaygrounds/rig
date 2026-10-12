@@ -355,6 +355,42 @@ fn the_text_log_follows_the_scratch_place() {
     std::fs::remove_dir_all(home.root()).ok();
 }
 
+/// A session's text log from earlier runs stays as it was when a later
+/// run puts its own log elsewhere or nowhere: only what that run wrote
+/// moves.
+#[test]
+fn a_text_log_from_earlier_runs_stays_where_it_was() {
+    let home = scratch_home("rig-session-earlier-log");
+    let elsewhere = home.root().join("elsewhere");
+    let log_with = |id: &str, scratch: Scratch| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        std::fs::create_dir_all(session.path()).ok();
+        std::fs::write(session.log(), "earlier run\n").ok();
+        let mut app = App::new();
+        app.insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()));
+        let layer = log_layer(&mut app);
+        let file = app.world().resource::<super::TextLog>().file.clone();
+        let mut write = super::LogWriter(file);
+        std::io::Write::write_all(&mut write, b"this run\n").ok();
+        app.insert_resource(scratch).add_plugins(SessionPlugin);
+        drop(std::panic::take_hook());
+        app.finish();
+        drop((app, layer));
+        std::fs::read_to_string(session.log()).ok()
+    };
+    let earlier = Some("earlier run\n".to_owned());
+    assert_eq!(log_with("1700000000-8", Scratch(None)), earlier);
+    assert_eq!(
+        log_with("1700000000-9", Scratch(Some(elsewhere.clone()))),
+        earlier
+    );
+    let moved = std::fs::read_to_string(elsewhere.join("agent.log")).ok();
+    assert_eq!(moved.as_deref(), Some("this run\n"));
+    std::fs::remove_dir_all(home.root()).ok();
+}
+
 #[test]
 fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
     use rig_cassette::journal::Origin;

@@ -13,7 +13,7 @@
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions};
-use std::io;
+use std::io::{self, Seek, SeekFrom};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -578,9 +578,11 @@ fn delete_session(
 /// built, when the log moves where [`Scratch`] says.
 pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
     let at = session_paths(app.world_mut()).log();
+    let earlier = fs::metadata(&at).ok().map(|earlier| earlier.len());
     let file = OpenOptions::new().create(true).append(true).open(&at).ok();
     let log = TextLog {
         at: file.is_some().then_some(at),
+        earlier,
         file: Arc::new(Mutex::new(file)),
     };
     let writer = log.file.clone();
@@ -595,6 +597,9 @@ pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
 #[derive(Resource)]
 struct TextLog {
     at: Option<PathBuf>,
+    /// The length of the file earlier runs left at `at`, which this run
+    /// appends to; `None` when this run made it.
+    earlier: Option<u64>,
     file: Arc<Mutex<Option<File>>>,
 }
 
@@ -616,8 +621,9 @@ impl io::Write for LogWriter {
     }
 }
 
-/// Moves what the text log holds so far where [`Scratch`] says, or
-/// removes it for no place, and logs there from now on.
+/// Moves what this run wrote to the text log so far where [`Scratch`]
+/// says, or removes it for no place, and logs there from now on. What
+/// earlier runs logged stays where it was.
 fn place_text_log(world: &mut World) {
     let wanted = world.get_resource::<Scratch>().and_then(Scratch::log);
     let Some(mut log) = world.get_resource_mut::<TextLog>() else {
@@ -628,10 +634,11 @@ fn place_text_log(world: &mut World) {
     }
     let handle = log.file.clone();
     let mut file = handle.lock().unwrap_or_else(PoisonError::into_inner);
-    let moved = match (&log.at, &wanted) {
-        (Some(at), Some(to)) => move_file(at, to),
-        (Some(at), None) => fs::remove_file(at),
-        (None, _) => Ok(()),
+    let moved = match (&log.at, log.earlier, &wanted) {
+        (Some(at), None, Some(to)) => move_file(at, to),
+        (Some(at), None, None) => fs::remove_file(at),
+        (Some(at), Some(earlier), to) => take_tail(at, earlier, to.as_deref()),
+        (None, _, _) => Ok(()),
     };
     if let Err(failure) = moved {
         // Said in the old log, which stays where it was.
@@ -644,6 +651,22 @@ fn place_text_log(world: &mut World) {
         .and_then(|to| OpenOptions::new().create(true).append(true).open(to).ok());
     drop(file);
     log.at = wanted;
+    log.earlier = None;
+}
+
+/// Cuts the file `from` back to its first `length` bytes, appending what
+/// followed to `to` when there is one.
+fn take_tail(from: &Path, length: u64, to: Option<&Path>) -> io::Result<()> {
+    if let Some(to) = to {
+        let mut tail = File::open(from)?;
+        tail.seek(SeekFrom::Start(length))?;
+        if let Some(directory) = to.parent() {
+            fs::create_dir_all(directory)?;
+        }
+        let mut moved = OpenOptions::new().create(true).append(true).open(to)?;
+        io::copy(&mut tail, &mut moved)?;
+    }
+    OpenOptions::new().write(true).open(from)?.set_len(length)
 }
 
 /// Moves the file `from` to `to`, making its directory, across file
