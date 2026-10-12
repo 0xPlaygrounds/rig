@@ -21,6 +21,7 @@
 use std::collections::HashMap;
 
 use corpus_confirm_destructive::ConfirmSystems;
+use corpus_plan_mode::PlanModeSystems;
 use corpus_protected_paths::ProtectedPathsSystems;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
@@ -186,8 +187,8 @@ struct Approved;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PermissionSystems {
     /// Prepare: takes the tools that change something out of a read-only
-    /// agent's requests, after the default prompt went in and before
-    /// compaction measures them.
+    /// agent's requests, after the default prompt went in and plan mode
+    /// took its own out, and before compaction measures them.
     Offer,
     /// Gate: refuses, holds and lets go of calls by their agent's mode,
     /// after the protected-paths guard and before confirm-destructive.
@@ -211,7 +212,9 @@ impl Plugin for PermissionModesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PermissionSystems::Offer.in_set(PrepareSystems::Edit),
+                    PermissionSystems::Offer
+                        .in_set(PrepareSystems::Edit)
+                        .after(PlanModeSystems::Prepare),
                     PermissionSystems::Gate
                         .in_set(Stage::Gate)
                         .after(ProtectedPathsSystems::Gate)

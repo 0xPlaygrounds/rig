@@ -15,6 +15,7 @@ use std::path::{Component as Part, Path, PathBuf};
 use std::sync::Arc;
 
 use corpus_confirm_destructive::ConfirmSystems;
+use corpus_plan_mode::PlanModeSystems;
 use glob::{MatchOptions, Pattern};
 use rig_core::effect::Outcome as Answered;
 use rig_core::tool::ToolOutput;
@@ -57,6 +58,7 @@ impl Plugin for ProtectedPathsPlugin {
                 (
                     ProtectedPathsSystems::Gate
                         .in_set(Stage::Gate)
+                        .after(PlanModeSystems::Gate)
                         .before(ConfirmSystems),
                     ProtectedPathsSystems::Review.in_set(Stage::Review),
                 ),
@@ -79,8 +81,8 @@ impl Plugin for ProtectedPathsPlugin {
 /// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProtectedPathsSystems {
-    /// Gate: refuses a call that names a protected path, before
-    /// confirm-destructive asks about it.
+    /// Gate: refuses a call that names a protected path, after plan mode
+    /// refused it and before confirm-destructive asks about it.
     Gate,
     /// Review: hides the matches in read-protected files from a search's
     /// result.

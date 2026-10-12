@@ -23,6 +23,7 @@ corpus-protected-paths = { path = "../protected-paths" }
 [dev-dependencies]
 # Tool guards meant to be used with this one, for the group check.
 corpus-permission-modes = { path = "../permission-modes" }
+corpus-plan-mode = { path = "../plan-mode" }
 # Spec 01's guard, which must judge the rewritten command.
 corpus-confirm-destructive = { path = "../confirm-destructive" }
 # Checks the stage systems are ordered against the default plugins.

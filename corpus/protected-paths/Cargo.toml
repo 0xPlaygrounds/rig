@@ -20,8 +20,10 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Already in Cargo.lock (through the launcher's dependencies); parses paths.toml.
 toml = "1"
-# A call that names a protected path is refused before anyone asks about it.
+# A call that names a protected path is refused before anyone asks about it,
+# and after plan mode refused it.
 corpus-confirm-destructive = { path = "../confirm-destructive" }
+corpus-plan-mode = { path = "../plan-mode" }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

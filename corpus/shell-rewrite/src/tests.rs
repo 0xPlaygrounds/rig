@@ -149,5 +149,6 @@ fn stages_are_ordered_with_the_other_tool_guards() {
         ConfirmDestructivePlugin,
         corpus_permission_modes::PermissionModesPlugin,
         corpus_protected_paths::ProtectedPathsPlugin,
+        corpus_plan_mode::PlanModePlugin,
     ));
 }
