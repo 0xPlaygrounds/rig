@@ -8,21 +8,26 @@ description = "Plugin corpus (fresh held-out): FH-16: 16. Run a markdown checkli
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The live panel of each plan run. Without the terminal view, leave it out
+# with `default-features = false`.
+tui = ["dep:rig-tui", "rig-subagents/tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
+# Each item runs in a one-job helper spawned through its `SpawnSubagent`.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+serde_json = { workspace = true }

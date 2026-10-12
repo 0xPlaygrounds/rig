@@ -9,20 +9,20 @@ description = "Plugin corpus (fresh held-out): FH-18: 18. Encrypted sessions at 
 workspace = true
 
 [dependencies]
-# Named by the Bevy derives.
+# Already in Cargo.lock (through rustls and others): authenticated
+# encryption, randomness and HMAC from ring, the slow KDF from argon2.
+argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
+rig-cassette = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+ring = "0.17"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+toml = "1"
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }

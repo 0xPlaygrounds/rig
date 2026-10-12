@@ -8,6 +8,10 @@ description = "Plugin corpus (fresh held-out): FH-25: 25. Batch API provider for
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
@@ -16,6 +20,8 @@ bevy_tasks = { workspace = true }
 futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The status line's `batch: queued 12m`.
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

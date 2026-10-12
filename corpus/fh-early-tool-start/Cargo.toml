@@ -17,6 +17,8 @@ futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
+# The running turn's count of early calls in the status line.
+rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

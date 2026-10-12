@@ -11,18 +11,16 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The diff of a replacement (`fs::file_change`).
 rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
+# The terminal view this plugin draws in: its renderers, keys and panels.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
+# The default tools whose looks this plugin replaces.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

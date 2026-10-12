@@ -1,0 +1,172 @@
+use std::path::PathBuf;
+use std::time::Instant;
+
+use rig_basics::ProjectContextPlugin;
+use rig_coding_tools::{ShellTool, WriteTool};
+use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_harness::harness_protocol::SessionId;
+use rig_harness_test_support::{
+    Collected, Ended, ToolOutputs, app_in, calls, collect, connect, first_agent, log_ended,
+    log_tool_outputs, reply, run_until, scratch_home,
+};
+use serde_json::json;
+
+use super::*;
+
+/// A fresh scratch directory under the test binary's: `local` (the
+/// project), `remote` (the fake remote project), `remote-home`, and the
+/// `ssh` stand-in, which runs its last argument with `sh` in
+/// `remote-home`, and fails as a dropped connection does once for a
+/// command saying `FAILONCE` while `fail-once` exists.
+fn scratch() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let base = exe
+        .parent()?
+        .join(format!("remote-workspace-{}", std::process::id()));
+    std::fs::remove_dir_all(&base).ok();
+    for dir in ["local", "remote", "remote-home"] {
+        std::fs::create_dir_all(base.join(dir)).ok()?;
+    }
+    let b = base.display();
+    let script = format!(
+        "#!/bin/sh\nfor last; do :; done\n\
+         case \"$last\" in *FAILONCE*) if [ -e '{b}/fail-once' ]; then rm -f '{b}/fail-once'; \
+         exit 255; fi;; esac\n\
+         export HOME='{b}/remote-home'\ncd \"$HOME\" || exit 255\nexec sh -c \"$last\"\n"
+    );
+    let ssh = base.join("fake-ssh");
+    std::fs::write(&ssh, script).ok()?;
+    std::process::Command::new("chmod")
+        .arg("+x")
+        .arg(&ssh)
+        .status()
+        .ok()?;
+    std::fs::write(base.join("fail-once"), "").ok()?;
+    std::fs::write(base.join("remote/AGENTS.md"), "REMOTE-RULES: be terse.").ok()?;
+    std::fs::write(base.join("local/AGENTS.md"), "LOCAL-RULES: be verbose.").ok()?;
+    Some(base)
+}
+
+fn shell(id: &str, command: &str) -> Vec<MockStreamEvent> {
+    calls(id, "shell", json!({ "command": command }))
+}
+
+fn output<'a>(outputs: &'a ToolOutputs, id: &str) -> &'a str {
+    outputs.0.get(id).map(String::as_str).unwrap_or_default()
+}
+
+#[test]
+fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
+    let base = scratch();
+    assert!(base.is_some(), "a scratch directory");
+    let Some(base) = base else {
+        return;
+    };
+    let remote_dir = base.join("remote");
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call(
+                "c1",
+                "write",
+                json!({ "path": "hello.txt", "content": "hi" }),
+            ),
+            MockStreamEvent::tool_call("c2", "shell", json!({ "command": "cat hello.txt && pwd" })),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        shell("c3", "echo FAILONCE"),
+        shell("c4", "echo back"),
+        shell("c5", "sleep 100 & echo $! > sleep.pid; wait"),
+        reply("Done."),
+    ]);
+
+    let home = scratch_home("remote-workspace");
+    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let settings = format!(
+        "[remote]\nssh = [\"{}\"]\nwait_secs = 10\n",
+        base.join("fake-ssh").display()
+    );
+    app.insert_resource(Settings::from_toml(&settings))
+        .insert_resource(ProjectRoot(base.join("local")))
+        .add_plugins((AgentPlugin, JournalPlugin, ProjectContextPlugin))
+        .add_plugins((WriteTool, ShellTool, RemoteWorkspacePlugin))
+        .insert_resource(RemoteTarget {
+            target: format!("dev@fake:{}", remote_dir.display()),
+        })
+        .init_resource::<ToolOutputs>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_observer(log_tool_outputs);
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = first_agent(world);
+    assert!(agent.is_some(), "an agent");
+    let (Some(agent), Some(connection)) = (agent, connect(&model)) else {
+        return;
+    };
+    world.entity_mut(agent).insert(connection);
+    world.trigger(Deliver::new(agent, "Go.", DeliveryMode::Queue));
+
+    let pid_file = remote_dir.join("sleep.pid");
+    run_until(&mut app, &wakes, |_| pid_file.exists());
+    let pid = std::fs::read_to_string(&pid_file).unwrap_or_default();
+    assert!(!pid.trim().is_empty(), "the remote sleep started");
+    app.world_mut().trigger(Interrupt::new(agent));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Ended>().0.is_empty()
+    });
+
+    // The write and the shell acted on the remote, not the local project.
+    let written = std::fs::read_to_string(remote_dir.join("hello.txt"));
+    assert_eq!(written.ok().as_deref(), Some("hi"));
+    assert!(!base.join("local/hello.txt").exists());
+    let outputs = app.world().resource::<ToolOutputs>();
+    let catted = output(outputs, "c2");
+    assert!(catted.contains("hi"), "{catted}");
+    assert!(
+        catted.contains(&remote_dir.display().to_string()),
+        "{catted}"
+    );
+
+    // The remote instruction files, not the local ones, went with request 1.
+    let requests = model.requests();
+    let first = format!("{:?}", requests.first());
+    assert!(first.contains("REMOTE-RULES"), "{first}");
+    assert!(!first.contains("LOCAL-RULES"), "{first}");
+
+    // The dropped connection failed one call; the next ran after the
+    // reconnect.
+    let dropped = output(outputs, "c3");
+    assert!(dropped.contains("connection to dev@fake lost"), "{dropped}");
+    let back = output(outputs, "c4");
+    assert!(
+        back.contains("back") && back.contains("[exit code 0]"),
+        "{back}"
+    );
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    assert!(
+        notices
+            .iter()
+            .any(|notice| notice.text.contains("Reconnected to dev@fake")),
+        "{notices:?}"
+    );
+
+    // Cancelling the shell call killed the remote process.
+    let proc_dir = PathBuf::from(format!("/proc/{}", pid.trim()));
+    let started = Instant::now();
+    while proc_dir.exists() && started.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    assert!(
+        !proc_dir.exists(),
+        "the remote sleep {} still runs",
+        pid.trim()
+    );
+    std::fs::remove_dir_all(&base).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(RemoteWorkspacePlugin);
+}

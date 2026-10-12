@@ -9,6 +9,8 @@ description = "Plugin corpus (fresh held-out): FH-05: 05. @-mentions and image a
 workspace = true
 
 [dependencies]
+# Images attached as base64.
+base64 = { workspace = true }
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }

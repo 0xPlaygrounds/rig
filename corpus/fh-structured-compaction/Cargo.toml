@@ -17,12 +17,20 @@ futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
+# The default compaction this plugin restructures.
+rig-compaction = { path = "../../plugins/rig-compaction" }
+# The summarizer, its prompts and the summary state.
+rig-memory = { path = "../../crates/rig-memory", default-features = false }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# `RIG_HOME/compact.toml`.
+toml = "1"
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The saved session's effect log.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
