@@ -32,8 +32,8 @@ use super::transcript::{
     Transcript, call_lines, entry_lines, notice_lines, plain_lines,
 };
 use super::view::{
-    DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
-    TuiView,
+    Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
+    TranscriptView, TuiView,
 };
 use super::wrap::wrap_all;
 use rig_core::message::{CallId, ToolCall};
@@ -610,63 +610,123 @@ pub(crate) fn lay_out_transcript(
 }
 
 /// `rows`, the first being row `first` of the transcript, with the rows of
-/// the `selected` item marked and the `highlights` lit.
+/// the `selected` item marked.
 pub(crate) fn decorate(
     rows: Vec<Line<'static>>,
     first: usize,
     marks: &Marks,
-    (selected, highlights): (Option<&TranscriptItem>, &[Highlight]),
+    selected: Option<&TranscriptItem>,
 ) -> Vec<Line<'static>> {
     let selected = selected.and_then(|item| marks.iter().find(|(marked, _)| marked == item));
     rows.into_iter()
         .enumerate()
-        .map(|(index, row)| {
-            let row = light(row, highlights);
-            match selected {
-                Some((_, rows)) if rows.contains(&(first + index)) => {
-                    row.patch_style(Style::new().on_dark_gray())
-                }
-                _ => row,
+        .map(|(index, row)| match selected {
+            Some((_, rows)) if rows.contains(&(first + index)) => {
+                row.patch_style(Style::new().on_dark_gray())
             }
+            _ => row,
         })
         .collect()
 }
 
-/// `line` with each match of `highlights` in its style.
-fn light(line: Line<'static>, highlights: &[Highlight]) -> Line<'static> {
-    if highlights.iter().all(|highlight| highlight.text.is_empty()) {
-        return line;
-    }
-    let (cells, matches) = lit(&line, highlights);
-    if matches.iter().all(|matches| *matches == 0) {
-        return line;
-    }
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    for (character, style, _) in cells {
-        match spans.last_mut() {
-            Some(span) if span.style == style => span.content.to_mut().push(character),
-            _ => spans.push(Span::styled(character.to_string(), style)),
+/// `rows`, each continuing the one before it as `continues` says, with
+/// each match of `highlights` in its style. A match is sought in each
+/// line the rows wrap, so one a wrap splits lights on both rows.
+pub(crate) fn light(
+    rows: &[Line<'static>],
+    continues: &[Option<Continuation>],
+    highlights: &[Highlight],
+) -> Vec<Line<'static>> {
+    let joints = continues.iter().map(Option::as_ref);
+    let lit_rows = lit(rows.iter().zip(joints), highlights);
+    rows.iter()
+        .zip(lit_rows)
+        .map(|(line, row)| {
+            if !row.cells.iter().any(|(.., lit)| *lit) {
+                return line.clone();
+            }
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for (character, style, _) in row.cells {
+                match spans.last_mut() {
+                    Some(span) if span.style == style => span.content.to_mut().push(character),
+                    _ => spans.push(Span::styled(character.to_string(), style)),
+                }
+            }
+            let mut lit = Line::from(spans).style(line.style);
+            lit.alignment = line.alignment;
+            lit
+        })
+        .collect()
+}
+
+/// A row once highlights are lit: its characters, each with its style and
+/// whether a match lit it, and how many matches of each highlight start
+/// in it.
+pub(crate) struct LitRow {
+    pub(crate) cells: Vec<(char, Style, bool)>,
+    pub(crate) matches: Vec<usize>,
+}
+
+/// A character of a line being searched: in which row it is drawn, at
+/// which character of it (`None` for a blank the wrap dropped), and
+/// whether a match lit it.
+struct Slot {
+    row: usize,
+    at: Option<usize>,
+    character: char,
+    lit: bool,
+}
+
+/// `rows`, each with how it continues the row before it, with the matches
+/// of `highlights` lit. A match is sought in the line the rows wrap, so it
+/// may span rows; it counts in the row it starts in. A match over a
+/// character an earlier highlight lit is no match.
+pub(crate) fn lit<'a, 'line: 'a>(
+    rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a Continuation>)>,
+    highlights: &[Highlight],
+) -> Vec<LitRow> {
+    let mut lit = Vec::new();
+    // The line being gathered.
+    let mut line = Vec::new();
+    for (row, joint) in rows {
+        if joint.is_none() {
+            light_line(&mut lit, &mut line, highlights);
+            line.clear();
         }
+        let at = lit.len();
+        let cells: Vec<(char, Style, bool)> = row
+            .spans
+            .iter()
+            .flat_map(|span| span.content.chars().map(move |c| (c, span.style, false)))
+            .collect();
+        let indent = joint.map_or(0, |joint| joint.indent);
+        let gap = joint.map(|joint| joint.gap.chars()).into_iter().flatten();
+        line.extend(gap.map(|character| Slot {
+            row: at,
+            at: None,
+            character,
+            lit: false,
+        }));
+        let drawn = cells.iter().enumerate().skip(indent);
+        line.extend(drawn.map(|(index, (character, ..))| Slot {
+            row: at,
+            at: Some(index),
+            character: *character,
+            lit: false,
+        }));
+        lit.push(LitRow {
+            cells,
+            matches: vec![0; highlights.len()],
+        });
     }
-    let mut lit = Line::from(spans).style(line.style);
-    lit.alignment = line.alignment;
+    light_line(&mut lit, &mut line, highlights);
     lit
 }
 
-/// The characters of `line`, each with its style once `highlights` are
-/// lit and whether one lit it, and how many matches of each highlight lit
-/// them. A match over a character an earlier highlight lit is no match.
-pub(crate) fn lit(
-    line: &Line<'_>,
-    highlights: &[Highlight],
-) -> (Vec<(char, Style, bool)>, Vec<usize>) {
-    let mut cells: Vec<(char, Style, bool)> = line
-        .spans
-        .iter()
-        .flat_map(|span| span.content.chars().map(move |c| (c, span.style, false)))
-        .collect();
-    let mut matches = vec![0; highlights.len()];
-    for (highlight, matches) in highlights.iter().zip(&mut matches) {
+/// Lights the matches of `highlights` in `line`, in the `rows` it is
+/// drawn in.
+fn light_line(rows: &mut [LitRow], line: &mut [Slot], highlights: &[Highlight]) {
+    for (index, highlight) in highlights.iter().enumerate() {
         let needle: Vec<char> = highlight.text.chars().collect();
         let same = |a: char, b: char| {
             if highlight.match_case {
@@ -676,22 +736,35 @@ pub(crate) fn lit(
             }
         };
         let mut at = 0;
-        while !needle.is_empty() && at + needle.len() <= cells.len() {
-            let window = cells.get(at..at + needle.len()).unwrap_or_default();
-            let free = window.iter().all(|(.., lit)| !lit);
-            if free && window.iter().zip(&needle).all(|((c, ..), n)| same(*c, *n)) {
-                for (_, style, lit) in cells.iter_mut().skip(at).take(needle.len()) {
-                    *style = style.patch(highlight.style);
-                    *lit = true;
+        while !needle.is_empty() && at + needle.len() <= line.len() {
+            let window = line.get_mut(at..at + needle.len()).unwrap_or_default();
+            let free = window.iter().all(|slot| !slot.lit);
+            if free
+                && window
+                    .iter()
+                    .zip(&needle)
+                    .all(|(slot, n)| same(slot.character, *n))
+            {
+                let start = window.first().map(|slot| slot.row);
+                let count = start.and_then(|row| rows.get_mut(row)?.matches.get_mut(index));
+                if let Some(count) = count {
+                    *count += 1;
                 }
-                *matches += 1;
+                for slot in window {
+                    slot.lit = true;
+                    let row = rows.get_mut(slot.row);
+                    let cell = slot.at.and_then(|at| row?.cells.get_mut(at));
+                    if let Some((_, style, lit)) = cell {
+                        *style = style.patch(highlight.style);
+                        *lit = true;
+                    }
+                }
                 at += needle.len();
             } else {
                 at += 1;
             }
         }
     }
-    (cells, matches)
 }
 
 /// The hint under the input box.
@@ -804,10 +877,7 @@ pub(crate) fn render(
                 visible.rows,
                 visible.first,
                 &visible.marks,
-                (
-                    transcript_view.selected.as_ref(),
-                    &transcript_view.highlights,
-                ),
+                transcript_view.selected.as_ref(),
             );
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, visible.below, transcript_area);

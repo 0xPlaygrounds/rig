@@ -123,7 +123,7 @@ pub(crate) fn drawn_rows(
                 let on_screen = visible.first..visible.first + visible.rows.len();
                 drawn.set_if_neq(rows.laid_out(Some(agent), &parts, highlights, on_screen));
             }
-            let selected = (transcript_view.selected.as_ref(), highlights);
+            let selected = transcript_view.selected.as_ref();
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
             TranscriptView::note_drawn(&mut transcript_view, visible.top, 80);

@@ -113,7 +113,7 @@ pub struct TranscriptView {
     /// The item the user selected, drawn marked; Ctrl+O expands it.
     pub selected: Option<TranscriptItem>,
     /// Text lit wherever the transcript draws it, such as a search's
-    /// matches.
+    /// matches; text a wrap splits across two rows is lit on both.
     pub highlights: Vec<Highlight>,
     /// The item and the row of it at the top while the view is scrolled
     /// up; `None` while it follows the newest output.
@@ -221,9 +221,10 @@ pub struct DrawnRow {
     /// How it continues the row before it, when the view wrapped one
     /// line into both; [`DrawnTranscript::lines`] rejoins them.
     pub continues: Option<Continuation>,
-    /// How many matches of each highlight the view lit in it, by its index
-    /// in [`TranscriptView::highlights`] (where two overlap, the one placed
-    /// first lit it); empty with no highlights.
+    /// How many matches of each highlight the view lit starting in it,
+    /// by its index in [`TranscriptView::highlights`] (where two overlap,
+    /// the one placed first lit it); a match a wrap splits counts in the
+    /// row it starts in. Empty with no highlights.
     pub lit: Vec<usize>,
 }
 

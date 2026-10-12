@@ -23,7 +23,7 @@ use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
 use super::markdown;
-use super::render::lit;
+use super::render::{light, lit};
 use super::renderers::{
     CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
     result_style, result_text,
@@ -516,13 +516,7 @@ impl Transcript {
             if end > top && start < top + height {
                 let from = top.saturating_sub(start);
                 let to = (top + height - start).min(*count);
-                shown.extend(
-                    self.rows(part)
-                        .get(from..to)
-                        .unwrap_or_default()
-                        .iter()
-                        .cloned(),
-                );
+                shown.extend(self.lit_rows(part, from..to, highlights));
             }
             start = end;
             if start >= top + height {
@@ -557,16 +551,16 @@ impl Transcript {
         let lighting = highlights
             .iter()
             .any(|highlight| !highlight.text.is_empty());
-        let rows = parts.iter().filter_map(|part| self.wrapped(part));
-        let rows = rows.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
-        let rows = rows.map(|(row, continues)| DrawnRow {
+        let counts = if lighting {
+            lit(self.joined(parts), highlights)
+        } else {
+            Vec::new()
+        };
+        let mut counts = counts.into_iter().map(|row| row.matches);
+        let rows = self.joined(parts).map(|(row, continues)| DrawnRow {
             text: row.to_string(),
-            continues: continues.clone(),
-            lit: if lighting {
-                lit(row, highlights).1
-            } else {
-                Vec::new()
-            },
+            continues: continues.cloned(),
+            lit: counts.next().unwrap_or_default(),
         });
         let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
         let items = self.marks_of(parts);
@@ -581,15 +575,57 @@ impl Transcript {
         highlights: &[Highlight],
         n: usize,
     ) -> Option<usize> {
-        let drawn = parts.iter().flat_map(|part| self.rows(part));
+        // An item's rows are whole lines, so its matches are all in them.
+        let drawn = self.joined(parts).skip(rows.start).take(rows.len());
         let mut before = 0;
-        for (at, row) in rows.clone().zip(drawn.skip(rows.start)) {
-            before += lit(row, highlights).1.iter().sum::<usize>();
+        for (at, row) in rows.clone().zip(lit(drawn, highlights)) {
+            before += row.matches.iter().sum::<usize>();
             if before > n {
                 return Some(at);
             }
         }
         None
+    }
+
+    /// Every row of `parts`, with how it continues the row before it.
+    fn joined<'a>(
+        &'a self,
+        parts: &'a [Part],
+    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a Continuation>)> + 'a {
+        let wrapped = parts.iter().filter_map(|part| self.wrapped(part));
+        let rows = wrapped.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
+        rows.map(|(row, continues)| (row, continues.as_ref()))
+    }
+
+    /// Rows `range` of `part`, with the matches of `highlights` lit; each
+    /// is sought in the whole line it is in, even where the line goes on
+    /// past `range`.
+    fn lit_rows(
+        &self,
+        part: &Part,
+        range: Range<usize>,
+        highlights: &[Highlight],
+    ) -> Vec<Line<'static>> {
+        let Some(wrapped) = self.wrapped(part) else {
+            return Vec::new();
+        };
+        if highlights.iter().all(|highlight| highlight.text.is_empty()) {
+            return wrapped.rows.get(range).unwrap_or_default().to_vec();
+        }
+        let continues = |row: usize| wrapped.continues.get(row).is_some_and(Option::is_some);
+        let mut first = range.start;
+        while first > 0 && continues(first) {
+            first -= 1;
+        }
+        let mut end = range.end;
+        while continues(end) {
+            end += 1;
+        }
+        let rows = wrapped.rows.get(first..end).unwrap_or_default();
+        let joints = wrapped.continues.get(first..end).unwrap_or_default();
+        let lit = light(rows, joints, highlights);
+        let shown = lit.into_iter().skip(range.start - first);
+        shown.take(range.len()).collect()
     }
 }
 

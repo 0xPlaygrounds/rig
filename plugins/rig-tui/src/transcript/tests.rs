@@ -426,6 +426,40 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     assert_eq!(drawn(&mut app).lit_in(&item), 10);
 }
 
+#[test]
+fn a_match_a_wrap_splits_is_lit_and_counted() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // Words that fill the 80 columns so "cannot find" wraps after "cannot".
+    let filler = "word ".repeat(14);
+    say(
+        &mut app,
+        agent,
+        Message::user(format!("{filler}cannot find foo")),
+    );
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "cannot find".to_owned(),
+        style: lit,
+        match_case: false,
+    }];
+    let rows = drawn_rows(&mut app, agent, 10, Vec::new());
+    let texts: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    let split = texts.windows(2).any(|pair| {
+        matches!(pair, [above, below] if above.ends_with("cannot") && below.trim_start().starts_with("find"))
+    });
+    assert!(split, "{texts:#?}");
+    let spans = rows.iter().flat_map(|row| row.spans.iter());
+    let lit: Vec<&str> = spans
+        .filter(|span| span.style.bg == lit.bg)
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(lit, ["cannot", "find"]);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
+    assert_eq!(question.map(|item| drawn.lit_in(&item)), Some(1));
+}
+
 /// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
 /// columns, with `expanded` items whole.
 fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTranscript> {

@@ -207,8 +207,9 @@ fn a_highlight_may_match_case_and_the_one_placed_first_wins() {
     };
     // The texts lit in `style`.
     let lit = |highlights: &[Highlight], style: Style| -> Vec<String> {
-        let lit = light(line.clone(), highlights);
-        let spans = lit.spans.iter().filter(|span| span.style.bg == style.bg);
+        let lit = light(std::slice::from_ref(&line), &[None], highlights);
+        let spans = lit.iter().flat_map(|row| row.spans.iter());
+        let spans = spans.filter(|span| span.style.bg == style.bg);
         spans.map(|span| span.content.to_string()).collect()
     };
     let any_case = [highlight("error", rest, false)];
