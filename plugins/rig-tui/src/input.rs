@@ -220,7 +220,7 @@ pub(crate) fn read_input(
                 pressed(*key, &mut target, &mut keymap, &context, &mut commands);
             }
             // A paste arrives whole, newlines included, so it is not sent
-            // line by line.
+            // line by line. A panel with the keys reads it from the event.
             Event::Paste(text) => match view.choosing.as_mut().filter(|c| c.draft.is_none()) {
                 Some(choosing) => {
                     choosing
@@ -228,6 +228,7 @@ pub(crate) fn read_input(
                         .push_str(text.lines().next().unwrap_or_default());
                     choosing.selected = 0;
                 }
+                None if matches!(keymap.scope(), KeyScope::Panel(_)) => {}
                 // A dropped image file becomes `@path`, which attaches it.
                 None => match clipboard::dropped_image(text) {
                     Some(path) => clipboard::type_path(&mut input, &path),

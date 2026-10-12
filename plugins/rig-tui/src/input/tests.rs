@@ -97,3 +97,27 @@ fn a_refused_command_comes_back_whole_and_enter_sends_it_as_a_message() {
         ["/gui still doesnt do anything"]
     );
 }
+
+#[test]
+fn a_paste_goes_to_the_panel_with_the_keys_not_the_input() {
+    use crate::tests::{typed, view_app};
+    use crate::{KeyFocus, Placement, TerminalEvent, TuiPanel};
+    use crossterm::event::Event;
+    use ratatui::layout::Constraint;
+
+    let (mut app, _) = view_app();
+    let panel = TuiPanel::new(Placement::Top(Constraint::Length(3)));
+    let panel = app.world_mut().spawn(panel).id();
+    app.world_mut().resource_mut::<KeyFocus>().0 = Some(panel);
+    let paste = |app: &mut App| {
+        let paste = TerminalEvent(Event::Paste("cargo test".to_owned()));
+        app.world_mut().write_message(paste);
+        app.update();
+    };
+    paste(&mut app);
+    assert_eq!(typed(&app), "");
+    // Given back the keys, the input takes it.
+    app.world_mut().resource_mut::<KeyFocus>().0 = None;
+    paste(&mut app);
+    assert_eq!(typed(&app), "cargo test");
+}
