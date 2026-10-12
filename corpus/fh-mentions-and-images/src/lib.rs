@@ -23,28 +23,26 @@
 //! read ([`FilesRead`]) on the message's effect, which the effect log
 //! records.
 //!
-//! This plugin replaces `rig_coding_tools::AttachPlugin`: take that entry
-//! out of `plugins.toml` (`rig plugin remove rig_coding_tools::AttachPlugin`).
+//! This plugin replaces `rig_coding_tools::AttachPlugin`: it turns that
+//! plugin's [`AttachSystems`] off, so the two can be loaded together.
 //! Ctrl+V in the terminal view pastes the clipboard's image as
 //! `[image N]`, in place of the view's own `@path` of it, and the message
 //! attaches it as it would an `@` image. Completion of `@` paths as you
 //! type is the view's own.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use base64::Engine;
 use bevy_ecs::system::SystemParam;
-use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_coding_tools::{AttachPlugin, AttachSystems};
+use rig_coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::message::{ImageMediaType, Message as ChatMessage, UserContent};
+use rig_harness::rig_core::message::{Message as ChatMessage, UserContent};
 use rig_harness::rig_core::tool::{
     FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
 };
-use rig_tools::attach::is_image_path;
+use rig_tools::attach::{is_image_path, is_path_reference, read_image};
 use rig_tools::workspace::{Local, Stat, Workspace};
 use rig_tools::{blocking, numbered};
 use rig_tui::{
@@ -69,6 +67,7 @@ impl Plugin for MentionsPlugin {
             .configure_sets(
                 AgentPass,
                 (
+                    // Ordered, though `finish` turns `AttachSystems` off.
                     MentionSystems::Attach
                         .in_set(PrepareSystems::Compose)
                         .after(AttachSystems),
@@ -85,13 +84,8 @@ impl Plugin for MentionsPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        if app.is_plugin_added::<AttachPlugin>() {
-            warn!(
-                "fh-mentions-and-images replaces rig_coding_tools::AttachPlugin, which is loaded \
-                 too, so each @path file goes twice: rig plugin remove \
-                 rig_coding_tools::AttachPlugin"
-            );
-        }
+        // The files a message names are this plugin's to attach.
+        app.configure_sets(AgentPass, AttachSystems.run_if(|| false));
         // Ctrl+V pastes `[image N]` in place of the view's `@path`.
         let world = app.world_mut();
         let mut actions = world.query::<(Entity, &InputAction)>();
@@ -165,9 +159,6 @@ pub const UNSEEN: &str = "an image was attached but this model cannot see it";
 const DESCRIBE: &str = "Describe this image for a coding agent that cannot see it: what it \
 shows, and every piece of text, number, error message and label in it, verbatim.";
 
-/// The largest image attached: providers refuse bigger ones.
-const MOST_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
-
 /// One `@` mention: the path as written, and the lines it asks for.
 struct Mention<'a> {
     label: &'a str,
@@ -206,18 +197,6 @@ fn lines(range: &str) -> Option<(usize, usize)> {
     (first >= 1 && last >= first).then_some((first, last))
 }
 
-/// Whether `reference`, an `@` token without its `@`, names a path rather
-/// than, say, a person: it holds a `/`, or ends in a dot and one to four
-/// letters or digits (the rule of `rig_tools::attach`).
-fn names_a_path(reference: &str) -> bool {
-    reference.contains('/')
-        || reference.rsplit_once('.').is_some_and(|(name, extension)| {
-            !name.is_empty()
-                && (1..=4).contains(&extension.len())
-                && extension.chars().all(|c| c.is_ascii_alphanumeric())
-        })
-}
-
 /// What a message's mentions came to, read from the workspace.
 #[derive(Debug, Default)]
 struct Found {
@@ -238,7 +217,7 @@ fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: 
         let label = mention.label;
         let path = workspace.resolve(Some(base), mention.path);
         let content = match workspace.stat(&path) {
-            Ok(Stat::Missing) if names_a_path(mention.path) => {
+            Ok(Stat::Missing) if is_path_reference(mention.path) => {
                 found.warnings.push(format!(
                     "@{label} does not exist; it is sent as plain text."
                 ));
@@ -286,25 +265,6 @@ fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<S
         list.push_str(&line);
     }
     Ok(list)
-}
-
-/// The image at `path` as message content, its type told by its first
-/// bytes.
-fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent, String> {
-    let contents = workspace
-        .read(path, MOST_IMAGE_BYTES)
-        .map_err(|failure| failure.to_string())?;
-    if contents.size > MOST_IMAGE_BYTES {
-        return Err(format!(
-            "it has {} KB, more than the {} KB a provider takes",
-            contents.size / 1024,
-            MOST_IMAGE_BYTES / 1024
-        ));
-    }
-    let media =
-        ImageMediaType::sniff(&contents.bytes).ok_or("it is not a PNG, JPEG, GIF or WebP image")?;
-    let data = base64::engine::general_purpose::STANDARD.encode(&contents.bytes);
-    Ok(UserContent::image_base64(data, Some(media), None))
 }
 
 /// The text file at `path` as `mention` asks for it, headed with its
@@ -365,9 +325,10 @@ fn head_and_tail(text: &str, max_bytes: usize) -> String {
     )
 }
 
-/// The images pasted into the input: `[image N]` is the `N`th.
+/// The images pasted into the input since the user last sent a message:
+/// `[image N]` is the `N`th.
 #[derive(Resource, Default)]
-struct Pasted(Vec<PathBuf>);
+struct Pasted(Vec<UserContent>);
 
 /// The `[image N]` placeholders in `text`, each `N` once.
 fn pasted_images(text: &str) -> Vec<usize> {
@@ -381,19 +342,18 @@ fn pasted_images(text: &str) -> Vec<usize> {
     found
 }
 
-/// A clipboard image being saved for the input: its path, or why there is
-/// none.
+/// A clipboard image saved and read for the input, or why there is none.
 #[derive(Component)]
-struct Pasting(Result<PathBuf, String>);
+struct Pasting(Result<UserContent, String>);
 
-impl From<Result<Result<PathBuf, String>, ToolExecutionError>> for Pasting {
-    fn from(read: Result<Result<PathBuf, String>, ToolExecutionError>) -> Self {
+impl From<Result<Result<UserContent, String>, ToolExecutionError>> for Pasting {
+    fn from(read: Result<Result<UserContent, String>, ToolExecutionError>) -> Self {
         Self(read.unwrap_or_else(|failure| Err(failure.to_string())))
     }
 }
 
-/// Saves the clipboard's image in the session's images directory, off the
-/// main thread.
+/// Saves the clipboard's image in the session's images directory and reads
+/// it, off the main thread.
 fn paste_image(
     _: On<KeyPressed>,
     (scratch, processes): (Option<Res<Scratch>>, Option<Res<Processes>>),
@@ -409,7 +369,10 @@ fn paste_image(
     let launcher = processes
         .map(|processes| processes.launcher())
         .unwrap_or_default();
-    let read = blocking(move || Ok(read_clipboard_image(&launcher, &images)));
+    let read = blocking(move || {
+        let saved = read_clipboard_image(&launcher, &images);
+        Ok(saved.and_then(|path| read_image(&Local, &path)))
+    });
     let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
         Name::new("pasting an image"),
@@ -417,7 +380,7 @@ fn paste_image(
     ));
 }
 
-/// Types `[image N]` for a saved clipboard image, or says why there is
+/// Types `[image N]` for a pasted clipboard image, or says why there is
 /// none.
 fn paste_read(
     read: On<Insert<Pasting>>,
@@ -431,8 +394,8 @@ fn paste_read(
         return;
     };
     match saved {
-        Ok(path) => {
-            pasted.0.push(path.clone());
+        Ok(image) => {
+            pasted.0.push(image.clone());
             let before = input.text().get(..input.cursor()).unwrap_or_default();
             let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
                 ""
@@ -468,27 +431,27 @@ fn attach(
     >,
     dirs: Query<&WorkDir>,
     (root, workspace, wake): (Res<ProjectRoot>, Res<ProjectWorkspace>, Res<Wake>),
-    pasted: Res<Pasted>,
+    mut pasted: ResMut<Pasted>,
     mut adding: Adding,
 ) {
     for (message, mut typed, &ForAgent(agent), effect) in &mut typed {
         if typed.origin.kind != OriginKind::User || typed.command().is_some() {
             continue;
         }
-        // Pasted images are on this machine, whatever the workspace.
-        let mut images = Found::default();
-        for number in pasted_images(&typed.text) {
-            let pasted = number.checked_sub(1).and_then(|at| pasted.0.get(at));
-            if let Some(path) = pasted {
-                let label = format!("[image {number}]");
-                match read_image(&Local, path) {
-                    Ok(image) => images.attached.push((label, image)),
-                    Err(why) => images
-                        .warnings
-                        .push(format!("{label} is not attached: {why}.")),
-                }
-            }
-        }
+        // The input's pastes go with the message it sends, and the next
+        // message's are numbered from 1 again.
+        let pastes = std::mem::take(&mut pasted.0);
+        let attached = pasted_images(&typed.text)
+            .into_iter()
+            .filter_map(|number| {
+                let image = pastes.get(number.checked_sub(1)?)?;
+                Some((format!("[image {number}]"), image.clone()))
+            })
+            .collect();
+        let images = Found {
+            attached,
+            ..Found::default()
+        };
         adding.add(message, effect, agent, &mut typed, images);
         let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
         let max_bytes = adding.config.max_bytes;

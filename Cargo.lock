@@ -4808,9 +4808,7 @@ dependencies = [
 name = "corpus-fh-mentions-and-images"
 version = "0.0.0"
 dependencies = [
- "base64 0.22.1",
  "bevy_ecs",
- "bevy_log",
  "bevy_tasks",
  "rig-cassette",
  "rig-coding-tools",
