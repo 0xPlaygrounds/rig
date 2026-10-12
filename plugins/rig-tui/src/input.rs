@@ -241,12 +241,15 @@ pub(crate) fn read_input(
             _ => {}
         }
     }
-    let mut target = Target {
-        view: &mut view,
-        input: &mut input,
-        transcript: &mut transcript,
-    };
+    // Built per action: taking the resources mutably marks them changed,
+    // and a frame with no action must leave them as they are, or the view
+    // redraws every frame.
     for action in actions.read() {
+        let mut target = Target {
+            view: &mut view,
+            input: &mut input,
+            transcript: &mut transcript,
+        };
         act(*action, &mut target, &context, &mut commands);
     }
 }

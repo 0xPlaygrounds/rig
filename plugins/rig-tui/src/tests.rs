@@ -232,3 +232,28 @@ fn the_terminal_says_when_it_has_the_users_focus() {
         assert_eq!(focus, TerminalFocus(Some(focused)));
     }
 }
+
+/// Whether the view, the input or the transcript counted as changed in the
+/// last frame, as the redraw check reads them.
+#[derive(Resource, Default)]
+struct ChangedLastFrame(bool);
+
+/// A frame with no terminal event and no action leaves the view, the input
+/// and the transcript unchanged, so the redraw check can pace a streamed
+/// reply instead of drawing every frame.
+#[test]
+fn a_frame_with_nothing_typed_changes_nothing_the_redraw_check_reads() {
+    let (mut app, _) = view_app();
+    app.init_resource::<ChangedLastFrame>().add_systems(
+        bevy_app::Last,
+        |view: Res<crate::view::TuiView>,
+         input: Res<crate::editor::TuiInput>,
+         transcript: Res<crate::view::TranscriptView>,
+         mut changed: ResMut<ChangedLastFrame>| {
+            changed.0 = view.is_changed() || input.is_changed() || transcript.is_changed();
+        },
+    );
+    app.update();
+    app.update();
+    assert!(!app.world().resource::<ChangedLastFrame>().0);
+}
