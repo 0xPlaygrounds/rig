@@ -5266,6 +5266,7 @@ dependencies = [
  "bevy_log",
  "bevy_tasks",
  "rig-cassette",
+ "rig-compaction",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",

@@ -306,11 +306,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
     })
 }
 
-/// The adapter pushes need `.before(rig_compaction::CompactionSystems::Prepare)`,
-/// since compaction reads `Adapters`; this crate cannot depend on
-/// rig-compaction while the rework keeps `Cargo.lock` fixed.
 #[test]
-#[ignore = "needs rig-compaction as a dependency to order before compaction"]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(LocalModelsPlugin);
 }

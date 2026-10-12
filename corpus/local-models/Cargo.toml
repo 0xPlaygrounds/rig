@@ -13,6 +13,7 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_log = { workspace = true }
 bevy_tasks = { workspace = true }
+rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The shared HTTP client the probes and the warm-up send on, the one model
 # calls use.
