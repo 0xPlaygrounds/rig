@@ -326,6 +326,18 @@ impl JournalStore for Full {
     fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
         Ok(Vec::new())
     }
+    fn write_file(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn append_file(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn read_file(&self, _: &str) -> io::Result<Vec<u8>> {
+        Err(io::ErrorKind::NotFound.into())
+    }
+    fn remove_file(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// A failed log write stops the logging, with a notice, but the session

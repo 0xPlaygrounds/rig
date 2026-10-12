@@ -1,6 +1,7 @@
 //! An agent session's journal: each agent's [`Conversation`], and the
 //! session log that keeps it, one append-only log per agent and
-//! content-addressed blobs such as images, behind a [`JournalStore`]. A
+//! content-addressed blobs such as images, behind a [`JournalStore`], which
+//! also holds the session's other files by name. A
 //! [`Writer`] logs a running session's changes, [`read_session`] reads a
 //! session back, [`write_session`] writes one from data, and
 //! [`fork_session`] copies one as of a message. [`MemoryStore`] keeps a
@@ -51,8 +52,9 @@ use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
 
-/// Storage for a session's journal. Every method takes `&self`, so one
-/// store is shared by every agent's log.
+/// Storage for a session's files: each agent's log, the blobs its messages
+/// name, and the session's other files by name. Every method takes
+/// `&self`, so one store is shared by every agent's log.
 pub trait JournalStore: Send + Sync + 'static {
     /// The ids of the agents that have a log, in no particular order.
     fn agents(&self) -> io::Result<Vec<String>>;
@@ -90,6 +92,47 @@ pub trait JournalStore: Send + Sync + 'static {
         let _ = agent;
         Err(io::ErrorKind::Unsupported.into())
     }
+
+    /// Replaces the session's file `name` with `bytes`, atomically: a
+    /// reader sees the old content or the new. A name is the file's place
+    /// in the session, such as `meta.json` or `tui/notices.jsonl`; a store
+    /// refuses one [`check_file_name`] refuses, and may refuse names its
+    /// own layout uses, with [`io::ErrorKind::InvalidInput`].
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+
+    /// Adds `bytes` at the end of the file `name`, which it creates when
+    /// there is none.
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+
+    /// The file `name`, [`io::ErrorKind::NotFound`] when there is none.
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>>;
+
+    /// Removes the file `name`; removing one that is not there succeeds.
+    fn remove_file(&self, name: &str) -> io::Result<()>;
+}
+
+/// Refuses `name` as a [`JournalStore`] file name unless it is relative and
+/// `/`-separated, with no empty, `.` or `..` part and no `\`, so it names
+/// a place inside the session wherever the store keeps it.
+///
+/// ```
+/// use rig_cassette::journal::check_file_name;
+///
+/// assert!(check_file_name("tui/notices.jsonl").is_ok());
+/// assert!(check_file_name("../elsewhere").is_err());
+/// assert!(check_file_name("/etc/passwd").is_err());
+/// ```
+///
+/// # Errors
+///
+/// [`io::ErrorKind::InvalidInput`], naming the file.
+pub fn check_file_name(name: &str) -> io::Result<()> {
+    let bad = |part: &str| matches!(part, "" | "." | "..") || part.contains('\\');
+    if name.split('/').any(bad) {
+        let why = format!("{name:?} is no file name in a session");
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+    }
+    Ok(())
 }
 
 /// The complete lines of a JSON-lines log, read from a store without
@@ -277,6 +320,7 @@ pub struct MemoryStore(Arc<Mutex<Memory>>);
 struct Memory {
     logs: BTreeMap<String, Vec<u8>>,
     blobs: BTreeMap<String, Vec<u8>>,
+    files: BTreeMap<String, Vec<u8>>,
 }
 
 impl MemoryStore {
@@ -337,6 +381,35 @@ impl JournalStore for MemoryStore {
 
     fn remove(&self, agent: &str) -> io::Result<()> {
         self.memory().logs.remove(agent);
+        Ok(())
+    }
+
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        check_file_name(name)?;
+        self.memory().files.insert(name.to_owned(), bytes.to_vec());
+        Ok(())
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        check_file_name(name)?;
+        let mut memory = self.memory();
+        let file = memory.files.entry(name.to_owned()).or_default();
+        file.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        check_file_name(name)?;
+        self.memory()
+            .files
+            .get(name)
+            .cloned()
+            .ok_or_else(|| io::ErrorKind::NotFound.into())
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        check_file_name(name)?;
+        self.memory().files.remove(name);
         Ok(())
     }
 }

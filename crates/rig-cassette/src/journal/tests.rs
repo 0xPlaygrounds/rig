@@ -130,6 +130,22 @@ fn a_store_without_listing_or_removal_says_it_is_unsupported() {
         fn blob(&self, _name: &str) -> std::io::Result<Vec<u8>> {
             Ok(Vec::new())
         }
+
+        fn write_file(&self, _name: &str, _bytes: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn append_file(&self, _name: &str, _bytes: &[u8]) -> std::io::Result<()> {
+            Ok(())
+        }
+
+        fn read_file(&self, _name: &str) -> std::io::Result<Vec<u8>> {
+            Err(std::io::ErrorKind::NotFound.into())
+        }
+
+        fn remove_file(&self, _name: &str) -> std::io::Result<()> {
+            Ok(())
+        }
     }
 
     let unsupported = |result: std::io::Result<()>| {
@@ -159,5 +175,44 @@ fn a_directory_store_lists_blobs_and_removes_logs() {
     store.remove("a").expect("removed");
     store.remove("a").expect("removing nothing is fine");
     assert_eq!(store.agents().expect("listed"), Vec::<String>::new());
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A directory store keeps a named file at its name, so the effect log and
+/// a plugin's files stay where they were, and refuses names that leave the
+/// session or that it reads as a log or a blob.
+#[cfg(feature = "jsonl")]
+#[test]
+fn a_directory_store_keeps_named_files_beside_its_logs() {
+    use super::{EFFECT_LOG, JsonlDirStore};
+    use std::io::ErrorKind::{InvalidInput, NotFound};
+
+    let dir = std::env::temp_dir().join(format!("rig-cassette-files-{}", std::process::id()));
+    let store = JsonlDirStore::new(&dir);
+    store.write_file("meta.json", b"{}").expect("written");
+    store
+        .write_file("meta.json", b"{\"title\":1}")
+        .expect("replaced");
+    store.append_file(EFFECT_LOG, b"a\n").expect("appended");
+    store.append_file(EFFECT_LOG, b"b\n").expect("appended");
+    store
+        .append_file("tui/notices.jsonl", b"x")
+        .expect("appended");
+    let on_disk = |name: &str| std::fs::read(dir.join(name)).expect("on disk");
+    assert_eq!(on_disk("meta.json"), b"{\"title\":1}");
+    assert_eq!(on_disk("tui/notices.jsonl"), b"x");
+    assert_eq!(store.read_file(EFFECT_LOG).expect("read"), b"a\nb\n");
+    assert_eq!(store.agents().expect("listed"), Vec::<String>::new());
+
+    for refused in ["notes.jsonl", "blobs/x", "../x", "/etc/x", "a//b", "a\\b"] {
+        let kind = store.write_file(refused, b"").map_err(|error| error.kind());
+        assert_eq!(kind, Err(InvalidInput), "{refused}");
+    }
+    store.remove_file("meta.json").expect("removed");
+    store
+        .remove_file("meta.json")
+        .expect("removing nothing is fine");
+    let kind = store.read_file("meta.json").map_err(|error| error.kind());
+    assert_eq!(kind, Err(NotFound));
     std::fs::remove_dir_all(dir).ok();
 }

@@ -1,18 +1,21 @@
-//! A session kept as files in a directory: `<agent>.jsonl` per agent and
-//! `blobs/<name>` for blobs, beside the effect log ([`EFFECT_LOG`]). Every
-//! other top-level `*.jsonl` file is read as an agent's log, so files of
-//! others go in directories of their own.
+//! A session kept as files in a directory: `<agent>.jsonl` per agent,
+//! `blobs/<name>` for blobs, and every other file at `<name>`, such as the
+//! effect log ([`EFFECT_LOG`]). Every other top-level `*.jsonl` file is
+//! read as an agent's log, so the store refuses such a name for a file.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io::{self, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use super::JournalStore;
+use super::{JournalStore, check_file_name};
 
 /// The extension of an agent log.
 const EXTENSION: &str = "jsonl";
+
+/// The directory of a session that holds its blobs.
+const BLOBS: &str = "blobs";
 
 /// The file of a session directory that holds its effect log, as
 /// [`jsonl::Writer`](crate::effect_log::jsonl::Writer) writes it, and that
@@ -40,7 +43,24 @@ impl JsonlDirStore {
     }
 
     fn blob_dir(&self) -> PathBuf {
-        self.dir.join("blobs")
+        self.dir.join(BLOBS)
+    }
+
+    /// Where the file `name` is kept: refused when [`check_file_name`]
+    /// refuses it, or when it would be read as an agent log or a blob.
+    fn file(&self, name: &str) -> io::Result<PathBuf> {
+        check_file_name(name)?;
+        let top = name.split('/').next().unwrap_or_default();
+        let log = !name.contains('/')
+            && name != EFFECT_LOG
+            && Path::new(name)
+                .extension()
+                .is_some_and(|ext| ext == EXTENSION);
+        if log || top == BLOBS {
+            let why = format!("{name:?} is where a session directory keeps its logs or blobs");
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+        }
+        Ok(self.dir.join(name))
     }
 
     fn open(&self) -> MutexGuard<'_, HashMap<String, File>> {
@@ -124,6 +144,40 @@ impl JournalStore for JsonlDirStore {
     fn remove(&self, agent: &str) -> io::Result<()> {
         self.open().remove(agent);
         match fs::remove_file(self.agent_log(agent)) {
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(()),
+            removed => removed,
+        }
+    }
+
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        let path = self.file(name)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut temporary = path.clone().into_os_string();
+        temporary.push(".tmp");
+        fs::write(&temporary, bytes)?;
+        fs::rename(&temporary, &path)
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        let path = self.file(name)?;
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?
+            .write_all(bytes)
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        fs::read(self.file(name)?)
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        match fs::remove_file(self.file(name)?) {
             Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(()),
             removed => removed,
         }
