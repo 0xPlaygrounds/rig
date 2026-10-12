@@ -30,7 +30,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
-use rig_tools::context::FILE_NAMES;
+use rig_tools::context::instruction_file_in;
 use rig_tools::workspace::{Stat, Workspace};
 use serde::Deserialize;
 
@@ -170,11 +170,8 @@ impl Files {
 
     /// The project's `AGENTS.md`, or the `CLAUDE.md` it has instead.
     fn instructions(&self) -> PathBuf {
-        let found = FILE_NAMES
-            .iter()
-            .map(|name| self.root.join(name))
-            .find(|path| matches!(self.workspace.stat(path), Ok(Stat::File { .. })));
-        found.unwrap_or_else(|| self.root.join("AGENTS.md"))
+        instruction_file_in(&*self.workspace, &self.root)
+            .unwrap_or_else(|| self.root.join("AGENTS.md"))
     }
 
     fn dismissed_file(&self) -> PathBuf {
@@ -458,33 +455,29 @@ fn answered(
     let Ok((proposal, outcome)) = proposals.get(added.entity) else {
         return;
     };
-    let (agent, rule) = (proposal.agent, proposal.rule.clone());
+    let agent = proposal.agent;
     let files = Files::of(&workspace, &root);
     let saying = |refresh| Saying { agent, refresh };
-    match Answer::of(outcome) {
-        Some(Answer::Choice(choice)) if choice == "save" => {
-            files.work(commands.spawn(saying(true)), &wake, move |files| {
-                files.save(&rule)
-            });
-        }
-        Some(Answer::Choice(choice)) if choice == "dismiss" => {
+    let rule = match Answer::of(outcome) {
+        Some(answer) if answer.is("save") => proposal.rule.clone(),
+        Some(answer) if answer.is("dismiss") => {
+            let rule = proposal.rule.clone();
             files.work(commands.spawn(saying(false)), &wake, move |files| {
                 files.dismiss(&rule)
             });
+            return;
         }
-        Some(Answer::Text(text)) => {
-            let rule = text.split_whitespace().collect::<Vec<_>>().join(" ");
-            if rule.is_empty() || rule.chars().count() > RULE_CHARS {
-                let why = format!("A rule takes 1 to {RULE_CHARS} characters; not saved.");
-                notices.write(Notice::error(agent, why));
-                return;
-            }
-            files.work(commands.spawn(saying(true)), &wake, move |files| {
-                files.save(&rule)
-            });
-        }
-        _ => {}
+        Some(Answer::Text(text)) => text.split_whitespace().collect::<Vec<_>>().join(" "),
+        _ => return,
+    };
+    if rule.is_empty() || rule.chars().count() > RULE_CHARS {
+        let why = format!("A rule takes 1 to {RULE_CHARS} characters; not saved.");
+        notices.write(Notice::error(agent, why));
+        return;
     }
+    files.work(commands.spawn(saying(true)), &wake, move |files| {
+        files.save(&rule)
+    });
 }
 
 /// Says how file work went and, after a change to the instruction file,
@@ -521,21 +514,14 @@ fn rules(
 ) {
     let files = Files::of(&workspace, &root);
     let agent = args.agent;
+    let saying = |refresh| Saying { agent, refresh };
     let (verb, rest) = args.args.split_once(' ').unwrap_or((&args.args, ""));
     match (verb, rest.trim().parse::<usize>()) {
         ("", _) => {
-            let saying = Saying {
-                agent,
-                refresh: false,
-            };
-            files.work(commands.spawn(saying), &wake, Files::list);
+            files.work(commands.spawn(saying(false)), &wake, Files::list);
         }
         ("rm", Ok(number)) => {
-            let saying = Saying {
-                agent,
-                refresh: true,
-            };
-            files.work(commands.spawn(saying), &wake, move |files| {
+            files.work(commands.spawn(saying(true)), &wake, move |files| {
                 files.remove(number)
             });
         }
