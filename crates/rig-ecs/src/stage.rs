@@ -523,8 +523,6 @@ struct Passes {
     quiet_at: u64,
     /// What moved last, for the warning when the loop does not settle.
     last: Option<(&'static str, Entity)>,
-    /// The effects admitted this pass.
-    admitted: Vec<Entity>,
     /// The failed systems already named in a notice.
     noticed: HashSet<String>,
 }
@@ -880,12 +878,9 @@ fn apply_decisions(
 /// Admits every effect spawned since the last pass.
 fn admit(
     new: Query<Entity, (With<Effect>, Without<Admitted>, Without<Settled>)>,
-    mut passes: ResMut<Passes>,
     mut commands: Commands,
 ) {
-    passes.admitted.clear();
     for entity in &new {
-        passes.admitted.push(entity);
         commands.entity(entity).try_insert(Admitted);
     }
 }
@@ -893,6 +888,7 @@ fn admit(
 /// After a Prepare system failed, answers what was admitted this pass with
 /// an error: its preparation is unknown, and edits do not run twice.
 fn answer_unprepared(
+    admitted: Query<Entity, Added<Admitted>>,
     mut passes: ResMut<Passes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -901,7 +897,7 @@ fn answer_unprepared(
         return;
     };
     let why = format!("{} in Prepare: {}", failure.system, failure.error);
-    for &entity in &passes.admitted {
+    for entity in &admitted {
         let failed = ErrorReport::new(ErrorKind::Internal, why.clone());
         commands
             .entity(entity)
@@ -1124,17 +1120,6 @@ fn settle_now(world: &mut World, entity: Entity, disposition: Option<Disposition
     }
 }
 
-/// Despawns whatever holds `effect`.
-pub(crate) fn despawn_holds(world: &mut World, effect: Entity) {
-    let holds: Vec<Entity> = world
-        .get::<Holds>(effect)
-        .map(|holds| holds.iter().collect())
-        .unwrap_or_default();
-    for hold in holds {
-        world.try_despawn(hold).ok();
-    }
-}
-
 /// Despawns `holds`, the holds on an effect or a turn's outcome.
 pub(crate) fn release(commands: &mut Commands, holds: Option<&Holds>) {
     for hold in holds.into_iter().flat_map(Holds::iter) {
@@ -1153,7 +1138,9 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
     if !unsettled {
         return;
     }
-    despawn_holds(world, entity);
+    if let Ok(mut effect) = world.get_entity_mut(entity) {
+        effect.despawn_related::<Holds>();
+    }
     let Ok(mut effect) = world.get_entity_mut(entity) else {
         return;
     };

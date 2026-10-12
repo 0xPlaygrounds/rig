@@ -63,7 +63,7 @@ use super::prompt::{
 };
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
-    SupersededBy, Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
+    SupersededBy, Supersedes, Waiting, cancel, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -460,7 +460,9 @@ pub(crate) fn on_interrupt(
         for call in calls {
             cancel(world, call, &why);
         }
-        despawn_holds(world, turn);
+        if let Ok(mut turn) = world.get_entity_mut(turn) {
+            turn.despawn_related::<Holds>();
+        }
         if let Ok(mut turn) = world.get_entity_mut(turn) {
             turn.remove::<(TurnOf, Ending)>()
                 .insert((TurnOutcome::Stopped(reason), Settled));
