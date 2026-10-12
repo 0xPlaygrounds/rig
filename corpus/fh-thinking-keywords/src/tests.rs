@@ -20,7 +20,10 @@ fn app(models: Models, model: &str) -> (App, std::sync::mpsc::Receiver<()>, Enti
     let read = |called: On<ToolCalled<serde_json::Value>>,
                 mut calls: Query<&mut Decision, ToolCalls>| {
         if let Ok(mut call) = calls.get_mut(called.call) {
-            call.decide(ToolResult::success("fn main() {}".into()));
+            call.decide(
+                Decider::plugin("fh-thinking-keywords"),
+                ToolResult::success("fn main() {}".into()),
+            );
         }
     };
     app.add_open_tool("read", "Read a file.", ToolOptions::default(), read);

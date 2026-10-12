@@ -224,7 +224,10 @@ fn answered(asks: Query<(Entity, &HoldOf), (With<Ask>, Added<Outcome>)>, mut com
 
 fn guarded(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("done".into()));
+        call.decide(
+            Decider::plugin("fh-turn-timeline"),
+            ToolResult::success("done".into()),
+        );
     }
 }
 

@@ -38,7 +38,10 @@ struct ReadArgs {
 fn read_file(called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCalls>) {
     let text = format!("contents of {}", called.args.path);
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(ToolOutput::text(text)));
+        call.decide(
+            Decider::plugin("fh-structured-compaction"),
+            ToolResult::success(ToolOutput::text(text)),
+        );
     }
 }
 

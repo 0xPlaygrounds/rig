@@ -29,7 +29,10 @@ const LAST_REPLY: &str = "Added `fn helper(x)`; `fn main()` calls it.";
 /// A `shell` that prints the build's output.
 fn shell(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(BUILD_OUTPUT.into()));
+        call.decide(
+            Decider::plugin("fh-transcript-search"),
+            ToolResult::success(BUILD_OUTPUT.into()),
+        );
     }
 }
 

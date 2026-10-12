@@ -365,7 +365,7 @@ fn on_post(
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(output);
+        call.decide(Decider::plugin("ho-blackboard"), output);
     }
 }
 
@@ -399,7 +399,10 @@ fn on_read(
     text.push_str("\n\n");
     text.push_str(&board.claims_text());
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(text.into()));
+        call.decide(
+            Decider::plugin("ho-blackboard"),
+            ToolResult::success(text.into()),
+        );
     }
 }
 
