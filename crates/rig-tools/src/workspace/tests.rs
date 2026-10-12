@@ -184,10 +184,7 @@ fn every_file_tool_goes_through_its_workspace() {
     let (shown, _) = call(&read, ReadArgs::new("src/../src/a.rs"));
     assert_eq!(shown.ok().as_deref(), Some("     1\tfn two() {}\n"));
     let (found, _) = call(&search, SearchArgs::new("two").glob("*.rs"));
-    assert_eq!(
-        found.ok().as_deref(),
-        Some("/project/src/a.rs:1: fn two() {}")
-    );
+    assert_eq!(found.ok().as_deref(), Some("src/a.rs:1: fn two() {}"));
 
     let (refused, _) = call(&moved, MoveArgs::new("src/a.rs", "../b.rs"));
     assert!(refused.is_err());

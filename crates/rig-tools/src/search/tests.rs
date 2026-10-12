@@ -73,3 +73,21 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
     assert_eq!(context.result::<FilesRead>().ok().flatten(), None);
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// A search from a base names its hits by their paths below it, as the
+/// model would name them to the tools on that base.
+#[test]
+fn a_search_from_a_base_names_hits_below_it() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-base-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("src")).ok();
+    std::fs::write(dir.join("src").join("a.rs"), "todo one\n").ok();
+    let search = Search {
+        base: Some(dir.clone()),
+        ..Search::default()
+    };
+    let mut context = ToolContext::new();
+    let text =
+        futures::executor::block_on(Tool::call(&search, &mut context, SearchArgs::new("todo")));
+    assert_eq!(text.ok().as_deref(), Some("src/a.rs:1: todo one"));
+    std::fs::remove_dir_all(dir).ok();
+}

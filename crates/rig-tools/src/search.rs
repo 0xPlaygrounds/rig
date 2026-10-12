@@ -32,7 +32,7 @@ pub struct Search {
     pub workspace: Arc<dyn Workspace>,
     /// The directory searched, and a relative path is searched from;
     /// `None` is the workspace's working directory. Hits under a base are
-    /// shown by their paths joined onto it.
+    /// shown, and published, by their paths below it.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is searched.
@@ -183,7 +183,14 @@ impl Tool for Search {
             args.path = Some(base.join(path).to_string_lossy().into_owned());
         }
         let workspace = self.workspace.clone();
-        let found = blocking(move || find(&*workspace, &args)).await?;
+        let mut found = blocking(move || find(&*workspace, &args)).await?;
+        if let Some(base) = &self.base {
+            for hit in &mut found.hits {
+                if let Ok(below) = hit.path.strip_prefix(base) {
+                    hit.path = below.to_path_buf();
+                }
+            }
+        }
         if !found.files.is_empty() {
             context.insert_result(FilesRead(found.files.clone()))?;
         }
