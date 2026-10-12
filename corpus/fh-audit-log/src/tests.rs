@@ -3,7 +3,7 @@ use std::fs;
 use rig_coding_tools::{ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_core::tool::content_hash;
-use rig_harness::harness_protocol::SessionId;
+use rig_harness::harness_protocol::{Invocation, SessionId};
 use rig_harness_test_support::{
     Ended, ToolOutputs, app_in, connect, first_agent, log_ended, log_tool_outputs, reply,
     run_until, scratch_home, start_call,
@@ -24,6 +24,31 @@ fn no_rm(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>
             decision.decide(Decider::plugin("test"), Outcome::refused("no rm -rf"));
         }
     }
+}
+
+/// Why `rig audit verify` in `home` exits: built as the launcher runs it.
+fn verify_command(home: &Home) -> Option<ExitReason> {
+    #[derive(Resource, Default)]
+    struct Exited(Option<ExitReason>);
+    let (mut app, _) = app_in(home, &SessionId::generate());
+    let args = Invocation {
+        command: Some("audit".to_owned()),
+        arguments: vec!["verify".to_owned()],
+        ..Invocation::default()
+    };
+    app.insert_resource(Invoked {
+        args,
+        terminal: false,
+    })
+    .add_message::<Notice>()
+    .init_resource::<Exited>()
+    .add_observer(|exit: On<Exit>, mut exited: ResMut<Exited>| {
+        exited.0.get_or_insert(exit.0.clone());
+    })
+    .add_plugins(AuditLogPlugin);
+    app.finish();
+    app.update();
+    app.world_mut().resource_mut::<Exited>().0.take()
 }
 
 /// Today's lines and their entries.
@@ -93,6 +118,8 @@ fn calls_are_logged_chained_and_checked() {
 
     let (lines, entries) = read_log(&audit);
     let calls = tool_calls(&entries);
+    let deciders: Vec<_> = calls.iter().map(|entry| entry.decided_by.clone()).collect();
+    assert_eq!(deciders, [None, None, Some(Decider::plugin("test"))]);
     let outcomes: Vec<_> = calls.iter().map(|entry| entry.outcome).collect();
     assert_eq!(
         outcomes,
@@ -100,6 +127,7 @@ fn calls_are_logged_chained_and_checked() {
         "{lines:#?}"
     );
     assert_eq!(calls.first().and_then(|entry| entry.exit_code), Some(0));
+    assert_eq!(calls.get(1).map(|entry| entry.files.len()), Some(1));
     let written = calls.get(1).and_then(|entry| entry.files.first());
     assert!(
         written.is_some_and(|file| file.path.ends_with("a.txt")),
@@ -167,9 +195,13 @@ fn calls_are_logged_chained_and_checked() {
     fs::remove_dir(&file).ok();
     fs::rename(&aside, &file).ok();
 
-    // The chain holds, until one byte of the middle call's entry changes.
+    // The chain holds, until one byte of the middle call's entry changes;
+    // `rig audit verify` runs no session of its own.
     let (lines, _) = read_log(&audit);
-    assert_eq!(chain::verify(&audit, None), Ok(lines.len()));
+    assert_eq!(verify_command(&home), Some(ExitReason::Quit));
+    assert_eq!(read_log(&audit).0.len(), lines.len());
+    let ok = run_command(&audit, &["verify".to_owned()]);
+    assert_eq!(ok, Ok(format!("OK, {} entries", lines.len())));
     let text = fs::read_to_string(&file).unwrap_or_default();
     fs::write(
         &file,
@@ -183,6 +215,7 @@ fn calls_are_logged_chained_and_checked() {
     let broken = chain::verify(&audit, None).err().map(|broken| broken.line);
     assert_eq!(broken, at);
     assert!(at.is_some());
+    assert_eq!(verify_command(&home), Some(ExitReason::Failed(1)));
 }
 
 #[test]

@@ -10,6 +10,7 @@ use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use rig_core::effect::Decider;
 use rig_core::tool::content_hash;
 use serde::{Deserialize, Serialize};
 
@@ -43,8 +44,9 @@ pub struct Entry {
     /// The files it could change, with their content before and after.
     #[serde(default)]
     pub files: Vec<FileHashes>,
-    /// Who or what let it run or refused it, when that is known.
-    pub decided_by: Option<String>,
+    /// Who decided it: a person, or a plugin by name (a rule, a judge, a
+    /// headless default). `None` for a call no one decided, which runs.
+    pub decided_by: Option<Decider>,
     /// Anything else: a question and its answer, why the session ended.
     pub detail: Option<String>,
     /// The hash of the line before, [`GENESIS`] for the first.
@@ -347,9 +349,14 @@ fn readable(entry: &Entry) -> String {
         let (before, after) = (hash(&file.before), hash(&file.after));
         line.push_str(&format!(" [{} {before}->{after}]", file.path));
     }
-    let decided = entry.decided_by.as_deref().unwrap_or("no question asked");
-    if entry.event == Event::ToolCall {
-        line.push_str(&format!(" (approved: {decided})"));
+    let decided = match &entry.decided_by {
+        Some(Decider::Person) => "a person".to_owned(),
+        Some(Decider::Plugin(name)) => name.to_string(),
+        Some(other) => format!("{other:?}"),
+        None => "no one: allowed".to_owned(),
+    };
+    if matches!(entry.event, Event::ToolCall | Event::Approval) {
+        line.push_str(&format!(" (decided by {decided})"));
     }
     if let Some(detail) = &entry.detail {
         line.push_str(&format!(" {detail}"));
