@@ -1,6 +1,7 @@
 //! The `read` tool.
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use rig_core::tool::{
     FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
@@ -9,23 +10,36 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{place, read_text, resolve};
+use crate::workspace::{Local, Workspace};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines. Publishes the file it read
-/// ([`FilesRead`]), by its [resolved](crate::fs::resolve) path, with the
+/// ([`FilesRead`]), by its [resolved](Workspace) path, with the
 /// hash of the bytes it read.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Read {
-    /// The directory a relative path is read from; `None` is this
-    /// process's working directory.
+    /// Where the file is read.
+    pub workspace: Arc<dyn Workspace>,
+    /// The directory a relative path is read from; `None` is the
+    /// workspace's working directory.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is read.
     pub confine: bool,
+}
+
+impl Default for Read {
+    /// Reads this machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self {
+            workspace: Arc::new(Local),
+            base: None,
+            confine: false,
+        }
+    }
 }
 
 /// Arguments of [`Read`].
@@ -108,10 +122,9 @@ impl Tool for Read {
     }
 
     fn footprint(&self, args: &ReadArgs) -> Touches {
-        Touches::Reads(Scope::Paths(vec![resolve(
-            self.base.as_deref(),
-            &args.path,
-        )]))
+        Touches::Reads(Scope::Paths(vec![
+            self.workspace.resolve(self.base.as_deref(), &args.path),
+        ]))
     }
 
     async fn call(
@@ -119,18 +132,17 @@ impl Tool for Read {
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = place(self.base.as_deref(), self.confine, &args.path)?
-            .to_string_lossy()
-            .into_owned();
-        let (output, hash) = blocking({
-            let path = path.clone();
-            move || {
-                let text = read_text(&path)?;
-                Ok::<_, ToolExecutionError>((args.show(&text), content_hash(text.as_bytes())))
-            }
+        let path = self
+            .workspace
+            .place(self.base.as_deref(), self.confine, &args.path)?;
+        let shown = path.to_string_lossy().into_owned();
+        let workspace = self.workspace.clone();
+        let (output, hash) = blocking(move || {
+            let text = workspace.read_text(&path)?;
+            Ok::<_, ToolExecutionError>((args.show(&text), content_hash(text.as_bytes())))
         })
         .await?;
-        context.insert_result(FilesRead(vec![FileRead::new(path, hash)]))?;
+        context.insert_result(FilesRead(vec![FileRead::new(shown, hash)]))?;
         Ok(output)
     }
 }

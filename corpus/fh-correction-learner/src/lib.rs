@@ -430,7 +430,12 @@ fn reread(world: &mut World) {
     else {
         return;
     };
-    let text = Instructions::discover([home.root().to_path_buf()], &root).prompt_text();
+    let text = Instructions::discover(
+        [home.root().to_path_buf()],
+        &root,
+        &rig_tools::workspace::Local,
+    )
+    .prompt_text();
     let mut sections = world.query_filtered::<&mut PromptSection, Without<SectionOf>>();
     for mut section in sections.iter_mut(world) {
         if section.tag == PROJECT_SECTION && section.text != text {

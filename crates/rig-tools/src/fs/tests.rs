@@ -47,6 +47,7 @@ fn a_confined_tool_stays_in_its_base() {
     let read = Read {
         base: Some(base.clone()),
         confine: true,
+        ..Default::default()
     };
 
     let mut context = ToolContext::new();
@@ -71,6 +72,7 @@ fn a_confined_tool_stays_in_its_base() {
     let write = Write {
         base: Some(base),
         confine: true,
+        ..Default::default()
     };
     let args = WriteArgs::new("../new.txt", "x");
     let refused = futures::executor::block_on(write.call(&mut ToolContext::new(), args));

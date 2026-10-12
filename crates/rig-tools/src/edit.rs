@@ -9,6 +9,7 @@
 use std::fmt::Write as _;
 use std::ops::Range;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -18,23 +19,37 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error, place, read_text, resolve, write_atomic};
+use crate::fs::{file_change, io_error};
+use crate::workspace::{Local, Workspace};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
 
 /// Replaces text in a file. Publishes the file it changed
-/// ([`FilesChanged`]): its [resolved](crate::fs::resolve) path, and the
+/// ([`FilesChanged`]): its [resolved](Workspace) path, and the
 /// whole diff.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Edit {
-    /// The directory a relative path is edited in; `None` is this
-    /// process's working directory.
+    /// Where the file is edited.
+    pub workspace: Arc<dyn Workspace>,
+    /// The directory a relative path is edited in; `None` is the
+    /// workspace's working directory.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is read.
     pub confine: bool,
+}
+
+impl Default for Edit {
+    /// Edits this machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self {
+            workspace: Arc::new(Local),
+            base: None,
+            confine: false,
+        }
+    }
 }
 
 /// Arguments of [`Edit`].
@@ -125,10 +140,9 @@ impl Tool for Edit {
     }
 
     fn footprint(&self, args: &EditArgs) -> Touches {
-        Touches::Writes(Scope::Paths(vec![resolve(
-            self.base.as_deref(),
-            &args.path,
-        )]))
+        Touches::Writes(Scope::Paths(vec![
+            self.workspace.resolve(self.base.as_deref(), &args.path),
+        ]))
     }
 
     async fn call(
@@ -136,18 +150,27 @@ impl Tool for Edit {
         context: &mut ToolContext,
         args: EditArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = place(self.base.as_deref(), self.confine, &args.path)?;
-        let (output, change) = blocking(move || edit(path, args)).await?;
+        let path = self
+            .workspace
+            .place(self.base.as_deref(), self.confine, &args.path)?;
+        let workspace = self.workspace.clone();
+        let (output, change) = blocking(move || edit(&*workspace, path, args)).await?;
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
     }
 }
 
-fn edit(resolved: PathBuf, args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
+fn edit(
+    workspace: &dyn Workspace,
+    resolved: PathBuf,
+    args: EditArgs,
+) -> Result<(String, FileChange), ToolExecutionError> {
     let path = resolved.to_string_lossy();
-    let raw = read_text(&path)?;
+    let raw = workspace.read_text(&resolved)?;
     let applied = apply(&path, &raw, &args.edits)?;
-    write_atomic(&resolved, applied.text.as_bytes()).map_err(|error| io_error(&path, error))?;
+    workspace
+        .write(&resolved, applied.text.as_bytes())
+        .map_err(|error| io_error(&path, error))?;
     let replaced = applied.replaced;
     let mut out = format!(
         "Edited {}: {replaced} replacement{}.",

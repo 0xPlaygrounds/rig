@@ -105,3 +105,77 @@ fn cut_output_is_read_back_by_its_handle() {
     assert_eq!(std::fs::read_dir(&dir).map(Iterator::count).ok(), Some(2));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// The command starts through the shell's workspace, in the directory the
+/// call names below the launcher's.
+#[cfg(unix)]
+#[test]
+fn the_command_starts_through_the_workspace_in_the_calls_directory() {
+    use std::ffi::{OsStr, OsString};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::process::{Process, Spawn};
+    use crate::workspace::{Contents, Local, Stat, Workspace};
+
+    /// This machine, noting the directory of every command it starts.
+    #[derive(Debug, Default)]
+    struct Recording(Mutex<Vec<Option<PathBuf>>>);
+
+    impl Workspace for Recording {
+        fn stat(&self, path: &Path) -> std::io::Result<Stat> {
+            Local.stat(path)
+        }
+        fn read(&self, path: &Path, limit: u64) -> std::io::Result<Contents> {
+            Local.read(path, limit)
+        }
+        fn write(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+            Local.write(path, bytes)
+        }
+        fn remove(&self, path: &Path) -> std::io::Result<()> {
+            Local.remove(path)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+            Local.rename(from, to)
+        }
+        fn canonical(&self, path: &Path) -> PathBuf {
+            Local.canonical(path)
+        }
+        fn files(&self, root: &Path, glob: Option<&str>) -> std::io::Result<Vec<PathBuf>> {
+            Local.files(root, glob)
+        }
+        fn spawn(
+            &self,
+            launcher: &Launcher,
+            dir: Option<&Path>,
+            program: &OsStr,
+            args: &[OsString],
+            how: Spawn,
+        ) -> std::io::Result<Process> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(dir.map(Path::to_path_buf));
+            Local.spawn(launcher, dir, program, args, how)
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-spawn-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("sub")).ok();
+    let recording = Arc::new(Recording::default());
+    let shell = Shell {
+        workspace: recording.clone(),
+        launcher: Launcher::default().in_dir(&dir),
+        confine: true,
+        ..Shell::default()
+    };
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("sub")));
+    assert!(ran.is_ok_and(|ran| ran.output.contains("sub\n")));
+    let refused = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("..")));
+    assert!(refused.is_err());
+    assert_eq!(
+        *recording.0.lock().unwrap_or_else(PoisonError::into_inner),
+        [Some(dir.join("sub"))]
+    );
+    std::fs::remove_dir_all(dir).ok();
+}

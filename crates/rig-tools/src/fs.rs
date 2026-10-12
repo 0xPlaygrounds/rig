@@ -1,35 +1,25 @@
 //! File helpers the tools share: an atomic write, capped text reads, JSON
-//! files, and the [`FileChange`] a tool that writes publishes.
+//! files, and the [`FileChange`] a tool that writes publishes. The reads and
+//! the path rules here are this machine's ([`Local`]); a tool reads through
+//! its [`Workspace`].
 
 use std::fs::{self, File};
-use std::io::{self, ErrorKind, Read as _, Write as _};
-use std::path::{Component, Path, PathBuf};
+use std::io::{self, ErrorKind, Write as _};
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use rig_core::tool::{FileChange, ToolExecutionError};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use crate::MAX_FILE_BYTES;
+use crate::workspace::{Contents, Local, Workspace};
 
 /// Reads `path` as text after checking, without opening it, that it is a
-/// regular file of at most [`MAX_FILE_BYTES`]: opening a FIFO or a device
-/// can block forever.
+/// regular file of at most [`MAX_FILE_BYTES`](crate::MAX_FILE_BYTES):
+/// opening a FIFO or a device can block forever. [`Local`]'s
+/// `read_text`.
 pub fn read_text(path: &str) -> Result<String, ToolExecutionError> {
-    let meta = fs::metadata(path).map_err(|error| io_error(path, error))?;
-    if !meta.is_file() {
-        return Err(ToolExecutionError::invalid_args(format!(
-            "{path} is not a regular file"
-        )));
-    }
-    if meta.len() > MAX_FILE_BYTES {
-        return Err(ToolExecutionError::invalid_args(format!(
-            "{path} is {} MB; the tools open files up to {} MB",
-            meta.len() / (1024 * 1024),
-            MAX_FILE_BYTES / (1024 * 1024)
-        )));
-    }
-    fs::read_to_string(path).map_err(|error| io_error(path, error))
+    local().read_text(Path::new(path))
 }
 
 /// The start of a file read by [`read_prefix`].
@@ -46,31 +36,34 @@ impl Prefix {
     pub fn cut(&self) -> bool {
         self.size > self.text.len() as u64
     }
+
+    /// `contents`, read with a limit of `cap` bytes, as text without a
+    /// byte-order mark. A character cut at the end is dropped; bad bytes
+    /// inside are replaced.
+    pub fn of(contents: Contents, cap: usize) -> Self {
+        let Contents { bytes, size } = contents;
+        let mut text = match String::from_utf8(bytes) {
+            Ok(text) => text,
+            Err(error) => {
+                let valid = error.utf8_error().valid_up_to();
+                let mut bytes = error.into_bytes();
+                if size > cap as u64 && bytes.len().saturating_sub(valid) < 4 {
+                    bytes.truncate(valid);
+                }
+                String::from_utf8_lossy(&bytes).into_owned()
+            }
+        };
+        if let Some(rest) = text.strip_prefix('\u{feff}') {
+            text = rest.to_owned();
+        }
+        Self { text, size }
+    }
 }
 
-/// Reads at most `cap` bytes of the file at `path` as text, without a
-/// byte-order mark. A character cut at the end is dropped; bad bytes inside
-/// are replaced.
+/// Reads at most `cap` bytes of the regular file at `path` on this machine
+/// as a [`Prefix`].
 pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
-    let file = File::open(path)?;
-    let size = file.metadata()?.len();
-    let mut bytes = Vec::new();
-    file.take(cap as u64).read_to_end(&mut bytes)?;
-    let mut text = match String::from_utf8(bytes) {
-        Ok(text) => text,
-        Err(error) => {
-            let valid = error.utf8_error().valid_up_to();
-            let mut bytes = error.into_bytes();
-            if size > cap as u64 && bytes.len().saturating_sub(valid) < 4 {
-                bytes.truncate(valid);
-            }
-            String::from_utf8_lossy(&bytes).into_owned()
-        }
-    };
-    if let Some(rest) = text.strip_prefix('\u{feff}') {
-        text = rest.to_owned();
-    }
-    Ok(Prefix { text, size })
+    Ok(Prefix::of(Local.read(path, cap as u64)?, cap))
 }
 
 /// Replaces the file at `path` with `contents` in one step, creating its
@@ -189,23 +182,7 @@ pub fn io_error(path: &str, error: io::Error) -> ToolExecutionError {
 /// # Ok::<(), std::io::Error>(())
 /// ```
 pub fn resolve(base: Option<&Path>, path: &str) -> PathBuf {
-    let joined = base.map_or_else(|| PathBuf::from(path), |base| base.join(path));
-    let joined = std::path::absolute(&joined).unwrap_or(joined);
-    let real = joined.ancestors().find_map(|ancestor| {
-        let real = fs::canonicalize(ancestor).ok()?;
-        Some((real, joined.strip_prefix(ancestor).ok()?))
-    });
-    let (mut out, rest) = real.unwrap_or((PathBuf::new(), &joined));
-    for component in rest.components() {
-        match component {
-            Component::ParentDir => {
-                out.pop();
-            }
-            Component::CurDir => {}
-            other => out.push(other),
-        }
-    }
-    out
+    local().resolve(base, path)
 }
 
 /// `path` [`resolve`]d against `base`, as a file tool opens it; with
@@ -228,17 +205,12 @@ pub fn place(
     confine: bool,
     path: &str,
 ) -> Result<PathBuf, ToolExecutionError> {
-    let resolved = resolve(base, path);
-    if confine {
-        let root = resolve(base, ".");
-        if !resolved.starts_with(&root) {
-            return Err(ToolExecutionError::permission_denied(format!(
-                "{path} is outside {}, the only directory this tool works in",
-                root.display()
-            )));
-        }
-    }
-    Ok(resolved)
+    local().place(base, confine, path)
+}
+
+/// This machine, as a [`Workspace`].
+fn local() -> &'static dyn Workspace {
+    &Local
 }
 
 /// What turning `before` (`None`: there was no file) into `after` did to the

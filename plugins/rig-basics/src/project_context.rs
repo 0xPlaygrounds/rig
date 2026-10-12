@@ -17,6 +17,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
+use rig_tools::workspace::Local;
 
 use rig_ecs::agent::{Agent, Notice, SystemPrompt, TurnOf};
 use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
@@ -137,7 +138,7 @@ impl Context {
     /// Reads the instruction files of `home` and of `root` and above now.
     fn read(home: &RigHome, root: &ProjectRoot) -> Self {
         Self {
-            instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0),
+            instructions: Instructions::discover([home.0.root().to_path_buf()], &root.0, &Local),
             root: root.0.clone(),
         }
     }

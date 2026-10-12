@@ -1,10 +1,11 @@
 //! The `shell` tool.
 
 use std::collections::VecDeque;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::fs::File;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,8 +15,8 @@ use rig_core::tool::{ExitStatus, Tool, ToolContext, ToolExecutionError, args_sch
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::place;
 use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
+use crate::workspace::{Local, Workspace};
 use crate::{Cut, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
@@ -30,11 +31,13 @@ const POLL: Duration = Duration::from_millis(20);
 /// [`Cut`] keeps is held in memory.
 const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
-/// Runs a command with `sh -c` in its own session and process group, as its
-/// [`Launcher`] starts processes. Publishes how the command ended
-/// ([`ExitStatus`]) beside its output.
+/// Runs a command with `sh -c` in its own session and process group, in its
+/// [`Workspace`], as its [`Launcher`] starts processes. Publishes how the
+/// command ended ([`ExitStatus`]) beside its output.
 #[derive(Clone, Debug)]
 pub struct Shell {
+    /// Where the command runs.
+    pub workspace: Arc<dyn Workspace>,
     /// How the command is started: a wrapper, a directory, its variables.
     pub launcher: Launcher,
     /// Where output that is cut is kept whole, named in the cut output.
@@ -50,10 +53,11 @@ pub struct Shell {
 }
 
 impl Default for Shell {
-    /// Started as this process starts it, nothing spilled, output cut as
-    /// [`Cut::default`] cuts it.
+    /// Started on this machine as this process starts it, nothing spilled,
+    /// output cut as [`Cut::default`] cuts it.
     fn default() -> Self {
         Self {
+            workspace: Arc::new(Local),
             launcher: Launcher::default(),
             spill: None,
             cut: Some(Cut::default()),
@@ -178,25 +182,26 @@ impl Tool for Shell {
 }
 
 impl Shell {
-    /// Starts the command `args` names, as this shell's launcher starts
-    /// processes, its stdout and stderr in one pipe.
+    /// Starts the command `args` names in the workspace, as this shell's
+    /// launcher starts processes, its stdout and stderr in one pipe.
     fn start(&self, args: &ShellArgs) -> Result<Process, ToolExecutionError> {
-        let launcher = match &args.cwd {
+        let base = self.launcher.cwd.as_deref();
+        let dir = match &args.cwd {
             Some(dir) => {
                 if self.confine {
-                    place(self.launcher.cwd.as_deref(), true, dir)?;
+                    self.workspace.place(base, true, dir)?;
                 }
-                let base = self.launcher.cwd.as_deref().unwrap_or(Path::new(""));
-                self.launcher.clone().in_dir(base.join(dir))
+                Some(base.unwrap_or(Path::new("")).join(dir))
             }
-            None => self.launcher.clone(),
+            None => base.map(Path::to_path_buf),
         };
         let how = Spawn {
             stdin: None,
             merge_stderr: true,
         };
-        launcher
-            .spawn("sh", [OsStr::new("-c"), OsStr::new(&args.command)], how)
+        let line = [OsString::from("-c"), OsString::from(&args.command)];
+        self.workspace
+            .spawn(&self.launcher, dir.as_deref(), OsStr::new("sh"), &line, how)
             .map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))
     }
 
@@ -219,7 +224,7 @@ impl Shell {
                 Ok(None) if Instant::now() >= deadline => break End::TimedOut,
                 Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
                 Ok(None) => match process.lines().recv_timeout(POLL) {
-                    Ok(line) => tail.push(line.text().as_bytes()),
+                    Ok(line) => tail.push(line.text()),
                     Err(RecvTimeoutError::Timeout) => {}
                     // The command closed its output but still runs.
                     Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
@@ -302,8 +307,9 @@ struct Tail {
 }
 
 impl Tail {
-    /// Appends `chunk`, keeping only the last bytes the cut keeps.
-    fn push(&mut self, chunk: &[u8]) {
+    /// Appends `piece`, keeping only the last bytes the cut keeps.
+    fn push(&mut self, piece: &str) {
+        let chunk = piece.as_bytes();
         self.written += chunk.len() as u64;
         if let Some((_, file)) = &mut self.spilled
             && file.write_all(chunk).is_err()
@@ -327,7 +333,7 @@ impl Tail {
         let deadline = Instant::now() + PIPE_GRACE;
         loop {
             match lines.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(line) => self.push(line.text().as_bytes()),
+                Ok(line) => self.push(line.text()),
                 Err(RecvTimeoutError::Disconnected) => return true,
                 Err(RecvTimeoutError::Timeout) => return false,
             }

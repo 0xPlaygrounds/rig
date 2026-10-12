@@ -48,6 +48,7 @@ impl Plugin for ReadTool {
         work_in_dir(app, |base| Read {
             base: Some(base),
             confine: true,
+            ..Read::default()
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
@@ -64,6 +65,7 @@ impl Plugin for SearchTool {
         work_in_dir(app, |base| Search {
             base: Some(base),
             confine: true,
+            ..Search::default()
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
@@ -80,6 +82,7 @@ impl Plugin for EditTool {
         work_in_dir(app, |base| Edit {
             base: Some(base),
             confine: true,
+            ..Edit::default()
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
@@ -96,6 +99,7 @@ impl Plugin for WriteTool {
         work_in_dir(app, |base| Write {
             base: Some(base),
             confine: true,
+            ..Write::default()
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
@@ -284,11 +288,14 @@ fn attach(
         if typed.origin.kind != OriginKind::User || typed.command().is_some() {
             continue;
         }
-        let (attachments, notes) = rig_tools::attach::attachments(&typed.text);
-        for note in notes {
+        let here = std::env::current_dir().unwrap_or_default();
+        let attached =
+            rig_tools::attach::attachments(&typed.text, &here, &rig_tools::workspace::Local);
+        for note in attached.notes {
             notices.write(Notice::info(agent, note));
         }
-        let attachments = attachments
+        let attachments = attached
+            .files
             .into_iter()
             .map(|(label, content)| Attachment { label, content });
         typed.attachments.extend(attachments);
