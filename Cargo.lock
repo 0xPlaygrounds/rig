@@ -5089,6 +5089,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "corpus-few-shot-examples",
  "rig-cassette",
  "rig-coding-tools",
  "rig-core",
@@ -5341,6 +5342,9 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_time",
+ "corpus-ho-api-key-pool",
+ "corpus-local-models",
+ "corpus-model-router",
  "http 1.4.2",
  "rig-cassette",
  "rig-compaction",
@@ -5443,6 +5447,8 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "corpus-confirm-destructive",
+ "corpus-protected-paths",
  "rig-cassette",
  "rig-coding-tools",
  "rig-core",
@@ -5512,6 +5518,7 @@ version = "0.0.0"
 dependencies = [
  "bevy_ecs",
  "bevy_reflect",
+ "corpus-confirm-destructive",
  "glob",
  "rig-cassette",
  "rig-coding-tools",
@@ -5567,6 +5574,8 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
+ "corpus-few-shot-examples",
+ "corpus-ho-stale-read-elision",
  "regex",
  "rig-coding-tools",
  "rig-core",
@@ -5599,6 +5608,7 @@ name = "corpus-session-replay"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "corpus-plan-mode",
  "rig-cassette",
  "rig-core",
  "rig-defaults-test-support",
@@ -5634,6 +5644,8 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "corpus-confirm-destructive",
+ "corpus-permission-modes",
+ "corpus-protected-paths",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",

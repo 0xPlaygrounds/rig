@@ -29,6 +29,7 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
+use corpus_plan_mode::PlanModeSystems;
 use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
@@ -535,7 +536,7 @@ pub enum ReplaySystems {
     /// measures the request.
     Prepare,
     /// Decides tool calls and replayable plugin effects from the record,
-    /// before a front answers a question.
+    /// before plan mode refuses a call or a front answers a question.
     Gate,
     /// Holds each answer for its recorded duration, with `--speed`.
     Review,
@@ -562,6 +563,7 @@ impl Plugin for SessionReplayPlugin {
                 ReplaySystems::Gate
                     .in_set(Stage::Gate)
                     .after(SubagentSystems::Gate)
+                    .before(PlanModeSystems::Gate)
                     .before(AskSystems),
                 ReplaySystems::Review.in_set(Stage::Review),
             ),

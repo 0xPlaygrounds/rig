@@ -17,6 +17,8 @@ rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 # Pairing replayed subagents through their spawn.
 rig-subagents = { path = "../../plugins/rig-subagents" }
+# A recorded answer goes before plan mode refuses the call.
+corpus-plan-mode = { path = "../plan-mode" }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

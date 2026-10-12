@@ -311,3 +311,15 @@ fn stages_are_ordered_with_the_defaults() {
         .add_plugins(SessionReplayPlugin);
     });
 }
+
+/// Replaying a session that ran in plan mode loads both plugins.
+#[test]
+fn stages_are_ordered_with_plan_mode() {
+    rig_defaults_test_support::assert_stages_ordered(|app: &mut App| {
+        app.insert_resource(ReplaySource {
+            effects: EffectLog::default(),
+            flags: ReplayFlags::default(),
+        })
+        .add_plugins((SessionReplayPlugin, corpus_plan_mode::PlanModePlugin));
+    });
+}
