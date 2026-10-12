@@ -253,7 +253,7 @@ fn summarize(
             .duration(Duration::from_secs(secs))
             .queue(move |world: &mut World| {
                 if let Some(mut decision) = world.get_mut::<Decision>(summary) {
-                    decision.decide(Outcome(Err(late)));
+                    decision.decide(Decider::plugin("summarize-tool-output"), Outcome(Err(late)));
                 }
             });
     }

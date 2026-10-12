@@ -385,7 +385,7 @@ fn load_skill(
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
     if let Ok(mut decision) = decisions.get_mut(called.call) {
-        decision.decide(output);
+        decision.decide(Decider::plugin("skills"), output);
     }
 }
 

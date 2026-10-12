@@ -298,7 +298,7 @@ fn answered(
     if !Answer::of(outcome).is_some_and(|answer| answer.is("share"))
         && let Ok(mut decision) = uploads.get_mut(effect)
     {
-        decision.decide(Outcome::refused("not shared"));
+        decision.decide(Decider::plugin("share"), Outcome::refused("not shared"));
     }
     commands.entity(answer.entity).remove::<HoldOf>();
 }
