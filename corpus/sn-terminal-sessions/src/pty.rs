@@ -256,12 +256,22 @@ impl Pty {
     }
 
     /// Whether the terminal's foreground process group is the program's,
-    /// not a job it started, such as a command a shell runs.
+    /// not a job it started, such as a command a shell runs. A `sh -c`
+    /// that did not exec its command (dash) makes no groups, so a child of
+    /// it that leads the foreground group is the program, such as an
+    /// interactive shell that took the terminal for itself.
     fn holds_terminal(&self) -> bool {
         // SAFETY: `tcgetpgrp` reads the foreground group of an open
         // terminal descriptor.
         let group = unsafe { libc::tcgetpgrp(self.master.as_raw_fd()) };
-        u32::try_from(group).is_ok_and(|group| group == self.pid)
+        let Ok(group) = u32::try_from(group) else {
+            return false;
+        };
+        let still_sh_c = || {
+            fs::read(format!("/proc/{}/cmdline", self.pid))
+                .is_ok_and(|line| line.split(|&byte| byte == 0).nth(1) == Some(b"-c"))
+        };
+        group == self.pid || (stat_field(group, 1) == Some(i64::from(self.pid)) && still_sh_c())
     }
 
     /// Hangs up on the program: `SIGHUP` to its group and the foreground
@@ -322,14 +332,18 @@ pub fn in_session(session: i32) -> Vec<i32> {
     entries
         .flatten()
         .filter_map(|entry| {
-            let pid: i32 = entry.file_name().to_str()?.parse().ok()?;
-            let stat = fs::read_to_string(entry.path().join("stat")).ok()?;
-            // After the command's `)`: state, ppid, pgrp, session.
-            let (_, rest) = stat.rsplit_once(')')?;
-            let sid: i32 = rest.split_whitespace().nth(3)?.parse().ok()?;
-            (sid == session).then_some(pid)
+            let pid: u32 = entry.file_name().to_str()?.parse().ok()?;
+            (stat_field(pid, 3)? == i64::from(session)).then_some(i32::try_from(pid).ok()?)
         })
         .collect()
+}
+
+/// Field `index` of process `pid`'s stat after its command: 0 its state,
+/// 1 its parent, 2 its group, 3 its session.
+fn stat_field(pid: u32, index: usize) -> Option<i64> {
+    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    let (_, rest) = stat.rsplit_once(')')?;
+    rest.split_whitespace().nth(index)?.parse().ok()
 }
 
 /// Unlocks the pty `master` and names its slave.
