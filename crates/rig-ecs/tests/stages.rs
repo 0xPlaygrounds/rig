@@ -2763,7 +2763,8 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
     assert_eq!((own.request_count(), adapted.request_count()), (0, 1));
 }
 
-/// The system prompts of the model calls Prepare saw, in parts.
+/// The system prompts of the model calls Prepare saw, in parts and as
+/// Start sends them.
 #[derive(Resource, Default)]
 struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
 
@@ -2771,10 +2772,14 @@ struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
 fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
-    let read = |calls: Query<&ModelRequest, Added<Admitted>>, mut prompts: ResMut<Prompts>| {
-        prompts
-            .0
-            .extend(calls.iter().map(|call| call.prompt.clone()));
+    // Each call's prompt in parts, then as Start sends it.
+    let read = |calls: Query<(&ModelRequest, &Adapters, &ForAgent), Added<Admitted>>,
+                starts: ModelStarts,
+                mut prompts: ResMut<Prompts>| {
+        for (call, adapters, agent) in &calls {
+            let sent = starts.prompt(call, Some(adapters), Some(agent.0));
+            prompts.0.extend([call.prompt.clone(), sent]);
+        }
     };
     app.init_resource::<Ended>()
         .init_resource::<Prompts>()
@@ -2801,6 +2806,10 @@ fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
         prompt.section("tool_rules").map(|s| s.text.as_str()),
         Some("- Add with add.")
     );
+    // Start sends the rules of no tool: the model carries none.
+    let sent = prompts.get(1).and_then(Option::as_ref);
+    let rules = sent.and_then(|prompt| prompt.section(rig_ecs::prompt::TOOL_RULES));
+    assert_eq!(rules.map(|s| s.text.as_str()), Some(""), "{sent:?}");
     // The model is sent no tools, and one system message without their
     // rules.
     let requests = own.requests();

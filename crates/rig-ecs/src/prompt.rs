@@ -71,8 +71,9 @@ pub struct AgentSections(Vec<Entity>);
 #[reflect(Component, Clone, Debug, Default)]
 pub struct ToolRules(pub Vec<String>);
 
-/// The tag of the section the kernel writes the tool rules in.
-pub(crate) const TOOL_RULES: &str = "tool_rules";
+/// The tag of the section the kernel writes the tool rules in, which
+/// Start fills ([`ModelStarts::prompt`](super::turn::ModelStarts::prompt)).
+pub const TOOL_RULES: &str = "tool_rules";
 
 /// The text of the `tool_rules` section of tools with `rules` (in the
 /// order the tools are sent): a line per rule, saying a rule two tools

@@ -736,17 +736,32 @@ impl ModelStarts<'_, '_> {
         agent: Option<Entity>,
     ) -> Result<(Connection, CompletionRequest), ErrorReport> {
         let mut model = model.clone();
-        let connection = self.start(&mut model, adapters, agent)?;
+        let connection = self.start(&mut model, adapters, agent, true)?;
         Ok((connection, model.request))
     }
 
+    /// The system prompt Start sends in front of `model`, a call for
+    /// `agent`, its [`TOOL_RULES`] section filled for the tools the model
+    /// carries; `None` without a prompt in parts or a model.
+    pub fn prompt(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Option<completion::SystemPrompt> {
+        let mut model = model.clone();
+        self.start(&mut model, adapters, agent, false).ok()?;
+        model.prompt
+    }
+
     /// Makes `model`'s request the one [`Self::sent`] says, on the
-    /// connection it returns.
+    /// connection it returns; its prompt stays in parts unless `send`.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
+        send: bool,
     ) -> Result<Connection, ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
@@ -761,17 +776,17 @@ impl ModelStarts<'_, '_> {
             request.tools.clear();
         }
         spec.fit(request);
-        if let Some(mut prompt) = model.prompt.take() {
-            if let Some(section) = prompt.sections.iter_mut().find(|it| it.tag == TOOL_RULES) {
-                let carried = request.tools.iter().filter_map(|tool| {
-                    let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
-                    rules.map(|(_, rules)| rules)
-                });
-                section.text = tool_rules(carried);
-            }
-            request
-                .chat_history
-                .insert(0, Message::system(prompt.text()));
+        let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);
+        if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
+            let carried = request.tools.iter().filter_map(|tool| {
+                let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
+                rules.map(|(_, rules)| rules)
+            });
+            section.text = tool_rules(carried);
+        }
+        if send && let Some(prompt) = model.prompt.take() {
+            let text = Message::system(prompt.text());
+            request.chat_history.insert(0, text);
         }
         Ok(connection)
     }

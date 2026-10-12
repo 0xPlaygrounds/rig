@@ -1007,7 +1007,7 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let connection = match models.start(&mut model, item.adapters, agent) {
+            let connection = match models.start(&mut model, item.adapters, agent, true) {
                 Ok(connection) => connection,
                 Err(report) => {
                     started.try_insert_if_new(Outcome(Err(report)));
