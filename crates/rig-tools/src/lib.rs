@@ -25,6 +25,7 @@
 //!   and [`ReadArgs::show`]: what `read` shows of it;
 //! - [`workspace`]: the disk and the commands the tools act on;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
+//! - [`clipboard`]: the system clipboard's text and images;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
 //! - [`fs`]: an atomic file write and capped text reads on this machine;
@@ -44,6 +45,7 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 pub mod attach;
 mod blocking;
+pub mod clipboard;
 pub mod context;
 mod delete;
 pub mod edit;
