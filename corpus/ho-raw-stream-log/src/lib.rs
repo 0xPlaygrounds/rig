@@ -9,14 +9,14 @@
 //! record of its own in the call's file: a retry of the call, or a resend
 //! inside one dispatch.
 //!
-//! - Every model is reached through a [`Tee`]: the plugin wraps the
+//! - Every model is reached through a `Tee`: the plugin wraps the
 //!   [`Models`] transport once, at build. The tee passes everything on
 //!   unchanged and hands a copy of each send of a recorded call (its
 //!   [`Serving`] names the call's effect) to a writer thread.
 //! - Prepare: each model call admitted while the log is on is recorded by
 //!   its effect id, until its entity is gone; a call that supersedes a
 //!   recorded one, such as a retry, shares its file.
-//! - The writer thread redacts secrets ([`rig_core::redact`]), writes the
+//! - The writer thread redacts secrets ([`redact`]), writes the
 //!   lines, keeps the folder under 50 MB (oldest files first) and reports
 //!   back as a stream on an entity: one notice when it first trims, and one
 //!   warning when a write fails, which turns the log off.
