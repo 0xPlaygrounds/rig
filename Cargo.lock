@@ -15454,6 +15454,7 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_reflect",
+ "bevy_tasks",
  "chrono",
  "rig-cassette",
  "rig-core",
