@@ -1,18 +1,16 @@
-//! The keys and the encrypted session store: [`Crypt`] seals and opens
-//! bytes with ChaCha20-Poly1305 under a key derived from a passphrase with
-//! Argon2id, and [`CryptStore`] keeps a session's journal sealed in its
-//! directory, laid out as rig-cassette's `JsonlDirStore` lays it out, so
-//! the harness still finds its agent logs by name.
+//! The key and the sealing store: [`Crypt`] seals and opens bytes with
+//! ChaCha20-Poly1305 under a key Argon2id derives from a passphrase, and
+//! [`CryptStore`] keeps a session's files sealed in another store, which
+//! keeps them where and how it likes.
 
 use std::collections::HashMap;
-use std::fs::{self, File, OpenOptions};
-use std::io::{self, Write};
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
+use std::fs;
+use std::io;
+use std::path::Path;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use argon2::{Algorithm, Argon2, Params, Version};
-use rig_cassette::journal::{JournalStore, check_file_name};
-use rig_harness::prelude::Resource;
+use rig_harness::prelude::{JournalStore, Resource};
 use ring::aead::{Aad, CHACHA20_POLY1305, LessSafeKey, NONCE_LEN, Nonce, UnboundKey};
 use ring::hmac;
 use ring::rand::{SecureRandom, SystemRandom};
@@ -22,12 +20,6 @@ pub const TAMPERED: &str = "session file corrupted or tampered";
 
 /// What the key check file holds, sealed.
 const CHECK: &[u8] = b"rig-crypt-check-v1";
-
-/// The extension of an agent log, as the harness names it.
-const LOG: &str = "jsonl";
-
-/// The effect log, which is no agent's log.
-const EFFECTS: &str = "effects.jsonl";
 
 fn tampered() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, TAMPERED)
@@ -56,11 +48,9 @@ struct Keys {
     name: hmac::Key,
 }
 
-/// The session key, shared by the store and any plugin writing files into
-/// the session's directory ([`Crypt::write_file`]). Cloning shares it;
-/// [`Crypt::take_key_of`] swaps it for every clone.
+/// The sessions' key. Cloning shares it.
 #[derive(Resource, Clone)]
-pub struct Crypt(Arc<RwLock<Arc<Keys>>>);
+pub struct Crypt(Arc<Keys>);
 
 impl Crypt {
     /// The key `passphrase` derives with `salt`.
@@ -83,21 +73,7 @@ impl Crypt {
             name: hmac::Key::new(hmac::HMAC_SHA256, name),
         };
         bytes.fill(0);
-        Ok(Self(Arc::new(RwLock::new(Arc::new(keys)))))
-    }
-
-    fn keys(&self) -> Arc<Keys> {
-        self.0
-            .read()
-            .unwrap_or_else(PoisonError::into_inner)
-            .clone()
-    }
-
-    /// Takes the key of `other` for this one and every clone of it, such
-    /// as the running session's store after [`rekey_session`].
-    pub fn take_key_of(&self, other: &Self) {
-        let keys = other.keys();
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = keys;
+        Ok(Self(Arc::new(keys)))
     }
 
     /// `plain` sealed: a random nonce, then the ciphertext and its tag,
@@ -112,7 +88,7 @@ impl Crypt {
             .fill(&mut nonce)
             .map_err(|_| io::Error::other("no randomness"))?;
         let mut sealed = plain.to_vec();
-        self.keys()
+        self.0
             .seal
             .seal_in_place_append_tag(
                 Nonce::assume_unique_for_key(nonce),
@@ -136,41 +112,21 @@ impl Crypt {
         let nonce = Nonce::try_assume_unique_for_key(nonce).map_err(|_| tampered())?;
         let mut body = body.to_vec();
         let plain = self
-            .keys()
+            .0
             .seal
             .open_in_place(nonce, Aad::from(context), &mut body)
             .map_err(|_| tampered())?;
         Ok(plain.to_vec())
     }
 
-    /// A file name for `name` that does not tell it, such as a blob's
-    /// content hash.
+    /// A name for `name` that does not tell it, such as a blob's content
+    /// hash.
     fn hide(&self, name: &str) -> String {
-        let tag = hmac::sign(&self.keys().name, name.as_bytes());
+        let tag = hmac::sign(&self.0.name, name.as_bytes());
         tag.as_ref()
             .iter()
             .map(|byte| format!("{byte:02x}"))
             .collect()
-    }
-
-    /// Writes `bytes` sealed to `path`, such as a plugin's file in the
-    /// session's directory, through a temporary file.
-    ///
-    /// # Errors
-    ///
-    /// When it cannot be written.
-    pub fn write_file(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
-        let sealed = self.seal(b"file", bytes)?;
-        replace(path, &sealed)
-    }
-
-    /// What [`Crypt::write_file`] wrote to `path`.
-    ///
-    /// # Errors
-    ///
-    /// When it cannot be read, or [`TAMPERED`].
-    pub fn read_file(&self, path: &Path) -> io::Result<Vec<u8>> {
-        self.open(b"file", &fs::read(path)?)
     }
 
     /// Whether this key sealed the check at `path`, or, without one yet,
@@ -189,7 +145,10 @@ impl Crypt {
                 )),
             },
             Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
-                replace(path, &self.seal(b"check", CHECK)?)
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)?;
+                }
+                fs::write(path, self.seal(b"check", CHECK)?)
             }
             Err(failure) => Err(failure),
         }
@@ -209,30 +168,7 @@ pub fn new_salt() -> io::Result<[u8; 16]> {
     Ok(salt)
 }
 
-/// Writes `bytes` to `path` through a temporary file beside it.
-fn replace(path: &Path, bytes: &[u8]) -> io::Result<()> {
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    let temporary = path.with_extension("tmp");
-    let mut file = File::create(&temporary)?;
-    file.write_all(bytes)?;
-    file.sync_all()?;
-    fs::rename(&temporary, path)
-}
-
-/// Overwrites `path` with zeros, then removes it: as far as a file system
-/// that writes in place allows, the old bytes are gone.
-pub fn shred(path: &Path) -> io::Result<()> {
-    let len = fs::metadata(path)?.len();
-    let mut file = OpenOptions::new().write(true).open(path)?;
-    let zeros = vec![0u8; usize::try_from(len).unwrap_or(0)];
-    file.write_all(&zeros)?;
-    file.sync_all()?;
-    fs::remove_file(path)
-}
-
-/// The frames of a sealed log: each a big-endian `u32` length, then that
+/// The frames of sealed bytes: each a big-endian `u32` length, then that
 /// many sealed bytes.
 fn frames(bytes: &[u8]) -> io::Result<Vec<&[u8]>> {
     let mut rest = bytes;
@@ -248,239 +184,193 @@ fn frames(bytes: &[u8]) -> io::Result<Vec<&[u8]>> {
     Ok(frames)
 }
 
-/// A file sealed as frames: an agent's log, or a session file by name.
-#[derive(Clone, Copy)]
+/// A file kept as sealed frames: an agent's log, or a session file by
+/// name.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum Framed<'a> {
     Log(&'a str),
     File(&'a str),
 }
 
-/// What a frame of `file` is bound to: its file and its place, so frames
-/// cannot be moved between files or reordered.
-fn frame_context(file: Framed<'_>, index: usize) -> Vec<u8> {
-    match file {
-        Framed::Log(agent) => format!("log\0{agent}\0{index}").into_bytes(),
-        Framed::File(name) => format!("file\0{name}\0{index}").into_bytes(),
+impl Framed<'_> {
+    /// What its frame at `index` is bound to: the file and the place, so
+    /// frames cannot be moved between files, reordered or left out
+    /// before the last.
+    fn context(self, index: usize) -> Vec<u8> {
+        match self {
+            Framed::Log(agent) => format!("log\0{agent}\0{index}").into_bytes(),
+            Framed::File(name) => format!("file\0{name}\0{index}").into_bytes(),
+        }
+    }
+
+    fn key(self) -> (bool, String) {
+        match self {
+            Framed::Log(agent) => (true, agent.to_owned()),
+            Framed::File(name) => (false, name.to_owned()),
+        }
     }
 }
 
-/// A frame of `file` at `index`, holding `plain`.
-fn frame(crypt: &Crypt, file: Framed<'_>, index: usize, plain: &[u8]) -> io::Result<Vec<u8>> {
-    let sealed = crypt.seal(&frame_context(file, index), plain)?;
-    let len = u32::try_from(sealed.len()).map_err(io::Error::other)?;
-    let mut out = len.to_be_bytes().to_vec();
-    out.extend(sealed);
-    Ok(out)
-}
-
-/// Opens every frame of `file`, sealed as `bytes`.
-fn open_frames(crypt: &Crypt, file: Framed<'_>, bytes: &[u8]) -> io::Result<Vec<u8>> {
-    let mut plain = Vec::new();
-    for (index, sealed) in frames(bytes)?.into_iter().enumerate() {
-        plain.extend(crypt.open(&frame_context(file, index), sealed)?);
-    }
-    Ok(plain)
-}
-
-/// A session's journal, sealed, in its directory: `<agent>.jsonl` holds
-/// an agent's log as sealed frames, one per append, `blobs/<hidden>` each
-/// blob with its name, under a name that does not tell its content hash,
-/// and `<name>` each other file as sealed frames.
+/// A session's files sealed in another store, `inner`: an agent's log and
+/// each other file as sealed frames, one per append, under their own
+/// names, and each blob with its name under a name that does not tell its
+/// content hash.
 pub struct CryptStore {
-    dir: PathBuf,
+    inner: Arc<dyn JournalStore>,
     crypt: Crypt,
-    /// Each framed file's length and frames when last seen.
-    counts: Mutex<HashMap<PathBuf, (u64, usize)>>,
+    /// The frames of each framed file, once counted.
+    counts: Mutex<HashMap<(bool, String), usize>>,
 }
 
 impl CryptStore {
-    /// The session in `dir`, sealed with `crypt`.
-    pub fn new(dir: impl Into<PathBuf>, crypt: Crypt) -> Self {
+    /// The session `inner` keeps, sealed with `crypt`.
+    pub fn new(inner: Arc<dyn JournalStore>, crypt: Crypt) -> Self {
         Self {
-            dir: dir.into(),
+            inner,
             crypt,
             counts: Mutex::new(HashMap::new()),
         }
     }
 
-    fn log(&self, agent: &str) -> PathBuf {
-        self.dir.join(format!("{agent}.{LOG}"))
-    }
-
-    fn blob_path(&self, name: &str) -> PathBuf {
-        self.dir.join("blobs").join(self.crypt.hide(name))
-    }
-
-    /// Where the session file `name` is kept, laid out as rig-cassette's
-    /// `JsonlDirStore` lays it out: refused when it would be read as an
-    /// agent log or a blob.
-    fn file(&self, name: &str) -> io::Result<PathBuf> {
-        check_file_name(name)?;
-        let log = !name.contains('/')
-            && name != EFFECTS
-            && Path::new(name).extension().is_some_and(|ext| ext == LOG);
-        if log || name.split('/').next() == Some("blobs") {
-            let why = format!("{name:?} is where a session directory keeps its logs or blobs");
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
-        }
-        Ok(self.dir.join(name))
-    }
-
-    fn counts(&self) -> MutexGuard<'_, HashMap<PathBuf, (u64, usize)>> {
+    fn counts(&self) -> MutexGuard<'_, HashMap<(bool, String), usize>> {
         self.counts.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// The frames of the file at `path`: cached by its length, so a file
-    /// rewritten elsewhere, such as by [`rekey_session`], is counted again.
-    fn count(&self, path: &Path) -> io::Result<usize> {
-        let len = match fs::metadata(path) {
-            Ok(metadata) => metadata.len(),
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(0),
-            Err(failure) => return Err(failure),
-        };
-        if let Some((known, count)) = self.counts().get(path)
-            && *known == len
-        {
+    /// `plain` as the frame of `file` at `index`.
+    fn frame(&self, file: Framed<'_>, index: usize, plain: &[u8]) -> io::Result<Vec<u8>> {
+        let sealed = self.crypt.seal(&file.context(index), plain)?;
+        let len = u32::try_from(sealed.len()).map_err(io::Error::other)?;
+        let mut out = len.to_be_bytes().to_vec();
+        out.extend(sealed);
+        Ok(out)
+    }
+
+    /// Opens every frame of `file`, kept as `sealed`, and remembers how
+    /// many there are.
+    fn open(&self, file: Framed<'_>, sealed: &[u8]) -> io::Result<Vec<u8>> {
+        let mut plain = Vec::new();
+        let frames = frames(sealed)?;
+        let count = frames.len();
+        for (index, frame) in frames.into_iter().enumerate() {
+            plain.extend(self.crypt.open(&file.context(index), frame)?);
+        }
+        self.counts().insert(file.key(), count);
+        Ok(plain)
+    }
+
+    /// The frames `file` has, reading it the first time.
+    fn count(
+        &self,
+        file: Framed<'_>,
+        sealed: impl FnOnce() -> io::Result<Vec<u8>>,
+    ) -> io::Result<usize> {
+        if let Some(count) = self.counts().get(&file.key()) {
             return Ok(*count);
         }
-        let count = frames(&fs::read(path)?)?.len();
-        self.counts().insert(path.to_owned(), (len, count));
+        let count = match sealed() {
+            Ok(sealed) => frames(&sealed)?.len(),
+            Err(failure) if failure.kind() == io::ErrorKind::NotFound => 0,
+            Err(failure) => return Err(failure),
+        };
+        self.counts().insert(file.key(), count);
         Ok(count)
     }
 
-    /// Replaces the file at `path` with `plain` as one frame of `file`, or
-    /// with nothing.
-    fn replace_framed(&self, path: &Path, file: Framed<'_>, plain: &[u8]) -> io::Result<()> {
+    /// `plain` as all of `file`: one frame, or none.
+    fn whole(&self, file: Framed<'_>, plain: &[u8]) -> io::Result<Vec<u8>> {
         let sealed = if plain.is_empty() {
             Vec::new()
         } else {
-            frame(&self.crypt, file, 0, plain)?
+            self.frame(file, 0, plain)?
         };
-        replace(path, &sealed)?;
-        let frames = usize::from(!plain.is_empty());
         self.counts()
-            .insert(path.to_owned(), (sealed.len() as u64, frames));
-        Ok(())
+            .insert(file.key(), usize::from(!plain.is_empty()));
+        Ok(sealed)
     }
-
-    /// Appends `bytes` to the file at `path` as the next frame of `file`.
-    fn append_framed(&self, path: &Path, file: Framed<'_>, bytes: &[u8]) -> io::Result<()> {
-        if bytes.is_empty() {
-            return Ok(());
-        }
-        let index = self.count(path)?;
-        let framed = frame(&self.crypt, file, index, bytes)?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let mut handle = OpenOptions::new().create(true).append(true).open(path)?;
-        handle.write_all(&framed)?;
-        let len = handle.metadata()?.len();
-        self.counts().insert(path.to_owned(), (len, index + 1));
-        Ok(())
-    }
-
-    /// Removes the file at `path`, if it is there.
-    fn remove_path(&self, path: &Path) -> io::Result<()> {
-        self.counts().remove(path);
-        match fs::remove_file(path) {
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => Ok(()),
-            removed => removed,
-        }
-    }
-}
-
-/// The agent logs of `dir`, by agent id, as the harness lists them.
-fn agent_logs(dir: &Path) -> io::Result<Vec<String>> {
-    let entries = match fs::read_dir(dir) {
-        Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-        entries => entries?,
-    };
-    Ok(entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            let stem = path.file_stem()?.to_str()?;
-            let log = path.extension()? == LOG && !stem.is_empty();
-            (log && path.file_name()? != EFFECTS).then(|| stem.to_owned())
-        })
-        .collect())
 }
 
 impl JournalStore for CryptStore {
     fn agents(&self) -> io::Result<Vec<String>> {
-        agent_logs(&self.dir)
+        self.inner.agents()
     }
 
     fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
-        open_frames(&self.crypt, Framed::Log(agent), &fs::read(self.log(agent))?)
+        self.open(Framed::Log(agent), &self.inner.read(agent)?)
     }
 
     fn truncate(&self, agent: &str, len: u64) -> io::Result<()> {
         let mut plain = self.read(agent)?;
         plain.truncate(usize::try_from(len).map_err(io::Error::other)?);
-        self.replace_framed(&self.log(agent), Framed::Log(agent), &plain)
+        let sealed = self.whole(Framed::Log(agent), &plain)?;
+        self.inner.truncate(agent, 0)?;
+        self.inner.append(agent, &sealed)
     }
 
     fn append(&self, agent: &str, bytes: &[u8]) -> io::Result<()> {
-        self.append_framed(&self.log(agent), Framed::Log(agent), bytes)
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let file = Framed::Log(agent);
+        let index = self.count(file, || self.inner.read(agent))?;
+        self.inner.append(agent, &self.frame(file, index, bytes)?)?;
+        self.counts().insert(file.key(), index + 1);
+        Ok(())
     }
 
     fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        let path = self.blob_path(name);
-        if path.exists() {
-            return Ok(());
-        }
         let len = u16::try_from(name.len()).map_err(io::Error::other)?;
         let mut plain = len.to_be_bytes().to_vec();
         plain.extend_from_slice(name.as_bytes());
         plain.extend_from_slice(bytes);
-        replace(&path, &self.crypt.seal(b"blob", &plain)?)
+        let sealed = self.crypt.seal(b"blob", &plain)?;
+        self.inner.put_blob(&self.crypt.hide(name), &sealed)
     }
 
     fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
-        let (stored, bytes) = open_blob(&self.crypt, &fs::read(self.blob_path(name))?)?;
-        if stored == name {
-            Ok(bytes)
-        } else {
-            Err(tampered())
+        let sealed = self.inner.blob(&self.crypt.hide(name))?;
+        match open_blob(&self.crypt, &sealed)? {
+            (stored, bytes) if stored == name => Ok(bytes),
+            _ => Err(tampered()),
         }
     }
 
     fn blobs(&self) -> io::Result<Vec<String>> {
-        let entries = match fs::read_dir(self.dir.join("blobs")) {
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => return Ok(Vec::new()),
-            entries => entries?,
-        };
-        let mut names = Vec::new();
-        for entry in entries.filter_map(Result::ok) {
-            if entry.path().extension().is_some_and(|ext| ext == "tmp") {
-                continue;
-            }
-            names.push(open_blob(&self.crypt, &fs::read(entry.path())?)?.0);
-        }
-        Ok(names)
+        self.inner
+            .blobs()?
+            .iter()
+            .map(|hidden| Ok(open_blob(&self.crypt, &self.inner.blob(hidden)?)?.0))
+            .collect()
     }
 
     fn remove(&self, agent: &str) -> io::Result<()> {
-        self.remove_path(&self.log(agent))
+        self.counts().remove(&Framed::Log(agent).key());
+        self.inner.remove(agent)
     }
 
     fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.replace_framed(&self.file(name)?, Framed::File(name), bytes)
+        let sealed = self.whole(Framed::File(name), bytes)?;
+        self.inner.write_file(name, &sealed)
     }
 
     fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
-        self.append_framed(&self.file(name)?, Framed::File(name), bytes)
+        if bytes.is_empty() {
+            return Ok(());
+        }
+        let file = Framed::File(name);
+        let index = self.count(file, || self.inner.read_file(name))?;
+        self.inner
+            .append_file(name, &self.frame(file, index, bytes)?)?;
+        self.counts().insert(file.key(), index + 1);
+        Ok(())
     }
 
     fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
-        let sealed = fs::read(self.file(name)?)?;
-        open_frames(&self.crypt, Framed::File(name), &sealed)
+        self.open(Framed::File(name), &self.inner.read_file(name)?)
     }
 
     fn remove_file(&self, name: &str) -> io::Result<()> {
-        self.remove_path(&self.file(name)?)
+        self.counts().remove(&Framed::File(name).key());
+        self.inner.remove_file(name)
     }
 }
 
@@ -492,91 +382,4 @@ fn open_blob(crypt: &Crypt, sealed: &[u8]) -> io::Result<(String, Vec<u8>)> {
     let (name, bytes) = rest.split_at_checked(len).ok_or_else(tampered)?;
     let name = String::from_utf8(name.to_vec()).map_err(|_| tampered())?;
     Ok((name, bytes.to_vec()))
-}
-
-/// Whether a log file is still plain JSON lines: sealed frames start with
-/// a length, whose first byte is zero for any frame under 16 MiB.
-fn is_plain(bytes: &[u8]) -> bool {
-    bytes.first().is_some_and(|byte| *byte == b'{')
-}
-
-/// Encrypts the plain logs and blobs of the session in `dir` in place: each
-/// sealed file is written first, then the plain one overwritten and
-/// removed. The effect log, which the stack keeps only in plain text, is
-/// shredded. Returns how many files it encrypted.
-///
-/// # Errors
-///
-/// When a file cannot be read or written; the files done stay done.
-pub fn encrypt_session(dir: &Path, crypt: &Crypt) -> io::Result<usize> {
-    let store = CryptStore::new(dir, crypt.clone());
-    let mut done = 0;
-    for agent in agent_logs(dir)? {
-        let path = store.log(&agent);
-        let bytes = fs::read(&path)?;
-        if !is_plain(&bytes) {
-            continue;
-        }
-        let sealed = frame(crypt, Framed::Log(&agent), 0, &bytes)?;
-        let temporary = path.with_extension("sealed");
-        fs::write(&temporary, &sealed)?;
-        shred(&path)?;
-        fs::rename(&temporary, &path)?;
-        done += 1;
-    }
-    let blobs = dir.join("blobs");
-    if let Ok(entries) = fs::read_dir(&blobs) {
-        for entry in entries.filter_map(Result::ok) {
-            // A plain blob is named by its content hash and extension; a
-            // sealed one by a bare HMAC.
-            let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
-                continue;
-            };
-            if !name.contains('.') || name.ends_with(".tmp") {
-                continue;
-            }
-            store.put_blob(&name, &fs::read(entry.path())?)?;
-            shred(&entry.path())?;
-            done += 1;
-        }
-    }
-    let effects = dir.join(EFFECTS);
-    if effects.exists() {
-        shred(&effects)?;
-    }
-    Ok(done)
-}
-
-/// Seals every log and blob of the session in `dir` again under `to`
-/// instead of `from`. Every new file is written before any old one is
-/// replaced.
-///
-/// # Errors
-///
-/// When a file cannot be read, or [`TAMPERED`] under `from`.
-pub fn rekey_session(dir: &Path, from: &Crypt, to: &Crypt) -> io::Result<()> {
-    let old = CryptStore::new(dir, from.clone());
-    let mut staged: Vec<(PathBuf, Vec<u8>)> = Vec::new();
-    for agent in agent_logs(dir)? {
-        let plain = old.read(&agent)?;
-        let sealed = if plain.is_empty() {
-            Vec::new()
-        } else {
-            frame(to, Framed::Log(&agent), 0, &plain)?
-        };
-        staged.push((old.log(&agent), sealed));
-    }
-    let new = CryptStore::new(dir, to.clone());
-    let mut blobs = Vec::new();
-    for name in old.blobs()? {
-        blobs.push((old.blob_path(&name), name.clone(), old.blob(&name)?));
-    }
-    for (path, sealed) in staged {
-        replace(&path, &sealed)?;
-    }
-    for (path, name, bytes) in blobs {
-        new.put_blob(&name, &bytes)?;
-        fs::remove_file(path)?;
-    }
-    Ok(())
 }
