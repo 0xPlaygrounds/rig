@@ -10,16 +10,17 @@
 //! own: the agent's requests never carry the side question.
 //!
 //! The answer streams into a box under the terminal view's transcript
-//! ([`SideChat`], drawn in its panel), which takes the keys: what is typed there and sent
-//! with Enter is a follow-up to the same side agent, as is `/btw` while it
-//! is open (`/btw new <question>` replaces it), Ctrl+Y copies the last
-//! answer into the main input without sending it and closes the box, and
-//! Esc closes it. Closing retires the side agent. Each side conversation is
-//! kept with the session on the agent it was asked beside
-//! ([`SideConversations`], saved), apart from its conversation, and the
-//! transcript gets one line about it when it closes. Its model calls are
-//! the side agent's, so its cost is that agent's spending, with the
-//! purpose [`PURPOSE`]. Interrupting either agent stops only that one.
+//! ([`SideChat`], drawn in its panel), which takes the keys: what is typed
+//! there and sent with Enter is a follow-up to the same side agent, as is
+//! `/btw` while it is open (`/btw new <question>` replaces it), Ctrl+Y
+//! copies the last answer into the main input without sending it and
+//! closes the box, and Esc closes it. Closing retires the side agent. Each
+//! side conversation is a [`TranscriptEntry`] of the agent it was asked
+//! beside, after the message it was asked at: titled by its first question
+//! and drawn cut until expanded, kept with the session, never part of the
+//! conversation. Its model calls are the side agent's, so its cost is that
+//! agent's spending, with the purpose [`PURPOSE`]. Interrupting either
+//! agent stops only that one.
 //!
 //! ```toml
 //! [btw]
@@ -28,7 +29,7 @@
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::transcript::{close_pending_with, pending_calls};
-use rig_subagents::{Helper, SpawnSubagent, SpawnedAgent};
+use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
@@ -65,23 +66,18 @@ pub struct BtwSettings {
 }
 
 /// A side question and its answer.
-#[derive(Reflect, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct SideExchange {
     /// What the user asked.
     pub question: String,
-    /// The side agent's answer, as streamed so far.
+    /// The side agent's answer, once its turn ended.
     pub answer: String,
 }
 
-/// On an agent: the side conversations asked beside it, oldest first,
-/// each one entry of exchanges. Saved with the session, never part of its
-/// conversation.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Eq)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct SideConversations(pub Vec<Vec<SideExchange>>);
-
-/// On a side agent this run started.
-#[derive(Component, Clone, Copy, Debug)]
+/// On a side agent, kept with the session: one a restore brings back is
+/// retired, its panel being gone.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
+#[reflect(Component, Saved, Default)]
 pub struct SideAgent;
 
 /// On a side agent's spawn request: the conversation it starts from.
@@ -118,8 +114,10 @@ pub struct SideChat {
     waiting: Vec<String>,
     /// What is typed in the panel.
     pub draft: String,
-    /// Its entry in the agent's [`SideConversations`], once saved.
-    saved_at: Option<usize>,
+    /// The message of the agent it was asked after.
+    after: Option<MessageId>,
+    /// Its [`TranscriptEntry`] in the agent's transcript, once answered.
+    entry: Option<Entity>,
 }
 
 impl SideChat {
@@ -133,7 +131,8 @@ impl SideChat {
             exchanges: Vec::new(),
             waiting: Vec::new(),
             draft: String::new(),
-            saved_at: None,
+            after: None,
+            entry: None,
         }
     }
 
@@ -142,6 +141,25 @@ impl SideChat {
         self.exchanges
             .last()
             .map(|exchange| exchange.answer.as_str())
+    }
+
+    /// Its transcript entry: titled by the first question, holding every
+    /// exchange.
+    fn entry(&self) -> TranscriptEntry {
+        let first = self.exchanges.first();
+        let title = first
+            .map(|first| first.question.as_str())
+            .unwrap_or_default();
+        let title = match self.exchanges.len().saturating_sub(1) {
+            0 => format!("btw: {title}"),
+            more => format!("btw: {title} (+{more} follow-ups)"),
+        };
+        let text: Vec<String> = self
+            .exchanges
+            .iter()
+            .map(|exchange| format!("› {}\n{}", exchange.question, exchange.answer))
+            .collect();
+        TranscriptEntry::new(TITLE, self.after, title, text.join("\n\n"))
     }
 }
 
@@ -161,10 +179,7 @@ impl Plugin for SideQuestionPlugin {
         app.add_key_binding(close.in_scope(scope), close_on_key);
         app.add_key_binding(send.in_scope(scope), send_to_agent);
         app.add_setting::<BtwSettings>("btw")
-            .register_type::<SideExchange>()
-            .register_type::<Vec<SideExchange>>()
-            .register_type::<Vec<Vec<SideExchange>>>()
-            .register_type::<SideConversations>()
+            .register_type::<SideAgent>()
             .insert_resource(SideChat::closed(panel))
             .add_command(
                 "btw",
@@ -179,17 +194,10 @@ impl Plugin for SideQuestionPlugin {
                 Update,
                 (
                     type_follow_up.before(AgentLoop),
-                    stream_answer.after(AgentLoop),
                     discard_restored.run_if(resource_added::<SessionRestored>),
                 ),
             )
-            .add_systems(
-                PostUpdate,
-                (
-                    redraw.run_if(resource_changed::<SideChat>),
-                    draw.in_set(TuiSystems::Draw),
-                ),
-            );
+            .add_systems(PostUpdate, (redraw, draw.in_set(TuiSystems::Draw)));
     }
 }
 
@@ -257,14 +265,14 @@ fn ask_side(
         focus.0 = Some(chat.panel);
         return;
     }
-    close(&mut chat, &mut commit, &mut commands, &mut notices);
+    close(&mut chat, &mut commit, &mut commands);
     let Ok((conversation, access)) = agents.get(main) else {
         notices.write(Notice::error(main, "/btw needs an agent to ask beside."));
         return;
     };
-    let mut snapshot: Vec<Entry> = (0..conversation.messages().len())
+    let messages = conversation.messages().len();
+    let mut snapshot: Vec<Entry> = (0..messages)
         .filter_map(|at| conversation.entry(at))
-        .map(|entry| Entry { id: None, ..entry })
         .collect();
     let running = pending_calls(conversation.messages());
     if !running.is_empty() {
@@ -288,6 +296,9 @@ fn ask_side(
         request: Some(request),
         exchanges: vec![exchange],
         waiting: vec![question],
+        after: messages
+            .checked_sub(1)
+            .and_then(|last| conversation.id(last)),
         ..SideChat::closed(panel)
     };
     // Under the transcript, which keeps streaming above it.
@@ -332,50 +343,24 @@ fn seed_side_agent(
 /// before the kernel builds them as a turn's.
 fn side_purpose(
     admitted: On<Add<Admitted>>,
-    mut calls: Query<(&mut Effect, &CallOf), With<TurnCall>>,
-    turns: Query<&TurnOf>,
+    mut calls: Query<(&mut Effect, &ForAgent), With<TurnCall>>,
     sides: Query<(), With<SideAgent>>,
 ) {
-    let Ok((mut effect, &CallOf(turn))) = calls.get_mut(admitted.entity) else {
-        return;
-    };
-    if turns
-        .get(turn)
-        .is_ok_and(|&TurnOf(agent)| sides.contains(agent))
+    if let Ok((mut effect, &ForAgent(agent))) = calls.get_mut(admitted.entity)
+        && sides.contains(agent)
     {
         effect.purpose = Some(PURPOSE.into());
     }
 }
 
-/// Adds the side agent's answer text to the last exchange as it streams,
-/// from its model calls still answering: the final answer of one that
-/// settled is the turn's to put there.
-fn stream_answer(
-    mut deltas: MessageReader<StreamDelta>,
-    answering: Query<(), (With<ModelRequest>, Without<Outcome>)>,
-    mut chat: ResMut<SideChat>,
-) {
-    for delta in deltas.read() {
-        let side = delta.agent.is_some() && delta.agent == chat.agent;
-        let StreamEvent::Text { text, .. } = &delta.event else {
-            continue;
-        };
-        if !side || !answering.contains(delta.effect) {
-            continue;
-        }
-        if let Some(last) = chat.exchanges.last_mut() {
-            last.answer.push_str(text);
-        }
-    }
-}
-
 /// Puts the side agent's final answer in the last exchange as its turn
-/// ends, and keeps the side conversation with the agent it is beside.
+/// ends, and the side conversation in the transcript of the agent it is
+/// beside.
 fn answered(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &ForAgent)>,
     mut chat: ResMut<SideChat>,
-    mut kept: Query<&mut SideConversations>,
+    mut entries: Query<&mut TranscriptEntry>,
     mut commands: Commands,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -392,46 +377,21 @@ fn answered(
     if let Some(last) = chat.exchanges.last_mut() {
         last.answer = answer;
     }
-    let exchanges = chat.exchanges.clone();
-    match kept.get_mut(main) {
-        Ok(mut kept) => match chat.saved_at.and_then(|at| kept.0.get_mut(at)) {
-            Some(entry) => *entry = exchanges,
-            None => {
-                chat.saved_at = Some(kept.0.len());
-                kept.0.push(exchanges);
-            }
-        },
-        Err(_) => {
-            chat.saved_at = Some(0);
-            commands
-                .entity(main)
-                .insert(SideConversations(vec![exchanges]));
-        }
+    let entry = chat.entry();
+    match chat.entry.and_then(|shown| entries.get_mut(shown).ok()) {
+        Some(mut shown) => *shown = entry,
+        None => chat.entry = Some(commands.spawn((entry, EntryOf(main))).id()),
     }
 }
 
-/// Closes the side conversation: the side agent is retired, the panel
-/// goes, and the transcript says what was asked.
-fn close(
-    chat: &mut SideChat,
-    commit: &mut Commit,
-    commands: &mut Commands,
-    notices: &mut MessageWriter<Notice>,
-) {
+/// Closes the side conversation: the side agent is retired and the panel
+/// goes; its transcript entry stays.
+fn close(chat: &mut SideChat, commit: &mut Commit, commands: &mut Commands) {
     if let Some(side) = chat.agent.take() {
         commit.retire(side);
     }
     if let Some(request) = chat.request.take() {
         commands.entity(request).try_despawn();
-    }
-    if let (Some(main), Some(first)) = (chat.main, chat.exchanges.first()) {
-        let more = chat.exchanges.len().saturating_sub(1);
-        let more = match more {
-            0 => String::new(),
-            more => format!(" (+{more} follow-ups)"),
-        };
-        let text = format!("btw: {}{more}; kept with the session.", first.question);
-        notices.write(Notice::info(main, text));
     }
     commands.entity(chat.panel).remove::<TuiPanel>();
     *chat = SideChat::closed(chat.panel);
@@ -444,12 +404,11 @@ fn close_on_key(
     mut focus: ResMut<KeyFocus>,
     mut commit: Commit,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     if pressed.released {
         return;
     }
-    close(&mut chat, &mut commit, &mut commands, &mut notices);
+    close(&mut chat, &mut commit, &mut commands);
     focus.0 = None;
 }
 
@@ -462,7 +421,6 @@ fn send_to_agent(
     mut focus: ResMut<KeyFocus>,
     mut commit: Commit,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     if pressed.released {
         return;
@@ -470,7 +428,7 @@ fn send_to_agent(
     if let Some(answer) = chat.last_answer().filter(|answer| !answer.is_empty()) {
         input.set(answer.to_owned());
     }
-    close(&mut chat, &mut commit, &mut commands, &mut notices);
+    close(&mut chat, &mut commit, &mut commands);
     focus.0 = None;
 }
 
@@ -518,38 +476,62 @@ fn type_follow_up(
 }
 
 /// Retires the side agents a restored session brings back: a side agent
-/// lives only while its panel is open, and its exchanges are kept on the
-/// agent it was beside.
-fn discard_restored(helpers: Query<(Entity, &Helper)>, mut commit: Commit) {
-    for (agent, helper) in &helpers {
-        if helper.0 == TITLE {
-            commit.retire(agent);
-        }
+/// lives only while its panel is open, and its exchanges are in the
+/// transcript of the agent it was beside.
+fn discard_restored(
+    sides: Query<Entity, With<SideAgent>>,
+    chat: Res<SideChat>,
+    mut commit: Commit,
+) {
+    for side in sides.iter().filter(|&side| chat.agent != Some(side)) {
+        commit.retire(side);
     }
 }
 
-/// Draws the panel again when the side conversation changed.
-fn redraw(mut redraw: MessageWriter<RequestRedraw>) {
-    redraw.write(RequestRedraw);
+/// The side agent's answer streaming so far, from its model call in flight.
+type Streaming<'w, 's> =
+    Query<'w, 's, (Ref<'static, Partial>, &'static ForAgent), (With<TurnCall>, Without<Settled>)>;
+
+/// The text the side agent of `chat` has streamed so far.
+fn streaming<'a>(chat: &SideChat, partials: &'a Streaming) -> Option<Ref<'a, Partial>> {
+    let side = chat.agent?;
+    partials
+        .iter()
+        .find_map(|(partial, &ForAgent(agent))| (agent == side).then_some(partial))
+}
+
+/// Draws the panel again when the side conversation or its streaming
+/// answer changed.
+fn redraw(chat: Res<SideChat>, partials: Streaming, mut redraw: MessageWriter<RequestRedraw>) {
+    let streamed = streaming(&chat, &partials).is_some_and(|partial| partial.is_changed());
+    if chat.is_changed() || streamed {
+        redraw.write(RequestRedraw);
+    }
 }
 
 /// Draws the side conversation, its latest lines, and the draft.
-fn draw(chat: Res<SideChat>, mut canvases: Query<&mut PanelCanvas, With<TuiPanel>>) {
+fn draw(
+    chat: Res<SideChat>,
+    partials: Streaming,
+    mut canvases: Query<&mut PanelCanvas, With<TuiPanel>>,
+) {
     let Ok(mut canvas) = canvases.get_mut(chat.panel) else {
         return;
     };
+    let streamed = streaming(&chat, &partials);
     let mut lines: Vec<Line> = Vec::new();
-    for exchange in &chat.exchanges {
+    let last = chat.exchanges.len().saturating_sub(1);
+    for (at, exchange) in chat.exchanges.iter().enumerate() {
         lines.push(Line::from(format!("› {}", exchange.question)).bold());
-        if exchange.answer.is_empty() {
+        // The turn's answer goes to the last question; it streams there.
+        let answer = match &streamed {
+            Some(partial) if at == last && exchange.answer.is_empty() => partial.text.as_str(),
+            _ => exchange.answer.as_str(),
+        };
+        if answer.is_empty() {
             lines.push(Line::from("…").dim());
         }
-        lines.extend(
-            exchange
-                .answer
-                .lines()
-                .map(|line| Line::from(line.to_owned())),
-        );
+        lines.extend(answer.lines().map(|line| Line::from(line.to_owned())));
         lines.push(Line::default());
     }
     lines.push(Line::from(format!("> {}", chat.draft)));
