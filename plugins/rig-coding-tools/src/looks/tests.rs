@@ -38,3 +38,10 @@ fn one_line_is_counted_as_one_line() {
     assert!(read_two.contains("first 2 lines"), "{read_two}");
     assert!(read_two.ends_with("⎿ 2 lines"), "{read_two}");
 }
+
+#[test]
+fn a_read_with_a_limit_counts_the_lines_it_read_not_its_note() {
+    let output = "     1\tone\n     2\ttwo\n[5 more lines; read on with offset 3]\n";
+    let shown = drawn(read, "read", json!({ "path": "a", "limit": 2 }), output);
+    assert!(shown.ends_with("⎿ 2 lines"), "{shown}");
+}

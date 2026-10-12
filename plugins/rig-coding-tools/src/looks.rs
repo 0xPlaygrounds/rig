@@ -19,7 +19,11 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let mut rows = vec![view.header(format!("read {path}"), range)];
     match view.result_text() {
         Some(_) if view.failed() => rows.extend(view.result_lines(RESULT_LINES)),
-        Some(text) => rows.push(Line::from(format!("  ⎿ {}", lines(text.lines().count()))).dim()),
+        Some(text) => {
+            // The file's lines, without the read's `[… more lines …]` note.
+            let read = text.lines().filter(|line| !line.starts_with('['));
+            rows.push(Line::from(format!("  ⎿ {}", lines(read.count()))).dim());
+        }
         None => {}
     }
     rows
