@@ -25,7 +25,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
+use rig_harness::rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef};
 use rig_harness::rig_core::effect::{self, FamilyDescriptor, HandlerDescriptor, model_key};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
@@ -106,8 +106,8 @@ pub struct Batched {
     batch: Option<String>,
     since: SystemTime,
     resubmitted: bool,
-    /// The batch price its reply is priced at.
-    pricing: Option<Pricing>,
+    /// The wire bound to the batch model's facts, so its reply is priced
+    /// at the batch price.
     wire: Messages,
     /// The request as sent, which its reply is decoded against.
     request: CompletionRequest,
@@ -262,7 +262,7 @@ fn failed(why: impl Into<String>) -> Outcome {
 }
 
 /// `request` to the batch model `spec`, encoded as a live unary call to
-/// Anthropic's model would send it, by a wire with that model's facts.
+/// Anthropic's model would send it, by a wire bound to `spec`'s facts.
 fn encode(
     account: &AnthropicConfig,
     http: DynHttpClient,
@@ -270,9 +270,9 @@ fn encode(
     spec: &ModelSpec,
     request: CompletionRequest,
 ) -> Result<(Messages, Value, Endpoint), String> {
-    let base = ProviderId::resolve(BASE).map_err(|error| error.to_string())?;
     let model = account.clone().connect(http).completion(&spec.id);
-    let wire = model.wire.with_facts(catalog.facts(base, &spec.id));
+    let facts = ModelFacts::new(spec.clone()).with_catalog(catalog);
+    let wire = model.wire.with_facts(facts);
     let encoded = wire
         .encode(request, Mode::Unary)
         .map_err(|error| error.to_string())?;
@@ -357,7 +357,6 @@ fn take_over(
             batch: None,
             since: SystemTime::now(),
             resubmitted: false,
-            pricing: connection.spec.pricing,
             wire,
             request,
             params,
@@ -397,7 +396,7 @@ fn enqueue(queue: &mut Queue, settings: &BatchSettings, call: Entity, commands: 
     if queue.0.len() == 1 {
         let window = WakeAt::after(Duration::from_millis(settings.window_ms));
         commands.spawn((Window, window));
-    } else if queue.0.len() >= LIMIT {
+    } else if queue.0.len() == LIMIT {
         commands.spawn((Window, WakeAt(UNIX_EPOCH)));
     }
 }
@@ -457,7 +456,8 @@ fn status_of(body: &[u8]) -> Result<BatchStatus, String> {
     serde_json::from_slice(body).map_err(|error| error.to_string())
 }
 
-/// Submits the queue when its window closes.
+/// Submits the queue when its window closes, up to the batch limit; the
+/// rest go in the next batch at once.
 fn submit(
     due: On<Add<Due>>,
     windows: Query<(), With<Window>>,
@@ -470,7 +470,12 @@ fn submit(
     if !windows.contains(due.entity) {
         return;
     }
-    let taken = std::mem::take(&mut queue.0);
+    let full = LIMIT.min(queue.0.len());
+    let rest = queue.0.split_off(full);
+    let taken = std::mem::replace(&mut queue.0, rest);
+    if !queue.0.is_empty() {
+        commands.spawn((Window, WakeAt(UNIX_EPOCH)));
+    }
     let items: Vec<&Batched> = taken
         .iter()
         .filter_map(|&call| calls.get(call).ok())
@@ -675,11 +680,7 @@ fn polled(
             Some(ItemResult::Succeeded { message }) => {
                 let body = WireFrame::Bytes(message.to_string().into_bytes());
                 match decode_reply(&batched.wire, &batched.request, Mode::Unary, [body]) {
-                    Ok(mut reply) => {
-                        reply.usage.cost =
-                            batched.pricing.and_then(|price| price.cost(&reply.usage));
-                        Outcome(Ok(effect::Outcome::Completion(reply)))
-                    }
+                    Ok(reply) => Outcome(Ok(effect::Outcome::Completion(reply))),
                     Err(error) => failed(error.to_string()),
                 }
             }

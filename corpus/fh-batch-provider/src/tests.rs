@@ -3,6 +3,7 @@ use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 
 use rig_cassette::journal::MemoryStore;
+use rig_core::catalog::Pricing;
 use rig_core::http_client::{
     self, LazyBody, MultipartForm, Response, StatusCode, StreamingResponse,
 };
