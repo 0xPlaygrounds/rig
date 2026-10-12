@@ -70,6 +70,7 @@ pub mod secrets;
 pub mod services;
 pub mod settings;
 pub mod successor;
+pub mod transcript;
 pub mod watch;
 pub mod workspace;
 
@@ -141,6 +142,7 @@ pub mod prelude {
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
+    pub use crate::transcript::{EntryOf, TranscriptEntries, TranscriptEntry};
     pub use crate::watch::{FileChanges, FileWatch};
     pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
@@ -177,6 +179,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
+            .add(transcript::TranscriptPlugin)
     }
 }
 
