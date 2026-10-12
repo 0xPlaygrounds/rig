@@ -478,51 +478,63 @@ pub(crate) fn decorate(
         .collect()
 }
 
-/// `line` with each match of `highlights`, ignoring case, in its style.
+/// `line` with each match of `highlights` in its style.
 fn light(line: Line<'static>, highlights: &[Highlight]) -> Line<'static> {
     if highlights.iter().all(|highlight| highlight.text.is_empty()) {
         return line;
     }
-    let base = line.style;
-    let mut cells: Vec<(char, Style)> = line
+    let (cells, matches) = lit(&line, highlights);
+    if matches == 0 {
+        return line;
+    }
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for (character, style, _) in cells {
+        match spans.last_mut() {
+            Some(span) if span.style == style => span.content.to_mut().push(character),
+            _ => spans.push(Span::styled(character.to_string(), style)),
+        }
+    }
+    let mut lit = Line::from(spans).style(line.style);
+    lit.alignment = line.alignment;
+    lit
+}
+
+/// The characters of `line`, each with its style once `highlights` are
+/// lit and whether one lit it, and how many matches lit them. A match
+/// over a character an earlier highlight lit is no match.
+fn lit(line: &Line<'_>, highlights: &[Highlight]) -> (Vec<(char, Style, bool)>, usize) {
+    let mut cells: Vec<(char, Style, bool)> = line
         .spans
         .iter()
-        .flat_map(|span| span.content.chars().map(move |c| (c, span.style)))
+        .flat_map(|span| span.content.chars().map(move |c| (c, span.style, false)))
         .collect();
-    let same = |a: char, b: char| a.to_lowercase().eq(b.to_lowercase());
-    let mut lit = false;
+    let mut matches = 0;
     for highlight in highlights {
         let needle: Vec<char> = highlight.text.chars().collect();
-        if needle.is_empty() || needle.len() > cells.len() {
-            continue;
-        }
+        let same = |a: char, b: char| {
+            if highlight.match_case {
+                a == b
+            } else {
+                a.to_lowercase().eq(b.to_lowercase())
+            }
+        };
         let mut at = 0;
-        while at + needle.len() <= cells.len() {
+        while !needle.is_empty() && at + needle.len() <= cells.len() {
             let window = cells.get(at..at + needle.len()).unwrap_or_default();
-            if window.iter().zip(&needle).all(|((c, _), n)| same(*c, *n)) {
-                for (_, style) in cells.iter_mut().skip(at).take(needle.len()) {
+            let free = window.iter().all(|(.., lit)| !lit);
+            if free && window.iter().zip(&needle).all(|((c, ..), n)| same(*c, *n)) {
+                for (_, style, lit) in cells.iter_mut().skip(at).take(needle.len()) {
                     *style = style.patch(highlight.style);
+                    *lit = true;
                 }
-                lit = true;
+                matches += 1;
                 at += needle.len();
             } else {
                 at += 1;
             }
         }
     }
-    if !lit {
-        return line;
-    }
-    let mut spans: Vec<Span<'static>> = Vec::new();
-    for (character, style) in cells {
-        match spans.last_mut() {
-            Some(span) if span.style == style => span.content.to_mut().push(character),
-            _ => spans.push(Span::styled(character.to_string(), style)),
-        }
-    }
-    let mut lit = Line::from(spans).style(base);
-    lit.alignment = line.alignment;
-    lit
+    (cells, matches)
 }
 
 /// The hint under the input box.

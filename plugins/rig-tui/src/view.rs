@@ -99,7 +99,8 @@ pub enum TranscriptItem {
 ///
 /// /// Lights a search's matches and shows the message of the first.
 /// fn show_match(agent: Entity, hit: MessageId, mut view: ResMut<TranscriptView>, mut commands: Commands) {
-///     view.highlights = vec![Highlight { text: "flaky".into(), style: Style::new().on_yellow() }];
+///     let flaky = Highlight { text: "flaky".into(), style: Style::new().on_yellow(), match_case: false };
+///     view.highlights = vec![flaky];
 ///     commands.trigger(ScrollTo { agent, item: Some(TranscriptItem::Message(hit)), line: 0 });
 /// }
 /// ```
@@ -121,13 +122,19 @@ pub struct TranscriptView {
     notices_file: Option<Kept>,
 }
 
-/// Text to light in the transcript, matched without regard to case.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// Text to light in the transcript. Where matches of two highlights
+/// overlap, the one placed first in [`TranscriptView::highlights`] lights
+/// them and the other's match there is not lit, so a highlight placed
+/// first, in a style of its own, sets its text apart from the rest's.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Highlight {
     /// The text.
     pub text: String,
     /// The style laid over it.
     pub style: Style,
+    /// Whether its case must match too; else it is matched without regard
+    /// to case.
+    pub match_case: bool,
 }
 
 /// Scrolls the terminal view to `agent`'s transcript, showing that agent

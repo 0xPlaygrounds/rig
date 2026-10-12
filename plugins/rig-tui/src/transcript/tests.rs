@@ -370,6 +370,7 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
     app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
         text: "TEST".to_owned(),
         style: lit,
+        match_case: false,
     }];
     assert!(redraw(&mut app));
     let rows = drawn_rows(&mut app, agent, 100, Vec::new());

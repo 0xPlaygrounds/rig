@@ -1,6 +1,8 @@
-use ratatui::text::Span;
+use ratatui::style::Style;
+use ratatui::text::{Line, Span};
 
-use super::{Piece, fit};
+use super::{Piece, fit, light};
+use crate::Highlight;
 
 /// The `keep` of the default plugins' items: the model and the status
 /// always stay.
@@ -192,4 +194,29 @@ fn a_panel_below_the_input_takes_the_rows_under_the_input_box() {
     let area = |entity: Entity| world.get::<PanelCanvas>(entity).map(PanelCanvas::area);
     assert_eq!(area(suggestions), Some(Rect::new(0, input.bottom(), 80, 1)));
     assert_eq!(input.bottom() + 1, screen.bottom());
+}
+
+#[test]
+fn a_highlight_may_match_case_and_the_one_placed_first_wins() {
+    let line = Line::from("Error: error at ERROR");
+    let (current, rest) = (Style::new().on_red(), Style::new().on_yellow());
+    let highlight = |text: &str, style: Style, match_case: bool| Highlight {
+        text: text.to_owned(),
+        style,
+        match_case,
+    };
+    // The texts lit in `style`.
+    let lit = |highlights: &[Highlight], style: Style| -> Vec<String> {
+        let lit = light(line.clone(), highlights);
+        let spans = lit.spans.iter().filter(|span| span.style.bg == style.bg);
+        spans.map(|span| span.content.to_string()).collect()
+    };
+    let any_case = [highlight("error", rest, false)];
+    assert_eq!(lit(&any_case, rest), ["Error", "error", "ERROR"]);
+    let exact = [highlight("error", rest, true)];
+    assert_eq!(lit(&exact, rest), ["error"]);
+    // The current match, placed first, is set apart from the rest.
+    let both = [highlight("Error:", current, true), any_case[0].clone()];
+    assert_eq!(lit(&both, current), ["Error:"]);
+    assert_eq!(lit(&both, rest), ["error", "ERROR"]);
 }
