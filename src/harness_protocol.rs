@@ -843,8 +843,8 @@ impl Described {
             text.push_str("  (none)\n");
         }
         for command in &self.commands {
-            let usage = format!("{} {}", command.name, command.usage);
-            text.push_str(&format!("  rig {:<19}{}\n", usage.trim_end(), command.help));
+            let usage = format!("rig {} {}", command.name, command.usage);
+            text.push_str(&help_entry(usage.trim_end(), &command.help));
         }
         text.push_str("\nPlugin options (of the last build):\n");
         if self.flags.is_empty() {
@@ -855,14 +855,14 @@ impl Described {
                 Some(value) => format!("--{} {value}", flag.name),
                 None => format!("--{}", flag.name),
             };
-            text.push_str(&format!("  {option:<23}{}\n", flag.help));
+            text.push_str(&help_entry(&option, &flag.help));
         }
         if !self.secrets.is_empty() {
             text.push_str("\nPlugin secrets (of the last build), asked for when not set:\n");
         }
         for secret in &self.secrets {
             let variable = secret_variable(&secret.name);
-            text.push_str(&format!("  {variable:<23}{}\n", secret.help));
+            text.push_str(&help_entry(&variable, &secret.help));
         }
         text
     }
@@ -886,6 +886,19 @@ impl Described {
             }))
             .collect();
         format!("unknown option {flag}; options: {}", options.join(", "))
+    }
+}
+
+/// A line of `rig help`: `name`, then `help` from the 26th column, as the
+/// launcher's own lines are, or on the next line there when `name` leaves
+/// no gap before it.
+fn help_entry(name: &str, help: &str) -> String {
+    const COLUMN: usize = 25;
+    let name = format!("  {name}");
+    if name.chars().count() + 2 <= COLUMN {
+        format!("{name:<COLUMN$}{help}\n")
+    } else {
+        format!("{name}\n{:COLUMN$}{help}\n", "")
     }
 }
 

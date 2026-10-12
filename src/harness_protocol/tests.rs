@@ -207,6 +207,26 @@ fn help_lists_the_secrets_a_build_asks_for_by_their_variable() {
     assert!(!Described::default().usage().contains("secrets"));
 }
 
+/// A name too long for the column keeps a line of its own, and its help
+/// starts the next one at the column.
+#[test]
+fn help_puts_a_long_name_on_a_line_of_its_own() {
+    let mut report = described();
+    if let Some(command) = report.commands.first_mut() {
+        command.usage = "list|migrate|rekey".to_owned();
+    }
+    let usage = report.usage();
+    let column = " ".repeat(25);
+    assert!(
+        usage.contains(&format!("  rig stats list|migrate|rekey\n{column}Count")),
+        "{usage}"
+    );
+    assert!(
+        usage.contains("  --remote HOST:PATH     Work over SSH\n"),
+        "{usage}"
+    );
+}
+
 #[test]
 fn a_session_whose_lock_another_file_holds_runs_elsewhere() {
     let root = std::env::temp_dir().join(format!("rig-runs-{}", std::process::id()));
