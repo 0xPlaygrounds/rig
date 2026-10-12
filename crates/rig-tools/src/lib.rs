@@ -23,7 +23,9 @@
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
 //!   and [`ReadArgs::show`]: what `read` shows of it;
-//! - [`workspace`]: the disk and the commands the tools act on;
+//! - [`workspace`]: the disk and the commands the tools act on, and
+//!   [`overlay`]: one that keeps the tools' writes from the disk, to
+//!   preview them;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`clipboard`]: the system clipboard's text and images;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
@@ -53,6 +55,7 @@ pub mod fs;
 mod list;
 mod live;
 mod move_file;
+pub mod overlay;
 pub mod process;
 mod read;
 mod search;
