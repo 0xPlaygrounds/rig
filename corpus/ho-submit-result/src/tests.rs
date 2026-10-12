@@ -35,15 +35,37 @@ fn project(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// `rig -p --schema=out.json 'classify these failing tests'` in `dir`,
+/// `rig -p --schema out.json -m deepseek/deepseek-flash 'classify these
+/// failing tests'`, read as the launcher reads it: against what the plugin
+/// says it takes when the build describes itself.
+fn args() -> Option<Invocation> {
+    let (mut describing, _) = app_on(&MemoryStore::default());
+    describing.add_plugins((AgentPlugin, SubmitResultPlugin));
+    describing.finish();
+    let report = rig_harness::describe::report(describing.world_mut()).ok()?;
+    let words = [
+        "-p",
+        "--schema",
+        "out.json",
+        "-m",
+        "deepseek/deepseek-flash",
+        "classify these failing tests",
+    ];
+    report.invocation(&words).ok()
+}
+
+/// `rig -p --schema out.json 'classify these failing tests'` in `dir`,
 /// answered by `model`, until it asked to exit.
 fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    let args = Invocation {
+    let args = args()?;
+    let expected = Invocation {
         print: Some("classify these failing tests".to_owned()),
         model: Some("deepseek/deepseek-flash".to_owned()),
         flags: vec![(SCHEMA.to_owned(), Some("out.json".to_owned()))],
+        ..Invocation::default()
     };
+    assert_eq!(args, expected, "--schema takes the next word");
     app.insert_resource(Invoked {
         args,
         terminal: false,
