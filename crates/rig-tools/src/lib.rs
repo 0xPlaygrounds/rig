@@ -1,11 +1,11 @@
 //! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`],
-//! [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
+//! [`List`], [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
 //! `RULES`, the lines a system prompt carries on when to pick it, such as
 //! "use `read`, not `cat`", and annotations saying what it does to the
 //! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
 //! that publish what they did beside their text: the files they read
 //! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
-//! ([`SearchHits`]), the files they changed, with their diffs
+//! ([`SearchHits`]), what a listing showed ([`FilesListed`]), the files they changed, with their diffs
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
 //! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Each acts on a
 //! [`Workspace`](workspace::Workspace): this machine
@@ -13,8 +13,8 @@
 //! reached over SSH. The file tools name files by their resolved paths
 //! (`resolve` on [`Workspace`](workspace::Workspace)), from an optional
 //! base directory they can be confined to. Each call says what it may read
-//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
-//! `search` read the path they name, `write`, `edit`, `delete` and `move`
+//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read`,
+//! `search` and `list` read the path they name, `write`, `edit`, `delete` and `move`
 //! write theirs, and `shell` may change anything, so a host runs calls on
 //! different files side by side. `shell` reports its output as it comes to
 //! a [`Live`]. Their arguments are plain data with public fields, to build
@@ -50,6 +50,7 @@ pub mod context;
 mod delete;
 pub mod edit;
 pub mod fs;
+mod list;
 mod live;
 mod move_file;
 pub mod process;
@@ -64,6 +65,7 @@ mod write;
 pub use blocking::blocking;
 pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
+pub use list::{FilesListed, List, ListArgs};
 pub use live::Live;
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, numbered};
