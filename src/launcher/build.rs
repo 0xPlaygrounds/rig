@@ -1,18 +1,24 @@
 //! `rig build`: regenerate the agent project, check that every plugin uses
 //! the agent's Bevy version, compile with cargo's output on stderr, and
-//! stage the new binary for the next start. Everything a build prints also
-//! goes to [`Home::build_log`], and a failure names its reason and first
-//! compiler errors ([`BuildFailure`]).
+//! stage the new binary for the next start. Before it is staged, a build
+//! describes what its plugins add ([`described`]): a build whose plugins
+//! clash, or that does not describe itself, is rejected. Everything a build
+//! prints also goes to [`Home::build_log`], and a failure names its reason
+//! and first compiler errors ([`BuildFailure`]).
+//!
+//! No process the launcher starts but the agent inherits a secret
+//! ([`child`]).
 
 use std::collections::BTreeSet;
+use std::ffi::OsStr;
 use std::fmt;
 use std::fs::{self, File};
 use std::io::{IsTerminal, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
-use std::time::UNIX_EPOCH;
+use std::time::{Duration, Instant, UNIX_EPOCH};
 
-use rig::harness_protocol::{Home, SessionId, first_errors};
+use rig::harness_protocol::{Described, Home, SessionId, env, first_errors, secret_variables};
 
 use super::config::Config;
 use super::project::{self, PACKAGE, RigSource};
@@ -150,11 +156,22 @@ pub fn check(home: &Home) -> Result<()> {
     Ok(compile(home, &home.staged(), Staging::Never)?)
 }
 
+/// A process the launcher starts that is not the agent, such as cargo or
+/// `stty`: without any secret ([`secret_variables`]), which a user who
+/// exported one for a headless run gave the agent alone.
+pub fn child(program: impl AsRef<OsStr>) -> Command {
+    let mut command = Command::new(program);
+    for secret in secret_variables() {
+        command.env_remove(secret);
+    }
+    command
+}
+
 /// cargo in the agent project, with stdout discarded and stderr piped, for
 /// [`BuildLog::run`] to pass on. Without colors, so the log and the first
 /// errors read as plain text.
 fn cargo(home: &Home) -> Command {
-    let mut command = Command::new("cargo");
+    let mut command = child("cargo");
     command
         .current_dir(home.project())
         // The project's own `.cargo/config.toml` names the target directory.
@@ -188,7 +205,7 @@ fn terminal_width() -> Option<u16> {
         return Some(columns);
     }
     let tty = File::open("/dev/tty").ok()?;
-    let output = Command::new("stty")
+    let output = child("stty")
         .arg("size")
         .stdin(tty)
         .stderr(Stdio::null())
@@ -306,17 +323,24 @@ impl BuildLog {
 }
 
 /// Copies the built binary to `staged`, keeping its modification time so
-/// the copy carries its [`stamp`]. A build `rig build` staged for any
-/// launcher that differs from this one is older, so it goes.
+/// the copy carries its [`stamp`], once it described itself: a build that
+/// does not is rejected, and the build fails. A build `rig build` staged
+/// for any launcher that differs from this one is older, so it goes.
 fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
-    if staging == Staging::Never {
-        return Ok(());
-    }
     let artifact = home
         .target()
         .join("debug")
         .join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX));
     let built = stamp(&artifact)?;
+    if let Err(why) = described(home, &artifact) {
+        if staging != Staging::Never {
+            fs::write(home.rejected(), &built)?;
+        }
+        return Err(format!("the new build does not start: {why}").into());
+    }
+    if staging == Staging::Never {
+        return Ok(());
+    }
     let shared = home.staged();
     if stamp(&shared).is_ok_and(|stamp| stamp != built) {
         fs::remove_file(&shared)?;
@@ -336,7 +360,129 @@ fn stage(home: &Home, staged: &Path, staging: Staging) -> Result<()> {
         .open(&temporary)?
         .set_modified(fs::metadata(&artifact)?.modified()?)?;
     fs::rename(&temporary, staged)?;
+    prune_described(home);
     Ok(())
+}
+
+/// Removes the reports of builds no file in [`Home::bin`] is a copy of.
+fn prune_described(home: &Home) {
+    let stamps: BTreeSet<String> = fs::read_dir(home.bin())
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter_map(|entry| stamp(&entry.path()).ok())
+        .map(|stamp| home.described(&stamp))
+        .filter_map(|report| Some(report.file_name()?.to_owned()))
+        .map(|name| name.to_string_lossy().into_owned())
+        .collect();
+    let reports = home.described("-");
+    let Some(directory) = reports.parent() else {
+        return;
+    };
+    for entry in fs::read_dir(directory).into_iter().flatten().flatten() {
+        if !stamps.contains(&*entry.file_name().to_string_lossy()) {
+            fs::remove_file(entry.path()).ok();
+        }
+    }
+}
+
+/// How long a build may take to describe itself before it is killed.
+const DESCRIBE_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// What the plugins of the build `binary` add to the command line: the
+/// report kept for its stamp ([`Home::described`]), else the one it gives
+/// when asked, which is kept. A build from before reports, which ignores
+/// the request, has an empty one. Fails when the build exits with a
+/// failure, such as two plugins adding one command, or takes over
+/// [`DESCRIBE_TIMEOUT`].
+pub fn described(home: &Home, binary: &Path) -> Result<Described> {
+    if let Some(report) = kept_report(home, binary) {
+        return Ok(report);
+    }
+    let kept = home.described(&stamp(binary)?);
+    let text = describe(home, binary)?;
+    let parent = kept.parent().ok_or("no directory for build reports")?;
+    fs::create_dir_all(parent)?;
+    // Written whole, then renamed: another launcher may read it meanwhile.
+    let written = parent.join(format!(".{}.tmp", std::process::id()));
+    fs::write(&written, &text)?;
+    fs::rename(&written, &kept)?;
+    Ok(Described::parse(&text))
+}
+
+/// The report kept for the build `binary`, if any.
+pub fn kept_report(home: &Home, binary: &Path) -> Option<Described> {
+    let text = fs::read_to_string(home.described(&stamp(binary).ok()?)).ok()?;
+    Some(Described::parse(&text))
+}
+
+/// Runs `binary` with [`env::DESCRIBE`] and returns what it wrote, empty
+/// when it wrote nothing. It runs with stdin closed, in a scratch
+/// `RIG_HOME` of its own that is its working directory, without the
+/// session, run or secrets, so a build that ignores the request cannot
+/// reach the user's sessions; it is killed after [`DESCRIBE_TIMEOUT`].
+fn describe(home: &Home, binary: &Path) -> Result<String> {
+    let run = home.run(std::process::id());
+    let scratch = run.path().join("describe");
+    fs::remove_dir_all(&scratch).ok();
+    let scratch_home = scratch.join("home");
+    fs::create_dir_all(&scratch_home)?;
+    let report = scratch.join("report");
+    let mut command = child(binary);
+    command
+        .env(env::DESCRIBE, &report)
+        .env(env::HOME, &scratch_home)
+        .current_dir(&scratch_home)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped());
+    for name in env::AGENT_ONLY.into_iter().chain([env::LAUNCHER]) {
+        command.env_remove(name);
+    }
+    let result = wait_described(command.spawn()?, &report, DESCRIBE_TIMEOUT);
+    fs::remove_dir_all(&scratch).ok();
+    // A launcher with no run of its own, `rig build`, leaves none.
+    fs::remove_dir(run.path()).ok();
+    result
+}
+
+/// Waits for a describing build, at most `timeout`, and returns its
+/// `report`, or what it said on stderr when it failed.
+fn wait_described(mut child: Child, report: &Path, timeout: Duration) -> Result<String> {
+    let errors = child.stderr.take();
+    let errors = std::thread::spawn(move || {
+        let mut text = String::new();
+        if let Some(mut errors) = errors {
+            errors.read_to_string(&mut text).ok();
+        }
+        text
+    });
+    let deadline = Instant::now() + timeout;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+        if Instant::now() > deadline {
+            child.kill().ok();
+            child.wait().ok();
+            return Err(format!(
+                "it did not describe itself within {} s",
+                timeout.as_secs_f32()
+            )
+            .into());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+    let errors = errors.join().unwrap_or_default();
+    if !status.success() {
+        let said = errors.trim();
+        return Err(if said.is_empty() {
+            format!("describing it failed ({status})").into()
+        } else {
+            said.to_owned().into()
+        });
+    }
+    Ok(fs::read_to_string(report).unwrap_or_default())
 }
 
 /// Records `trial`, a build that stopped before it was ready, as rejected,
@@ -465,3 +611,6 @@ fn package(line: &str) -> Option<(&str, &str)> {
     let version = words.next()?.strip_prefix('v')?;
     Some((name, version))
 }
+
+#[cfg(all(test, unix))]
+mod tests;

@@ -59,17 +59,20 @@ pub mod plugin_guide {}
 pub mod ask;
 pub mod clock;
 pub mod commands;
+pub mod describe;
 pub mod headless;
 pub mod host;
 mod load;
 pub mod pick;
 pub mod primary;
 pub mod progress;
+pub mod secrets;
 pub mod services;
 pub mod settings;
 pub mod successor;
 pub mod watch;
 
+pub use describe::run;
 pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
@@ -133,6 +136,7 @@ pub mod prelude {
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::ToolProgress;
+    pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};

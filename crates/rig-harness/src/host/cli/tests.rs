@@ -40,7 +40,7 @@ fn options_no_plugin_takes_are_refused_and_the_rest_listed() {
     let mut app = app(&["--serve=127.0.0.1:80", "--jsno"], false);
     let refused = refusal(&mut app).unwrap_or_default();
     assert!(refused.contains("unknown option `--jsno`"), "{refused}");
-    assert!(refused.contains("--serve=ADDR"), "{refused}");
+    assert!(refused.contains("--serve ADDR"), "{refused}");
     assert!(refused.contains("--json"), "{refused}");
     for args in [&["--serve"][..], &["--json=yes"]] {
         assert!(refusal(&mut self::app(args, false)).is_some(), "{args:?}");

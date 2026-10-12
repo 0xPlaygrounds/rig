@@ -47,6 +47,37 @@ pub mod env {
     /// rig-harness itself, must not act as this agent. Without [`SESSION`]
     /// a nested agent ignores the [`LAUNCHER`] it inherits.
     pub const AGENT_ONLY: [&str; 4] = [SESSION, NOTICE, BUILD_FAILURE, RUN];
+    /// Set by the launcher to a file's path: the agent builds its app,
+    /// writes what its plugins add there ([`Described`](super::Described))
+    /// and exits without running a frame.
+    pub const DESCRIBE: &str = "RIG_DESCRIBE";
+    /// The start of a secret's variable, such as `RIG_SECRET_CRYPT`
+    /// ([`secret_variable`](super::secret_variable)): the launcher sets it
+    /// on the agent's process alone, and every process rig starts drops it
+    /// ([`secret_variables`](super::secret_variables)).
+    pub const SECRET_PREFIX: &str = "RIG_SECRET_";
+}
+
+/// The variable that carries the secret `name`: [`env::SECRET_PREFIX`]
+/// and the name in upper case, `-` as `_` (`crypt` is `RIG_SECRET_CRYPT`).
+pub fn secret_variable(name: &str) -> String {
+    format!(
+        "{}{}",
+        env::SECRET_PREFIX,
+        name.to_ascii_uppercase().replace('-', "_")
+    )
+}
+
+/// Every secret variable ([`env::SECRET_PREFIX`]) in this process's
+/// environment: what a process this one starts must not inherit.
+pub fn secret_variables() -> Vec<OsString> {
+    std::env::vars_os()
+        .map(|(name, _)| name)
+        .filter(|name| {
+            name.to_str()
+                .is_some_and(|name| name.starts_with(env::SECRET_PREFIX))
+        })
+        .collect()
 }
 
 /// At most `count` lines of a build's output from the first one that
@@ -211,11 +242,13 @@ impl Home {
         self.bin().join("staged")
     }
 
-    /// The options the plugins of the last build that started take, one per
-    /// line as `--name[=VALUE]  what it does`, for the launcher's usage
-    /// text.
-    pub fn flags(&self) -> PathBuf {
-        self.bin().join("flags")
+    /// The [`Described`] report of the build whose stamp is `stamp` (its
+    /// modification time in nanoseconds and its length, as `"{mtime} {len}"`),
+    /// one per build, which every copy of the build shares.
+    pub fn described(&self, stamp: &str) -> PathBuf {
+        self.bin()
+            .join("described")
+            .join(stamp.trim().replace(' ', "-"))
     }
 
     /// The stamp of the last build that stopped before it was ready.
@@ -422,9 +455,12 @@ impl SessionDir {
     }
 }
 
-/// The agent's arguments. The launcher takes the same arguments after its
-/// own session options and passes them on unchanged
-/// ([`Invocation::to_args`]), so `rig -p "…"` and the agent binary run
+/// The agent's arguments, in the canonical form the launcher passes on
+/// ([`Invocation::to_args`]): the model, each plugin option as
+/// `--name=VALUE`, then the print prompt after `--print --`, or a plugin's
+/// command and its arguments. The launcher reads the user's command line
+/// against the agent's [`Described`] report first
+/// ([`Described::invocation`]), so `rig -p "…"` and the agent binary run
 /// alone agree on them.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Invocation {
@@ -436,9 +472,14 @@ pub struct Invocation {
     /// A catalog model (`vendor/model`) for the session's first agent.
     pub model: Option<String>,
     /// The options of the agent's plugins, in the order given: each
-    /// `--name` with the text after `=`, if any. The agent refuses one no
-    /// plugin of its build takes.
+    /// `--name` with its value, if any. The agent refuses one no plugin of
+    /// its build takes.
     pub flags: Vec<(String, Option<String>)>,
+    /// A plugin's command, `rig <command> …`, which chooses the front that
+    /// runs.
+    pub command: Option<String>,
+    /// The words after the command, as given.
+    pub arguments: Vec<String>,
 }
 
 /// The arguments [`Invocation::parse`] takes, for usage texts.
@@ -446,44 +487,17 @@ pub const INVOCATION_USAGE: &str =
     "  -p, --print [prompt…]  Answer one prompt and exit: the answer goes to stdout.
                          Text piped in on stdin follows the prompt.
   -m, --model <model>    The catalog model (vendor/model) to use.
-  --<option>[=<value>]   An option of one of the agent's plugins.
+  --<option> [<value>]   An option of one of the agent's plugins, also written
+                         --<option>=<value>.
 ";
 
 impl Invocation {
-    /// Reads the agent's arguments, without the program name.
+    /// Reads the agent's arguments in their canonical form, without the
+    /// program name: a plugin option's value comes after `=`. Without
+    /// `--print`, the first other word is a command, and every word after
+    /// it is the command's.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
-        let mut print = false;
-        let mut model = None;
-        let mut flags = Vec::new();
-        let mut words: Vec<&str> = Vec::new();
-        let mut args = args.iter().map(AsRef::as_ref);
-        while let Some(arg) = args.next() {
-            match arg {
-                "-p" | "--print" => print = true,
-                "-m" | "--model" => {
-                    let name = args.next().ok_or("--model needs a vendor/model")?;
-                    model = Some(name.to_owned());
-                }
-                "--" => words.extend(args.by_ref()),
-                flag if flag.starts_with("--model=") => {
-                    model = flag.strip_prefix("--model=").map(str::to_owned);
-                }
-                flag if flag.starts_with("--") => flags.push(plugin_flag(flag)?),
-                flag if flag.starts_with('-') && flag.len() > 1 => {
-                    return Err(format!("unknown option `{flag}`"));
-                }
-                word => words.push(word),
-            }
-        }
-        if !print && !words.is_empty() {
-            return Err("a prompt needs --print (-p)".to_owned());
-        }
-        let print = print.then(|| words.join(" "));
-        Ok(Self {
-            print,
-            model,
-            flags,
-        })
+        read_args(args, |flag, _| Ok(plugin_flag(flag)?))
     }
 
     /// The agent's own arguments, from the process's.
@@ -514,9 +528,66 @@ impl Invocation {
             if !prompt.is_empty() {
                 args.extend(["--".into(), prompt.into()]);
             }
+        } else if let Some(command) = &self.command {
+            args.push(command.into());
+            args.extend(self.arguments.iter().map(OsString::from));
         }
         args
     }
+}
+
+/// Reads a command line left to right, as [`Invocation::parse`] and
+/// [`Described::invocation`] both do; they differ in how a plugin option
+/// is read: `option` reads one, `--…`, given the words after it, from
+/// which it may take its value.
+fn read_args<'a, S: AsRef<str>>(
+    args: &'a [S],
+    mut option: impl FnMut(
+        &'a str,
+        &mut dyn Iterator<Item = &'a str>,
+    ) -> Result<(String, Option<String>), String>,
+) -> Result<Invocation, String> {
+    let mut print = false;
+    let mut model = None;
+    let mut flags = Vec::new();
+    let mut words: Vec<&str> = Vec::new();
+    let mut args = args.iter().map(AsRef::as_ref);
+    while let Some(arg) = args.next() {
+        match arg {
+            "-p" | "--print" => print = true,
+            "-m" | "--model" => {
+                let name = args.next().ok_or("--model needs a vendor/model")?;
+                model = Some(name.to_owned());
+            }
+            "--" => words.extend(args.by_ref()),
+            flag if flag.starts_with("--model=") => {
+                model = flag.strip_prefix("--model=").map(str::to_owned);
+            }
+            flag if flag.starts_with("--") => flags.push(option(flag, &mut args)?),
+            flag if flag.starts_with('-') && flag.len() > 1 => {
+                return Err(format!("unknown option `{flag}`"));
+            }
+            // A command takes every word after it as it is.
+            word if !print => {
+                words.push(word);
+                words.extend(args.by_ref());
+            }
+            word => words.push(word),
+        }
+    }
+    let mut words = words.into_iter().map(str::to_owned);
+    let (print, command) = if print {
+        (Some(words.by_ref().collect::<Vec<_>>().join(" ")), None)
+    } else {
+        (None, words.next())
+    };
+    Ok(Invocation {
+        print,
+        model,
+        flags,
+        command,
+        arguments: words.collect(),
+    })
 }
 
 /// A plugin's option, `--name` or `--name=value`: the name is lowercase
@@ -527,14 +598,232 @@ fn plugin_flag(flag: &str) -> Result<(String, Option<String>), String> {
         Some((name, value)) => (name, Some(value.to_owned())),
         None => (option, None),
     };
-    let valid = name.starts_with(|c: char| c.is_ascii_lowercase())
-        && name
-            .chars()
-            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
-    if !valid {
+    if !is_name(name) {
         return Err(format!("unknown option `{flag}`"));
     }
     Ok((name.to_owned(), value))
+}
+
+/// Whether `name` can name a plugin's option or command: lowercase ASCII
+/// letters, digits and dashes, starting with a letter.
+pub fn is_name(name: &str) -> bool {
+    name.starts_with(|c: char| c.is_ascii_lowercase())
+        && name
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// The launcher's own first words, which no plugin's command may take.
+pub const RESERVED_COMMANDS: [&str; 3] = ["build", "plugin", "help"];
+
+/// The first line of a [`Described`] report.
+const DESCRIBED_HEADER: &str = "rig-describe 1";
+
+/// What a built agent's plugins add to the command line, as the agent
+/// writes it when the launcher sets [`env::DESCRIBE`]: their commands,
+/// their options and the secrets they ask for. The launcher keeps one per
+/// build ([`Home::described`]) and reads the command line against it.
+///
+/// The text form is a header line, then one tab-separated line each:
+///
+/// ```text
+/// rig-describe 1
+/// command	stats	-	headless	sessionless	Count the saved sessions
+/// flag	remote	HOST:PATH	Work in a directory on another machine over SSH
+/// secret	crypt	Passphrase for this machine's sessions
+/// ```
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Described {
+    /// The plugins' commands.
+    pub commands: Vec<CommandInfo>,
+    /// The plugins' options, the fronts' included.
+    pub flags: Vec<FlagInfo>,
+    /// The secrets the plugins ask for.
+    pub secrets: Vec<SecretInfo>,
+}
+
+/// A plugin's command, `rig <name> <usage>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommandInfo {
+    /// Its name.
+    pub name: String,
+    /// What its arguments are, such as `<tool> [path]`; may be empty.
+    pub usage: String,
+    /// Whether it runs on an interactive terminal; otherwise it runs
+    /// headless, never restarted, its output passed through.
+    pub terminal: bool,
+    /// Whether its runs keep no session.
+    pub sessionless: bool,
+    /// What it does.
+    pub help: String,
+}
+
+/// A plugin's option, `--name` or `--name VALUE`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlagInfo {
+    /// Its name.
+    pub name: String,
+    /// What its value is, such as `ADDR`, when it takes one.
+    pub value: Option<String>,
+    /// What it does.
+    pub help: String,
+}
+
+/// A secret a plugin asks for, which reaches the agent as
+/// [`secret_variable`] of its name.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SecretInfo {
+    /// Its name.
+    pub name: String,
+    /// What to ask for.
+    pub help: String,
+}
+
+impl Described {
+    /// Reads a report. Without the header it is empty: a build from before
+    /// commands, which has none.
+    pub fn parse(text: &str) -> Self {
+        let mut lines = text.lines();
+        let mut described = Self::default();
+        if lines.next() != Some(DESCRIBED_HEADER) {
+            return described;
+        }
+        let given = |field: &str| (field != "-").then(|| field.to_owned());
+        for line in lines {
+            match line.split('\t').collect::<Vec<_>>().as_slice() {
+                ["command", name, usage, run, session, help] => {
+                    described.commands.push(CommandInfo {
+                        name: (*name).to_owned(),
+                        usage: given(usage).unwrap_or_default(),
+                        terminal: *run == "terminal",
+                        sessionless: *session == "sessionless",
+                        help: (*help).to_owned(),
+                    });
+                }
+                ["flag", name, value, help] => described.flags.push(FlagInfo {
+                    name: (*name).to_owned(),
+                    value: given(value),
+                    help: (*help).to_owned(),
+                }),
+                ["secret", name, help] => described.secrets.push(SecretInfo {
+                    name: (*name).to_owned(),
+                    help: (*help).to_owned(),
+                }),
+                // A line of a later version.
+                _ => {}
+            }
+        }
+        described
+    }
+
+    /// The report as text, which [`Self::parse`] reads back. Tabs and line
+    /// breaks in a field become spaces.
+    pub fn write(&self) -> String {
+        let clean = |field: &str| field.replace(['\t', '\n', '\r'], " ");
+        let or_dash = |field: &str| match field {
+            "" => "-".to_owned(),
+            field => clean(field),
+        };
+        let mut lines = vec![DESCRIBED_HEADER.to_owned()];
+        for command in &self.commands {
+            lines.push(format!(
+                "command\t{}\t{}\t{}\t{}\t{}",
+                clean(&command.name),
+                or_dash(&command.usage),
+                if command.terminal {
+                    "terminal"
+                } else {
+                    "headless"
+                },
+                if command.sessionless {
+                    "sessionless"
+                } else {
+                    "session"
+                },
+                clean(&command.help),
+            ));
+        }
+        for flag in &self.flags {
+            lines.push(format!(
+                "flag\t{}\t{}\t{}",
+                clean(&flag.name),
+                or_dash(flag.value.as_deref().unwrap_or_default()),
+                clean(&flag.help),
+            ));
+        }
+        for secret in &self.secrets {
+            lines.push(format!(
+                "secret\t{}\t{}",
+                clean(&secret.name),
+                clean(&secret.help)
+            ));
+        }
+        lines.push(String::new());
+        lines.join("\n")
+    }
+
+    /// The command `name`, if a plugin adds it.
+    pub fn command(&self, name: &str) -> Option<&CommandInfo> {
+        self.commands.iter().find(|command| command.name == name)
+    }
+
+    /// Reads the user's command line, without the launcher's own first
+    /// word and `--resume`, against this agent, into the canonical
+    /// [`Invocation`]. `-p` and `-m` are the launcher's; a plugin option
+    /// takes a value as `--name=VALUE`, or as the next word when it takes
+    /// one (`--name VALUE`); without `-p`, the first other word is a
+    /// command, and every later word is its argument. An option or command
+    /// no plugin adds, and a launcher's word as a command, are refused.
+    pub fn invocation<S: AsRef<str>>(&self, args: &[S]) -> Result<Invocation, String> {
+        let invocation = read_args(args, |flag, rest| {
+            let (name, value) = plugin_flag(flag).map_err(|_| self.unknown_option(flag))?;
+            let Some(known) = self.flags.iter().find(|known| known.name == name) else {
+                return Err(self.unknown_option(flag));
+            };
+            match (&known.value, value) {
+                (Some(_), Some(value)) => Ok((name, Some(value))),
+                (Some(what), None) => match rest.next() {
+                    Some(value) => Ok((name, Some(value.to_owned()))),
+                    None => Err(format!("--{name} needs a value: --{name} {what}")),
+                },
+                (None, Some(_)) => Err(format!("--{name} takes no value")),
+                (None, None) => Ok((name, None)),
+            }
+        })?;
+        if let Some(command) = &invocation.command {
+            if RESERVED_COMMANDS.contains(&command.as_str()) {
+                return Err(format!("`{command}` is the launcher's; put it first"));
+            }
+            if self.command(command).is_none() {
+                return Err(format!(
+                    "unknown command `{command}`; commands: {}",
+                    self.command_names().join(", ")
+                ));
+            }
+        }
+        Ok(invocation)
+    }
+
+    /// The launcher's commands, then the plugins'.
+    pub fn command_names(&self) -> Vec<&str> {
+        RESERVED_COMMANDS
+            .into_iter()
+            .chain(self.commands.iter().map(|command| command.name.as_str()))
+            .collect()
+    }
+
+    /// Why `flag` is refused, with the options there are.
+    fn unknown_option(&self, flag: &str) -> String {
+        let options: Vec<String> = ["-p", "-m"]
+            .into_iter()
+            .map(str::to_owned)
+            .chain(self.flags.iter().map(|flag| match &flag.value {
+                Some(value) => format!("--{} {value}", flag.name),
+                None => format!("--{}", flag.name),
+            }))
+            .collect();
+        format!("unknown option {flag}; options: {}", options.join(", "))
+    }
 }
 
 #[cfg(test)]

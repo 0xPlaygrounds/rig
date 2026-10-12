@@ -74,3 +74,37 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     assert_eq!(ran, "trial\n");
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
 }
+
+#[cfg(unix)]
+#[test]
+fn a_build_without_a_report_is_described_once_and_the_command_line_read_against_it() {
+    // The scratch home a describe runs in is `run/<launcher>/describe/home`.
+    let describe = "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+echo described >> \"$RIG_HOME/../../../../described\"
+printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > \"$RIG_DESCRIBE\"";
+    let home = builds("report", describe, "exit 0");
+    let session = SessionId::generate();
+    let first = report(&home, &session);
+    let again = report(&home, &session);
+    let described = fs::read_to_string(home.root().join("described")).unwrap_or_default();
+    // A build from before reports ignores the request: it has none.
+    fs::remove_file(home.staged()).ok();
+    let old = report(&home, &session);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(first.command("stats").is_some(), "{first:?}");
+    assert_eq!((first.clone(), described.as_str()), (again, "described\n"));
+    assert_eq!(old, Described::default());
+    let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
+    assert!(
+        unknown.ends_with("commands: build, plugin, help, stats"),
+        "{unknown}"
+    );
+}
+
+#[test]
+fn a_secret_is_read_byte_by_byte_and_ctrl_c_gives_none() {
+    let read = |typed: &[u8]| read_secret(&mut &typed[..]).ok().flatten();
+    assert_eq!(read(b"ab\x7fc\rleft over"), Some(b"ac".to_vec()));
+    assert_eq!(read("pé\x7f".as_bytes()), Some(b"p".to_vec()));
+    assert_eq!(read(b"ab\x03\r"), None);
+}

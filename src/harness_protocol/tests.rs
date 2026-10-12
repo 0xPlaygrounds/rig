@@ -1,4 +1,4 @@
-use super::{Home, Invocation};
+use super::{CommandInfo, Described, FlagInfo, Home, Invocation, SecretInfo, secret_variable};
 
 #[test]
 fn plugin_options_pass_through_and_read_back() {
@@ -19,6 +19,7 @@ fn plugin_options_pass_through_and_read_back() {
             ("json".to_owned(), None),
             ("serve".to_owned(), Some("127.0.0.1:8080".to_owned())),
         ],
+        ..Invocation::default()
     };
     assert_eq!(invocation.as_ref(), Ok(&expected));
     let again: Vec<String> = expected
@@ -34,16 +35,112 @@ fn plugin_options_pass_through_and_read_back() {
 }
 
 #[test]
-fn malformed_options_and_stray_words_are_refused() {
-    for args in [
-        &["-x"][..],
-        &["--Json"],
-        &["--=1"],
-        &["--9lives"],
-        &["word"],
-    ] {
+fn malformed_options_are_refused_and_a_command_takes_the_words_after_it() {
+    for args in [&["-x"][..], &["--Json"], &["--=1"], &["--9lives"]] {
         assert!(Invocation::parse(args).is_err(), "{args:?}");
     }
+    let command = Invocation {
+        flags: vec![("remote".to_owned(), Some("h:/p".to_owned()))],
+        command: Some("stats".to_owned()),
+        arguments: vec!["--all".to_owned(), "-p".to_owned(), "a b".to_owned()],
+        ..Invocation::default()
+    };
+    let args: Vec<String> = command
+        .to_args()
+        .iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+    assert_eq!(args, ["--remote=h:/p", "stats", "--all", "-p", "a b"]);
+    assert_eq!(Invocation::parse(&args), Ok(command));
+}
+
+/// A build with the commands `stats` and `import`, the options `--remote
+/// HOST:PATH` and `--yes`, and the secret `crypt`.
+fn described() -> Described {
+    Described {
+        commands: vec![
+            CommandInfo {
+                name: "stats".to_owned(),
+                usage: String::new(),
+                terminal: false,
+                sessionless: true,
+                help: "Count the saved sessions".to_owned(),
+            },
+            CommandInfo {
+                name: "import".to_owned(),
+                usage: "<tool> [path]".to_owned(),
+                terminal: true,
+                sessionless: false,
+                help: "Import a\tsession".to_owned(),
+            },
+        ],
+        flags: vec![
+            FlagInfo {
+                name: "remote".to_owned(),
+                value: Some("HOST:PATH".to_owned()),
+                help: "Work over SSH".to_owned(),
+            },
+            FlagInfo {
+                name: "yes".to_owned(),
+                value: None,
+                help: "Publish without asking".to_owned(),
+            },
+        ],
+        secrets: vec![SecretInfo {
+            name: "crypt".to_owned(),
+            help: "Passphrase".to_owned(),
+        }],
+    }
+}
+
+#[test]
+fn a_report_reads_back_and_one_without_its_header_is_empty() {
+    let mut report = described();
+    let read = Described::parse(&report.write());
+    // A tab or line break in a field becomes a space.
+    if let Some(import) = report.commands.last_mut() {
+        import.help = "Import a session".to_owned();
+    }
+    assert_eq!(read, report);
+    let headless = report.write().replacen("rig-describe 1", "", 1);
+    assert_eq!(Described::parse(&headless), Described::default());
+    assert_eq!(Described::parse("Usage: rig-agent"), Described::default());
+    assert_eq!(secret_variable("my-crypt"), "RIG_SECRET_MY_CRYPT");
+}
+
+#[test]
+fn the_command_line_is_read_against_the_report() {
+    let report = described();
+    let words = |args: &[&str]| report.invocation(args);
+    // An option's value after `=` or as the next word, alike.
+    let spaced = words(&["--remote", "h:/p", "-p", "hi"]);
+    assert_eq!(spaced, words(&["--remote=h:/p", "-p", "hi"]));
+    assert_eq!(
+        spaced.map(|invocation| (invocation.flags, invocation.print)),
+        Ok((
+            vec![("remote".to_owned(), Some("h:/p".to_owned()))],
+            Some("hi".to_owned())
+        ))
+    );
+    // The first bare word is the command; every later word is its own.
+    let command = words(&["--remote", "h:/p", "stats", "a", "--b"]);
+    assert_eq!(
+        command.map(|invocation| (invocation.command, invocation.arguments)),
+        Ok((
+            Some("stats".to_owned()),
+            vec!["a".to_owned(), "--b".to_owned()]
+        ))
+    );
+    let refused = |args: &[&str]| words(args).err().unwrap_or_default();
+    assert!(refused(&["--yes", "build"]).contains("put it first"));
+    let unknown = refused(&["statz"]);
+    assert!(
+        unknown.contains("unknown command `statz`; commands: build, plugin, help, stats, import"),
+        "{unknown}"
+    );
+    assert!(refused(&["--nope"]).contains("options: -p, -m, --remote HOST:PATH, --yes"));
+    assert!(refused(&["--remote"]).contains("needs a value"));
+    assert!(refused(&["--yes=1"]).contains("takes no value"));
 }
 
 #[test]
@@ -52,7 +149,10 @@ fn a_home_at_a_root_lays_out_its_files_under_it() {
     assert!(home.root().is_absolute());
     assert!(home.root().ends_with("some/root"));
     assert_eq!(home.settings(), home.root().join("settings.toml"));
-    assert_eq!(home.flags(), home.root().join("bin/flags"));
+    assert_eq!(
+        home.described("1700000000000000000 4096\n"),
+        home.root().join("bin/described/1700000000000000000-4096")
+    );
 }
 
 #[test]

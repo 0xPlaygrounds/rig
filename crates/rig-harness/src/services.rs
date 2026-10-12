@@ -18,6 +18,7 @@
 //! assert_eq!(root, std::path::Path::new("/srv/project"));
 //! ```
 
+use std::ffi::OsString;
 use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
 
@@ -25,7 +26,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
-use rig::harness_protocol::{Home, env};
+use rig::harness_protocol::{Home, env, secret_variables};
 use rig_ecs::agent::SpawnedBy;
 use rig_ecs::journal::ReflectSaved;
 use rig_tools::process::Launcher;
@@ -84,29 +85,51 @@ pub struct WorkDir(pub PathBuf);
 /// (`processes.launcher().command(program)`), so a sandbox plugin that
 /// changes it ([`Processes::set`]), in `build` or while the app runs,
 /// changes how the next process starts. By default no command inherits
-/// what makes a program act as this agent ([`env::AGENT_ONLY`]).
+/// what makes a program act as this agent ([`env::AGENT_ONLY`]), and no
+/// command ever inherits a secret
+/// ([`secrets`](crate::secrets)), whatever launcher is set.
 #[derive(Resource, Clone, Debug)]
-pub struct Processes(Arc<RwLock<Launcher>>);
+pub struct Processes {
+    launcher: Arc<RwLock<Launcher>>,
+    /// The secret variables of this process, which no command inherits.
+    secrets: Arc<[OsString]>,
+}
 
 impl Processes {
-    /// How the next process starts.
+    /// How the next process starts: the launcher set, keeping every secret
+    /// from the command.
     pub fn launcher(&self) -> Launcher {
-        self.0
+        let launcher = self
+            .launcher
             .read()
             .unwrap_or_else(PoisonError::into_inner)
-            .clone()
+            .clone();
+        let kept: Vec<OsString> = self
+            .secrets
+            .iter()
+            .filter(|secret| !launcher.unset_env.contains(secret))
+            .cloned()
+            .collect();
+        launcher.without_env(kept)
     }
 
-    /// Starts every process from now on as `launcher` says.
+    /// Starts every process from now on as `launcher` says, without the
+    /// secrets.
     pub fn set(&self, launcher: Launcher) {
-        *self.0.write().unwrap_or_else(PoisonError::into_inner) = launcher;
+        *self
+            .launcher
+            .write()
+            .unwrap_or_else(PoisonError::into_inner) = launcher;
     }
 }
 
 impl Default for Processes {
     fn default() -> Self {
         let launcher = Launcher::default().without_env(env::AGENT_ONLY);
-        Self(Arc::new(RwLock::new(launcher)))
+        Self {
+            launcher: Arc::new(RwLock::new(launcher)),
+            secrets: secret_variables().into(),
+        }
     }
 }
 

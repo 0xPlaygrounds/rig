@@ -71,7 +71,10 @@ pub(crate) fn paths_in(home: &Home) -> SessionPaths {
         .unwrap_or_else(SessionId::generate);
     let dir = home.session(&id);
     // A directory that cannot be created shows up as a failed log write.
-    fs::create_dir_all(dir.path()).ok();
+    // A build describing itself keeps none.
+    if crate::describe::describing().is_none() {
+        fs::create_dir_all(dir.path()).ok();
+    }
     SessionPaths(dir)
 }
 
