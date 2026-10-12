@@ -56,7 +56,7 @@ impl Instructions {
         let mut found: Vec<(&dyn Workspace, PathBuf)> = Vec::new();
         let mut seen: Vec<(Option<&str>, PathBuf)> = Vec::new();
         for (place, dir) in dirs {
-            let Some(path) = file_in(place, &dir) else {
+            let Some(path) = instruction_file_in(place, &dir) else {
                 continue;
             };
             let canonical = (place.host(), place.canonical(&path));
@@ -134,11 +134,12 @@ impl Instructions {
 
 /// The instruction file of `dir` on this machine, if it has one.
 pub fn instruction_file(dir: &Path) -> Option<PathBuf> {
-    file_in(&Local, dir)
+    instruction_file_in(&Local, dir)
 }
 
-/// The instruction file of `dir` in `workspace`, if it has one.
-fn file_in(workspace: &dyn Workspace, dir: &Path) -> Option<PathBuf> {
+/// The instruction file of `dir` in `workspace`, if it has one: the first
+/// of [`FILE_NAMES`] that is a file there.
+pub fn instruction_file_in(workspace: &dyn Workspace, dir: &Path) -> Option<PathBuf> {
     FILE_NAMES
         .iter()
         .map(|name| dir.join(name))

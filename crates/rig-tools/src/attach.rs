@@ -108,8 +108,17 @@ pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attach
 }
 
 /// Whether `reference`, an `@` token without its `@`, names a path: it
-/// holds a `/`, or ends in a dot and one to four letters or digits.
-fn is_path_reference(reference: &str) -> bool {
+/// holds a `/`, or ends in a dot and one to four letters or digits. Any
+/// other `@` token (a mention, an address) is left as text.
+///
+/// ```
+/// use rig_tools::attach::is_path_reference;
+///
+/// assert!(is_path_reference("src/main.rs"));
+/// assert!(is_path_reference("notes.md"));
+/// assert!(!is_path_reference("reviewer"));
+/// ```
+pub fn is_path_reference(reference: &str) -> bool {
     reference.contains('/')
         || reference.rsplit_once('.').is_some_and(|(name, extension)| {
             !name.is_empty()
@@ -134,9 +143,10 @@ fn expand(path: &str) -> PathBuf {
     }
 }
 
-/// The image at `path` as message content, its type told by its first
-/// bytes.
-fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent, String> {
+/// The image at `path` in `workspace` as message content, its type told
+/// by its first bytes; why not, for a file that cannot be read, is larger
+/// than a provider takes, or is not a PNG, JPEG, GIF or WebP image.
+pub fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent, String> {
     let contents = workspace
         .read(path, MOST_BYTES)
         .map_err(|failure| failure.to_string())?;
