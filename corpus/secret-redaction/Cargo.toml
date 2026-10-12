@@ -21,6 +21,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+# Request editors meant to be used with this one, for the group check.
+corpus-few-shot-examples = { path = "../few-shot-examples" }
+corpus-ho-stale-read-elision = { path = "../ho-stale-read-elision" }
 rig-core = { workspace = true, features = ["test-utils"] }
 # Checks the stage systems are ordered against the default plugins.
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

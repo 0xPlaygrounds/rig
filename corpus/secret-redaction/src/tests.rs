@@ -183,3 +183,13 @@ fn a_secret_read_goes_out_as_a_placeholder_and_is_written_back_for_real() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SecretRedactionPlugin);
 }
+
+/// The plugins that edit what a request sends, loaded together.
+#[test]
+fn stages_are_ordered_with_the_other_request_editors() {
+    rig_defaults_test_support::assert_stages_ordered((
+        SecretRedactionPlugin,
+        corpus_few_shot_examples::FewShotExamplesPlugin,
+        corpus_ho_stale_read_elision::StaleReadElisionPlugin,
+    ));
+}

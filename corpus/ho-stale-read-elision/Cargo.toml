@@ -19,6 +19,8 @@ rig-memory = { path = "../../crates/rig-memory", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Both edit a request's messages: the elision goes after the examples.
+corpus-few-shot-examples = { path = "../few-shot-examples" }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }

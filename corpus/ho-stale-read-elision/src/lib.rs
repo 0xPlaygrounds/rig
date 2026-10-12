@@ -12,6 +12,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use corpus_few_shot_examples::ExampleSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
@@ -29,7 +30,8 @@ mod tests;
 pub struct StaleReadElisionPlugin;
 
 /// The plugin's Prepare system, which edits turn requests' `read` results,
-/// for others to order against. It runs in [`PrepareSystems::Edit`].
+/// for others to order against. It runs in [`PrepareSystems::Edit`], after
+/// few-shot-examples put its examples in.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElisionSystems;
 
@@ -46,7 +48,12 @@ pub struct Elided {
 impl Plugin for StaleReadElisionPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<Elided>()
-            .configure_sets(AgentPass, ElisionSystems.in_set(PrepareSystems::Edit))
+            .configure_sets(
+                AgentPass,
+                ElisionSystems
+                    .in_set(PrepareSystems::Edit)
+                    .after(ExampleSystems),
+            )
             .add_systems(AgentPass, elide.in_set(ElisionSystems))
             .add_command(
                 "elided",
