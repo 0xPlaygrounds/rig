@@ -1717,10 +1717,11 @@ does once. `ForkSession { before, asker }` copies this session into a new
 one (`SessionForked` names it and the request's `asker` entity, so a
 plugin knows its own fork; the copy names its parent and where it was cut,
 with the user's text of the message it stopped before,
-`ForkedFrom::of(&dir)`, so a view of a session's family reads no other
+`ForkedFrom::of(&*store)`, so a view of a session's family reads no other
 session's log), and `DeleteSession(id)` removes another
-(`SessionDeleted`). A plugin's files go in its own `SessionPaths`
-directory: each top-level `*.jsonl` there is an agent's log. rig-sessions'
+(`SessionDeleted`). A plugin's files of the session go in the session's
+store, under a directory of its own:
+`store.write_file("<plugin>/<name>", ..)`. rig-sessions'
 `NameSession { session, name }` names a session in `/resume`.
 
 ```rust,no_run
