@@ -537,10 +537,10 @@ fn a_row_diff_names_every_difference() {
 }
 
 /// A record leaves out what it does not know, so one from before the times,
-/// purpose, turn, review and disposition reads back as a plain handler run;
-/// set, they travel.
+/// purpose, turn, review, disposition and decider reads back as a plain
+/// handler run; set, they travel.
 #[test]
-fn a_record_carries_its_purpose_turn_times_review_and_disposition_when_set() {
+fn a_record_carries_its_purpose_turn_times_review_disposition_and_decider_when_set() {
     let outcome = Ok(Outcome::ToolResult {
         result: ToolResult::success(ToolOutput::text("raw")),
     });
@@ -561,17 +561,20 @@ fn a_record_carries_its_purpose_turn_times_review_and_disposition_when_set() {
         "finished_ms",
         "reviewed",
         "disposition",
+        "decided_by",
     ] {
         assert!(plain.get(left_out).is_none(), "{left_out} in {plain}");
     }
     let read: EffectRecord = serde_json::from_value(plain).expect("reads back");
     assert_eq!(read.disposition, Disposition::Ran);
+    assert_eq!(read.decided_by, None);
 
     record.purpose = Some("summary".into());
     record.turn = Some(3);
     (record.started_ms, record.finished_ms) = (Some(1), Some(2));
     record.reviewed = Some(Err(ErrorReport::new(ErrorKind::Internal, "redacted")));
     record.disposition = Disposition::AnsweredWhileRunning;
+    record.decided_by = Some(Decider::plugin("protected-paths"));
     let wire = serde_json::to_value(&record).expect("serializes");
     let disposition = wire.get("disposition");
     assert_eq!(disposition, Some(&json!("answered_while_running")));
@@ -579,4 +582,8 @@ fn a_record_carries_its_purpose_turn_times_review_and_disposition_when_set() {
     assert_eq!(serde_json::to_value(&read).expect("serializes"), wire);
     assert_eq!(read.purpose.as_deref(), Some("summary"));
     assert_eq!((wire.get("turn"), read.turn), (Some(&json!(3)), Some(3)));
+    let decider = wire.get("decided_by");
+    assert_eq!(decider, Some(&json!({ "plugin": "protected-paths" })));
+    let person = serde_json::to_value(Decider::Person).expect("serializes");
+    assert_eq!(person, json!("person"));
 }

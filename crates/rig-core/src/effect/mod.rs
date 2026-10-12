@@ -10,7 +10,7 @@
 //! assert_eq!(row.len(), 1);
 //! ```
 
-use std::{fmt, sync::Arc};
+use std::{borrow::Cow, fmt, sync::Arc};
 
 use serde::{Deserialize, Serialize};
 
@@ -1051,6 +1051,29 @@ pub struct EffectRecord {
     /// How the outcome came about.
     #[serde(default, skip_serializing_if = "Disposition::is_ran")]
     pub disposition: Disposition,
+    /// Who decided the answer before it ran, when a decision answered it.
+    /// `None` when its handler or its owner answered it: an effect no gate
+    /// decided ran, and an allow is not a decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decided_by: Option<Decider>,
+}
+
+/// Who decided an effect's answer before it ran ([`EffectRecord::decided_by`]).
+#[non_exhaustive]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Decider {
+    /// A person, through a front: an answer to a question, a line they typed.
+    Person,
+    /// A plugin, by its name, such as `rig-print` or `protected-paths`.
+    Plugin(Cow<'static, str>),
+}
+
+impl Decider {
+    /// The plugin called `name`.
+    pub fn plugin(name: impl Into<Cow<'static, str>>) -> Self {
+        Self::Plugin(name.into())
+    }
 }
 
 /// How an [`EffectRecord`]'s outcome came about. A recorder of handler
@@ -1078,7 +1101,7 @@ pub enum Disposition {
 impl EffectRecord {
     /// The record of effect `id`, `kind`, routed to `key` and answered with
     /// `outcome`, and nothing else known: no parent, scope, purpose, turn, times,
-    /// tool output, kept items or review, and [`Disposition::Ran`]. A host
+    /// tool output, kept items, review or decider, and [`Disposition::Ran`]. A host
     /// that answers or cancels an effect itself builds its record from this
     /// and sets what it knows.
     pub fn new(
@@ -1103,6 +1126,7 @@ impl EffectRecord {
             finished_ms: None,
             reviewed: None,
             disposition: Disposition::Ran,
+            decided_by: None,
         }
     }
 }
@@ -1331,6 +1355,7 @@ const _: fn() = || {
     assert_wire::<MemoryOutcome>();
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
+    assert_wire::<Decider>();
     assert_wire::<EffectRow>();
     assert_wire::<Transcript>();
 };

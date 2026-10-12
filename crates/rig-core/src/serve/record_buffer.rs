@@ -84,6 +84,7 @@ impl Slot {
             finished_ms: self.finished_ms,
             reviewed: None,
             disposition: Disposition::Ran,
+            decided_by: None,
         })
     }
 }

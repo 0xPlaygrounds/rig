@@ -1259,6 +1259,7 @@ fn assemble(
                 finished_ms: Some(now_ms()),
                 reviewed: None,
                 disposition: Disposition::Ran,
+                decided_by: None,
             }
         }
     };
