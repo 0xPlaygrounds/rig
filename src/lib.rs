@@ -194,15 +194,15 @@ pub mod test_utils {
 #[cfg_attr(docsrs, doc(cfg(feature = "derive")))]
 pub use rig_derive::rig_tool;
 
-/// Conversation memory traits and the in-process backend, plus the `rig-memory`
-/// policy types when the `memory` feature is enabled.
-pub mod memory {
-    pub use rig_core::memory::*;
+/// One conversation: its entries with stable ids and authors, its asides,
+/// its halt, and the changes made to it that nobody has saved yet.
+pub use rig_core::conversation;
 
-    #[cfg(feature = "memory")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "memory")))]
-    pub use rig_memory::*;
-}
+/// Conversations over time (`rig-memory`): windows, compaction, and saving
+/// and resuming them in the `rig-session` format.
+#[cfg(feature = "memory")]
+#[cfg_attr(docsrs, doc(cfg(feature = "memory")))]
+pub use rig_memory as memory;
 
 /// Declares one feature-gated facade module per companion crate, each row giving
 /// the module, its crate, and the features enabling it.

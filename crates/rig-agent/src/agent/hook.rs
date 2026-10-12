@@ -601,9 +601,6 @@ pub enum StepEventKind {
     /// `on_dispatch`/`on_outcome` for a reranking effect (observe-only by
     /// default).
     RerankDispatch,
-    /// `on_dispatch`/`on_outcome` for a conversation-memory effect
-    /// (observe-only by default).
-    MemoryDispatch,
     /// `on_dispatch`/`on_outcome` for a retrieval effect (observe-only by
     /// default).
     RetrieveDispatch,
@@ -620,7 +617,6 @@ impl StepEventKind {
             EffectFamily::Tool => Self::ToolDispatch,
             EffectFamily::Embed => Self::EmbedDispatch,
             EffectFamily::Rerank => Self::RerankDispatch,
-            EffectFamily::Memory => Self::MemoryDispatch,
             EffectFamily::Retrieve => Self::RetrieveDispatch,
             EffectFamily::Custom => Self::CustomDispatch,
         }
@@ -1135,7 +1131,6 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
             kind,
             StepEventKind::EmbedDispatch
                 | StepEventKind::RerankDispatch
-                | StepEventKind::MemoryDispatch
                 | StepEventKind::RetrieveDispatch
                 | StepEventKind::CustomDispatch
         )

@@ -316,7 +316,6 @@ impl AgentConfig {
             Some(rig_core::effect::FamilyDescriptor::Completion { model, .. }) => model,
             Some(rig_core::effect::FamilyDescriptor::Tool { .. })
             | Some(rig_core::effect::FamilyDescriptor::Embed { .. })
-            | Some(rig_core::effect::FamilyDescriptor::Memory {})
             | Some(rig_core::effect::FamilyDescriptor::Retrieve {})
             | Some(rig_core::effect::FamilyDescriptor::Rerank { .. })
             | Some(rig_core::effect::FamilyDescriptor::Custom { .. })
@@ -421,7 +420,6 @@ impl Agent {
                 rig_core::effect::FamilyDescriptor::Completion { model, .. } => Some(model),
                 rig_core::effect::FamilyDescriptor::Tool { .. }
                 | rig_core::effect::FamilyDescriptor::Embed { .. }
-                | rig_core::effect::FamilyDescriptor::Memory {}
                 | rig_core::effect::FamilyDescriptor::Retrieve {}
                 | rig_core::effect::FamilyDescriptor::Rerank { .. }
                 | rig_core::effect::FamilyDescriptor::Custom { .. } => None,

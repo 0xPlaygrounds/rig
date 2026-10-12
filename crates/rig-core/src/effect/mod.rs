@@ -15,10 +15,9 @@ use std::{borrow::Cow, fmt, sync::Arc};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    completion::{CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities},
+    completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities},
     embeddings::EmbeddingResponse,
     error::ErrorReport,
-    id::ConversationId,
     operation::RerankRequest,
     rerank::RerankResponse,
     streaming::Transcript,
@@ -97,7 +96,7 @@ pub struct KeyParts {
     pub owner: Option<Arc<str>>,
     /// The family-shaped prefix of the name (`model`, `tool`, `retrieve`).
     pub kind: Option<Arc<str>>,
-    /// The name proper: a model label, a tool name, `memory`, `note`.
+    /// The name proper: a model label, a tool name, `retrieve`, `note`.
     pub label: Arc<str>,
     /// The disambiguating generation (`#2`): the same tool registered
     /// again under a fresh key. Only canonical `u64` decimal suffixes are
@@ -264,8 +263,6 @@ pub enum EffectFamily {
     Embed,
     /// A reranking request.
     Rerank,
-    /// A conversation-memory operation.
-    Memory,
     /// A vector-store retrieval.
     Retrieve,
     /// An out-of-tree kind.
@@ -280,7 +277,6 @@ impl EffectFamily {
             Self::Tool => "tool_call",
             Self::Embed => "embed",
             Self::Rerank => "rerank",
-            Self::Memory => "memory",
             Self::Retrieve => "retrieve",
             Self::Custom => "custom",
         }
@@ -390,12 +386,6 @@ pub fn rerank_key(label: &str) -> HandlerKey {
     HandlerKey::from(format!("rerank:{label}"))
 }
 
-/// A key for a labelled memory handler: `memory:<label>`. An agent's own
-/// memory is registered under the bare `memory` key.
-pub fn memory_key(label: &str) -> HandlerKey {
-    HandlerKey::from(format!("memory:{label}"))
-}
-
 /// A key for a labelled retrieval handler: `retrieve:<label>`. An agent's
 /// own index is registered under the bare `retrieve` key.
 pub fn retrieve_key(label: &str) -> HandlerKey {
@@ -412,8 +402,8 @@ pub mod family {
     use std::marker::PhantomData;
 
     use super::{
-        CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, MemoryOp,
-        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments, ToolCallRequest, sealed::Sealed,
+        CustomEffect, EffectFamily, EffectKind, EmbedInputs, EmbedOutputs, Family, Outcome,
+        RetrieveQuery, RetrievedDocuments, ToolCallRequest, sealed::Sealed,
     };
     use crate::{
         completion::{CompletionRequest, CompletionResponse},
@@ -478,13 +468,6 @@ pub mod family {
             |outcome| match outcome {
                 Outcome::Reranked(response) => Ok(response),
                 other => Err(Rerank::mismatch(&other)),
-            };
-        /// The conversation-memory family.
-        Memory => Memory, MemoryOp, MemoryOutcome,
-            |op| EffectKind::Memory { op },
-            |outcome| match outcome {
-                Outcome::Memory(answer) => Ok(answer),
-                other => Err(Memory::mismatch(&other)),
             };
         /// The retrieval family.
         Retrieve => Retrieve, RetrieveQuery, RetrievedDocuments,
@@ -663,8 +646,6 @@ pub enum FamilyDescriptor {
         /// The largest batch the model accepts.
         max_documents: usize,
     },
-    /// A conversation-memory backend.
-    Memory {},
     /// A vector-store index.
     Retrieve {},
     /// A handler for an out-of-tree kind: the label it serves.
@@ -682,7 +663,6 @@ impl FamilyDescriptor {
             Self::Tool { .. } => EffectFamily::Tool,
             Self::Embed { .. } => EffectFamily::Embed,
             Self::Rerank { .. } => EffectFamily::Rerank,
-            Self::Memory {} => EffectFamily::Memory,
             Self::Retrieve {} => EffectFamily::Retrieve,
             Self::Custom { .. } => EffectFamily::Custom,
         }
@@ -738,11 +718,6 @@ pub enum EffectKind {
         /// The query and the documents.
         request: RerankRequest,
     },
-    /// A conversation-memory operation.
-    Memory {
-        /// The operation.
-        op: MemoryOp,
-    },
     /// A retrieval.
     Retrieve {
         /// The query.
@@ -787,7 +762,6 @@ impl EffectKind {
             Self::ToolCall { .. } => EffectFamily::Tool,
             Self::Embed { .. } => EffectFamily::Embed,
             Self::Rerank { .. } => EffectFamily::Rerank,
-            Self::Memory { .. } => EffectFamily::Memory,
             Self::Retrieve { .. } => EffectFamily::Retrieve,
             Self::Custom { .. } => EffectFamily::Custom,
         }
@@ -802,7 +776,6 @@ impl EffectKind {
             | Self::ToolCall { .. }
             | Self::Embed { .. }
             | Self::Rerank { .. }
-            | Self::Memory { .. }
             | Self::Retrieve { .. } => self.family().name(),
         }
     }
@@ -815,7 +788,6 @@ impl EffectKind {
             Self::ToolCall { .. }
             | Self::Embed { .. }
             | Self::Rerank { .. }
-            | Self::Memory { .. }
             | Self::Retrieve { .. }
             | Self::Custom { .. } => false,
         }
@@ -831,30 +803,6 @@ pub enum EmbedInputs {
     Texts(Vec<String>),
     /// Image bytes.
     Images(Vec<Vec<u8>>),
-}
-
-/// A conversation-memory operation: the transcription of
-/// [`ConversationMemory`](crate::memory::ConversationMemory).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "op", rename_all = "snake_case")]
-pub enum MemoryOp {
-    /// Load a conversation's history.
-    Load {
-        /// The conversation.
-        conversation: ConversationId,
-    },
-    /// Append messages to a conversation.
-    Append {
-        /// The conversation.
-        conversation: ConversationId,
-        /// The messages, in order.
-        messages: Vec<Message>,
-    },
-    /// Clear a conversation.
-    Clear {
-        /// The conversation.
-        conversation: ConversationId,
-    },
 }
 
 /// A retrieval: the transcription of
@@ -893,8 +841,6 @@ pub enum Outcome {
     Embeddings(EmbedOutputs),
     /// A reranking.
     Reranked(RerankResponse),
-    /// A memory operation's answer.
-    Memory(MemoryOutcome),
     /// Retrieved documents.
     Documents(RetrievedDocuments),
     /// An out-of-tree answer.
@@ -912,7 +858,6 @@ impl Outcome {
             Self::ToolResult { .. } => EffectFamily::Tool,
             Self::Embeddings(_) => EffectFamily::Embed,
             Self::Reranked(_) => EffectFamily::Rerank,
-            Self::Memory(_) => EffectFamily::Memory,
             Self::Documents(_) => EffectFamily::Retrieve,
             Self::Custom { .. } => EffectFamily::Custom,
         }
@@ -927,21 +872,6 @@ pub enum EmbedOutputs {
     Texts(EmbeddingResponse),
     /// Image embeddings.
     Images(EmbeddingResponse),
-}
-
-/// The answer to a [`MemoryOp`].
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "memory", rename_all = "snake_case")]
-pub enum MemoryOutcome {
-    /// The loaded history.
-    Loaded {
-        /// The messages.
-        messages: Vec<Message>,
-    },
-    /// The append succeeded.
-    Appended,
-    /// The clear succeeded.
-    Cleared,
 }
 
 /// The answer to a [`RetrieveQuery`].
@@ -1348,11 +1278,9 @@ const _: fn() = || {
     assert_wire::<EffectKind>();
     assert_wire::<EmbedInputs>();
     assert_wire::<RerankRequest>();
-    assert_wire::<MemoryOp>();
     assert_wire::<RetrieveQuery>();
     assert_wire::<Outcome>();
     assert_wire::<EmbedOutputs>();
-    assert_wire::<MemoryOutcome>();
     assert_wire::<RetrievedDocuments>();
     assert_wire::<EffectRecord>();
     assert_wire::<Decider>();

@@ -5803,8 +5803,8 @@ impl rig_core::serve::Serve for WrongOutcomeHandler {
         _: rig_core::effect::EffectKind,
         _: rig_core::serve::Dispatch,
     ) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Memory(
-            rig_core::effect::MemoryOutcome::Appended,
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Documents(
+            rig_core::effect::RetrievedDocuments::Ids(Vec::new()),
         )))
     }
 }
@@ -5839,7 +5839,7 @@ async fn wrong_outcome_closes_its_completion_dispatch_with_internal() -> anyhow:
         anyhow::bail!("no error outcome: {details:?}");
     };
     anyhow::ensure!(
-        kind == rig_core::error::ErrorKind::Internal && message.contains("memory"),
+        kind == rig_core::error::ErrorKind::Internal && message.contains("retrieve"),
         "the Internal wrong-outcome report, got {kind:?}: {message}"
     );
     Ok(())

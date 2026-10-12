@@ -31,8 +31,8 @@ pub type HandlerFuture<'a> = WasmBoxedFuture<'a, Reply>;
 /// A registered effect handler returning an outcome or an owned stream.
 ///
 /// Provider and tool authors do not implement this directly: the adapters
-/// in [`crate::serve::adapters`] wrap models, tools, memories and indexes
-/// (`Model`, `Tool`, `ConversationMemory`, `VectorStoreIndex`). A
+/// in [`crate::serve::adapters`] wrap models, tools and indexes
+/// (`Model`, `Tool`, `VectorStoreIndex`). A
 /// host implements it for out-of-tree kinds ([`EffectKind::Custom`], typed
 /// through [`crate::effect::CustomEffect`]) or for a replayer.
 ///

@@ -94,7 +94,7 @@ pub struct Paired {
 
 /// `messages` read as a canonical conversation and repaired into one
 /// [`validate`] accepts, losing no turn: the lenient load of a
-/// history from outside the protocol, such as a memory backend, and the
+/// history from outside the protocol, such as a stored transcript, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
 /// turn left directly after another is merged into it; `repairs` reports
 /// the input as [`pair`] read it.

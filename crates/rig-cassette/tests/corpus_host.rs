@@ -5,7 +5,7 @@
 //! to them: a `Custom<E>` effect the host defined, the host's embedding
 //! model. Those dispatches are the run's — the recorder taps the host's
 //! bus — but they are not the agent's row: the required row is what the
-//! agent's builder needs (its model, routes, memory, tools, indexes), the
+//! agent's builder needs (its model, routes, tools, indexes), the
 //! signature is what the trace touched. The replay registers the host's
 //! handlers from the signature, under the host's keys, before the agent
 //! is built; the handler table (the header's first source since #2450)

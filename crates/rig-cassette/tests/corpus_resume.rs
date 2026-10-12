@@ -62,11 +62,6 @@
 //!
 //! # What the matrix found
 //!
-//! - A resumed run never appends to memory: `resume` skips the history
-//!   and memory resolution, so the runner holds no memory handle and the
-//!   `Done` append is not dispatched. The driver that suspended the run
-//!   appends what the run produced; pinned, not changed (a driver that
-//!   persists a run between steps owns its memory).
 //! - A resumed run forgot the model the head asked: routing state lived
 //!   in the driver only ("live routing state stays in the driver, not the
 //!   serde `AgentRun`"), so a resumed engine's model-selection hook saw
@@ -79,7 +74,7 @@
 //! - The builder that resumes a run registers its handlers as a fresh
 //!   run's builder does, under the same keys the head's handlers hold;
 //!   a second registration is refused ("a fresh key"), so the head's
-//!   memory, route and context handlers are deregistered and the tail's
+//!   route and context handlers are deregistered and the tail's
 //!   registered from the golden's tail. Tools are the server's and
 //!   continue.
 

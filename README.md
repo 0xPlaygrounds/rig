@@ -80,7 +80,7 @@ More information about this crate can be found in the [official](https://rig.rs/
 Rig separates portable provider/backend contracts from agent orchestration:
 
 - `rig-core` contains provider-neutral messages, completion models, portable and
-  contextual tool contracts, memory and vector-store contracts, and built-in
+  contextual tool contracts, the conversation type, vector-store contracts, and built-in
   provider mappings.
 - `rig-agent` contains the classic builder, prompt/streaming traits, typed hooks,
   the live tool registry, extraction, and the serializable `AgentRun` state machine.
@@ -466,7 +466,7 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | Google Vertex AI | [`rig-vertexai`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-vertexai) | `vertexai` | `rig::vertexai` |
 | HelixDB | [`rig-helixdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-helixdb) | `helixdb` | `rig::helixdb` |
 | LanceDB | [`rig-lancedb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-lancedb) | `lancedb` | `rig::lancedb` |
-| Memory policies | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
+| Conversations over time | [`rig-memory`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-memory) | `memory` | `rig::memory` |
 | Milvus | [`rig-milvus`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-milvus) | `milvus` | `rig::milvus` |
 | MongoDB | [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb) | `mongodb` | `rig::mongodb` |
 | Neo4j | [`rig-neo4j`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j) | `neo4j` | `rig::neo4j` |
@@ -477,10 +477,9 @@ rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
 | SurrealDB | [`rig-surrealdb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-surrealdb) | `surrealdb` | `rig::surrealdb` |
 | TypeSafe Jev (experimental judgments) | [`rig-typesafeai`](crates/rig-typesafeai) | `typesafeai` | `rig::typesafeai` |
 
-`rig::memory` is available without the `memory` feature; it contains the core
-conversation memory traits and in-memory backend re-exported from `rig-core`.
-Enabling `features = ["memory"]` adds reusable history-shaping policy types from
-the `rig-memory` companion crate to the same module.
+`rig::conversation` (from `rig-core`) is the one conversation type. Enabling
+`features = ["memory"]` adds `rig::memory`, the `rig-memory` crate: windows,
+compaction, and saving and resuming conversations.
 
 We also have some other associated crates that have additional functionality you may find helpful when using Rig:
 - `rig-onchain-kit` - the [Rig Onchain Kit.](https://github.com/0xPlaygrounds/rig-onchain-kit) Intended to make interactions between Solana/EVM and Rig much easier to implement.

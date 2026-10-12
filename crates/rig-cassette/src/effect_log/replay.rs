@@ -523,7 +523,6 @@ fn describe_required(
             model: ModelRef::new(format!("replay:{key}")),
             capabilities: ProviderCapabilities::default(),
         }),
-        EffectFamily::Memory => Ok(FamilyDescriptor::Memory {}),
         EffectFamily::Retrieve => Ok(FamilyDescriptor::Retrieve {}),
         // These families require modality, document limits, or custom labels
         // absent from the effect row.
@@ -577,7 +576,6 @@ fn describe(key: &HandlerKey, kind: &EffectKind, log: &EffectLog) -> FamilyDescr
             model: format!("replay:{key}"),
             max_documents: usize::MAX,
         },
-        EffectKind::Memory { .. } => FamilyDescriptor::Memory {},
         EffectKind::Retrieve { .. } => FamilyDescriptor::Retrieve {},
         EffectKind::Custom { .. } => FamilyDescriptor::Custom {
             kind: kind.name().to_owned(),

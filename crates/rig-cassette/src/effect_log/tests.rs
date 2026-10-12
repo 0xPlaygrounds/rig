@@ -68,7 +68,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
     ] {
         let mut required = EffectRow::new();
         for key in keys {
-            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Memory);
+            required.insert_if_absent(HandlerKey::from(key), EffectFamily::Retrieve);
             if !log
                 .header
                 .handlers
@@ -77,7 +77,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
             {
                 log.header.handlers.push(HandlerDescriptor {
                     key: HandlerKey::from(key),
-                    family: FamilyDescriptor::Memory {},
+                    family: FamilyDescriptor::Retrieve {},
                     layers: vec![],
                 });
             }
@@ -106,7 +106,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
             && error.message.contains("descriptor")
     );
     let mut conflicting = EffectRow::new();
-    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Retrieve);
+    conflicting.insert_if_absent(HandlerKey::from("shared"), EffectFamily::Tool);
     log.header.programs.insert(
         "conflicting".into(),
         ProgramIdentity {

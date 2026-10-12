@@ -1,12 +1,22 @@
-//! Effect handlers adapting model, tool, memory, and retrieval traits.
+//! Effect handlers adapting model, tool, and retrieval traits.
 //! Each adapter translates its effect family into trait calls and returns
 //! outcomes or streaming events.
 //!
 //! ```
-//! use rig_core::{memory::InMemoryConversationMemory, serve::{Serve, adapters::MemoryAdapter}};
+//! use rig_core::serve::{Serve, adapters::ToolFn};
+//! use rig_core::tool::{ToolContext, ToolOutput};
+//! use rig_core::wasm_compat::WasmBoxedFuture;
 //!
-//! let handler = MemoryAdapter::new(InMemoryConversationMemory::new());
-//! assert_eq!(handler.descriptor().key.as_str(), "memory");
+//! let handler = ToolFn::new(
+//!     "echo",
+//!     "Echo the arguments",
+//!     serde_json::json!({ "type": "object" }),
+//!     |_context: &mut ToolContext, args: serde_json::Value| {
+//!         Box::pin(async move { Ok(ToolOutput::text(args.to_string())) })
+//!             as WasmBoxedFuture<'_, _>
+//!     },
+//! );
+//! assert_eq!(handler.descriptor().key, rig_core::effect::tool_key("echo"));
 //! ```
 
 use crate::{
@@ -14,11 +24,10 @@ use crate::{
     driver::{DynModel, Sending},
     effect::{
         EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
-        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome,
-        RetrieveQuery, RetrievedDocuments, ToolEmbeddingDescriptor,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome, RetrieveQuery,
+        RetrievedDocuments, ToolEmbeddingDescriptor,
     },
     error::{ErrorKind, ErrorReport},
-    memory::ConversationMemory,
     operation::{Completion, Embedding, Rerank},
     providers::registry::ProviderId,
     tool::{ErasedTool, Tool, ToolEmbedding},
@@ -150,7 +159,6 @@ impl Serve for ModelAdapter<Completion> {
             },
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -203,7 +211,6 @@ impl Serve for ModelAdapter<Embedding> {
             ))),
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -246,7 +253,6 @@ impl Serve for ModelAdapter<Rerank> {
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Rerank, &other)))
@@ -359,7 +365,6 @@ where
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
@@ -447,96 +452,10 @@ where
             }
             other @ (EffectKind::Completion { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Retrieve { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Tool, &other)))
-            }
-        }
-    }
-}
-
-/// A [`ConversationMemory`] as a handler.
-pub struct MemoryAdapter<M> {
-    memory: M,
-    label: Option<String>,
-}
-
-impl<M> MemoryAdapter<M> {
-    /// Wrap `memory` as an agent's own memory, under the bare `memory` key.
-    pub fn new(memory: M) -> Self {
-        Self {
-            memory,
-            label: None,
-        }
-    }
-
-    /// Wrap `memory` under `memory:<label>`, so a host can serve several
-    /// backends (per tenant, per store) on one bus and dispatch to each by
-    /// [`memory_key`](crate::effect::memory_key).
-    pub fn labelled(label: impl Into<String>, memory: M) -> Self {
-        Self {
-            memory,
-            label: Some(label.into()),
-        }
-    }
-
-    /// The wrapped backend.
-    pub fn memory(&self) -> &M {
-        &self.memory
-    }
-}
-
-impl<M> Serve for MemoryAdapter<M>
-where
-    M: ConversationMemory + 'static,
-{
-    type Family = family::Memory;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: self
-                .label
-                .as_deref()
-                .map_or_else(|| HandlerKey::from("memory"), crate::effect::memory_key),
-            family: FamilyDescriptor::Memory {},
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::Memory { op } => {
-                let outcome = match op {
-                    MemoryOp::Load { conversation } => self
-                        .memory
-                        .load(&conversation)
-                        .await
-                        .map(|messages| Outcome::Memory(MemoryOutcome::Loaded { messages })),
-                    MemoryOp::Append {
-                        conversation,
-                        messages,
-                    } => self
-                        .memory
-                        .append(&conversation, messages)
-                        .await
-                        .map(|()| Outcome::Memory(MemoryOutcome::Appended)),
-                    MemoryOp::Clear { conversation } => self
-                        .memory
-                        .clear(&conversation)
-                        .await
-                        .map(|()| Outcome::Memory(MemoryOutcome::Cleared)),
-                };
-                Reply::Outcome(outcome.map_err(ErrorReport::from))
-            }
-            other @ (EffectKind::Completion { .. }
-            | EffectKind::ToolCall { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Custom { .. }) => {
-                Reply::Outcome(Err(wrong_family(EffectFamily::Memory, &other)))
             }
         }
     }
@@ -642,7 +561,6 @@ where
             other @ (EffectKind::Completion { .. }
             | EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
-            | EffectKind::Memory { .. }
             | EffectKind::Rerank { .. }
             | EffectKind::Custom { .. }) => {
                 Reply::Outcome(Err(wrong_family(EffectFamily::Retrieve, &other)))

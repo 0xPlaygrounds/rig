@@ -57,7 +57,7 @@
 //!   whose route was selected named it only in the signature. Fixed in
 //!   `rig-agent` (`route_keys`); the replay registers a route from the
 //!   log through `model_route_handler`, added for it.
-//! - A required key of the completion, memory or retrieval family that the
+//! - A required key of the completion or retrieval family that the
 //!   record never dispatched to could not be replayed at all
 //!   (`describe_required` knew tools only), so the unselected-route golden
 //!   was unreplayable. The log replayer now describes every required family.

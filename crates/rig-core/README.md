@@ -14,7 +14,7 @@ More information about this crate can be found in the [crate documentation](http
   - [Who is using Rig?](#who-is-using-rig)
 
 ## Features
-- Portable contracts for agent runtimes, including completions, messages, tools, and memory
+- Portable contracts for agent runtimes, including completions, messages, conversations, and tools
 - Full [GenAI Semantic Convention](https://opentelemetry.io/docs/specs/semconv/gen-ai/) compatibility
 - 20+ model providers, all under one singular unified interface
 - Built-in providers selectable as data: `Catalog::connect("anthropic/claude-opus-5-5")` builds a model from a `vendor/model` reference with the key from the environment, in the protocol family the model catalog names, and the model encodes and prices with that catalog's facts. `providers::registry` references name a model or carry a whole typed configuration, and both round-trip through serde without a credential. Model references discard embedded credentials and reject empty identifiers; a configuration's `id()` returns a catalog selection only when its dialect name is registered. Providers outside this catalog can use a `Model` and `ModelAdapter` directly.

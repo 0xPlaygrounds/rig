@@ -294,23 +294,6 @@ fn source_chain_is_outermost_first() {
 }
 
 #[test]
-fn memory_error_kinds() {
-    assert_eq!(
-        MemoryError::Policy("p".into()).report().kind,
-        ErrorKind::MemoryPolicy
-    );
-    assert_eq!(
-        MemoryError::Internal("i".into()).report().kind,
-        ErrorKind::Internal
-    );
-    let backend = MemoryError::backend(std::io::Error::other("disk"));
-    let report = backend.report();
-    assert_eq!(report.kind, ErrorKind::MemoryBackend);
-    assert!(!report.retryable);
-    assert!(report.message.contains("disk"));
-}
-
-#[test]
 fn report_round_trips_through_serde() {
     let report = ErrorReport::new(ErrorKind::Tool(ToolErrorKind::RateLimited), "slow down")
         .with_retryable(true)
@@ -409,17 +392,6 @@ fn provider_reports_retain_structured_provider_metadata() {
 #[derive(Debug, thiserror::Error)]
 #[error("backend failed")]
 struct NestedBackendError(#[source] std::io::Error);
-
-#[test]
-fn wrapped_memory_error_retains_nested_sources() {
-    let error = MemoryError::backend(NestedBackendError(std::io::Error::other("disk")));
-    assert!(
-        std::error::Error::source(&error).is_some_and(|source| source.is::<NestedBackendError>())
-    );
-    let report = ErrorReport::from(&error);
-    assert_eq!(report.source_chain, vec!["backend failed", "disk"]);
-    assert_eq!(report.message, error.to_string());
-}
 
 #[test]
 fn wrapped_document_error_retains_nested_sources() {
@@ -657,8 +629,6 @@ fn every_error_kind_has_its_own_stable_code() {
         (ErrorKind::Provider, "provider"),
         (ErrorKind::ProviderResponse, "provider_response"),
         (ErrorKind::Tool(ToolErrorKind::Timeout), "tool"),
-        (ErrorKind::MemoryBackend, "memory_backend"),
-        (ErrorKind::MemoryPolicy, "memory_policy"),
         (ErrorKind::Internal, "internal"),
         (ErrorKind::Cancelled, "cancelled"),
         (ErrorKind::Timeout, "timeout"),

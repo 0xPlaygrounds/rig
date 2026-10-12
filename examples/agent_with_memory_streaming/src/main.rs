@@ -1,15 +1,14 @@
 //! Demonstrates keeping a conversation across streamed prompts.
 //!
-//! The caller owns the history: each run starts from it, and the messages the
-//! final response carries (the prompt first) are appended to it afterwards.
-//! Saving it between processes is `rig-memory`'s job.
+//! The conversation is kept by `rig::memory`: each run starts from its
+//! messages, the messages the final response carries (the prompt first) are
+//! appended to it afterwards, and it is saved.
 //!
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, PromptResponse, StreamingResult};
-use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
@@ -29,14 +28,20 @@ async fn main() -> Result<()> {
         .preamble("You are a helpful assistant with persistent memory.")
         .build();
 
-    let mut history: Vec<Message> = Vec::new();
+    let store = rig::memory::MemoryStore::default();
+    let mut conversation = rig::memory::load(&store, "user-123")?;
     for (turn, prompt) in ["My name is Alice.", "What's my name?"]
         .into_iter()
         .enumerate()
     {
-        let reply = collect_final(agent.prompt(prompt).history(history.clone()).stream()).await?;
+        let stream = agent
+            .prompt(prompt)
+            .history(conversation.messages().to_vec())
+            .stream();
+        let reply = collect_final(stream).await?;
         println!("turn {}: {}", turn + 1, reply.output());
-        history.extend(reply.messages);
+        conversation.extend(reply.messages);
+        rig::memory::save(&store, "user-123", &mut conversation)?;
     }
 
     Ok(())

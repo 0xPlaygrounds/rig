@@ -317,7 +317,6 @@ impl ModelHandle {
             FamilyDescriptor::Completion { capabilities, .. } => capabilities,
             FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => ProviderCapabilities::default(),
@@ -330,7 +329,6 @@ impl ModelHandle {
             FamilyDescriptor::Completion { model, .. } => model,
             FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => {
@@ -416,7 +414,6 @@ impl ToolHandle {
             FamilyDescriptor::Tool { name, .. } => name,
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => self.key().to_string(),
@@ -522,7 +519,6 @@ impl EmbedHandle {
             FamilyDescriptor::Embed { modality, .. } => Some(modality),
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Tool { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
@@ -535,7 +531,6 @@ impl EmbedHandle {
             FamilyDescriptor::Embed { dims, .. } => dims,
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Tool { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
@@ -548,7 +543,6 @@ impl EmbedHandle {
             FamilyDescriptor::Embed { max_documents, .. } => Some(max_documents),
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Tool { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Custom { .. } => None,
@@ -613,7 +607,6 @@ impl RerankHandle {
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Custom { .. } => self.key().to_string(),
         }
@@ -626,7 +619,6 @@ impl RerankHandle {
             FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Embed { .. }
-            | FamilyDescriptor::Memory {}
             | FamilyDescriptor::Retrieve {}
             | FamilyDescriptor::Custom { .. } => None,
         }

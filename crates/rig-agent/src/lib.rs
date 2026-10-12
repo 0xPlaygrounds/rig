@@ -28,7 +28,7 @@
 
 extern crate self as rig;
 
-/// Portable provider, data, memory, and tool contracts, also used as the expansion
+/// Portable provider, data, conversation, and tool contracts, also used as the expansion
 /// root for portable `#[rig_tool]` functions. These exports are not forwarded to
 /// the `rig_agent` crate root.
 ///

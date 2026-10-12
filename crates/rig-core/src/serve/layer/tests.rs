@@ -196,10 +196,9 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
     let (handler, served) = echo();
     let mut policy = Policy::observing("wrong", &seen);
     policy.before = Box::new(|_| {
-        Decision::Patch(EffectKind::Memory {
-            op: crate::effect::MemoryOp::Clear {
-                conversation: crate::id::ConversationId::from("c"),
-            },
+        Decision::Patch(EffectKind::ToolCall {
+            name: "read".into(),
+            args: "{}".into(),
         })
     });
     let layered = handler.layered(policy);
@@ -211,7 +210,7 @@ async fn a_patch_of_another_family_is_internal_and_never_a_dispatch() {
         "{}",
         report.message
     );
-    assert!(report.message.contains("custom") && report.message.contains("memory"));
+    assert!(report.message.contains("custom") && report.message.contains("tool_call"));
     assert_eq!(served.load(Ordering::SeqCst), 0, "no dispatch");
     assert!(
         tap.outcomes.lock().expect("outcomes").is_empty(),

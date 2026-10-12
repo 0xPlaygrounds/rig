@@ -9,7 +9,7 @@
         clippy::unreachable
     )
 )]
-//! Provider-agnostic model, message, tool, memory, and vector-store contracts.
+//! Provider-agnostic model, message, conversation, tool, and vector-store contracts.
 //! Provider configurations build endpoint wires, and a [`Model`] binds a
 //! wire to a [`driver::Transport`]; a [`DynModel`] is a model erased to
 //! its operation, for consumers that store one. Companion crates supply
@@ -51,7 +51,6 @@ pub mod image_generation;
 pub mod json_utils;
 pub mod loaders;
 pub mod markers;
-pub mod memory;
 pub mod model;
 pub mod observe;
 pub mod operation;

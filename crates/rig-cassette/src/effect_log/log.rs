@@ -51,8 +51,8 @@ pub struct LogHeader {
     /// Replay requires the same stack because hooks execute again.
     pub hooks: Vec<String>,
     /// The program's required effect row at record time: every key it could
-    /// dispatch to (its model, its tools, its memory, its retrieval
-    /// indexes) with the family it needs. A replay checks this row against
+    /// dispatch to (its model, its tools, its retrieval indexes) with the
+    /// family it needs. A replay checks this row against
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
     pub required: EffectRow,
