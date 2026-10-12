@@ -6,6 +6,7 @@
 //! session's store for the next build.
 
 use std::collections::HashSet;
+use std::ops::Range;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
@@ -28,6 +29,7 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::MessageId;
 use rig_harness::prelude::ExitReason;
 use rig_harness::primary::Shown;
+use rig_harness::transcript::TranscriptEntry;
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
@@ -167,6 +169,127 @@ pub enum ItemRow {
     Lit(usize),
 }
 
+/// The transcript as the view drew it at its last frame: every row laid
+/// out, on screen or not, as drawn (wrapped, cut where its item is
+/// collapsed, as its renderer drew it), with the items they belong to and
+/// the matches the view lit in each. A plugin counts and scrolls over this,
+/// not over the source text.
+///
+/// It costs nothing until a plugin adds it with
+/// `app.init_resource::<DrawnTranscript>()`. From then on, each frame that
+/// draws the transcript copies the text of every row of it, and with
+/// [`TranscriptView::highlights`] set counts their matches in each, so its
+/// work and memory grow with the transcript; a streaming reply draws at
+/// most about 30 frames a second. Frames that draw the same rows leave it
+/// unchanged, so `Res::is_changed` says what is drawn changed.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::{DrawnTranscript, ItemRow, ScrollTo, TranscriptItem};
+///
+/// /// Shows the first item with a lit match, by its first one.
+/// fn first_match(drawn: Res<DrawnTranscript>, mut commands: Commands) {
+///     let Some(agent) = drawn.agent().filter(|_| drawn.is_changed()) else {
+///         return;
+///     };
+///     let mut lit = drawn.items().iter().filter(|(item, _)| drawn.lit_in(item) > 0);
+///     if let Some((item, _)) = lit.next() {
+///         commands.trigger(ScrollTo { agent, item: Some(item.clone()), row: ItemRow::Lit(0) });
+///     }
+/// }
+/// ```
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct DrawnTranscript {
+    agent: Option<Entity>,
+    rows: Vec<DrawnRow>,
+    items: Vec<(TranscriptItem, Range<usize>)>,
+    on_screen: Range<usize>,
+}
+
+/// A row of the [`DrawnTranscript`].
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DrawnRow {
+    /// Its text, as drawn.
+    pub text: String,
+    /// How many matches of each highlight the view lit in it, by its index
+    /// in [`TranscriptView::highlights`] (where two overlap, the one placed
+    /// first lit it); empty with no highlights.
+    pub lit: Vec<usize>,
+}
+
+impl DrawnRow {
+    /// How many matches of every highlight the view lit in it.
+    pub fn lit_total(&self) -> usize {
+        self.lit.iter().sum()
+    }
+}
+
+impl DrawnTranscript {
+    /// The transcript `agent`'s `rows` make, `items` among them, with
+    /// `on_screen` on screen.
+    pub(crate) fn new(
+        agent: Option<Entity>,
+        rows: Vec<DrawnRow>,
+        items: Vec<(TranscriptItem, Range<usize>)>,
+        on_screen: Range<usize>,
+    ) -> Self {
+        Self {
+            agent,
+            rows,
+            items,
+            on_screen,
+        }
+    }
+
+    /// The agent whose transcript it is; `None` with no agent shown, when
+    /// the view draws the notices about every agent.
+    pub fn agent(&self) -> Option<Entity> {
+        self.agent
+    }
+
+    /// Its rows, top to bottom.
+    pub fn rows(&self) -> &[DrawnRow] {
+        &self.rows
+    }
+
+    /// Each item's rows, top to bottom by first row. An item's rows hold
+    /// those of the items drawn inside it: a message's, its calls and the
+    /// notices and entries written inside it. Rows of no item, such as the
+    /// reply streaming in, are in none.
+    pub fn items(&self) -> &[(TranscriptItem, Range<usize>)] {
+        &self.items
+    }
+
+    /// The rows of `item`, or `None` when it is not drawn.
+    pub fn rows_of(&self, item: &TranscriptItem) -> Option<Range<usize>> {
+        let found = self.items.iter().find(|(drawn, _)| drawn == item);
+        found.map(|(_, rows)| rows.clone())
+    }
+
+    /// The innermost item `row` belongs to, such as a call rather than
+    /// its message.
+    pub fn item_at(&self, row: usize) -> Option<&TranscriptItem> {
+        let holding = self.items.iter().filter(|(_, rows)| rows.contains(&row));
+        holding
+            .max_by_key(|(_, rows)| rows.start)
+            .map(|(item, _)| item)
+    }
+
+    /// How many matches of every highlight the view lit in `item`'s rows:
+    /// `n` in [`ItemRow::Lit`] counts these, so it finds a row for each `n`
+    /// below this.
+    pub fn lit_in(&self, item: &TranscriptItem) -> usize {
+        let rows = self.rows_of(item).unwrap_or_default();
+        let rows = self.rows.get(rows).unwrap_or_default();
+        rows.iter().map(DrawnRow::lit_total).sum()
+    }
+
+    /// The rows on screen.
+    pub fn on_screen(&self) -> Range<usize> {
+        self.on_screen.clone()
+    }
+}
+
 /// A notice placed in a transcript.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ShownNotice {
@@ -193,9 +316,13 @@ struct Anchor {
     items: usize,
 }
 
-/// Where a notice is drawn in a transcript.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum Slot {
+/// Where a notice or an entry is drawn in an agent's transcript, by the
+/// index of a message in its [`Conversation`]. Slots order as they are
+/// drawn: the top, then each message with the slots inside it by item,
+/// then the slot after it. Those in the same slot are drawn in the order
+/// they came.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum TranscriptSlot {
     /// Before the first message.
     Top,
     /// After this message.
@@ -204,55 +331,90 @@ pub(crate) enum Slot {
     Inside(usize, usize),
 }
 
+impl TranscriptSlot {
+    /// Where the entry `entry` is drawn in `conversation`: after its
+    /// message while that is there, else after the first item of the
+    /// message that stands for it now, such as the summary of a compaction
+    /// that took it out, which a kept prompt may have joined.
+    pub fn of_entry(entry: &TranscriptEntry, conversation: &Conversation) -> Self {
+        let Some(after) = entry.after else {
+            return Self::Top;
+        };
+        if let Some(index) = conversation.index_of(after) {
+            return Self::After(index);
+        }
+        let Some(last) = conversation.messages().len().checked_sub(1) else {
+            return Self::Top;
+        };
+        let standing = conversation.start_of(after).min(last);
+        match items(conversation, standing) {
+            0 | 1 => Self::After(standing),
+            _ => Self::Inside(standing, 1),
+        }
+    }
+
+    /// Its place in drawing order.
+    fn order(self) -> Option<(usize, bool, usize)> {
+        match self {
+            Self::Top => None,
+            Self::Inside(message, item) => Some((message, false, item)),
+            Self::After(message) => Some((message, true, 0)),
+        }
+    }
+}
+
+impl Ord for TranscriptSlot {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.order().cmp(&other.order())
+    }
+}
+
+impl PartialOrd for TranscriptSlot {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 impl ShownNotice {
     /// Whether it is shown with no agent shown: it is about every agent.
     pub(crate) fn is_for_every_agent(&self) -> bool {
         self.agent.is_none()
     }
 
-    /// Where it goes in the transcript of the agent `id` with
+    /// The agent whose transcript draws it: the one it is about, or for a
+    /// notice about every agent the one it was written in. `None` for one
+    /// about every agent written before any had a message, which every
+    /// transcript draws at its top. With no agent shown, the view draws
+    /// every notice about every agent.
+    pub fn drawn_in(&self) -> Option<&AgentId> {
+        let written = self.at.as_ref().map(|at| &at.agent);
+        written.or(self.agent.as_ref())
+    }
+
+    /// Where it is drawn in the transcript of the agent `id` with
     /// `conversation`, or `None` when it is no part of it: it is about
     /// another agent, or about every agent and was written in another's.
     /// One whose message is gone goes where that message was.
-    pub(crate) fn slot(&self, id: &AgentId, conversation: &Conversation) -> Option<Slot> {
+    pub fn slot(&self, id: &AgentId, conversation: &Conversation) -> Option<TranscriptSlot> {
         if self.agent.as_ref().is_some_and(|agent| agent != id) {
             return None;
         }
         let Some(at) = &self.at else {
-            return Some(Slot::Top);
+            return Some(TranscriptSlot::Top);
         };
         if &at.agent != id {
             return None;
         }
         Some(match conversation.index_of(at.message) {
-            Some(index) if items(conversation, index) > at.items => Slot::Inside(index, at.items),
-            Some(index) => Slot::After(index),
+            Some(index) if items(conversation, index) > at.items => {
+                TranscriptSlot::Inside(index, at.items)
+            }
+            Some(index) => TranscriptSlot::After(index),
             None => match conversation.start_of(at.message).checked_sub(1) {
-                Some(index) => Slot::After(index),
-                None => Slot::Top,
+                Some(index) => TranscriptSlot::After(index),
+                None => TranscriptSlot::Top,
             },
         })
-    }
-}
-
-/// Where an entry that follows the message `after` is drawn: after it
-/// while it is in `conversation`, else after the first item of the message
-/// that stands for it now, such as the summary of a compaction that took
-/// it out, which a kept prompt may have joined.
-pub(crate) fn entry_slot(after: Option<MessageId>, conversation: &Conversation) -> Slot {
-    let Some(after) = after else {
-        return Slot::Top;
-    };
-    if let Some(index) = conversation.index_of(after) {
-        return Slot::After(index);
-    }
-    let Some(last) = conversation.messages().len().checked_sub(1) else {
-        return Slot::Top;
-    };
-    let standing = conversation.start_of(after).min(last);
-    match items(conversation, standing) {
-        0 | 1 => Slot::After(standing),
-        _ => Slot::Inside(standing, 1),
     }
 }
 

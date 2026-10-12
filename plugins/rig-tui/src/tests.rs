@@ -88,7 +88,7 @@ pub(crate) fn type_text(app: &mut App, text: &str) {
 /// The rows of `agent`'s transcript on a screen `height` rows high and 80
 /// wide, with `streaming` tool calls after the last message, as a frame
 /// draws them where the view is scrolled, selection and highlights
-/// included; notes where the view is, as a frame does.
+/// included; notes where the view is and what it drew, as a frame does.
 pub(crate) fn drawn_rows(
     app: &mut App,
     agent: Entity,
@@ -103,7 +103,8 @@ pub(crate) fn drawn_rows(
         move |agents: Query<(&AgentId, &Conversation)>,
               (mut view, mut transcript_view): (ResMut<view::TuiView>, ResMut<TranscriptView>),
               (tools, origins): (Query<&ToolRenderer>, Query<&EntryRenderer>),
-              (lists, entries): (Query<&TranscriptEntries>, Query<&TranscriptEntry>)| {
+              (lists, entries): (Query<&TranscriptEntries>, Query<&TranscriptEntry>),
+              mut drawn: Option<ResMut<DrawnTranscript>>| {
             let Ok((id, conversation)) = agents.get(agent) else {
                 return Vec::new();
             };
@@ -142,6 +143,9 @@ pub(crate) fn drawn_rows(
             let parts = lay_out_transcript(&mut rows, &sources, Some(&shown), 80);
             let highlights = transcript_view.highlights.as_slice();
             let visible = rows.visible(&parts, (80, height), &mut view.scroll, highlights);
+            if let Some(drawn) = &mut drawn {
+                drawn.set_if_neq(rows.drawn(Some(agent), &parts, &visible, highlights));
+            }
             let selected = (transcript_view.selected.as_ref(), highlights);
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();

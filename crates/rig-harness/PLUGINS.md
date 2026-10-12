@@ -2102,7 +2102,10 @@ wins), and where it is scrolled (`top()`). `ScrollTo { agent, item, row }`
 scrolls to a `TranscriptItem` (a `Message`, a tool `Call`, an `Entry` or a
 `Notice` by its index in `notices()`): to a row of it (`ItemRow::Top(n)`),
 its first (`Reveal`) or the row of its `n`th lit match (`Lit(n)`); `item:
-None` follows the newest output.
+None` follows the newest output. A notice's `slot(agent, conversation)` is
+where that agent's transcript draws it (a `TranscriptSlot`, ordered as drawn).
+`DrawnTranscript`, once a plugin adds it, holds each row the last frame drew,
+by item, with the matches lit (`lit_in(item)` is what `Lit(n)` counts).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -2124,11 +2127,8 @@ fn build(app: &mut App) {
 
 /// `/mark why`: an entry after the agent's newest message.
 fn mark(In(args): In<CommandArgs>, agents: Query<&Conversation>, mut commands: Commands) {
-    let Ok(conversation) = agents.get(args.agent) else {
-        return;
-    };
-    let newest = conversation.messages().len().checked_sub(1);
-    let after = newest.and_then(|at| conversation.id(at));
+    let Ok(conversation) = agents.get(args.agent) else { return };
+    let after = conversation.messages().len().checked_sub(1).and_then(|at| conversation.id(at));
     commands.spawn((TranscriptEntry::new("mark", after, "marked", args.args), EntryOf(args.agent)));
 }
 

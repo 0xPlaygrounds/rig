@@ -28,7 +28,7 @@ use super::renderers::{
     CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
     result_style, result_text,
 };
-use super::view::{Highlight, ItemRow, ShownNotice, TranscriptItem};
+use super::view::{DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem};
 use super::wrap::wrap;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
 use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
@@ -488,6 +488,31 @@ impl Transcript {
         }
     }
 
+    /// The transcript of `agent` as `parts` and `visible` drew it, with the
+    /// matches of `highlights` in each row, counted only when one is set.
+    pub(crate) fn drawn(
+        &self,
+        agent: Option<Entity>,
+        parts: &[Part],
+        visible: &Visible,
+        highlights: &[Highlight],
+    ) -> DrawnTranscript {
+        let lighting = highlights
+            .iter()
+            .any(|highlight| !highlight.text.is_empty());
+        let rows = parts.iter().flat_map(|part| self.rows(part));
+        let rows = rows.map(|row| DrawnRow {
+            text: row.to_string(),
+            lit: if lighting {
+                lit(row, highlights).1
+            } else {
+                Vec::new()
+            },
+        });
+        let on_screen = visible.first..visible.first + visible.rows.len();
+        DrawnTranscript::new(agent, rows.collect(), visible.marks.clone(), on_screen)
+    }
+
     /// The row among `rows` of `parts` with match `n` of `highlights`.
     fn lit_row(
         &self,
@@ -499,7 +524,7 @@ impl Transcript {
         let drawn = parts.iter().flat_map(|part| self.rows(part));
         let mut before = 0;
         for (at, row) in rows.clone().zip(drawn.skip(rows.start)) {
-            before += lit(row, highlights).1;
+            before += lit(row, highlights).1.iter().sum::<usize>();
             if before > n {
                 return Some(at);
             }

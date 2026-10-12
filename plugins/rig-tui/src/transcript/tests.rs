@@ -28,8 +28,8 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, Highlight, ItemRow, RenderToolCall, ScrollTo, ToolCallView,
-    TranscriptItem, TranscriptView,
+    AppToolRenderersExt, CallState, DrawnTranscript, Highlight, ItemRow, RenderToolCall, ScrollTo,
+    ToolCallView, TranscriptItem, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -374,6 +374,54 @@ fn scroll_to_finds_the_row_a_highlight_lights() {
     // Past the last match, the item's first row: the blank one above it.
     assert_eq!(top_after(ItemRow::Lit(2)), "");
     assert_eq!(top_after(ItemRow::Top(1)), "answer 10");
+}
+
+#[test]
+fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire(
+        "c1",
+        ToolFunction::new(name.clone(), json!({ "command": "cargo test" })),
+    );
+    say(&mut app, agent, Message::user("why is it flaky?"));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let output: Vec<String> = (0..10).map(|test| format!("test {test} flaky")).collect();
+    let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
+    say(&mut app, agent, result);
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "flaky".to_owned(),
+        ..Highlight::default()
+    }];
+    let item = TranscriptItem::Call(call.id.clone());
+    let drawn = |app: &mut App| {
+        on_screen(app, agent, 5);
+        app.world().resource::<DrawnTranscript>().clone()
+    };
+    let collapsed = drawn(&mut app);
+    assert_eq!(collapsed.agent(), Some(agent));
+    let rows = collapsed.rows_of(&item).unwrap_or_default();
+    let texts = collapsed.rows().get(rows.clone()).unwrap_or_default();
+    // Counted over the rows drawn: the output is drawn cut.
+    let drawn_matches = texts
+        .iter()
+        .filter(|row| row.text.contains("flaky"))
+        .count();
+    assert!((1..10).contains(&drawn_matches), "{texts:#?}");
+    assert_eq!(collapsed.lit_in(&item), drawn_matches);
+    assert_eq!(collapsed.item_at(rows.start), Some(&item));
+    let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
+    assert_eq!(question.map(|item| collapsed.lit_in(&item)), Some(1));
+    let rows = collapsed.rows().len();
+    assert_eq!(collapsed.on_screen(), rows.saturating_sub(5)..rows);
+    // Drawn whole, every match is.
+    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
+    expanded.insert(item.clone());
+    assert_eq!(drawn(&mut app).lit_in(&item), 10);
 }
 
 #[test]

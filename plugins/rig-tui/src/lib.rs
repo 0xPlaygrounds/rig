@@ -15,6 +15,10 @@
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
 //! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
 //! and [`TranscriptView::top`] reads where the view is.
+//! [`ShownNotice::slot`] says where a notice is drawn in an agent's
+//! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
+//! plugin adds, holds the rows the last frame drew, by item, with the
+//! matches it lit.
 //!
 //! It is the front ([`FRONT`]) of a run where someone sits at the
 //! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
@@ -89,7 +93,10 @@ pub use renderers::{
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
-pub use view::{Focus, Highlight, ItemRow, ScrollTo, ShownNotice, TranscriptItem, TranscriptView};
+pub use view::{
+    DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, ScrollTo, ShownNotice, TranscriptItem,
+    TranscriptSlot, TranscriptView,
+};
 
 /// The terminal view's name as a front.
 pub const FRONT: &str = "tui";

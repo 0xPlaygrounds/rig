@@ -98,31 +98,62 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     assert!(app.world().resource::<TuiInput>().is_empty());
 }
 
+/// Adds `message` to `agent`'s conversation, as a commit does.
+fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
+    let commit = move |mut commit: rig_ecs::journal::Commit,
+                       mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            commit.message(agent, &mut conversation, message.clone());
+        }
+    };
+    assert!(app.world_mut().run_system_once(commit).is_ok());
+    app.update();
+}
+
+#[test]
+fn a_notice_says_which_transcript_draws_it_and_where() {
+    use rig_core::completion::Message;
+    let (mut app, agent) = view_app();
+    let id = AgentId("a1".to_owned());
+    app.world_mut().entity_mut(agent).insert(id.clone());
+    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    say(&mut app, agent, Message::user("question"));
+    say(&mut app, agent, Message::assistant("answer"));
+    // About every agent: drawn where the agent shown was.
+    app.world_mut()
+        .write_message(Notice::info(Option::<Entity>::None, "Every agent."));
+    app.update();
+    say(&mut app, agent, Message::user("next"));
+    let world = app.world();
+    let notice = world.resource::<TranscriptView>().notices().first();
+    let conversation = world.get::<Conversation>(agent);
+    assert_eq!(notice.and_then(ShownNotice::drawn_in), Some(&id));
+    let slot = |id: &AgentId| notice?.slot(id, conversation?);
+    assert_eq!(slot(&id), Some(TranscriptSlot::After(1)));
+    assert_eq!(slot(&AgentId("a2".to_owned())), None);
+    // Slots order as drawn.
+    let order = [
+        TranscriptSlot::Top,
+        TranscriptSlot::Inside(0, 1),
+        TranscriptSlot::After(0),
+        TranscriptSlot::Inside(1, 0),
+        TranscriptSlot::After(1),
+    ];
+    assert!(order.is_sorted());
+}
+
 #[test]
 fn a_notice_is_an_item_a_plugin_scrolls_to() {
     let (mut app, agent) = view_app();
-    let say = |app: &mut App, text: String| {
-        let commit = move |mut commit: rig_ecs::journal::Commit,
-                           mut conversations: Query<&mut Conversation>| {
-            if let Ok(mut conversation) = conversations.get_mut(agent) {
-                commit.message(
-                    agent,
-                    &mut conversation,
-                    rig_core::completion::Message::user(text.clone()),
-                );
-            }
-        };
-        assert!(app.world_mut().run_system_once(commit).is_ok());
-        app.update();
-    };
+    let question = |index: usize| rig_core::completion::Message::user(format!("question {index}"));
     for index in 0..10 {
-        say(&mut app, format!("question {index}"));
+        say(&mut app, agent, question(index));
     }
     app.world_mut()
         .write_message(Notice::warn(agent, "Rate limited."));
     app.update();
     for index in 10..30 {
-        say(&mut app, format!("question {index}"));
+        say(&mut app, agent, question(index));
     }
     let notices = app.world().resource::<TranscriptView>().notices().len();
     assert_eq!(notices, 1);

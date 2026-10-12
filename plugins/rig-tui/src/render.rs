@@ -32,7 +32,8 @@ use super::transcript::{
     Transcript, call_lines, entry_lines, notice_lines, plain_lines,
 };
 use super::view::{
-    Highlight, ShownNotice, Slot, TranscriptItem, TranscriptView, TuiView, entry_slot,
+    DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
+    TuiView,
 };
 use super::wrap::wrap_all;
 use rig_core::message::{CallId, ToolCall};
@@ -384,9 +385,9 @@ pub(crate) fn lay_out_transcript(
     for (at, notice) in view.notices().iter().enumerate() {
         let before = match notice.slot(shown.id, conversation) {
             None => continue,
-            Some(Slot::Top) => 0,
-            Some(Slot::After(index)) => index + 1,
-            Some(Slot::Inside(index, item)) => {
+            Some(TranscriptSlot::Top) => 0,
+            Some(TranscriptSlot::After(index)) => index + 1,
+            Some(TranscriptSlot::Inside(index, item)) => {
                 let inside = look.inside.entry(index).or_default();
                 inside.push((item, Inside::Notice(at, notice)));
                 continue;
@@ -397,10 +398,10 @@ pub(crate) fn lay_out_transcript(
         }
     }
     for &(entity, entry) in sources.entries {
-        let before = match entry_slot(entry.after, conversation) {
-            Slot::Top => 0,
-            Slot::After(index) => index + 1,
-            Slot::Inside(index, item) => {
+        let before = match TranscriptSlot::of_entry(entry, conversation) {
+            TranscriptSlot::Top => 0,
+            TranscriptSlot::After(index) => index + 1,
+            TranscriptSlot::Inside(index, item) => {
                 let inside = look.inside.entry(index).or_default();
                 inside.push((item, Inside::Entry(entity, entry)));
                 continue;
@@ -484,7 +485,7 @@ fn light(line: Line<'static>, highlights: &[Highlight]) -> Line<'static> {
         return line;
     }
     let (cells, matches) = lit(&line, highlights);
-    if matches == 0 {
+    if matches.iter().all(|matches| *matches == 0) {
         return line;
     }
     let mut spans: Vec<Span<'static>> = Vec::new();
@@ -500,16 +501,19 @@ fn light(line: Line<'static>, highlights: &[Highlight]) -> Line<'static> {
 }
 
 /// The characters of `line`, each with its style once `highlights` are
-/// lit and whether one lit it, and how many matches lit them. A match
-/// over a character an earlier highlight lit is no match.
-pub(crate) fn lit(line: &Line<'_>, highlights: &[Highlight]) -> (Vec<(char, Style, bool)>, usize) {
+/// lit and whether one lit it, and how many matches of each highlight lit
+/// them. A match over a character an earlier highlight lit is no match.
+pub(crate) fn lit(
+    line: &Line<'_>,
+    highlights: &[Highlight],
+) -> (Vec<(char, Style, bool)>, Vec<usize>) {
     let mut cells: Vec<(char, Style, bool)> = line
         .spans
         .iter()
         .flat_map(|span| span.content.chars().map(move |c| (c, span.style, false)))
         .collect();
-    let mut matches = 0;
-    for highlight in highlights {
+    let mut matches = vec![0; highlights.len()];
+    for (highlight, matches) in highlights.iter().zip(&mut matches) {
         let needle: Vec<char> = highlight.text.chars().collect();
         let same = |a: char, b: char| {
             if highlight.match_case {
@@ -527,7 +531,7 @@ pub(crate) fn lit(line: &Line<'_>, highlights: &[Highlight]) -> (Vec<(char, Styl
                     *style = style.patch(highlight.style);
                     *lit = true;
                 }
-                matches += 1;
+                *matches += 1;
                 at += needle.len();
             } else {
                 at += 1;
@@ -557,7 +561,7 @@ pub(crate) fn render(
     (mut view, mut transcript_view): (ResMut<TuiView>, ResMut<TranscriptView>),
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
-    mut transcript: Local<Transcript>,
+    (mut transcript, mut drawn): (Local<Transcript>, Option<ResMut<DrawnTranscript>>),
     (agents, changed, agent_entries, entries): (
         Query<(&AgentId, &Conversation)>,
         Query<(), Changed<Conversation>>,
@@ -706,6 +710,11 @@ pub(crate) fn render(
                 &mut view.scroll,
                 &transcript_view.highlights,
             );
+            if let Some(drawn) = &mut drawn {
+                let (agent, highlights) = (shown.as_ref(), &transcript_view.highlights);
+                let agent = agent.map(|shown| shown.entity);
+                drawn.set_if_neq(transcript.drawn(agent, &parts, &visible, highlights));
+            }
             let rows = decorate(
                 visible.rows,
                 visible.first,
