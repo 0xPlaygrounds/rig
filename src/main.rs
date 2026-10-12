@@ -95,31 +95,12 @@ fn last_report(home: &Home) -> Option<Described> {
         .and_then(|binary| launcher::build::kept_report(home, &binary))
 }
 
-/// The plugins' commands and options for `rig help`.
+/// The plugins' commands, options and secrets for `rig help`.
 fn plugin_usage(home: &Home) -> String {
-    let Some(report) = last_report(home) else {
-        return "\nRun `rig build` to list plugin commands.\n".to_owned();
-    };
-    let mut text = String::from("\nPlugin commands (of the last build):\n");
-    if report.commands.is_empty() {
-        text.push_str("  (none)\n");
-    }
-    for command in &report.commands {
-        let usage = format!("{} {}", command.name, command.usage);
-        text.push_str(&format!("  rig {:<19}{}\n", usage.trim_end(), command.help));
-    }
-    text.push_str("\nPlugin options (of the last build):\n");
-    if report.flags.is_empty() {
-        text.push_str("  (none)\n");
-    }
-    for flag in &report.flags {
-        let option = match &flag.value {
-            Some(value) => format!("--{} {value}", flag.name),
-            None => format!("--{}", flag.name),
-        };
-        text.push_str(&format!("  {option:<23}{}\n", flag.help));
-    }
-    text
+    last_report(home).map_or_else(
+        || "\nRun `rig build` to list plugin commands.\n".to_owned(),
+        |report| report.usage(),
+    )
 }
 
 /// `rig help <command>`: its usage and what it does; exit code 2 for a

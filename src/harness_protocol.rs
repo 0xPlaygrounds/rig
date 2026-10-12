@@ -793,6 +793,39 @@ impl Described {
         Ok(invocation)
     }
 
+    /// What `rig help` lists of the build: the plugins' commands, their
+    /// options, and the secrets they ask for, each with the variable that
+    /// gives it (never its value).
+    pub fn usage(&self) -> String {
+        let mut text = String::from("\nPlugin commands (of the last build):\n");
+        if self.commands.is_empty() {
+            text.push_str("  (none)\n");
+        }
+        for command in &self.commands {
+            let usage = format!("{} {}", command.name, command.usage);
+            text.push_str(&format!("  rig {:<19}{}\n", usage.trim_end(), command.help));
+        }
+        text.push_str("\nPlugin options (of the last build):\n");
+        if self.flags.is_empty() {
+            text.push_str("  (none)\n");
+        }
+        for flag in &self.flags {
+            let option = match &flag.value {
+                Some(value) => format!("--{} {value}", flag.name),
+                None => format!("--{}", flag.name),
+            };
+            text.push_str(&format!("  {option:<23}{}\n", flag.help));
+        }
+        if !self.secrets.is_empty() {
+            text.push_str("\nPlugin secrets (of the last build), asked for when not set:\n");
+        }
+        for secret in &self.secrets {
+            let variable = secret_variable(&secret.name);
+            text.push_str(&format!("  {variable:<23}{}\n", secret.help));
+        }
+        text
+    }
+
     /// The launcher's commands, then the plugins'.
     pub fn command_names(&self) -> Vec<&str> {
         RESERVED_COMMANDS

@@ -193,3 +193,16 @@ fn a_session_is_saved_once_marked_and_not_for_a_log_file_alone() {
     assert!(marked.is_ok(), "{marked:?}");
     assert!(!before && after);
 }
+
+#[test]
+fn help_lists_the_secrets_a_build_asks_for_by_their_variable() {
+    let usage = described().usage();
+    assert!(usage.contains("rig stats"), "{usage}");
+    assert!(usage.contains("--remote HOST:PATH"), "{usage}");
+    let secret = usage.lines().find(|line| line.contains("RIG_SECRET_CRYPT"));
+    assert!(
+        secret.is_some_and(|line| line.contains("Passphrase")),
+        "{usage}"
+    );
+    assert!(!Described::default().usage().contains("secrets"));
+}
