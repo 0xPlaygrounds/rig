@@ -27,7 +27,7 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, Highlight, KeyBinding, KeyFocus, KeyPress, KeyPressed, PanelCanvas,
+    AppKeyBindingsExt, Highlight, ItemRow, KeyBinding, KeyFocus, KeyPress, KeyPressed, PanelCanvas,
     Placement, RequestRedraw, ScrollTo, TerminalEvent, TranscriptItem, TranscriptView, TuiPanel,
     TuiPlugin, TuiSystems,
 };
@@ -318,7 +318,11 @@ impl TranscriptSearch {
         let style = Style::new().black().on_yellow();
         texts
             .into_iter()
-            .map(|text| Highlight { text, style })
+            .map(|text| Highlight {
+                text,
+                style,
+                ..Highlight::default()
+            })
             .collect()
     }
 }
@@ -578,7 +582,11 @@ fn show(search: &mut TranscriptSearch, view: &mut ResMut<TranscriptView>, comman
         Place::Notice => return,
     };
     let line = line.saturating_sub(MARGIN);
-    commands.trigger(ScrollTo { agent, item, line });
+    commands.trigger(ScrollTo {
+        agent,
+        item,
+        row: ItemRow::Top(line),
+    });
 }
 
 /// Closes the bar and unlights the matches; with no match taken, also
@@ -602,7 +610,11 @@ fn close(
     }
     if let Some((agent, top)) = search.back.take() {
         let (item, line) = top.map_or((None, 0), |(item, line)| (Some(item), line));
-        commands.trigger(ScrollTo { agent, item, line });
+        commands.trigger(ScrollTo {
+            agent,
+            item,
+            row: ItemRow::Top(line),
+        });
     }
 }
 

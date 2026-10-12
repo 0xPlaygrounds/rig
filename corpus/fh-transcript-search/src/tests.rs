@@ -40,7 +40,11 @@ fn shell(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
 struct Scrolls(Vec<(Option<TranscriptItem>, usize)>);
 
 fn note_scroll(scroll: On<ScrollTo>, mut scrolls: ResMut<Scrolls>) {
-    scrolls.0.push((scroll.item.clone(), scroll.line));
+    let line = match scroll.row {
+        rig_tui::ItemRow::Top(line) => line,
+        _ => usize::MAX,
+    };
+    scrolls.0.push((scroll.item.clone(), line));
 }
 
 /// Ctrl+F, then `keys` in one frame.

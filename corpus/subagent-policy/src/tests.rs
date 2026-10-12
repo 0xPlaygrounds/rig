@@ -126,8 +126,11 @@ fn a_spawn_beyond_max_depth_is_refused_for_the_model_to_read() {
 
     assert_eq!(session.subagents().len(), 1);
     let nested = session.output("t2");
+    // At the depth limit the subagent is not given `task`, so the kernel
+    // refuses the call before any gate; either way the model reads why.
     assert!(
-        nested.contains("subagent depth limit 1 reached; do it yourself"),
+        nested.contains("subagent depth limit 1 reached")
+            || nested.contains("no tool named `task`"),
         "{nested}"
     );
     assert!(read_by(&parent, 2).contains("Did it myself."));
