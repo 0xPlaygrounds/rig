@@ -94,3 +94,25 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
         "{lines:#?}"
     );
 }
+
+#[test]
+fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
+    let home = Home::at(scratch("draft"));
+    let Ok(id) = "1-1".parse() else { return };
+    let session = home.session(&id);
+    let (mut app, _) = view_app();
+    app.insert_resource(SessionPaths(session.clone()))
+        .insert_resource(ExitReason::Reload);
+    app.world_mut().resource_mut::<TuiInput>().set("/tools");
+    assert!(app.world_mut().run_system_once(keep_draft).is_ok());
+    drop(app);
+    let (mut app, _) = view_app();
+    app.insert_resource(SessionPaths(session.clone()));
+    assert!(app.world_mut().run_system_once(load_draft).is_ok());
+    assert_eq!(app.world().resource::<TuiInput>().text(), "/tools");
+    // Once: the build after this one starts empty.
+    let (mut app, _) = view_app();
+    app.insert_resource(SessionPaths(session));
+    assert!(app.world_mut().run_system_once(load_draft).is_ok());
+    assert!(app.world().resource::<TuiInput>().is_empty());
+}

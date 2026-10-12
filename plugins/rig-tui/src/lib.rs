@@ -137,7 +137,11 @@ impl Plugin for TuiPlugin {
         app.add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
-                terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),
+                (
+                    terminal::keep_screen_on_reload,
+                    view::keep_draft.run_if(on_message::<AppExit>),
+                )
+                    .in_set(bevy_app::OnAppExitSystems),
             );
     }
 }
@@ -154,7 +158,7 @@ fn add_view(app: &mut App) {
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
-        .add_systems(Startup, view::load_notices)
+        .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,
             (

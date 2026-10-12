@@ -3,6 +3,7 @@
 //! shown, and recent notices, which are kept in the session's directory
 //! for the next build.
 
+use std::fs;
 use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
@@ -20,7 +21,7 @@ use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, MessageId, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
-use rig_harness::prelude::SessionPaths;
+use rig_harness::prelude::{ExitReason, SessionPaths};
 use rig_harness::primary::Shown;
 
 /// Notices kept for display, and read back by the next build.
@@ -29,6 +30,10 @@ const KEPT_NOTICES: usize = 200;
 /// The file that keeps the notices shown, in the view's own directory of
 /// the session's: a top-level `*.jsonl` there is an agent's log.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
+
+/// The file that keeps what was typed and not sent for the build a reload
+/// starts, in the view's own directory of the session's.
+const DRAFT_FILE: &str = "tui/draft.txt";
 
 /// Ask the view to show the agent and send what is typed to it, such as
 /// a subagent picked with `/agents`.
@@ -199,6 +204,41 @@ pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<Tu
     let file = paths.path().join(NOTICES_FILE);
     view.notices = jsonl::tail(&file, KEPT_NOTICES);
     view.notices_file = Some(file);
+}
+
+/// Keeps what was typed and not sent for the build a reload starts, such
+/// as a command typed during the rebuild that only the new build knows.
+pub(crate) fn keep_draft(
+    reason: Option<Res<ExitReason>>,
+    paths: Option<Res<SessionPaths>>,
+    input: Res<TuiInput>,
+) {
+    let (Some(reason), Some(paths)) = (reason, paths) else {
+        return;
+    };
+    if *reason != ExitReason::Reload || input.is_empty() {
+        return;
+    }
+    let file = paths.path().join(DRAFT_FILE);
+    let kept = file
+        .parent()
+        .map_or(Ok(()), fs::create_dir_all)
+        .and_then(|()| fs::write(&file, input.text()));
+    if let Err(failure) = kept {
+        warn!("could not keep the input for the next build: {failure}");
+    }
+}
+
+/// Puts back in the input what the build before a reload kept.
+pub(crate) fn load_draft(paths: Option<Res<SessionPaths>>, mut input: ResMut<TuiInput>) {
+    let Some(paths) = paths else {
+        return;
+    };
+    let file = paths.path().join(DRAFT_FILE);
+    if let Ok(text) = fs::read_to_string(&file) {
+        fs::remove_file(&file).ok();
+        input.set(text);
+    }
 }
 
 /// Keeps [`Focused`] on the agent shown, and on no other.
