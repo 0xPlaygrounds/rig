@@ -217,8 +217,8 @@ fn withdraw_unstarted(
 }
 
 /// Answers each call of an ended reply that the gates let through with its
-/// early call's outcome, holding it until there is one; a call the gates
-/// decided withdraws its early call.
+/// early call's outcome and what it published, holding it until there is
+/// one; a call the gates decided withdraws its early call.
 fn adopt(
     mut asked: Query<
         (Entity, &ToolRequest, &Effect, &mut Decision, Option<&Holds>),
@@ -237,7 +237,7 @@ fn adopt(
             Entity,
             &mut StartedEarly,
             &ToolRequest,
-            Option<&Outcome>,
+            (Option<&Outcome>, Option<&Published>),
             Option<&Started>,
             &CallOf,
             &ForAgent,
@@ -255,8 +255,15 @@ fn adopt(
                 && early.twin.is_none_or(|matched| matched == twin)
                 && early_request.call == request.call
         });
-        let Some((call, mut started_early, _, outcome, started, &CallOf(turn), &ForAgent(agent))) =
-            found
+        let Some((
+            call,
+            mut started_early,
+            _,
+            (outcome, published),
+            started,
+            &CallOf(turn),
+            &ForAgent(agent),
+        )) = found
         else {
             continue;
         };
@@ -273,6 +280,10 @@ fn adopt(
         match outcome {
             Some(outcome) => {
                 decision.decide(Decider::plugin(NAME), outcome.clone());
+                // With the facts it published, such as the files it read.
+                if let Some(published) = published {
+                    commands.entity(twin).try_insert(published.clone());
+                }
                 // The hold on the reply's call goes with it.
                 commands.entity(call).try_despawn();
                 let ran = started

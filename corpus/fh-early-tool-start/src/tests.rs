@@ -12,6 +12,7 @@ use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{Message as ChatMessage, Origin as Made, ToolResultContent};
 use rig_core::operation::Finish;
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve, stream_truncated};
+use rig_core::tool::{ContentHash, FileRead, FilesRead, ToolContext};
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness_test_support::{Ended, app_on, first_agent, log_ended, run_until};
 use schemars::JsonSchema;
@@ -122,10 +123,10 @@ struct PathArgs {
     path: String,
 }
 
-/// `read`, logging each path it reads.
+/// `read`, logging each path it reads, and publishing it as read.
 struct ReadStub(Log);
 
-impl PortableTool for ReadStub {
+impl Tool for ReadStub {
     const NAME: &'static str = "read";
     type Args = PathArgs;
     type Output = String;
@@ -139,8 +140,14 @@ impl PortableTool for ReadStub {
         args_schema::<PathArgs>()
     }
 
-    async fn call(&self, args: PathArgs) -> Result<String, ToolExecutionError> {
+    async fn call(
+        &self,
+        context: &mut ToolContext,
+        args: PathArgs,
+    ) -> Result<String, ToolExecutionError> {
         note(&self.0, format!("read {}", args.path));
+        let read = FileRead::new(args.path.clone(), ContentHash("h".to_owned()));
+        context.insert_result(FilesRead(vec![read]))?;
         Ok(format!("contents of {}", args.path))
     }
 }
@@ -231,6 +238,8 @@ fn start(first: Vec<Step>) -> (App, Receiver<()>, Paced, UnboundedSender<()>) {
         .add_tool_with(ReadStub(paced.log.clone()), reads)
         .add_tool_with(ShellStub(paced.log.clone()), ToolOptions::default())
         .add_systems(AgentPass, rewrite_reads.in_set(PrepareSystems::Input))
+        .init_resource::<ReadFacts>()
+        .add_observer(note_read_facts)
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
@@ -283,6 +292,25 @@ fn results(paced: &Paced) -> Vec<Vec<String>> {
         .collect()
 }
 
+/// The files each settled call of a reply (not an early one) published as
+/// read, in the order they settled.
+#[derive(Resource, Default)]
+struct ReadFacts(Vec<Vec<String>>);
+
+fn note_read_facts(
+    settled: On<Add<Settled>>,
+    calls: Query<Option<&Published>, (ToolCalls, Without<StartedEarly>)>,
+    mut facts: ResMut<ReadFacts>,
+) {
+    let Ok(published) = calls.get(settled.entity) else {
+        return;
+    };
+    let read = published.and_then(|published| published.0.get::<FilesRead>().ok().flatten());
+    let paths = read.into_iter().flat_map(|read| read.0);
+    let paths = paths.map(|file| file.path);
+    facts.0.push(paths.collect());
+}
+
 fn ended(world: &World) -> bool {
     !world.resource::<Ended>().0.is_empty()
 }
@@ -324,6 +352,9 @@ fn safe_calls_start_as_they_complete_and_answer_in_order() {
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let stats = app.world().get::<EarlyStats>(agent);
     assert_eq!(stats.map(|stats| stats.calls), Some(2), "{stats:?}");
+    // The reply's calls carry what their early calls published.
+    let facts = &app.world().resource::<ReadFacts>().0;
+    assert_eq!(facts, &[vec!["src/a.txt"], vec!["b.txt"]]);
 }
 
 #[test]
