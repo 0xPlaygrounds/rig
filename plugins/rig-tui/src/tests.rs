@@ -126,7 +126,7 @@ pub(crate) fn drawn_rows(
             let selected = (transcript_view.selected.as_ref(), highlights);
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
-            transcript_view.set_drawn(visible.top, 80);
+            TranscriptView::note_drawn(&mut transcript_view, visible.top, 80);
             lines
         };
     app.world_mut().run_system_once(draw).unwrap_or_default()

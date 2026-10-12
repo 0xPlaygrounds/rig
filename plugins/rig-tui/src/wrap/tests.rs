@@ -34,7 +34,7 @@ fn neighbouring_cells_of_one_style_are_one_span() {
 fn a_list_item_wraps_under_its_text() {
     let rows: Vec<String> = wrap(&Line::from("• one two three"), 10)
         .iter()
-        .map(ToString::to_string)
+        .map(|(row, _)| row.to_string())
         .collect();
     assert_eq!(rows, ["• one two", "  three"]);
 }

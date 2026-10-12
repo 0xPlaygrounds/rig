@@ -28,7 +28,9 @@ use super::renderers::{
     CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
     result_style, result_text,
 };
-use super::view::{DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem};
+use super::view::{
+    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem,
+};
 use super::wrap::wrap;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
 use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
@@ -297,15 +299,22 @@ fn level_code(level: NoticeLevel) -> u8 {
 }
 
 /// One message's look: its lines and where its items are in them, those
-/// lines wrapped to the width with where its items are in the rows, and
-/// the items drawn cut, when noted.
+/// lines wrapped to the width, and the items drawn cut, when noted.
 struct Cached {
     fingerprint: u64,
     lines: Vec<Line<'static>>,
     line_marks: Marks,
-    rows: Vec<Line<'static>>,
-    marks: Marks,
+    wrapped: Wrapped,
     cut: Vec<TranscriptItem>,
+}
+
+/// Lines wrapped to a width: the rows, whether each continues the row
+/// before it (a line wrapped), and where the items are in the rows.
+#[derive(Default)]
+pub(crate) struct Wrapped {
+    rows: Vec<Line<'static>>,
+    continues: Vec<Option<Continuation>>,
+    marks: Marks,
 }
 
 /// The wrapped rows of the shown agent's messages.
@@ -323,7 +332,7 @@ pub(crate) struct Transcript {
 /// where the items among them are and those drawn cut.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Vec<Line<'static>>, Marks, Vec<TranscriptItem>),
+    Rows(Wrapped, Vec<TranscriptItem>),
 }
 
 impl Part {
@@ -335,8 +344,7 @@ impl Part {
         cut: Vec<TranscriptItem>,
         width: usize,
     ) -> Self {
-        let (rows, marks) = wrap_marked(lines, marks, width);
-        Self::Rows(rows, marks, cut)
+        Self::Rows(wrap_marked(lines, marks, width), cut)
     }
 }
 
@@ -378,8 +386,7 @@ impl Transcript {
         if self.width != width {
             self.width = width;
             for cached in &mut self.messages {
-                (cached.rows, cached.marks) =
-                    wrap_marked(&cached.lines, &cached.line_marks, usable);
+                cached.wrapped = wrap_marked(&cached.lines, &cached.line_marks, usable);
             }
         }
         let messages = conversation.messages();
@@ -403,13 +410,12 @@ impl Transcript {
             }
             let (lines, line_marks, cut) =
                 message_lines(message, (conversation, index), previous, next, look);
-            let (rows, marks) = wrap_marked(&lines, &line_marks, usable);
+            let wrapped = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
                 fingerprint,
                 lines,
                 line_marks,
-                rows,
-                marks,
+                wrapped,
                 cut,
             };
             match self.messages.get_mut(index) {
@@ -424,28 +430,28 @@ impl Transcript {
         self.messages.clear();
     }
 
+    /// A part's wrapped rows; `None` for a message not cached.
+    fn wrapped<'a>(&'a self, part: &'a Part) -> Option<&'a Wrapped> {
+        match part {
+            Part::Message(index) => self.messages.get(*index).map(|cached| &cached.wrapped),
+            Part::Rows(wrapped, _) => Some(wrapped),
+        }
+    }
+
     /// A part's rows.
     fn rows<'a>(&'a self, part: &'a Part) -> &'a [Line<'static>] {
-        match part {
-            Part::Message(index) => self
-                .messages
-                .get(*index)
-                .map(|cached| cached.rows.as_slice())
-                .unwrap_or_default(),
-            Part::Rows(rows, ..) => rows.as_slice(),
-        }
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.rows.as_slice())
+            .unwrap_or_default()
     }
 
     /// Where a part's items are in its rows.
     fn marks<'a>(&'a self, part: &'a Part) -> &'a [(TranscriptItem, Range<usize>)] {
-        match part {
-            Part::Message(index) => self
-                .messages
-                .get(*index)
-                .map(|cached| cached.marks.as_slice())
-                .unwrap_or_default(),
-            Part::Rows(_, marks, _) => marks.as_slice(),
-        }
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.marks.as_slice())
+            .unwrap_or_default()
     }
 
     /// A part's items drawn cut, as far as noted.
@@ -456,7 +462,7 @@ impl Transcript {
                 .get(*index)
                 .map(|cached| cached.cut.as_slice())
                 .unwrap_or_default(),
-            Part::Rows(.., cut) => cut.as_slice(),
+            Part::Rows(_, cut) => cut.as_slice(),
         }
     }
 
@@ -551,9 +557,11 @@ impl Transcript {
         let lighting = highlights
             .iter()
             .any(|highlight| !highlight.text.is_empty());
-        let rows = parts.iter().flat_map(|part| self.rows(part));
-        let rows = rows.map(|row| DrawnRow {
+        let rows = parts.iter().filter_map(|part| self.wrapped(part));
+        let rows = rows.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
+        let rows = rows.map(|(row, continues)| DrawnRow {
             text: row.to_string(),
+            continues: continues.clone(),
             lit: if lighting {
                 lit(row, highlights).1
             } else {
@@ -591,13 +599,17 @@ fn wrap_marked(
     lines: &[Line<'static>],
     marks: &[(TranscriptItem, Range<usize>)],
     width: usize,
-) -> (Vec<Line<'static>>, Marks) {
+) -> Wrapped {
     let mut rows = Vec::with_capacity(lines.len());
+    let mut continues = Vec::with_capacity(lines.len());
     // The first row of each line, and past the last.
     let mut starts = Vec::with_capacity(lines.len() + 1);
     for line in lines {
         starts.push(rows.len());
-        rows.extend(wrap(line, width));
+        for (row, joint) in wrap(line, width) {
+            rows.push(row);
+            continues.push(joint);
+        }
     }
     starts.push(rows.len());
     let row = |line: usize| starts.get(line).copied().unwrap_or(rows.len());
@@ -605,7 +617,11 @@ fn wrap_marked(
         .iter()
         .map(|(item, lines)| (item.clone(), row(lines.start)..row(lines.end)))
         .collect();
-    (rows, marks)
+    Wrapped {
+        rows,
+        continues,
+        marks,
+    }
 }
 
 /// Where the transcript is scrolled: following its bottom, or held at the

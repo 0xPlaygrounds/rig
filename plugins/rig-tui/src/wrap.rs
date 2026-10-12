@@ -5,14 +5,17 @@ use ratatui::style::Style;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthStr;
 
+use super::view::Continuation;
+
 /// Markers after which a wrapped line's continuation rows are indented, so
 /// a list item or a tool result keeps its left edge.
 const HANGING_MARKERS: [&str; 8] = ["•", "-", "*", "›", "⎿", "●", "│", ">"];
 
 /// `line` wrapped at word boundaries into rows at most `width` columns
-/// wide. A word wider than a row is broken. Continuation rows are indented
-/// like the text after the line's leading spaces and list marker.
-pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
+/// wide, each with how it continues the row before it (`None` for the
+/// first). A word wider than a row is broken. Continuation rows are
+/// indented like the text after the line's leading spaces and list marker.
+pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<(Line<'static>, Option<Continuation>)> {
     let width = width.max(1);
     let cells: Vec<(&str, Style)> = line
         .styled_graphemes(Style::default())
@@ -20,27 +23,41 @@ pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
         .collect();
     let total: usize = cells.iter().map(|(symbol, _)| symbol.width()).sum();
     if total <= width {
-        return vec![join(&cells)];
+        return vec![(join(&cells), None)];
     }
     let indent = hanging_indent(&cells).min(width / 2);
     let mut rows = Vec::new();
     let mut row: Vec<(&str, Style)> = Vec::new();
     let mut row_width = 0;
+    // How the row being filled continues the one before it.
+    let mut joint: Option<Continuation> = None;
     for word in words(&cells) {
         let word_width: usize = word.iter().map(|(symbol, _)| symbol.width()).sum();
         let blank = word.iter().all(|(symbol, _)| symbol.trim().is_empty());
         if row_width + word_width > width && row_width > indent {
-            // Spaces at a break are dropped rather than carried over.
-            while row
-                .last()
-                .is_some_and(|(symbol, _)| symbol.trim().is_empty())
+            // Spaces at a break are dropped rather than carried over, but
+            // not the indent the row starts with.
+            let kept = if joint.is_some() { indent } else { 0 };
+            let mut gap = Vec::new();
+            while row.len() > kept
+                && let Some(&(symbol, _)) =
+                    row.last().filter(|(symbol, _)| symbol.trim().is_empty())
             {
+                gap.push(symbol);
                 row.pop();
             }
-            rows.push(join(&row));
+            gap.reverse();
+            rows.push((join(&row), joint.take()));
             row.clear();
             row.extend(std::iter::repeat_n((" ", Style::default()), indent));
             row_width = indent;
+            if blank {
+                gap.extend(word.iter().map(|(symbol, _)| *symbol));
+            }
+            joint = Some(Continuation {
+                gap: gap.concat(),
+                indent,
+            });
             if blank {
                 continue;
             }
@@ -48,24 +65,29 @@ pub(crate) fn wrap(line: &Line<'_>, width: usize) -> Vec<Line<'static>> {
         for &(symbol, style) in word {
             let cell = symbol.width();
             if row_width + cell > width && row_width > indent {
-                rows.push(join(&row));
+                rows.push((join(&row), joint.take()));
                 row.clear();
                 row.extend(std::iter::repeat_n((" ", Style::default()), indent));
                 row_width = indent;
+                joint = Some(Continuation {
+                    gap: String::new(),
+                    indent,
+                });
             }
             row.push((symbol, style));
             row_width += cell;
         }
     }
     if !row.is_empty() || rows.is_empty() {
-        rows.push(join(&row));
+        rows.push((join(&row), joint));
     }
     rows
 }
 
 /// Every line of `lines` wrapped to `width`.
 pub(crate) fn wrap_all(lines: &[Line<'_>], width: usize) -> Vec<Line<'static>> {
-    lines.iter().flat_map(|line| wrap(line, width)).collect()
+    let rows = lines.iter().flat_map(|line| wrap(line, width));
+    rows.map(|(row, _)| row).collect()
 }
 
 /// The cells split into words, each with the spaces that follow it.

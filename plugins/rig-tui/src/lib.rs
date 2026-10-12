@@ -97,8 +97,8 @@ pub use renderers::{
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
 pub use view::{
-    DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, ScrollTo, ShownNotice, TranscriptItem,
-    TranscriptSlot, TranscriptView,
+    Continuation, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, ScrollTo, ShownNotice,
+    TranscriptItem, TranscriptSlot, TranscriptView,
 };
 
 /// The terminal view's name as a front.

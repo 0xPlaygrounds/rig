@@ -711,7 +711,7 @@ fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str
 /// [`Transcript`], so only changed messages are laid out again.
 pub(crate) fn render(
     mut tui: ResMut<Tui>,
-    (mut view, mut transcript_view): (ResMut<TuiView>, ResMut<TranscriptView>),
+    (mut view, mut shown_view): (ResMut<TuiView>, ResMut<TranscriptView>),
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     (mut transcript, mut drawn): (Local<Transcript>, Option<ResMut<DrawnTranscript>>),
@@ -728,9 +728,10 @@ pub(crate) fn render(
         return Ok(());
     };
     // Placing the scroll is drawing's own bookkeeping, not a change to
-    // redraw for; so is noting where it is.
+    // redraw for; so is noting where it is, after drawing.
     let view = view.bypass_change_detection();
-    let transcript_view = transcript_view.bypass_change_detection();
+    let transcript_view = shown_view.bypass_change_detection();
+    let mut noted = None;
     let shown_agent = shown_agent.0;
     let turn = shown_agent.and_then(|agent| from.active.get(agent).ok());
     let shown = shown_agent.and_then(|entity| from.agent(entity, changed.contains(entity)));
@@ -811,7 +812,7 @@ pub(crate) fn render(
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, visible.below, transcript_area);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
-            transcript_view.set_drawn(visible.top, transcript_area.width);
+            noted = Some((visible.top, transcript_area.width));
             let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
             let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
             let app = status.1.as_deref().map(|app| &app.0);
@@ -868,6 +869,9 @@ pub(crate) fn render(
             }
         })
         .map(|_| ());
+    if let Some((top, width)) = noted {
+        TranscriptView::note_drawn(&mut shown_view, top, width);
+    }
     let backend = tui.terminal.backend_mut();
     if drawn.is_ok()
         && let Some(cursor) = cursor

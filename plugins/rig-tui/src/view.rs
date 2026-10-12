@@ -218,10 +218,25 @@ pub struct DrawnTranscript {
 pub struct DrawnRow {
     /// Its text, as drawn.
     pub text: String,
+    /// How it continues the row before it, when the view wrapped one
+    /// line into both; [`DrawnTranscript::lines`] rejoins them.
+    pub continues: Option<Continuation>,
     /// How many matches of each highlight the view lit in it, by its index
     /// in [`TranscriptView::highlights`] (where two overlap, the one placed
     /// first lit it); empty with no highlights.
     pub lit: Vec<usize>,
+}
+
+/// How a [`DrawnRow`] continues the row before it, the view having
+/// wrapped one line into both: the line is the row before, then `gap`,
+/// then this row's text past its `indent`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Continuation {
+    /// The blanks the wrap dropped at the break.
+    pub gap: String,
+    /// How many spaces the row starts with that the line does not have,
+    /// such as those keeping a list item's wrapped text under its text.
+    pub indent: usize,
 }
 
 impl DrawnRow {
@@ -259,6 +274,29 @@ impl DrawnTranscript {
     /// Its rows, top to bottom.
     pub fn rows(&self) -> &[DrawnRow] {
         &self.rows
+    }
+
+    /// Its lines as they were before the view wrapped them, top to
+    /// bottom: each one's rows, and its text, those rows rejoined. Text a
+    /// wrap split across two rows is whole here, for a search or a copy.
+    pub fn lines(&self) -> impl Iterator<Item = (Range<usize>, String)> + '_ {
+        let mut start = 0;
+        let lines = self.rows.chunk_by(|_, next| next.continues.is_some());
+        lines.map(move |rows| {
+            let mut text = String::new();
+            for row in rows {
+                match &row.continues {
+                    Some(joint) => {
+                        text.push_str(&joint.gap);
+                        text.push_str(row.text.get(joint.indent..).unwrap_or(&row.text));
+                    }
+                    None => text.push_str(&row.text),
+                }
+            }
+            let line = start..start + rows.len();
+            start = line.end;
+            (line, text)
+        })
     }
 
     /// Each item's rows, top to bottom by first row. An item's rows hold
@@ -523,7 +561,8 @@ impl TranscriptView {
     }
 
     /// The transcript's width in columns at the last frame the view drew;
-    /// `None` before one, as in a run without the terminal.
+    /// `None` before one, as in a run without the terminal. The view is
+    /// changed when it changes, so `Res::is_changed` on it says so.
     pub fn width(&self) -> Option<u16> {
         self.width
     }
@@ -534,11 +573,20 @@ impl TranscriptView {
         &self.notices
     }
 
-    /// Notes where the view is scrolled and how wide the transcript is,
-    /// as it was drawn.
-    pub(crate) fn set_drawn(&mut self, top: Option<(TranscriptItem, usize)>, width: u16) {
-        self.top = top;
-        self.width = Some(width);
+    /// Notes where `view` is scrolled and how wide the transcript is, as
+    /// it was drawn: drawing's own bookkeeping, not a change to redraw
+    /// for, but for a new width, which a plugin laying the transcript out
+    /// at it watches for.
+    pub(crate) fn note_drawn(
+        view: &mut impl DetectChangesMut<Inner = Self>,
+        top: Option<(TranscriptItem, usize)>,
+        width: u16,
+    ) {
+        let noted = view.bypass_change_detection();
+        noted.top = top;
+        if noted.width.replace(width) != Some(width) {
+            view.set_changed();
+        }
     }
 
     /// Expands `item` when collapsed, collapses it when expanded.

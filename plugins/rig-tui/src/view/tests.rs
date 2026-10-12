@@ -168,3 +168,63 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     let top = app.world().resource::<TranscriptView>().top().cloned();
     assert_eq!(top, Some((item, 0)));
 }
+
+#[test]
+fn rows_a_line_wrapped_into_rejoin_into_it() {
+    let (mut app, agent) = view_app();
+    let said = [
+        "alpha beta  gamma delta epsilon zeta",
+        "abcdefghijklmnopqrstuvwxyz",
+    ];
+    for text in said {
+        let note = Deliver::new(agent, text, DeliveryMode::Note);
+        app.world_mut().trigger(note);
+        app.update();
+    }
+    let lay_out = move |layout: crate::TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, 12, crate::Expanded::AsShown)
+    };
+    let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
+    assert!(laid_out.is_some());
+    let Some(drawn) = laid_out else { return };
+    let rows: Vec<&str> = drawn.rows().iter().map(|row| row.text.as_str()).collect();
+    assert!(
+        !rows.iter().any(|row| row.contains("gamma delta")),
+        "{rows:#?}"
+    );
+    let lines: Vec<(Range<usize>, String)> = drawn.lines().collect();
+    for text in said {
+        let line = lines.iter().find(|(_, line)| line.ends_with(text));
+        assert!(line.is_some(), "{text} not rejoined: {lines:#?}");
+        let Some((at, line)) = line else { return };
+        assert_eq!(line, &format!("› {text}"));
+        assert!(at.len() > 1, "{rows:#?}");
+        let continued = drawn.rows().get(at.clone()).unwrap_or_default();
+        let continues = continued.iter().map(|row| row.continues.is_some());
+        assert!(
+            continues.skip(1).all(|continues| continues),
+            "{continued:#?}"
+        );
+    }
+    let total: usize = lines.iter().map(|(rows, _)| rows.len()).sum();
+    assert_eq!(total, drawn.rows().len());
+}
+
+#[test]
+fn a_new_width_changes_the_view_and_the_same_one_does_not() {
+    let (mut app, _) = view_app();
+    let changed = app
+        .world_mut()
+        .register_system(|view: Res<TranscriptView>| view.is_changed());
+    let mut drawn_at = |width: u16| {
+        let note = move |mut view: ResMut<TranscriptView>| {
+            TranscriptView::note_drawn(&mut view, None, width);
+        };
+        assert!(app.world_mut().run_system_once(note).is_ok());
+        app.world_mut().run_system(changed).unwrap_or_default()
+    };
+    drawn_at(80);
+    assert!(!drawn_at(80));
+    assert!(drawn_at(100));
+    assert!(!drawn_at(100));
+}
