@@ -26,8 +26,9 @@ use rig_harness::primary::Shown;
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
 
-/// The file in the session's directory that keeps the notices shown.
-const NOTICES_FILE: &str = "notices.jsonl";
+/// The file that keeps the notices shown, in the view's own directory of
+/// the session's: a top-level `*.jsonl` there is an agent's log.
+const NOTICES_FILE: &str = "tui/notices.jsonl";
 
 /// Ask the view to show the agent and send what is typed to it, such as
 /// a subagent picked with `/agents`.

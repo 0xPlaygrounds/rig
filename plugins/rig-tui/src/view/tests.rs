@@ -85,6 +85,8 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
         .write_message(Notice::warn(agent, "Kept across a reload."));
     app.update();
     drop(app);
+    // The view's file is no agent log: the session has none yet.
+    assert!(!session.is_saved());
     let (mut app, agent) = build(&session);
     let lines = transcript(&mut app, agent);
     assert!(

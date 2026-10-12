@@ -1,5 +1,7 @@
 //! A session kept as files in a directory: `<agent>.jsonl` per agent and
-//! `blobs/<name>` for blobs, beside the effect log ([`EFFECT_LOG`]).
+//! `blobs/<name>` for blobs, beside the effect log ([`EFFECT_LOG`]). Every
+//! other top-level `*.jsonl` file is read as an agent's log, so files of
+//! others go in directories of their own.
 
 use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};

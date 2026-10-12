@@ -1712,13 +1712,13 @@ writes itself, such as a window closing, cannot be held.
 not after a `/reload` or `/resume`: the place for what a new session or
 a fork does once. `ForkSession { before, asker }` copies this session
 into a new one (`SessionForked` names it, and the `asker` entity the
-request named, so a plugin knows its own fork; the copy names its parent and where it
-was cut, with the text the user wrote in the message it stopped before,
-`ForkedFrom::of(&dir)`, so a view of a session's family reads no other
-session's log), and `DeleteSession(id)` removes another
-(`SessionDeleted`), for plugins that keep files of their own per session.
-rig-sessions' `NameSession { session, name }` names any session in
-`/resume`.
+request named, so a plugin knows its own fork; the copy names its parent
+and where it was cut, with the text the user wrote in the message it
+stopped before, `ForkedFrom::of(&dir)`, so a view of a session's family
+reads no other session's log), and `DeleteSession(id)` removes another
+(`SessionDeleted`). A plugin's files go in a directory of its own in
+`SessionPaths`: each top-level `*.jsonl` there is an agent's log.
+rig-sessions' `NameSession { session, name }` names any session in `/resume`.
 
 ```rust,no_run
 use rig_harness::prelude::*;

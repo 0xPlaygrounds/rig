@@ -41,7 +41,9 @@ use super::launcher::LauncherRun;
 use crate::services::RigHome;
 
 /// The session's directory: the agent logs the core keeps there through
-/// its [`SessionStore`], the effect log, and the launcher's files.
+/// its [`SessionStore`], the effect log, and the launcher's files. Every
+/// top-level `*.jsonl` file there but the effect log is an agent's log, so
+/// a plugin keeps its files of the session in a directory of its own there.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths(pub SessionDir);
 

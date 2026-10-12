@@ -9,7 +9,7 @@ use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, SessionStore};
-use rig_harness_test_support::{commit_message, first_agent};
+use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 
 use super::{
     DeleteSession, FirstStart, ForkSession, ForkedFrom, SessionDeleted, SessionForked,
@@ -228,6 +228,52 @@ fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
     }
     drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();
+}
+
+/// A plugin keeps its files of a session in a directory of its own there,
+/// beside the agent logs, and a restore reads only the logs.
+#[test]
+fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
+    let home = scratch_home("rig-restore-plugin-files");
+    let Ok(id) = "1700000000-4".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    let start = || {
+        let mut app = App::new();
+        app.init_resource::<Seen>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(SessionStore::new(JsonlDirStore::new(session.path())))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins(SessionPlugin)
+            .add_systems(Last, watch.after(super::fork_sessions));
+        // The session's panic hook would hide a failed assertion.
+        drop(std::panic::take_hook());
+        app.update();
+        app
+    };
+    let mut first = start();
+    let agent = first_agent(first.world_mut());
+    let said = agent.map(|agent| commit_message(first.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    first.update();
+    drop(first);
+    let plugin = session.path().join("tui");
+    std::fs::create_dir_all(&plugin).ok();
+    std::fs::write(plugin.join("notices.jsonl"), "{\"text\":\"kept\"}\n").ok();
+
+    let mut restored = start();
+    let agent = first_agent(restored.world_mut());
+    let messages = agent
+        .and_then(|agent| restored.world().get::<Conversation>(agent))
+        .map(|conversation| conversation.messages().len());
+    assert_eq!(messages, Some(1));
+    let notices = &restored.world().resource::<Seen>().notices;
+    let failed = notices.iter().any(|notice| notice.contains("restore"));
+    assert!(!failed, "{notices:?}");
+    std::fs::remove_dir_all(session.path()).ok();
 }
 
 #[test]

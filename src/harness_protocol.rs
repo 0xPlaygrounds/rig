@@ -314,7 +314,8 @@ impl RunDir {
 
 /// A session's directory: one append-only log per agent, the listing cache,
 /// the stored images, the effect log and text log, and the lock of the
-/// launcher running it.
+/// launcher running it. Each top-level `*.jsonl` file but the effect log is
+/// an agent's log; a plugin's files go in a directory of its own.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
