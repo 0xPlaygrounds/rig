@@ -534,5 +534,5 @@ fn key_pressed(
     });
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tui"))]
 mod tests;

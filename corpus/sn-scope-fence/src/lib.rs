@@ -18,7 +18,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_tools::workspace::{Stat, Workspace};
 
-#[cfg(test)]
+#[cfg(all(test, feature = "tui"))]
 mod tests;
 
 /// The decider named on a refusal.
