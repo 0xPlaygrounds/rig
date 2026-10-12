@@ -213,14 +213,16 @@ impl Plugin for EncryptedSessionsPlugin {
             .and_then(|secrets| secrets.get(SECRET))
             .map(str::to_owned);
         let config = CryptConfig::read(&home);
-        let sealed = world.get_resource::<SessionPaths>().is_some_and(|paths| {
-            let store = JsonlDirStore::new(paths.path());
-            Sealing::of(&store).is_ok_and(|sealing| sealing == Sealing::Sealed)
-        });
-        let encrypted = sealed
+        let sealing = world
+            .get_resource::<SessionPaths>()
+            .and_then(|paths| Sealing::of(&JsonlDirStore::new(paths.path())).ok());
+        let encrypted = sealing == Some(Sealing::Sealed)
             || config
                 .as_ref()
                 .map_or(true, |config| config.applies_to(&project));
+        // Only a session kept sealed keeps no plain files: a plain one
+        // keeps them, whether it runs or is refused.
+        let seals = encrypted && sealing != Some(Sealing::Plain);
         let vault = Vault(Arc::new(VaultState {
             home,
             config,
@@ -231,7 +233,7 @@ impl Plugin for EncryptedSessionsPlugin {
         let opening = vault.clone();
         app.insert_resource(SessionStores::new(move |dir| opening.open(dir)))
             .insert_resource(vault);
-        if encrypted {
+        if seals {
             app.insert_resource(Scratch(None));
             #[cfg(feature = "tui")]
             app.add_systems(Startup, keep_no_history);

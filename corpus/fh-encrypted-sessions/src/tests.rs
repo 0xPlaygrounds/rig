@@ -270,6 +270,8 @@ fn a_plain_session_is_refused_until_migrate_seals_it() {
     let why = refusal(&app, &home, &session);
     assert!(why.contains("rig crypt migrate"), "{why}");
     assert!(refused(&app));
+    // Its plain files, the text log among them, stay in its directory.
+    assert_ne!(app.world().get_resource::<Scratch>(), Some(&Scratch(None)));
     drop(app);
     let after: Vec<_> = files(dir.path()).iter().map(fs::read).collect();
     assert_eq!(format!("{before:?}"), format!("{after:?}"));
