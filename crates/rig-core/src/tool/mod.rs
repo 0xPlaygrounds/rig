@@ -19,6 +19,7 @@ mod output;
 pub mod portable;
 mod result;
 pub mod schema;
+pub mod validate;
 pub use context::{
     ContextValue, PublishedContext, ToolContext, ToolContextError, ToolResultContext,
 };

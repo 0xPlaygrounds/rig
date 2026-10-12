@@ -334,3 +334,24 @@ fn arguments_the_schema_does_not_declare_are_refused() {
     );
     assert_eq!(arguments_refusal(&schema, &tool_call("c2")), None);
 }
+
+#[test]
+fn ill_typed_arguments_are_refused() {
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}},
+        "required": ["path"],
+    });
+    let mut ill_typed = tool_call("c1");
+    ill_typed.function = ToolFunction::new(
+        crate::message::ToolName::new("read").expect("tool name"),
+        serde_json::json!({"limit": "ten"}),
+    );
+    assert_eq!(
+        arguments_refusal(&schema, &ill_typed).as_deref(),
+        Some(
+            "`read`'s arguments do not fit its schema: /limit: expected an integer, got a \
+             string; /path: missing. Call it again with arguments that fit."
+        )
+    );
+}
