@@ -1,42 +1,39 @@
 //! FH-17: import sessions from Claude Code and Codex.
 //!
-//! `/import claude-code [path]` and `/import codex [path]` read the other
-//! tool's session files (its default directory, or a file or directory
-//! given) and make each a normal saved session of this harness, which
-//! `/resume` lists: the user's messages, the model's text, reasoning and
-//! tool calls, and the results, in order. `/import` alone lists the
-//! sessions found in a picker. `rig --import=claude-code[:PATH]` does the
-//! same as the agent starts. Common tools are mapped onto rig's (`Bash` and
-//! Codex's `shell` onto `shell`, `Edit` onto `edit`, …); others keep their
-//! name and arguments. An imported model turn says where it came from in
-//! its rig-core `Origin` (`api` `import`, `provider` the source tool), so
-//! no provider replays it as its own. A subagent's (sidechain)
-//! conversation becomes a subagent of the imported session. An entry the
-//! importer does not understand becomes a note in the transcript, and each
-//! import reports a count per kind ([`SessionImported`]). Importing the
-//! same source session again appends what is new to the session made the
-//! first time.
+//! `rig import claude-code [path]` and `rig import codex [path]` read the
+//! other tool's session files (its default directory, or a file or
+//! directory given) and make each a normal saved session of this harness,
+//! which `/resume` lists: the user's messages, the model's text, reasoning
+//! and tool calls, and the results, in order, each logged at the source's
+//! time. `/import <tool> [path]` does the same inside a session, and
+//! `/import` alone lists the sessions found in a picker. Common tools are
+//! mapped onto rig's (`Bash` and Codex's `shell` onto `shell`, `Edit` onto
+//! `edit`, …); others keep their name and arguments. An imported model
+//! turn says where it came from in its rig-core `Origin` (`api` `import`,
+//! `provider` the source tool), so no provider replays it as its own. A
+//! subagent's (sidechain) conversation becomes a subagent of the imported
+//! session. An entry the importer does not understand becomes a note in
+//! the transcript, and each import reports a count per kind
+//! ([`SessionImported`]). Importing the same source session again appends
+//! what is new to the session made the first time.
 //!
-//! A session is written the one public way an agent log is written: by
-//! the kernel's [`Commit`], here in a small app of the kernel's own
-//! plugins on the new session's store, which restores what an earlier
-//! import wrote first.
+//! A session is written with [`write_session`] into a new session's store
+//! ([`Home::new_session`], [`SessionStores`]), with the source it came from
+//! in the plugin's own file there.
 
 mod parse;
 
 use std::collections::BTreeMap;
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use bevy_ecs::schedule::SingleThreadedExecutor;
+use rig_cassette::journal::{Conversation, Stamp};
 use rig_core::message::{Message, Origin as MadeBy};
 use rig_core::transcript::{close_pending_with, pending_calls};
-use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
+use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
 use rig_sessions::{Meta, SessionTitle, write_meta};
-use rig_tools::fs::{read_json, write_json};
 use serde::{Deserialize, Serialize};
 
 use parse::{Parsed, Step, StepKind};
@@ -45,6 +42,10 @@ use parse::{Parsed, Step, StepKind};
 const NO_RESULT: &str = "[no result in the imported session]";
 /// Most sessions `/import` lists.
 const LISTED: usize = 100;
+/// The command, and the front that runs it.
+const COMMAND: &str = "import";
+/// The plugin's file in an imported session's store: its [`Marker`].
+const MARKER: &str = "import/source.json";
 
 /// A coding agent sessions are imported from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -89,24 +90,6 @@ impl Source {
             Self::Codex => home.join(".codex/sessions"),
         })
     }
-}
-
-/// On an imported agent: the source conversation it was made from, how
-/// much of it is imported, and when each message was first made there.
-#[derive(Component, Reflect, Clone, Debug, Default, PartialEq)]
-#[reflect(Component, Saved, Default)]
-pub struct ImportedFrom {
-    /// The source tool's name, such as `claude-code`.
-    pub source: String,
-    /// The source's id of the conversation: its session id, then
-    /// `#<subagent>` for a subagent's.
-    pub key: String,
-    /// How many source steps are imported, so a re-import appends only
-    /// the rest.
-    pub consumed: usize,
-    /// The source's time of each message, in milliseconds since the Unix
-    /// epoch.
-    pub stamps: Vec<(MessageId, u64)>,
 }
 
 /// Import the sessions of `source` at `path` (a file or directory), or in
@@ -168,60 +151,83 @@ impl SessionImported {
     }
 }
 
-/// `/import`, `--import` and the [`ImportSessions`] event.
+/// `rig import`, `/import` and the [`ImportSessions`] event.
 #[derive(Default)]
 pub struct ImportSessionsPlugin;
 
 impl Plugin for ImportSessionsPlugin {
     fn build(&self, app: &mut App) {
-        app.register_type::<ImportedFrom>()
-            .add_message::<SessionImported>()
+        let front = Front::new(COMMAND).headless().sessionless();
+        app.add_message::<SessionImported>()
             .init_resource::<RigHome>()
-            .add_flag(
-                Flag::new(
-                    "import",
-                    "Import sessions of claude-code or codex, from PATH or their default place",
-                )
-                .value("TOOL[:PATH]"),
-            )
+            .add_front(front.on_command(
+                COMMAND,
+                "claude-code|codex [path]",
+                "Import Claude Code or Codex sessions, from path or their default place",
+            ))
             .add_command(
-                "import",
+                COMMAND,
                 "Import Claude Code or Codex sessions: /import [claude-code|codex] [path]",
                 import_command,
             )
-            .add_observer(import)
-            .add_systems(Startup, import_on_start);
+            .add_observer(import);
+    }
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front(COMMAND) {
+            app.add_systems(Startup, import_command_line);
+        }
     }
 }
 
-/// `--import=TOOL[:PATH]`.
-fn import_on_start(
-    invoked: Option<Res<Invoked>>,
+/// `rig import <tool> [path]`: prints what it imported, and exits.
+fn import_command_line(
+    invoked: Res<Invoked>,
+    (home, stores): (Res<RigHome>, Res<SessionStores>),
+    mut imported: MessageWriter<SessionImported>,
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
-    let Some(value) = invoked
-        .as_deref()
-        .and_then(|invoked| invoked.flag_value("import"))
-    else {
-        return;
+    let arguments = invoked
+        .command()
+        .map_or(&[][..], |(_, arguments)| arguments);
+    let (name, path) = match arguments {
+        [name] => (name, None),
+        [name, path] => (name, Some(PathBuf::from(path))),
+        _ => (&String::new(), None),
     };
-    let (name, path) = value
-        .split_once(':')
-        .map_or((value, None), |(name, path)| (name, Some(path)));
-    match Source::named(name) {
-        Some(source) => commands.trigger(ImportSessions {
-            source,
-            path: path.map(expand),
-            agent: None,
-        }),
+    let reason = match Source::named(name) {
         None => {
-            notices.write(Notice::error(
-                None,
-                format!("--import takes claude-code or codex, not `{name}`."),
-            ));
+            eprintln!("usage: rig import claude-code|codex [path]");
+            ExitReason::Failed(2)
         }
-    }
+        Some(source) => match import_all((&home.0, &stores), source, path) {
+            Err(why) => {
+                eprintln!("rig import: {why}");
+                ExitReason::Failed(1)
+            }
+            Ok(done) => {
+                let mut failed = false;
+                for result in done {
+                    match result {
+                        Ok(done) => {
+                            println!("{}", done.summary());
+                            imported.write(done);
+                        }
+                        Err(why) => {
+                            failed = true;
+                            eprintln!("rig import: {why}");
+                        }
+                    }
+                }
+                if failed {
+                    ExitReason::Failed(1)
+                } else {
+                    ExitReason::Quit
+                }
+            }
+        },
+    };
+    commands.trigger(Exit(reason));
 }
 
 /// `/import <tool> [path]`, or a picker of the sessions found.
@@ -279,40 +285,36 @@ fn picker(agent: Entity) -> Picker {
         .collect();
     found.sort_by_key(|(last, ..)| std::cmp::Reverse(*last));
     found.truncate(LISTED);
-    let picker = Picker::new("Import a session").for_agent(agent);
-    let picker = if found.is_empty() {
-        picker.body("No Claude Code or Codex sessions found.")
-    } else {
-        picker
-    };
-    found
-        .into_iter()
-        .fold(picker, |picker, (last, source, file, parsed)| {
-            let date =
-                chrono::DateTime::from_timestamp_millis(i64::try_from(last).unwrap_or_default())
-                    .map(|at| at.format("%Y-%m-%d %H:%M").to_string())
-                    .unwrap_or_default();
-            let project = parsed
-                .cwd
-                .as_deref()
-                .and_then(Path::file_name)
-                .map(|name| name.to_string_lossy().into_owned());
-            let first = parsed
-                .first_message()
-                .unwrap_or_default()
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" ");
-            let label = format!("{date} · {} · {first}", project.unwrap_or_default());
-            let mut picker = picker.item(
-                label,
-                format!("import {} {}", source.name(), file.display()),
-            );
-            if let Some(item) = picker.items.last_mut() {
-                item.detail = Some(source.label().to_owned());
-            }
-            picker
-        })
+    let mut picker = Picker::new("Import a session").for_agent(agent);
+    if found.is_empty() {
+        picker = picker.body("No Claude Code or Codex sessions found.");
+    }
+    for (last, source, file, parsed) in found {
+        let date = chrono::DateTime::from_timestamp_millis(i64::try_from(last).unwrap_or_default())
+            .map(|at| at.format("%Y-%m-%d %H:%M").to_string())
+            .unwrap_or_default();
+        let project = parsed
+            .cwd
+            .as_deref()
+            .and_then(Path::file_name)
+            .map(|name| name.to_string_lossy().into_owned());
+        picker.items.push(PickItem {
+            label: format!(
+                "{date} · {} · {}",
+                project.unwrap_or_default(),
+                first_line(&parsed)
+            ),
+            command: format!("{COMMAND} {} {}", source.name(), file.display()),
+            detail: Some(source.label().to_owned()),
+        });
+    }
+    picker
+}
+
+/// The first thing the user said, on one line.
+fn first_line(parsed: &Parsed) -> String {
+    let first = parsed.first_message().unwrap_or_default();
+    first.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// The session files at `path`: it, or every `*.jsonl` under it but a
@@ -343,49 +345,81 @@ fn session_files(path: &Path) -> Vec<PathBuf> {
 /// each.
 fn import(
     asked: On<ImportSessions>,
-    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
+    (home, stores): (Res<RigHome>, Res<SessionStores>),
     mut imported: MessageWriter<SessionImported>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let source = asked.source;
-    let Some(path) = asked.path.clone().or_else(|| source.default_dir()) else {
-        notices.write(Notice::error(
-            asked.agent,
-            "No home directory to find sessions in.",
-        ));
-        return;
+    let done = match import_all((&home.0, &stores), asked.source, asked.path.clone()) {
+        Ok(done) => done,
+        Err(why) => {
+            notices.write(Notice::error(asked.agent, why));
+            return;
+        }
     };
-    let stores = stores.as_deref().cloned().unwrap_or_default();
-    let files = session_files(&path);
-    if files.is_empty() {
-        let text = format!("No {} sessions at {}.", source.label(), path.display());
-        notices.write(Notice::error(asked.agent, text));
-    }
-    for file in files {
-        match import_file((&home.0, &stores), source, &file) {
+    for result in done {
+        match result {
             Ok(done) => {
                 notices.write(Notice::info(asked.agent, done.summary()));
                 imported.write(done);
             }
             Err(why) => {
-                let text = format!("Could not import {}: {why}", file.display());
-                notices.write(Notice::error(asked.agent, text));
+                notices.write(Notice::error(asked.agent, why));
             }
         }
     }
 }
 
-/// What an imported session's directory says of its source, in the
-/// plugin's own directory there.
+/// Imports each session file of `source` at `path`, or in its default
+/// directory; what came of each. An error when there is none.
+fn import_all(
+    (home, stores): (&Home, &SessionStores),
+    source: Source,
+    path: Option<PathBuf>,
+) -> Result<Vec<Result<SessionImported, String>>, String> {
+    let path = path
+        .or_else(|| source.default_dir())
+        .ok_or("no home directory to find sessions in")?;
+    let files = session_files(&path);
+    if files.is_empty() {
+        return Err(format!(
+            "no {} sessions at {}",
+            source.label(),
+            path.display()
+        ));
+    }
+    let import = |file: PathBuf| {
+        import_file((home, stores), source, &file)
+            .map_err(|why| format!("could not import {}: {why}", file.display()))
+    };
+    Ok(files.into_iter().map(import).collect())
+}
+
+/// What an imported session keeps of its source, in its store.
 #[derive(Serialize, Deserialize)]
 struct Marker {
     source: Source,
     id: String,
     file: PathBuf,
+    /// Each source conversation imported.
+    conversations: Vec<Imported>,
 }
 
-fn marker_path(dir: &SessionDir) -> PathBuf {
-    dir.path().join("import").join("source.json")
+/// A source conversation imported into an agent log of the session.
+#[derive(Serialize, Deserialize)]
+struct Imported {
+    /// The source's id of it: its session id, then `#<subagent>` for a
+    /// subagent's.
+    key: String,
+    /// The agent whose log holds it.
+    agent: String,
+    /// How many source steps are imported, so a re-import appends only
+    /// the rest.
+    consumed: usize,
+}
+
+/// The marker of the session in `store`, if an import made it.
+fn marker_of(store: &dyn JournalStore) -> Option<Marker> {
+    serde_json::from_slice(&store.read_file(MARKER).ok()?).ok()
 }
 
 /// Imports the session in `file` into its session under `home`, kept in a
@@ -394,38 +428,31 @@ fn import_file(
     (home, stores): (&Home, &SessionStores),
     source: Source,
     file: &Path,
-) -> Result<SessionImported, String> {
-    let text = fs::read_to_string(file).map_err(|failure| failure.to_string())?;
-    let mut parsed = parse::parse(source, &text);
+) -> io::Result<SessionImported> {
+    let mut parsed = parse::parse(source, &fs::read_to_string(file)?);
     if parsed.id.is_empty() {
         let stem = file
             .file_stem()
             .map(|stem| stem.to_string_lossy().into_owned());
         parsed.id = stem.unwrap_or_default();
     }
-    let existing = imported_session(home, source, &parsed.id);
-    let created = existing.is_none();
-    let (session, dir) = match existing {
+    let (session, dir, marker) = match imported_session((home, stores), source, &parsed.id) {
         Some(found) => found,
-        None => new_session(home)?,
-    };
-    let store = stores.open(&dir).map_err(|failure| failure.to_string());
-    let written = store.and_then(|store| {
-        let added = write_session(store.clone(), source, &parsed)?;
-        let marker = Marker {
-            source,
-            id: parsed.id.clone(),
-            file: file.to_owned(),
-        };
-        fs::create_dir_all(dir.path().join("import")).map_err(|failure| failure.to_string())?;
-        write_json(&marker_path(&dir), &marker).map_err(|failure| failure.to_string())?;
-        if let Some(cwd) = &parsed.cwd {
-            fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())
-                .map_err(|failure| failure.to_string())?;
+        None => {
+            let (session, dir) = home.new_session()?;
+            let marker = Marker {
+                source,
+                id: parsed.id.clone(),
+                file: file.to_owned(),
+                conversations: Vec::new(),
+            };
+            (session, dir, marker)
         }
-        update_meta(&*store, source, &parsed).map_err(|failure| failure.to_string())?;
-        Ok(added)
-    });
+    };
+    let created = marker.conversations.is_empty();
+    let written = stores
+        .open(&dir)
+        .and_then(|store| write(&*store, &dir, marker, &parsed));
     let added = match written {
         Ok(added) => added,
         Err(why) => {
@@ -445,223 +472,155 @@ fn import_file(
     })
 }
 
-/// The session an earlier import of `source`'s session `id` made.
-fn imported_session(home: &Home, source: Source, id: &str) -> Option<(SessionId, SessionDir)> {
+/// The session an earlier import of `source`'s session `id` made, with its
+/// marker.
+fn imported_session(
+    (home, stores): (&Home, &SessionStores),
+    source: Source,
+    id: &str,
+) -> Option<(SessionId, SessionDir, Marker)> {
     fs::read_dir(home.sessions())
         .ok()?
         .filter_map(Result::ok)
         .find_map(|entry| {
             let session: SessionId = entry.file_name().to_str()?.parse().ok()?;
             let dir = home.session(&session);
-            let marker: Marker = read_json(&marker_path(&dir))?;
-            (marker.source == source && marker.id == id).then_some((session, dir))
+            let marker = marker_of(&*stores.open(&dir).ok()?)?;
+            (marker.source == source && marker.id == id).then_some((session, dir, marker))
         })
 }
 
-/// A new session's directory under `home`.
-fn new_session(home: &Home) -> Result<(SessionId, SessionDir), String> {
-    let base = SessionId::generate();
-    let mut id = base.clone();
-    let mut n = 0;
-    while home.session(&id).path().exists() {
-        n += 1;
-        id = format!("{base}-{n}").parse()?;
+/// Brings the session in `store` up to `parsed`: each conversation's new
+/// steps appended to its agent's log, a subagent's spawned by the main
+/// agent; then its marker, its directory and its `/resume` listing. The
+/// messages added.
+fn write(
+    store: &dyn JournalStore,
+    dir: &SessionDir,
+    mut marker: Marker,
+    parsed: &Parsed,
+) -> io::Result<usize> {
+    let mut session = read_session(store)?;
+    let source = marker.source;
+    let mut conversations = vec![(parsed.id.clone(), &parsed.main)];
+    for (chain, steps) in &parsed.sidechains {
+        conversations.push((format!("{}#{chain}", parsed.id), steps));
     }
-    let dir = home.session(&id);
-    fs::create_dir_all(dir.path()).map_err(|failure| failure.to_string())?;
-    Ok((id, dir))
-}
-
-/// The listing `/resume` shows: the first message, `from Claude Code`, and
-/// the source's last change as when it was updated; a name given since is
-/// kept.
-fn update_meta(store: &dyn JournalStore, source: Source, parsed: &Parsed) -> std::io::Result<()> {
+    let mut main = None;
+    let mut added = 0;
+    for (key, steps) in conversations {
+        let known = marker
+            .conversations
+            .iter()
+            .position(|known| known.key == key);
+        let (agent, consumed) = match known.and_then(|at| marker.conversations.get(at)) {
+            Some(known) => (known.agent.clone(), known.consumed),
+            None => (AgentId::default().0, 0),
+        };
+        let at = match session.agents.iter().position(|saved| saved.id == agent) {
+            Some(at) => at,
+            None => {
+                session.agents.push(SavedAgent {
+                    id: agent.clone(),
+                    parent: main.clone(),
+                    ..SavedAgent::default()
+                });
+                session.agents.len().saturating_sub(1)
+            }
+        };
+        if let Some(saved) = session.agents.get_mut(at) {
+            let mut importing = Importing {
+                conversation: &mut saved.conversation,
+                stamps: &mut saved.stamps,
+                source,
+                notes: Vec::new(),
+                added: 0,
+            };
+            importing.steps(steps.get(consumed..).unwrap_or_default());
+            added += importing.added;
+        }
+        let imported = Imported {
+            key,
+            agent: agent.clone(),
+            consumed: steps.len(),
+        };
+        match known.and_then(|at| marker.conversations.get_mut(at)) {
+            Some(known) => *known = imported,
+            None => marker.conversations.push(imported),
+        }
+        main = main.or(Some(agent));
+    }
+    write_session(store, &session)?;
+    store.write_file(MARKER, &serde_json::to_vec_pretty(&marker)?)?;
+    if let Some(cwd) = &parsed.cwd {
+        fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())?;
+    }
     let mut meta = Meta::of(store).unwrap_or_default();
     if meta.title.typed.is_empty() {
-        let first = parsed
-            .first_message()
-            .unwrap_or_default()
-            .split_whitespace()
-            .collect::<Vec<_>>()
-            .join(" ");
         meta.title = SessionTitle {
-            typed: rig_tools::shorten(&first, 60),
+            typed: rig_tools::shorten(&first_line(parsed), 60),
             ..meta.title
         };
     }
     meta.labels
         .insert("imported".to_owned(), format!("from {}", source.label()));
-    let (_, last) = parsed.span();
-    meta.updated = meta.updated.max(last);
-    write_meta(store, &meta)
-}
-
-/// One conversation to commit: the agent, its source key and its steps.
-struct Job {
-    agent: Entity,
-    source: Source,
-    key: String,
-    steps: Vec<Step>,
-}
-
-/// Writes `parsed` into the session in `store` through the kernel: an app of
-/// the agent core and the journal on its store restores what is there,
-/// then commits each conversation's new steps, a subagent's to an agent
-/// spawned by the main one, and writes the logs. The messages added.
-fn write_session(
-    store: Arc<dyn JournalStore>,
-    source: Source,
-    parsed: &Parsed,
-) -> Result<usize, String> {
-    let mut app = App::new();
-    app.insert_resource(SessionStore(store))
-        .add_plugins((AgentPlugin, JournalPlugin))
-        .register_type::<ImportedFrom>();
-    let single = |schedule: &mut Schedule| {
-        schedule.set_executor(SingleThreadedExecutor::new());
-    };
-    app.edit_schedule(PreStartup, single)
-        .edit_schedule(Startup, single)
-        .edit_schedule(Last, single);
-    app.finish();
-    app.cleanup();
-    let world = app.world_mut();
-    world.run_schedule(PreStartup);
-    world.run_schedule(Startup);
-    let main = agent_of(world, &parsed.id, None).ok_or("the session has no agent")?;
-    let job = Job {
-        agent: main,
-        source,
-        key: parsed.id.clone(),
-        steps: parsed.main.clone(),
-    };
-    let mut added = world
-        .run_system_cached_with(commit_steps, job)
-        .map_err(|failure| failure.to_string())?;
-    for (chain, steps) in &parsed.sidechains {
-        let key = format!("{}#{chain}", parsed.id);
-        let agent = agent_of(world, &key, Some(main)).ok_or("no subagent")?;
-        let job = Job {
-            agent,
-            source,
-            key,
-            steps: steps.clone(),
-        };
-        added += world
-            .run_system_cached_with(commit_steps, job)
-            .map_err(|failure| failure.to_string())?;
-    }
-    world.run_schedule(Last);
+    meta.updated = meta.updated.max(parsed.span().1);
+    write_meta(store, &meta)?;
     Ok(added)
 }
 
-/// The agent imported from `key`; else, for the main conversation, the
-/// agent the core spawned, and for a subagent's, a new agent spawned by
-/// `parent`.
-fn agent_of(world: &mut World, key: &str, parent: Option<Entity>) -> Option<Entity> {
-    let mut agents =
-        world.query_filtered::<(Entity, Option<&ImportedFrom>, Has<SpawnedBy>), With<Agent>>();
-    let mut fresh = None;
-    for (agent, imported, spawned) in agents.iter(world) {
-        match imported {
-            Some(imported) if imported.key == key => return Some(agent),
-            None if !spawned => fresh = fresh.or(Some(agent)),
-            _ => {}
-        }
-    }
-    match parent {
-        None => fresh,
-        Some(parent) => {
-            let agent = world
-                .spawn((Name::new("imported subagent"), Agent, SpawnedBy(parent)))
-                .id();
-            world.flush();
-            Some(agent)
-        }
-    }
+/// Appends a source conversation's steps to an agent's conversation, each
+/// message stamped with the source's time.
+struct Importing<'a> {
+    conversation: &'a mut Conversation,
+    stamps: &'a mut Vec<Stamp>,
+    source: Source,
+    /// Notes held back while a call waits for its result.
+    notes: Vec<(String, String)>,
+    /// The messages added.
+    added: usize,
 }
 
-/// Commits the steps of `job` its agent has not imported yet: each result
-/// paired with its call, a call the source never answered closed with
-/// [`NO_RESULT`], an orphan result and an unknown entry as a note once no
-/// call waits for its result, and a last user message left for the next
-/// turn, so a resume asks nothing by itself. The messages added.
-fn commit_steps(
-    In(job): In<Job>,
-    mut agents: Query<(&mut Conversation, Option<&ImportedFrom>)>,
-    mut commit: Commit,
-    mut commands: Commands,
-) -> usize {
-    let agent = job.agent;
-    let Ok((mut conversation, imported)) = agents.get_mut(agent) else {
-        return 0;
-    };
-    let mut imported = imported.cloned().unwrap_or_default();
-    let mut added = 0;
-    let mut notes: Vec<(String, String)> = Vec::new();
-    let mut add =
-        |conversation: &mut Conversation, message: Message, origin: Option<Origin>, at_ms: u64| {
-            commit.message_from(agent, conversation, message, origin);
-            added += 1;
-            let last = conversation.messages().len().checked_sub(1);
-            if let Some(id) = last.and_then(|at| conversation.id(at))
-                && !imported.stamps.iter().any(|(known, _)| *known == id)
-            {
-                imported.stamps.push((id, at_ms));
-            }
-        };
-    let close = |conversation: &mut Conversation,
-                 add: &mut dyn FnMut(&mut Conversation, Message, Option<Origin>, u64),
-                 at_ms| {
-        let pending = pending_calls(conversation.messages());
-        if !pending.is_empty() {
-            add(
-                conversation,
-                close_pending_with(&pending, NO_RESULT),
-                None,
-                at_ms,
-            );
+impl Importing<'_> {
+    /// Adds each step: each result paired with its call, a call the source
+    /// never answered closed with [`NO_RESULT`], an orphan result and an
+    /// unknown entry as a note once no call waits for its result, and a
+    /// last user message left for the next turn, so a resume asks nothing
+    /// by itself.
+    fn steps(&mut self, steps: &[Step]) {
+        for step in steps {
+            self.step(step);
         }
-    };
-    let flush = |conversation: &mut Conversation,
-                 add: &mut dyn FnMut(&mut Conversation, Message, Option<Origin>, u64),
-                 notes: &mut Vec<(String, String)>,
-                 at_ms| {
-        for (kind, raw) in notes.drain(..) {
-            let text = format!("[imported {} entry `{kind}`] {raw}", job.source.label());
-            let origin = Origin::plugin("import").titled(kind);
-            add(conversation, Message::user(text), Some(origin), at_ms);
-        }
-    };
-    let skip = imported.consumed;
-    for step in job.steps.iter().skip(skip) {
+        let at_ms = steps.last().map(|step| step.at_ms).unwrap_or_default();
+        self.close(at_ms);
+        self.flush(at_ms);
+        self.conversation.halt(Halt::Kept);
+    }
+
+    fn step(&mut self, step: &Step) {
         let at_ms = step.at_ms;
         match &step.kind {
             StepKind::User(text) => {
-                close(&mut conversation, &mut add, at_ms);
-                flush(&mut conversation, &mut add, &mut notes, at_ms);
-                add(&mut conversation, Message::user(text.clone()), None, at_ms);
+                self.close(at_ms);
+                self.flush(at_ms);
+                self.add(Message::user(text.clone()), None, at_ms);
             }
             StepKind::Assistant { content, model } => {
-                close(&mut conversation, &mut add, at_ms);
-                flush(&mut conversation, &mut add, &mut notes, at_ms);
+                self.close(at_ms);
+                self.flush(at_ms);
                 let mut turn = AssistantMessage::new(content.clone());
-                turn.origin = Some(MadeBy::new("import", job.source.name(), model.clone()));
-                add(&mut conversation, Message::Assistant(turn), None, at_ms);
+                let source = self.source.name();
+                turn.origin = Some(MadeBy::new("import", source, model.clone()));
+                self.add(Message::Assistant(turn), None, at_ms);
             }
             StepKind::Results(results) => {
-                let pending = pending_calls(conversation.messages());
+                let pending = pending_calls(self.conversation.messages());
                 let (paired, orphans): (Vec<_>, Vec<_>) = results
                     .iter()
                     .cloned()
                     .partition(|result| pending.iter().any(|call| call.id == result.call));
                 if !paired.is_empty() {
-                    add(
-                        &mut conversation,
-                        Message::tool_results(paired),
-                        None,
-                        at_ms,
-                    );
+                    self.add(Message::tool_results(paired), None, at_ms);
                 }
                 for orphan in orphans {
                     let text = orphan
@@ -670,32 +629,51 @@ fn commit_steps(
                         .filter_map(|content| content.as_text())
                         .collect::<Vec<_>>()
                         .join("\n");
-                    notes.push((
-                        "tool result of no call".to_owned(),
-                        format!("{}: {text}", orphan.call),
-                    ));
+                    let kind = "tool result of no call".to_owned();
+                    self.notes.push((kind, format!("{}: {text}", orphan.call)));
                 }
-                if pending_calls(conversation.messages()).is_empty() {
-                    flush(&mut conversation, &mut add, &mut notes, at_ms);
-                }
+                self.flush_when_answered(at_ms);
             }
             StepKind::Note { kind, raw } => {
-                notes.push((kind.clone(), raw.clone()));
-                if pending_calls(conversation.messages()).is_empty() {
-                    flush(&mut conversation, &mut add, &mut notes, at_ms);
-                }
+                self.notes.push((kind.clone(), raw.clone()));
+                self.flush_when_answered(at_ms);
             }
         }
     }
-    let at_ms = job.steps.last().map(|step| step.at_ms).unwrap_or_default();
-    close(&mut conversation, &mut add, at_ms);
-    flush(&mut conversation, &mut add, &mut notes, at_ms);
-    commit.halt(agent, &mut conversation, Halt::Kept);
-    imported.source = job.source.name().to_owned();
-    imported.key = job.key;
-    imported.consumed = job.steps.len();
-    commands.entity(agent).insert(imported);
-    added
+
+    /// Adds `message`, logged at `at_ms`.
+    fn add(&mut self, message: Message, origin: Option<Origin>, at_ms: u64) {
+        self.conversation.append(message, origin);
+        let stamp = Stamp { n: 0, t: at_ms };
+        self.stamps
+            .resize(self.conversation.messages().len(), stamp);
+        self.added += 1;
+    }
+
+    /// Answers the calls still waiting with [`NO_RESULT`].
+    fn close(&mut self, at_ms: u64) {
+        let pending = pending_calls(self.conversation.messages());
+        if !pending.is_empty() {
+            self.add(close_pending_with(&pending, NO_RESULT), None, at_ms);
+        }
+    }
+
+    /// Adds the notes held back.
+    fn flush(&mut self, at_ms: u64) {
+        let label = self.source.label();
+        for (kind, raw) in std::mem::take(&mut self.notes) {
+            let text = format!("[imported {label} entry `{kind}`] {raw}");
+            let origin = Origin::plugin("import").titled(kind);
+            self.add(Message::user(text), Some(origin), at_ms);
+        }
+    }
+
+    /// Adds the notes held back once no call waits for its result.
+    fn flush_when_answered(&mut self, at_ms: u64) {
+        if pending_calls(self.conversation.messages()).is_empty() {
+            self.flush(at_ms);
+        }
+    }
 }
 
 #[cfg(test)]

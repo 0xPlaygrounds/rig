@@ -9,6 +9,9 @@ use rig_harness_test_support::{
     scripted_models,
 };
 
+use rig_harness::harness_protocol::Invocation;
+use rig_harness::host::exit::ExitPlugin;
+
 use super::*;
 
 const CLAUDE: &str = r#"{"type":"user","uuid":"u1","parentUuid":null,"isSidechain":false,"sessionId":"cc-1","cwd":"/work/myapp","timestamp":"2026-10-01T10:00:00Z","message":{"role":"user","content":"List the files"}}
@@ -26,6 +29,15 @@ const CODEX: &str = r#"{"timestamp":"2026-10-02T09:00:00Z","type":"session_meta"
 {"timestamp":"2026-10-02T09:00:09Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"ok"}}
 {"timestamp":"2026-10-02T09:00:10Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"They pass."}]}}
 "#;
+
+/// A session run: interactive with no terminal front, as a headless run
+/// would be taken by `rig import`'s front, the first headless front offered.
+fn interactive() -> Invoked {
+    Invoked {
+        terminal: true,
+        ..Invoked::default()
+    }
+}
 
 /// Runs `/import <tool> <path>` for the app's agent; the sessions it
 /// reported so far.
@@ -79,14 +91,37 @@ fn imports_resumes_and_reimports() {
     fs::write(&claude, CLAUDE).ok();
     fs::write(&codex, CODEX).ok();
 
+    // `rig import claude-code <file>`: imports, then exits.
+    let (mut command, _wakes) = app_in(&home, &SessionId::generate());
+    command
+        .insert_resource(Invoked {
+            args: Invocation {
+                command: Some("import".to_owned()),
+                arguments: vec!["claude-code".to_owned(), claude.display().to_string()],
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+    collect::<SessionImported>(&mut command);
+    command.finish();
+    command.update();
+    let world = command.world();
+    assert_eq!(world.get_resource::<ExitReason>(), Some(&ExitReason::Quit));
+    let mut reported = world.resource::<Collected<SessionImported>>().0.clone();
+
+    // `/import codex <file>` in a session.
     let current = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &current);
-    app.add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+    app.insert_resource(interactive()).add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        ImportSessionsPlugin,
+    ));
     collect::<SessionImported>(&mut app);
     app.finish();
     app.update();
-    import_with(&mut app, "claude-code", &claude);
-    let reported = import_with(&mut app, "codex", &codex);
+    reported.extend(import_with(&mut app, "codex", &codex));
 
     // Two sessions, which `/resume` lists.
     let current_dir = home.session(&current);
@@ -115,8 +150,8 @@ fn imports_resumes_and_reimports() {
         .and_then(|call| call.function.arguments.get("command")?.as_str());
     assert_eq!(command, Some("ls -la"));
     let (_, answered) = paired(&messages, "toolu_1").unwrap_or_default();
-    // The sidechain is a subagent of it, and each agent keeps where it came
-    // from with the source's times.
+    // The sidechain is a subagent of it, and each message is logged at the
+    // source's time.
     let store = SessionStores::default().open(&home.session(&first.session));
     let agents = store
         .and_then(|store| read_session(&*store))
@@ -126,13 +161,12 @@ fn imports_resumes_and_reimports() {
         agents.iter().filter(|agent| agent.parent.is_some()).count(),
         1
     );
-    let from = agents.iter().filter(|agent| {
-        agent
-            .saved
-            .keys()
-            .any(|path| path.ends_with("ImportedFrom"))
-    });
-    assert_eq!(from.count(), 2);
+    let first_stamp = agents
+        .iter()
+        .find(|agent| agent.parent.is_none())
+        .and_then(|agent| agent.stamps.first());
+    // 2026-10-01T10:00:00Z
+    assert_eq!(first_stamp.map(|stamp| stamp.t), Some(1_790_848_800_000));
     assert!(answered, "the call is followed by its result");
     let result_text = messages.iter().flat_map(|message| match message {
         Message::User { content } => content.clone(),
@@ -166,6 +200,7 @@ fn imports_resumes_and_reimports() {
         let (mut resumed, wakes) = app_in(&home, &first.session);
         resumed
             .insert_resource(scripted_models([("test/model", &model)]))
+            .insert_resource(interactive())
             .add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin))
             // A `shell` here, so the request declares tools and keeps the
             // imported calls as calls.
