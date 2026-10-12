@@ -600,7 +600,7 @@ fn submit(
         && pickers.get(entity).is_ok_and(|picker| picker.free_text)
     {
         let chosen = Some(Chosen::Text(text.trim().to_owned()));
-        commands.trigger(Pick { entity, chosen });
+        commands.trigger(Pick::person(entity, chosen));
         return;
     }
     let refused = input.refused.take().as_ref() == Some(&text);
@@ -634,19 +634,13 @@ fn toggle(toggle: On<Toggle>, mut transcript: ResMut<GuiTranscript>) {
 fn choose(choose: On<Choose>, dialogs: Res<GuiDialogs>, mut commands: Commands) {
     if let Some(dialog) = dialogs.open.first() {
         let chosen = Some(Chosen::Item(choose.item));
-        commands.trigger(Pick {
-            entity: dialog.entity,
-            chosen,
-        });
+        commands.trigger(Pick::person(dialog.entity, chosen));
     }
 }
 
 fn dismiss(_dismiss: On<Dismiss>, dialogs: Res<GuiDialogs>, mut commands: Commands) {
     if let Some(dialog) = dialogs.open.first() {
-        commands.trigger(Pick {
-            entity: dialog.entity,
-            chosen: None,
-        });
+        commands.trigger(Pick::person(dialog.entity, None));
     }
 }
 
