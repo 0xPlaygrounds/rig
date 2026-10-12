@@ -5,24 +5,29 @@ edition = { workspace = true }
 rust-version = { workspace = true }
 license = "MIT"
 readme = "README.md"
-description = "Conversation memory policies (sliding window, token budget, ...) for the Rig agent framework."
+description = "Conversations over time for the Rig agent framework: windows, compaction, and saving and resuming sessions."
 repository = "https://github.com/0xPlaygrounds/rig"
 
 [lints]
 workspace = true
 
+[features]
+default = []
+# `DirStore`: a session kept as files in a directory (std::fs).
+fs = []
+
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+base64 = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-tracing = { workspace = true }
-
-[dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.44.0", features = ["reqwest"] }
-anyhow = { workspace = true }
-rig-agent.workspace = true
 serde_json = { workspace = true }
-tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
+# The names of the blobs a session stores images in.
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+web-time = { workspace = true }
+
+[package.metadata.docs.rs]
+all-features = true
 
 [[example]]
-name = "agent_with_memory_policies"
-required-features = []
+name = "conversation_window_and_compaction"

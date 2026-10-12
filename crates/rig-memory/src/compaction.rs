@@ -3,7 +3,12 @@
 //! summary of its older messages, a [`SummaryState`] with the summary and
 //! the values tracked across compactions, a [`Summarizer`] that asks a
 //! model for the summary, and [`ClearToolOutputs`], which frees context
-//! without a model call.
+//! without a model call. Over a [`Conversation`]:
+//! [`CompactionPolicy::plan_summary`] plans the summary of its messages not
+//! summarized yet ([`summarized_prefix`]), [`apply_summary`] puts the
+//! summary in their place as an entry by [`summary_author`], and
+//! [`ClearToolOutputs::clear_conversation`] clears old outputs keeping
+//! every entry's id.
 //!
 //! The summarizer's default prompts ask for pi's structured checkpoint;
 //! the tool arguments a summary keeps track of are the caller's.
@@ -26,6 +31,7 @@ use rig_core::completion::{
     AssistantContent, CompletionRequest, CompletionResponse, FinishReason, Message,
     UnsupportedOption,
 };
+use rig_core::conversation::{Author, Conversation, Entry, MessageId, Spliced};
 use rig_core::message::{ToolResultContent, UserContent};
 use serde::{Deserialize, Serialize};
 
@@ -374,6 +380,87 @@ impl CompactionPolicy {
         next.track(older, &self.tracked);
         Ok((next, request))
     }
+}
+
+/// Who writes a compaction's summary: the author of its entry.
+pub fn summary_author() -> Author {
+    Author::plugin("compaction")
+}
+
+/// How many of the first entries of `conversation` are summaries (by
+/// [`summary_author`]): what a new compaction builds on from its
+/// [`SummaryState`] instead of reading it again. It is the `from` the
+/// policy's [`cut`](CompactionPolicy::cut) and
+/// [`plan`](CompactionPolicy::plan) are given.
+pub fn summarized_prefix(conversation: &Conversation) -> usize {
+    let author = summary_author();
+    let summaries = conversation.entries();
+    summaries
+        .take_while(|entry| entry.author == Some(&author))
+        .count()
+}
+
+/// A summary [`CompactionPolicy::plan_summary`] planned.
+#[derive(Clone, Debug)]
+pub struct SummaryPlan {
+    /// The first message the compaction keeps; `None` when it summarizes
+    /// every message. By id, so a splice made while the summary is written
+    /// does not move it.
+    pub upto: Option<MessageId>,
+    /// The state the summary goes into.
+    pub state: SummaryState,
+    /// The request for the summary.
+    pub request: CompletionRequest,
+}
+
+impl CompactionPolicy {
+    /// Plans a compaction of `conversation` for `reason`, written by
+    /// `spec`, building on `state`: where it cuts ([`Self::cut`]) and the
+    /// summary request ([`Self::plan`]) of its messages not summarized yet
+    /// ([`summarized_prefix`]). `None` when nothing new would be
+    /// summarized.
+    ///
+    /// # Errors
+    ///
+    /// When `spec` does not take the summary request's options.
+    pub fn plan_summary(
+        &self,
+        conversation: &Conversation,
+        state: &SummaryState,
+        reason: &CompactReason,
+        spec: &ModelSpec,
+    ) -> Result<Option<SummaryPlan>, UnsupportedOption> {
+        let messages = conversation.messages();
+        let from = summarized_prefix(conversation);
+        let Some(upto) = self.cut(messages, from, reason, Some(spec)) else {
+            return Ok(None);
+        };
+        let (state, request) = self.plan(state, messages, from, upto, spec, reason)?;
+        let upto = conversation.id(upto);
+        Ok(Some(SummaryPlan {
+            upto,
+            state,
+            request,
+        }))
+    }
+}
+
+/// Puts the summary of `state` in place of the messages of
+/// `conversation` before `upto` (every message with `None`), earlier
+/// summaries included: one user entry by [`summary_author`], a splice it
+/// makes. `None`, changing nothing, when `upto` was taken out meanwhile or
+/// `state` has no summary.
+pub fn apply_summary(
+    conversation: &mut Conversation,
+    upto: Option<MessageId>,
+    state: &SummaryState,
+) -> Option<Spliced> {
+    let end = match upto {
+        None => conversation.messages().len(),
+        Some(upto) => conversation.index_of(upto)?,
+    };
+    let summary = Entry::new(Message::user(state.message()?)).by(summary_author());
+    Some(conversation.splice(..end, [summary], summary_author()))
 }
 
 /// What a [`Summarizer`] asks the model.
@@ -725,6 +812,34 @@ impl ClearToolOutputs {
                 cleared.tokens += tokens;
             }
         }
+        cleared
+    }
+
+    /// Clears older tool outputs of `conversation`, as [`Self::clear`]
+    /// does, by one splice made by `by` of the entries that changed, which
+    /// keep their ids.
+    pub fn clear_conversation(&self, conversation: &mut Conversation, by: Author) -> Cleared {
+        let mut messages = conversation.messages().to_vec();
+        let cleared = self.clear(&mut messages);
+        let was = conversation.messages();
+        let changed = messages
+            .iter()
+            .enumerate()
+            .filter(|(at, message)| was.get(*at) != Some(*message))
+            .map(|(at, _)| at);
+        let (first, last) = changed.fold((None, None), |(first, _), at| {
+            (first.or(Some(at)), Some(at))
+        });
+        let (Some(first), Some(last)) = (first, last) else {
+            return cleared;
+        };
+        let entries = (first..=last).filter_map(|at| {
+            let mut entry = conversation.entry(at)?;
+            entry.message = messages.get(at)?.clone();
+            Some(entry)
+        });
+        let entries: Vec<Entry> = entries.collect();
+        conversation.splice(first..=last, entries, by);
         cleared
     }
 }

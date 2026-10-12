@@ -392,18 +392,19 @@ pub(crate) fn history(rng: &mut Rng, own: &[AssistantMessage]) -> Vec<Message> {
     history
 }
 
-/// The last messages of `history`: as rig-memory's sliding window keeps
-/// them, which drops results that lost their calls, or as a policy that
-/// cuts anywhere does, between a call and its result too.
+/// The last messages of `history`: as rig-memory's window keeps them,
+/// which drops results that lost their calls, or as a policy that cuts
+/// anywhere does, between a call and its result too.
 fn window(rng: &mut Rng, history: Vec<Message>) -> Vec<Message> {
-    use rig_memory::MemoryPolicy;
+    use rig_memory::window::{LastMessages, view};
     let keep = rng.range(1, history.len());
     if rng.chance(50) {
-        rig_memory::SlidingWindowMemory::last_messages(keep)
-            .apply(history.clone())
-            .ok()
-            .filter(|window| !window.is_empty())
-            .unwrap_or(history)
+        let window = view(&history, &LastMessages(keep));
+        if window.is_empty() {
+            history
+        } else {
+            window.to_vec()
+        }
     } else {
         let from = history.len() - keep;
         history.into_iter().skip(from).collect()

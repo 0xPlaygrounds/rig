@@ -16350,13 +16350,13 @@ dependencies = [
 name = "rig-memory"
 version = "0.44.0"
 dependencies = [
- "anyhow",
- "rig-agent",
+ "base64 0.22.1",
  "rig-core",
  "serde",
  "serde_json",
- "tokio",
- "tracing",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "web-time",
 ]
 
 [[package]]

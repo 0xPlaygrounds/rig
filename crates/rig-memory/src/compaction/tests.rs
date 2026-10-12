@@ -160,3 +160,38 @@ fn a_cut_rule_chooses_the_first_kept_message() {
     // An answer that summarizes nothing new counts as none.
     assert_eq!(policy.cut(&messages, 4, &threshold, None), None);
 }
+
+#[test]
+fn a_summary_takes_the_place_of_what_it_summarized_by_id() {
+    let big = "x".repeat(4_000);
+    let mut conversation = Conversation::from_messages([
+        Message::user("start"),
+        call("1", "read", "a.rs"),
+        result("1", &big),
+        call("2", "read", "b.rs"),
+        result("2", &big),
+        Message::assistant("done"),
+    ]);
+    let ids: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    let cleared =
+        ClearToolOutputs::new(1_500).clear_conversation(&mut conversation, summary_author());
+    assert_eq!(cleared.results, 1);
+    let kept: Vec<MessageId> = conversation.entries().map(|entry| entry.id).collect();
+    assert_eq!(kept, ids, "clearing keeps every id");
+
+    // A summary planned up to the newest reply survives an edit before it.
+    let state = SummaryState {
+        summary: "read two files".to_owned(),
+        tracked: Vec::new(),
+    };
+    let upto = conversation.id(5);
+    conversation.splice(0..1, [], Author::plugin("other"));
+    let spliced = apply_summary(&mut conversation, upto, &state).expect("applied");
+    assert_eq!(spliced.removed.len(), 4);
+    assert_eq!(conversation.messages().len(), 2);
+    assert_eq!(summarized_prefix(&conversation), 1);
+    assert_eq!(conversation.author(0), Some(&summary_author()));
+    // Once the kept message is gone, a summary replaces nothing.
+    conversation.splice(1.., [], Author::plugin("other"));
+    assert_eq!(apply_summary(&mut conversation, upto, &state), None);
+}
