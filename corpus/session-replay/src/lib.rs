@@ -33,7 +33,6 @@ use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
 use rig_cassette::journal::EFFECT_LOG;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
@@ -559,9 +558,7 @@ impl Plugin for SessionReplayPlugin {
         app.configure_sets(
             AgentPass,
             (
-                ReplaySystems::Prepare
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
+                ReplaySystems::Prepare.in_set(PrepareSystems::Edit),
                 ReplaySystems::Gate
                     .in_set(Stage::Gate)
                     .after(SubagentSystems::Gate)

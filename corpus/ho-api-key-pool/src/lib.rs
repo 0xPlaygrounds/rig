@@ -29,7 +29,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::ProviderError;
 use rig_harness::rig_core::catalog::Connector;
@@ -285,7 +284,8 @@ pub struct KeyCount {
 struct PoolProblem(Option<String>);
 
 /// The pool's stage system, which edits a failed model call's
-/// [`RetryVerdict`] in Review, before compaction reads it.
+/// [`RetryVerdict`] in [`ReviewSystems::Edit`], before any plugin acts on
+/// it.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct KeyPoolSystems;
 
@@ -300,12 +300,7 @@ impl Plugin for KeyPoolPlugin {
         app.insert_resource(pools)
             .insert_resource(PoolProblem(problem))
             .insert_resource(KeyUsage::default())
-            .configure_sets(
-                AgentPass,
-                KeyPoolSystems
-                    .in_set(Stage::Review)
-                    .before(CompactionSystems::Recover),
-            )
+            .configure_sets(AgentPass, KeyPoolSystems.in_set(ReviewSystems::Edit))
             .add_systems(AgentPass, wait_for_the_first_key.in_set(KeyPoolSystems))
             .add_systems(Startup, provide)
             .add_observer(count)

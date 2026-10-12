@@ -18,8 +18,6 @@ tui = ["dep:rig-tui"]
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The default prompt, which the note to a summary call follows.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
 # The summary call a compaction makes, told about the pins.
 rig-compaction = { path = "../../plugins/rig-compaction" }
 # `inherit_pins` on `task`.

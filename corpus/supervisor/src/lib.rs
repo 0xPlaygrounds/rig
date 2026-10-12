@@ -14,8 +14,6 @@
 //! and so is its conversation, so it remembers its earlier checks.
 //! `/supervise off` retires it.
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
@@ -59,11 +57,11 @@ const PROMPT: &str = "You supervise another coding agent, the worker, on behalf 
 /// The plugin's stage systems, to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SupervisorSystems {
-    /// In [`Stage::Prepare`], after [`ProjectContextSystems`] and before
-    /// [`CompactionSystems::Prepare`]: offers `verdict` to supervisors only.
+    /// In [`PrepareSystems::Edit`]: offers `verdict` to supervisors only.
     Prepare,
-    /// In [`Stage::Review`], after [`CompactionSystems::Recover`]: marks a
-    /// hired supervisor, and sends a check every so many tool calls.
+    /// In [`Stage::Review`], after [`ReviewSystems::Act`], so a check shows
+    /// the conversation as the reviewers left it: marks a hired supervisor,
+    /// and sends a check every so many tool calls.
     Review,
 }
 
@@ -89,13 +87,10 @@ impl Plugin for SupervisorPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    SupervisorSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    SupervisorSystems::Prepare.in_set(PrepareSystems::Edit),
                     SupervisorSystems::Review
                         .in_set(Stage::Review)
-                        .after(CompactionSystems::Recover),
+                        .after(ReviewSystems::Act),
                 ),
             )
             .add_systems(

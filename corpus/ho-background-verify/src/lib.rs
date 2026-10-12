@@ -23,7 +23,6 @@ use std::path::Path;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use glob::Pattern;
-use rig_coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -67,7 +66,7 @@ impl Plugin for BackgroundVerifyPlugin {
                 AgentPass,
                 (
                     before_turn_end.in_set(Stage::Review),
-                    attach_notes.in_set(Stage::Prepare).after(AttachSystems),
+                    attach_notes.in_set(PrepareSystems::Edit),
                     to_idle_agents.in_set(Stage::Gate).after(AskSystems),
                 )
                     .in_set(VerifySystems),

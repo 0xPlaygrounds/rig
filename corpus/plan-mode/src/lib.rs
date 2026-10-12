@@ -11,8 +11,6 @@
 //! agent's tools are never changed, so leaving gives back exactly what it
 //! had.
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
@@ -74,10 +72,7 @@ impl Plugin for PlanModePlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PlanModeSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    PlanModeSystems::Prepare.in_set(PrepareSystems::Edit),
                     PlanModeSystems::Gate.in_set(Stage::Gate),
                 ),
             )

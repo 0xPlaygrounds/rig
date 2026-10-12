@@ -11,8 +11,6 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-# Compaction measures a call once the plugin adapted it.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The `[text_tools]` settings table.
 serde = { workspace = true, features = ["derive"] }

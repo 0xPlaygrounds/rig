@@ -33,7 +33,6 @@ use std::sync::Arc;
 
 use bevy_log::{debug, warn};
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
@@ -199,8 +198,8 @@ impl LocalModels {
 pub struct LocalModelsPlugin;
 
 /// The plugin's stage system, for others to order against: in Prepare, it
-/// pushes the outermost adapter of calls to local models, before
-/// [`CompactionSystems::Prepare`], which measures the adapted call.
+/// pushes the outermost adapter of calls to local models, in
+/// [`PrepareSystems::Edit`], before compaction measures the adapted call.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LocalModelSystems;
 
@@ -214,12 +213,7 @@ impl Plugin for LocalModelsPlugin {
                 models_command,
             )
             .add_systems(Startup, probe_at_startup)
-            .configure_sets(
-                AgentPass,
-                LocalModelSystems
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, LocalModelSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, adapt.in_set(LocalModelSystems))
             .add_observer(found)
             .add_observer(warm_up);

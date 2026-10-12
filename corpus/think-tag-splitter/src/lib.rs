@@ -24,7 +24,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -84,8 +83,8 @@ pub struct ThinkTagSplitterPlugin;
 /// The plugin's stage systems, to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ThinkTagSystems {
-    /// In [`Stage::Prepare`], before [`CompactionSystems::Prepare`], which
-    /// measures the adapted call: puts the split on each model call.
+    /// In [`PrepareSystems::Edit`], before compaction measures the adapted
+    /// call: puts the split on each model call.
     Prepare,
     /// In [`Stage::Review`]: learns which models send tags.
     Review,
@@ -98,9 +97,7 @@ impl Plugin for ThinkTagSplitterPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ThinkTagSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .before(CompactionSystems::Prepare),
+                    ThinkTagSystems::Prepare.in_set(PrepareSystems::Edit),
                     ThinkTagSystems::Review.in_set(Stage::Review),
                 ),
             )

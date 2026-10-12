@@ -12,10 +12,6 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The default prompt goes in, and compaction measures the request, around
-# the plugin's edit of the tools offered.
-rig-basics = { path = "../../plugins/rig-basics" }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The supervisor is a helper agent spawned through SpawnSubagent.
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }

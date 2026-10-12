@@ -12,10 +12,6 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The default prompt goes in, and compaction measures the request, around
-# the plugin's routing.
-rig-basics = { path = "../../plugins/rig-basics" }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The completions of /retry-with's argument.
 rig-tui = { path = "../../plugins/rig-tui" }

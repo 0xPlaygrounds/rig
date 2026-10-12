@@ -13,8 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 # The recorded effect log.
 rig-cassette = { workspace = true, features = ["jsonl"] }
-# Ordering the record before the request is measured.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 # Pairing replayed subagents through their spawn.

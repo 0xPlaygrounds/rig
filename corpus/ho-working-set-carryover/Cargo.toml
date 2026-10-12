@@ -12,9 +12,7 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# The summary's origin; the block goes in after the default prompt and
-# before compaction measures the request.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
+# The summary's origin.
 rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The test/build command pattern.

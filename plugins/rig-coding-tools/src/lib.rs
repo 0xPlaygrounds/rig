@@ -2,7 +2,7 @@
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
 //! `write` and `shell` alone. A call of an agent with a [`WorkDir`] works
 //! there: its paths resolve from it, a path outside it is refused, and a
-//! command starts in it ([`CodingToolsSystems`]). With the `tui` feature
+//! command starts in it ([`PrepareSystems::Compose`]). With the `tui` feature
 //! (on by default), each plugin also adds how the terminal view draws its
 //! tool's calls. [`AttachPlugin`] sends the files the user names as
 //! `@path` with the message.
@@ -12,8 +12,8 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, ForAgent, Incoming,
-    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Processes, Query, Res,
-    Resource, SessionPaths, Stage, SystemSet, Tool, ToolCalls, ToolOptions, ToolRequest, WorkDir,
+    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, PrepareSystems, Processes,
+    Query, Res, Resource, SessionPaths, Tool, ToolCalls, ToolOptions, ToolRequest, WorkDir,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serve::ErasedHandler;
@@ -214,13 +214,6 @@ impl Tool for SharedShell {
     }
 }
 
-/// The system in [`Stage::Prepare`] that gives each call of these tools
-/// whose agent has a [`WorkDir`] a handler working there. It runs before
-/// every other Prepare system: one that wraps or replaces a call's
-/// [`CallHandler`] orders `.after(CodingToolsSystems)`.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CodingToolsSystems;
-
 /// How each of these tools works in a directory, by tool name.
 #[derive(Resource, Default)]
 struct InDir(Vec<(&'static str, Box<dyn Fn(&Path) -> Handler + Send + Sync>)>);
@@ -233,8 +226,7 @@ fn work_in_dir<T: Tool + 'static>(
 ) {
     if !app.world().contains_resource::<InDir>() {
         app.init_resource::<InDir>()
-            .configure_sets(AgentPass, CodingToolsSystems.in_set(Stage::Prepare))
-            .add_systems(AgentPass, give_work_dirs.in_set(CodingToolsSystems));
+            .add_systems(AgentPass, give_work_dirs.in_set(PrepareSystems::Compose));
     }
     let handler = move |dir: &Path| {
         Handler(ErasedHandler::new(ToolAdapter::new(make(
@@ -247,7 +239,9 @@ fn work_in_dir<T: Tool + 'static>(
 }
 
 /// Gives each call of these tools admitted this pass whose agent has a
-/// [`WorkDir`] the handler of its tool working there.
+/// [`WorkDir`] the handler of its tool working there, in
+/// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a call's
+/// [`CallHandler`] in [`PrepareSystems::Edit`] gets that one.
 fn give_work_dirs(
     mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
     dirs: Query<&WorkDir>,
@@ -264,12 +258,6 @@ fn give_work_dirs(
     }
 }
 
-/// The system in [`Stage::Prepare`] that reads the files a user's message
-/// names into its attachments ([`AttachPlugin`]). A plugin that edits the
-/// message's text or attachments orders against it.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AttachSystems;
-
 /// Files the user names as `@path` go with the message, before its text,
 /// and the `@path` stays in the text so the model knows which file it is
 /// ([`rig_tools::attach`]): an image as an image, which the core sends
@@ -280,13 +268,14 @@ pub struct AttachPlugin;
 
 impl Plugin for AttachPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(AgentPass, AttachSystems.in_set(Stage::Prepare))
-            .add_systems(AgentPass, attach.in_set(AttachSystems));
+        app.add_systems(AgentPass, attach.in_set(PrepareSystems::Compose));
     }
 }
 
 /// Reads the files each user's message names into its attachments as it
-/// comes in, in Prepare, with a notice about each that could not be.
+/// comes in, in [`PrepareSystems::Compose`], with a notice about each that
+/// could not be: a plugin that rewrites the text goes before, in `Input`,
+/// one that edits the text or attachments after, in `Edit`.
 fn attach(
     mut typed: Query<(&mut Incoming, &ForAgent), Added<Admitted>>,
     mut notices: MessageWriter<Notice>,

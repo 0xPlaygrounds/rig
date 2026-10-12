@@ -20,8 +20,6 @@ bevy_ecs = { workspace = true }
 bevy_tasks = { workspace = true }
 # The files whose edits schedule a check.
 glob = { workspace = true }
-# `AttachSystems`, which the note added to a message goes after.
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
@@ -32,3 +30,4 @@ rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-suppo
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

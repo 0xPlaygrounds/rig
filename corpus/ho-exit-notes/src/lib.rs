@@ -10,8 +10,6 @@
 
 use std::path::Path;
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{AssistantContent, Message};
 use rig_harness::rig_core::tool::FilesChanged;
@@ -117,10 +115,7 @@ impl Plugin for ExitNotesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ExitNotesSystems::Ask
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    ExitNotesSystems::Ask.in_set(PrepareSystems::Edit),
                     ExitNotesSystems::HoldExit.in_set(Stage::Gate),
                 ),
             )

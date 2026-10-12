@@ -13,8 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 # The before and after of each repair, in the debug log.
 bevy_log = { workspace = true }
-# Arguments are repaired before the coding tools give a call its directory.
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }

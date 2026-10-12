@@ -18,7 +18,6 @@ mod repair;
 use std::collections::BTreeMap;
 
 use bevy_log::debug;
-use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::error::ErrorKind;
@@ -74,9 +73,7 @@ impl Plugin for ToolArgRepairPlugin {
             .configure_sets(AgentPass, ArgRepairSystems::Reply.in_set(Stage::Review))
             .configure_sets(
                 AgentPass,
-                ArgRepairSystems::Call
-                    .in_set(Stage::Prepare)
-                    .before(CodingToolsSystems),
+                ArgRepairSystems::Call.in_set(PrepareSystems::Input),
             )
             .configure_sets(AgentPass, ArgRepairSystems::Hint.in_set(Stage::Review))
             .add_systems(

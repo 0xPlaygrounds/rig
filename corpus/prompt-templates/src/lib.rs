@@ -25,8 +25,6 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use bevy_log::warn;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use serde::Deserialize;
 
@@ -44,10 +42,7 @@ impl Plugin for PromptTemplatesPlugin {
             .add_systems(Update, reload)
             .configure_sets(
                 AgentPass,
-                PromptTemplatesSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
+                PromptTemplatesSystems.in_set(PrepareSystems::Edit),
             )
             .add_systems(AgentPass, route.in_set(PromptTemplatesSystems));
     }

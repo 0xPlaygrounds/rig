@@ -21,8 +21,6 @@ use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 
 use bevy_log::warn;
 use regex::{Captures, Regex};
-use rig_coding_tools::{AttachSystems, CodingToolsSystems};
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -50,9 +48,9 @@ pub struct SecretRedactionPlugin;
 /// The plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RedactionSystems {
-    /// Redacts messages, adapts model calls, reveals tool arguments; after
-    /// [`AttachSystems`] and [`CodingToolsSystems`], before
-    /// [`CompactionSystems::Prepare`].
+    /// Redacts messages, adapts model calls, reveals tool arguments; in
+    /// [`PrepareSystems::Edit`], once the files a message names are
+    /// attached and the calls have their handlers.
     Prepare,
     /// Refuses a tool call naming an unknown placeholder.
     Gate,
@@ -78,14 +76,7 @@ impl Plugin for SecretRedactionPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    // After the files a message names are attached and the
-                    // coding tools' calls are set up, before compaction
-                    // measures the adapted request.
-                    Set::Prepare
-                        .in_set(Stage::Prepare)
-                        .after(AttachSystems)
-                        .after(CodingToolsSystems)
-                        .before(CompactionSystems::Prepare),
+                    Set::Prepare.in_set(PrepareSystems::Edit),
                     Set::Gate.in_set(Stage::Gate),
                     Set::Review.in_set(Stage::Review),
                 ),

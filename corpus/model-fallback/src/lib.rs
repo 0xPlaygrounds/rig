@@ -9,10 +9,10 @@
 //! Prepare system sends a call bound for a cooling model to the chain
 //! instead. A context overflow is left to compaction, and a failure another
 //! plugin holds or superseded is left to it. Both systems are in the public
-//! [`FallbackSystems`] sets, ordered against [`CompactionSystems`]: a call
-//! is routed before compaction measures it, and a failure is taken over
-//! after compaction had its chance. The `[model-fallback]` table of
-//! `settings.toml`:
+//! [`FallbackSystems`] sets, in the stages' phases: a call is routed in
+//! [`PrepareSystems::Edit`], before compaction measures it, and a failure
+//! is taken over in [`ReviewSystems::Act`], once reviewers edited its
+//! verdict. The `[model-fallback]` table of `settings.toml`:
 //!
 //! ```toml
 //! [model-fallback]
@@ -23,8 +23,6 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
 use serde::{Deserialize, Deserializer};
@@ -76,13 +74,8 @@ impl Plugin for ModelFallbackPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    FallbackSystems::Route
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
-                    FallbackSystems::TakeOver
-                        .in_set(Stage::Review)
-                        .after(CompactionSystems::Recover),
+                    FallbackSystems::Route.in_set(PrepareSystems::Edit),
+                    FallbackSystems::TakeOver.in_set(ReviewSystems::Act),
                 ),
             )
             .add_systems(

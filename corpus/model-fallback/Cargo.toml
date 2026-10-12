@@ -12,11 +12,6 @@ workspace = true
 # Named by the ECS derives.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Routing after the default prompt went in.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-# Ordered against compaction: routing before it measures, taking a failure
-# over after it had its chance at an overflow.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 # The `[model-fallback]` settings.
 serde = { workspace = true, features = ["derive"] }
 
@@ -30,3 +25,4 @@ rig-core = { workspace = true, features = ["test-utils"] }
 bevy_time = { workspace = true }
 # The 529 status of the scripted failure.
 http = { workspace = true }
+rig-compaction = { path = "../../plugins/rig-compaction" }

@@ -20,8 +20,6 @@ use std::fs;
 use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::watch::WatchPlugin;
 use rig_tui::{FRONT, RunInTerminal, TerminalExit};
@@ -85,13 +83,7 @@ impl Plugin for LongTermMemoryPlugin {
             )
             .add_systems(Startup, open)
             .add_systems(Update, (reload, edited).before(AgentLoop))
-            .configure_sets(
-                AgentPass,
-                MemorySystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, MemorySystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, recall.in_set(MemorySystems));
     }
 

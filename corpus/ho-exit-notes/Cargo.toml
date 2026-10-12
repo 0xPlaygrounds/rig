@@ -16,10 +16,6 @@ bevy_reflect = { workspace = true }
 # The note's date, in local time.
 chrono = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The set a request edit goes after, so it sees the whole prompt.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-# The set a request edit goes before, so compaction measures what is sent.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 # The session's name.
 rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 # Ctrl-D.
@@ -33,3 +29,4 @@ rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 serde_json = { workspace = true }
+rig-basics = { path = "../../plugins/rig-basics", default-features = false }

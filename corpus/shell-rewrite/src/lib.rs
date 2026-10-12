@@ -34,7 +34,6 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use bevy_log::warn;
-use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::message::ToolResultContent;
@@ -270,8 +269,8 @@ pub struct RanAs(pub String);
 /// rewritten one.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ShellRewriteSystems {
-    /// Rewrites the command of each `shell` call as it is admitted, after
-    /// [`CodingToolsSystems`].
+    /// Rewrites the command of each `shell` call as it is admitted, in
+    /// [`PrepareSystems::Edit`].
     Prepare,
     /// Puts "(ran as: …)" first in each rewritten call's result.
     Review,
@@ -295,9 +294,7 @@ impl Plugin for ShellRewritePlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ShellRewriteSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .after(CodingToolsSystems),
+                    ShellRewriteSystems::Prepare.in_set(PrepareSystems::Edit),
                     ShellRewriteSystems::Review.in_set(Stage::Review),
                 ),
             )

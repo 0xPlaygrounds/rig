@@ -12,9 +12,6 @@ workspace = true
 # Named by the `Resource` derive.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The set that gives an agent's calls its `WorkDir`, which wrapping orders
-# after.
-rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 # The write and edit tools' names, and the shell runner formatters run in.
 rig-tools = { path = "../../crates/rig-tools" }
 serde = { workspace = true }
@@ -25,3 +22,4 @@ rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-suppo
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

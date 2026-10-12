@@ -105,17 +105,18 @@ nothing moves, so an effect goes as far as it can in the frame:
 | Stage | Who | What happens there |
 |---|---|---|
 | `Arrive` | kernel | finished work becomes an `Outcome`; a failed model call gets a `RetryVerdict` |
-| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, edit in place, hold, or take a failure over; a turn's proposed end |
+| `Review` | plugins | outcomes not settled yet (`Unreviewed`): read, edit in place, hold, or take a failure over; a turn's proposed end (phases: `ReviewSystems`) |
 | `Commit` | kernel | settles what is answered and unheld (`Settled`), appends results, carries turns on or ends them |
 | `Admit` | kernel | `Admitted` on every new effect; builds turn requests |
-| `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once |
+| `Prepare` | plugins | what was admitted this pass (`Added<Admitted>`): edit the request, once (phases: `PrepareSystems`) |
 | `Gate` | plugins | as it opens, the kernel gives each tool call its `Footprint` and marks `Waiting` a call behind a conflicting one; then what is about to start (`Undecided`): hold it or decide it (`Decision`) |
 | `Start` | kernel | applies the decisions as `Outcome`s, then starts what is admitted, unheld and unanswered |
 
 **A hook is an ordinary system in a stage** that queries stage data:
 `app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`. There are no
-hook events. Order between plugins is Bevy's `.before` and `.after`,
-against the public sets other plugins put their stage systems in
+hook events. Order between plugins is the phase of the stage a system
+is in, and Bevy's `.before` and `.after` against the public sets other
+plugins put their stage systems in
 ([ordering](#ordering-against-other-plugins)). Every effect is admitted
 before it starts, wherever and whenever it was spawned, so every Prepare
 and Gate system sees it, in their order. Prepare sees an effect once; Gate
@@ -245,38 +246,46 @@ effect never meet when they say so with a kind filter (`ToolCalls`,
 effects when one names its marker (`With<Ask>`) and the other excludes
 it. Inside one system, two queries that write the same component must
 rule each other out this way, or Bevy refuses the system when the app
-starts (error B0001). So:
+starts (error B0001).
+
+**Prepare and Review have phases**, chained in this order, so a plugin
+orders a system by what it does, not by which plugin does what:
+
+| Phase | What goes there | The default plugins' systems there |
+|---|---|---|
+| `PrepareSystems::Input` | what came in, rewritten before anything is read from it: a message's text, a tool call's arguments | |
+| `PrepareSystems::Compose` | the parts that come from what a request names and from its agent | the files a message names (`@path`), the default system prompt, the coding tools' handler for the agent's `WorkDir` |
+| `PrepareSystems::Edit` | the request edited as it will be sent: prompt, messages, tools, options, the model it goes to, its `Adapters`, a call's `CallHandler` | |
+| `PrepareSystems::Fit` | the request as sent, measured against the window of the model it goes to and fitted | compaction |
+| `ReviewSystems::Edit` | an `Outcome`, a `RetryVerdict` or a proposed `TurnOutcome`, edited in place | |
+| `ReviewSystems::Act` | what was reviewed, acted on: a failed call taken over, a result followed up | compaction's recovery from an overflow |
+
+So:
 
 - **A stage system that edits or answers data another plugin may also
   edit goes in a public `SystemSet` of its plugin**, configured in its
-  stage: `app.configure_sets(AgentPass, MySystems.in_set(Stage::Prepare))`.
-- **Another plugin orders against the set**, never against a private
-  system: `.before(MySystems)` or `.after(MySystems)`. A gate that holds
-  or asks goes after the gates that decide the same kind of effect, so
-  it sees their decisions.
+  phase, or in its stage before or after one (`.after(ReviewSystems::Act)`):
+  `app.configure_sets(AgentPass, MySystems.in_set(PrepareSystems::Edit))`.
+- **Another plugin orders against the set only where it must go before
+  or after that plugin**, never against a private system:
+  `.before(MySystems)` or `.after(MySystems)`. A gate that holds or asks
+  goes after the gates that decide the same kind of effect, so it sees
+  their decisions.
 - **Two plugins of other authors never depend on each other only to
   order themselves.** Where two meant to be used together edit the same
-  data, the later one depends on the earlier one's crate and orders
-  against its set, as against a default plugin's.
+  data in one phase, the later one depends on the earlier one's crate and
+  orders against its set.
 
-The default plugins' sets of stage systems that edit shared data:
+The sets of Gate systems that edit shared data:
 
-| Set | Crate | Stage | What it does | Order against it |
-|---|---|---|---|---|
-| `AttachSystems` | `rig_coding_tools` | Prepare | reads the files a user's message names (`@path`) into its `attachments` | `.after` it to see or change the attached text |
-| `ProjectContextSystems` | `rig_basics` | Prepare | puts the default system prompt at the head of a request whose agent has none of its own | `.after` it to see or edit the request with the whole prompt |
-| `CodingToolsSystems` | `rig_coding_tools` | Prepare | gives the coding tools' calls of an agent with a `WorkDir` a handler working there, before every other Prepare system | `.after` it to wrap or replace a call's `CallHandler` |
-| `CompactionSystems::Prepare` | `rig_compaction` | Prepare | measures each turn's request against the window of the model it goes to, after the two sets above; clears old tool outputs or holds the call for a summary | `.before` it to route a call or change its request, so what it measures is what is sent |
-| `CompactionSystems::Recover` | `rig_compaction` | Review | takes over a turn's call the model refused as too long | `.before` or `.after` it to take a failed call over first or last |
-| `CommandSystems` | `rig_harness` | Gate | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
-| `AskSystems` | `rig_harness` | Gate | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
-| `PrintSystems` | `rig_print` | Gate | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
-| `SubagentSystems::Gate` | `rig_subagents` | Gate | refuses a `SpawnSubagent` deeper than the policy allows; stops the restored turn of an agent that owed reports | `.after` it to decide or hold a request it let through |
+| Set | Crate | What it does | Order against it |
+|---|---|---|---|
+| `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
+| `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
+| `PrintSystems` | `rig_print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
+| `SubagentSystems::Gate` | `rig_subagents` | refuses a `SpawnSubagent` deeper than the policy allows; stops the restored turn of an agent that owed reports | `.after` it to decide or hold a request it let through |
 
 ```rust,no_run
-use rig_basics::ProjectContextSystems;
-use rig_coding_tools::AttachSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::redact;
 
@@ -289,20 +298,10 @@ pub struct RedactPlugin;
 
 impl Plugin for RedactPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(AgentPass, RedactSystems.in_set(Stage::Prepare))
-            .add_systems(
-                AgentPass,
-                (
-                    // After the files a message names were attached.
-                    redact_messages.after(AttachSystems),
-                    // After the default prompt went in, and before
-                    // compaction measures the request.
-                    redact_prompts
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
-                )
-                    .in_set(RedactSystems),
-            );
+        // After the files a message names were attached and the default
+        // prompt went in, before compaction measures the request.
+        app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
+            .add_systems(AgentPass, (redact_messages, redact_prompts).in_set(RedactSystems));
     }
 }
 
@@ -435,7 +434,7 @@ and the `CallHandler` that will run it, on the call's entity. A Prepare
 system edits them as the call is admitted: the arguments, or the
 handler, wrapped with `ErasedHandler::layered` so the call runs through it
 (to give it a secret the model never sees, say). Replacing a call's
-`CallHandler`, `.after(CodingToolsSystems)`, runs that one call another
+`CallHandler`, in `PrepareSystems::Edit`, runs that one call another
 way, such as one agent's `shell` calls in a sandbox (below), while
 `Processes` stays the way every other call starts. When Gate opens, the
 kernel gives each call the `Footprint` of the call as Prepare left it. A
@@ -455,7 +454,6 @@ agent's `ToolAccess` leaves out is refused at Start (a `Denied` refusal
 in its record), and the model reads it as a tool it does not have.
 
 ```rust,no_run
-use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ToolAdapter;
@@ -467,7 +465,7 @@ use rig_tools::Shell;
 pub struct Sandboxed;
 
 fn build(app: &mut App) {
-    app.add_systems(AgentPass, sandbox.in_set(Stage::Prepare).after(CodingToolsSystems));
+    app.add_systems(AgentPass, sandbox.in_set(PrepareSystems::Edit));
 }
 
 /// A sandboxed agent's `shell` calls get a handler of their own, which
@@ -703,8 +701,6 @@ files attached or what a plugin delivered, is `typed(&conversation, at)`
 (`first_typed` for the first).
 
 ```rust,no_run
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 
 #[derive(Default)]
@@ -715,10 +711,7 @@ impl Plugin for ShortcutsPlugin {
         app.add_systems(
             AgentPass,
             (
-                review_on_reviewer
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
+                review_on_reviewer.in_set(PrepareSystems::Edit),
                 // Before the harness's systems that decide messages too.
                 keep_asides.in_set(Stage::Gate).before(CommandSystems),
             ),
@@ -780,9 +773,9 @@ call is a `TurnCall`, whose request the kernel builds from its agent when
 it is admitted (an `On<Add<Admitted>>` observer runs before that, a
 Prepare system after); a call built from an agent outside its turns, such
 as a preview, is `BuildFrom(agent)`. A plugin changes a request in
-`Prepare`, which sees each call once (`Added<Admitted>`),
-`.after(ProjectContextSystems)` and `.before(CompactionSystems::Prepare)`,
-so it sees the whole prompt and compaction measures what is sent. Start
+`Prepare`, which sees each call once (`Added<Admitted>`), in
+`PrepareSystems::Edit`, so it sees the whole prompt and compaction
+measures what is sent. Start
 then fits the request to the model it goes to (an option that model
 cannot take is left out, plugin edits stay) and makes the tool rules in
 the prompt follow the tools it carries. Changing the system prompt or the
@@ -869,8 +862,6 @@ alone, despawned with it.
 ```rust,no_run
 use std::sync::Arc;
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::http_client::{self, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
 use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
@@ -891,11 +882,8 @@ impl Plugin for ModelRequestsPlugin {
         app.add_systems(
             AgentPass,
             (
-                (plan_only, tools_as_text)
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
-                fall_back.in_set(Stage::Review),
+                (plan_only, tools_as_text).in_set(PrepareSystems::Edit),
+                fall_back.in_set(ReviewSystems::Act),
             ),
         );
         // Every model request, whoever sends it, carries the team's header.

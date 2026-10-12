@@ -11,17 +11,15 @@
 //! says it overflowed. The summary is a [`ModelRequest`] of the turn, so
 //! interrupting the turn cancels it, that holds the call it compacts for
 //! until the summary is in; a new call built from the compacted
-//! conversation then supersedes it. Both systems are in public
-//! [`CompactionSystems`] sets: a plugin that routes a call to another
-//! model or edits its request runs before [`CompactionSystems::Prepare`],
-//! so the request is measured as it will be sent.
+//! conversation then supersedes it. The Prepare system is in
+//! [`PrepareSystems::Fit`], after every plugin's edits, so the request is
+//! measured as it will be sent; the Review system is in
+//! [`ReviewSystems::Act`].
 
 use std::slice;
 use std::sync::Arc;
 
 use bevy_ecs::query::QueryData;
-use rig_basics::ProjectContextSystems;
-use rig_coding_tools::AttachSystems;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
@@ -58,44 +56,17 @@ impl Plugin for CompactionPlugin {
             },
         )
         .add_observer(on_compact)
-        .configure_sets(
-            AgentPass,
-            (
-                // It measures the request as it goes out: after the
-                // files a message names were attached and the default
-                // prompt went in.
-                CompactionSystems::Prepare
-                    .in_set(Stage::Prepare)
-                    .after(AttachSystems)
-                    .after(ProjectContextSystems),
-                CompactionSystems::Recover.in_set(Stage::Review),
-            ),
-        )
         .add_systems(
             AgentPass,
             (
-                compact_near_the_window.in_set(CompactionSystems::Prepare),
-                recover_from_overflow.in_set(CompactionSystems::Recover),
+                compact_near_the_window.in_set(PrepareSystems::Fit),
+                recover_from_overflow.in_set(ReviewSystems::Act),
             ),
         )
         .add_observer(take_summary)
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(provided_by_compaction);
     }
-}
-
-/// The compaction plugin's stage systems, to order against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum CompactionSystems {
-    /// In [`Stage::Prepare`]: measures each turn's request against the
-    /// window of the model it goes to, and clears old tool outputs from it
-    /// or holds it for a summary, after [`AttachSystems`] and
-    /// [`ProjectContextSystems`]. A system that changes the request or its
-    /// model runs before it.
-    Prepare,
-    /// In [`Stage::Review`]: takes over a turn's call the model refused as
-    /// too long.
-    Recover,
 }
 
 /// How agents are compacted: rig-memory's default policy, tracking the

@@ -9,8 +9,6 @@
 //! and the alternatives are saved with the session. The input completes
 //! `/retry-with`'s argument to the models the agent can reach.
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
@@ -31,10 +29,7 @@ impl Plugin for RetryWithModelPlugin {
             .add_observer(note_turn)
             .configure_sets(
                 AgentPass,
-                RetryWithModelSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
+                RetryWithModelSystems.in_set(PrepareSystems::Edit),
             )
             .add_systems(AgentPass, route.in_set(RetryWithModelSystems))
             .add_systems(Update, complete.run_if(resource_changed::<Models>))

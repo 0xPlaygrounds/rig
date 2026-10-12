@@ -21,8 +21,6 @@ use std::time::UNIX_EPOCH;
 
 use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, IoTaskPool, TaskPool};
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_core::DynModel;
 use rig_core::operation::Embedding;
 use rig_core::tool::FilesChanged;
@@ -86,10 +84,7 @@ impl Plugin for CodeSearchPlugin {
                         .in_set(Stage::Gate)
                         .after(AskSystems),
                     // Compaction measures the request with the chunks in it.
-                    CodeSearchSystems::AddContext
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    CodeSearchSystems::AddContext.in_set(PrepareSystems::Edit),
                 ),
             )
             .add_systems(
@@ -116,8 +111,8 @@ pub enum CodeSearchSystems {
     /// In [`Stage::Gate`]: holds each new message of the user's while the
     /// index is searched for it, after [`AskSystems`].
     LookUp,
-    /// In [`Stage::Prepare`]: adds the chunks found for a user's message to
-    /// its turn's requests, before [`CompactionSystems::Prepare`].
+    /// In [`PrepareSystems::Edit`]: adds the chunks found for a user's
+    /// message to its turn's requests.
     AddContext,
 }
 

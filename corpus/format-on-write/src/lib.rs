@@ -13,7 +13,6 @@ use std::collections::HashMap;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use rig_coding_tools::CodingToolsSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
@@ -76,10 +75,11 @@ impl Default for FormatOnWrite {
     }
 }
 
-/// The Prepare system that wraps `write` and `edit` calls' handlers, after
-/// [`CodingToolsSystems`] gives an agent's calls its `WorkDir`, for
-/// another plugin that wraps them too to order against: a layer wrapped
-/// after this one is outside it, so it sees the text this one appends.
+/// The Prepare system that wraps `write` and `edit` calls' handlers, in
+/// [`PrepareSystems::Edit`], once a call has the handler of its agent's
+/// `WorkDir`, for another plugin that wraps them too to order against: a
+/// layer wrapped after this one is outside it, so it sees the text this
+/// one appends.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct FormatOnWriteSystems;
 
@@ -91,12 +91,7 @@ impl Plugin for FormatOnWritePlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<FormatOnWrite>("format_on_write")
             .init_resource::<Processes>()
-            .configure_sets(
-                AgentPass,
-                FormatOnWriteSystems
-                    .in_set(Stage::Prepare)
-                    .after(CodingToolsSystems),
-            )
+            .configure_sets(AgentPass, FormatOnWriteSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, format_after.in_set(FormatOnWriteSystems));
     }
 }

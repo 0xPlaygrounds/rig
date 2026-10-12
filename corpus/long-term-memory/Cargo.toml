@@ -13,10 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The default plugins' request edits the recall goes between: the default
-# prompt before, compaction's measurement after.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 # `/memory edit` runs $EDITOR in the terminal view.
 rig-tui = { path = "../../plugins/rig-tui" }
 schemars = { workspace = true }

@@ -13,8 +13,7 @@ use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::{CompactionSystems, summary_origin};
+use rig_compaction::summary_origin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
@@ -38,13 +37,7 @@ impl Plugin for WorkingSetPlugin {
             .init_resource::<ProjectRoot>()
             .register_required_components::<Agent, WorkingSet>()
             .add_observer(track)
-            .configure_sets(
-                AgentPass,
-                WorkingSetSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, WorkingSetSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, carry_over.in_set(WorkingSetSystems));
     }
 }

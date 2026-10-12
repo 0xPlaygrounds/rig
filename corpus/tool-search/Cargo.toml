@@ -14,11 +14,6 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 # Name globs of the deferred tools.
 glob = { workspace = true }
-# Ordering: the deferred tools leave a request after the default prompt went
-# in, which the count of deferred tools joins, and before compaction
-# measures it.
-rig-basics = { path = "../../plugins/rig-basics" }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # `tool_search`'s parameters, and the settings table.
 schemars = { workspace = true }

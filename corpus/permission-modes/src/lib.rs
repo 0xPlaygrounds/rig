@@ -20,8 +20,6 @@
 
 use std::collections::HashMap;
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::{
@@ -210,10 +208,7 @@ impl Plugin for PermissionModesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PermissionSystems::Offer
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    PermissionSystems::Offer.in_set(PrepareSystems::Edit),
                     PermissionSystems::Gate.in_set(Stage::Gate),
                 ),
             )

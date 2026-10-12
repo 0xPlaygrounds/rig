@@ -16,7 +16,6 @@ use std::time::Duration;
 
 use bevy_tasks::futures_lite::FutureExt as _;
 use bevy_tasks::{IoTaskPool, TaskPool};
-use rig_coding_tools::AttachSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, ToolExecutionError};
 use rig_tools::{Shell, ShellArgs, ShellRun};
@@ -74,12 +73,7 @@ impl Plugin for InlineShellPlugin {
         app.add_setting::<InlineShell>("inline_shell")
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
-            .configure_sets(
-                AgentPass,
-                InlineShellSystems
-                    .in_set(Stage::Prepare)
-                    .before(AttachSystems),
-            )
+            .configure_sets(AgentPass, InlineShellSystems.in_set(PrepareSystems::Input))
             .add_systems(
                 AgentPass,
                 expand

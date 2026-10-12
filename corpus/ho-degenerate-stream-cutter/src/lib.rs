@@ -31,7 +31,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::message::{Origin, Text};
@@ -102,12 +101,7 @@ impl Plugin for StreamCutterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<StreamCutter>("stream_cutter")
             .init_resource::<Cuts>()
-            .configure_sets(
-                AgentPass,
-                StreamCutterSystems
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, StreamCutterSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, adapt.in_set(StreamCutterSystems))
             .add_observer(announce)
             .add_command("cuts", "How many replies were cut, per model", cuts);

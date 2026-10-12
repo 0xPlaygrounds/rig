@@ -20,7 +20,7 @@ use rig_tools::context::Instructions;
 
 use rig_ecs::agent::{Agent, Notice, SystemPrompt, TurnOf};
 use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
-use rig_ecs::stage::{Admitted, AgentPass, ForAgent, Stage};
+use rig_ecs::stage::{Admitted, AgentPass, ForAgent, PrepareSystems};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
@@ -66,20 +66,14 @@ impl Plugin for ProjectContextPlugin {
         )
         .add_observer(refresh_on_turn)
         .add_observer(environment_of_agent)
-        .configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
-        .add_systems(AgentPass, default_prompt.in_set(ProjectContextSystems));
+        .add_systems(AgentPass, default_prompt.in_set(PrepareSystems::Compose));
     }
 }
 
-/// The system in [`Stage::Prepare`] that puts [`DEFAULT_SYSTEM_PROMPT`] at
-/// the head of the system prompt of an agent with none of its own. A
-/// plugin that edits the system prompt orders against it.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ProjectContextSystems;
-
 /// Puts [`DEFAULT_SYSTEM_PROMPT`] at the head of the system prompt of each
 /// model call the kernel built from an agent with no prompt of its own,
-/// as its own part of it.
+/// as its own part of it, in [`PrepareSystems::Compose`], so every plugin
+/// that edits the prompt sees it whole.
 fn default_prompt(
     mut calls: Query<
         (&mut ModelRequest, &ForAgent),

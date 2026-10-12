@@ -11,7 +11,6 @@
 //! hands it on in its request's `extra`) gives the subagent a copy of its
 //! parent's.
 
-use rig_basics::ProjectContextSystems;
 use rig_compaction::Summarizing;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
@@ -67,9 +66,7 @@ impl Plugin for PinnedNotesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PinnedNotesSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems),
+                    PinnedNotesSystems::Prepare.in_set(PrepareSystems::Edit),
                     PinnedNotesSystems::Review.in_set(Stage::Review),
                 ),
             )

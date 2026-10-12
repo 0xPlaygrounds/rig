@@ -456,12 +456,8 @@ fn a_call_routed_to_a_smaller_model_is_measured_against_its_window() {
     let Some(small) = small else {
         return;
     };
-    app.insert_resource(Routed(small)).add_systems(
-        AgentPass,
-        route
-            .in_set(Stage::Prepare)
-            .before(CompactionSystems::Prepare),
-    );
+    app.insert_resource(Routed(small))
+        .add_systems(AgentPass, route.in_set(PrepareSystems::Edit));
     // The agent's own model has room for the conversation; the call's has not.
     let agent = agent(&mut app, &model, 1_000_000, long_conversation(6));
     let Some(agent) = agent else {
@@ -516,8 +512,8 @@ fn a_model_that_calls_no_tools_is_not_measured_with_their_rules() {
 fn the_request_is_measured_after_the_default_prompt_went_in() {
     let store = MemoryStore::default();
     let (mut app, wakes) = start(&store);
-    // A long default prompt, as rig-basics puts it in, after the plugin's
-    // systems were added.
+    // A long default prompt, composed as rig-basics composes it, after the
+    // plugin's systems were added.
     let prompt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
         let long = "word ".repeat(8_000);
         for mut call in &mut calls {
@@ -527,8 +523,7 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
             }
         }
     };
-    app.configure_sets(AgentPass, ProjectContextSystems.in_set(Stage::Prepare))
-        .add_systems(AgentPass, prompt.in_set(ProjectContextSystems));
+    app.add_systems(AgentPass, prompt.in_set(PrepareSystems::Compose));
     let mut messages = vec![Message::user("What does the crate do?")];
     let long = "word ".repeat(2_000);
     for turn in 0..6 {

@@ -45,8 +45,6 @@
 use std::collections::BTreeMap;
 
 use bevy_log::warn;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
 use rig_models::{ModelItem, ModelLabel};
@@ -78,13 +76,7 @@ impl Plugin for ModelRouterPlugin {
                 "Route each model request by the [router] rules of settings.toml",
                 router,
             )
-            .configure_sets(
-                AgentPass,
-                RouteSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, RouteSystems.in_set(PrepareSystems::Edit))
             .add_systems(
                 PreUpdate,
                 connect_targets.run_if(resource_changed::<Models>),

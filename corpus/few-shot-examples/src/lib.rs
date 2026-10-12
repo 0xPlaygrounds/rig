@@ -30,8 +30,6 @@
 use std::path::{Path, PathBuf};
 
 use glob::Pattern;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead};
@@ -57,10 +55,7 @@ impl Plugin for FewShotExamplesPlugin {
                 AgentPass,
                 // Right after the whole system prompt, and measured by
                 // compaction.
-                ExampleSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
+                ExampleSystems.in_set(PrepareSystems::Edit),
             )
             .add_systems(AgentPass, inject.in_set(ExampleSystems))
             .add_command(
@@ -71,9 +66,9 @@ impl Plugin for FewShotExamplesPlugin {
     }
 }
 
-/// The Prepare system that puts the examples in each request, after
-/// [`ProjectContextSystems`] and before [`CompactionSystems::Prepare`], for
-/// other plugins that edit requests to order against.
+/// The Prepare system that puts the examples in each request, in
+/// [`PrepareSystems::Edit`], for other plugins that edit requests to order
+/// against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ExampleSystems;
 

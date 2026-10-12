@@ -13,8 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Its Review set, which reads the retry verdict the pool edits.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 serde = { workspace = true, features = ["derive"] }
 # `RIG_HOME/key-pool.toml` (already in Cargo.lock, through rig-harness).
 toml = "1"

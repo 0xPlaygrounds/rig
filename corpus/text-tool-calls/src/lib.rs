@@ -14,7 +14,6 @@
 
 use std::sync::Arc;
 
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Message, ToolDefinition};
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
@@ -51,21 +50,16 @@ pub struct TextTools {
 #[derive(Default)]
 pub struct TextToolCallsPlugin;
 
-/// The plugin's stage system, in [`Stage::Prepare`] before
-/// [`CompactionSystems::Prepare`], which measures the adapted call: it
-/// gives each model call the `text-tools` adapter.
+/// The plugin's stage system, in [`PrepareSystems::Edit`], before
+/// compaction measures the adapted call: it gives each model call the
+/// `text-tools` adapter.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TextToolCallsSystems;
 
 impl Plugin for TextToolCallsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<TextTools>("text_tools")
-            .configure_sets(
-                AgentPass,
-                TextToolCallsSystems
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, TextToolCallsSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, adapt.in_set(TextToolCallsSystems));
     }
 }

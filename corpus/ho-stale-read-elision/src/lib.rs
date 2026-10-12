@@ -12,8 +12,6 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
@@ -31,8 +29,7 @@ mod tests;
 pub struct StaleReadElisionPlugin;
 
 /// The plugin's Prepare system, which edits turn requests' `read` results,
-/// for others to order against. It runs after the default prompt went in
-/// and before [`CompactionSystems::Prepare`].
+/// for others to order against. It runs in [`PrepareSystems::Edit`].
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElisionSystems;
 
@@ -49,13 +46,7 @@ pub struct Elided {
 impl Plugin for StaleReadElisionPlugin {
     fn build(&self, app: &mut App) {
         app.register_type::<Elided>()
-            .configure_sets(
-                AgentPass,
-                ElisionSystems
-                    .in_set(Stage::Prepare)
-                    .after(ProjectContextSystems)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, ElisionSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, elide.in_set(ElisionSystems))
             .add_command(
                 "elided",

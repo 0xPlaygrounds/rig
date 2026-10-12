@@ -22,7 +22,6 @@ use std::time::UNIX_EPOCH;
 use bevy_log::warn;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::journal::{JournalStore, JsonlDirStore};
-use rig_coding_tools::AttachSystems;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{Message, ToolResultContent};
@@ -101,10 +100,7 @@ impl Plugin for RecallPlugin {
                 recall_command,
             )
             .add_systems(Startup, warm_up)
-            .configure_sets(
-                AgentPass,
-                RecallSystems.in_set(Stage::Prepare).after(AttachSystems),
-            )
+            .configure_sets(AgentPass, RecallSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, attach.in_set(RecallSystems))
             .add_observer(warmed)
             .add_observer(found);

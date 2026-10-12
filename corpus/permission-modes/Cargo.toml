@@ -13,10 +13,6 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The default plugins' request edits, ordered around: the default prompt
-# before, compaction's measurement after.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 # Subagents inherit their parent's mode when they are spawned.
 rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
 # The status item and shift+tab.

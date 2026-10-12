@@ -15,8 +15,6 @@ use std::cmp::Reverse;
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_basics::ProjectContextSystems;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolDefinition;
 use rig_harness::rig_core::effect::Outcome as Answered;
@@ -94,10 +92,7 @@ impl Plugin for ToolSearchPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ToolSearchSystems::Offer
-                        .in_set(Stage::Prepare)
-                        .after(ProjectContextSystems)
-                        .before(CompactionSystems::Prepare),
+                    ToolSearchSystems::Offer.in_set(PrepareSystems::Edit),
                     ToolSearchSystems::Activate.in_set(Stage::Review),
                 ),
             )

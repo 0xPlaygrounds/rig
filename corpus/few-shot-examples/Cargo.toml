@@ -14,10 +14,6 @@ bevy_ecs = { workspace = true }
 # File globs in an example's `when`.
 glob = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The sets the examples go between: after the default prompt, before
-# compaction measures the request.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]

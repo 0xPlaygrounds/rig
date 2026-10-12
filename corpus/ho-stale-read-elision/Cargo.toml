@@ -12,10 +12,6 @@ workspace = true
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-# Runs after the default prompt went in, and before compaction measures a
-# request.
-rig-basics = { path = "../../plugins/rig-basics", default-features = false }
-rig-compaction = { path = "../../plugins/rig-compaction" }
 rig-harness = { path = "../../crates/rig-harness" }
 # The token estimate compaction uses too.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
