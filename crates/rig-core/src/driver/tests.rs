@@ -845,3 +845,44 @@ fn a_stream_the_driver_cannot_send_is_a_request_failure() {
 }
 
 // ── request validation ─────────────────────────────────────────────────
+
+/// An erased model observed under a context records the adapter events the
+/// model it was made from records, called or streamed.
+#[tokio::test]
+async fn an_erased_model_is_observed_as_the_model_it_was_made_from() {
+    let reply = r#"{"type":"text","text":"hi","usage":{"output_tokens":1}}"#;
+    let direct = {
+        let (log, context) = observed();
+        let _ = Model::new(Echo::unary(), RecordingHttpClient::new(reply))
+            .call_observed(prompt(), context)
+            .await;
+        events(&log)
+    };
+    let erased = {
+        let (log, context) = observed();
+        let _ = Model::new(Echo::unary(), RecordingHttpClient::new(reply))
+            .erase()
+            .call_observed(prompt(), context)
+            .await;
+        events(&log)
+    };
+    assert!(!direct.is_empty(), "the direct call is observed");
+    assert_eq!(direct, erased);
+
+    let streamed = |erase: bool| async move {
+        let (log, context) = observed();
+        let model = Model::new(Echo::streaming(), RecordingHttpClient::new(reply));
+        let opened = if erase {
+            model.erase().stream_observed(prompt(), context)
+        } else {
+            model.stream_observed(prompt(), context)
+        };
+        if let Ok(stream) = opened {
+            let _ = stream.finish().await;
+        }
+        events(&log)
+    };
+    let direct = streamed(false).await;
+    assert!(!direct.is_empty(), "the direct stream is observed");
+    assert_eq!(direct, streamed(true).await);
+}
