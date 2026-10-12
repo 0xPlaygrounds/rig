@@ -8,6 +8,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
 
 use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
@@ -38,7 +39,8 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
     }
 
     /// What `path` is, its links followed: a file (its size, whether it is
-    /// read-only), a directory, something else, or nothing.
+    /// read-only, when it was last changed), a directory, something else, or
+    /// nothing.
     fn stat(&self, path: &Path) -> io::Result<Stat>;
 
     /// Up to `limit` bytes of the regular file `path`, and its whole size.
@@ -103,6 +105,9 @@ pub enum Stat {
         size: u64,
         /// Whether it may not be written.
         read_only: bool,
+        /// When its content last changed, when the workspace can tell:
+        /// how a scan or a polling watch sees an edit that kept the size.
+        modified: Option<SystemTime>,
     },
     /// A directory.
     Dir,
@@ -213,6 +218,7 @@ impl Workspace for Local {
             Ok(meta) if meta.is_file() => Ok(Stat::File {
                 size: meta.len(),
                 read_only: meta.permissions().readonly(),
+                modified: meta.modified().ok(),
             }),
             Ok(meta) if meta.is_dir() => Ok(Stat::Dir),
             Ok(_) => Ok(Stat::Other),

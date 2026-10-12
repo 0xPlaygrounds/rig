@@ -185,6 +185,7 @@ impl Workspace for Remote {
             return Ok(Stat::File {
                 size: self.bytes().len() as u64,
                 read_only: false,
+                modified: None,
             });
         }
         Ok(Stat::Missing)

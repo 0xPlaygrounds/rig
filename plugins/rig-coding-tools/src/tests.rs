@@ -80,6 +80,7 @@ impl Workspace for Served {
             true => Stat::File {
                 size: 11,
                 read_only: false,
+                modified: None,
             },
             false => Stat::Missing,
         })

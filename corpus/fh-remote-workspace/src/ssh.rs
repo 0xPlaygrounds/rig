@@ -300,6 +300,7 @@ impl Workspace for Ssh {
             (Some(size), Some(access)) => Stat::File {
                 size: size.parse().map_err(io::Error::other)?,
                 read_only: access == "r",
+                modified: None,
             },
             _ => return Err(io::Error::other(format!("stat said `{}`", out.trim()))),
         })

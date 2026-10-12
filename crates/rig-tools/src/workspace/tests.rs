@@ -35,6 +35,7 @@ impl Workspace for Memory {
             Some(bytes) => Stat::File {
                 size: bytes.len() as u64,
                 read_only: false,
+                modified: None,
             },
             None if files.keys().any(|file| file.starts_with(path)) => Stat::Dir,
             None => Stat::Missing,
