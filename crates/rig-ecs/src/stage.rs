@@ -194,11 +194,16 @@ pub enum GateSystems {
     FromRecord,
     /// After every gate had its say: an answer that stands in for running
     /// the effect (a cached result, a dry run, an editor's buffer), which
-    /// must not answer what a gate refused, and a coordinator that reads
-    /// its group's decisions and holds to refuse or hold the rest. A
-    /// decision made in Gate is applied at Start, so here a decided effect
-    /// still matches [`Undecided`]: read its [`Decision`]. A held effect
-    /// does not match it, so a coordinator queries its group without it.
+    /// must not answer what a gate refused, and a coordinator of a group
+    /// that starts together or not at all. A decision made in Gate is
+    /// applied at Start, so here a decided effect still matches
+    /// [`Undecided`]: read its [`Decision`]. A tool call the kernel refuses
+    /// is answered before every gate: read its [`Outcome`]. No gate sees an
+    /// effect held from its spawn, so a coordinator spawns its members
+    /// unheld and queries them without [`Undecided`]. While any member is
+    /// held by another or [`Waiting`], it holds the free ones with holds of
+    /// its own; once none is, it refuses them all if one was refused or
+    /// answered with an error, else releases its holds.
     After,
 }
 
@@ -478,8 +483,8 @@ pub struct Recorded(pub EffectRecord);
 
 /// On a call of a model's reply that waits for an earlier call of that
 /// reply it must not run beside ([`Footprint`]) to settle. The kernel sets
-/// and clears it when [`Stage::Gate`] opens, from the calls as Prepare left
-/// them, so Gate sees each call when it is about to run.
+/// and clears it when [`Stage::Gate`] opens, from the calls as they stand
+/// then, so Gate sees each call when it is about to run.
 #[derive(Component, Reflect, Debug, Default)]
 #[component(storage = "SparseSet", on_remove = moved::<Waiting>)]
 #[reflect(Component, Default)]

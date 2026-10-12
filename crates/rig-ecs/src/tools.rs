@@ -111,7 +111,9 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// it, `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn.
 /// Admitted, it gets its tool's [`CallHandler`] unless it has its own;
 /// Prepare may change the call or the handler, and Gate sees the
-/// [`Footprint`] of the call as Prepare left it.
+/// [`Footprint`] of the call as it stands each time Gate opens, so a held
+/// call a Review system edits is gated again; Prepare does not run again
+/// for it.
 /// After the answers from a record and before every gate, the kernel
 /// answers a call of a tool that is not registered or that the agent may
 /// not use, or whose arguments its tool does not declare, with its
