@@ -16,7 +16,7 @@ use ignore::overrides::OverrideBuilder;
 use rig_core::tool::ToolExecutionError;
 
 use crate::MAX_FILE_BYTES;
-use crate::fs::{io_error, write_atomic};
+use crate::fs::{Previous, io_error, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
 pub use crate::watch::Watch;
 
@@ -209,20 +209,17 @@ impl dyn Workspace {
         })
     }
 
-    /// The text of the file `path` before a tool changes it: `None` when
-    /// there is none; empty when it is too large, or no regular file, to
-    /// diff. Bytes that are not UTF-8 are replaced.
-    pub(crate) fn previous(&self, path: &Path) -> Option<String> {
+    /// What the file `path` holds before a tool changes it: `None` when
+    /// there is none; empty, with no hash, when it is too large, or no
+    /// regular file, to diff.
+    pub(crate) fn previous(&self, path: &Path) -> Option<Previous> {
         match self.stat(path) {
             Ok(Stat::Missing) => None,
             Ok(Stat::File { size, .. }) if size <= MAX_FILE_BYTES => {
-                let bytes = self
-                    .read(path, MAX_FILE_BYTES)
-                    .map(|contents| contents.bytes)
-                    .unwrap_or_default();
-                Some(String::from_utf8_lossy(&bytes).into_owned())
+                let bytes = self.read(path, MAX_FILE_BYTES).ok().map(|it| it.bytes);
+                Some(Previous::of(bytes.as_deref()))
             }
-            _ => Some(String::new()),
+            _ => Some(Previous::default()),
         }
     }
 }

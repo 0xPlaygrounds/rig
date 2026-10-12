@@ -8,7 +8,7 @@ use std::io::{self, ErrorKind, Write as _};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use rig_core::tool::{FileChange, ToolExecutionError};
+use rig_core::tool::{ContentHash, FileChange, ToolExecutionError, content_hash};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
@@ -251,6 +251,35 @@ pub fn file_change(path: &str, before: Option<&str>, after: &str) -> FileChange 
         Some(_) => FileChange::modified(path, added, removed),
     }
     .with_diff(unified)
+}
+
+/// What a file held before a tool changed it.
+#[derive(Default)]
+pub(crate) struct Previous {
+    /// Its text, any bytes that are not UTF-8 replaced, to diff.
+    pub(crate) text: String,
+    /// The hash of its bytes, when they were read.
+    pub(crate) hash: Option<ContentHash>,
+}
+
+impl Previous {
+    /// A file that held `bytes`, or could not be read.
+    pub(crate) fn of(bytes: Option<&[u8]>) -> Self {
+        Self {
+            text: String::from_utf8_lossy(bytes.unwrap_or_default()).into_owned(),
+            hash: bytes.map(content_hash),
+        }
+    }
+
+    /// The change from this content (`None`: no file) to `after`: a
+    /// [`file_change`] that names the content it was made to.
+    pub(crate) fn change(this: Option<&Self>, path: &str, after: &str) -> FileChange {
+        let change = file_change(path, this.map(|it| it.text.as_str()), after);
+        match this.and_then(|it| it.hash.clone()) {
+            Some(hash) => change.with_before(hash),
+            None => change,
+        }
+    }
 }
 
 #[cfg(test)]

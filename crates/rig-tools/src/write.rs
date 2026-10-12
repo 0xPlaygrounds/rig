@@ -11,7 +11,7 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::blocking;
-use crate::fs::{file_change, io_error};
+use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Workspace};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
@@ -110,7 +110,7 @@ impl Tool for Write {
             workspace
                 .write(&resolved, args.content.as_bytes())
                 .map_err(|error| io_error(&path, error))?;
-            let change = file_change(&path, before.as_deref(), &args.content)
+            let change = Previous::change(before.as_ref(), &path, &args.content)
                 .with_after(content_hash(args.content.as_bytes()));
             let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
             Ok::<_, ToolExecutionError>((output, change))

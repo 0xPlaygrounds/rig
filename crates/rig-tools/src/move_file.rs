@@ -11,7 +11,7 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error};
+use crate::fs::{Previous, io_error};
 use crate::workspace::{Local, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking};
 
@@ -183,14 +183,13 @@ fn move_file(
     workspace
         .rename(from, to)
         .map_err(|error| io_error(&shown_from, error))?;
-    let mut created = file_change(&shown_to, before.as_deref(), &text);
+    let mut created = Previous::change(before.as_ref(), &shown_to, &text);
+    let mut deleted = FileChange::deleted(shown_from, text.lines().count());
     if let Some(bytes) = &moved {
         created = created.with_after(content_hash(bytes));
+        deleted = deleted.with_before(content_hash(bytes));
     }
-    Ok(vec![
-        FileChange::deleted(shown_from, text.lines().count()),
-        created,
-    ])
+    Ok(vec![deleted, created])
 }
 
 #[cfg(test)]

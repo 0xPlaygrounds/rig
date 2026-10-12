@@ -191,8 +191,8 @@ pub struct Applied {
     /// The edited text, with the byte-order mark and line endings the file
     /// had: what [`Edit`] writes.
     pub text: String,
-    /// What the edit does to the file, with its diff and the hash of
-    /// [`text`](Self::text).
+    /// What the edit does to the file, with its diff, the hash of the text
+    /// it was made to and that of [`text`](Self::text).
     pub change: FileChange,
     /// How many places were replaced.
     pub replaced: usize,
@@ -227,6 +227,7 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
              {{\"old_text\", \"new_text\"}}"
         )));
     }
+    let whole = text;
     let file = Decoded::new(text);
     let text = file.text.as_str();
     let count = edits.len();
@@ -298,7 +299,9 @@ pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, T
     }
     let encoded = file.encode(&edited);
     Ok(Applied {
-        change: file_change(path, Some(text), &edited).with_after(content_hash(encoded.as_bytes())),
+        change: file_change(path, Some(text), &edited)
+            .with_before(content_hash(whole.as_bytes()))
+            .with_after(content_hash(encoded.as_bytes())),
         text: encoded,
         replaced: splices.len(),
         notes,

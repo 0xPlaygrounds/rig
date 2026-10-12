@@ -115,13 +115,15 @@ impl Tool for Delete {
                     )));
                 }
             }
-            let lines = workspace
-                .previous(&resolved)
-                .map_or(0, |text| text.lines().count());
+            let previous = workspace.previous(&resolved).unwrap_or_default();
             workspace
                 .remove(&resolved)
                 .map_err(|error| io_error(&path, error))?;
-            Ok(FileChange::deleted(path, lines))
+            let deleted = FileChange::deleted(path, previous.text.lines().count());
+            Ok(match previous.hash {
+                Some(hash) => deleted.with_before(hash),
+                None => deleted,
+            })
         })
         .await?;
         context.insert_result(FilesChanged(vec![change]))?;
