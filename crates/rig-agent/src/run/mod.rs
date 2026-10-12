@@ -37,6 +37,7 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
+use rig_core::conversation::Aside;
 use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
 use rig_core::tool::feedback::{
@@ -346,8 +347,10 @@ pub struct AgentRun {
     /// recorded with [`AgentRun::advertise_tools`]. Protocol data, so a second
     /// driver (or a resumed run) can re-pair tool calls with what was offered.
     turn_tools: Option<TurnTools>,
-    /// Append-only host records, stored verbatim and excluded from provider requests.
-    entries: Vec<RunEntry>,
+    /// Append-only host records (asides by rig, each of its hook's kind),
+    /// stored verbatim and excluded from provider requests. The driver
+    /// reconstructs hook state from them on resume.
+    entries: Vec<Aside>,
     state: RunState,
 }
 
@@ -366,22 +369,6 @@ fn run_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, 
             "resume refused: the run is format {format}, this rig reads format {RUN_FORMAT}"
         )))
     }
-}
-
-/// Host record stored verbatim in serialized run state and excluded from provider
-/// requests. The driver reconstructs hook state from entries on resume.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RunEntry {
-    /// Hook-chosen namespace (e.g. `"approval"`, `"retry_budget"`).
-    /// Unregistered and unvalidated: the kind string is the whole contract
-    /// and the collision boundary, so hooks should pick specific names.
-    pub kind: String,
-    /// Model-call index at append time: zero before the first call, then one-based.
-    /// Hosts may place timestamps in [`value`](Self::value).
-    pub turn: usize,
-    /// The appended value, verbatim JSON. `Value::Null` marker entries are
-    /// legitimate.
-    pub value: serde_json::Value,
 }
 
 /// Tool definitions advertised for one model call, recorded by the driver before
@@ -462,22 +449,22 @@ impl AgentRun {
     }
 
     /// Append one host record without interpreting or validating its contents.
-    pub fn append_entry(&mut self, entry: RunEntry) {
+    pub fn append_entry(&mut self, entry: Aside) {
         self.entries.push(entry);
     }
 
-    /// Every appended [`RunEntry`], in append order.
-    pub fn entries(&self) -> &[RunEntry] {
+    /// Every appended record, in append order.
+    pub fn entries(&self) -> &[Aside] {
         &self.entries
     }
 
-    /// The entries of one `kind`, in append order.
-    pub fn entries_of<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a RunEntry> {
+    /// The records of one `kind`, in append order.
+    pub fn entries_of<'a>(&'a self, kind: &'a str) -> impl Iterator<Item = &'a Aside> {
         self.entries.iter().filter(move |entry| entry.kind == kind)
     }
 
-    /// The most recently appended entry of `kind`, if present.
-    pub fn last_entry_of(&self, kind: &str) -> Option<&RunEntry> {
+    /// The most recently appended record of `kind`, if present.
+    pub fn last_entry_of(&self, kind: &str) -> Option<&Aside> {
         self.entries.iter().rev().find(|entry| entry.kind == kind)
     }
 
@@ -1775,7 +1762,6 @@ const _: fn() = || {
     assert_send_sync_static::<CompletionCall>();
     assert_send_sync_static::<PromptError>();
     assert_send_sync_static::<TurnTools>();
-    assert_send_sync_static::<RunEntry>();
 };
 
 /// The result content for a malformed call answered with `action`, or how

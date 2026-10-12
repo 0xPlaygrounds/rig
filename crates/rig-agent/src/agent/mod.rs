@@ -38,8 +38,8 @@ pub use hook::{
     AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
     InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, ModelSelection,
     ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
-    RequestPatch, RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction,
-    Scratchpad, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
+    RequestPatch, RetryRequest, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
+    SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;

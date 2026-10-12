@@ -24,6 +24,7 @@
 //! }
 //! ```
 
+use rig_core::conversation::{Aside, Author};
 use rig_core::message::CallId;
 use rig_core::streaming::Part;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -49,8 +50,6 @@ use crate::{
 };
 
 pub use rig_core::id::RunId;
-
-pub use crate::run::RunEntry;
 
 /// Run-scoped typed storage shared by hooks. Clones share in-process state;
 /// entries are neither serialized nor rewound when a run is forked.
@@ -138,10 +137,10 @@ pub struct HookContext {
     /// the same slot, so the salvage survives any nesting depth.
     salvaged_patches: std::sync::Mutex<HashMap<EffectId, EffectKind>>,
     /// Seeded and newly appended entries, in append order.
-    entries: std::sync::Mutex<Vec<RunEntry>>,
+    entries: std::sync::Mutex<Vec<Aside>>,
     /// Appends not yet flushed into the [`AgentRun`](crate::agent::AgentRun)
     /// by the driver.
-    pending_entries: std::sync::Mutex<Vec<RunEntry>>,
+    pending_entries: std::sync::Mutex<Vec<Aside>>,
 }
 
 impl HookContext {
@@ -186,7 +185,7 @@ impl HookContext {
 
     /// Seed the entries a resumed run carried; called by the driver at run
     /// start, before any hook fires.
-    pub(crate) fn seed_entries(&self, entries: &[RunEntry]) {
+    pub(crate) fn seed_entries(&self, entries: &[Aside]) {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -195,7 +194,7 @@ impl HookContext {
 
     /// Drain the appends not yet flushed into the run; called by the driver
     /// at each step boundary.
-    pub(crate) fn drain_pending_entries(&self) -> Vec<RunEntry> {
+    pub(crate) fn drain_pending_entries(&self) -> Vec<Aside> {
         std::mem::take(
             &mut *self
                 .pending_entries
@@ -283,8 +282,9 @@ impl HookContext {
         &self.scratchpad
     }
 
-    /// Serialize and append an entry stamped with the current turn. Serialization
-    /// errors leave entries unchanged. The driver transfers pending entries into
+    /// Serialize and append an entry: an [`Aside`] of `kind` by
+    /// [`Author::rig`]. A hook that needs the turn puts it in `value`
+    /// ([`turn`](Self::turn)). Serialization errors leave entries unchanged. The driver transfers pending entries into
     /// the serializable run at its next step boundary; this is not a disk write.
     /// Entries appended during `on_run_settled` remain visible locally but are not
     /// transferred into the finished run.
@@ -293,11 +293,7 @@ impl HookContext {
         kind: impl Into<String>,
         value: &T,
     ) -> Result<(), serde_json::Error> {
-        let entry = RunEntry {
-            kind: kind.into(),
-            turn: self.turn(),
-            value: serde_json::to_value(value)?,
-        };
+        let entry = Aside::new(kind, Author::rig(), serde_json::to_value(value)?);
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -311,7 +307,7 @@ impl HookContext {
 
     /// Clone all entries of `kind`, including resumed entries and new appends,
     /// in append order. Reading does not consume entries.
-    pub fn entries(&self, kind: &str) -> Vec<RunEntry> {
+    pub fn entries(&self, kind: &str) -> Vec<Aside> {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -322,7 +318,7 @@ impl HookContext {
     }
 
     /// Clone the most recent entry of `kind`, if present.
-    pub fn last_entry(&self, kind: &str) -> Option<RunEntry> {
+    pub fn last_entry(&self, kind: &str) -> Option<Aside> {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)

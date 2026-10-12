@@ -8,7 +8,7 @@
 #![allow(unused_imports)]
 
 use rig_agent::agent::hook::{
-    InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest, RunEntry,
+    InvalidToolCallAction, InvalidToolCallContext, RequestPatch, RetryRequest,
 };
 use rig_agent::agent::run::output_mode::OutputMode as _OutputModeViaRun;
 use rig_agent::agent::run::streamed::{
@@ -18,19 +18,19 @@ use rig_agent::agent::run::streamed::{
 use rig_agent::agent::run::{
     AgentRun as _AgentRunViaRun, AgentRunStep as _StepViaRun, ModelTurn as _TurnViaRun,
     ModelTurnOutcome as _OutcomeViaRun, PendingToolCall as _PendingViaRun,
-    RunEntry as _EntryViaRun, TurnTools as _ToolsViaRun,
+    TurnTools as _ToolsViaRun,
 };
 use rig_agent::agent::{
     AgentRun, AgentRunStep, CompletionCall, ModelTurn, ModelTurnOutcome, OutputMode,
     PendingToolCall, PromptResponse, RunSpec, TurnTools,
 };
 use rig_agent::completion::PromptError;
+use rig_agent::run::AgentRun as _AgentRunDirect;
 use rig_agent::run::policy::InvalidToolCallAction as _ActionDirect;
 use rig_agent::run::response::{
     CompletionCall as _CallDirect, PromptError as _ErrDirect, PromptResponse as _RespDirect,
 };
 use rig_agent::run::streamed::StreamedTurnAssembler as _AssemblerDirect;
-use rig_agent::run::{AgentRun as _AgentRunDirect, RunEntry as _EntryDirect};
 use rig_agent::run::{
     output::OutputMode as _OutputModeDirect,
     patch::RequestPatch as _PatchDirect,

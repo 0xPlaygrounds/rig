@@ -1,4 +1,5 @@
 use super::*;
+use rig_core::conversation::Author;
 use rig_core::message::ToolChoice;
 use rig_core::message::{StopReason, ToolFunction, ToolResultContent};
 use serde_json::json;
@@ -33,20 +34,16 @@ fn input_chat_history_reflects_the_configured_history() {
     assert_eq!(run.input_chat_history(), [Message::user("earlier")]);
 }
 
-fn entry(kind: &str, turn: usize, value: serde_json::Value) -> RunEntry {
-    RunEntry {
-        kind: kind.to_string(),
-        turn,
-        value,
-    }
+fn entry(kind: &str, value: serde_json::Value) -> Aside {
+    Aside::new(kind, Author::rig(), value)
 }
 
 #[test]
 fn entries_round_trip_through_serialization_in_append_order() {
     let mut run = AgentRun::new("p");
-    run.append_entry(entry("approval", 1, json!({"tool": "add"})));
-    run.append_entry(entry("counter", 1, json!(1)));
-    run.append_entry(entry("counter", 2, json!(2)));
+    run.append_entry(entry("approval", json!({"tool": "add"})));
+    run.append_entry(entry("counter", json!(1)));
+    run.append_entry(entry("counter", json!(2)));
 
     let serialized = serde_json::to_string(&run).expect("run serializes");
     let restored: AgentRun = serde_json::from_str(&serialized).expect("run deserializes");
@@ -59,7 +56,7 @@ fn entries_round_trip_through_serialization_in_append_order() {
     // Last-wins: the snapshot pattern reads the most recent entry.
     assert_eq!(
         restored.last_entry_of("counter"),
-        Some(&entry("counter", 2, json!(2)))
+        Some(&entry("counter", json!(2)))
     );
     assert_eq!(restored.last_entry_of("absent"), None);
 
