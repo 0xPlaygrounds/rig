@@ -10,11 +10,11 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{Change, Conversation, MessageId, Recorded};
+use rig_core::conversation::{Change, Conversation, Lineage, MessageId, Recorded};
 use serde_json::Value;
 
 use crate::blobs::{entries_mut, load_images};
-use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
+use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, write_meta};
 use crate::writer::Book;
 use crate::{FORMAT, LoadError, Repair, Stamp, Store};
 
@@ -38,7 +38,8 @@ pub struct SavedAgent {
     pub parent: Option<String>,
     /// When its log was started, in milliseconds since the Unix epoch.
     pub started_ms: u64,
-    /// Its conversation, its revision the number of changes its log holds.
+    /// Its conversation, continuing its log: its lineage the log's, its
+    /// revision the number of changes the log holds.
     pub conversation: Conversation,
     /// The newest value of each of its saved values, by key.
     pub state: BTreeMap<String, Value>,
@@ -133,6 +134,9 @@ fn read(
         let log = name.to_owned();
         return Err(LoadError::Format { log, found });
     }
+    if !header.lineage.is_log() {
+        return Err(refuse(1, "a header without the log's lineage".to_owned()));
+    }
     let mut last = started;
     for (line, _, bytes) in records {
         let (stamp, body) = parse(bytes).map_err(|why| refuse(line, why))?;
@@ -209,6 +213,8 @@ pub(crate) fn fold(store: &dyn Store, name: &str, how: Fold) -> Result<Option<Fo
     let Some(read) = read else {
         return Ok(None);
     };
+    let changes = conversation.revision();
+    conversation.continue_log(read.header.lineage, changes);
     let tail = read.lines.tail().len() as u64;
     Ok(Some(Folded {
         name: name.to_owned(),
@@ -360,8 +366,9 @@ impl Session {
     ///
     /// # Errors
     ///
-    /// [`LoadError::Changed`] when a log moved on since the agent's
-    /// conversation was read, before anything is written; otherwise as
+    /// [`LoadError::Changed`] when a log that holds changes moved on since
+    /// the agent's conversation was read, or holds another conversation,
+    /// before anything is written; otherwise as
     /// [`Self::read`], or when a write fails.
     pub fn save(&mut self, store: &dyn Store) -> Result<(), LoadError> {
         let folded = fold_all(store, false)?;
@@ -391,17 +398,18 @@ impl Session {
 }
 
 /// Refuses to save `conversation` to the log `name`, now `log`, unless
-/// its unsaved changes continue that log.
+/// its unsaved changes continue that log or the log holds no change, so
+/// a reset to it loses nothing.
 fn check_continues(
     log: Option<&Folded>,
     name: &str,
     conversation: &Conversation,
 ) -> Result<(), LoadError> {
-    let base = conversation
-        .revision()
-        .saturating_sub(conversation.unsaved().len() as u64);
-    let has = log.map_or(0, |log| log.conversation.revision());
-    if base != has {
+    let Some(log) = log else {
+        return Ok(());
+    };
+    let changes = log.conversation.revision();
+    if changes > 0 && !conversation.continues(log.header.lineage, changes) {
         return Err(LoadError::Changed {
             log: name.to_owned(),
         });
@@ -410,8 +418,9 @@ fn check_continues(
 }
 
 /// The conversation the log `log` of `store` holds; an empty one when
-/// there is none. Its revision is the number of changes the log holds, so
-/// [`save`] can tell whether the log moved on.
+/// there is none. It continues the log (its lineage and its number of
+/// changes), so [`save`] can tell whether the log moved on or the
+/// conversation is another.
 ///
 /// # Errors
 ///
@@ -442,9 +451,12 @@ pub fn load(store: &dyn Store, log: &str) -> Result<Conversation, LoadError> {
 ///
 /// # Errors
 ///
-/// [`LoadError::Changed`] when the log moved on since `conversation` was
-/// loaded, writing nothing, so no change made there is lost; otherwise as
-/// [`load`], or when a write fails.
+/// [`LoadError::Changed`] when `conversation` does not continue the log
+/// (the log moved on since it was loaded, or it was loaded from another
+/// log or built elsewhere) and the log holds changes, writing nothing, so
+/// no change made there is lost; otherwise as [`load`], or when a write
+/// fails. Onto an empty log any conversation is saved, whole when it was
+/// not begun from nothing.
 pub fn save(
     store: &dyn Store,
     log: &str,
@@ -481,7 +493,8 @@ fn next_n(store: &dyn Store) -> Result<u64, LoadError> {
 /// conversation by then (such as an agent spawned later). Without
 /// `before`, every log whole. Either way every blob, and the session's
 /// plugin files (`plugins/…`) as they are now. A torn tail is never
-/// copied.
+/// copied. Each copied log gets a lineage of its own, so a conversation
+/// of one never passes as a continuation of the other.
 ///
 /// # Errors
 ///
@@ -525,7 +538,7 @@ pub fn fork(
             }
         };
         if keep > 0 {
-            to.append_log(&name, lines.prefix(keep))?;
+            to.append_log(&name, &own_lineage(&lines, keep)?)?;
         }
     }
     for name in from.blobs()? {
@@ -537,6 +550,28 @@ pub fn fork(
         }
     }
     Ok(())
+}
+
+/// The first `keep` bytes of a log's `lines`, its header given a fresh
+/// lineage. A first line that is no header is copied as it is.
+fn own_lineage(lines: &LogLines, keep: u64) -> Result<Vec<u8>, LoadError> {
+    let prefix = lines.prefix(keep);
+    let first = lines.iter().next();
+    let Some((stamp, header, end)) = first.and_then(|(_, end, line)| match parse(line) {
+        Ok((stamp, Body::Meta(Meta::Header(header)))) => Some((stamp, header, end)),
+        _ => None,
+    }) else {
+        return Ok(prefix.to_vec());
+    };
+    let header = Header {
+        lineage: Lineage::fresh(),
+        ..header
+    };
+    let mut out = Vec::with_capacity(prefix.len());
+    write_meta(&mut out, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
+    let rest = usize::try_from(end).ok().and_then(|end| prefix.get(end..));
+    out.extend_from_slice(rest.unwrap_or_default());
+    Ok(out)
 }
 
 /// Every record of the log `log` of `store` after its header, in order,

@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::io;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use rig_core::conversation::{Change, Conversation, Recorded};
+use rig_core::conversation::{Change, Conversation, Lineage, Recorded};
 use serde_json::Value;
 
 use crate::blobs::store_change;
@@ -25,8 +25,10 @@ struct Log {
     /// The newest value of each saved value, so an unchanged one is not
     /// written again.
     state: BTreeMap<String, Value>,
-    /// The revision of the conversation last saved to it.
-    revision: u64,
+    /// The log's lineage, from its header.
+    lineage: Lineage,
+    /// The changes it holds.
+    changes: u64,
 }
 
 /// The records of every log, before and after they are written.
@@ -61,7 +63,8 @@ impl Book {
                 next_seq: log.next_seq,
                 started: true,
                 state: log.state.clone(),
-                revision: log.conversation.revision(),
+                lineage: log.header.lineage,
+                changes: log.conversation.revision(),
                 ..Log::default()
             };
             book.logs.insert(log.name.clone(), kept);
@@ -95,11 +98,13 @@ impl Book {
         }
         if !self.logs.contains_key(name) {
             let depth = |parent| self.logs.get(parent).map_or(0, |log: &Log| log.depth + 1);
+            let header = Header::new(name, parent);
             let mut log = Log {
                 depth: parent.map_or(0, depth),
+                lineage: header.lineage,
                 ..Log::default()
             };
-            let header = Meta::Header(Header::new(name, parent));
+            let header = Meta::Header(header);
             let stamp = Stamp {
                 n: self.next_n,
                 seq: 0,
@@ -144,23 +149,24 @@ impl Book {
     }
 
     /// Queues the unsaved changes of `conversation` for the log `name`, or
-    /// one reset when its revision does not continue the log's, and empties
-    /// its outbox; the changes queued, each stamped with when it was
-    /// made. While nothing is logged the outbox is emptied all the same, and
-    /// the next save writes a reset.
+    /// one reset when it does not continue the log
+    /// ([`Conversation::continues`]), empties its outbox and marks it as
+    /// continuing the log; the changes queued, each stamped with when it
+    /// was made. While nothing is logged the outbox is emptied all the
+    /// same, and the next save writes a reset.
     pub fn save(
         &mut self,
         store: &dyn Store,
         name: &str,
         conversation: &mut Conversation,
     ) -> Vec<Recorded> {
-        let unsaved = conversation.take_unsaved();
-        let revision = conversation.revision();
-        let base = revision.saturating_sub(unsaved.len() as u64);
         let Some(log) = self.opened(name, None) else {
-            return stamp_all(unsaved);
+            return stamp_all(conversation.take_unsaved());
         };
-        let changes = if log.revision == base {
+        let (lineage, held) = (log.lineage, log.changes);
+        let continues = conversation.continues(lineage, held);
+        let unsaved = conversation.take_unsaved();
+        let changes = if continues {
             unsaved
         } else {
             vec![Recorded {
@@ -172,6 +178,7 @@ impl Book {
             }]
         };
         if changes.is_empty() {
+            conversation.continue_log(lineage, held);
             return changes;
         }
         let mut queued = Vec::with_capacity(changes.len());
@@ -182,10 +189,12 @@ impl Book {
             }
             queued.push(recorded);
         }
+        let held = held.saturating_add(queued.len() as u64);
         if let Some(log) = self.logs.get_mut(name) {
             log.started = true;
-            log.revision = revision;
+            log.changes = held;
         }
+        conversation.continue_log(lineage, held);
         queued
     }
 
@@ -369,10 +378,10 @@ impl Writer {
 
     /// Queues the unsaved changes of `conversation` for the log `log` and
     /// empties its outbox: the changes, each stamped with when it was made
-    /// ([`Recorded::at`]). When the conversation's revision does not
-    /// continue what was last saved to the log, as when a value made
-    /// elsewhere replaced it, one [`Change::Reset`] to the whole value is
-    /// queued instead.
+    /// ([`Recorded::at`]). When the conversation does not continue the log
+    /// ([`Conversation::continues`]), as when a value made elsewhere
+    /// replaced it, one [`Change::Reset`] to the whole value is queued
+    /// instead. Either way the conversation then continues the log.
     pub fn save(&self, log: &str, conversation: &mut Conversation) -> Vec<Recorded> {
         let mut inner = self.inner();
         let Inner { store, book } = &mut *inner;

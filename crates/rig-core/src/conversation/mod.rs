@@ -47,10 +47,12 @@ use crate::message::{ToolCall, UserContent};
 
 mod aside;
 mod author;
+mod lineage;
 pub mod pairing;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
+pub use lineage::Lineage;
 
 use pairing::PairingError;
 
@@ -66,7 +68,8 @@ use pairing::PairingError;
 /// value folded from a log equals the live one.
 ///
 /// Its serde form is its state: entries, saved asides, halt and the next
-/// ids, without the outbox or the revision.
+/// ids, without the outbox, the revision or the lineage. A value read back
+/// from it is [`Lineage::DETACHED`].
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(try_from = "State")]
 #[cfg_attr(feature = "bevy", derive(Component, Reflect))]
@@ -88,9 +91,13 @@ pub struct Conversation {
     next_id: u64,
     /// The id the next new aside gets; only rises, but for a reset to another value.
     next_aside: u64,
-    /// Changes applied, folded or made.
+    /// The changes behind this value: those of the log it continues, then
+    /// its own.
     #[serde(skip)]
     revision: u64,
+    /// The log it continues.
+    #[serde(skip)]
+    lineage: Lineage,
     #[serde(skip)]
     unsaved: Vec<Recorded>,
 }
@@ -155,6 +162,7 @@ impl TryFrom<State> for Conversation {
             next_id: state.next_id,
             next_aside: state.next_aside,
             revision: 0,
+            lineage: Lineage::DETACHED,
             unsaved: Vec::new(),
         })
     }
@@ -716,10 +724,38 @@ impl Conversation {
         std::mem::take(&mut self.unsaved)
     }
 
-    /// How many changes were applied, folded or made: one per record. An
-    /// unsaved aside counts none.
+    /// The changes behind this value, one per record: those of the log it
+    /// continues ([`lineage`](Self::lineage)) when it was last loaded or
+    /// saved, then each applied or made since. An unsaved aside counts
+    /// none.
     pub fn revision(&self) -> u64 {
         self.revision
+    }
+
+    /// The saved log this value continues: [`Lineage::EMPTY`] when it was
+    /// begun here from nothing and never saved, [`Lineage::DETACHED`] when
+    /// it was read back from its serde form.
+    pub fn lineage(&self) -> Lineage {
+        self.lineage
+    }
+
+    /// Whether this value's unsaved changes, appended to the log of
+    /// `lineage` that holds `changes` changes, give this value: it
+    /// continues that log, holding all of its changes and since then only
+    /// its unsaved ones. A value begun here from nothing continues any
+    /// empty log.
+    pub fn continues(&self, lineage: Lineage, changes: u64) -> bool {
+        let base = self.revision.saturating_sub(self.unsaved.len() as u64);
+        base == changes
+            && (self.lineage == lineage || (changes == 0 && self.lineage == Lineage::EMPTY))
+    }
+
+    /// Marks this value as holding the `changes` changes of the log of
+    /// `lineage`, then its unsaved ones: what a store does once it loaded
+    /// the value from that log or saved it there.
+    pub fn continue_log(&mut self, lineage: Lineage, changes: u64) {
+        self.lineage = lineage;
+        self.revision = changes.saturating_add(self.unsaved.len() as u64);
     }
 
     /// A copy with an empty outbox, for edits never saved (a request's
@@ -733,6 +769,7 @@ impl Conversation {
             next_id: self.next_id,
             next_aside: self.next_aside,
             revision: self.revision,
+            lineage: self.lineage,
             unsaved: Vec::new(),
         }
     }
@@ -809,9 +846,11 @@ impl Conversation {
             // on numbering from them, so a fold must as well.
             Change::Reset { state } => {
                 let (unsaved, revision) = (std::mem::take(&mut self.unsaved), self.revision);
+                let lineage = self.lineage;
                 *self = state.view();
                 self.unsaved = unsaved;
                 self.revision = revision;
+                self.lineage = lineage;
             }
         }
         Ok(())

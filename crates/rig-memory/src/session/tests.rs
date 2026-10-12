@@ -111,6 +111,90 @@ fn a_writer_saves_a_replaced_conversation_as_one_reset() {
     assert_eq!(session.agent("main").expect("agent").conversation, replaced);
 }
 
+/// Only the conversation a log holds continues it, even when another has
+/// made as many changes: one saved to another log, one read back from its
+/// serde form, one loaded from a fork that went its own way. Saving
+/// another refuses, writing nothing, unless the log is empty.
+#[test]
+fn only_the_conversation_a_log_holds_continues_it() {
+    let store = MemoryStore::default();
+    let mut a = load(&store, "a").expect("an empty log");
+    a.push(Message::user("for a"));
+    save(&store, "a", &mut a).expect("saved");
+    let mut b = load(&store, "b").expect("an empty log");
+    b.push(Message::user("for b"));
+    save(&store, "b", &mut b).expect("saved");
+    let before = store.read_log("a").expect("a log");
+    b.push(Message::assistant("moved"));
+    let refused = save(&store, "a", &mut b);
+    assert!(
+        matches!(&refused, Err(LoadError::Changed { log }) if log == "a"),
+        "{refused:?}"
+    );
+    assert_eq!(store.read_log("a").expect("a log"), before);
+
+    // Read back from its serde form, it is saved whole onto an empty log.
+    let json = serde_json::to_string(&a).expect("serialized");
+    let mut copy: Conversation = serde_json::from_str(&json).expect("deserialized");
+    copy.push(Message::assistant("copied"));
+    save(&store, "c", &mut copy).expect("an empty log takes any conversation");
+    assert_eq!(load(&store, "c").expect("loaded"), copy);
+    assert!(matches!(
+        save(&store, "a", &mut copy),
+        Err(LoadError::Changed { .. })
+    ));
+
+    // A fork's log is its own.
+    let forked = MemoryStore::default();
+    fork(&store, &forked, None).expect("forked");
+    let mut theirs = load(&forked, "a").expect("loaded");
+    theirs.push(Message::assistant("theirs"));
+    save(&forked, "a", &mut theirs).expect("saved");
+    let mut ours = load(&store, "a").expect("loaded");
+    ours.push(Message::assistant("ours"));
+    save(&store, "a", &mut ours).expect("saved");
+    ours.push(Message::user("more"));
+    let refused = save(&forked, "a", &mut ours);
+    assert!(
+        matches!(refused, Err(LoadError::Changed { .. })),
+        "{refused:?}"
+    );
+}
+
+/// A running writer writes a conversation that does not continue a log
+/// as one reset, whatever its number of changes, so the log folds back to
+/// it: one moved from another agent's log, one read back from its serde
+/// form.
+#[test]
+fn a_writer_resets_a_log_to_a_conversation_it_does_not_hold() {
+    let store = Arc::new(MemoryStore::default());
+    let (writer, _) = Writer::open(store.clone()).expect("opened");
+    writer.start();
+    let mut a = Conversation::from_messages([Message::user("for a")]);
+    writer.save("a", &mut a);
+    let mut b = Conversation::from_messages([Message::user("for b")]);
+    writer.save("b", &mut b);
+    let saved = writer.save("a", &mut b);
+    assert!(matches!(saved.as_slice(), [only] if matches!(only.change, Change::Reset { .. })));
+    b.push(Message::assistant("moved"));
+    writer.save("a", &mut b);
+
+    let json = serde_json::to_string(&a).expect("serialized");
+    let mut copy: Conversation = serde_json::from_str(&json).expect("deserialized");
+    copy.push(Message::assistant("copied"));
+    writer.save("c", &mut copy);
+    writer.flush();
+    let session = Session::read(&*store).expect("read");
+    assert_eq!(
+        session.agent("a").map(|agent| &agent.conversation),
+        Some(&b)
+    );
+    assert_eq!(
+        session.agent("c").map(|agent| &agent.conversation),
+        Some(&copy)
+    );
+}
+
 #[test]
 fn a_torn_tail_is_reported_then_set_aside() {
     let store = Arc::new(MemoryStore::default());

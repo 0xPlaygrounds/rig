@@ -4,9 +4,13 @@
 //! by key, the latest wins, `null` removes it), `retired`, or one
 //! [`Change`](rig_core::conversation::Change) of the agent's conversation
 //! (`push`, `splice`, `halt`, `aside`, `reset`) with who made it (`by`).
+//! The header's `lineage` is the log's own
+//! [`Lineage`](rig_core::conversation::Lineage), chosen when it was
+//! started, so a conversation saved to it can be told from one that only
+//! has as many changes.
 //!
 //! ```json
-//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/1","log":"cd9a…"}
+//! {"seq":0,"n":0,"t":1791779409181,"type":"header","format":"rig-session/1","log":"cd9a…","lineage":8125…}
 //! {"seq":1,"n":1,"t":1791779409181,"type":"state","key":"rig_ecs::agent::ToolAccess","value":"All"}
 //! {"seq":2,"n":2,"t":1791779409182,"type":"push","entries":[{"message":{…},"id":0}]}
 //! ```
@@ -14,7 +18,7 @@
 use std::fmt;
 use std::io;
 
-use rig_core::conversation::{Author, Change, Recorded};
+use rig_core::conversation::{Author, Change, Lineage, Recorded};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use web_time::{SystemTime, UNIX_EPOCH};
@@ -144,14 +148,20 @@ pub(crate) struct Header {
     /// The log of the agent that spawned this one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// The log's own lineage, which every conversation loaded from it or
+    /// saved to it carries.
+    #[serde(default)]
+    pub lineage: Lineage,
 }
 
 impl Header {
+    /// The header of a log just started, with a fresh lineage.
     pub fn new(log: &str, parent: Option<&str>) -> Self {
         Self {
             format: Some(FORMAT.to_owned()),
             log: log.to_owned(),
             parent: parent.map(str::to_owned),
+            lineage: Lineage::fresh(),
         }
     }
 }
