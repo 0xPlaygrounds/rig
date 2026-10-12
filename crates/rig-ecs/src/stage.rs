@@ -935,10 +935,11 @@ fn answer_unprepared(
     notices.write_batch(closed(&mut passes, failure, what));
 }
 
-/// Starts every admitted, unheld, unanswered effect, unless a Gate system
-/// failed this pass: an effect request with a handler is dispatched on the
-/// kernel's recorded path, a model call and a tool call as [`ModelStarts`]
-/// and [`ToolStarts`] say, and any other effect stays open.
+/// Starts every admitted, unheld, unanswered, undecided effect, unless a
+/// Gate system failed this pass: an effect request with a handler is
+/// dispatched on the kernel's recorded path, a model call and a tool call
+/// as [`ModelStarts`] and [`ToolStarts`] say, and any other effect stays
+/// open.
 fn start(
     mut ready: Query<StartItem, Undecided>,
     agents: Query<&AgentId>,
@@ -974,8 +975,10 @@ fn start(
     let mut ready: Vec<_> = ready.iter_mut().collect();
     ready.sort_unstable_by_key(|item| item.effect.id());
     for item in ready {
-        // Messages are accepted before.
-        if item.message {
+        // Messages are accepted before. An effect decided since the
+        // decisions were applied, such as by an observer of an answer
+        // they applied, is answered by the next pass's.
+        if item.message || item.decision.is_decided() {
             continue;
         }
         let ending = item.of.and_then(|of| turns.get(of.0).ok());
@@ -1075,6 +1078,7 @@ fn answer(mut entity: EntityWorldMut, (outcome, published): Ran) {
 struct StartItem {
     entity: Entity,
     effect: &'static Effect,
+    decision: &'static Decision,
     request: Option<&'static EffectRequest>,
     tool: Option<&'static ToolRequest>,
     model: Option<&'static mut ModelRequest>,

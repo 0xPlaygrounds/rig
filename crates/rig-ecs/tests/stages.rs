@@ -414,6 +414,61 @@ fn holds_add_up() {
     );
 }
 
+/// What a question holds until it is answered.
+#[derive(Component)]
+struct Asked {
+    call: Entity,
+    hold: Entity,
+}
+
+#[test]
+fn an_effect_decided_as_its_hold_goes_never_starts() {
+    let mut app = app();
+    // A question is answered in Gate; on its answer, an observer refuses
+    // the call it held and lets go of it, as Start opens.
+    app.add_systems(
+        AgentPass,
+        (|mut asked: Query<&mut Decision, (Undecided, With<Asked>)>| {
+            for mut decision in &mut asked {
+                decision.decide(Outcome::custom("no"));
+            }
+        })
+        .in_set(Stage::Gate),
+    )
+    .add_observer(
+        |answered: On<Add<Outcome>>,
+         asked: Query<&Asked>,
+         mut decisions: Query<&mut Decision>,
+         mut commands: Commands| {
+            let Ok(asked) = asked.get(answered.entity) else {
+                return;
+            };
+            if let Ok(mut decision) = decisions.get_mut(asked.call) {
+                decision.decide(Outcome::refused("the user said no"));
+            }
+            commands.entity(asked.hold).despawn();
+        },
+    );
+    let world = app.world_mut();
+    let call = world.spawn(add()).id();
+    let hold = world.spawn(HoldOf(call)).id();
+    world.spawn((open("question"), Asked { call, hold }));
+    let settled = run_until(&mut app, |world| world.get::<Settled>(call).is_some());
+    assert!(settled, "the refusal settled the call");
+    assert!(!has::<Started>(&app, call), "a refused call never starts");
+    let records = records(&app);
+    let record = records
+        .iter()
+        .find(|record| matches!(record.kind, EffectKind::ToolCall { .. }));
+    assert!(
+        record.is_some_and(
+            |record| record.disposition == Disposition::AnsweredBeforeStart
+                && matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Denied)
+        ),
+        "{records:?}"
+    );
+}
+
 /// A mark that moves an effect to another table.
 #[derive(Component)]
 struct Moved;
