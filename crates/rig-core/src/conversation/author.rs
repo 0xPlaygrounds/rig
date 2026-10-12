@@ -1,7 +1,5 @@
 //! Who wrote an entry or an aside of a conversation, or made a change to it.
 
-#[cfg(feature = "bevy")]
-use bevy_reflect::prelude::{Reflect, ReflectDefault};
 use serde::{Deserialize, Serialize};
 
 use super::short_id;
@@ -10,13 +8,11 @@ use super::short_id;
 /// the tool call that asked. Unique per sender, so it doubles as an
 /// idempotency key.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
 #[serde(transparent)]
 pub struct RequestId(pub String);
 
 /// Who wrote it.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
 #[serde(rename_all = "snake_case")]
 pub enum AuthorKind {
     /// The user, typing.
@@ -36,8 +32,6 @@ pub enum AuthorKind {
 /// what it is about. An entry without one is the user's own text, the
 /// model's reply or a tool result.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
-#[cfg_attr(feature = "bevy", reflect(Default))]
 pub struct Author {
     /// Who wrote it.
     #[serde(default)]

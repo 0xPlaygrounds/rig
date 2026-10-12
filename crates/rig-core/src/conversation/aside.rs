@@ -1,7 +1,5 @@
 //! Records kept in a conversation that never reach a model.
 
-#[cfg(feature = "bevy")]
-use bevy_reflect::prelude::{Reflect, ReflectDefault};
 use serde::{Deserialize, Serialize};
 
 use super::{Author, MessageId};
@@ -73,7 +71,5 @@ impl Aside {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
-#[cfg_attr(feature = "bevy", reflect(Clone, Debug, Default, PartialEq, Hash))]
 #[serde(transparent)]
 pub struct AsideId(pub(super) u64);

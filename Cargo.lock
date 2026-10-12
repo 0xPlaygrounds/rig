@@ -16067,8 +16067,6 @@ dependencies = [
  "assert_fs",
  "async-stream",
  "base64 0.22.1",
- "bevy_ecs",
- "bevy_reflect",
  "bytes",
  "epub",
  "fastrand",

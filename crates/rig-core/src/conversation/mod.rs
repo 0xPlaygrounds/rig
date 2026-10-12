@@ -36,10 +36,6 @@
 use std::collections::HashSet;
 use std::ops::{Bound, RangeBounds};
 
-#[cfg(feature = "bevy")]
-use bevy_ecs::{component::Component, reflect::ReflectComponent};
-#[cfg(feature = "bevy")]
-use bevy_reflect::prelude::{Reflect, ReflectDefault, ReflectDeserialize, ReflectSerialize};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::completion::Message;
@@ -72,11 +68,6 @@ use pairing::PairingError;
 /// from it is [`Lineage::DETACHED`].
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(try_from = "State")]
-#[cfg_attr(feature = "bevy", derive(Component, Reflect))]
-#[cfg_attr(
-    feature = "bevy",
-    reflect(opaque, Component, Default, Clone, Serialize, Deserialize)
-)]
 pub struct Conversation {
     /// What a request sends, so [`messages`](Self::messages) is a slice.
     messages: Vec<Message>,
@@ -197,8 +188,6 @@ impl PartialEq for Conversation {
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize,
 )]
-#[cfg_attr(feature = "bevy", derive(Reflect))]
-#[cfg_attr(feature = "bevy", reflect(Clone, Debug, Default, PartialEq, Hash))]
 #[serde(transparent)]
 pub struct MessageId(u64);
 
