@@ -316,12 +316,12 @@ fn update_meta(
             .iter()
             .find_map(|(_, conversation, _)| first_typed(conversation))
     {
-        title.bypass_change_detection().typed = one_line(&typed);
+        title.bypass_change_detection().typed = title_of(&typed);
     }
     let labels = labels
         .iter()
         .filter(|label| !label.text.is_empty())
-        .map(|label| (label.tag.clone(), one_line(&label.text)))
+        .map(|label| (label.tag.clone(), title_of(&label.text)))
         .collect();
     let spent = spent.map(|spent| spent.0.total).unwrap_or_default();
     let meta = Meta {
@@ -336,8 +336,10 @@ fn update_meta(
     }
 }
 
-/// `text` on one line, cut to [`TITLE_CHARS`].
-fn one_line(text: &str) -> String {
+/// A session title or label of `text`, as `/resume` lists it: on one line,
+/// its runs of whitespace one space, cut to 60 characters. A plugin that
+/// writes a session's [`Meta`] titles it so.
+pub fn title_of(text: &str) -> String {
     shorten(
         &text.split_whitespace().collect::<Vec<_>>().join(" "),
         TITLE_CHARS,
@@ -397,7 +399,7 @@ fn name(
         notices.write(Notice::info(args.agent, text));
         return;
     }
-    let name = one_line(&args.args);
+    let name = title_of(&args.args);
     notices.write(Notice::info(
         args.agent,
         format!("This session is now named “{name}”."),
@@ -414,7 +416,7 @@ fn name_session(
     mut title: ResMut<SessionTitle>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let name = one_line(&named.name);
+    let name = title_of(&named.name);
     if paths.and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
         title.name = Some(name);
         return;
