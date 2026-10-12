@@ -35,8 +35,7 @@ impl Plugin for ForkSessionPlugin {
         if !app.is_plugin_added::<SessionsPlugin>() {
             app.add_plugins(SessionsPlugin);
         }
-        app.init_resource::<Pending>()
-            .add_message::<SessionForked>()
+        app.add_message::<SessionForked>()
             .add_command(
                 "fork",
                 "Copy this session into a new one and switch to it: /fork [name]",
@@ -53,13 +52,11 @@ impl Plugin for ForkSessionPlugin {
     }
 }
 
-/// The fork asked for, until the harness wrote it.
-#[derive(Resource, Default)]
-struct Pending(Option<Asked>);
-
+/// A fork this plugin asked for, until the harness wrote it: the
+/// [`ForkSession::asker`] that [`SessionForked`] names.
+#[derive(Component)]
 struct Asked {
     agent: Entity,
-    before: Option<(AgentId, MessageId)>,
     /// The name `/fork` gave it.
     name: Option<String>,
     /// The command that puts the files back, for `/branch --files`.
@@ -101,7 +98,6 @@ fn fork(
     In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
-    mut pending: ResMut<Pending>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -110,13 +106,17 @@ fn fork(
         return;
     }
     let name = args.args.trim();
-    pending.0 = Some(Asked {
-        agent: args.agent,
+    let asker = commands
+        .spawn(Asked {
+            agent: args.agent,
+            name: (!name.is_empty()).then(|| name.to_owned()),
+            files: None,
+        })
+        .id();
+    commands.trigger(ForkSession {
         before: None,
-        name: (!name.is_empty()).then(|| name.to_owned()),
-        files: None,
+        asker: Some(asker),
     });
-    commands.trigger(ForkSession::default());
 }
 
 /// `/branch [--files]`: a picker of the agent's typed messages.
@@ -163,7 +163,6 @@ fn branch(
         move |picked: On<Picked>,
               ids: Query<&AgentId>,
               snapshots: Snapshots<'_, '_>,
-              mut pending: ResMut<Pending>,
               mut commands: Commands,
               mut notices: MessageWriter<Notice>| {
             let Some(Chosen::Item(index)) = picked.chosen else {
@@ -180,16 +179,16 @@ fn branch(
                 Some(Ok(line)) => Some(line),
                 None => None,
             };
-            let before = Some((id.clone(), message));
-            pending.0 = Some(Asked {
-                agent,
-                before: before.clone(),
-                name: None,
-                files,
-            });
+            let asker = commands
+                .spawn(Asked {
+                    agent,
+                    name: None,
+                    files,
+                })
+                .id();
             commands.trigger(ForkSession {
-                before,
-                ..ForkSession::default()
+                before: Some((id.clone(), message)),
+                asker: Some(asker),
             });
         },
     );
@@ -225,21 +224,25 @@ fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<Strin
 /// Names each fork this plugin asked for, then switches to it.
 fn forked(
     mut forks: MessageReader<SessionForked>,
-    mut pending: ResMut<Pending>,
+    mut asked: Query<&mut Asked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for fork in forks.read() {
-        let Some(asked) = pending.0.take_if(|asked| asked.before == fork.before) else {
+        let Some(asker) = fork.asker else {
             continue;
         };
-        if let Some(name) = asked.name {
+        let Ok(mut asked) = asked.get_mut(asker) else {
+            continue;
+        };
+        commands.entity(asker).despawn();
+        if let Some(name) = asked.name.take() {
             commands.trigger(NameSession {
                 session: fork.to.clone(),
                 name,
             });
         }
-        if let Some(line) = asked.files {
+        if let Some(line) = asked.files.take() {
             commands.trigger(RunCommand::new(asked.agent, line));
         }
         let made = format!("Made session {}. {FILES}", fork.to);
