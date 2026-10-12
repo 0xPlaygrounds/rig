@@ -626,7 +626,7 @@ fn receive(
                     continue;
                 };
                 let chosen = choice.map(Chosen::Item).or(text.map(Chosen::Text));
-                commands.trigger(Pick { entity, chosen });
+                commands.trigger(Pick::person(entity, chosen));
             }
             FromEditor::Review { id, accept } => {
                 let review = Entity::try_from_bits(id).filter(|review| reviews.contains(*review));
@@ -637,7 +637,10 @@ fn receive(
                     reply(&ToEditor::ReviewClosed { id });
                     continue;
                 };
-                if !decision.decide(Outcome::custom(serde_json::json!({ "accept": accept }))) {
+                if !decision.decide(
+                    Decider::Person,
+                    Outcome::custom(serde_json::json!({ "accept": accept })),
+                ) {
                     reply(&ToEditor::ReviewClosed { id });
                     continue;
                 }
@@ -654,7 +657,10 @@ fn receive(
                 let path = edit.path.display().to_string();
                 if after == edit.before {
                     if let Ok(mut call) = calls.get_mut(edit.call) {
-                        call.decide(ToolResult::success(result.into()));
+                        call.decide(
+                            Decider::plugin("fh-editor-front"),
+                            ToolResult::success(result.into()),
+                        );
                     }
                     continue;
                 }
@@ -688,7 +694,10 @@ fn receive(
                         }
                     }
                     if let Ok(mut call) = calls.get_mut(waiting.call) {
-                        call.decide(ToolResult::success(result.into()));
+                        call.decide(
+                            Decider::plugin("fh-editor-front"),
+                            ToolResult::success(result.into()),
+                        );
                     }
                     commands.entity(wait).try_despawn();
                 }
@@ -714,7 +723,10 @@ fn diagnostics_timeout(
             wait.result,
             DIAGNOSTICS_WAIT.as_secs()
         );
-        call.decide(ToolResult::success(result.into()));
+        call.decide(
+            Decider::plugin("fh-editor-front"),
+            ToolResult::success(result.into()),
+        );
     }
     commands.entity(due.entity).try_despawn();
 }
@@ -836,7 +848,10 @@ fn from_buffers(
         let args =
             serde_json::from_value::<ReadArgs>(serde_json::Value::from(function.arguments.clone()));
         if let (Some(buffer), Ok(args)) = (buffer, args) {
-            decision.decide(ToolResult::success(args.show(&buffer.text).into()));
+            decision.decide(
+                Decider::plugin("fh-editor-front"),
+                ToolResult::success(args.show(&buffer.text).into()),
+            );
         }
     }
 }
@@ -881,14 +896,20 @@ fn review_edits(
         let after = match after {
             Ok(after) => after,
             Err(error) => {
-                decision.decide(ToolResult::failed(error));
+                decision.decide(
+                    Decider::plugin("fh-editor-front"),
+                    ToolResult::failed(error),
+                );
                 continue;
             }
         };
         let hunks = diff(&buffer.text, &after);
         if hunks.is_empty() {
             let text = format!("{shown} is open in the editor and already reads so.");
-            decision.decide(ToolResult::success(text.into()));
+            decision.decide(
+                Decider::plugin("fh-editor-front"),
+                ToolResult::success(text.into()),
+            );
             continue;
         }
         let kind = EffectKind::Custom {

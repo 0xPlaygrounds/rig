@@ -393,7 +393,10 @@ fn time_out(describe: Entity, secs: u64, commands: &mut Commands) {
         .duration(Duration::from_secs(secs))
         .queue(move |world: &mut World| {
             if let Some(mut decision) = world.get_mut::<Decision>(describe) {
-                decision.decide(Outcome(Err(late)));
+                decision.decide(
+                    Decider::plugin("fh-mentions-and-images"),
+                    Outcome(Err(late)),
+                );
             }
         });
 }

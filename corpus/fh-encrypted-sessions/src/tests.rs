@@ -26,7 +26,10 @@ fn echo(
     mut commands: Commands,
 ) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(format!("echo: {MARKER}").into()));
+        call.decide(
+            Decider::plugin("test"),
+            ToolResult::success(format!("echo: {MARKER}").into()),
+        );
     }
     commands
         .entity(called.agent)
