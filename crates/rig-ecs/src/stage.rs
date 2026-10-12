@@ -672,16 +672,18 @@ fn run_passes(world: &mut World, settled: &mut QueryState<Entity, With<Settled>>
         // A settled effect may go with its parent.
         world.try_despawn(entity).ok();
     }
-    let clocks = Clocks::save(world);
-    let mut zeroed = false;
+    let mut clocks = None;
     let app_handler = world.get_resource::<FallbackErrorHandler>().copied();
     APP_HANDLER.set(Some(world.fallback_error_handler()));
     world.insert_resource(FallbackErrorHandler(fail_closed));
     let quiet = world.try_schedule_scope(AgentPass, |world, pass| {
         (0..MAX_PASSES).any(|n| {
             if n == 1 {
-                Clocks::zero(world);
-                zeroed = true;
+                clocks = Some((
+                    zero_step::<()>(world),
+                    zero_step::<Real>(world),
+                    zero_step::<Virtual>(world),
+                ));
             }
             FAILED.with_borrow_mut(Vec::clear);
             let before = moves(world);
@@ -698,8 +700,10 @@ fn run_passes(world: &mut World, settled: &mut QueryState<Entity, With<Settled>>
             world.remove_resource::<FallbackErrorHandler>();
         }
     }
-    if zeroed {
-        clocks.restore(world);
+    if let Some((time, real, virtual_time)) = clocks {
+        put_back(world, time);
+        put_back(world, real);
+        put_back(world, virtual_time);
     }
     let Some(mut passes) = world.get_resource_mut::<Passes>() else {
         return;
@@ -724,49 +728,21 @@ fn moves(world: &World) -> u64 {
         .map_or(0, |passes| passes.moved)
 }
 
-/// The clocks as the frame left them, put back after passes with a zero
-/// time step. A change a stage system makes to them, such as a pause, is
-/// lost then.
-struct Clocks {
-    time: Option<Time>,
-    real: Option<Time<Real>>,
-    virtual_time: Option<Time<Virtual>>,
+/// Steps the clock `Time<T>` by zero (the same elapsed time, a zero
+/// delta), and returns it as it was, to put back after the passes. A change
+/// a stage system makes to a clock after the first pass, such as a pause,
+/// is lost then.
+fn zero_step<T: Default + Copy + Send + Sync + 'static>(world: &mut World) -> Option<Time<T>> {
+    let mut time = world.get_resource_mut::<Time<T>>()?;
+    let was = *time;
+    time.advance_by(Duration::ZERO);
+    Some(was)
 }
 
-impl Clocks {
-    fn save(world: &World) -> Self {
-        Self {
-            time: world.get_resource::<Time>().copied(),
-            real: world.get_resource::<Time<Real>>().copied(),
-            virtual_time: world.get_resource::<Time<Virtual>>().copied(),
-        }
-    }
-
-    /// Steps every clock by zero: the same elapsed time, a zero delta.
-    fn zero(world: &mut World) {
-        if let Some(mut time) = world.get_resource_mut::<Time>() {
-            time.advance_by(Duration::ZERO);
-        }
-        if let Some(mut time) = world.get_resource_mut::<Time<Real>>() {
-            time.advance_by(Duration::ZERO);
-        }
-        if let Some(mut time) = world.get_resource_mut::<Time<Virtual>>() {
-            time.advance_by(Duration::ZERO);
-        }
-    }
-
-    fn restore(self, world: &mut World) {
-        if let (Some(saved), Some(mut time)) = (self.time, world.get_resource_mut::<Time>()) {
-            *time = saved;
-        }
-        if let (Some(saved), Some(mut time)) = (self.real, world.get_resource_mut::<Time<Real>>()) {
-            *time = saved;
-        }
-        if let (Some(saved), Some(mut time)) =
-            (self.virtual_time, world.get_resource_mut::<Time<Virtual>>())
-        {
-            *time = saved;
-        }
+/// Puts back a clock [`zero_step`] took.
+fn put_back<T: Default + Copy + Send + Sync + 'static>(world: &mut World, was: Option<Time<T>>) {
+    if let (Some(was), Some(mut time)) = (was, world.get_resource_mut::<Time<T>>()) {
+        *time = was;
     }
 }
 
