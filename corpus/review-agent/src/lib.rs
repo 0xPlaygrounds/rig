@@ -221,7 +221,7 @@ fn finish(
     how: serde_json::Value,
 ) {
     if let Ok(mut decision) = decisions.get_mut(review) {
-        decision.decide(Outcome::custom(how));
+        decision.decide(Decider::plugin("review-agent"), Outcome::custom(how));
     }
     if let Ok(mut review) = commands.get_entity(review) {
         review.remove::<HoldOf>();

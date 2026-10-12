@@ -165,7 +165,7 @@ fn judge(
                     "You already called `{name}` with these arguments {before} with the same \
                      result; change approach."
                 );
-                decision.decide(Outcome::refused(why));
+                decision.decide(Decider::plugin("loop-breaker"), Outcome::refused(why));
             }
         }
     }

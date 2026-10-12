@@ -566,7 +566,7 @@ fn remember(
         Err(error) => ToolResult::failed(ToolExecutionError::from_error(error)),
     };
     if let Ok(mut decision) = calls.get_mut(called.call) {
-        decision.decide(result);
+        decision.decide(Decider::plugin("long-term-memory"), result);
     }
 }
 
@@ -592,6 +592,6 @@ fn forget(
         Err(error) => ToolResult::failed(ToolExecutionError::from_error(error)),
     };
     if let Ok(mut decision) = calls.get_mut(called.call) {
-        decision.decide(result);
+        decision.decide(Decider::plugin("long-term-memory"), result);
     }
 }

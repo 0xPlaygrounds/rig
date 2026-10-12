@@ -362,7 +362,7 @@ fn refuse_forgotten(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, 
                  forgotten when the agent restarts. Nothing ran; ask the user for the value again.",
                 unknown.as_str()
             );
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("secret-redaction"), Outcome::refused(why));
         }
     }
 }

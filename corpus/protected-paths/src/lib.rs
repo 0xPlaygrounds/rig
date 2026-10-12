@@ -435,7 +435,7 @@ fn guard(
             "`{raw}` is {what} by `{}` ({}). The call did not run; do not try another path to it.",
             rule.glob, rule.source
         );
-        if decision.decide(Outcome::refused(why)) && !restored {
+        if decision.decide(Decider::plugin("protected-paths"), Outcome::refused(why)) && !restored {
             *counts.blocked.entry(rule.label()).or_default() += 1;
         }
     }

@@ -859,7 +859,7 @@ fn answer_from_record(
             if replay.flags.continue_live {
                 return;
             }
-            decision.decide(Outcome::refused(STOPPED));
+            decision.decide(Decider::plugin("session-replay"), Outcome::refused(STOPPED));
             continue;
         }
         let replays = |kind: &EffectKind| {
@@ -876,7 +876,7 @@ fn answer_from_record(
                 if replay.flags.original_timing {
                     answers.time(effect.id(), &record);
                 }
-                decision.decide(Outcome(record.outcome));
+                decision.decide(Decider::plugin("session-replay"), Outcome(record.outcome));
                 if let Some(published) = record.tool_output {
                     commands.entity(entity).insert(Published(published));
                 }
@@ -887,7 +887,7 @@ fn answer_from_record(
                 if replay.flags.continue_live {
                     return;
                 }
-                decision.decide(Outcome(Err(report)));
+                decision.decide(Decider::plugin("session-replay"), Outcome(Err(report)));
             }
         }
     }
