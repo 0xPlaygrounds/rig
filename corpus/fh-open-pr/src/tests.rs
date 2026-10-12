@@ -245,3 +245,8 @@ fn an_open_pr_gets_the_push_and_its_description_not_a_second_pr() {
     assert!(remote(&dir, &["branch"]).contains("rig/add-a-txt"));
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(OpenPrPlugin);
+}

@@ -5,11 +5,13 @@
 //! changed (what `git status` and the files' contents show changed between
 //! the turn's start and end, so the agent's shell edits count and the
 //! user's earlier edits do not) and every command a tool ran, with how it
-//! ended. `/pr` checks the repository, its remote and `gh` off the main
-//! thread, then asks a writer model (`[open-pr] model`, else the agent's)
-//! for the title, commit message and description from the user's requests,
-//! the diff against the base and those commands, following the
-//! repository's PR template when it has one. A review question shows the
+//! ended. Both snapshots run off the main thread: the turn's first model
+//! call waits for the first, the turn's end for the second. `/pr` checks
+//! the repository, its remote and `gh` off the main thread, then asks a
+//! writer model (`[open-pr] model`, else the agent's) for the title, commit
+//! message and description from the user's requests, the diff against the
+//! base and those commands, following the repository's PR template when it
+//! has one. A review question shows the
 //! branch, files, message, title and description, each edited in place
 //! from its current text, with Publish, Commit only and Cancel. Nothing is
 //! committed or pushed before that answer. The steps then run off the main
@@ -24,13 +26,15 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use bevy_tasks::{IoTaskPool, TaskPool};
 use futures::channel::mpsc;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Message};
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::tool::{ContentHash, ExitStatus, content_hash};
 use rig_sessions::ResumeLabel;
-use rig_tools::process::{Launcher, OutputLine, Spawn};
+use rig_tools::ShellArgs;
+use rig_tools::process::{Launcher, Spawn};
 use rig_tools::workspace::Workspace;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -64,6 +68,17 @@ const TEMPLATES: [&str; 6] = [
     "docs/PULL_REQUEST_TEMPLATE.md",
 ];
 
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum OpenPrSystems {
+    /// Holds a turn's first model call until the snapshot of its
+    /// repository at the turn's start lands, in [`PrepareSystems::Compose`].
+    HoldStart,
+    /// Holds a turn's proposed end until the snapshot at its end lands, in
+    /// [`ReviewSystems::Act`].
+    HoldEnd,
+}
+
 /// Adds `/pr`.
 #[derive(Default)]
 pub struct OpenPrPlugin;
@@ -75,8 +90,23 @@ impl Plugin for OpenPrPlugin {
             .init_resource::<ProjectWorkspace>()
             .init_resource::<Processes>()
             .insert_resource(SessionWork::default())
-            .add_observer(snapshot)
-            .add_observer(note_changes)
+            .configure_sets(
+                AgentPass,
+                (
+                    OpenPrSystems::HoldStart.in_set(PrepareSystems::Compose),
+                    OpenPrSystems::HoldEnd.in_set(ReviewSystems::Act),
+                ),
+            )
+            .add_systems(
+                AgentPass,
+                (
+                    hold_first_call.in_set(OpenPrSystems::HoldStart),
+                    hold_turn_end.in_set(OpenPrSystems::HoldEnd),
+                ),
+            )
+            .add_observer(snapshot_start)
+            .add_observer(snapshot_interrupted)
+            .add_observer(taken)
             .add_observer(note_run)
             .add_observer(prepared)
             .add_observer(written)
@@ -144,14 +174,33 @@ pub struct Run {
     pub passed: bool,
 }
 
-/// The uncommitted files of a repository, relative to its top, with their
-/// contents' hash (`None`: deleted).
-type Dirty = BTreeMap<String, Option<ContentHash>>;
+/// A repository's top and its uncommitted files, relative to it, with
+/// their contents' hash (`None`: deleted).
+#[derive(Clone)]
+struct Dirty(PathBuf, BTreeMap<String, Option<ContentHash>>);
 
-/// On an agent while its turn runs: its repository and what was dirty
-/// there when the turn started.
+/// On a turn while it runs: what was dirty in its repository as it
+/// started.
 #[derive(Component)]
-struct Before(PathBuf, Dirty);
+struct Before(Dirty);
+
+/// On the snapshot of a turn's repository taken off the main thread: at
+/// the turn's start (its holds are children) or at its end.
+#[derive(Component, Clone, Copy)]
+enum Snapshot {
+    Start(Entity),
+    End(Entity),
+}
+
+/// What a [`Snapshot`] found.
+#[derive(Component)]
+struct Taken(Result<Dirty, String>);
+
+impl From<Result<Dirty, String>> for Taken {
+    fn from(taken: Result<Dirty, String>) -> Self {
+        Self(taken)
+    }
+}
 
 /// What `/pr` will do: where, on which branch, with what text.
 #[derive(Clone, Debug)]
@@ -274,53 +323,147 @@ fn runner(workspace: &ProjectWorkspace, processes: &Processes) -> Runner {
     Runner(workspace.0.clone(), processes.launcher())
 }
 
-/// Records on its agent what is dirty in its repository as a turn starts.
-fn snapshot(
+/// Runs `work` on a thread of its own, ending as the component `C`.
+fn off_thread<C, T>(
+    wake: &Wake,
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Running
+where
+    C: Component + From<Result<T, String>>,
+    T: Send + 'static,
+{
+    let work = blocking(move || Ok(work()));
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    Running::spawn_into::<C, _>(pool, wake, async move {
+        work.await.unwrap_or_else(|error| Err(error.to_string()))
+    })
+}
+
+/// Snapshots what is dirty in a turn's repository, in `dir` or above it,
+/// as the turn starts.
+fn snapshot_start(
     turn: On<Add<TurnOf>>,
     turns: Query<&TurnOf>,
     dirs: Query<&WorkDir>,
-    (project, workspace, processes): (Res<ProjectRoot>, Res<ProjectWorkspace>, Res<Processes>),
+    (project, workspace, processes, wake): (
+        Res<ProjectRoot>,
+        Res<ProjectWorkspace>,
+        Res<Processes>,
+        Res<Wake>,
+    ),
     mut commands: Commands,
 ) {
     let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
         return;
     };
-    let dir = dirs.get(agent).map_or(&project.0, |WorkDir(dir)| dir);
+    let dir = dirs
+        .get(agent)
+        .map_or(&project.0, |WorkDir(dir)| dir)
+        .clone();
     let runner = runner(&workspace, &processes);
-    let before = runner
-        .git(dir, &["rev-parse", "--show-toplevel"])
-        .map(PathBuf::from)
-        .and_then(|root| Ok(Before(root.clone(), runner.dirty(&root)?)));
-    if let Ok(before) = before {
-        commands.entity(agent).insert(before);
+    commands.spawn((
+        Name::new("open-pr: the repository as the turn starts"),
+        Snapshot::Start(turn.entity),
+        off_thread::<Taken, _>(&wake, move || runner.snapshot(&dir)),
+    ));
+}
+
+/// Holds a turn's first model call while its start snapshot runs, so no
+/// tool of the turn changes a file before it.
+fn hold_first_call(
+    calls: Query<(Entity, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    snapshots: Query<(Entity, &Snapshot)>,
+    mut commands: Commands,
+) {
+    for (call, &CallOf(turn)) in &calls {
+        let starts = snapshots.iter().filter(|&(_, &snapshot)| match snapshot {
+            Snapshot::Start(of) => of == turn,
+            Snapshot::End(_) => false,
+        });
+        for (snapshot, _) in starts {
+            let hold = (Name::new("hold: open-pr snapshot"), HoldOf(call));
+            commands.entity(snapshot).with_child(hold);
+        }
     }
 }
 
-/// Adds the files whose state an ended turn changed to the session's.
-fn note_changes(
-    settled: On<Add<Settled>>,
-    turns: Query<&ForAgent, With<Turn>>,
-    agents: Query<&Before>,
-    (workspace, processes): (Res<ProjectWorkspace>, Res<Processes>),
-    mut work: ResMut<SessionWork>,
+/// Holds a turn's proposed end while a snapshot of its repository runs.
+/// A proposal taken away takes the snapshot with it, and the next one
+/// takes another.
+fn hold_turn_end(
+    turns: Query<(Entity, &Before), (Added<TurnOutcome>, With<TurnOf>)>,
+    (workspace, processes, wake): (Res<ProjectWorkspace>, Res<Processes>, Res<Wake>),
     mut commands: Commands,
 ) {
-    let Ok(&ForAgent(agent)) = turns.get(settled.entity) else {
+    for (turn, Before(Dirty(root, _))) in &turns {
+        let runner = runner(&workspace, &processes);
+        let snapshot = end_snapshot(turn, root.clone(), runner, &wake);
+        commands.spawn((snapshot, HoldOf(turn)));
+    }
+}
+
+/// The snapshot at the end of `turn` of its repository at `root`.
+fn end_snapshot(turn: Entity, root: PathBuf, runner: Runner, wake: &Wake) -> impl Bundle {
+    (
+        Name::new("open-pr: what the turn changed"),
+        Snapshot::End(turn),
+        off_thread::<Taken, _>(wake, move || runner.snapshot(&root)),
+    )
+}
+
+/// Snapshots the repository of a turn that ended unheld, such as one the
+/// user interrupted.
+fn snapshot_interrupted(
+    settled: On<Add<Settled>>,
+    turns: Query<&Before, With<Turn>>,
+    (workspace, processes, wake): (Res<ProjectWorkspace>, Res<Processes>, Res<Wake>),
+    mut commands: Commands,
+) {
+    let Ok(Before(Dirty(root, _))) = turns.get(settled.entity) else {
         return;
     };
-    let Ok(Before(root, before)) = agents.get(agent) else {
+    let runner = runner(&workspace, &processes);
+    commands.spawn(end_snapshot(settled.entity, root.clone(), runner, &wake));
+}
+
+/// Keeps a turn's start snapshot on it, or adds the files whose state
+/// changed since then to the session's; releases what waited for it.
+fn taken(
+    done: On<Insert<Taken>>,
+    snapshots: Query<(&Snapshot, &Taken)>,
+    befores: Query<&Before>,
+    mut work: ResMut<SessionWork>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((&snapshot, Taken(taken))) = snapshots.get(done.entity) else {
         return;
     };
-    commands.entity(agent).remove::<Before>();
-    let Ok(after) = runner(&workspace, &processes).dirty(root) else {
-        return;
-    };
-    let changed = before
-        .keys()
-        .chain(after.keys())
-        .filter(|path| before.get(*path) != after.get(*path))
-        .map(|path| root.join(path));
-    work.changed.extend(changed);
+    commands.entity(done.entity).despawn();
+    match (snapshot, taken) {
+        (Snapshot::Start(turn), Ok(dirty)) => {
+            commands.entity(turn).try_insert(Before(dirty.clone()));
+        }
+        // Not in a repository: nothing to record.
+        (Snapshot::Start(_), Err(_)) => {}
+        (Snapshot::End(turn), after) => {
+            let Ok(Before(Dirty(root, before))) = befores.get(turn) else {
+                return;
+            };
+            commands.entity(turn).try_remove::<Before>();
+            let Dirty(_, after) = match after {
+                Ok(after) => after,
+                Err(why) => {
+                    let why = format!("/pr cannot tell which files a turn changed: {why}");
+                    notices.write(Notice::warn(None, why));
+                    return;
+                }
+            };
+            let changed = before.keys().chain(after.keys());
+            let changed = changed.filter(|path| before.get(*path) != after.get(*path));
+            work.changed.extend(changed.map(|path| root.join(path)));
+        }
+    }
 }
 
 /// Notes each command a tool ran and how it ended.
@@ -332,13 +475,12 @@ fn note_run(
     let Ok((Published(facts), request)) = calls.get(published.entity) else {
         return;
     };
-    let command = request.call.function.arguments.get("command");
-    if let (Ok(Some(status)), Some(command)) = (
-        facts.get::<ExitStatus>(),
-        command.and_then(|command| command.as_str()),
-    ) {
+    let args = serde_json::from_value::<ShellArgs>(serde_json::Value::Object(
+        request.call.function.arguments.clone(),
+    ));
+    if let (Ok(Some(status)), Ok(args)) = (facts.get::<ExitStatus>(), args) {
         work.runs.push(Run {
-            command: command.to_owned(),
+            command: args.command,
             passed: status.success(),
         });
     }
@@ -392,12 +534,10 @@ fn pr(
         config.gh.clone(),
         work.changed.clone(),
     );
-    let prepare = blocking(move || Ok(runner.prepare(&dir, gh, &changed, draft, base)));
-    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     commands.spawn((
         Preparing(agent, requests, work.runs.clone()),
-        Running::spawn_into::<Prepared, _>(pool, &wake, async move {
-            prepare.await.unwrap_or_else(|error| Err(error.to_string()))
+        off_thread::<Prepared, _>(&wake, move || {
+            runner.prepare(&dir, gh, &changed, draft, base)
         }),
     ));
 }
@@ -747,7 +887,7 @@ fn start_job(
             }))
             .ok();
     }
-    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
     commands.spawn((
         Worker(started.entity, job.clone()),
         Running::stream(pool, &wake, steps),
@@ -874,8 +1014,7 @@ impl Runner {
     fn run(&self, program: &str, dir: &Path, args: &[&str]) -> Result<String, String> {
         let Self(workspace, launcher) = self;
         let args: Vec<OsString> = args.iter().map(OsString::from).collect();
-        let cannot = |error: std::io::Error| format!("cannot run {program}: {error}");
-        let mut process = workspace
+        let output = workspace
             .spawn(
                 launcher,
                 Some(dir),
@@ -883,24 +1022,16 @@ impl Runner {
                 &args,
                 Spawn::default(),
             )
-            .map_err(cannot)?;
-        let (mut out, mut err) = (String::new(), String::new());
-        for line in process.lines().iter() {
-            match line {
-                OutputLine::Out(text) => out.push_str(&text),
-                OutputLine::Err(text) => err.push_str(&text),
-            }
-        }
-        // The output ended, so the process has or is about to.
-        let status = process.wait_for(Duration::from_secs(60)).map_err(cannot)?;
-        if status.is_some_and(|status| status.success()) {
-            Ok(out)
+            .and_then(|process| process.output(None))
+            .map_err(|error| format!("cannot run {program}: {error}"))?;
+        if output.status.success() {
+            Ok(String::from_utf8_lossy(&output.stdout).into_owned())
         } else {
             let first = args.first().map(|arg| arg.to_string_lossy());
             Err(format!(
                 "{program} {}: {}",
                 first.unwrap_or_default(),
-                err.trim()
+                String::from_utf8_lossy(&output.stderr).trim()
             ))
         }
     }
@@ -930,20 +1061,20 @@ impl Runner {
         Ok(files)
     }
 
-    /// The uncommitted files of the repository at `root` and their
+    /// The repository `dir` is in, and its uncommitted files with their
     /// contents' hash.
-    fn dirty(&self, root: &Path) -> Result<Dirty, String> {
+    fn snapshot(&self, dir: &Path) -> Result<Dirty, String> {
+        let root = PathBuf::from(self.git(dir, &["rev-parse", "--show-toplevel"])?);
         let hash = |path: &String| {
             let read = self.0.read(&root.join(path), u64::MAX).ok()?;
             Some(content_hash(&read.bytes))
         };
-        let files = self.status(root)?.into_keys();
-        Ok(files
-            .map(|path| {
-                let hash = hash(&path);
-                (path, hash)
-            })
-            .collect())
+        let files = self.status(&root)?.into_keys();
+        let files = files.map(|path| {
+            let hash = hash(&path);
+            (path, hash)
+        });
+        Ok(Dirty(root.clone(), files.collect()))
     }
 
     /// The plan without its text, and what the writer reads of the
