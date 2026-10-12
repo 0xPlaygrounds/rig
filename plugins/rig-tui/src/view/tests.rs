@@ -1,38 +1,17 @@
 use bevy_ecs::system::RunSystemOnce;
 use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::journal::SessionStore;
 
 use super::*;
-use crate::render::{ShownAgent, lay_out_transcript};
-use crate::tests::{scratch, view_app};
-use crate::transcript::{Scroll, Transcript};
+use crate::tests::{scratch, transcript, view_app};
 
-/// The shown agent's transcript, as text, a line per row.
-fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
-    let world = app.world_mut();
-    let mut agents = world.query::<(&AgentId, &Conversation)>();
-    let Ok((id, conversation)) = agents.get(world, agent) else {
-        return Vec::new();
-    };
-    let shown = ShownAgent {
-        entity: agent,
-        id,
-        conversation,
-        changed: true,
-        inbox: &[],
-    };
-    let mut rows = Transcript::default();
-    let view = world.resource::<TuiView>();
-    let (renderers, calls) = (Default::default(), Default::default());
-    let parts = lay_out_transcript(
-        &mut rows,
-        view,
-        Some(&shown),
-        (&renderers, &calls, None),
-        80,
-    );
-    let (lines, _) = rows.visible(&parts, (80, 100), &mut Scroll::default());
-    lines.iter().map(ToString::to_string).collect()
+/// The store of `session`, as the harness opens it.
+fn store(session: &SessionDir) -> Option<SessionStore> {
+    SessionStores::default()
+        .open(session)
+        .ok()
+        .map(SessionStore)
 }
 
 /// Where in `lines` the first that contains `text` is.
@@ -70,24 +49,25 @@ fn notices_are_kept_for_the_next_build_of_the_session() {
     let home = Home::at(scratch("notices"));
     let Ok(id) = "1-1".parse() else { return };
     let session = home.session(&id);
-    let build = |session: &SessionDir| {
+    let Some(store) = store(&session) else { return };
+    let build = || {
         let (mut app, agent) = view_app();
         app.world_mut()
             .entity_mut(agent)
             .insert(AgentId("a1".to_owned()));
-        app.insert_resource(SessionPaths(session.clone()));
+        app.insert_resource(store.clone());
         let loaded = app.world_mut().run_system_once(load_notices);
         assert!(loaded.is_ok());
         (app, agent)
     };
-    let (mut app, agent) = build(&session);
+    let (mut app, agent) = build();
     app.world_mut()
         .write_message(Notice::warn(agent, "Kept across a reload."));
     app.update();
     drop(app);
-    // The view's file is no agent log: the session has none yet.
+    // The view's file is no agent log: the session is not saved yet.
     assert!(!session.is_saved());
-    let (mut app, agent) = build(&session);
+    let (mut app, agent) = build();
     let lines = transcript(&mut app, agent);
     assert!(
         line_of(&lines, "Kept across a reload.").is_some(),
@@ -100,19 +80,185 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     let home = Home::at(scratch("draft"));
     let Ok(id) = "1-1".parse() else { return };
     let session = home.session(&id);
+    let Some(store) = store(&session) else { return };
     let (mut app, _) = view_app();
-    app.insert_resource(SessionPaths(session.clone()))
+    app.insert_resource(store.clone())
         .insert_resource(ExitReason::Reload);
     app.world_mut().resource_mut::<TuiInput>().set("/tools");
     assert!(app.world_mut().run_system_once(keep_draft).is_ok());
     drop(app);
     let (mut app, _) = view_app();
-    app.insert_resource(SessionPaths(session.clone()));
+    app.insert_resource(store.clone());
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert_eq!(app.world().resource::<TuiInput>().text(), "/tools");
     // Once: the build after this one starts empty.
     let (mut app, _) = view_app();
-    app.insert_resource(SessionPaths(session));
+    app.insert_resource(store);
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert!(app.world().resource::<TuiInput>().is_empty());
+}
+
+/// Adds `message` to `agent`'s conversation, as a commit does.
+fn say(app: &mut App, agent: Entity, message: rig_core::completion::Message) {
+    let commit = move |mut commit: rig_ecs::journal::Commit,
+                       mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            commit.message(agent, &mut conversation, message.clone());
+        }
+    };
+    assert!(app.world_mut().run_system_once(commit).is_ok());
+    app.update();
+}
+
+#[test]
+fn a_notice_says_which_transcript_draws_it_and_where() {
+    use rig_core::completion::Message;
+    let (mut app, agent) = view_app();
+    let id = AgentId("a1".to_owned());
+    app.world_mut().entity_mut(agent).insert(id.clone());
+    app.world_mut().resource_mut::<Shown>().0 = Some(agent);
+    say(&mut app, agent, Message::user("question"));
+    say(&mut app, agent, Message::assistant("answer"));
+    // About every agent: drawn where the agent shown was.
+    app.world_mut()
+        .write_message(Notice::info(Option::<Entity>::None, "Every agent."));
+    app.update();
+    say(&mut app, agent, Message::user("next"));
+    let world = app.world();
+    let notice = world.resource::<TranscriptView>().notices().first();
+    let conversation = world.get::<Conversation>(agent);
+    assert_eq!(notice.and_then(ShownNotice::drawn_in), Some(&id));
+    let slot = |id: &AgentId| notice?.slot(id, conversation?);
+    assert_eq!(slot(&id), Some(TranscriptSlot::After(1)));
+    assert_eq!(slot(&AgentId("a2".to_owned())), None);
+    // Slots order as drawn.
+    let order = [
+        TranscriptSlot::Top,
+        TranscriptSlot::Inside(0, 1),
+        TranscriptSlot::After(0),
+        TranscriptSlot::Inside(1, 0),
+        TranscriptSlot::After(1),
+    ];
+    assert!(order.is_sorted());
+}
+
+#[test]
+fn a_notice_is_an_item_a_plugin_scrolls_to() {
+    let (mut app, agent) = view_app();
+    let question = |index: usize| rig_core::completion::Message::user(format!("question {index}"));
+    for index in 0..10 {
+        say(&mut app, agent, question(index));
+    }
+    app.world_mut()
+        .write_message(Notice::warn(agent, "Rate limited."));
+    app.update();
+    for index in 10..30 {
+        say(&mut app, agent, question(index));
+    }
+    let notices = app.world().resource::<TranscriptView>().notices().len();
+    assert_eq!(notices, 1);
+    let item = TranscriptItem::Notice(0);
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: Some(item.clone()),
+        row: ItemRow::Top(0),
+    });
+    let lines = crate::tests::on_screen(&mut app, agent, 5);
+    assert_eq!(lines.first().map(String::as_str), Some("Rate limited."));
+    let top = app.world().resource::<TranscriptView>().top().cloned();
+    assert_eq!(top, Some((item, 0)));
+}
+
+/// A transcript of notes of `said`, laid out at 12 columns.
+fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
+    let (mut app, agent) = view_app();
+    for text in said {
+        let note = Deliver::new(agent, *text, DeliveryMode::Note);
+        app.world_mut().trigger(note);
+        app.update();
+    }
+    let lay_out = move |layout: crate::TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, 12, crate::Expanded::AsShown)
+    };
+    app.world_mut().run_system_once(lay_out).ok().flatten()
+}
+
+#[test]
+fn rows_a_line_wrapped_into_rejoin_into_it() {
+    let said = [
+        "alpha beta  gamma delta epsilon zeta",
+        "abcdefghijklmnopqrstuvwxyz",
+    ];
+    let laid_out = laid_out_narrow(&said);
+    assert!(laid_out.is_some());
+    let Some(drawn) = laid_out else { return };
+    let rows: Vec<&str> = drawn.rows().iter().map(|row| row.text.as_str()).collect();
+    assert!(
+        !rows.iter().any(|row| row.contains("gamma delta")),
+        "{rows:#?}"
+    );
+    let lines: Vec<DrawnLine> = drawn.lines().collect();
+    for text in said {
+        let line = lines.iter().find(|line| line.text.ends_with(text));
+        assert!(line.is_some(), "{text} not rejoined: {lines:#?}");
+        let Some(line) = line else { return };
+        assert_eq!(line.text, format!("› {text}"));
+        assert!(line.rows.len() > 1, "{rows:#?}");
+        let continued = drawn.rows().get(line.rows.clone()).unwrap_or_default();
+        let continues = continued.iter().map(|row| row.continues.is_some());
+        assert!(
+            continues.skip(1).all(|continues| continues),
+            "{continued:#?}"
+        );
+    }
+    let total: usize = lines.iter().map(|line| line.rows.len()).sum();
+    assert_eq!(total, drawn.rows().len());
+}
+
+#[test]
+fn a_line_says_where_each_of_its_rows_starts_in_it() {
+    let laid_out = laid_out_narrow(&["alpha beta  gamma delta epsilon zeta"]);
+    assert!(laid_out.is_some());
+    let Some(drawn) = laid_out else { return };
+    let line = drawn.lines().find(|line| line.text.contains("gamma"));
+    assert!(line.is_some(), "{drawn:#?}");
+    let Some(line) = line else { return };
+    assert_eq!(line.starts.len(), line.rows.len());
+    for (row, start) in line.rows.clone().zip(&line.starts) {
+        let drawn_row = drawn.rows().get(row).map(|row| row.text.trim_start());
+        let from = line.text.get(*start..).unwrap_or_default();
+        assert!(
+            drawn_row.is_some_and(|text| from.starts_with(text)),
+            "{row}: {line:#?}"
+        );
+        assert_eq!(line.row_at(*start), row);
+    }
+    let gamma = line.text.find("gamma").unwrap_or_default();
+    let row = drawn.rows().get(line.row_at(gamma));
+    assert!(
+        row.is_some_and(|row| row.text.contains("gamma")),
+        "{line:#?}"
+    );
+    // The blanks a wrap dropped end the row before.
+    let blank = line.text.find("  ").unwrap_or_default();
+    assert_eq!(line.row_at(blank + 1), line.row_at(blank));
+}
+
+#[test]
+fn a_new_width_changes_the_view_and_the_same_one_does_not() {
+    let (mut app, _) = view_app();
+    let changed = app
+        .world_mut()
+        .register_system(|view: Res<TranscriptView>| view.is_changed());
+    let mut drawn_at = |width: u16| {
+        let note = move |mut view: ResMut<TranscriptView>| {
+            TranscriptView::note_drawn(&mut view, None, width);
+        };
+        assert!(app.world_mut().run_system_once(note).is_ok());
+        app.world_mut().run_system(changed).unwrap_or_default()
+    };
+    drawn_at(80);
+    assert!(!drawn_at(80));
+    assert!(drawn_at(100));
+    assert!(!drawn_at(100));
 }

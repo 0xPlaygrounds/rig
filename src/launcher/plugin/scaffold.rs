@@ -5,12 +5,14 @@
 //! a hook is a system in one) and has a short copy-ready example of each
 //! extension point: a tool and gating its calls, asking the user, a slash
 //! command, what the user types, model requests, a turn's end, a plugin's
-//! own effects, settings and options, state kept with the session, time,
-//! the process, sessions, turning off or replacing what another plugin
-//! added, a front, the status line, a terminal panel, and a window. Every
-//! name they use comes from `rig_harness::prelude` or the plugin crate the
-//! example names, such as `rig_tui`; the optional `inspect` tool (crate
-//! `rig-inspect`) shows the rest.
+//! own effects, settings, state kept with the session, time, the
+//! workspace and child processes, sessions and their store, turning off
+//! or replacing what another plugin added, fronts, options and commands of
+//! its own (`rig <name>`), transcript entries, the status line, a
+//! terminal panel, and a window. Every name they use comes from
+//! `rig_harness::prelude` or the plugin crate the example names, such as
+//! `rig_tui`; the optional `inspect` tool (crate `rig-inspect`) shows the
+//! rest.
 
 use rig_harness::prelude::*;
 
@@ -47,7 +49,11 @@ impl Plugin for ScaffoldPlugin {
         //                       `Stage::Review` replaces its result ("Gating and reviewing")
         // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
         // - a setting:          app.add_setting::<MySettings>("my-plugin"), read from
-        //                       RIG_HOME/settings.toml ("Settings and command-line options")
+        //                       RIG_HOME/settings.toml ("Settings")
+        // - a `rig <name>`:     app.add_front(Front::new("name")
+        //                       .on_command("name", "<args>", "What it does")), and in
+        //                       `finish`, `if app.runs_front("name") { … }` with its words
+        //                       from Invoked::command ("Commands of your own")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
         // - what the user types: an `Incoming` message, changed by a system in
         //                       `PrepareSystems::Edit`, taken over in `Stage::Gate`

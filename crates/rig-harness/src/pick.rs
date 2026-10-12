@@ -30,6 +30,7 @@
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
+use rig_core::effect::Decider;
 use rig_ecs::stage::{Decision, Outcome, Settled};
 
 use crate::ask::{Answer, Ask};
@@ -123,7 +124,9 @@ pub enum Chosen {
 }
 
 /// A front triggers it on a [`Picker`] or an open [`Ask`] when the user
-/// picks, or with `None` closes it; the harness carries out the choice.
+/// picks, or with `None` closes it, with [`Pick::person`]; a plugin that
+/// answers a question itself names itself in `by`. The harness carries out
+/// the choice, and the question's record names who answered it.
 #[derive(EntityEvent, Reflect, Clone, Debug)]
 #[reflect(Event, Clone, Debug)]
 pub struct Pick {
@@ -131,6 +134,26 @@ pub struct Pick {
     pub entity: Entity,
     /// What was chosen, or `None` when it was closed.
     pub chosen: Option<Chosen>,
+    /// Who picked: [`Decider::Person`] from a front, else a plugin by name.
+    /// Reflection leaves it out and reads it as a person.
+    #[reflect(ignore, default = "person")]
+    pub by: Decider,
+}
+
+/// [`Decider::Person`], for reflection.
+fn person() -> Decider {
+    Decider::Person
+}
+
+impl Pick {
+    /// What the user chose on `entity` through a front.
+    pub fn person(entity: Entity, chosen: Option<Chosen>) -> Self {
+        Self {
+            entity,
+            chosen,
+            by: Decider::Person,
+        }
+    }
 }
 
 /// Triggered on a [`Picker`]'s entity when the user picked, or with `None`
@@ -193,7 +216,7 @@ fn pick(
         None => Some(Outcome::refused("The user closed the question.")),
     };
     if let Some(answer) = answer {
-        decision.decide(answer);
+        decision.decide(pick.by.clone(), answer);
     }
 }
 

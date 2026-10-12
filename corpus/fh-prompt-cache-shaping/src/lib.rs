@@ -3,19 +3,20 @@
 //! did.
 //!
 //! - **Stable order.** A request's tools are sorted by name, after every
-//!   other plugin's edits. The kernel already sorts the tools it offers,
-//!   keeps the prompt sections in a fixed order and sends a cache key per
-//!   agent for providers that cache prefixes on their own.
-//! - **Volatile parts move to the end.** A [`PromptSection`] whose text
-//!   changed after it was added (a clock, a status block) is taken out of
-//!   the system prompt and sent as a last user message of the request,
-//!   after every cache marker. One that cannot be found in the prompt,
-//!   because another plugin rewrote it, is reported, never dropped.
-//! - **Markers.** On Anthropic-style providers, a request after the first
-//!   marks the end of the previous request's messages (the request's
-//!   `cache_breakpoint`), and [`PlaceMarkers`], below every adapter on the
-//!   HTTP client, marks the end of the tools and of the system prompt,
-//!   within the provider's budget of four.
+//!   other plugin's edits. The kernel already keeps the prompt sections in
+//!   a fixed order and sends a cache key per agent for providers that cache
+//!   prefixes on their own.
+//! - **Volatile parts move to the end.** A prompt section that changes (a
+//!   clock, a status block) is taken out of the system prompt and its text
+//!   added to the request's last message, after every cache marker. A
+//!   section counts as changing once its [`PromptSection`] changed after it
+//!   was added, or once its text differed from the agent's previous request
+//!   while the tools stayed the same. One in a request without a prompt in
+//!   parts is reported, never dropped.
+//! - **Markers.** Every request asks for cache points at the end of the
+//!   tools and of the system prompt, and one after the first, at the end of
+//!   the previous request's messages. A provider that caches by marker
+//!   places them within its budget; others ignore them.
 //! - **Breaks.** Each agent keeps the prefix of its last request; where the
 //!   next one differs, the first change (a tool, a prompt section by name,
 //!   a message index) is kept, and `/cache why` lists the last ten.
@@ -25,25 +26,22 @@
 //! Without the plugin the requests are laid out as the kernel builds them;
 //! the conversation itself is never changed, only the requests.
 
-mod markers;
-
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{Message, ToolDefinition, Usage};
+use rig_harness::rig_core::completion::{
+    CachePoint, Message, Section, SystemPrompt, ToolDefinition, Usage, message::UserContent,
+};
 use rig_harness::rig_core::effect;
-use rig_harness::rig_ecs::prompt::system_prompt;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
-
-pub use markers::{PlaceMarkers, place_markers};
 
 /// After the cached input of `rig-telemetry`, before the cost.
 const RATE: StatusItem = StatusItem::at(Side::Right, 25, 2);
 /// The breaks `/cache why` keeps per agent.
 const KEPT_BREAKS: usize = 10;
 
-/// The Prepare system that lays requests out, after every phase, for
-/// others to order against.
+/// The Prepare system that lays requests out: after every request edit,
+/// before the request is fitted to its model.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CacheShapingSystems;
 
@@ -59,7 +57,8 @@ impl Plugin for CacheShapingPlugin {
                 AgentPass,
                 CacheShapingSystems
                     .in_set(Stage::Prepare)
-                    .after(PrepareSystems::Fit),
+                    .after(PrepareSystems::Edit)
+                    .before(PrepareSystems::Fit),
             )
             .add_systems(AgentPass, shape.in_set(CacheShapingSystems))
             .add_systems(PostUpdate, show.in_set(StatusSystems))
@@ -69,13 +68,8 @@ impl Plugin for CacheShapingPlugin {
                 "Prompt cache hit rate; `/cache why` lists the last cache breaks",
                 cache,
             );
-        let mut models = app.world_mut().get_resource_or_init::<Models>();
-        models
-            .0
-            .wrap_http(|inner| inner.with_middleware(PlaceMarkers));
     }
 }
-
 /// Input tokens and how many of them the cache read or wrote.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Hits {
@@ -134,8 +128,11 @@ pub struct CacheHistory {
     pub requests: u64,
     /// The last breaks, oldest first.
     pub breaks: VecDeque<CacheBreak>,
-    /// The prompt sections that change but could not be moved.
-    pub unmovable: Vec<String>,
+    /// The tags of the prompt sections that change, moved out of the
+    /// system prompt.
+    pub volatile: BTreeSet<String>,
+    /// The sections that change but could not be moved.
+    pub unmovable: BTreeSet<String>,
     /// The last turn call's hits.
     pub last: Option<Hits>,
     /// The prefix of the last request.
@@ -146,9 +143,9 @@ pub struct CacheHistory {
 #[derive(Debug, Clone)]
 struct Prefix {
     tools: Vec<ToolDefinition>,
-    /// The sections left in the system prompt, as `(tag, text)`.
-    sections: Vec<(String, String)>,
-    system: String,
+    /// The system prompt without what was moved; a whole one's text as
+    /// its role.
+    prompt: SystemPrompt,
     /// The conversation after the system prompt, without what was moved.
     messages: Vec<Message>,
 }
@@ -164,63 +161,61 @@ fn shape(
         let Ok(mut history) = agents.get_mut(agent) else {
             continue;
         };
-        call.request
+        let history = &mut *history;
+        let changed = sections.iter().filter(|(section, of)| {
+            of.is_none_or(|of| of.0 == agent) && section.last_changed() != section.added()
+        });
+        history
+            .volatile
+            .extend(changed.map(|(section, _)| section.tag.clone()));
+
+        let ModelRequest {
+            request, prompt, ..
+        } = &mut *call;
+        request
             .tools
             .sort_by(|a, b| a.name.as_str().cmp(b.name.as_str()));
-
-        // The agent's sections as the kernel orders them, and whether each
-        // changed since it was added.
-        let mut own: Vec<(&PromptSection, bool)> = sections
-            .iter()
-            .filter(|(section, of)| {
-                of.is_none_or(|of| of.0 == agent) && !section.text.trim().is_empty()
-            })
-            .map(|(section, _)| {
-                let volatile = section.last_changed() != section.added();
-                (section.into_inner(), volatile)
-            })
-            .collect();
-        own.sort_by(|a, b| {
-            a.0.order
-                .cmp(&b.0.order)
-                .then_with(|| a.0.tag.cmp(&b.0.tag))
-        });
-
-        let mut moved = Vec::new();
-        let mut kept = Vec::new();
-        for (section, volatile) in own {
-            let block = system_prompt("", "", [section]);
-            if volatile
-                && call
-                    .system_prompt_mut()
-                    .is_some_and(|prompt| take_block(prompt, &block))
-            {
-                moved.push(block);
-                continue;
+        let (moved, prompt) = match prompt {
+            Some(prompt) => {
+                let (moved, kept): (Vec<Section>, _) = std::mem::take(&mut prompt.sections)
+                    .into_iter()
+                    .partition(|section| history.volatile.contains(&section.tag));
+                prompt.sections = kept;
+                (moved, prompt.clone())
             }
-            if volatile && !history.unmovable.contains(&section.tag) {
-                history.unmovable.push(section.tag.clone());
-                let text = format!(
-                    "Prompt section `{}` changes but is not in the system prompt as written; \
-                     it stays where it is.",
-                    section.tag
-                );
-                notices.write(Notice::warn(agent, text));
+            None => {
+                for tag in &history.volatile {
+                    if history.unmovable.insert(tag.clone()) {
+                        let text = format!(
+                            "Prompt section `{tag}` changes but this request's system prompt \
+                             is not in parts; it stays where it is."
+                        );
+                        notices.write(Notice::warn(agent, text));
+                    }
+                }
+                let role = request.system_instructions().unwrap_or_default().to_owned();
+                (
+                    Vec::new(),
+                    SystemPrompt {
+                        role,
+                        sections: Vec::new(),
+                    },
+                )
             }
-            kept.push((section.tag.clone(), section.text.trim().to_owned()));
-        }
-
-        let request = &mut call.request;
+        };
         let lead = usize::from(matches!(
             request.chat_history.first(),
             Some(Message::System { .. })
         ));
         let now = Prefix {
             tools: request.tools.clone(),
-            sections: kept,
-            system: request.system_instructions().unwrap_or_default().to_owned(),
+            prompt,
             messages: request.chat_history.iter().skip(lead).cloned().collect(),
         };
+
+        request
+            .cache_points
+            .extend([CachePoint::Tools, CachePoint::System]);
         history.requests += 1;
         if let Some(previous) = &history.prefix {
             let common = previous
@@ -229,8 +224,27 @@ fn shape(
                 .zip(&now.messages)
                 .take_while(|(was, is)| was == is)
                 .count();
-            if common > 0 {
-                request.cache_breakpoint = Some(lead + common);
+            // Counted as cache points count: without system messages.
+            let turns = now
+                .messages
+                .iter()
+                .take(common)
+                .filter(|message| !matches!(message, Message::System { .. }))
+                .count();
+            if turns > 0 && common < now.messages.len() {
+                request.cache_points.push(CachePoint::Messages(turns));
+            }
+            if previous.tools == now.tools {
+                let differs = |section: &&Section| {
+                    previous
+                        .prompt
+                        .section(&section.tag)
+                        .is_some_and(|was| was.text != section.text)
+                };
+                let changing = now.prompt.sections.iter().filter(differs);
+                history
+                    .volatile
+                    .extend(changing.map(|section| section.tag.clone()));
             }
             if let Some(cause) = first_change(previous, &now) {
                 let request = history.requests;
@@ -241,25 +255,17 @@ fn shape(
             }
         }
         if !moved.is_empty() {
-            request.chat_history.push(Message::user(moved.join("\n\n")));
+            let text = SystemPrompt {
+                role: String::new(),
+                sections: moved,
+            }
+            .text();
+            match request.chat_history.last_mut() {
+                Some(Message::User { content }) => content.push(UserContent::text(text)),
+                _ => request.chat_history.push(Message::user(text)),
+            }
         }
         history.prefix = Some(now);
-    }
-}
-
-/// Takes `block` out of `prompt`, with the blank line before it; whether
-/// it was there.
-fn take_block(prompt: &mut String, block: &str) -> bool {
-    let separated = format!("\n\n{block}");
-    if let Some(at) = prompt.find(&separated) {
-        prompt.replace_range(at..at + separated.len(), "");
-        true
-    } else if prompt.starts_with(block) {
-        prompt.replace_range(..block.len(), "");
-        *prompt = prompt.trim_start().to_owned();
-        true
-    } else {
-        false
     }
 }
 
@@ -290,29 +296,37 @@ fn first_change(was: &Prefix, now: &Prefix) -> Option<String> {
         let name = changed.map_or("?", |(tool, _)| tool.name.as_str());
         return Some(format!("tool `{name}` changed"));
     }
-    if was.system != now.system {
-        for (at, (tag, text)) in now.sections.iter().enumerate() {
-            match was.sections.get(at) {
-                Some((old, old_text)) if old == tag && old_text != text => {
-                    return Some(format!("system prompt section `{tag}` changed"));
-                }
-                Some((old, _)) if old != tag => {
-                    let added = !was.sections.iter().any(|(was, _)| was == tag);
-                    let (tag, how) = if added {
-                        (tag, "added")
-                    } else {
-                        (old, "removed")
-                    };
-                    return Some(format!("system prompt section `{tag}` {how}"));
-                }
-                None => return Some(format!("system prompt section `{tag}` added")),
-                Some(_) => {}
-            }
-        }
-        if let Some((tag, _)) = was.sections.get(now.sections.len()) {
-            return Some(format!("system prompt section `{tag}` removed"));
-        }
+    if was.prompt.role != now.prompt.role {
         return Some("system prompt changed outside its sections".to_owned());
+    }
+    // Blank sections are not sent.
+    let sent = |prompt: &SystemPrompt| -> Vec<(String, String)> {
+        let sections = prompt.sections.iter();
+        let sent = sections.filter(|section| !section.text.trim().is_empty());
+        sent.map(|section| (section.tag.clone(), section.text.trim().to_owned()))
+            .collect()
+    };
+    let (was_sections, now_sections) = (sent(&was.prompt), sent(&now.prompt));
+    for (at, (tag, text)) in now_sections.iter().enumerate() {
+        match was_sections.get(at) {
+            Some((old, old_text)) if old == tag && old_text != text => {
+                return Some(format!("system prompt section `{tag}` changed"));
+            }
+            Some((old, _)) if old != tag => {
+                let added = !was_sections.iter().any(|(was, _)| was == tag);
+                let (tag, how) = if added {
+                    (tag, "added")
+                } else {
+                    (old, "removed")
+                };
+                return Some(format!("system prompt section `{tag}` {how}"));
+            }
+            None => return Some(format!("system prompt section `{tag}` added")),
+            Some(_) => {}
+        }
+    }
+    if let Some((tag, _)) = was_sections.get(now_sections.len()) {
+        return Some(format!("system prompt section `{tag}` removed"));
     }
     if let Some(at) = was
         .messages

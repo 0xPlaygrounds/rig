@@ -123,13 +123,19 @@ fn branch_before_two(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &
     true
 }
 
+/// The session `session` of `home` was forked from, as its store says.
+fn parent_of(home: &Home, session: &SessionId) -> Option<ForkedFrom> {
+    let store = SessionStores::default().open(&home.session(session)).ok()?;
+    ForkedFrom::of(&*store)
+}
+
 /// The session forked from another in `home`, once one is written.
 fn branched(home: &Home) -> Option<SessionId> {
     fs::read_dir(home.sessions())
         .into_iter()
         .flatten()
         .filter_map(|entry| entry.ok()?.file_name().to_str()?.parse::<SessionId>().ok())
-        .find(|session| ForkedFrom::of(&home.session(session)).is_some())
+        .find(|session| parent_of(home, session).is_some())
 }
 
 #[test]
@@ -155,7 +161,7 @@ fn a_branch_before_turn_two_keeps_turn_one_and_its_state() {
     let Some(branched) = branched else {
         return;
     };
-    let parent = ForkedFrom::of(&home.session(&branched));
+    let parent = parent_of(&home, &branched);
     assert_eq!(
         parent.map(|parent| (parent.session, parent.text)),
         Some((id.clone(), Some("two".to_owned())))

@@ -38,7 +38,10 @@ struct ReadArgs {
 fn read_file(called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCalls>) {
     let text = format!("contents of {}", called.args.path);
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(ToolOutput::text(text)));
+        call.decide(
+            Decider::plugin("fh-structured-compaction"),
+            ToolResult::success(ToolOutput::text(text)),
+        );
     }
 }
 
@@ -82,12 +85,12 @@ fn compact_writes_the_template_keeps_the_users_words_and_builds_on_the_last_summ
         ("test/agent", &model),
         (summarizer_name, &summarizer),
     ]))
+    .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin))
+    .add_plugins(StructuredCompactionPlugin)
     .insert_resource(StructuredCompaction {
         model: Some(summarizer_name.to_owned()),
         keep_user_messages: 3,
     })
-    .add_plugins((AgentPlugin, JournalPlugin, EffectLogPlugin))
-    .add_plugins(StructuredCompactionPlugin)
     .add_open_tool("read", "Read a file.", ToolOptions::default(), read_file)
     .init_resource::<Ended>()
     .add_observer(log_ended);
@@ -183,11 +186,11 @@ fn a_summary_without_its_headings_twice_falls_back_and_the_turn_goes_on() {
         reply("done"),
     ]);
     app.insert_resource(scripted_models([("test/summarizer", &summarizer)]))
+        .add_plugins((AgentPlugin, JournalPlugin, StructuredCompactionPlugin))
         .insert_resource(StructuredCompaction {
             model: Some("test/summarizer".to_owned()),
             keep_user_messages: 3,
         })
-        .add_plugins((AgentPlugin, JournalPlugin, StructuredCompactionPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);

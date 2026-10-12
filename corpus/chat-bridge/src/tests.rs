@@ -85,7 +85,10 @@ fn bridge_app(
             ToolOptions::default(),
             |called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCalls>| {
                 if let Ok(mut call) = calls.get_mut(called.call) {
-                    call.decide(ToolResult::success("fn main() {}".into()));
+                    call.decide(
+                        Decider::plugin("test"),
+                        ToolResult::success("fn main() {}".into()),
+                    );
                 }
             },
         );

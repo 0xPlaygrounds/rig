@@ -74,3 +74,18 @@ fn a_tool_calls_activity_names_its_holds_and_its_progress() {
         .and_then(|tool| tool.progress.as_deref());
     assert_eq!(progress, Some("12 of 40 files"));
 }
+
+#[test]
+fn an_inline_question_leaves_a_running_turn_its_status() {
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, ActivityPlugin));
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let ask = Ask::yes_no("Try the next step?").inline();
+    world.spawn((ask, ForAgent(agent)));
+    let asking = Some(Status::Asking("Try the next step?".to_owned()));
+    assert_eq!(status(&mut app, agent), asking);
+
+    app.world_mut().spawn(TurnOf(agent));
+    assert_eq!(status(&mut app, agent), Some(Status::Thinking));
+}

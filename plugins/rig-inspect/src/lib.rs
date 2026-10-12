@@ -56,7 +56,7 @@ const READ_ONLY: [&str; 9] = [
 ];
 
 /// The longest answer returned whole, in bytes; a longer one is cut and
-/// kept whole in the session's spill directory.
+/// kept whole in the session's [`Scratch`] spill directory.
 const CAP: usize = 16 * 1024;
 
 const DESCRIPTION: &str = "Read your own running app, a Bevy world, through the Bevy Remote \
@@ -109,30 +109,22 @@ impl Plugin for InspectPlugin {
         if let Some(mut types) = world.get_resource_mut::<SchemaTypesMetadata>() {
             types.map_type_data::<ReflectSaved>("Saved");
         }
-        let spill = world
-            .get_resource::<SessionPaths>()
-            .map(SessionPaths::spill);
-        app.insert_resource(Answers(spill))
-            .add_open_tool(
-                INSPECT_TOOL,
-                DESCRIPTION,
-                ToolOptions {
-                    rules: &[],
-                    footprint: Some(Touches::Reads(Scope::Anything)),
-                },
-                on_inspect,
-            )
-            .world_mut()
-            .spawn((
-                Name::new("prompt:inspect"),
-                PromptSection::new(PromptSection::ORDER_PROJECT - 99, "inspect", PROMPT),
-            ));
+        app.add_open_tool(
+            INSPECT_TOOL,
+            DESCRIPTION,
+            ToolOptions {
+                rules: &[],
+                footprint: Some(Touches::Reads(Scope::Anything)),
+            },
+            on_inspect,
+        )
+        .world_mut()
+        .spawn((
+            Name::new("prompt:inspect"),
+            PromptSection::new(PromptSection::ORDER_PROJECT - 99, "inspect", PROMPT),
+        ));
     }
 }
-
-/// Where answers that are too long are kept whole.
-#[derive(Resource)]
-struct Answers(Option<Spill>);
 
 /// The arguments of an `inspect` call.
 #[derive(Deserialize, JsonSchema)]
@@ -161,7 +153,7 @@ struct Remote<'w, 's> {
     read_only: Query<'w, 's, (), With<ReadOnlyMethod>>,
     sender: Option<Res<'w, BrpSender>>,
     registry: Res<'w, AppTypeRegistry>,
-    answers: Res<'w, Answers>,
+    scratch: Option<Res<'w, Scratch>>,
     wake: Res<'w, Wake>,
 }
 
@@ -184,7 +176,10 @@ fn on_inspect(
     let method = called.args.method.trim();
     let mut fail = |why: String| {
         if let Ok(mut call) = calls.get_mut(called.call) {
-            call.decide(ToolResult::failed(ToolExecutionError::refused(why)));
+            call.decide(
+                Decider::plugin("rig-inspect"),
+                ToolResult::failed(ToolExecutionError::refused(why)),
+            );
         }
     };
     if !allowed(method) {
@@ -221,7 +216,8 @@ fn on_inspect(
     let wake = &remote.wake;
     wake.wake();
     let listed = (method == RPC_DISCOVER_METHOD).then_some(names);
-    let (registry, spill) = (remote.registry.clone(), remote.answers.0.clone());
+    let spill = remote.scratch.as_ref().and_then(|scratch| scratch.spill());
+    let registry = remote.registry.clone();
     let pool = AsyncComputeTaskPool::get_or_init(TaskPool::default);
     let running = Running::answering(pool, wake, async move {
         let reply = replied.recv().await.ok();

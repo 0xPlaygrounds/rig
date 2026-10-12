@@ -132,8 +132,13 @@ fn chars(text: &str) -> u64 {
 /// it is all there when the call settles.
 fn tally_deltas(mut deltas: MessageReader<StreamDelta>, mut calls: Query<&mut Tally>) {
     for delta in deltas.read() {
+        let text = match &delta.event {
+            StreamEvent::Text { text, .. } | StreamEvent::Reasoning { text, .. } => text,
+            StreamEvent::Arguments { json, .. } => json,
+            _ => continue,
+        };
         if let Ok(mut tally) = calls.get_mut(delta.effect) {
-            tally.chars += chars(&delta.text);
+            tally.chars += chars(text);
         }
     }
 }

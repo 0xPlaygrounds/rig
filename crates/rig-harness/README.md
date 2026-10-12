@@ -16,21 +16,28 @@ changed plugins and restarts in the same session. The
   relaunched, and the few services every plugin shares. `HeadlessPlugins`
   is Bevy's `MinimalPlugins` with the log, a clean exit on signals and a
   loop that sleeps until there is work or a wall-clock `WakeAt`;
-  `RigHarnessPlugins` adds the session directory (with forking and
+  `RigHarnessPlugins` adds the session (its store, opened by the
+  replaceable `SessionStores`, the plain `Scratch` files, forking and
   deleting sessions), the kernel, the launcher protocol with how the agent
-  was started (`Invoked`: its arguments, the plugins' own options, and
-  whether stdin is a terminal) and how it exits (`Exit`: an effect a
-  plugin may hold until its work is done, never cancel), slash commands
+  was started (`Invoked`: its arguments, the plugins' own options and
+  command, and whether stdin is a terminal), the secrets plugins ask the
+  launcher for (`Secrets`), and how it exits (`Exit`: an effect a plugin
+  may hold until its work is done, never cancel), slash commands
   (`add_command`, run from what the user types), and the shared services:
   the user's settings for plugins (`settings.toml`), the `RIG_HOME`,
-  project root, an agent's own working directory (`WorkDir`),
-  child-process policy and tokio runtime, file watches, questions any
-  front answers (`Ask`), a running call's progress line (`ToolProgress`),
-  and following an effect to the successor that took it over
-  (`follow_successor`, `resend`). Plugins offer fronts
-  and one takes each run: `rig-tui` on an interactive terminal, `rig-print`
-  with `-p` or with stdin piped in, or a front whose option was given; an
-  interactive run no front takes says so and exits.
+  project root and the workspace it is in (`ProjectWorkspace`, this
+  machine's unless a plugin puts another in), an agent's own working
+  directory (`WorkDir`), child-process policy and tokio runtime, file
+  watches, questions any front answers (`Ask`), plugins' entries in an
+  agent's transcript (`TranscriptEntry`), a running call's progress and
+  live output (`ToolProgress`, `CallOutput`), and following an effect to
+  the successor that took it over (`follow_successor`, `resend`). Plugins
+  offer fronts and one takes each run: `rig-tui` on an interactive
+  terminal, `rig-print` with `-p` or with stdin piped in, or a front whose
+  option or command (`rig <name> …`) was given; an interactive run no
+  front takes says so and exits. The generated `main.rs` ends with
+  `rig_harness::run`, which also answers the launcher's question of what
+  the build's plugins add to the command line.
 - **Everything else is a plugin** in a crate of the repository's
   [`plugins/`](../../plugins) folder, listed in `plugins.toml` and built only
   on public API, exactly as a third-party plugin is: the compiler holds them
@@ -51,8 +58,8 @@ The default `plugins.toml`, in order:
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
 | `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each |
-| `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path` go with the message |
+| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`DeleteTool` and `MoveTool` are there too, not listed by default) |
+| `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit`, `/agents` |
 | `rig-subagents` | `SubagentsPlugin` | the `task`, `message` and `wait` tools |

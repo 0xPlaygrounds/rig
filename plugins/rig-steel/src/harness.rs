@@ -21,8 +21,9 @@ use rig_ecs::agent::{
     Agent, AgentId, EffectParent, SpawnedBy, SystemPrompt, ToolAccess, TurnOutcome,
 };
 use rig_ecs::calls::{PollCalls, Wake};
-use rig_ecs::inbox::{Deliver, DeliveryMode, Origin, RequestId};
+use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::model::{Effort, ModelChoice, Models};
+use rig_ecs::prelude::{Origin, RequestId};
 use rig_ecs::stage::{AgentLoop, Effect, ForAgent, Outcome, Settled, SupersededBy};
 use rig_ecs::tools::ToolRequest;
 

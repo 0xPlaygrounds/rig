@@ -198,7 +198,7 @@ fn refuse_too_deep(
                 "subagent depth limit {} reached; do it yourself",
                 config.max_depth
             );
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("subagent-policy"), Outcome::refused(why));
         }
     }
 }

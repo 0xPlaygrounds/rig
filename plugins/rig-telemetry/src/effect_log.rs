@@ -1,6 +1,7 @@
 //! The effect log: every effect the agents' work settles, model calls,
 //! tool calls, delivered messages and plugins' own effects, recorded with
-//! rig-core's effect types into the session directory's [`EFFECT_LOG`]:
+//! rig-core's effect types into the session's [`EFFECT_LOG`], a file of its
+//! store:
 //! each effect's [`Recorded`] record, in id order, as it settles. Its
 //! header describes the tools and the models the agents connect to, and
 //! names each key the records use. Ids continue after the highest one the
@@ -9,7 +10,7 @@
 //! [`EffectFilter`].
 
 use std::io;
-use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy_log::error;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
@@ -17,27 +18,28 @@ use rig_cassette::journal::EFFECT_LOG;
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
+use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
+use rig_harness::prelude::JournalStore;
 
-use rig_harness::prelude::SessionPaths;
-
-/// Records every effect into the session directory's effect log; without
-/// a session directory it records nothing.
+/// Records every effect into the session's effect log, in its store, once
+/// the harness opened it; without a store it records nothing.
 #[derive(Default)]
 pub struct EffectLogPlugin;
 
 impl Plugin for EffectLogPlugin {
-    fn build(&self, app: &mut App) {
-        let Some(paths) = app.world().get_resource::<SessionPaths>() else {
+    fn build(&self, _: &mut App) {}
+
+    fn finish(&self, app: &mut App) {
+        let Some(SessionStore(store)) = app.world().get_resource::<SessionStore>().cloned() else {
             return;
         };
-        let path = paths.path().join(EFFECT_LOG);
-        let mut writer = jsonl::Writer::new(&path);
+        let mut writer = jsonl::Writer::on(store.clone(), EFFECT_LOG);
         let last = writer.last_id().ok().flatten();
         let header = LogHeader::default();
         app.insert_resource(Effects::continue_after(last))
-            .insert_resource(EffectLog { path })
+            .insert_resource(EffectLog { store })
             .insert_resource(EffectLogFile { header, writer })
             .add_systems(Startup, describe_tools)
             .add_systems(Last, write_effects.in_set(WriteJournal))
@@ -49,23 +51,18 @@ impl Plugin for EffectLogPlugin {
 /// [`EffectLogPlugin`] records one. It holds what was written by the end
 /// of the last frame: the records of this frame's effects are written in
 /// its `Last`.
-#[derive(Resource, Clone, Debug)]
+#[derive(Resource, Clone)]
 pub struct EffectLog {
-    path: PathBuf,
+    store: Arc<dyn JournalStore>,
 }
 
 impl EffectLog {
-    /// The file.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
     /// Every record written so far, in the order written; none before the
     /// first. It reads the whole file: off the main thread, such as in a
     /// task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
-        match jsonl::read(&self.path) {
-            Ok(log) => Ok(log.records),
+        match self.store.read_file(EFFECT_LOG) {
+            Ok(bytes) => Ok(jsonl::read_from(bytes.as_slice())?.records),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
         }

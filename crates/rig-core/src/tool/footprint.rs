@@ -14,7 +14,7 @@
 //! assert!(!Touches::Reads(Scope::Anything).conflicts_with(&Touches::Independent));
 //! ```
 
-use std::path::PathBuf;
+use std::path::{Component, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
@@ -37,7 +37,9 @@ pub enum Touches {
 }
 
 /// What a footprint names: these paths (absolute; a directory covers what
-/// is under it), or anything at all.
+/// is under it), or anything at all. A guard compares paths as they are,
+/// so a host makes a footprint [`normalized`](Touches::normalized) before
+/// any guard sees it; the rig kernel does so for every tool call.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
@@ -61,6 +63,42 @@ impl Scope {
             (Self::Anything, _) | (_, Self::Anything) => true,
         }
     }
+
+    /// The scope with each path's `.` and `..` folded away, by the path's
+    /// text alone, so `/work/src/../../etc` names `/etc`, as a guard
+    /// comparing paths must see it. A relative path names no place a guard
+    /// can check, so a scope with one is [`Anything`](Self::Anything).
+    pub fn normalized(self) -> Scope {
+        match self {
+            Self::Paths(paths) => paths
+                .into_iter()
+                .map(normal)
+                .collect::<Option<Vec<_>>>()
+                .map_or(Self::Anything, Self::Paths),
+            Self::Anything => Self::Anything,
+        }
+    }
+}
+
+/// `path` with its `.` and `..` folded away, or `None` when it is relative.
+/// `..` at the root stays at the root.
+fn normal(path: PathBuf) -> Option<PathBuf> {
+    if !path.is_absolute() {
+        return None;
+    }
+    let mut normal = PathBuf::new();
+    for component in path.components() {
+        match component {
+            Component::ParentDir => {
+                normal.pop();
+            }
+            Component::CurDir => {}
+            Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
+                normal.push(component);
+            }
+        }
+    }
+    Some(normal)
 }
 
 impl Touches {
@@ -76,6 +114,15 @@ impl Touches {
     /// Whether it only reads: [`Reads`](Self::Reads), and nothing else.
     pub fn reads_only(&self) -> bool {
         matches!(self, Self::Reads(_))
+    }
+
+    /// The footprint with its scope [`normalized`](Scope::normalized).
+    pub fn normalized(self) -> Touches {
+        match self {
+            Self::Reads(scope) => Self::Reads(scope.normalized()),
+            Self::Writes(scope) => Self::Writes(scope.normalized()),
+            Self::Independent => Self::Independent,
+        }
     }
 
     /// From a tool's annotations: `Reads(Anything)` when it says it only

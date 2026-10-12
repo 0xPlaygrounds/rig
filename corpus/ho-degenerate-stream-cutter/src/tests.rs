@@ -51,13 +51,18 @@ fn read_file(
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("file text".into()));
+        call.decide(
+            Decider::plugin("test"),
+            ToolResult::success("file text".into()),
+        );
     }
 }
 
 /// The text of each assistant message, in order.
 fn answers(world: &World, agent: Entity) -> Vec<String> {
-    let messages = world.get::<Conversation>(agent).map(Conversation::messages);
+    let messages = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.messages());
     let assistant = messages
         .unwrap_or_default()
         .iter()

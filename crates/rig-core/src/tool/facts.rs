@@ -80,6 +80,10 @@ pub struct FileRead {
     pub path: String,
     /// The hash of the bytes the tool read.
     pub hash: ContentHash,
+    /// Which of its lines the tool showed, when it showed some of them
+    /// rather than matches in it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lines: Option<LinesShown>,
 }
 
 impl FileRead {
@@ -88,7 +92,41 @@ impl FileRead {
         Self {
             path: path.into(),
             hash,
+            lines: None,
         }
+    }
+
+    /// This read, having shown `lines` of the file.
+    #[must_use]
+    pub fn with_lines(mut self, lines: LinesShown) -> Self {
+        self.lines = Some(lines);
+        self
+    }
+}
+
+/// The lines of a file a tool showed: `count` lines from line `first`, of
+/// the `total` it has.
+///
+/// ```
+/// use rig_core::tool::LinesShown;
+///
+/// assert!(LinesShown { first: 1, count: 3, total: 3 }.whole());
+/// assert!(!LinesShown { first: 2, count: 2, total: 3 }.whole());
+/// ```
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct LinesShown {
+    /// The first line shown, counted from 1.
+    pub first: usize,
+    /// How many lines were shown.
+    pub count: usize,
+    /// How many lines the file has.
+    pub total: usize,
+}
+
+impl LinesShown {
+    /// Whether every line of the file was shown.
+    pub fn whole(&self) -> bool {
+        self.first <= 1 && self.count >= self.total
     }
 }
 

@@ -151,16 +151,16 @@ impl Events<'_, '_> {
     fn flush(&mut self) {
         let Subscribers { clients, deltas } = &mut *self.subscribers;
         for delta in deltas.read(&self.deltas) {
-            let kind = match delta.kind {
-                DeltaKind::Text => "text_delta",
-                DeltaKind::Reasoning => "reasoning_delta",
-                DeltaKind::Arguments => continue,
+            let (kind, text) = match &delta.event {
+                StreamEvent::Text { text, .. } => ("text_delta", text),
+                StreamEvent::Reasoning { text, .. } => ("reasoning_delta", text),
+                _ => continue,
             };
             let agent = delta.agent.and_then(|agent| self.ids.get(agent).ok());
             let data = json!({
                 "agent": agent.map(|id| &id.0),
                 "call": delta.effect.to_bits(),
-                "text": delta.text,
+                "text": text,
             });
             send(clients, kind, &data);
         }
@@ -307,7 +307,7 @@ fn choose(id: u64, choice: &Value, (asks, pickers): &Choosable, commands: &mut C
         (None, Value::Null) => None,
         _ => return Reply::error(400, "no such choice"),
     };
-    commands.trigger(Pick { entity, chosen });
+    commands.trigger(Pick::person(entity, chosen));
     Reply::new(202, json!({ "accepted": true }))
 }
 

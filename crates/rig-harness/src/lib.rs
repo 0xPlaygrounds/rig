@@ -59,17 +59,22 @@ pub mod plugin_guide {}
 pub mod ask;
 pub mod clock;
 pub mod commands;
+pub mod describe;
 pub mod headless;
 pub mod host;
 mod load;
 pub mod pick;
 pub mod primary;
 pub mod progress;
+pub mod secrets;
 pub mod services;
 pub mod settings;
 pub mod successor;
+pub mod transcript;
 pub mod watch;
+pub mod workspace;
 
+pub use describe::run;
 pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
 
 /// Where the plugin guide ([`plugin_guide`]) is on disk, for an agent
@@ -127,19 +132,23 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted,
-        SessionForked, SessionPaths, first_typed, typed,
+        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, Scratch,
+        SessionDeleted, SessionForked, SessionPaths, SessionStores, first_typed, typed,
     };
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
-    pub use crate::progress::ToolProgress;
+    pub use crate::progress::{CallOutput, ToolProgress};
+    pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
+    pub use crate::transcript::{EntryOf, TranscriptEntries, TranscriptEntry};
     pub use crate::watch::{FileChanges, FileWatch};
+    pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
     };
+    pub use rig_cassette::journal::JournalStore;
     pub use rig_core::transcript::final_answer;
     pub use rig_tools::{Spill, blocking};
 }
@@ -170,6 +179,8 @@ impl PluginGroup for RigHarnessPlugins {
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
+            .add(progress::ProgressPlugin)
+            .add(transcript::TranscriptPlugin)
     }
 }
 

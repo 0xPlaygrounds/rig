@@ -209,11 +209,14 @@ fn time_out(
     let holder = leases
         .blocker(call, files)
         .map(|blocker| who.agent(blocker));
-    decision.decide(Outcome::refused(format!(
-        "{} is busy (held by {}'s call)",
-        file.unwrap_or_default(),
-        holder.unwrap_or_else(|| "another agent".to_owned()),
-    )));
+    decision.decide(
+        Decider::plugin("ho-file-lease"),
+        Outcome::refused(format!(
+            "{} is busy (held by {}'s call)",
+            file.unwrap_or_default(),
+            holder.unwrap_or_else(|| "another agent".to_owned()),
+        )),
+    );
     commands.entity(call).remove::<LeaseCall>();
 }
 

@@ -275,6 +275,7 @@ fn run_check(
         spill: None,
         confine: false,
         cut: None,
+        ..Shell::default()
     };
     let args = ShellArgs::new(command.clone()).timeout_secs(TIMEOUT_SECS);
     let pool = IoTaskPool::get_or_init(TaskPool::default);
@@ -325,7 +326,10 @@ fn checked(
     verify.round += 1;
     for (note, mut decision) in &mut unsent {
         commands.entity(note).remove::<CheckNote>();
-        decision.decide(Outcome::custom("withdrawn"));
+        decision.decide(
+            Decider::plugin("ho-background-verify"),
+            Outcome::custom("withdrawn"),
+        );
     }
     let (note, to) = match ran.status.success() {
         true => {
@@ -464,7 +468,10 @@ fn wait_for_user(
     note: &CheckNote,
     decision: &mut Decision,
 ) -> bool {
-    if !decision.decide(Outcome::custom("waits for the user")) {
+    if !decision.decide(
+        Decider::plugin("ho-background-verify"),
+        Outcome::custom("waits for the user"),
+    ) {
         return false;
     }
     commands.entity(entity).remove::<CheckNote>();

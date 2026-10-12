@@ -1,18 +1,22 @@
+use std::path::PathBuf;
+
 use rig_core::message::UserContent;
 
 use super::{attached_file, attachments};
+use crate::workspace::Local;
 
-fn manifest() -> String {
-    format!("{}/Cargo.toml", env!("CARGO_MANIFEST_DIR"))
+/// The crate's own directory, where its manifest is.
+fn base() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 #[test]
 fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
-    let path = manifest();
-    let (attached, notes) = attachments(&format!("look at @{path}, please"));
-    assert!(notes.is_empty(), "{notes:?}");
-    assert_eq!(attached.len(), 1);
-    let text = match attached.first().map(|(_, content)| content) {
+    let path = base().join("Cargo.toml").to_string_lossy().into_owned();
+    let attached = attachments(&format!("look at @{path}, please"), &base(), &Local);
+    assert!(attached.notes.is_empty(), "{:?}", attached.notes);
+    assert_eq!(attached.files.len(), 1);
+    let text = match attached.files.first().map(|(_, content)| content) {
         Some(UserContent::Text(text)) => text.text.as_str(),
         _ => "",
     };
@@ -27,10 +31,22 @@ fn a_text_file_is_attached_as_numbered_lines_and_typed_text_is_not_one() {
     assert_eq!(attached_file("<file path=\"x\"> is how it starts"), None);
 }
 
+/// A reference resolves from the base, once however often it is named; a
+/// path with no file there is missing, and a word that only looks like a
+/// name stays text.
 #[test]
-fn a_file_named_twice_is_attached_once_and_a_missing_one_not_at_all() {
-    let path = manifest();
-    let (attached, notes) = attachments(&format!("@{path} @{path} @no/such/file.rs"));
-    assert_eq!(attached.len(), 1);
-    assert!(notes.is_empty(), "{notes:?}");
+fn references_resolve_from_the_base_and_missing_paths_are_reported() {
+    let attached = attachments(
+        "@Cargo.toml and @Cargo.toml, @missing/x.rs, @gone.rs. Ask @alice.smith or @bob",
+        &base(),
+        &Local,
+    );
+    let labels: Vec<&str> = attached
+        .files
+        .iter()
+        .map(|(label, _)| label.as_str())
+        .collect();
+    assert_eq!(labels, ["Cargo.toml"]);
+    assert_eq!(attached.missing, ["missing/x.rs", "gone.rs"]);
+    assert!(attached.notes.is_empty(), "{:?}", attached.notes);
 }

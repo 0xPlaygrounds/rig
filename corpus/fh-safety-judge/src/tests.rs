@@ -90,7 +90,10 @@ fn stub_shell(
 ) {
     ran.0.push(called.args.command.clone());
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("STUB-OUTPUT".into()));
+        call.decide(
+            Decider::plugin("fh-safety-judge"),
+            ToolResult::success("STUB-OUTPUT".into()),
+        );
     }
 }
 

@@ -225,7 +225,10 @@ fn hold_exit(
             // A second quit: the note goes without a summary.
             commands.spawn(hold);
             for mut call in &mut calls {
-                call.decide(Outcome::refused("skipped"));
+                call.decide(
+                    Decider::plugin("ho-exit-notes"),
+                    Outcome::refused("skipped"),
+                );
             }
             continue;
         }
@@ -252,7 +255,10 @@ fn hold_exit(
 /// Esc, or `Skip`, on the status: the note goes without a summary.
 fn skip(_: On<Picked>, mut calls: InFlight) {
     for mut call in &mut calls {
-        call.decide(Outcome::refused("skipped"));
+        call.decide(
+            Decider::plugin("ho-exit-notes"),
+            Outcome::refused("skipped"),
+        );
     }
 }
 
@@ -260,10 +266,10 @@ fn skip(_: On<Picked>, mut calls: InFlight) {
 fn time_out(due: On<Add<Due>>, holds: Query<(), With<NotesWait>>, mut calls: InFlight) {
     if holds.contains(due.entity) {
         for mut call in &mut calls {
-            call.decide(Outcome::refused(format!(
-                "no summary after {} s",
-                WAIT.as_secs()
-            )));
+            call.decide(
+                Decider::plugin("ho-exit-notes"),
+                Outcome::refused(format!("no summary after {} s", WAIT.as_secs())),
+            );
         }
     }
 }

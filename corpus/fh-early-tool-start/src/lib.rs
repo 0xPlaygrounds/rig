@@ -1,94 +1,81 @@
 //! FH-24: start read-only tool calls while the reply that asks for them is
 //! still streaming.
 //!
-//! Every turn's model call gets an outermost [`Adapter`] whose stream tap
-//! sees each tool call the moment the provider ends it and hands it to the
-//! app through a [`Running::stream`]. A call of a tool safe to start early
-//! ([`EarlyTools::tools`], or one a plugin marks [`StartsEarly`]) whose
-//! arguments parsed is spawned at once as an ordinary tool call of the
-//! turn, [`StartedEarly`], so every Prepare and Gate system sees it before
-//! it starts. Once it started, a hold keeps its outcome from settling until
-//! the reply ends. When the reply ends and the kernel spawns the reply's
-//! own calls, each early call takes the place of its twin (`Supersedes`),
-//! so its result goes into the conversation where the model asked for it.
-//! A failed, cut off or interrupted reply, or a reply that did not ask for
-//! the call after all, withdraws it before it settled.
+//! As a turn's reply streams, each tool call it ends ([`StreamDelta`]'s
+//! `End`) of a tool whose [`Footprint`] only reads, with arguments that
+//! parsed, starts at once as a call of its own, [`StartedEarly`]: every
+//! Prepare and Gate system sees it before it starts. One that a gate holds
+//! or decides, or whose own footprint writes, is withdrawn before it
+//! starts, with the early calls after it; so is every one after a call
+//! that may not start early, such as a `write`, which may change what a
+//! later read sees. Once started, its outcome is held from Review until
+//! the reply ends.
 //!
-//! The first call that is not started early, such as a `write`, ends early
-//! starts for that reply, so the early calls are always the first calls of
-//! the reply and nothing runs before a call the model wrote ahead of it. A
-//! call a gate holds or decides before it starts is withdrawn too, with
-//! its question, and runs after the reply as usual.
+//! When the reply ends, its own calls go through the gates as usual. In
+//! [`GateSystems::After`], each one the gates let through that an early
+//! call answers (same id, same request as Prepare left it) is decided with
+//! the early call's outcome, held until it has one, and the early call is
+//! withdrawn: the conversation gets the reply's calls, in the reply's
+//! order, as if they ran after it. A failed, cut off or interrupted
+//! reply, or one that did not ask for the call after all, withdraws it.
 //!
 //! `/early off` and `/early on` switch it, `/early stats` says the tool
 //! time saved per turn. The running turn's status line counts its early
-//! calls.
+//! calls, and a reply's call that waits for its early call says so.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::time::SystemTime;
 
-use bevy_tasks::{IoTaskPool, TaskPool};
-use futures::channel::mpsc;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
-use rig_harness::rig_core::streaming::{Item, Relayed, StreamEvent};
-use rig_harness::rig_ecs::effects::Handler;
-use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::Deserialize;
 
 #[cfg(test)]
 mod tests;
 
-/// The adapter's and the stream rewrite's name.
+/// Who decides a reply's call with its early call's outcome.
 const NAME: &str = "early-tools";
 
-/// What the hold on an early call that finished before its reply says.
-const HOLD: &str = "started early: waits for the reply to end";
+/// The hold on an early call's outcome until its reply ended.
+const WAITS_FOR_REPLY: &str = "started early: waits for the reply to end";
 
-/// The running turn's count of early calls: after the status.
-const EARLY: StatusItem = StatusItem::at(Side::Left, 56, 9);
+/// The hold on a reply's call until its early call answered.
+const RUNS_EARLY: &str = "⚡ started early";
 
-/// The `[early_tools]` settings: whether early starts are on and the
-/// tools whose calls may start early.
+/// The `[early_tools]` settings.
 #[derive(Resource, Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct EarlyTools {
-    /// Start safe calls while the reply streams; `/early off` clears it.
+    /// Start calls that only read while the reply streams; `/early off`
+    /// clears it.
     pub enabled: bool,
-    /// The names of the tools safe to start early, besides those marked
-    /// [`StartsEarly`].
-    pub tools: Vec<String>,
 }
 
 impl Default for EarlyTools {
     fn default() -> Self {
-        let tools = ["read", "search", "list", "ls", "glob", "grep"];
-        Self {
-            enabled: true,
-            tools: tools.map(str::to_owned).to_vec(),
-        }
+        Self { enabled: true }
     }
 }
-
-/// On a tool's entity: its calls only read, so they may start while the
-/// reply that asks for them still streams.
-#[derive(Component, Debug, Default)]
-pub struct StartsEarly;
 
 /// On a tool call this plugin started before its reply ended.
 #[derive(Component, Debug)]
 pub struct StartedEarly {
-    /// The call as the model streamed it, before any Prepare edit.
-    pub asked: ToolCall,
-    /// When the ended reply asked for it, which makes it the reply's call.
-    pub adopted: Option<SystemTime>,
+    /// The model call that streamed it.
+    pub model: Entity,
+    /// That call's id, the parent of its reply's calls.
+    pub reply: EffectId,
+    /// The reply's own call it answers, once the reply ended.
+    pub twin: Option<Entity>,
+    /// When the ended reply asked for it.
+    pub asked: Option<SystemTime>,
     /// When it was answered.
     pub finished: Option<SystemTime>,
-    /// The feed of the reply it came from.
-    feed: Entity,
-    /// Whether it started before the reply ended.
-    ran_early: bool,
 }
+
+/// On a model call whose reply starts no more calls early.
+#[derive(Component, Debug, Default)]
+#[component(storage = "SparseSet")]
+struct Closed;
 
 /// Tool time saved by early starts, per turn index, kept with the session.
 #[derive(Component, Reflect, Default, Debug)]
@@ -96,7 +83,7 @@ pub struct StartedEarly {
 pub struct EarlyStats {
     /// Milliseconds of tool time that ran before the reply ended, by turn.
     pub saved_ms: BTreeMap<u64, u64>,
-    /// How many calls started early.
+    /// How many calls ran early.
     pub calls: u64,
 }
 
@@ -104,7 +91,7 @@ pub struct EarlyStats {
 #[derive(Component, Debug, Default)]
 pub struct EarlyCount(pub u32);
 
-/// The plugin's Prepare systems, for others to order against.
+/// The plugin's stage systems, after every gate.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EarlySystems;
 
@@ -116,154 +103,249 @@ impl Plugin for EarlyToolStartPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<EarlyTools>("early_tools")
             .register_required_components::<Agent, EarlyStats>()
-            .configure_sets(AgentPass, EarlySystems.in_set(PrepareSystems::Edit))
-            .add_systems(AgentPass, (tap, sweep).in_set(EarlySystems))
-            .add_systems(PostUpdate, show_count.in_set(StatusSystems))
-            .add_observer(start_early)
-            .add_observer(hold_until_asked)
-            .add_observer(withdraw_held)
+            .configure_sets(AgentPass, EarlySystems.in_set(GateSystems::After))
+            .add_systems(
+                AgentPass,
+                (withdraw_unstarted, adopt, sweep)
+                    .chain()
+                    .in_set(EarlySystems),
+            )
+            .add_systems(PostUpdate, start_early)
+            .add_observer(hold_outcome)
             .add_observer(answered)
-            .add_observer(adopt)
-            .add_observer(count_saved)
             .add_command("early", "Early tool starts: /early on|off|stats", early);
+        #[cfg(feature = "tui")]
+        app.add_systems(
+            PostUpdate,
+            status::show_count.in_set(rig_tui::StatusSystems),
+        );
     }
 }
 
-/// A tool call the reply's stream ended.
-struct Completed(ToolCall);
-
-/// A turn's model call whose stream is tapped: its early calls, in order.
-#[derive(Component)]
-struct Feed {
-    /// The model call.
-    call: Entity,
-    /// Its effect id, the parent of the calls of its reply.
-    reply: EffectId,
-    agent: Entity,
-    turn: Entity,
-    /// Whether the next call may still start early.
-    open: bool,
-    started: Vec<Entity>,
-}
-
-/// The hold on an early call that keeps its outcome until the reply ended.
-#[derive(Component)]
-struct ReplyHold;
-
-/// Taps each new turn call's stream for the tool calls it ends.
-fn tap(
-    mut calls: Query<
-        (Entity, &Effect, &CallOf, &ForAgent, &mut Adapters),
-        (Added<Admitted>, ModelCalls, With<TurnCall>),
+/// Starts each tool call a still streaming turn reply ended, when its tool
+/// only reads and its arguments parsed; the first one that may not ends
+/// early starts for that reply. It reads what streamed after the loop,
+/// since a delta moves no stage, and asks for the frame the calls start in.
+fn start_early(
+    mut deltas: MessageReader<StreamDelta>,
+    replies: Query<
+        (&Effect, &CallOf, &ForAgent),
+        (
+            ModelCalls,
+            With<TurnCall>,
+            Without<Outcome>,
+            Without<Settled>,
+            Without<Closed>,
+        ),
     >,
+    tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<EarlyTools>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    if !settings.enabled {
-        return;
-    }
-    let pool = IoTaskPool::get_or_init(TaskPool::default);
-    for (call, effect, &CallOf(turn), &ForAgent(agent), mut adapters) in &mut calls {
-        let (sender, completed) = mpsc::unbounded();
-        let adapter = Adapter::new(NAME, move |mut connection: Connection| {
-            let sender = sender.clone();
-            let tap = move |_| {
-                let sender = sender.clone();
-                move |relayed: Relayed| {
-                    if let Relayed::Item(Item::Event(StreamEvent::End {
-                        content: AssistantContent::ToolCall(call),
-                        ..
-                    })) = &relayed
-                    {
-                        sender.unbounded_send(Completed(call.clone())).ok();
-                    }
-                    vec![relayed]
-                }
-            };
-            connection.handler = Handler(connection.handler.0.map_stream(NAME, tap));
-            connection
-        });
-        adapters.0.push(adapter.outermost());
-        let feed = Feed {
-            call,
-            reply: effect.id(),
-            agent,
-            turn,
-            open: true,
-            started: Vec::new(),
+    let mut closed = HashSet::new();
+    for delta in deltas.read() {
+        let StreamEvent::End {
+            content: AssistantContent::ToolCall(call),
+            ..
+        } = &delta.event
+        else {
+            continue;
         };
+        let Ok((effect, &CallOf(turn), &ForAgent(agent))) = replies.get(delta.effect) else {
+            continue;
+        };
+        if closed.contains(&delta.effect) {
+            continue;
+        }
+        let name = call.function.name.as_str();
+        let reads = tools
+            .iter()
+            .any(|(def, footprint)| def.0.name.as_str() == name && footprint.0.reads_only());
+        if !(settings.enabled && reads && call.function.invalid_arguments.is_none()) {
+            commands.entity(delta.effect).try_insert(Closed);
+            closed.insert(delta.effect);
+            continue;
+        }
         commands.spawn((
-            Name::new("early tool starts"),
-            feed,
-            Running::stream(pool, &wake, completed),
+            ToolRequest { call: call.clone() },
+            Effect::child_of(None),
+            CallOf(turn),
+            ForAgent(agent),
+            StartedEarly {
+                model: delta.effect,
+                reply: effect.id(),
+                twin: None,
+                asked: None,
+                finished: None,
+            },
         ));
+        wake.wake();
     }
 }
 
-/// Starts a completed call of a still streaming reply when it is safe;
-/// the first one that is not ends early starts for the reply.
-fn start_early(
-    done: On<Insert<Done<Completed>>>,
-    mut feeds: Query<(&mut Feed, &Done<Completed>)>,
-    streaming: Query<(), (ModelCalls, Without<Outcome>, Without<Settled>)>,
-    tools: Query<(&ToolDef, Has<StartsEarly>)>,
-    settings: Res<EarlyTools>,
+/// Withdraws each early call about to start that a gate held (it would
+/// wait on someone) or decided, or whose own footprint writes, with the
+/// early calls after it, and starts no more for its reply: the reply's
+/// call then goes through the gates after the reply.
+fn withdraw_unstarted(
+    unstarted: Query<
+        (
+            &StartedEarly,
+            &Effect,
+            &Decision,
+            Option<&Footprint>,
+            Has<Holds>,
+        ),
+        (With<Admitted>, Without<Started>, Without<Settled>),
+    >,
+    early: Query<(Entity, &StartedEarly, &Effect), Without<Settled>>,
     mut commands: Commands,
 ) {
-    let Ok((mut feed, Done(Completed(call)))) = feeds.get_mut(done.entity) else {
-        return;
-    };
-    if !feed.open {
-        return;
+    for (from, effect, decision, footprint, held) in &unstarted {
+        let reads = footprint.is_some_and(|footprint| footprint.0.reads_only());
+        if reads && !held && !decision.is_decided() {
+            continue;
+        }
+        commands.entity(from.model).try_insert(Closed);
+        for (call, of, later) in &early {
+            if of.model == from.model && later.id() >= effect.id() {
+                commands.entity(call).try_despawn();
+            }
+        }
     }
-    let name = call.function.name.as_str();
-    let marked = || {
-        tools
-            .iter()
-            .any(|(def, marked)| marked && def.0.name.as_str() == name)
-    };
-    let safe = settings.tools.iter().any(|tool| tool == name) || marked();
-    let valid = call.function.invalid_arguments.is_none();
-    if !(settings.enabled && safe && valid && streaming.contains(feed.call)) {
-        feed.open = false;
-        return;
-    }
-    let early = StartedEarly {
-        asked: call.clone(),
-        adopted: None,
-        finished: None,
-        feed: done.entity,
-        ran_early: false,
-    };
-    let spawned = commands
-        .spawn((
-            ToolRequest { call: call.clone() },
-            Effect::child_of(Some(feed.reply)),
-            CallOf(feed.turn),
-            ForAgent(feed.agent),
-            early,
-        ))
-        .id();
-    feed.started.push(spawned);
 }
 
-/// Holds the outcome of an early call that started before its reply ended,
-/// and counts it on the turn.
-fn hold_until_asked(
+/// Answers each call of an ended reply that the gates let through with its
+/// early call's outcome and what it published, holding it until there is
+/// one; a call the gates decided withdraws its early call.
+fn adopt(
+    mut asked: Query<
+        (Entity, &ToolRequest, &Effect, &mut Decision, Option<&Holds>),
+        (
+            ToolCalls,
+            With<Admitted>,
+            Without<StartedEarly>,
+            Without<Waiting>,
+            Without<Started>,
+            Without<Outcome>,
+            Without<Settled>,
+        ),
+    >,
+    mut early: Query<
+        (
+            Entity,
+            &mut StartedEarly,
+            &ToolRequest,
+            (Option<&Outcome>, Option<&Published>),
+            Option<&Started>,
+            &CallOf,
+            &ForAgent,
+        ),
+        Without<Settled>,
+    >,
+    ours: Query<(), With<WaitsForEarly>>,
+    turns: Query<&Turn>,
+    mut stats: Query<&mut EarlyStats>,
+    mut commands: Commands,
+) {
+    for (twin, request, effect, mut decision, holds) in &mut asked {
+        let found = early.iter_mut().find(|(_, early, early_request, ..)| {
+            Some(early.reply) == effect.parent
+                && early.twin.is_none_or(|matched| matched == twin)
+                && early_request.call == request.call
+        });
+        let Some((
+            call,
+            mut started_early,
+            _,
+            (outcome, published),
+            started,
+            &CallOf(turn),
+            &ForAgent(agent),
+        )) = found
+        else {
+            continue;
+        };
+        started_early.twin = Some(twin);
+        let asked_at = *started_early.asked.get_or_insert_with(SystemTime::now);
+        if decision.is_decided() {
+            commands.entity(call).try_despawn();
+            continue;
+        }
+        let mut held = holds.into_iter().flat_map(Holds::iter);
+        if held.any(|hold| !ours.contains(hold)) {
+            continue;
+        }
+        match outcome {
+            Some(outcome) => {
+                decision.decide(Decider::plugin(NAME), outcome.clone());
+                // With the facts it published, such as the files it read.
+                if let Some(published) = published {
+                    commands.entity(twin).try_insert(published.clone());
+                }
+                // The hold on the reply's call goes with it.
+                commands.entity(call).try_despawn();
+                let ran = started
+                    .zip(started_early.finished)
+                    .map(|(started, finished)| {
+                        finished.min(asked_at).duration_since(started.at).ok()
+                    });
+                if let (Some(Some(saved)), Ok(turn), Ok(mut stats)) =
+                    (ran, turns.get(turn), stats.get_mut(agent))
+                {
+                    let millis = u64::try_from(saved.as_millis()).unwrap_or(u64::MAX);
+                    *stats.saved_ms.entry(turn.index).or_default() += millis;
+                    stats.calls += 1;
+                }
+            }
+            None if holds.is_none() => {
+                commands.spawn((
+                    WaitsForEarly,
+                    Name::new(RUNS_EARLY),
+                    HoldOf(twin),
+                    ChildOf(call),
+                ));
+            }
+            None => {}
+        }
+    }
+}
+
+/// The hold on a reply's call until its early call answered, a child of
+/// the early call, so it goes with it.
+#[derive(Component)]
+struct WaitsForEarly;
+
+/// Withdraws the early calls of a reply that ended (or failed, was cut
+/// off or interrupted) whose reply did not ask for them, or whose reply's
+/// call was answered otherwise.
+fn sweep(
+    early: Query<(Entity, &StartedEarly), Without<Settled>>,
+    streaming: Query<(), (ModelCalls, Without<Settled>)>,
+    pending: Query<(), (Without<Outcome>, Without<Started>, Without<Settled>)>,
+    mut commands: Commands,
+) {
+    for (call, early) in &early {
+        let waits = early.twin.is_some_and(|twin| pending.contains(twin));
+        if !streaming.contains(early.model) && !waits {
+            commands.entity(call).try_despawn();
+        }
+    }
+}
+
+/// Holds the outcome of an early call as it starts, so Review sees it only
+/// as the reply's call's, and counts it on the turn.
+fn hold_outcome(
     started: On<Add<Started>>,
-    mut early: Query<(&mut StartedEarly, &CallOf)>,
+    early: Query<&CallOf, With<StartedEarly>>,
     mut counts: Query<&mut EarlyCount>,
     mut commands: Commands,
 ) {
-    let Ok((mut early, &CallOf(turn))) = early.get_mut(started.entity) else {
+    let Ok(&CallOf(turn)) = early.get(started.entity) else {
         return;
     };
-    if early.adopted.is_some() {
-        return;
-    }
-    early.ran_early = true;
-    commands.spawn((ReplyHold, Name::new(HOLD), HoldOf(started.entity)));
+    commands.spawn((Name::new(WAITS_FOR_REPLY), HoldOf(started.entity)));
     match counts.get_mut(turn) {
         Ok(mut count) => count.0 += 1,
         Err(_) => {
@@ -272,148 +354,30 @@ fn hold_until_asked(
     }
 }
 
-/// Withdraws an early call held before it started, such as for a
-/// question: it would wait on someone, so it runs after the reply.
-fn withdraw_held(
-    held: On<Add<Holds>>,
-    early: Query<&StartedEarly, Without<Started>>,
-    mut feeds: Query<&mut Feed>,
-    mut commands: Commands,
-) {
-    if let Ok(early) = early.get(held.entity)
-        && early.adopted.is_none()
-        && let Ok(mut feed) = feeds.get_mut(early.feed)
-    {
-        withdraw(&mut commands, &mut feed, held.entity);
-    }
-}
-
-/// Notes when an early call was answered; withdraws one answered before it
-/// started, such as refused by a gate, which then judges the reply's call.
-fn answered(
-    answered: On<Insert<Outcome>>,
-    mut early: Query<(&mut StartedEarly, Has<Started>)>,
-    mut feeds: Query<&mut Feed>,
-    mut commands: Commands,
-) {
-    let Ok((mut early, started)) = early.get_mut(answered.entity) else {
-        return;
-    };
-    if started {
+/// Notes when an early call was answered.
+fn answered(answered: On<Insert<Outcome>>, mut early: Query<&mut StartedEarly>) {
+    if let Ok(mut early) = early.get_mut(answered.entity) {
         early.finished.get_or_insert_with(SystemTime::now);
-    } else if early.adopted.is_none()
-        && let Ok(mut feed) = feeds.get_mut(early.feed)
-    {
-        withdraw(&mut commands, &mut feed, answered.entity);
     }
 }
 
-/// Withdraws `call` and the early calls after it, and starts no more for
-/// the reply: the early calls stay the first calls of the reply.
-fn withdraw(commands: &mut Commands, feed: &mut Feed, call: Entity) {
-    feed.open = false;
-    let Some(at) = feed.started.iter().position(|&early| early == call) else {
-        return;
-    };
-    for early in feed.started.drain(at..) {
-        commands.entity(early).try_despawn();
-    }
-}
+#[cfg(feature = "tui")]
+mod status {
+    use rig_harness::prelude::*;
+    use rig_tui::{Side, StatusItem, StatusItems, Tone};
 
-/// Makes the early call the reply's call once the ended reply asks for
-/// it, with the same arguments: it supersedes the kernel's twin, and its
-/// outcome may settle.
-fn adopt(
-    asked: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &Effect), Without<StartedEarly>>,
-    feeds: Query<&Feed>,
-    mut early: Query<(&mut StartedEarly, Option<&Holds>)>,
-    ours: Query<(), With<ReplyHold>>,
-    mut commands: Commands,
-) {
-    let Ok((request, effect)) = calls.get(asked.entity) else {
-        return;
-    };
-    let Some(feed) = effect
-        .parent
-        .and_then(|parent| feeds.iter().find(|feed| feed.reply == parent))
-    else {
-        return;
-    };
-    for &candidate in &feed.started {
-        let Ok((mut twin, holds)) = early.get_mut(candidate) else {
-            continue;
-        };
-        if twin.adopted.is_some() || twin.asked != request.call {
-            continue;
-        }
-        twin.adopted = Some(SystemTime::now());
-        commands
-            .entity(candidate)
-            .try_insert(Supersedes(asked.entity));
-        for hold in holds.into_iter().flat_map(Holds::iter) {
-            if ours.contains(hold) {
-                commands.entity(hold).try_despawn();
-            }
-        }
-        return;
-    }
-}
+    use super::EarlyCount;
 
-/// Once a tapped model call settled, its reply's calls were spawned and
-/// adopted: withdraws the early calls it did not ask for, all of them for
-/// a reply that failed, was cut off or interrupted, and ends the tap.
-fn sweep(
-    feeds: Query<(Entity, &Feed)>,
-    calls: Query<Has<Settled>, ModelCalls>,
-    early: Query<&StartedEarly>,
-    mut commands: Commands,
-) {
-    for (entity, feed) in &feeds {
-        if !calls.get(feed.call).unwrap_or(true) {
-            continue;
-        }
-        let unasked = |call: &Entity| early.get(*call).is_ok_and(|early| early.adopted.is_none());
-        if let Some(at) = feed.started.iter().position(unasked) {
-            for &call in feed.started.iter().skip(at) {
-                commands.entity(call).try_despawn();
-            }
-        }
-        commands.entity(entity).try_despawn();
-    }
-}
+    /// The running turn's count of early calls: after the status.
+    const EARLY: StatusItem = StatusItem::at(Side::Left, 56, 9);
 
-/// Adds the tool time an adopted early call ran before its reply ended to
-/// its agent's [`EarlyStats`].
-fn count_saved(
-    settled: On<Add<Settled>>,
-    early: Query<(&StartedEarly, &Started, &CallOf, &ForAgent)>,
-    turns: Query<&Turn>,
-    mut stats: Query<&mut EarlyStats>,
-) {
-    let Ok((early, started, &CallOf(turn), &ForAgent(agent))) = early.get(settled.entity) else {
-        return;
-    };
-    let (Some(ended), Some(finished), true) = (early.adopted, early.finished, early.ran_early)
-    else {
-        return;
-    };
-    let (Ok(turn), Ok(mut stats)) = (turns.get(turn), stats.get_mut(agent)) else {
-        return;
-    };
-    let saved = finished
-        .min(ended)
-        .duration_since(started.at)
-        .unwrap_or_default();
-    let millis = u64::try_from(saved.as_millis()).unwrap_or(u64::MAX);
-    *stats.saved_ms.entry(turn.index).or_default() += millis;
-    stats.calls += 1;
-}
-
-/// Shows the running turn's count of early calls.
-fn show_count(mut turns: Query<(&EarlyCount, &mut StatusItems), Changed<EarlyCount>>) {
-    for (EarlyCount(count), mut items) in &mut turns {
-        items.show(EARLY.says(format!("⚡{count} early"), Tone::Dim));
+    /// Shows the running turn's count of early calls.
+    pub(super) fn show_count(
+        mut turns: Query<(&EarlyCount, &mut StatusItems), Changed<EarlyCount>>,
+    ) {
+        for (EarlyCount(count), mut items) in &mut turns {
+            items.show(EARLY.says(format!("⚡{count} early"), Tone::Dim));
+        }
     }
 }
 

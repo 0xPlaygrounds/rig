@@ -301,7 +301,7 @@ impl Jobs<'_, '_> {
                 if let Ok(mut decision) = self.calls.get_mut(called.call) {
                     let error =
                         ToolExecutionError::other(format!("could not start the call: {failure}"));
-                    decision.decide(ToolResult::failed(error));
+                    decision.decide(Decider::plugin("fh-lsp-tools"), ToolResult::failed(error));
                 }
             }
         }
@@ -329,7 +329,7 @@ fn on_step(
         }
         Step::Finished(result) => {
             if let Ok(mut decision) = calls.get_mut(call) {
-                decision.decide(result.clone());
+                decision.decide(Decider::plugin("fh-lsp-tools"), result.clone());
             }
         }
     }

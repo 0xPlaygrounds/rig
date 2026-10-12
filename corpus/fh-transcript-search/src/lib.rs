@@ -3,21 +3,24 @@
 //! Ctrl+F opens a search bar under the transcript (a [`TuiPanel`] that
 //! takes the keys). What is typed searches as it is typed, ignoring case
 //! unless the query has a capital letter; `re:` makes the rest a regular
-//! expression. The search covers what the transcript shows, read as data
-//! from the agents: what the user sent, the replies, reasoning, each tool
-//! call's arguments and its whole output (also where the transcript cuts
-//! it short), the notices of this build, and the reply streaming in, which
-//! is searched again as it grows.
+//! expression. It searches the transcript as the view lays it out
+//! ([`TranscriptLayout`]), every item whole, at the width it draws at:
+//! each line as its renderer draws it, its wrapped rows rejoined, a
+//! collapsed output's cut lines included, the notices where they are drawn
+//! and the reply streaming in.
 //!
-//! Enter takes the match shown and goes on to the next, as `n` then does;
-//! Shift+Enter and `N` go back; both wrap around, and the bar counts
-//! (`3/17`). Tab searches every agent instead of the one shown, naming the
-//! agent of each match and showing that agent when a match of it is taken.
-//! The bar shows the block of the match around it, the matches lit. Esc
-//! closes it and, unless a match was taken, shows the agent shown before.
-//!
-//! The search only reads: it never changes a conversation or the session.
+//! The matches the view draws are lit in the transcript, each where the
+//! search found it ([`Highlight::spans`]), the one shown in a style of its
+//! own, across the rows a wrap split one into. Moving to one scrolls the
+//! view to its row ([`ScrollTo`] with [`ItemRow::Top`]), expanding the items it
+//! is in that are drawn cut. Enter takes it; `n` (or Enter again) and `N`
+//! (or Shift+Enter) move, wrapping around, and the bar counts (`3/17`).
+//! Tab searches every agent, naming the agent of the match and showing it. Esc
+//! closes the bar and unlights the matches; unless a match was taken, it
+//! also collapses what the search expanded and scrolls back to where the
+//! view was. The search only reads: it never changes a conversation.
 
+use std::collections::HashMap;
 use std::ops::Range;
 
 use regex::{Regex, RegexBuilder};
@@ -26,20 +29,12 @@ use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
-use rig_tui::ratatui::widgets::{Block as Border, Paragraph};
 use rig_tui::{
-    AppKeyBindingsExt, Focus, KeyBinding, KeyFocus, KeyPress, KeyPressed, PanelCanvas, Placement,
-    RequestRedraw, TerminalEvent, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, ItemRow, KeyBinding,
+    KeyFocus, KeyPress, KeyPressed, LineSpan, PanelCanvas, Placement, RequestRedraw, ScrollTo,
+    TerminalEvent, TranscriptItem, TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin,
+    TuiSystems,
 };
-
-/// Lines of the matched block the bar shows around the match.
-const CONTEXT_LINES: u16 = 7;
-
-/// Notices kept for searching, the oldest dropped first.
-const KEPT_NOTICES: usize = 500;
-
-/// Columns kept before a match far right on its line.
-const LEAD: usize = 12;
 
 /// Whose transcript is searched.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -51,75 +46,48 @@ pub enum Scope {
     All,
 }
 
-/// What part of a transcript a block is.
+/// A match.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Source {
-    /// What the user, an agent or a plugin sent.
-    Sent,
-    /// The model's answer.
-    Reply,
-    /// The model's reasoning.
-    Reasoning,
-    /// A call's arguments, with its tool.
-    Arguments(String),
-    /// A call's output, with its tool.
-    Output(String),
-    /// A notice shown in the transcript.
-    Notice,
-    /// The reply streaming in.
-    Streaming,
+pub struct Hit {
+    /// The agent whose transcript it is in.
+    pub agent: Entity,
+    /// The items it is drawn in, outermost first, such as a message and
+    /// a call in it; none for rows of no item, such as the reply
+    /// streaming in.
+    pub within: Vec<TranscriptItem>,
+    /// Which of its item's matches it is, top to bottom.
+    pub nth: usize,
+    /// The row it starts in, in its item (in the transcript with no item).
+    pub row: usize,
+    /// The line it is in, among its item's lines (the transcript's with
+    /// no item), as [`DrawnTranscript::lines`] gives them.
+    pub line: usize,
+    /// Its bytes in that line's text.
+    pub bytes: Range<usize>,
 }
 
-impl Source {
-    /// What it is called in the bar.
-    pub fn label(&self) -> String {
-        match self {
-            Self::Sent => "message".to_owned(),
-            Self::Reply => "reply".to_owned(),
-            Self::Reasoning => "reasoning".to_owned(),
-            Self::Arguments(tool) => format!("{tool} call"),
-            Self::Output(tool) => format!("{tool} output"),
-            Self::Notice => "notice".to_owned(),
-            Self::Streaming => "streaming".to_owned(),
-        }
+impl Hit {
+    /// The innermost item it is drawn in, such as a call rather than its
+    /// message.
+    pub fn item(&self) -> Option<&TranscriptItem> {
+        self.within.last()
+    }
+
+    /// What tells it apart across searches.
+    fn key(&self) -> MatchKey {
+        (self.agent, self.item().cloned(), self.nth)
+    }
+
+    /// Where the view lights it.
+    fn span(&self) -> LineSpan {
+        let (item, line, bytes) = (self.item().cloned(), self.line, self.bytes.clone());
+        LineSpan { item, line, bytes }
     }
 }
 
-/// One searchable text of a transcript: a content item of a message, a
-/// notice, or the reply streaming in.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Block {
-    /// The agent whose transcript it is in.
-    pub agent: Entity,
-    /// That agent's name.
-    pub agent_name: String,
-    /// The message it is in, by index; `None` for a notice or the reply
-    /// streaming in.
-    pub message: Option<usize>,
-    /// Its place in the message, or among the blocks after it.
-    pub item: usize,
-    /// The user's turn it belongs to, counted from 1; 0 before the first.
-    pub turn: usize,
-    /// What it is.
-    pub source: Source,
-    /// Its text.
-    pub text: String,
-}
-
-/// A match: in which block, on which of its lines, and where on it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Hit {
-    /// The block, by its index in the search's blocks.
-    pub block: usize,
-    /// The line of the block.
-    pub line: usize,
-    /// The bytes of the line matched.
-    pub range: Range<usize>,
-}
-
 /// The query as a regular expression, or `None` for an empty one: `re:`
-/// starts a regular expression, anything else is matched as typed; case
-/// is ignored unless the query has a capital letter.
+/// starts a regular expression, anything else is matched as typed; case is
+/// ignored unless the query has a capital letter.
 pub fn compile(query: &str) -> Result<Option<Regex>, regex::Error> {
     let (pattern, literal) = match query.strip_prefix("re:") {
         Some(pattern) => (pattern.to_owned(), false),
@@ -142,137 +110,43 @@ pub fn compile(query: &str) -> Result<Option<Regex>, regex::Error> {
         .map(Some)
 }
 
-/// Every non-empty match of `regex` in `blocks`, in order, line by line.
-pub fn find(regex: &Regex, blocks: &[Block]) -> Vec<Hit> {
+/// The non-empty matches of `regex` in `agent`'s transcript `laid_out`,
+/// line by line, top to bottom: each line as it was before the view
+/// wrapped it, so a match a wrap split is found, at the row it starts in.
+pub fn find(regex: &Regex, agent: Entity, laid_out: &DrawnTranscript) -> Vec<Hit> {
+    let lines: Vec<DrawnLine> = laid_out.lines().collect();
+    let mut counted: HashMap<Option<TranscriptItem>, usize> = HashMap::new();
     let mut hits = Vec::new();
-    for (index, block) in blocks.iter().enumerate() {
-        for (line, text) in block.text.lines().enumerate() {
-            hits.extend(
-                regex
-                    .find_iter(text)
-                    .filter(|found| !found.is_empty())
-                    .map(|found| Hit {
-                        block: index,
-                        line,
-                        range: found.range(),
-                    }),
-            );
+    for (index, line) in lines.iter().enumerate() {
+        for found in regex
+            .find_iter(&line.text)
+            .filter(|found| !found.is_empty())
+        {
+            let at = line.row_at(found.start());
+            let within: Vec<TranscriptItem> = laid_out
+                .items()
+                .iter()
+                .filter(|(_, rows)| rows.contains(&at))
+                .map(|(item, _)| item.clone())
+                .collect();
+            let item = within.last().cloned();
+            let rows = item.as_ref().and_then(|item| laid_out.rows_of(item));
+            let first = rows.map_or(0, |rows| rows.start);
+            let before = lines.partition_point(|line| line.rows.start < first);
+            let count = counted.entry(item).or_default();
+            hits.push(Hit {
+                agent,
+                within,
+                nth: *count,
+                row: at.saturating_sub(first),
+                line: index.saturating_sub(before),
+                bytes: found.range(),
+            });
+            *count += 1;
         }
     }
     hits
 }
-
-/// The blocks of `agent`'s transcript, in the order it shows them: each
-/// content item of its messages, with the notices written after each
-/// message, then the reply streaming in.
-pub fn blocks_of(
-    agent: Entity,
-    agent_name: &str,
-    conversation: &Conversation,
-    notices: &[SeenNotice],
-    streaming: Option<&Partial>,
-) -> Vec<Block> {
-    let mut blocks = Vec::new();
-    let mut turn = 0;
-    let block = |message, item, turn, source, text: &str| Block {
-        agent,
-        agent_name: agent_name.to_owned(),
-        message,
-        item,
-        turn,
-        source,
-        text: text.to_owned(),
-    };
-    let notices_at = |count: usize, turn: usize, blocks: &mut Vec<Block>| {
-        let written = notices
-            .iter()
-            .filter(|notice| notice.written_in == Some(agent) && notice.after == count);
-        for (item, notice) in written.enumerate() {
-            blocks.push(block(None, item, turn, Source::Notice, &notice.text));
-        }
-    };
-    let messages = conversation.messages();
-    notices_at(0, turn, &mut blocks);
-    for (index, entry) in messages.iter().enumerate() {
-        match entry {
-            message::Message::System { .. } => {}
-            message::Message::User { content } => {
-                if content
-                    .iter()
-                    .any(|item| matches!(item, UserContent::Text(_)))
-                {
-                    turn += 1;
-                }
-                for (item, part) in content.iter().enumerate() {
-                    let (source, text) = match part {
-                        UserContent::Text(text) => (Source::Sent, text.text.clone()),
-                        UserContent::ToolResult(result) => {
-                            let text: Vec<&str> = result
-                                .content
-                                .iter()
-                                .filter_map(|content| content.as_text())
-                                .collect();
-                            (Source::Output(result.name.to_string()), text.join("\n"))
-                        }
-                        _ => continue,
-                    };
-                    blocks.push(block(Some(index), item, turn, source, &text));
-                }
-            }
-            message::Message::Assistant(reply) => {
-                for (item, part) in reply.content.iter().enumerate() {
-                    let (source, text) = match part {
-                        AssistantContent::Text(text) => (Source::Reply, text.text.clone()),
-                        AssistantContent::Reasoning(reasoning) => {
-                            (Source::Reasoning, reasoning.text.clone())
-                        }
-                        AssistantContent::ToolCall(call) => {
-                            let arguments =
-                                serde_json::Value::Object(call.function.arguments.clone());
-                            let tool = call.function.name.to_string();
-                            (
-                                Source::Arguments(tool.clone()),
-                                format!("{tool} {arguments}"),
-                            )
-                        }
-                        _ => continue,
-                    };
-                    blocks.push(block(Some(index), item, turn, source, &text));
-                }
-            }
-        }
-        notices_at(index + 1, turn, &mut blocks);
-    }
-    if let Some(partial) = streaming {
-        let parts = [
-            (Source::Reasoning, &partial.reasoning),
-            (Source::Streaming, &partial.text),
-        ];
-        for (item, (source, text)) in parts.into_iter().enumerate() {
-            if !text.is_empty() {
-                blocks.push(block(None, usize::MAX - 1 + item, turn, source, text));
-            }
-        }
-    }
-    blocks
-}
-
-/// A notice as the search keeps it: in whose transcript it was written,
-/// and after how many of that agent's messages.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SeenNotice {
-    /// The agent whose transcript shows it: the one it is about, else
-    /// the one shown when it came.
-    pub written_in: Option<Entity>,
-    /// How many messages that agent had then.
-    pub after: usize,
-    /// Its text.
-    pub text: String,
-}
-
-/// The notices of this build, oldest first, for searching.
-#[derive(Resource, Default, Debug)]
-pub struct SeenNotices(pub Vec<SeenNotice>);
 
 /// The open search bar, on its [`TuiPanel`]'s entity.
 #[derive(Component, Debug)]
@@ -283,33 +157,43 @@ pub struct TranscriptSearch {
     pub scope: Scope,
     regex: Option<Regex>,
     error: bool,
-    blocks: Vec<Block>,
     hits: Vec<Hit>,
     current: Option<usize>,
     /// Typing edits the query; after Enter, `n` and `N` move.
     editing: bool,
     /// Whether a match was taken with Enter (or `n`, `N`).
     taken: bool,
-    /// The agent shown when it opened.
-    origin: Option<Entity>,
     /// The query or scope changed since the last search.
     dirty: bool,
+    /// The agent shown and where the view was scrolled when it opened.
+    back: Option<(Entity, Option<(TranscriptItem, usize)>)>,
+    /// The match the view was last scrolled to, and its row then.
+    went: Option<(MatchKey, usize)>,
+    /// The items the search expanded, which were drawn cut before.
+    expanded: Vec<TranscriptItem>,
+    /// The highlights it lit.
+    lit: Vec<Highlight>,
 }
 
+/// What tells a match apart across searches.
+type MatchKey = (Entity, Option<TranscriptItem>, usize);
+
 impl TranscriptSearch {
-    fn new(origin: Option<Entity>) -> Self {
+    fn new(back: Option<(Entity, Option<(TranscriptItem, usize)>)>) -> Self {
         Self {
             query: String::new(),
             scope: Scope::Shown,
             regex: None,
             error: false,
-            blocks: Vec::new(),
             hits: Vec::new(),
             current: None,
             editing: true,
             taken: false,
-            origin,
             dirty: true,
+            back,
+            went: None,
+            expanded: Vec::new(),
+            lit: Vec::new(),
         }
     }
 
@@ -318,10 +202,9 @@ impl TranscriptSearch {
         &self.hits
     }
 
-    /// The match shown, with its block.
-    pub fn current(&self) -> Option<(&Block, &Hit)> {
-        let hit = self.hits.get(self.current?)?;
-        Some((self.blocks.get(hit.block)?, hit))
+    /// The match shown.
+    pub fn current(&self) -> Option<&Hit> {
+        self.hits.get(self.current?)
     }
 
     /// The count the bar shows, such as `3/17`, or `bad regex`.
@@ -333,60 +216,32 @@ impl TranscriptSearch {
         format!("{at}/{}", self.hits.len())
     }
 
-    /// The lines of the match's block around it, matches lit and the one
-    /// shown most, `rows` at most and `width` columns wide.
-    pub fn context(&self, rows: usize, width: usize) -> Vec<Line<'static>> {
-        let (Some((block, hit)), Some(regex)) = (self.current(), &self.regex) else {
-            return Vec::new();
-        };
-        let lines: Vec<&str> = block.text.lines().collect();
-        let first = hit
-            .line
-            .saturating_sub(rows / 2)
-            .min(lines.len().saturating_sub(rows));
-        lines
-            .iter()
-            .enumerate()
-            .skip(first)
-            .take(rows)
-            .map(|(at, text)| {
-                let shown = (at == hit.line).then_some(&hit.range);
-                lit(regex, text, shown, width)
-            })
-            .collect()
+    /// What tells match `at` apart.
+    fn key(&self, at: Option<usize>) -> Option<MatchKey> {
+        self.hits.get(at?).map(Hit::key)
     }
 
-    /// Searches `blocks` again with the query, keeping the match shown
-    /// where it still is; else, while typing, the latest match.
-    fn search(&mut self, blocks: Vec<Block>) {
-        let was = self.current().map(|(block, hit)| key(block, hit));
+    /// Searches `transcripts` again with the query, keeping the match
+    /// shown where it still is; else, while typing, the latest match.
+    fn search(&mut self, transcripts: &Transcripts, view: &TranscriptView) {
+        let was = self.key(self.current);
         if self.dirty {
             self.dirty = false;
             let compiled = compile(&self.query);
             self.error = compiled.is_err();
             self.regex = compiled.ok().flatten();
         }
-        self.blocks = blocks;
         self.hits = self
             .regex
             .as_ref()
-            .map(|regex| find(regex, &self.blocks))
+            .map(|regex| transcripts.find(regex, self.scope, view))
             .unwrap_or_default();
-        let kept = was.and_then(|was| {
-            self.hits.iter().position(|hit| {
-                self.blocks
-                    .get(hit.block)
-                    .is_some_and(|block| key(block, hit) == was)
-            })
-        });
+        let kept = (0..self.hits.len()).find(|&at| was.is_some() && self.key(Some(at)) == was);
         let last = self.hits.len().checked_sub(1);
         self.current = match kept {
             Some(kept) if !self.editing => Some(kept),
             _ if self.editing => last,
-            _ => self
-                .current
-                .zip(last)
-                .map(|(current, last)| current.min(last)),
+            _ => self.current.zip(last).map(|(at, last)| at.min(last)),
         };
     }
 
@@ -399,9 +254,7 @@ impl TranscriptSearch {
         self.taken = true;
         self.editing = false;
         let count = isize::try_from(count).unwrap_or(isize::MAX);
-        let current = self
-            .current
-            .and_then(|current| isize::try_from(current).ok());
+        let current = self.current.and_then(|at| isize::try_from(at).ok());
         let next = match current {
             Some(current) => (current + by).rem_euclid(count),
             None if by >= 0 => 0,
@@ -411,49 +264,22 @@ impl TranscriptSearch {
     }
 }
 
-/// What tells a match apart across searches.
-fn key(block: &Block, hit: &Hit) -> (Entity, Option<usize>, usize, usize, usize) {
-    (
-        block.agent,
-        block.message,
-        block.item,
-        hit.line,
-        hit.range.start,
-    )
-}
-
-/// `text` with the matches of `regex` lit, the `shown` one most, starting
-/// a little before that one when it would be past `width`.
-fn lit(regex: &Regex, text: &str, shown: Option<&Range<usize>>, width: usize) -> Line<'static> {
-    let start = shown
-        .filter(|range| range.end > width)
-        .map_or(0, |range| range.start.saturating_sub(LEAD));
-    let start = (0..=start)
-        .rev()
-        .find(|at| text.is_char_boundary(*at))
-        .unwrap_or(0);
-    let mut spans = Vec::new();
-    if start > 0 {
-        spans.push(Span::from("…").dim());
-    }
-    let mut at = start;
-    for found in regex.find_iter(text).filter(|found| !found.is_empty()) {
-        if found.start() < start {
-            continue;
-        }
-        spans.push(Span::from(
-            text.get(at..found.start()).unwrap_or_default().to_owned(),
-        ));
-        let style = if shown == Some(&found.range()) {
-            Style::new().black().on_yellow().bold()
-        } else {
-            Style::new().reversed()
-        };
-        spans.push(Span::styled(found.as_str().to_owned(), style));
-        at = found.end();
-    }
-    spans.push(Span::from(text.get(at..).unwrap_or_default().to_owned()));
-    Line::from(spans)
+/// `drawn`, the matches as the view draws them, lit where it draws them:
+/// the one `shown` first, in a style of its own, then the rest.
+fn highlights(drawn: &[Hit], shown: Option<&MatchKey>) -> Vec<Highlight> {
+    let (current, rest): (Vec<&Hit>, Vec<&Hit>) =
+        drawn.iter().partition(|hit| Some(&hit.key()) == shown);
+    let current = (current, Style::new().black().on_cyan());
+    let rest = (rest, Style::new().black().on_yellow());
+    [current, rest]
+        .into_iter()
+        .filter(|(hits, _)| !hits.is_empty())
+        .map(|(hits, style)| Highlight {
+            style,
+            spans: hits.into_iter().map(Hit::span).collect(),
+            ..Highlight::default()
+        })
+        .collect()
 }
 
 /// Transcript search in the terminal view, on Ctrl+F.
@@ -470,53 +296,27 @@ impl Plugin for TranscriptSearchPlugin {
             KeyBinding::new(KeyPress::ctrl('f'), "Search the transcript"),
             open,
         );
-        app.init_resource::<SeenNotices>()
-            .add_systems(Update, (keep_notices, type_in_bar).chain())
+        app.add_systems(Update, type_in_bar)
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
-}
-
-/// Keeps each notice, placed where its agent's transcript ended.
-fn keep_notices(
-    mut notices: MessageReader<Notice>,
-    agents: Query<&Conversation>,
-    shown: Option<Res<Shown>>,
-    mut seen: ResMut<SeenNotices>,
-) {
-    if notices.is_empty() {
-        return;
-    }
-    for notice in notices.read() {
-        let written_in = notice.agent.or(shown.as_ref().and_then(|shown| shown.0));
-        let after = written_in
-            .and_then(|agent| agents.get(agent).ok())
-            .map_or(0, |conversation| conversation.messages().len());
-        seen.0.push(SeenNotice {
-            written_in,
-            after,
-            text: notice.text.clone(),
-        });
-    }
-    let excess = seen.0.len().saturating_sub(KEPT_NOTICES);
-    seen.0.drain(..excess);
 }
 
 /// Ctrl+F: opens the bar with the keys, unless it is open.
 fn open(
     pressed: On<KeyPressed>,
     bars: Query<(), With<TranscriptSearch>>,
-    shown: Option<Res<Shown>>,
+    shown: Res<Shown>,
+    view: Res<TranscriptView>,
     mut focus: ResMut<KeyFocus>,
     mut commands: Commands,
 ) {
     if pressed.released || !bars.is_empty() {
         return;
     }
-    let origin = shown.and_then(|shown| shown.0);
-    let height = Constraint::Length(CONTEXT_LINES + 3);
+    let back = shown.0.map(|agent| (agent, view.top().cloned()));
     let bar = (
-        TranscriptSearch::new(origin),
-        TuiPanel::new(Placement::Bottom(height)),
+        TranscriptSearch::new(back),
+        TuiPanel::new(Placement::Bottom(Constraint::Length(1))),
     );
     focus.0 = Some(commands.spawn(bar).id());
 }
@@ -524,68 +324,60 @@ fn open(
 /// What the bar searches, read live.
 #[derive(bevy_ecs::system::SystemParam)]
 struct Transcripts<'w, 's> {
-    agents: Query<
+    layout: TranscriptLayout<'w, 's>,
+    agents: Query<'w, 's, Entity, With<Agent>>,
+    changed: Query<
         'w,
         's,
-        (
-            Entity,
-            &'static Name,
-            &'static Conversation,
-            Option<&'static ActiveTurn>,
-        ),
-        With<Agent>,
+        (),
+        Or<(
+            Changed<Conversation>,
+            Changed<Partial>,
+            Changed<TranscriptEntry>,
+            Changed<CallOutput>,
+            Changed<ToolProgress>,
+        )>,
     >,
-    calls: Query<'w, 's, &'static Calls>,
-    partials: Query<'w, 's, &'static Partial>,
-    changed: Query<'w, 's, (), Or<(Changed<Conversation>, Changed<Partial>)>>,
-    notices: Res<'w, SeenNotices>,
-    shown: Option<Res<'w, Shown>>,
+    shown: Res<'w, Shown>,
 }
 
 impl Transcripts<'_, '_> {
-    /// Whether anything searched changed since the last frame.
+    /// Whether a conversation, a reply streaming in, an entry, a running
+    /// call's output or the agent shown changed since the last frame; the
+    /// notices and the width are the view's.
     fn changed(&self) -> bool {
-        !self.changed.is_empty()
-            || self.notices.is_changed()
-            || self.shown.as_ref().is_some_and(|shown| shown.is_changed())
+        !self.changed.is_empty() || self.shown.is_changed()
     }
 
-    /// The blocks of the agent shown, or of every agent.
-    fn blocks(&self, scope: Scope) -> Vec<Block> {
-        let shown = self.shown.as_ref().and_then(|shown| shown.0);
-        let mut agents: Vec<_> = self
+    /// The matches of `regex` in the transcript of the agent shown, or of
+    /// every agent, laid out as the view draws it with every item whole,
+    /// at the width it draws at.
+    fn find(&self, regex: &Regex, scope: Scope, view: &TranscriptView) -> Vec<Hit> {
+        let mut agents: Vec<Entity> = self
             .agents
             .iter()
-            .filter(|(agent, ..)| scope == Scope::All || Some(*agent) == shown)
+            .filter(|agent| scope == Scope::All || Some(*agent) == self.shown.0)
             .collect();
-        agents.sort_by_key(|(agent, ..)| *agent);
-        agents
-            .into_iter()
-            .flat_map(|(agent, name, conversation, turn)| {
-                let streaming = turn
-                    .and_then(|turn| self.calls.get(turn.turn()).ok())
-                    .and_then(|calls| calls.iter().find_map(|call| self.partials.get(call).ok()));
-                blocks_of(
-                    agent,
-                    name.as_str(),
-                    conversation,
-                    &self.notices.0,
-                    streaming,
-                )
-            })
-            .collect()
+        agents.sort();
+        let width = view.width().unwrap_or(u16::MAX);
+        let laid_out = agents.into_iter().filter_map(|agent| {
+            let laid_out = self.layout.lay_out(view, agent, width, Expanded::All)?;
+            Some(find(regex, agent, &laid_out))
+        });
+        laid_out.flatten().collect()
     }
 }
 
 /// Types into the open bar, in order, then searches again when the query
-/// or what it searches changed. It closes when it loses the keys, as on
-/// an Esc, showing the agent shown before unless a match was taken. The
-/// keys of the frame it opened in were the input's.
+/// or what it searches changed, and shows the match in the transcript. It
+/// closes when it loses the keys, as on an Esc. The keys of the frame it
+/// opened in were the input's.
 fn type_in_bar(
     mut events: MessageReader<TerminalEvent>,
     mut bars: Query<(Entity, &mut TranscriptSearch, Ref<TuiPanel>)>,
     focus: Res<KeyFocus>,
     transcripts: Transcripts,
+    mut view: ResMut<TranscriptView>,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
@@ -593,24 +385,14 @@ fn type_in_bar(
         events.clear();
         return;
     };
-    let shown = transcripts.shown.as_ref().and_then(|shown| shown.0);
-    let close = |search: &TranscriptSearch, commands: &mut Commands| {
-        commands.entity(bar).despawn();
-        if let Some(origin) = search
-            .origin
-            .filter(|origin| !search.taken && shown != Some(*origin))
-        {
-            commands.trigger(Focus { entity: origin });
-        }
-    };
-    if focus.0 != Some(bar) && !opened.is_added() {
-        close(&search, &mut commands);
-        return;
-    }
     if opened.is_added() {
         events.clear();
     }
-    let (moved, was_taken) = (search.current, search.taken);
+    if focus.0 != Some(bar) && !opened.is_added() {
+        close(bar, &mut search, &mut view, &mut commands);
+        return;
+    }
+    let (mut closing, mut typed) = (false, false);
     for TerminalEvent(event) in events.read() {
         match event {
             Event::Key(key) if key.kind != KeyEventKind::Release => {
@@ -619,14 +401,11 @@ fn type_in_bar(
                     .modifiers
                     .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
                 match key.code {
-                    KeyCode::Esc => {
-                        close(&search, &mut commands);
-                        return;
-                    }
+                    KeyCode::Esc => closing = true,
                     KeyCode::Enter if shift => search.step(-1),
                     KeyCode::Enter if search.editing => {
                         search.editing = false;
-                        search.taken = true;
+                        search.taken = search.current.is_some();
                     }
                     KeyCode::Enter => search.step(1),
                     KeyCode::Tab => {
@@ -653,67 +432,156 @@ fn type_in_bar(
             }
             Event::Paste(text) => {
                 search.editing = true;
-                search
-                    .query
-                    .push_str(text.lines().next().unwrap_or_default());
+                let line = text.lines().next().unwrap_or_default();
+                search.query.push_str(line);
                 search.dirty = true;
             }
             _ => continue,
         }
-        if search.dirty {
-            let blocks = transcripts.blocks(search.scope);
-            search.search(blocks);
+        if closing {
+            break;
         }
-        redraw.write(RequestRedraw);
+        typed = true;
+        if search.dirty {
+            search.search(&transcripts, &view);
+        }
     }
-    if !search.dirty && transcripts.changed() {
-        let blocks = transcripts.blocks(search.scope);
-        search.search(blocks);
-        redraw.write(RequestRedraw);
+    if closing {
+        close(bar, &mut search, &mut view, &mut commands);
+        return;
     }
-    // A match taken in another agent's transcript shows that agent.
-    let jumped = search.taken && (search.current != moved || !was_taken);
-    if let Some((block, _)) = search.current().filter(|_| jumped)
-        && Some(block.agent) != shown
-    {
-        commands.trigger(Focus {
-            entity: block.agent,
-        });
+    // The view counts as changed only when it changes, such as on a new
+    // width, which the layout wraps at, or a notice; not on a key.
+    if !search.dirty && (transcripts.changed() || view.is_changed()) {
+        search.search(&transcripts, &view);
+        typed = true;
+    }
+    if typed {
+        show(&mut search, &mut view, &transcripts, &mut commands);
+        redraw.write(RequestRedraw);
     }
 }
 
-/// Draws the bar: the match's block around it, under a line naming where
-/// it is, and the query with the count on the border.
-fn draw(mut bars: Query<(&TranscriptSearch, &mut PanelCanvas)>) {
-    for (search, mut canvas) in &mut bars {
-        let area = canvas.area();
-        let width = usize::from(area.width.saturating_sub(2));
-        let mut lines = Vec::new();
-        if let Some((block, _)) = search.current() {
-            let place = format!(
-                "{} · turn {} · {}",
-                block.agent_name,
-                block.turn,
-                block.source.label()
-            );
-            lines.push(Line::from(place).dim().bold());
-            lines.extend(search.context(usize::from(CONTEXT_LINES), width));
+/// Lights the matches where the view draws them, ahead of other plugins'
+/// highlights, and, when the match shown moved, scrolls to its row,
+/// expanding the items it is in that are drawn cut, in place of those the
+/// search expanded before. The row is the match's as the view draws its
+/// item with those expanded, not whole: a call cut before the match in
+/// the same message still draws cut.
+fn show(
+    search: &mut TranscriptSearch,
+    view: &mut ResMut<TranscriptView>,
+    transcripts: &Transcripts,
+    commands: &mut Commands,
+) {
+    let shown = search.key(search.current);
+    let went = shown.clone().zip(search.current().map(|hit| hit.row));
+    let jump = (went != search.went).then(|| search.current().cloned());
+    search.went = went;
+    let jump = jump.flatten();
+    let width = view.width().unwrap_or(u16::MAX);
+    let as_shown = |view: &TranscriptView, agent| {
+        let layout = &transcripts.layout;
+        layout.lay_out(view, agent, width, Expanded::AsShown)
+    };
+    if let Some(hit) = &jump {
+        for item in search
+            .expanded
+            .extract_if(.., |item| !hit.within.contains(item))
+        {
+            view.expanded.remove(&item);
         }
-        let scope = match search.scope {
-            Scope::Shown => "this agent",
-            Scope::All => "all agents",
-        };
+        let cut: Vec<TranscriptItem> = as_shown(view, hit.agent)
+            .map(|drawn| {
+                hit.within
+                    .iter()
+                    .filter(|item| drawn.is_cut(item))
+                    .cloned()
+                    .collect()
+            })
+            .unwrap_or_default();
+        for item in cut {
+            if view.expanded.insert(item.clone()) {
+                search.expanded.push(item);
+            }
+        }
+    }
+    // The agent the view draws once it jumps.
+    let agent = jump.as_ref().map(|hit| hit.agent).or(transcripts.shown.0);
+    let laid_out = agent.and_then(|agent| as_shown(view, agent));
+    let drawn = search.regex.as_ref().zip(agent).zip(laid_out.as_ref());
+    let drawn = drawn.map(|((regex, agent), laid_out)| find(regex, agent, laid_out));
+    let drawn = drawn.unwrap_or_default();
+    if let Some(hit) = jump {
+        let found = drawn.iter().find(|found| found.key() == hit.key());
+        let row = ItemRow::Top(found.map_or(hit.row, |found| found.row));
+        let (agent, item) = (hit.agent, hit.item().cloned());
+        commands.trigger(ScrollTo { agent, item, row });
+    }
+    // Drawn cut, the match shown counts among other matches of its item.
+    let whole = |hit: &Hit| {
+        laid_out
+            .as_ref()
+            .is_some_and(|laid_out| !hit.within.iter().any(|item| laid_out.is_cut(item)))
+    };
+    let shown = shown.filter(|_| search.current().is_some_and(whole));
+    let lit = highlights(&drawn, shown.as_ref());
+    if lit != search.lit {
+        view.highlights
+            .retain(|highlight| !search.lit.contains(highlight));
+        view.highlights.splice(0..0, lit.iter().cloned());
+        search.lit = lit;
+    }
+}
+
+/// Closes the bar and unlights the matches; with no match taken, also
+/// collapses what it expanded and scrolls back to where the view was.
+fn close(
+    bar: Entity,
+    search: &mut TranscriptSearch,
+    view: &mut ResMut<TranscriptView>,
+    commands: &mut Commands,
+) {
+    commands.entity(bar).despawn();
+    if !search.lit.is_empty() {
+        view.highlights
+            .retain(|highlight| !search.lit.contains(highlight));
+    }
+    if search.taken {
+        return;
+    }
+    for item in search.expanded.drain(..) {
+        view.expanded.remove(&item);
+    }
+    if let Some((agent, top)) = search.back.take() {
+        let (item, row) = top.map_or((None, 0), |(item, row)| (Some(item), row));
+        let row = ItemRow::Top(row);
+        commands.trigger(ScrollTo { agent, item, row });
+    }
+}
+
+/// Draws the bar: the query, the count, and where the match is.
+fn draw(mut bars: Query<(&TranscriptSearch, &mut PanelCanvas)>, names: Query<&Name>) {
+    for (search, mut canvas) in &mut bars {
+        let mut spans = vec![
+            Span::from(format!("/{}", search.query)).bold(),
+            Span::from(format!("  {}", search.counter())).yellow(),
+        ];
+        if search.scope == Scope::All {
+            let agent = search.current().and_then(|hit| names.get(hit.agent).ok());
+            let agent = agent.map(Name::as_str);
+            spans.push(Span::from(format!(
+                "  all agents · {}",
+                agent.unwrap_or("-")
+            )));
+        }
         let keys = if search.editing {
-            "Enter take · Tab scope · Esc close"
+            "  Enter take · Tab scope · Esc close"
         } else {
-            "n next · N previous · Esc close"
+            "  n next · N previous · Esc close"
         };
-        let title = Line::from(vec![
-            Span::from(format!(" /{} ", search.query)).bold(),
-            Span::from(format!(" {} ", search.counter())).yellow(),
-            Span::from(format!(" {scope} · {keys} ")).dim(),
-        ]);
-        canvas.render(Paragraph::new(lines).block(Border::bordered().title(title)));
+        spans.push(Span::from(keys).dim());
+        canvas.render(Line::from(spans));
     }
 }
 

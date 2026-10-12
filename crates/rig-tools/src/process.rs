@@ -7,10 +7,10 @@
 use std::ffi::{OsStr, OsString};
 use std::io::{self, Read, Write as _};
 use std::path::PathBuf;
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, Command, ExitStatus, Output, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -205,6 +205,13 @@ impl OutputLine {
 
 type Tag = fn(String) -> OutputLine;
 
+/// How often a waiting [`Process`] is checked.
+const POLL: Duration = Duration::from_millis(10);
+
+/// How long [`Process::output`] reads on after the process exited, for
+/// output something it left running still writes.
+const PIPE_GRACE: Duration = Duration::from_millis(100);
+
 /// The longest piece of a line [`forward`] hands over at once.
 const MAX_PIECE: usize = 64 * 1024;
 
@@ -301,20 +308,90 @@ impl Process {
 
     /// Waits at most `timeout` for it to end, and says how it ended if it
     /// did. Its output keeps arriving at [`lines`](Self::lines) meanwhile.
+    /// A timeout too long for the clock, such as `Duration::MAX`, waits
+    /// until it ends.
     pub fn wait_for(&mut self, timeout: Duration) -> io::Result<Option<ExitStatus>> {
-        /// How often the process is checked.
-        const POLL: Duration = Duration::from_millis(10);
-        let deadline = Instant::now() + timeout;
+        let deadline = Instant::now().checked_add(timeout);
         loop {
             if let Some(status) = self.try_wait()? {
                 return Ok(Some(status));
             }
-            let left = deadline.saturating_duration_since(Instant::now());
+            let left = deadline.map_or(POLL, |deadline| {
+                deadline.saturating_duration_since(Instant::now())
+            });
             if left.is_zero() {
                 return Ok(None);
             }
             thread::sleep(left.min(POLL));
         }
+    }
+
+    /// Runs it to its end, at most `timeout` (`None` waits as long as it
+    /// takes), and returns what it printed on stdout and on stderr (with
+    /// [`Spawn::merge_stderr`], all of it on stdout) and how it ended. A
+    /// blocking call: run it on a thread of its own, such as inside
+    /// [`blocking`](crate::blocking).
+    ///
+    /// What it left running that still holds its output gets a moment to
+    /// finish, then the rest of its group is killed. Past `timeout` the
+    /// group is killed and the error is [`io::ErrorKind::TimedOut`].
+    ///
+    /// ```
+    /// # #[cfg(unix)] {
+    /// use rig_tools::process::{Launcher, Spawn};
+    ///
+    /// let process = Launcher::default().spawn("sh", ["-c", "echo hi"], Spawn::default())?;
+    /// let output = process.output(Some(std::time::Duration::from_secs(5)))?;
+    /// assert_eq!(output.stdout, b"hi\n");
+    /// assert!(output.status.success());
+    /// # }
+    /// # Ok::<(), std::io::Error>(())
+    /// ```
+    pub fn output(mut self, timeout: Option<Duration>) -> io::Result<Output> {
+        let deadline = timeout.and_then(|timeout| Instant::now().checked_add(timeout));
+        let mut output = Output {
+            status: ExitStatus::default(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+        };
+        let mut keep = |line: OutputLine| match line {
+            OutputLine::Out(text) => output.stdout.extend(text.into_bytes()),
+            OutputLine::Err(text) => output.stderr.extend(text.into_bytes()),
+        };
+        let status = loop {
+            if let Some(status) = self.try_wait()? {
+                break status;
+            }
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                self.kill()?;
+                return Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "the process ran past its timeout and was killed",
+                ));
+            }
+            match self.lines.recv_timeout(POLL) {
+                Ok(line) => keep(line),
+                Err(RecvTimeoutError::Timeout) => {}
+                // It closed its output but still runs.
+                Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+            }
+        };
+        let grace = Instant::now() + PIPE_GRACE;
+        let closed = loop {
+            match self
+                .lines
+                .recv_timeout(grace.saturating_duration_since(Instant::now()))
+            {
+                Ok(line) => keep(line),
+                Err(RecvTimeoutError::Disconnected) => break true,
+                Err(RecvTimeoutError::Timeout) => break false,
+            }
+        };
+        if !closed {
+            self.kill().ok();
+        }
+        output.status = status;
+        Ok(output)
     }
 
     /// Asks its group to stop (`SIGTERM`), waits at most `grace` for it to

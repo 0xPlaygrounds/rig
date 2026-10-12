@@ -22,7 +22,7 @@ pub const SUBAGENT: &str = "subagent";
 /// parent. It is an open effect of the kind [`SUBAGENT`], recorded with the
 /// request as it started and the new agent's id: Prepare systems edit it
 /// (`Query<&mut SpawnSubagent, Added<Admitted>>`), Gate systems refuse it
-/// (`Decision::decide(Outcome::refused(..))`) or hold it (`HoldOf`), and
+/// (`Decision::decide(by, Outcome::refused(..))`) or hold it (`HoldOf`), and
 /// when it starts,
 /// [`SubagentsPlugin`](super::SubagentsPlugin) spawns the agent, answers it
 /// with the agent's id and puts the agent on it as [`SpawnedAgent`].
@@ -230,7 +230,7 @@ fn refuse_too_deep(
                  yourself",
                 policy.max_depth
             );
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
         }
     }
 }
@@ -328,7 +328,10 @@ fn spawn_requested(
     };
     commands.entity(entity).insert(open_effect(request));
     let Ok((caller, access, model, &effort, prompt, connection)) = parents.get(parent) else {
-        decision.decide(Outcome::refused("its parent is not an agent"));
+        decision.decide(
+            Decider::plugin("rig-subagents"),
+            Outcome::refused("its parent is not an agent"),
+        );
         return;
     };
     let depth = lineage.iter_ancestors::<SpawnedBy>(parent).count() + 1;
@@ -338,7 +341,7 @@ fn spawn_requested(
     let (choice, effort, allowed) = match settle(request, settings, &mine, (&models, &policy)) {
         Ok(settled) => settled,
         Err(why) => {
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("rig-subagents"), Outcome::refused(why));
             return;
         }
     };
@@ -399,7 +402,10 @@ fn spawn_requested(
     let child = child.id();
     wake.wake();
     commands.entity(entity).insert(SpawnedAgent(child));
-    decision.decide(Outcome::custom(serde_json::json!({ "agent": id.0 })));
+    decision.decide(
+        Decider::plugin("rig-subagents"),
+        Outcome::custom(serde_json::json!({ "agent": id.0 })),
+    );
 }
 
 /// Answers the `task` call whose request settled: with the subagent it
@@ -439,7 +445,7 @@ fn answer_task(
         (Ok(_), None) => refused("No subagent was started.".to_owned()),
     };
     if let Ok(mut call) = calls.get_mut(of.parent()) {
-        call.decide(output);
+        call.decide(Decider::plugin("rig-subagents"), output);
     }
 }
 

@@ -1,15 +1,20 @@
 use std::collections::HashSet;
+use std::fs;
 use std::sync::mpsc::Receiver;
 
 use rig_basics::ProjectContextPlugin;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
-    Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
+    Ended, answer_open, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home,
+    scripted_models,
 };
 use rig_telemetry::{SessionSpending, UsagePlugin};
 
 use super::*;
+
+/// The proposals' question.
+const TITLE: &str = "Remember for this project?";
 
 /// How many classifier calls settled.
 #[derive(Resource, Default)]
@@ -50,13 +55,17 @@ fn hold_classifier(
 /// `shell`, answered without running anything.
 fn ran(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("done".into()));
+        call.decide(Decider::plugin("test"), ToolResult::success("done".into()));
     }
 }
 
-fn waiting(world: &mut World) -> Vec<Proposal> {
-    let mut proposals = world.query_filtered::<&Proposal, Without<Outcome>>();
-    proposals.iter(world).cloned().collect()
+/// The rules of the proposals shown and not answered.
+fn waiting(world: &mut World) -> Vec<(String, u64)> {
+    let mut proposals = world.query_filtered::<&Proposal, (With<Ask>, Without<Outcome>)>();
+    let shown = proposals.iter(world);
+    shown
+        .map(|shown| (shown.rule.clone(), shown.turn))
+        .collect()
 }
 
 /// The user types `text`; frames run until `turns` turns ended.
@@ -68,17 +77,31 @@ fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, turns: us
     });
 }
 
-fn run_command(app: &mut App, wakes: &Receiver<()>, agent: Entity, line: &str) {
-    app.world_mut().trigger(RunCommand::new(agent, line));
-    run_until(app, wakes, |world| {
-        let open = world.try_query_filtered::<(), (With<Proposal>, Without<Outcome>)>();
-        open.is_some_and(|mut open| open.iter(world).next().is_none())
-    });
-}
-
+/// Frames run until `count` classifier calls settled and what they
+/// answered is checked.
 fn classified(app: &mut App, wakes: &Receiver<()>, count: usize) {
     run_until(app, wakes, |world| {
         world.resource::<Classified>().0 == count
+    });
+    app.update();
+}
+
+/// The user answers the proposal shown; frames run until `file` says
+/// `done`.
+fn answer(
+    app: &mut App,
+    wakes: &Receiver<()>,
+    choice: &str,
+    file: &Path,
+    done: impl Fn(&str) -> bool,
+) {
+    assert!(answer_open(
+        app.world_mut(),
+        TITLE,
+        &Answer::Choice(choice.into())
+    ));
+    run_until(app, wakes, |_| {
+        done(&fs::read_to_string(file).unwrap_or_default())
     });
     app.update();
 }
@@ -96,12 +119,14 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         reply("Added."),
         reply("Understood."),
         reply("Right."),
+        reply("Fine."),
         reply("Using make."),
         reply("The tests pass."),
     ]);
     let classifier = MockCompletionModel::from_stream_turns([
         reply("Use pnpm, not npm."),
         reply("Use pnpm, not npm."),
+        reply("Never edit files under gen/."),
         reply("Never edit files under gen/."),
         reply("`Never edit files under gen/.`"),
         reply("Run the tests with make test."),
@@ -142,6 +167,8 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         entity: agent,
         model,
     });
+    let agents_md = project.join("AGENTS.md");
+    let dismissed = project.join(".rig").join("dismissed-rules.txt");
 
     // The agent runs `npm install`; the user corrects it; the user saves
     // the rule proposed.
@@ -149,19 +176,24 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
     say(&mut app, &wakes, agent, "no, we use pnpm here", 2);
     classified(&mut app, &wakes, 1);
     let shown = waiting(app.world_mut());
-    let rules: Vec<&str> = shown
-        .iter()
-        .map(|proposal| proposal.rule.as_str())
-        .collect();
+    let rules: Vec<&str> = shown.iter().map(|(rule, _)| rule.as_str()).collect();
     assert_eq!(rules, ["Use pnpm, not npm."]);
-    run_command(&mut app, &wakes, agent, "rules save");
-    let file = fs::read_to_string(project.join("AGENTS.md")).unwrap_or_default();
+    answer(&mut app, &wakes, "save", &agents_md, |file| {
+        file.contains("pnpm")
+    });
+    let file = fs::read_to_string(&agents_md).unwrap_or_default();
     assert!(
         file.ends_with("## Learned rules\n\n- Use pnpm, not npm.\n"),
         "{file}"
     );
 
-    // The next request has it; the same rule again is not proposed.
+    // The prompt has it before any turn starts again; the next request
+    // has it; the same rule again is not proposed.
+    let mut sections = app.world_mut().query::<&PromptSection>();
+    let prompt: Vec<String> = (sections.iter(app.world()))
+        .map(|section| section.text.clone())
+        .collect();
+    assert!(prompt.concat().contains("- Use pnpm, not npm."));
     say(&mut app, &wakes, agent, "Add lodash.", 3);
     let sent = agent_model
         .requests()
@@ -171,7 +203,8 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
     classified(&mut app, &wakes, 2);
     assert!(waiting(app.world_mut()).is_empty());
 
-    // A dismissed rule is not proposed again.
+    // The proposal waits beside the work: the user's next line is a
+    // message to the agent, and the same rule is not shown twice.
     say(
         &mut app,
         &wakes,
@@ -180,61 +213,56 @@ fn a_correction_becomes_a_saved_rule_without_holding_up_the_turns() {
         4,
     );
     classified(&mut app, &wakes, 3);
-    assert_eq!(waiting(app.world_mut()).len(), 1);
-    run_command(&mut app, &wakes, agent, "rules dismiss");
-    say(&mut app, &wakes, agent, "I said leave gen/ alone", 5);
+    say(&mut app, &wakes, agent, "and not gen/ either", 5);
     classified(&mut app, &wakes, 4);
+    assert_eq!(waiting(app.world_mut()).len(), 1);
+
+    // A dismissed rule is not proposed again.
+    answer(&mut app, &wakes, "dismiss", &dismissed, |file| {
+        file.contains("gen/")
+    });
+    say(&mut app, &wakes, agent, "I said leave gen/ alone", 6);
+    classified(&mut app, &wakes, 5);
     assert!(waiting(app.world_mut()).is_empty());
 
     // A slow classifier: the next turns run while it has not answered.
     app.world_mut().resource_mut::<Slow>().0 = true;
-    say(&mut app, &wakes, agent, "no, use the make target", 6);
-    say(&mut app, &wakes, agent, "now run the tests", 7);
-    assert_eq!(app.world().resource::<Ended>().0.len(), 7);
-    assert_eq!(app.world().resource::<Classified>().0, 4);
-    let mut pending = app
-        .world_mut()
-        .query_filtered::<(&Effect, &Classifying), Without<Outcome>>();
-    let mut pending: Vec<(u64, u64)> = (pending.iter(app.world()))
-        .map(|(effect, classifying)| (effect.id().as_u64(), classifying.turn))
-        .collect();
-    pending.sort_unstable();
-    let turns: Vec<u64> = pending.iter().map(|(_, turn)| *turn).collect();
-    assert_eq!(turns.len(), 2, "{pending:?}");
+    say(&mut app, &wakes, agent, "no, use the make target", 7);
+    say(&mut app, &wakes, agent, "now run the tests", 8);
+    assert_eq!(app.world().resource::<Ended>().0.len(), 8);
+    assert_eq!(app.world().resource::<Classified>().0, 5);
 
     // Its answer still comes, tied to the turn it read.
     app.world_mut().resource_mut::<Slow>().0 = false;
     let mut holds = app
         .world_mut()
         .query_filtered::<(Entity, &HoldOf), With<SlowHold>>();
-    let holds: Vec<(Entity, Entity)> = holds
-        .iter(app.world())
+    let holds: Vec<(Entity, Entity)> = (holds.iter(app.world()))
         .map(|(hold, of)| (hold, of.0))
         .collect();
-    let mut by_id: Vec<(u64, Entity)> = holds
-        .iter()
-        .filter_map(|&(hold, call)| Some((app.world().get::<Effect>(call)?.id().as_u64(), hold)))
+    let mut by_id: Vec<(u64, u64, Entity)> = (holds.iter())
+        .filter_map(|&(hold, call)| {
+            let effect = app.world().get::<Effect>(call)?;
+            let turn = app.world().get::<Classifying>(call)?.turn;
+            Some((effect.id().as_u64(), turn, hold))
+        })
         .collect();
     by_id.sort_unstable();
-    for (_, hold) in by_id.iter().take(1) {
-        app.world_mut().despawn(*hold);
-    }
-    classified(&mut app, &wakes, 5);
-    let shown = waiting(app.world_mut());
-    let first = shown
-        .first()
-        .map(|proposal| (proposal.rule.as_str(), proposal.turn));
-    assert_eq!(
-        first,
-        Some((
-            "Run the tests with make test.",
-            turns.first().copied().unwrap_or(u64::MAX)
-        ))
-    );
-    for (_, hold) in by_id.iter().skip(1) {
-        app.world_mut().despawn(*hold);
+    assert_eq!(by_id.len(), 2, "{by_id:?}");
+    for &(_, _, hold) in by_id.iter().take(1) {
+        app.world_mut().despawn(hold);
     }
     classified(&mut app, &wakes, 6);
+    let first_turn = by_id.first().map(|&(_, turn, _)| turn);
+    let shown = waiting(app.world_mut());
+    let shown: Vec<(&str, Option<u64>)> = (shown.iter())
+        .map(|(rule, turn)| (rule.as_str(), Some(*turn)))
+        .collect();
+    assert_eq!(shown, [("Run the tests with make test.", first_turn)]);
+    for &(_, _, hold) in by_id.iter().skip(1) {
+        app.world_mut().despawn(hold);
+    }
+    classified(&mut app, &wakes, 7);
     assert_eq!(waiting(app.world_mut()).len(), 1);
 
     // The classifier's cost is the session's.

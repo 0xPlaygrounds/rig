@@ -2,13 +2,12 @@
 //! image, any other file as its text, numbered and capped the way `read`
 //! shows it, so the model needs no `read` call for it.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use base64::Engine;
 use rig_core::message::{ImageMediaType, UserContent};
 
-use crate::fs::read_text;
+use crate::workspace::{Stat, Workspace};
 use crate::{MAX_LINES, numbered};
 
 /// The largest image attached: providers refuse bigger ones (Anthropic
@@ -38,24 +37,94 @@ pub fn is_image_path(path: &Path) -> bool {
         })
 }
 
-/// The files `text` names as `@path`, read, each with its label (its
-/// path), and a line for the user about each one that could not be.
-pub fn attachments(text: &str) -> (Vec<(String, UserContent)>, Vec<String>) {
-    let mut attachments = Vec::new();
-    let mut notes = Vec::new();
-    for path in file_references(text) {
-        let label = path.display().to_string();
+/// What a message's `@path` references came to.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Attached {
+    /// The files read, each with its label: its path as the message named
+    /// it, `~/` made the home directory.
+    pub files: Vec<(String, UserContent)>,
+    /// A line for the user about each file that is there but could not be
+    /// attached, and why.
+    pub notes: Vec<String>,
+    /// The references that name a path with no file there, as the message
+    /// spelled them.
+    pub missing: Vec<String>,
+}
+
+/// The files `text` names with `@path`, each once, resolved from `base` in
+/// `workspace` and read from it. A token is a path reference when it holds a
+/// `/` or ends in a dot and one to four letters or digits (`@notes.md`,
+/// `@src/lib.rs`); one with no file there is [missing](Attached::missing).
+/// Any other `@word`, such as `@alice` or `@alice.smith`, stays text. A
+/// token's trailing punctuation is not part of its path. A leading `~/` is
+/// the user's home on this machine; in another workspace it is not
+/// attached, with a note.
+///
+/// Reads `workspace`: on a thread that must not wait, call it only for a
+/// local one ([`Workspace::host`] is `None`).
+pub fn attachments(text: &str, base: &Path, workspace: &dyn Workspace) -> Attached {
+    let mut attached = Attached::default();
+    let mut seen: Vec<PathBuf> = Vec::new();
+    for token in text.split_whitespace() {
+        let Some(reference) = token.strip_prefix('@') else {
+            continue;
+        };
+        let trimmed = reference.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'']);
+        if trimmed.starts_with("~/") && workspace.host().is_some() {
+            attached.notes.push(format!(
+                "{trimmed} is not attached: home paths are this machine's."
+            ));
+            continue;
+        }
+        let found = [reference, trimmed].into_iter().find_map(|named| {
+            let label = expand(named);
+            let path = base.join(&label);
+            matches!(workspace.stat(&path), Ok(Stat::File { .. }))
+                .then(|| (label.display().to_string(), path))
+        });
+        let Some((label, path)) = found else {
+            if is_path_reference(trimmed) && !attached.missing.iter().any(|seen| seen == trimmed) {
+                attached.missing.push(trimmed.to_owned());
+            }
+            continue;
+        };
+        if seen.contains(&path) {
+            continue;
+        }
         let read = if is_image_path(&path) {
-            read_image(&path)
+            read_image(workspace, &path)
         } else {
-            read_file(&path, &label)
+            read_file(workspace, &path, &label)
         };
         match read {
-            Ok(content) => attachments.push((label, content)),
-            Err(why) => notes.push(format!("{label} is not attached: {why}.")),
+            Ok(content) => attached.files.push((label, content)),
+            Err(why) => attached
+                .notes
+                .push(format!("{label} is not attached: {why}.")),
         }
+        seen.push(path);
     }
-    (attachments, notes)
+    attached
+}
+
+/// Whether `reference`, an `@` token without its `@`, names a path: it
+/// holds a `/`, or ends in a dot and one to four letters or digits. Any
+/// other `@` token (a mention, an address) is left as text.
+///
+/// ```
+/// use rig_tools::attach::is_path_reference;
+///
+/// assert!(is_path_reference("src/main.rs"));
+/// assert!(is_path_reference("notes.md"));
+/// assert!(!is_path_reference("reviewer"));
+/// ```
+pub fn is_path_reference(reference: &str) -> bool {
+    reference.contains('/')
+        || reference.rsplit_once('.').is_some_and(|(name, extension)| {
+            !name.is_empty()
+                && (1..=4).contains(&extension.len())
+                && extension.chars().all(|c| c.is_ascii_alphanumeric())
+        })
 }
 
 /// The label and the number of lines of an attached text file, when
@@ -66,28 +135,6 @@ pub fn attached_file(text: &str) -> Option<(&str, usize)> {
     Some((label, body.lines().count()))
 }
 
-/// The files `text` names as `@path`, in order, each once. A token's
-/// trailing punctuation is not part of its path.
-fn file_references(text: &str) -> Vec<PathBuf> {
-    let mut paths: Vec<PathBuf> = Vec::new();
-    for token in text.split_whitespace() {
-        let Some(reference) = token.strip_prefix('@') else {
-            continue;
-        };
-        let trimmed = reference.trim_end_matches([',', '.', ';', ':', '!', '?', ')', '"', '\'']);
-        let found = [reference, trimmed]
-            .into_iter()
-            .map(expand)
-            .find(|path| path.is_file());
-        if let Some(path) = found
-            && !paths.contains(&path)
-        {
-            paths.push(path);
-        }
-    }
-    paths
-}
-
 /// `path` with a leading `~/` made the home directory.
 fn expand(path: &str) -> PathBuf {
     match (path.strip_prefix("~/"), std::env::home_dir()) {
@@ -96,20 +143,21 @@ fn expand(path: &str) -> PathBuf {
     }
 }
 
-/// The image at `path` as message content, its type told by its first
-/// bytes.
-fn read_image(path: &Path) -> Result<UserContent, String> {
-    let size = fs::metadata(path)
-        .map_err(|failure| failure.to_string())?
-        .len();
-    if size > MOST_BYTES {
+/// The image at `path` in `workspace` as message content, its type told
+/// by its first bytes; why not, for a file that cannot be read, is larger
+/// than a provider takes, or is not a PNG, JPEG, GIF or WebP image.
+pub fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent, String> {
+    let contents = workspace
+        .read(path, MOST_BYTES)
+        .map_err(|failure| failure.to_string())?;
+    if contents.size > MOST_BYTES {
         return Err(format!(
             "it has {} KB, more than the {} KB a provider takes",
-            size / 1024,
+            contents.size / 1024,
             MOST_BYTES / 1024
         ));
     }
-    let bytes = fs::read(path).map_err(|failure| failure.to_string())?;
+    let bytes = contents.bytes;
     let media_type = ImageMediaType::sniff(&bytes)
         .ok_or("it is not a PNG, JPEG, GIF or WebP image".to_owned())?;
     let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
@@ -119,8 +167,10 @@ fn read_image(path: &Path) -> Result<UserContent, String> {
 /// The text file at `path` as message content: its lines numbered the way
 /// `read` shows them, at most [`MOST_TEXT_BYTES`], with a line saying how
 /// many were left out, between a `<file path="label">` line and `</file>`.
-fn read_file(path: &Path, label: &str) -> Result<UserContent, String> {
-    let text = read_text(&path.to_string_lossy()).map_err(|failure| failure.to_string())?;
+fn read_file(workspace: &dyn Workspace, path: &Path, label: &str) -> Result<UserContent, String> {
+    let text = workspace
+        .read_text(path)
+        .map_err(|failure| failure.to_string())?;
     if text.contains('\0') {
         return Err("it is not a text file".to_owned());
     }

@@ -1,0 +1,29 @@
+=== cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32
+{"seq":0,"n":0,"t":1791779409181,"type":"header","agent":"cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32"}
+{"seq":1,"n":1,"t":1791779409181,"type":"component","component":"rig_ecs::agent::ToolAccess","value":"All"}
+{"seq":2,"n":2,"t":1791779409182,"type":"message","message":{"role":"user","content":[{"type":"text","text":"look"},{"type":"image","data":{"type":"url","value":"blob:8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c.png"},"media_type":"png"}]}}
+{"seq":3,"n":3,"t":1791779409182,"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"a cat"}]}}
+{"seq":4,"n":4,"t":1791779409182,"type":"message","message":{"role":"user","content":[{"type":"text","text":"report"}]},"origin":{"kind":"agent","from":"child-agent","request":"call-1","title":"Fix the parser"}}
+{"seq":5,"n":5,"t":1791779409182,"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"thanks"}]}}
+{"seq":6,"n":6,"t":1791779409182,"type":"message","message":{"role":"user","content":[{"type":"text","text":"question 3"}]}}
+{"seq":7,"n":7,"t":1791779409182,"type":"halt","reason":"stopped"}
+{"seq":8,"n":8,"t":1791779409182,"type":"message","message":{"role":"user","content":[{"type":"text","text":"go on"}]}}
+{"seq":9,"n":9,"t":1791779409182,"type":"splice","from":0,"to":2,"with":[{"message":{"role":"user","content":[{"type":"text","text":"Summary."}]},"origins":[[0,{"kind":{"plugin":"compaction"}}]]}]}
+{"seq":10,"n":10,"t":1791779409182,"type":"message","message":{"role":"assistant","content":[{"type":"text","text":"done"}]}}
+{"seq":11,"n":11,"t":1791779409182,"type":"message","message":{"role":"user","content":[{"type":"text","text":"last"}]}}
+{"seq":12,"n":12,"t":1791779409182,"type":"halt","reason":"kept"}
+{"seq":13,"n":15,"t":1791779409182,"type":"component","component":"rig_ecs::journal::tests::Counter","value":3}
+=== child-agent
+{"seq":0,"n":16,"t":1791779409182,"type":"header","agent":"child-agent","parent":"cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32"}
+{"seq":1,"n":17,"t":1791779409183,"type":"message","message":{"role":"user","content":[{"type":"text","text":"work"}]}}
+{"seq":2,"n":20,"t":1791779409183,"type":"component","component":"rig_ecs::agent::ToolAccess","value":"All"}
+=== gone-agent
+{"seq":0,"n":18,"t":1791779409183,"type":"header","agent":"gone-agent","parent":"cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32"}
+{"seq":1,"n":19,"t":1791779409183,"type":"message","message":{"role":"user","content":[{"type":"text","text":"gone"}]}}
+{"seq":2,"n":21,"t":1791779409183,"type":"component","component":"rig_ecs::agent::ToolAccess","value":"All"}
+{"seq":3,"n":22,"t":1791779409183,"type":"retired"}
+=== session
+{"seq":0,"n":13,"t":1791779409182,"type":"header","agent":"session"}
+{"seq":1,"n":14,"t":1791779409182,"type":"component","component":"rig_ecs::journal::tests::Mode","value":"plan"}
+=== blob 8f8cbb7dcf46e0bc7d53265749a6c17d116093a6ba95e442764060c76fd4a86c.png
+png

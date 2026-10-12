@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::process::{Child, ChildStderr, Command, Stdio};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError};
-use rig_harness::harness_protocol::first_errors;
+use rig_harness::harness_protocol::{first_errors, secret_variables};
 use rig_harness::prelude::*;
 use rig_tools::process::{detach, kill_group};
 
@@ -50,6 +50,12 @@ impl ReloadBuild {
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
+        // Not through `Processes`, whose sandbox may lack the network or
+        // the home cargo needs; it keeps the secrets from cargo and every
+        // build script all the same.
+        for secret in secret_variables() {
+            command.env_remove(secret);
+        }
         // Its own session and process group, so cancelling stops cargo and
         // rustc too, and a git prompt for a plugin cannot reach the screen.
         detach(&mut command);
@@ -222,3 +228,6 @@ fn finish_reload(
         commands.trigger(Exit(ExitReason::Reload));
     }
 }
+
+#[cfg(all(test, unix))]
+mod tests;

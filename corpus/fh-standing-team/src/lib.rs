@@ -248,15 +248,16 @@ fn delegated(
         let names: Vec<&str> = team.members.keys().map(String::as_str).collect();
         let why = format!("No member `{name}`; the team: {}", names.join(", "));
         if let Ok(mut call) = calls.get_mut(called.call) {
-            call.decide(Outcome::refused(why));
+            call.decide(Decider::plugin("fh-standing-team"), Outcome::refused(why));
         }
         return;
     };
     if members.get(called.agent).is_ok_and(|me| me.0 == name) {
         if let Ok(mut call) = calls.get_mut(called.call) {
-            call.decide(Outcome::refused(format!(
-                "You are `{name}`; do it yourself."
-            )));
+            call.decide(
+                Decider::plugin("fh-standing-team"),
+                Outcome::refused(format!("You are `{name}`; do it yourself.")),
+            );
         }
         return;
     }
@@ -328,7 +329,10 @@ fn hired(
             };
             for job in desk.waiting.remove(name).unwrap_or_default() {
                 if let Ok(mut call) = calls.get_mut(job.call) {
-                    call.decide(Outcome::refused(format!("`{name}` could not start: {why}")));
+                    call.decide(
+                        Decider::plugin("fh-standing-team"),
+                        Outcome::refused(format!("`{name}` could not start: {why}")),
+                    );
                 }
             }
         }
@@ -440,7 +444,7 @@ fn finished(
                     .unwrap_or_default()
             )),
         };
-        call.decide(answer);
+        call.decide(Decider::plugin("fh-standing-team"), answer);
     }
     commands.run_system_cached(dispatch);
 }
@@ -488,7 +492,10 @@ fn called_off(
                 .message
                 .and_then(|message| messages.get_mut(message).ok())
             {
-                message.decide(Outcome::custom("withdrawn"));
+                message.decide(
+                    Decider::plugin("fh-standing-team"),
+                    Outcome::custom("withdrawn"),
+                );
             }
         }
     }
@@ -526,10 +533,13 @@ fn keep_in_scope(
                 .is_some_and(|(relative, pattern)| pattern.matches_path(relative))
         };
         if let Some(outside) = paths.iter().find(|path| !inside(path)) {
-            decision.decide(Outcome::refused(format!(
-                "`{name}` may only write under `{scope}`, not {}",
-                outside.display()
-            )));
+            decision.decide(
+                Decider::plugin("fh-standing-team"),
+                Outcome::refused(format!(
+                    "`{name}` may only write under `{scope}`, not {}",
+                    outside.display()
+                )),
+            );
         }
     }
 }

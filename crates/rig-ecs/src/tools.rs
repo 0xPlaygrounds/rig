@@ -8,7 +8,7 @@
 //! and starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
 //! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
 //! and stays open until any system decides it
-//! ([`Decision`](super::stage::Decision)).
+//! ([`Decision`]).
 //!
 //! ```ignore
 //! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
 use super::prompt::ToolRules;
-use super::stage::{Admitted, Effect, Settled, Started};
+use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -53,64 +53,75 @@ pub struct ToolDef(pub ToolDefinition);
 pub(crate) enum Serves {
     /// An ordinary tool: its effect handler runs each call.
     Handler(Handler),
-    /// An open tool: parses a call's arguments into its arguments type.
-    Open(fn(&ToolCall) -> Result<Opened, String>),
+    /// An open tool: starts its calls ([`Open`]).
+    Open(Open),
 }
 
-/// Triggers [`ToolCalled`] for an open call, its arguments parsed.
-pub(crate) type Opened = Box<dyn FnOnce(&mut World, Opening) + Send>;
+/// Starts the call `call` of the open tool `tool`, read from the call's
+/// own components: its arguments parsed into the tool's arguments type, it
+/// is [`Started`] and its [`ToolCalled`] triggered. Why it cannot start,
+/// such as arguments that do not fit, and it is not started.
+pub(crate) type Open = fn(&mut World, Entity, Entity, Started) -> Result<(), ErrorReport>;
 
-/// An open call as its [`ToolCalled`] names it, but its arguments.
-pub(crate) struct Opening {
+/// [`Open`] for the arguments type `A`. A call gone, or no tool call any
+/// more, is left alone.
+fn open<A: DeserializeOwned + Send + Sync + 'static>(
+    world: &mut World,
     tool: Entity,
     call: Entity,
-    agent: Entity,
-    caller: AgentId,
-    effect: EffectId,
-    parent: Option<EffectId>,
-    tool_call: ToolCall,
-}
-
-/// Parses `call`'s arguments into `A`, or says why they do not fit.
-fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<Opened, String> {
-    let args = A::deserialize(&call.function.arguments).map_err(|error| {
-        format!("The arguments do not fit: {error}. Nothing ran; fix the call and send it again.")
+    started: Started,
+) -> Result<(), ErrorReport> {
+    let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+    let Ok(entity) = world.get_entity(call) else {
+        return Ok(());
+    };
+    let (Some(ToolRequest { call: tool_call }), Some(effect)) =
+        (entity.get::<ToolRequest>(), entity.get::<Effect>())
+    else {
+        return Ok(());
+    };
+    let agent = entity.get::<ForAgent>().map(|agent| agent.0);
+    let caller = agent.and_then(|agent| world.get::<AgentId>(agent));
+    let (Some(agent), Some(caller)) = (agent, caller) else {
+        let why = "a tool call needs an agent".to_owned();
+        return Err(refused(ToolErrorKind::NotFound, why));
+    };
+    let args = A::deserialize(&tool_call.function.arguments).map_err(|error| {
+        let why = format!(
+            "The arguments do not fit: {error}. Nothing ran; fix the call and send it again."
+        );
+        refused(ToolErrorKind::InvalidArgs, why)
     })?;
-    Ok(Box::new(move |world, opening: Opening| {
-        let Opening {
-            tool,
-            call,
-            agent,
-            caller,
-            effect,
-            parent,
-            tool_call,
-        } = opening;
-        world.trigger(ToolCalled {
-            entity: tool,
-            call,
-            agent,
-            caller,
-            effect,
-            parent,
-            tool_call,
-            args,
-        });
-    }))
+    let called = ToolCalled {
+        entity: tool,
+        call,
+        agent,
+        caller: caller.clone(),
+        effect: effect.id(),
+        parent: effect.parent,
+        tool_call: tool_call.clone(),
+        args,
+    };
+    world.entity_mut(call).insert(started);
+    world.trigger(called);
+    Ok(())
 }
 
 /// A tool call: an effect entity, as the model's reply or a plugin spawns
 /// it, `(ToolRequest { call }, ForAgent(agent))`, often [`CallOf`] a turn.
 /// Admitted, it gets its tool's [`CallHandler`] unless it has its own;
 /// Prepare may change the call or the handler, and Gate sees the
-/// [`Footprint`] of the call as Prepare left it.
-/// Start refuses a call of a tool that is not registered or that the agent
-/// may not use, or whose arguments its tool does not declare, then runs
-/// its handler, or opens it for an open tool. Its [`Outcome`] is its
-/// result.
+/// [`Footprint`] of the call as it stands each time Gate opens, so a held
+/// call a Review system edits is gated again; Prepare does not run again
+/// for it.
+/// After the answers from a record and before every gate, the kernel
+/// answers a call of a tool that is not registered or that the agent may
+/// not use, or whose arguments its tool does not declare, with its
+/// refusal, unless the call was decided: no gate sees it, and an answer
+/// after the gates cannot stand in for it. Start runs its handler, or
+/// opens it for an open tool. Its [`Outcome`] is its result.
 ///
 /// [`CallOf`]: super::agent::CallOf
-/// [`Outcome`]: super::stage::Outcome
 #[derive(Component, Clone, Debug)]
 #[require(Effect)]
 pub struct ToolRequest {
@@ -127,7 +138,7 @@ pub struct CallHandler(pub Handler);
 /// A call of an open tool started, its arguments parsed into `A`: triggered
 /// on the tool's entity, so the observer [`AppToolsExt::add_open_tool`]
 /// registered handles it. The call stays open until its
-/// [`Decision`](super::stage::Decision) is decided, such as with
+/// [`Decision`] is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
 /// an [`Interrupt`](super::agent::Interrupt) does, cancels it.
 #[derive(EntityEvent, Clone)]
@@ -155,7 +166,8 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// reply that touch different things run side by side. On a tool's entity,
 /// what its calls touch when they cannot say more; on a call, what it
 /// touches as Gate sees it, computed by the kernel when Gate opens: what
-/// its handler says of its final arguments, else its tool's. A call waits
+/// its handler says of its final arguments, else its tool's, its paths
+/// [`normalized`](Touches::normalized). A call waits
 /// while an earlier call of its reply that conflicts with it is not
 /// settled ([`Waiting`](super::stage::Waiting)).
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -233,7 +245,7 @@ pub trait AppToolsExt {
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
     /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
     /// watches, and ends when the call's
-    /// [`Decision`](super::stage::Decision) is decided, at once or much
+    /// [`Decision`] is decided, at once or much
     /// later; any other is refused.
     /// Its calls are recorded like any other.
     fn add_open_tool<A, M>(
@@ -359,21 +371,23 @@ fn register_tool(
 
 /// What `call` touches, run by `handler`, of the tool `tool` (its default
 /// footprint, and whether that was declared): the declared one, else what
-/// the handler says of the call, else the tool's default. A call of a tool
-/// that is not registered may change anything.
+/// the handler says of the call, else the tool's default, made
+/// [`normalized`](Touches::normalized) so no `..` climbs past a guard. A
+/// call of a tool that is not registered may change anything.
 pub(crate) fn footprint_of(
     call: &ToolCall,
     handler: Option<&Handler>,
     tool: Option<(&Footprint, bool)>,
 ) -> Footprint {
-    match tool {
+    let Footprint(touches) = match tool {
         Some((footprint, true)) => footprint.clone(),
         _ => handler
             .and_then(|handler| handler.0.footprint(&EffectKind::from(call)))
             .map(Footprint)
             .or_else(|| tool.map(|(footprint, _)| footprint.clone()))
             .unwrap_or_default(),
-    }
+    };
+    Footprint(touches.normalized())
 }
 
 /// Completes each tool call about to be admitted with its tool's
@@ -427,9 +441,8 @@ pub(crate) fn compute_footprints(
 pub(crate) enum ToolStart {
     /// The kernel runs `kind` through the handler.
     Run(Handler, EffectKind),
-    /// The open call is started: this triggers its [`ToolCalled`] with the
-    /// call's entity, effect, parent and call.
-    Open(Box<dyn FnOnce(&mut World, Entity, EffectId, Option<EffectId>, ToolCall) + Send>),
+    /// The open call is started by its tool, the entity.
+    Open(Open, Entity),
     /// Refused before it started.
     Refused(ErrorReport),
 }
@@ -439,70 +452,90 @@ pub(crate) enum ToolStart {
 #[derive(SystemParam)]
 pub(crate) struct ToolStarts<'w, 's> {
     tools: Query<'w, 's, (Entity, &'static ToolDef, &'static Serves)>,
-    access: Query<'w, 's, &'static ToolAccess>,
+    agents: Query<'w, 's, Option<&'static ToolAccess>, With<AgentId>>,
 }
 
 impl ToolStarts<'_, '_> {
-    /// How `call`, with `handler`, starts for `agent` (its entity and id):
-    /// refused when no tool of its name is registered, the agent may not
+    /// The tool that runs `call` for `agent`, or why the kernel refuses
+    /// it: no agent, no tool of its name is registered, the agent may not
     /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
-    /// parameters; else run through `handler`, or opened for an open tool.
+    /// parameters.
+    fn tool(
+        &self,
+        call: &ToolCall,
+        agent: Option<Entity>,
+    ) -> Result<(Entity, &Serves), ErrorReport> {
+        let name = call.function.name.as_str();
+        let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+        let Some(access) = agent.and_then(|agent| self.agents.get(agent).ok()) else {
+            let why = "a tool call needs an agent".to_owned();
+            return Err(refused(ToolErrorKind::NotFound, why));
+        };
+        let missing = format!("no tool named `{name}` is available");
+        let Some((tool, def, serves)) = self
+            .tools
+            .iter()
+            .find(|(_, def, _)| def.0.name.as_str() == name)
+        else {
+            return Err(refused(ToolErrorKind::NotFound, missing));
+        };
+        if !access.is_some_and(|access| access.allows(name)) {
+            // A refusal, recorded as one; the model reads what it reads for
+            // a tool that does not exist.
+            return Err(ErrorReport::new(ErrorKind::Denied, missing).refused());
+        }
+        if let Some(why) = arguments_refusal(&def.0.parameters, call) {
+            return Err(refused(ToolErrorKind::InvalidArgs, why));
+        }
+        Ok((tool, serves))
+    }
+
+    /// How `call`, with `handler`, starts for `agent`: run through
+    /// `handler`, or opened for an open tool; refused as
+    /// [`refuse_calls`] refuses it, should it have changed since.
     pub(crate) fn start(
         &self,
         call: &ToolCall,
         handler: Option<&CallHandler>,
-        agent: Option<(Entity, &AgentId)>,
+        agent: Option<Entity>,
     ) -> ToolStart {
-        let name = call.function.name.as_str();
-        let refused = |kind, why| ToolStart::Refused(ErrorReport::new(ErrorKind::Tool(kind), why));
-        let Some((agent, caller)) = agent else {
-            return refused(
-                ToolErrorKind::NotFound,
-                "a tool call needs an agent".to_owned(),
-            );
-        };
-        let allowed = self
-            .access
-            .get(agent)
-            .is_ok_and(|access| access.allows(name));
-        let tool = self
-            .tools
-            .iter()
-            .find(|(_, def, _)| def.0.name.as_str() == name);
-        let missing = format!("no tool named `{name}` is available");
-        let Some((tool, def, serves)) = tool else {
-            return refused(ToolErrorKind::NotFound, missing);
-        };
-        if !allowed {
-            // A refusal, recorded as one; the model reads what it reads for
-            // a tool that does not exist.
-            return ToolStart::Refused(ErrorReport::new(ErrorKind::Denied, missing).refused());
-        }
-        if let Some(why) = arguments_refusal(&def.0.parameters, call) {
-            return refused(ToolErrorKind::InvalidArgs, why);
-        }
-        match (handler, serves) {
-            (Some(CallHandler(handler)), _) | (None, Serves::Handler(handler)) => {
+        match (self.tool(call, agent), handler) {
+            (Err(report), _) => ToolStart::Refused(report),
+            (Ok(_), Some(CallHandler(handler))) | (Ok((_, Serves::Handler(handler))), None) => {
                 ToolStart::Run(handler.clone(), EffectKind::from(call))
             }
-            (None, Serves::Open(open)) => match open(call) {
-                Ok(opened) => {
-                    let caller = caller.clone();
-                    ToolStart::Open(Box::new(move |world, call, effect, parent, tool_call| {
-                        let opening = Opening {
-                            tool,
-                            call,
-                            agent,
-                            caller,
-                            effect,
-                            parent,
-                            tool_call,
-                        };
-                        opened(world, opening);
-                    }))
-                }
-                Err(why) => refused(ToolErrorKind::InvalidArgs, why),
-            },
+            (Ok((tool, Serves::Open(open))), None) => ToolStart::Open(*open, tool),
+        }
+    }
+}
+
+/// Answers each admitted tool call that has not started, held or not,
+/// that the kernel refuses ([`ToolStarts`]), unless it is decided: after
+/// the answers from a record and before every gate, so no gate sees it,
+/// and one after the gates reads its [`Outcome`]. Run on every pass, so
+/// what changed since, such as the agent's [`ToolAccess`], counts.
+pub(crate) fn refuse_calls(
+    calls: Query<
+        (Entity, &ToolRequest, &Decision, Option<&ForAgent>),
+        (
+            With<Admitted>,
+            Without<Started>,
+            Without<Outcome>,
+            Without<Settled>,
+            Without<SupersededBy>,
+        ),
+    >,
+    tools: ToolStarts,
+    mut commands: Commands,
+) {
+    for (entity, ToolRequest { call }, decision, agent) in &calls {
+        if decision.is_decided() {
+            continue;
+        }
+        if let Err(report) = tools.tool(call, agent.map(|agent| agent.0)) {
+            commands
+                .entity(entity)
+                .try_insert_if_new(Outcome(Err(report)));
         }
     }
 }

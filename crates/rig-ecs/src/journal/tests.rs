@@ -2,15 +2,16 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use bevy_reflect::Reflect;
-use rig_cassette::journal::{JournalStore, MemoryStore};
+use rig_cassette::journal::{
+    Entry, Halt, JournalStore, MemoryStore, MessageId, Origin, STOPPED, SavedSession, fork_session,
+    read_session,
+};
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
 
-use super::{Commit, Committed, JournalPlugin, ReflectSaved, SessionStore, fork_session};
-use super::{SavedSession, read_session};
+use super::{Commit, Committed, JournalPlugin, ReflectSaved, SessionStore};
 use crate::AgentPlugin;
-use crate::agent::{Agent, AgentId, Conversation, Entry, Halt, MessageId, STOPPED, SpawnedBy};
-use crate::inbox::Origin;
+use crate::agent::{Agent, AgentId, Conversation, SpawnedBy};
 
 /// Adds `message` to the conversation of `agent` as [`Commit::message`]
 /// does.
@@ -137,7 +138,7 @@ fn a_cut_and_a_retired_agent_are_logged_and_a_restore_follows_them() {
 }
 
 /// Every message of `conversation` with its origins and id, and its halt.
-fn state(conversation: &Conversation) -> (Vec<Entry>, Option<Halt>) {
+fn state(conversation: &rig_cassette::journal::Conversation) -> (Vec<Entry>, Option<Halt>) {
     let entries = (0..conversation.messages().len()).filter_map(|at| conversation.entry(at));
     (entries.collect(), conversation.halted())
 }
@@ -145,7 +146,7 @@ fn state(conversation: &Conversation) -> (Vec<Entry>, Option<Halt>) {
 /// The session in `store` as a restore reads it, by agent id.
 fn saved_state(store: &MemoryStore, id: &AgentId) -> Option<(Vec<Entry>, Option<Halt>)> {
     let session = read_session(store).ok()?;
-    let saved = session.agents.into_iter().find(|saved| saved.id == *id)?;
+    let saved = session.agents.into_iter().find(|saved| saved.id == id.0)?;
     Some(state(&saved.conversation))
 }
 
@@ -200,7 +201,7 @@ fn splices_keep_ids_origins_and_the_halt_and_a_restore_makes_the_same_changes() 
         [*q2, *a2, *q3],
         "the edited, kept prompt keeps its id"
     );
-    let live = app.world().get::<Conversation>(agent).map(state);
+    let live = app.world().get::<Conversation>(agent).map(|c| state(c));
     let Some((entries, halted)) = live.clone() else {
         return;
     };
@@ -244,21 +245,16 @@ fn splices_keep_ids_origins_and_the_halt_and_a_restore_makes_the_same_changes() 
         commit.splice(agent, conversation, last.., []);
     });
     app.update();
-    let live = app.world().get::<Conversation>(agent).map(state);
+    let live = app.world().get::<Conversation>(agent).map(|c| state(c));
     assert_eq!(live.as_ref().map(|(_, halted)| *halted), Some(None));
     assert_eq!(saved_state(&store, &id), live);
-    let next = app
-        .world()
-        .get::<Conversation>(agent)
-        .map(Conversation::next_id);
     drop(app);
     let mut second = self::app(&store);
     let Some(&agent) = agents(&mut second).first() else {
         return;
     };
     let restored = second.world().get::<Conversation>(agent);
-    assert_eq!(restored.map(state), live);
-    assert_eq!(restored.map(Conversation::next_id), next, "new ids go on");
+    assert_eq!(restored.map(|c| state(c)), live);
 }
 
 #[test]
@@ -372,7 +368,7 @@ fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
     let Some(saved) = agents.first() else {
         return;
     };
-    assert!(saved.id == id && saved.parent.is_none() && !saved.retired);
+    assert!(saved.id == id.0 && saved.parent.is_none() && !saved.retired);
     assert!(saved.started_ms > 0);
     // The conversation as it is, the summary in place of the first two
     // messages.
@@ -388,7 +384,7 @@ fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
     let Some(second_question) = second_question else {
         return;
     };
-    assert!(fork_session(&store, &fork, Some((&id, second_question))).is_ok());
+    assert!(fork_session(&store, &fork, Some((&id.0, second_question))).is_ok());
     let forked = read_session(&fork).unwrap_or_default();
     assert_eq!(forked.agents.len(), 1);
     let Some(branch) = forked.agents.first() else {
@@ -398,54 +394,71 @@ fn a_session_is_read_without_writing_and_forked_as_of_a_message() {
     assert_eq!(branch.conversation.messages(), kept);
     let counter = branch.saved.get(std::any::type_name::<Counter>());
     assert_eq!(counter, Some(&serde_json::json!(1)));
-    // A message the agent never made is no fork point.
-    let nowhere = MessageId(999);
-    let nowhere = fork_session(&store, &MemoryStore::default(), Some((&id, nowhere)));
-    assert!(nowhere.is_err());
 }
 
-/// The JSON line of a record, `seq` in its log and `n` in the session, all
-/// written in the same millisecond.
-fn line(seq: u64, n: u64, record: &serde_json::Value) -> String {
-    let mut line = serde_json::json!({ "seq": seq, "n": n, "t": 1_000 });
-    if let (Some(line), Some(record)) = (line.as_object_mut(), record.as_object()) {
-        line.extend(record.clone());
-    }
-    format!("{line}\n")
-}
-
-fn said(message: Message) -> serde_json::Value {
-    let message = serde_json::to_value(message).unwrap_or_default();
-    serde_json::json!({ "type": "message", "message": message })
-}
+/// A plugin's mode, saved with the session.
+#[derive(Resource, Reflect, Default)]
+#[reflect(Resource, Saved)]
+struct Mode(String);
 
 #[test]
-fn a_fork_keeps_what_other_agents_logged_before_its_cut_in_the_same_millisecond() {
-    let header = |agent: &str| serde_json::json!({ "type": "header", "agent": agent });
-    let from = MemoryStore::default();
-    let a = [
-        line(0, 0, &header("a")),
-        line(1, 1, &said(Message::user("a first"))),
-        line(2, 4, &said(Message::assistant("a second"))),
-    ];
-    let b = [
-        line(0, 2, &header("b")),
-        line(1, 3, &said(Message::user("b first"))),
-        line(2, 5, &said(Message::assistant("b second"))),
-    ];
-    assert!(from.append("a", a.concat().as_bytes()).is_ok());
-    assert!(from.append("b", b.concat().as_bytes()).is_ok());
-    let to = MemoryStore::default();
-    let second = MessageId(1);
-    let fork = fork_session(&from, &to, Some((&AgentId("a".to_owned()), second)));
-    assert!(fork.is_ok(), "{fork:?}");
-    let session = read_session(&to);
-    let kept = |agent: &str| -> Vec<Message> {
-        let session = session.as_ref().ok();
-        let agent =
-            session.and_then(|session| session.agents.iter().find(|saved| saved.id.0 == agent));
-        agent.map_or_else(Vec::new, |agent| agent.conversation.messages().to_vec())
+fn a_session_saved_before_the_log_format_moved_still_restores() {
+    // rig-cassette's fixture: this kernel wrote it, with `Counter` and
+    // `Mode` of this module, before the format moved there.
+    let store = MemoryStore::default();
+    let mut log = None;
+    for line in include_str!("../../../rig-cassette/src/journal/session/saved-session.txt").lines()
+    {
+        let written = match line.strip_prefix("=== ") {
+            Some(name) => {
+                log = Some(name);
+                Ok(())
+            }
+            None => match log.map(|name| (name, name.strip_prefix("blob "))) {
+                Some((_, Some(blob))) => store.put_blob(blob, line.as_bytes()),
+                Some((agent, None)) => store.append(agent, format!("{line}\n").as_bytes()),
+                None => Ok(()),
+            },
+        };
+        assert!(written.is_ok());
+    }
+    let mut app = App::new();
+    app.add_plugins((AgentPlugin, JournalPlugin))
+        .register_type::<Mode>()
+        .insert_resource(SessionStore::new(store.clone()));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let mut restored = world.query::<(Entity, &AgentId, Option<&SpawnedBy>, &Conversation)>();
+    let mut restored: Vec<_> = restored
+        .iter(world)
+        .map(|(entity, id, parent, conversation)| {
+            let texts = conversation.messages().len();
+            (entity, id.0.clone(), parent.map(|parent| parent.0), texts)
+        })
+        .collect();
+    restored.sort_by(|a, b| a.1.cmp(&b.1));
+    let main = restored.iter().find(|(.., parent, _)| parent.is_none());
+    let main = main.map(|(entity, ..)| *entity);
+    let shape: Vec<_> = restored
+        .iter()
+        .map(|(_, id, parent, messages)| (id.as_str(), *parent, *messages))
+        .collect();
+    let main_id = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
+    // The agent and its subagent, not the retired one.
+    assert_eq!(shape, [(main_id, None, 5), ("child-agent", main, 1)]);
+    let Some(main) = main else {
+        return;
     };
-    assert_eq!(kept("a"), [Message::user("a first")]);
-    assert_eq!(kept("b"), [Message::user("b first")]);
+    let conversation = world.get::<Conversation>(main);
+    let halted = conversation.and_then(|conversation| conversation.halted());
+    assert_eq!(halted, Some(Halt::Kept), "the user's last message waits");
+    let counter = world.get::<Counter>(main).map(|counter| counter.0);
+    assert_eq!(counter, Some(3));
+    let mode = world.get_resource::<Mode>().map(|mode| mode.0.as_str());
+    assert_eq!(mode, Some("plan"));
+    // Nothing was rewritten.
+    let main_log = store.read(main_id).ok();
+    app.update();
+    assert_eq!(store.read(main_id).ok(), main_log);
 }

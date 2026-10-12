@@ -12,9 +12,13 @@ bindings (`KeyBinding`, `AppKeyBindingsExt`; the view's own keys are
 bindings too), the keys for a panel (`KeyFocus`), the draft (`TuiInput`),
 the terminal's events (`TerminalEvent`), a program run with the terminal
 (`RunInTerminal`, such as `$EDITOR`), and their own pickers
-(rig-harness's `Picker`), which the view shows. A crate
-that also builds without the view does so behind a default `tui` feature.
-ratatui and crossterm are re-exported as `rig_tui::ratatui` and
+(rig-harness's `Picker`), which the view shows. They read and steer the
+transcript (`TranscriptView`, `ScrollTo`), where a notice is drawn
+(`ShownNotice::slot`), the rows a frame drew with the matches it lit and
+the items it cut (`DrawnTranscript`), and any agent's transcript laid out
+the same way without drawing it, cut or whole (`TranscriptLayout`). A
+crate that also builds without the view does so behind a default `tui`
+feature. ratatui and crossterm are re-exported as `rig_tui::ratatui` and
 `rig_tui::crossterm`.
 
 A plugin crate of the [rig coding agent](../../crates/rig-harness), built only

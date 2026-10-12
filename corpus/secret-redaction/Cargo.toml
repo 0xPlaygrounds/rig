@@ -14,7 +14,7 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 # A warning when redacted data does not read back.
 bevy_log = { workspace = true }
-# The secret patterns.
+# The password pattern.
 regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde = { workspace = true }

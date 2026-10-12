@@ -103,7 +103,10 @@ fn ask(
     let call = called.call;
     if !answerers.can_answer(Some(called.agent)) {
         if let Ok(mut decision) = calls.get_mut(call) {
-            decision.decide(ToolResult::success(NO_USER.to_owned().into()));
+            decision.decide(
+                Decider::plugin("ask-user"),
+                ToolResult::success(NO_USER.to_owned().into()),
+            );
         }
         return;
     }
@@ -134,7 +137,7 @@ fn ask(
             .duration(Duration::from_secs(seconds))
             .queue(move |world: &mut World| {
                 if let Some(mut decision) = world.get_mut::<Decision>(asked) {
-                    decision.decide(Outcome::refused(NO_ANSWER));
+                    decision.decide(Decider::plugin("ask-user"), Outcome::refused(NO_ANSWER));
                 }
             });
     }
@@ -154,7 +157,10 @@ fn answered(
             (None, Ok(_)) => NO_ANSWER.to_owned(),
         };
         if let Ok(mut decision) = calls.get_mut(call) {
-            decision.decide(ToolResult::success(text.into()));
+            decision.decide(
+                Decider::plugin("ask-user"),
+                ToolResult::success(text.into()),
+            );
         }
         commands.entity(asked).remove::<HoldOf>();
     }

@@ -1,21 +1,37 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
+use ratatui::style::Style;
+use ratatui::text::Line;
 use rig_core::completion::Message;
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
+use rig_core::streaming::{PartKind, StreamEvent};
 use rig_ecs::agent::Conversation;
+use rig_ecs::agent::Partial;
+use rig_ecs::prelude::{Entry, MessageId, Origin};
 use rig_ecs::stage::{HoldOf, Started};
 use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::StreamDelta;
+use rig_harness::prelude::App;
 use rig_harness::prelude::ToolProgress;
+use rig_harness::transcript::{EntryOf, TranscriptEntry};
 use serde_json::json;
 
-use super::{Below, Look, Part, Renderers, Scroll, Transcript};
-use crate::CallState;
+use super::{
+    Below, CallFacts, EntryRenderers, Look, Part, Renderers, Scroll, StreamingCalls, Transcript,
+};
 use crate::render::CallStates;
+use crate::tests::{drawn_rows, on_screen, press, view_app};
+use crate::{
+    AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
+    LineSpan, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout,
+    TranscriptView,
+};
 
 const WIDTH: u16 = 80;
 
@@ -78,24 +94,43 @@ fn following_again_drops_the_held_row() {
 }
 
 /// The rows `transcript` draws of `conversation`'s first message with the
-/// calls standing as `calls` say.
+/// calls standing as `calls` say, their output so far `outputs`, drawn by
+/// `renderers`.
 fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    calls: &BTreeMap<CallId, CallState>,
+    (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    renderers: &Renderers<'_>,
 ) -> String {
-    let renderers = Renderers::default();
+    let entries = EntryRenderers::default();
+    let (expanded, facts) = (HashSet::new(), CallFacts::default());
     let look = Look {
-        renderers: &renderers,
+        renderers,
+        entries: &entries,
         calls,
-        notices: HashMap::new(),
+        outputs,
+        inside: HashMap::new(),
+        expanded: &expanded,
+        whole: false,
+        note_cut: false,
+        facts: &facts,
     };
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
     let parts = [Part::Message(0)];
-    let (rows, _) = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default());
-    let rows: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default(), &[]);
+    let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
     rows.join("\n")
+}
+
+/// A conversation of one reply that calls `call`.
+fn calling(call: &ToolCall) -> Option<Conversation> {
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    let conversation = serde_json::from_value::<Conversation>(json!({
+        "messages": [Message::Assistant(reply)],
+        "origins": [],
+    }));
+    conversation.ok()
 }
 
 #[test]
@@ -104,13 +139,9 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
         return;
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "src/a.rs" })));
-    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
-    let conversation = serde_json::from_value::<Conversation>(json!({
-        "messages": [Message::Assistant(reply)],
-        "origins": [],
-    }));
-    assert!(conversation.is_ok());
-    let Ok(conversation) = conversation else {
+    let conversation = calling(&call);
+    assert!(conversation.is_some());
+    let Some(conversation) = conversation else {
         return;
     };
     let mut world = World::new();
@@ -125,13 +156,14 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let names = vec![lease.to_owned()];
     assert_eq!(held.get(&call.id), Some(&CallState::Held(names)));
     let mut transcript = Transcript::default();
-    let shown = drawn(&mut transcript, &conversation, &held);
+    let none = (BTreeMap::new(), Renderers::default());
+    let shown = drawn(&mut transcript, &conversation, (&held, &none.0), &none.1);
     assert!(shown.contains(&format!("held: {lease}")), "{shown}");
 
     world.despawn(hold);
     let waiting = states(&mut world);
     assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
-    let shown = drawn(&mut transcript, &conversation, &waiting);
+    let shown = drawn(&mut transcript, &conversation, (&waiting, &none.0), &none.1);
     assert!(!shown.contains("held:"), "{shown}");
 
     let started = Started {
@@ -142,11 +174,533 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let running = states(&mut world);
     let line = Some("12 of 40 files".to_owned());
     assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
-    let shown = drawn(&mut transcript, &conversation, &running);
+    let shown = drawn(&mut transcript, &conversation, (&running, &none.0), &none.1);
     assert!(shown.contains("⎿ 12 of 40 files"), "{shown}");
     world
         .entity_mut(effect)
         .insert(ToolProgress("13 of 40 files".to_owned()));
-    let shown = drawn(&mut transcript, &conversation, &states(&mut world));
+    let states = states(&mut world);
+    let shown = drawn(&mut transcript, &conversation, (&states, &none.0), &none.1);
     assert!(shown.contains("⎿ 13 of 40 files"), "{shown}");
+}
+
+#[test]
+fn a_running_calls_renderer_gets_all_its_output_so_far() {
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "command": "make" })));
+    let conversation = calling(&call);
+    assert!(conversation.is_some());
+    let Some(conversation) = conversation else {
+        return;
+    };
+    let look: Arc<RenderToolCall> = Arc::new(|call: &ToolCallView<'_>| {
+        let output = call.output.unwrap_or("no output").lines();
+        output.map(|line| Line::from(format!("> {line}"))).collect()
+    });
+    let renderers: Renderers<'_> = HashMap::from([("shell", &look)]);
+    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let mut transcript = Transcript::default();
+    let mut outputs = BTreeMap::new();
+    for line in ["cc a.c", "cc b.c", "ld app"] {
+        let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
+        text.push_str(&format!("{line}\n"));
+        let shown = drawn(
+            &mut transcript,
+            &conversation,
+            (&calls, &outputs),
+            &renderers,
+        );
+        assert!(shown.ends_with(&format!("> {line}")), "{shown}");
+    }
+    let shown = drawn(
+        &mut transcript,
+        &conversation,
+        (&calls, &outputs),
+        &renderers,
+    );
+    assert_eq!(shown, "> cc a.c\n> cc b.c\n> ld app");
+}
+
+/// Adds `message` to `agent`'s conversation, as a commit does.
+fn say(app: &mut App, agent: Entity, message: Message) {
+    let commit = move |mut commit: rig_ecs::journal::Commit,
+                       mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            commit.message(agent, &mut conversation, message.clone());
+        }
+    };
+    assert!(app.world_mut().run_system_once(commit).is_ok());
+    app.update();
+}
+
+/// The id of message `index` of `agent`'s conversation.
+fn message_id(app: &App, agent: Entity, index: usize) -> Option<MessageId> {
+    let conversation = app.world().get::<Conversation>(agent)?;
+    conversation.id(index)
+}
+
+/// Where in `lines` the first that contains `text` is.
+fn line_of(lines: &[String], text: &str) -> Option<usize> {
+    lines.iter().position(|line| line.contains(text))
+}
+
+#[test]
+fn a_plugin_entry_is_drawn_after_its_message_by_its_origins_look() {
+    let (mut app, agent) = view_app();
+    app.add_entry_renderer("btw", |entry| {
+        let text = if entry.expanded {
+            entry.text
+        } else {
+            entry.title
+        };
+        vec![Line::from(format!("btw: {text}"))]
+    });
+    say(&mut app, agent, Message::user("first question"));
+    say(&mut app, agent, Message::assistant("first answer"));
+    say(&mut app, agent, Message::user("second question"));
+    let after = message_id(&app, agent, 1);
+    let entry = TranscriptEntry::new("btw", after, "Why tabs?", "The style says so.");
+    let entry = app.world_mut().spawn((entry, EntryOf(agent))).id();
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    let order = ["first answer", "btw: Why tabs?", "second question"];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+    // Alt+Up selects the newest item, the last message; again, the entry.
+    press(&mut app, "alt+up alt+up");
+    let selected = app.world().resource::<TranscriptView>().selected.clone();
+    assert_eq!(selected, Some(TranscriptItem::Entry(entry)));
+    // Ctrl+O expands it: drawn whole.
+    press(&mut app, "ctrl+o");
+    let lines = on_screen(&mut app, agent, 100);
+    assert!(
+        line_of(&lines, "btw: The style says so.").is_some(),
+        "{lines:#?}"
+    );
+}
+
+#[test]
+fn an_entry_whose_message_was_summarized_is_drawn_right_after_the_summary() {
+    let (mut app, agent) = view_app();
+    say(&mut app, agent, Message::user("old question"));
+    say(&mut app, agent, Message::assistant("old answer"));
+    say(&mut app, agent, Message::user("kept prompt"));
+    say(&mut app, agent, Message::assistant("kept answer"));
+    let after = message_id(&app, agent, 1);
+    let entry = TranscriptEntry::new("btw", after, "marked", "");
+    app.world_mut().spawn((entry, EntryOf(agent)));
+    // A compaction: the summary takes the first two messages' place, and
+    // the kept prompt joins it.
+    let compact = move |mut commit: rig_ecs::journal::Commit,
+                        mut conversations: Query<&mut Conversation>| {
+        if let Ok(mut conversation) = conversations.get_mut(agent) {
+            let summary = Entry::from(Message::user("the summary"), Origin::plugin("compaction"));
+            commit.splice(agent, &mut conversation, ..2, [summary]);
+        }
+    };
+    assert!(app.world_mut().run_system_once(compact).is_ok());
+    app.update();
+    let lines = on_screen(&mut app, agent, 100);
+    let order = ["the summary", "marked", "kept prompt", "kept answer"];
+    let order = order.map(|text| line_of(&lines, text));
+    assert!(order.iter().all(Option::is_some), "{lines:#?}");
+    assert!(order.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
+    let (mut app, agent) = view_app();
+    for index in 0..30 {
+        say(&mut app, agent, Message::user(format!("question {index}")));
+        say(
+            &mut app,
+            agent,
+            Message::assistant(format!("answer {index}")),
+        );
+    }
+    let Some(hit) = message_id(&app, agent, 21) else {
+        return;
+    };
+    let item = TranscriptItem::Message(hit);
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: Some(item.clone()),
+        row: ItemRow::Top(1),
+    });
+    let lines = on_screen(&mut app, agent, 10);
+    // The answer's first row is blank; its second, the text.
+    assert_eq!(lines.first().map(String::as_str), Some("answer 10"));
+    let top = app.world().resource::<TranscriptView>().top().cloned();
+    assert_eq!(top, Some((item, 1)));
+    // `None` follows the newest output again.
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: None,
+        row: ItemRow::Top(0),
+    });
+    let lines = on_screen(&mut app, agent, 10);
+    assert_eq!(lines.last().map(String::as_str), Some("answer 29"));
+    assert_eq!(app.world().resource::<TranscriptView>().top(), None);
+}
+
+#[test]
+fn scroll_to_finds_the_row_a_highlight_lights() {
+    let (mut app, agent) = view_app();
+    for index in 0..30 {
+        say(&mut app, agent, Message::user(format!("question {index}")));
+        let answer = match index {
+            10 => "answer 10\n\nalpha flaky\n\nbeta\n\ngamma flaky".to_owned(),
+            _ => format!("answer {index}"),
+        };
+        say(&mut app, agent, Message::assistant(answer));
+    }
+    let Some(hit) = message_id(&app, agent, 21) else {
+        return;
+    };
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "FLAKY".to_owned(),
+        ..Highlight::default()
+    }];
+    let mut top_after = |row: ItemRow| {
+        let item = Some(TranscriptItem::Message(hit));
+        app.world_mut().trigger(ScrollTo { agent, item, row });
+        let lines = on_screen(&mut app, agent, 10);
+        lines.first().cloned().unwrap_or_default()
+    };
+    assert_eq!(top_after(ItemRow::Lit(1)), "gamma flaky");
+    assert_eq!(top_after(ItemRow::Lit(0)), "alpha flaky");
+    // A match on screen stays where it is.
+    assert_eq!(top_after(ItemRow::Lit(1)), "alpha flaky");
+    // Past the last match, the item's first row: the blank one above it.
+    assert_eq!(top_after(ItemRow::Lit(2)), "");
+    assert_eq!(top_after(ItemRow::Top(1)), "answer 10");
+}
+
+#[test]
+fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire(
+        "c1",
+        ToolFunction::new(name.clone(), json!({ "command": "cargo test" })),
+    );
+    say(&mut app, agent, Message::user("why is it flaky?"));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let output: Vec<String> = (0..10).map(|test| format!("test {test} flaky")).collect();
+    let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
+    say(&mut app, agent, result);
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "flaky".to_owned(),
+        ..Highlight::default()
+    }];
+    let item = TranscriptItem::Call(call.id.clone());
+    let drawn = |app: &mut App| {
+        on_screen(app, agent, 5);
+        app.world().resource::<DrawnTranscript>().clone()
+    };
+    let collapsed = drawn(&mut app);
+    assert_eq!(collapsed.agent(), Some(agent));
+    let rows = collapsed.rows_of(&item).unwrap_or_default();
+    let texts = collapsed.rows().get(rows.clone()).unwrap_or_default();
+    // Counted over the rows drawn: the output is drawn cut.
+    let drawn_matches = texts
+        .iter()
+        .filter(|row| row.text.contains("flaky"))
+        .count();
+    assert!((1..10).contains(&drawn_matches), "{texts:#?}");
+    assert_eq!(collapsed.lit_in(&item), drawn_matches);
+    assert_eq!(collapsed.item_at(rows.start), Some(&item));
+    let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
+    assert_eq!(question.map(|item| collapsed.lit_in(&item)), Some(1));
+    let rows = collapsed.rows().len();
+    assert_eq!(collapsed.on_screen(), rows.saturating_sub(5)..rows);
+    // Drawn whole, every match is.
+    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
+    expanded.insert(item.clone());
+    assert_eq!(drawn(&mut app).lit_in(&item), 10);
+}
+
+#[test]
+fn a_match_a_wrap_splits_is_lit_and_counted() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // Words that fill the 80 columns so "cannot find" wraps after "cannot".
+    let filler = "word ".repeat(14);
+    say(
+        &mut app,
+        agent,
+        Message::user(format!("{filler}cannot find foo")),
+    );
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "cannot find".to_owned(),
+        style: lit,
+        match_case: false,
+        spans: Vec::new(),
+    }];
+    let rows = drawn_rows(&mut app, agent, 10, Vec::new());
+    let texts: Vec<String> = rows.iter().map(ToString::to_string).collect();
+    let split = texts.windows(2).any(|pair| {
+        matches!(pair, [above, below] if above.ends_with("cannot") && below.trim_start().starts_with("find"))
+    });
+    assert!(split, "{texts:#?}");
+    let spans = rows.iter().flat_map(|row| row.spans.iter());
+    let lit: Vec<&str> = spans
+        .filter(|span| span.style.bg == lit.bg)
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(lit, ["cannot", "find"]);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
+    assert_eq!(question.map(|item| drawn.lit_in(&item)), Some(1));
+}
+
+#[test]
+fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // Words that fill the 80 columns so "cannot find" wraps after "cannot".
+    let filler = "word ".repeat(14);
+    let asked = format!("{filler}cannot find foo foobar foo");
+    say(&mut app, agent, Message::user(asked));
+    for index in 0..20 {
+        say(
+            &mut app,
+            agent,
+            Message::assistant(format!("answer {index}")),
+        );
+    }
+    let Some(item) = message_id(&app, agent, 0).map(TranscriptItem::Message) else {
+        return;
+    };
+    // A search of its own, as a regular expression's `cannot find|\bfoo\b`:
+    // the foo in foobar is no match.
+    let laid = laid_out(&mut app, agent, Expanded::AsShown);
+    let lines = laid.and_then(|laid| laid.item(&item)).unwrap_or_default();
+    let mut spans = Vec::new();
+    for (line, drawn) in lines.lines().enumerate() {
+        let text = drawn.text.as_str();
+        let words = text
+            .match_indices("cannot find")
+            .chain(text.match_indices("foo"));
+        let whole = words.filter(|(at, found)| {
+            let after = text.get(at + found.len()..).unwrap_or_default();
+            !after.starts_with(char::is_alphanumeric)
+        });
+        spans.extend(whole.map(|(at, found)| LineSpan {
+            item: Some(item.clone()),
+            line,
+            bytes: at..at + found.len(),
+        }));
+    }
+    assert_eq!(spans.len(), 3, "{lines:#?}");
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        style: lit,
+        spans,
+        ..Highlight::default()
+    }];
+    let mut lit_after = |row: ItemRow| {
+        let item = Some(item.clone());
+        app.world_mut().trigger(ScrollTo { agent, item, row });
+        let rows = drawn_rows(&mut app, agent, 10, Vec::new());
+        let spans = rows.iter().flat_map(|row| row.spans.iter());
+        let lit = spans.filter(|span| span.style.bg == lit.bg);
+        let lit: Vec<String> = lit.map(|span| span.content.to_string()).collect();
+        let top = rows.first().map(ToString::to_string).unwrap_or_default();
+        (top, lit)
+    };
+    // The second and third matches start in the row after the wrap.
+    let (top, shown) = lit_after(ItemRow::Lit(1));
+    assert!(top.trim_start().starts_with("find foo foobar"), "{top}");
+    assert_eq!(shown, ["find", "foo", "foo"]);
+    let (top, shown) = lit_after(ItemRow::Lit(0));
+    assert!(top.ends_with("cannot"), "{top}");
+    assert_eq!(shown, ["cannot", "find", "foo", "foo"]);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    assert_eq!(drawn.lit_in(&item), 3);
+    let rows = drawn.rows_of(&item).unwrap_or_default();
+    let rows = drawn.rows().get(rows).unwrap_or_default();
+    let counted: Vec<usize> = rows.iter().map(DrawnRow::lit_total).collect();
+    assert!(counted.ends_with(&[1, 2]), "{rows:#?}");
+}
+
+/// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
+/// columns, with `expanded` items whole.
+fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTranscript> {
+    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, WIDTH, expanded)
+    };
+    app.world_mut().run_system_once(lay_out).ok().flatten()
+}
+
+#[test]
+fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // A look that keeps a collapsed output's last lines, as a shell's does.
+    app.add_tool_renderer("shell", |call| {
+        let mut lines = vec![call.header("shell", "")];
+        if call.expanded {
+            lines.extend(call.result_lines(usize::MAX));
+        } else {
+            lines.extend(call.tail_lines(2));
+        }
+        lines
+    });
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), json!({})));
+    say(&mut app, agent, Message::user("why does it panic?"));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let output = ["panicked at a.rs", "two", "three", "panicked at b.rs"];
+    let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
+    say(&mut app, agent, result);
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "panicked".to_owned(),
+        ..Highlight::default()
+    }];
+    let item = TranscriptItem::Call(call.id.clone());
+    on_screen(&mut app, agent, 5);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let shown = laid_out(&mut app, agent, Expanded::AsShown);
+    // Laid out as drawn, it is what the frame drew, but on no screen.
+    assert_eq!(
+        shown.as_ref().map(DrawnTranscript::rows),
+        Some(drawn.rows())
+    );
+    assert!(drawn.is_cut(&item));
+    assert_eq!(drawn.lit_in(&item), 1);
+    let Some(whole) = laid_out(&mut app, agent, Expanded::All) else {
+        return;
+    };
+    assert!(!whole.is_cut(&item));
+    assert_eq!(whole.on_screen(), 0..0);
+    // The call alone, whole: its first match is the one the tail cut.
+    let call_rows = whole.item(&item).unwrap_or_default();
+    let texts: Vec<&str> = call_rows
+        .rows()
+        .iter()
+        .map(|row| row.text.as_str())
+        .collect();
+    let lit: Vec<usize> = call_rows.rows().iter().map(DrawnRow::lit_total).collect();
+    assert_eq!(texts.get(1..).map(<[&str]>::len), Some(4), "{texts:#?}");
+    assert_eq!(lit, [0, 1, 0, 0, 1]);
+    assert_eq!(call_rows.items().first(), Some(&(item.clone(), 0..5)));
+    // Expanded in the view, it is drawn as laid out whole.
+    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
+    expanded.insert(item.clone());
+    on_screen(&mut app, agent, 5);
+    let drawn = app.world().resource::<DrawnTranscript>().item(&item);
+    assert_eq!(
+        drawn.map(|drawn| drawn.rows().to_vec()),
+        Some(call_rows.rows().to_vec())
+    );
+}
+
+#[test]
+fn a_highlight_lights_a_renderers_text_and_draws_again() {
+    let (mut app, agent) = view_app();
+    app.add_tool_renderer("shell", |call| {
+        vec![call.header("shell", call.argument("command").unwrap_or_default())]
+    });
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire(
+        "c1",
+        ToolFunction::new(name, json!({ "command": "cargo test" })),
+    );
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call)]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let redraw = |app: &mut App| {
+        let due = app
+            .world_mut()
+            .run_system_cached(crate::render::needs_redraw);
+        due.unwrap_or(false)
+    };
+    redraw(&mut app);
+    assert!(!redraw(&mut app));
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "TEST".to_owned(),
+        style: lit,
+        match_case: false,
+        spans: Vec::new(),
+    }];
+    assert!(redraw(&mut app));
+    let rows = drawn_rows(&mut app, agent, 100, Vec::new());
+    let spans = rows.iter().flat_map(|row| row.spans.iter());
+    let lit: Vec<&str> = spans
+        .filter(|span| span.style.bg == lit.bg)
+        .map(|span| span.content.as_ref())
+        .collect();
+    assert_eq!(lit, ["test"]);
+}
+
+#[test]
+fn a_tool_call_is_drawn_while_its_arguments_stream() {
+    let (mut app, agent) = view_app();
+    app.add_tool_renderer("write", |call| {
+        let path = call.argument("path").unwrap_or("…");
+        vec![Line::from(format!("{:?} write {path}", call.state))]
+    });
+    let Ok(name) = ToolName::new("write") else {
+        return;
+    };
+    let effect = app.world_mut().spawn(Partial::default()).id();
+    let part = rig_core::streaming::Part::new(1);
+    let stream = |app: &mut App, event: StreamEvent| {
+        app.world_mut().write_message(StreamDelta {
+            effect,
+            agent: Some(agent),
+            event,
+        });
+        app.update();
+        let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+        let calls = calls.into_iter().map(|(_, call)| call).collect();
+        drawn_rows(app, agent, 100, calls)
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>()
+    };
+    let opened = StreamEvent::Start {
+        part,
+        kind: PartKind::ToolCall,
+        name: Some(name.clone()),
+    };
+    let lines = stream(&mut app, opened);
+    assert!(line_of(&lines, "Streaming write …").is_some(), "{lines:#?}");
+    let json = r#"{"path": "notes.md", "content": "Hel"#.to_owned();
+    let lines = stream(&mut app, StreamEvent::Arguments { part, json });
+    assert!(
+        line_of(&lines, "Streaming write notes.md").is_some(),
+        "{lines:#?}"
+    );
+    let done = ToolCall::from_wire("call-7", ToolFunction::new(name, json!({ "path": "a.md" })));
+    let content = AssistantContent::ToolCall(done.clone());
+    stream(&mut app, StreamEvent::End { part, content });
+    let calls = app.world().resource::<StreamingCalls>().of(effect).to_vec();
+    assert_eq!(
+        calls.first().map(|(_, call)| call.id.clone()),
+        Some(done.id)
+    );
+    // Once the reply is in the conversation, its streaming calls go.
+    app.world_mut().entity_mut(effect).remove::<Partial>();
+    app.update();
+    assert!(
+        app.world()
+            .resource::<StreamingCalls>()
+            .of(effect)
+            .is_empty()
+    );
 }

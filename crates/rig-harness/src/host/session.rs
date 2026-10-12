@@ -1,17 +1,23 @@
 //! Where this process keeps its session: the directory the launcher names,
-//! the text log, panics routed to that log instead of the terminal, and
-//! the log's warnings and errors as [`Logged`] data. A plugin copies the
-//! session into a new one with [`ForkSession`] and removes another with
-//! [`DeleteSession`]; [`SessionForked`] and [`SessionDeleted`] tell every
-//! plugin, such as one keeping files of its own per session. A forked
-//! session names the session it came from ([`ForkedFrom`]). The first app
-//! a session runs, a fork's first included, has [`FirstStart`]; what the
-//! user typed in a message is [`typed`].
+//! the store of the session's files, opened by [`SessionStores`], which a
+//! plugin replaces to keep them elsewhere or sealed, the plain files of
+//! [`Scratch`] with the text log, panics routed to that log instead of
+//! the terminal, and the log's warnings and errors as [`Logged`] data. A
+//! plugin copies the session into a new one with [`ForkSession`] and
+//! removes another with [`DeleteSession`]; [`SessionForked`] and
+//! [`SessionDeleted`] tell every plugin, such as one keeping files of its
+//! own per session. A forked session names the session it came from
+//! ([`ForkedFrom`]). The first app a session runs, a fork's first
+//! included, has [`FirstStart`]; what the user typed in a message is
+//! [`typed`].
 
 use std::fmt::{Debug, Write};
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, File, OpenOptions};
+use std::io::{self, Seek, SeekFrom};
 use std::ops::Deref;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
@@ -20,46 +26,184 @@ use bevy_log::tracing::field::{Field, Visit};
 use bevy_log::tracing::{Event, Level};
 use bevy_log::tracing_subscriber::layer::{Context, Layer};
 use bevy_log::tracing_subscriber::{Registry, fmt};
-use bevy_log::{BoxedFmtLayer, BoxedLayer, error};
+use bevy_log::{BoxedFmtLayer, BoxedLayer, error, warn};
 use bevy_reflect::Reflect;
 use crossbeam_channel::{Receiver, Sender};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 
-use rig_cassette::journal::JsonlDirStore;
+use rig_cassette::journal::{JournalStore, JsonlDirStore, MessageId, OriginKind, fork_session};
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Conversation, MessageId, Notice};
-use rig_ecs::inbox::OriginKind;
-use rig_ecs::journal::{SessionStore, fork_session};
+use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::journal::SessionStore;
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
 
 use super::cli::Cli;
-use super::launcher::LauncherRun;
+use super::launcher::{LauncherRun, refuse};
+use crate::describe::Describing;
 use crate::services::RigHome;
 
-/// The session's directory: the agent logs the core keeps there through
-/// its [`SessionStore`], the effect log, and the launcher's files. Every
-/// top-level `*.jsonl` file there but the effect log is an agent's log, so
-/// a plugin keeps its files of the session in a directory of its own there.
+/// The session's directory. Its files are kept through the session's
+/// store ([`SessionStores`]): a plugin keeps its own files of the session
+/// there too, under a directory of its own, such as
+/// `store.write_file("notes/today.md", ..)`.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths(pub SessionDir);
-
-impl SessionPaths {
-    /// Where tools keep output they cut, and plugins large answers, whole,
-    /// under handles the model can `read` or `search`.
-    pub fn spill(&self) -> Spill {
-        Spill(self.path().join("spill"))
-    }
-}
 
 impl Deref for SessionPaths {
     type Target = SessionDir;
 
     fn deref(&self) -> &SessionDir {
         &self.0
+    }
+}
+
+/// Opens the store of a session's files: the running session's, a fork's,
+/// an import's, one `/resume` lists. A plugin replaces it while the app is
+/// built, such as with a store that seals what it keeps:
+/// `app.insert_resource(SessionStores::new(|dir| ..))`. Once every plugin
+/// is built, the harness opens the running session's [`SessionStore`] from
+/// it, before the session is restored, unless one is there; a run whose
+/// store does not open is refused. Every store it opens marks its session
+/// saved ([`SessionDir::mark_saved`]) the first time an agent's log is
+/// written to it, so `/resume` lists the session. By default a session's
+/// files are JSON-lines files in its directory ([`JsonlDirStore`]).
+#[derive(Resource, Clone)]
+pub struct SessionStores(Arc<OpenStore>);
+
+/// How [`SessionStores`] opens a store.
+type OpenStore = dyn Fn(&SessionDir) -> io::Result<Arc<dyn JournalStore>> + Send + Sync;
+
+impl SessionStores {
+    /// Stores that `open` opens.
+    pub fn new(
+        open: impl Fn(&SessionDir) -> io::Result<Arc<dyn JournalStore>> + Send + Sync + 'static,
+    ) -> Self {
+        Self(Arc::new(open))
+    }
+
+    /// The store of the session in `dir`, which marks the session saved
+    /// once an agent's log is written to it.
+    ///
+    /// # Errors
+    ///
+    /// When the store cannot be opened, such as without its key.
+    pub fn open(&self, dir: &SessionDir) -> io::Result<Arc<dyn JournalStore>> {
+        Ok(Arc::new(Marking {
+            inner: (self.0)(dir)?,
+            dir: dir.clone(),
+            marked: AtomicBool::new(false),
+        }))
+    }
+}
+
+impl Default for SessionStores {
+    fn default() -> Self {
+        Self::new(|dir| {
+            let store = JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES);
+            Ok(Arc::new(store))
+        })
+    }
+}
+
+/// A store that marks its session saved on the first write to an agent's
+/// log, the session's own log of saved values included.
+struct Marking {
+    inner: Arc<dyn JournalStore>,
+    dir: SessionDir,
+    marked: AtomicBool,
+}
+
+impl JournalStore for Marking {
+    fn agents(&self) -> io::Result<Vec<String>> {
+        self.inner.agents()
+    }
+
+    fn read(&self, agent: &str) -> io::Result<Vec<u8>> {
+        self.inner.read(agent)
+    }
+
+    fn truncate(&self, agent: &str, len: u64) -> io::Result<()> {
+        self.inner.truncate(agent, len)
+    }
+
+    fn append(&self, agent: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.append(agent, bytes)?;
+        if !self.marked.load(Ordering::Relaxed) {
+            match self.dir.mark_saved() {
+                Ok(()) => self.marked.store(true, Ordering::Relaxed),
+                Err(failure) => warn!("could not mark the session saved: {failure}"),
+            }
+        }
+        Ok(())
+    }
+
+    fn put_blob(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.put_blob(name, bytes)
+    }
+
+    fn blob(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.inner.blob(name)
+    }
+
+    fn blobs(&self) -> io::Result<Vec<String>> {
+        self.inner.blobs()
+    }
+
+    fn remove(&self, agent: &str) -> io::Result<()> {
+        self.inner.remove(agent)
+    }
+
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.write_file(name, bytes)
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        self.inner.append_file(name, bytes)
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        self.inner.read_file(name)
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        self.inner.remove_file(name)
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.inner.files()
+    }
+}
+
+/// Where rig keeps plain files of the session, which are named by path
+/// and so stay out of its store: tool output cut short ([`Self::spill`]),
+/// pasted images ([`Self::images`]) and the text log ([`Self::log`]: tracing,
+/// panics, stray output). The session's directory by default; a plugin
+/// places it elsewhere, or with `None` nowhere, while the app is built:
+/// tools then only cut, pasting an image is refused, and the text log and
+/// stray output are dropped.
+#[derive(Resource, Clone, Debug, PartialEq, Eq)]
+pub struct Scratch(pub Option<PathBuf>);
+
+impl Scratch {
+    /// Where tools keep output they cut, and plugins large answers, whole,
+    /// under handles the model can `read` or `search`.
+    pub fn spill(&self) -> Option<Spill> {
+        self.0.as_ref().map(|dir| Spill(dir.join("spill")))
+    }
+
+    /// Where images pasted into the input are kept, which messages attach
+    /// by path.
+    pub fn images(&self) -> Option<PathBuf> {
+        self.0.as_ref().map(|dir| dir.join("images"))
+    }
+
+    /// The text log.
+    pub fn log(&self) -> Option<PathBuf> {
+        self.0.as_ref().map(|dir| dir.join("agent.log"))
     }
 }
 
@@ -72,7 +216,10 @@ pub(crate) fn paths_in(home: &Home) -> SessionPaths {
         .unwrap_or_else(SessionId::generate);
     let dir = home.session(&id);
     // A directory that cannot be created shows up as a failed log write.
-    fs::create_dir_all(dir.path()).ok();
+    // A build describing itself keeps none.
+    if crate::describe::describing().is_none() {
+        fs::create_dir_all(dir.path()).ok();
+    }
     SessionPaths(dir)
 }
 
@@ -92,14 +239,10 @@ fn session_paths(world: &mut World) -> SessionPaths {
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct FirstStart;
 
-/// The marker file of a session an app started in, beside its logs. A
-/// fork does not copy it.
-const STARTED: &str = "started";
-
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
-/// them already, and the [`SessionStore`] keeping the session there,
-/// routes panics to the log, tells a first start ([`FirstStart`]), and
-/// forks and deletes sessions.
+/// them already, the default [`SessionStores`] and [`Scratch`], opens the
+/// [`SessionStore`] once every plugin is built, routes panics to the log,
+/// tells a first start ([`FirstStart`]), and forks and deletes sessions.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -108,16 +251,17 @@ impl Plugin for SessionPlugin {
             error!("{info}\n{}", std::backtrace::Backtrace::capture());
         }));
         let paths = session_paths(app.world_mut());
-        if !app.world().contains_resource::<SessionStore>() {
-            app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
+        if !app.world().contains_resource::<Scratch>() {
+            app.insert_resource(Scratch(Some(paths.path().to_owned())));
         }
-        if !paths.path().join(STARTED).exists() {
+        if !paths.started().exists() {
             app.insert_resource(FirstStart).add_systems(
                 Last,
                 mark_started.run_if(run_once).before(discard_sessionless),
             );
         }
-        app.init_resource::<Forks>()
+        app.init_resource::<SessionStores>()
+            .init_resource::<Forks>()
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
@@ -133,11 +277,38 @@ impl Plugin for SessionPlugin {
                     .run_if(on_message::<AppExit>),
             );
     }
+
+    /// Every plugin chose the stores and the scratch place by now: moves
+    /// the text log where [`Scratch`] says, and opens the session's store
+    /// unless a test or a nested tool put one in. A build describing itself
+    /// opens none.
+    fn finish(&self, app: &mut App) {
+        if app.world().contains_resource::<Describing>() {
+            return;
+        }
+        place_text_log(app.world_mut());
+        let world = app.world();
+        if world.contains_resource::<SessionStore>() {
+            return;
+        }
+        let (Some(paths), Some(stores)) = (
+            world.get_resource::<SessionPaths>(),
+            world.get_resource::<SessionStores>(),
+        ) else {
+            return;
+        };
+        match stores.open(paths) {
+            Ok(store) => {
+                app.insert_resource(SessionStore(store));
+            }
+            Err(failure) => refuse(app, format!("cannot open the session's store: {failure}")),
+        }
+    }
 }
 
 /// Marks the session started at the end of its first app's first frame.
 fn mark_started(paths: Res<SessionPaths>) {
-    if let Err(failure) = fs::write(paths.path().join(STARTED), b"") {
+    if let Err(failure) = fs::write(paths.started(), b"") {
         error!("could not mark the session started: {failure}");
     }
 }
@@ -150,15 +321,16 @@ fn discard_sessionless(
     mut exits: MessageReader<AppExit>,
     cli: Option<Res<Cli>>,
     paths: Res<SessionPaths>,
-    run: Option<Res<LauncherRun>>,
+    (run, scratch): (Option<Res<LauncherRun>>, Option<Res<Scratch>>),
 ) {
     if !cli.is_some_and(|cli| cli.sessionless()) {
         return;
     }
     if !exits.read().all(AppExit::is_success)
         && let Some(run) = run
+        && let Some(log) = scratch.and_then(|scratch| scratch.log())
     {
-        fs::rename(paths.log(), run.0.log()).ok();
+        fs::rename(log, run.0.log()).ok();
     }
     fs::remove_dir_all(paths.path()).ok();
 }
@@ -193,8 +365,8 @@ pub struct SessionForked {
 
 /// The session a session was forked from, and where the copy stopped,
 /// as [`ForkSession`] asked, with the text of the message it stopped
-/// before: kept in the forked session's [`SessionDir::parent`], so a view
-/// of a session's family reads no other session's log.
+/// before: kept in the forked session's store, so a view of a session's
+/// family reads no other session's log.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForkedFrom {
     /// The session it was copied from.
@@ -216,10 +388,13 @@ struct Parent {
     text: Option<String>,
 }
 
+/// The file of a forked session's store that holds its [`ForkedFrom`].
+const PARENT: &str = "parent.json";
+
 impl ForkedFrom {
-    /// The session `session` was forked from, if it was.
-    pub fn of(session: &SessionDir) -> Option<Self> {
-        let parent: Parent = serde_json::from_slice(&fs::read(session.parent()).ok()?).ok()?;
+    /// The session the session in `store` was forked from, if it was.
+    pub fn of(store: &dyn JournalStore) -> Option<Self> {
+        let parent: Parent = serde_json::from_slice(&store.read_file(PARENT).ok()?).ok()?;
         Some(Self {
             session: parent.session.parse().ok()?,
             before: parent.before,
@@ -227,15 +402,17 @@ impl ForkedFrom {
         })
     }
 
-    /// Writes it into `session`.
-    fn write(&self, session: &SessionDir) -> Result<(), String> {
+    /// Writes it into the forked session's `store`.
+    fn write(&self, store: &dyn JournalStore) -> Result<(), String> {
         let parent = Parent {
             session: self.session.to_string(),
             before: self.before.clone(),
             text: self.text.clone(),
         };
         let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
-        fs::write(session.parent(), text).map_err(|failure| failure.to_string())
+        store
+            .write_file(PARENT, &text)
+            .map_err(|failure| failure.to_string())
     }
 }
 
@@ -254,8 +431,11 @@ struct Forks(Vec<ForkSession>);
 
 fn fork_sessions(
     mut forks: ResMut<Forks>,
-    paths: Res<SessionPaths>,
-    store: Option<Res<SessionStore>>,
+    (paths, store, stores): (
+        Res<SessionPaths>,
+        Option<Res<SessionStore>>,
+        Res<SessionStores>,
+    ),
     home: Option<Res<RigHome>>,
     agents: Query<(&AgentId, &Conversation)>,
     mut forked: MessageWriter<SessionForked>,
@@ -269,7 +449,8 @@ fn fork_sessions(
             let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
             typed(conversation, conversation.index_of(*message)?)
         });
-        match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
+        let stores = (store.as_deref(), &*stores);
+        match fork_into(&home, &paths, stores, (before.as_ref(), text)) {
             Ok((from, to)) => {
                 forked.write(SessionForked {
                     from,
@@ -320,35 +501,29 @@ pub fn first_typed(conversation: &Conversation) -> Option<String> {
     (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
 }
 
-/// Copies the session at `paths` into a new session of `home`, as of
-/// `before`, whose message's `text` the copy keeps with its parent.
+/// Copies the session at `paths`, kept in `store`, into a new session of
+/// `home` opened by `stores`, as of `before`, whose message's `text` the
+/// copy keeps with its parent.
 fn fork_into(
     home: &Home,
     paths: &SessionPaths,
-    store: Option<&SessionStore>,
+    (store, stores): (Option<&SessionStore>, &SessionStores),
     (before, text): (Option<&(AgentId, MessageId)>, Option<String>),
 ) -> Result<(SessionId, SessionId), String> {
     let from = paths.id().ok_or("this session has no id")?;
     let store = store.ok_or("this session is not stored")?;
-    // A second fork in the same second takes the next free id.
-    let base = SessionId::generate();
-    let mut to = base.clone();
-    let mut n = 0;
-    while home.session(&to).path().exists() {
-        n += 1;
-        to = format!("{base}-{n}").parse()?;
-    }
-    let target = home.session(&to);
-    fs::create_dir_all(target.path()).map_err(|failure| failure.to_string())?;
+    let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
     let parent = ForkedFrom {
         session: from.clone(),
         before: before.cloned(),
         text,
     };
-    let before = before.map(|(agent, message)| (agent, *message));
-    let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
+    let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
+    let copied = stores
+        .open(&target)
+        .and_then(|copy| fork_session(&*store.0, &*copy, before).map(|()| copy))
         .map_err(|failure| failure.to_string())
-        .and_then(|()| parent.write(&target))
+        .and_then(|copy| parent.write(&*copy))
         .and_then(|()| match paths.working_directory() {
             Some(directory) => {
                 fs::write(target.directory(), directory.to_string_lossy().as_bytes())
@@ -376,7 +551,7 @@ fn delete_session(
         Some("it is this session".to_owned())
     } else if !session.path().is_dir() {
         Some("there is no such session".to_owned())
-    } else if runs_elsewhere(&session) {
+    } else if session.runs_elsewhere() {
         Some("another rig runs it".to_owned())
     } else {
         fs::remove_dir_all(session.path())
@@ -396,28 +571,113 @@ fn delete_session(
     }
 }
 
-/// Whether a launcher holds `session`'s lock.
-fn runs_elsewhere(session: &SessionDir) -> bool {
-    File::options()
-        .write(true)
-        .open(session.launcher_lock())
-        .is_ok_and(|lock| matches!(lock.try_lock(), Err(TryLockError::WouldBlock)))
+/// The `LogPlugin` formatter: plain text appended to the session's text
+/// log, so nothing is written to stderr. The log comes before the
+/// session's other plugins, so it takes the session from the environment
+/// first, and logs into the session's directory until every plugin is
+/// built, when the log moves where [`Scratch`] says.
+pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
+    let at = session_paths(app.world_mut()).log();
+    let earlier = fs::metadata(&at).ok().map(|earlier| earlier.len());
+    let file = OpenOptions::new().create(true).append(true).open(&at).ok();
+    let log = TextLog {
+        at: file.is_some().then_some(at),
+        earlier,
+        file: Arc::new(Mutex::new(file)),
+    };
+    let writer = log.file.clone();
+    app.insert_resource(log);
+    let layer = fmt::Layer::default().with_ansi(false);
+    Some(Box::new(
+        layer.with_writer(move || LogWriter(writer.clone())),
+    ))
 }
 
-/// The `LogPlugin` formatter: plain text appended to the session's log, so
-/// nothing is written to stderr. The log comes before the session's other
-/// plugins, so it takes the session from the environment first.
-pub(crate) fn log_layer(app: &mut App) -> Option<BoxedFmtLayer> {
-    let paths = session_paths(app.world_mut()).log();
-    let file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(paths)
-        .ok();
-    let layer = fmt::Layer::default().with_ansi(false);
-    Some(match file {
-        Some(file) => Box::new(layer.with_writer(Mutex::new(file))),
-        None => Box::new(layer.with_writer(std::io::sink)),
+/// The text log's file, and where it is.
+#[derive(Resource)]
+struct TextLog {
+    at: Option<PathBuf>,
+    /// The length of the file earlier runs left at `at`, which this run
+    /// appends to; `None` when this run made it.
+    earlier: Option<u64>,
+    file: Arc<Mutex<Option<File>>>,
+}
+
+/// Writes a line of the text log, or drops it without a file.
+struct LogWriter(Arc<Mutex<Option<File>>>);
+
+impl io::Write for LogWriter {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        let mut file = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        match file.as_mut() {
+            Some(file) => file.write(bytes),
+            None => Ok(bytes.len()),
+        }
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        let mut file = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        file.as_mut().map_or(Ok(()), io::Write::flush)
+    }
+}
+
+/// Moves what this run wrote to the text log so far where [`Scratch`]
+/// says, or removes it for no place, and logs there from now on. What
+/// earlier runs logged stays where it was.
+fn place_text_log(world: &mut World) {
+    let wanted = world.get_resource::<Scratch>().and_then(Scratch::log);
+    let Some(mut log) = world.get_resource_mut::<TextLog>() else {
+        return;
+    };
+    if log.at == wanted {
+        return;
+    }
+    let handle = log.file.clone();
+    let mut file = handle.lock().unwrap_or_else(PoisonError::into_inner);
+    let moved = match (&log.at, log.earlier, &wanted) {
+        (Some(at), None, Some(to)) => move_file(at, to),
+        (Some(at), None, None) => fs::remove_file(at),
+        (Some(at), Some(earlier), to) => take_tail(at, earlier, to.as_deref()),
+        (None, _, _) => Ok(()),
+    };
+    if let Err(failure) = moved {
+        // Said in the old log, which stays where it was.
+        drop(file);
+        error!("could not move the text log: {failure}");
+        return;
+    }
+    *file = wanted
+        .as_deref()
+        .and_then(|to| OpenOptions::new().create(true).append(true).open(to).ok());
+    drop(file);
+    log.at = wanted;
+    log.earlier = None;
+}
+
+/// Cuts the file `from` back to its first `length` bytes, appending what
+/// followed to `to` when there is one.
+fn take_tail(from: &Path, length: u64, to: Option<&Path>) -> io::Result<()> {
+    if let Some(to) = to {
+        let mut tail = File::open(from)?;
+        tail.seek(SeekFrom::Start(length))?;
+        if let Some(directory) = to.parent() {
+            fs::create_dir_all(directory)?;
+        }
+        let mut moved = OpenOptions::new().create(true).append(true).open(to)?;
+        io::copy(&mut tail, &mut moved)?;
+    }
+    OpenOptions::new().write(true).open(from)?.set_len(length)
+}
+
+/// Moves the file `from` to `to`, making its directory, across file
+/// systems too.
+fn move_file(from: &Path, to: &Path) -> io::Result<()> {
+    if let Some(directory) = to.parent() {
+        fs::create_dir_all(directory)?;
+    }
+    fs::rename(from, to).or_else(|_| {
+        fs::copy(from, to)?;
+        fs::remove_file(from)
     })
 }
 

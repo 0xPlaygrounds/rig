@@ -9,17 +9,15 @@ description = "Plugin corpus (fresh held-out): FH-20: 20. Transcript search"
 workspace = true
 
 [dependencies]
-# Named by the Bevy derives.
+# The search's system parameters.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # A query that starts with `re:`.
 regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The search bar is a panel of the terminal view.
 rig-tui = { path = "../../plugins/rig-tui" }
-# A call's arguments as JSON text.
-serde_json = { workspace = true }
 
 [dev-dependencies]
+serde_json = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

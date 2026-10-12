@@ -91,7 +91,10 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     app.world_mut().trigger(RunCommand::new(host, line));
     let said = |world: &World| {
         let conversation = world.get::<Conversation>(host);
-        format!("{:?}", conversation.map(Conversation::messages))
+        format!(
+            "{:?}",
+            conversation.map(|conversation| conversation.messages())
+        )
     };
     let runs = repo.join(DIR);
     let left = |runs: &Path| {

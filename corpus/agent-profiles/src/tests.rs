@@ -38,7 +38,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         let answer = |called: On<ToolCalled<NoArgs>>,
                       mut calls: Query<&mut Decision, ToolCalls>| {
             if let Ok(mut call) = calls.get_mut(called.call) {
-                call.decide(ToolResult::success("ok".into()));
+                call.decide(Decider::plugin("test"), ToolResult::success("ok".into()));
             }
         };
         app.add_open_tool(tool, "A stand-in.", ToolOptions::default(), answer);
@@ -126,7 +126,10 @@ fn a_profile_applies_survives_a_restart_and_comes_off() {
     assert!(prompt.contains("Be terse."), "{prompt}");
     assert_eq!(tools, ["read", "search"]);
     let conversation = app.world().get::<Conversation>(agent);
-    let history = format!("{:?}", conversation.map(Conversation::messages));
+    let history = format!(
+        "{:?}",
+        conversation.map(|conversation| conversation.messages())
+    );
     assert!(history.contains("no tool named `write`"), "{history}");
     drop(app);
 

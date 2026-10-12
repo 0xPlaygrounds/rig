@@ -257,3 +257,35 @@ fn the_tap_yields_only_its_first_outcome() {
     assert_eq!(outcomes.len(), 1, "{outcomes:?}");
     assert!(matches!(outcomes.first(), Some(Err(report)) if report.message == "reset"));
 }
+
+/// An unavailable handler keeps the descriptor it was given and answers
+/// every effect, unary or streamed, `HandlerUnavailable` with its reason.
+#[test]
+fn an_unavailable_handler_answers_every_effect_with_its_reason() {
+    let descriptor = crate::effect::HandlerDescriptor::tool("lookup", "", serde_json::json!({}));
+    let handler = ErasedHandler::unavailable(descriptor.clone(), "answered from the batch API");
+    assert_eq!(handler.descriptor(), descriptor);
+    let kinds = [
+        EffectKind::Completion {
+            request: crate::completion::CompletionRequest::new("hi"),
+            stream: true,
+        },
+        EffectKind::ToolCall {
+            name: "lookup".to_owned(),
+            args: "{}".to_owned(),
+        },
+    ];
+    for (at, kind) in (1..).zip(kinds) {
+        let streams = kind.streams();
+        let dispatch = Dispatch::new(EffectId::from_raw(at), streams);
+        let answer = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
+        assert!(
+            matches!(
+                &answer,
+                Err(report) if report.kind == ErrorKind::HandlerUnavailable
+                    && report.message == "answered from the batch API"
+            ),
+            "{answer:?}"
+        );
+    }
+}

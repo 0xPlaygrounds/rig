@@ -237,7 +237,7 @@ fn on_map(
         Err(why) => {
             let why = format!("{why} Nothing ran; fix the call and send it again.");
             if let Ok(mut decision) = calls.get_mut(call) {
-                decision.decide(Outcome::refused(why));
+                decision.decide(Decider::plugin("map-reduce"), Outcome::refused(why));
             }
             return;
         }
@@ -419,7 +419,7 @@ fn on_spawned(
                 Ok(_) => "not started".to_owned(),
             };
             if let Some(answer) = map.settle(job, path, Err(why), &mut commands) {
-                decision.decide(answer);
+                decision.decide(Decider::plugin("map-reduce"), answer);
             }
             return;
         }
@@ -472,7 +472,7 @@ fn on_worker_end(
         TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),
     };
     if let Some(answer) = map.settle(job, path.clone(), result, &mut commands) {
-        decision.decide(answer);
+        decision.decide(Decider::plugin("map-reduce"), answer);
     }
 }
 
@@ -536,7 +536,10 @@ fn keep_to_file(
             continue;
         }
         let Some(allowed) = &worker.allowed else {
-            decision.decide(Outcome::refused("A reducer changes no file."));
+            decision.decide(
+                Decider::plugin("map-reduce"),
+                Outcome::refused("A reducer changes no file."),
+            );
             continue;
         };
         let why = match touches {
@@ -562,7 +565,7 @@ fn keep_to_file(
                 request.call.function.name
             ),
         };
-        decision.decide(Outcome::refused(why));
+        decision.decide(Decider::plugin("map-reduce"), Outcome::refused(why));
     }
 }
 

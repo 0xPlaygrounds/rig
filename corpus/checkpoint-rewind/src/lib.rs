@@ -21,7 +21,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::agent::{Halt, STOPPED};
 use rig_tools::process::Launcher;
 
 /// Where the checkpoints are kept, below the session's id.

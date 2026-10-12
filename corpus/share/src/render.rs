@@ -4,31 +4,7 @@
 use std::fmt::Write as _;
 
 use rig_harness::rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
-
-/// What a secret's prefix is followed by, at least, to count as one.
-const MIN_SECRET_TAIL: usize = 16;
-
-/// Prefixes of well-known API keys and tokens.
-const SECRET_PREFIXES: &[&str] = &[
-    "sk-",
-    "sk_live_",
-    "sk_test_",
-    "rk_live_",
-    "ghp_",
-    "gho_",
-    "ghs_",
-    "ghu_",
-    "github_pat_",
-    "glpat-",
-    "xoxb-",
-    "xoxp-",
-    "AKIA",
-    "AIza",
-    "hf_",
-];
-
-/// What replaces a secret in the page.
-const REDACTED: &str = "[REDACTED]";
+use rig_harness::rig_core::redact;
 
 /// A rendered session: the page and the secrets it no longer holds, each
 /// shown redacted.
@@ -120,25 +96,13 @@ impl Page {
 
     /// `text` with each secret replaced, remembered for the confirmation.
     fn redact(&mut self, text: &str) -> String {
-        let mut out = String::with_capacity(text.len());
-        let mut rest = text;
-        while let Some(start) = rest.find(is_token_char) {
-            let (before, from) = rest.split_at(start);
-            out.push_str(before);
-            let end = from.find(|c| !is_token_char(c)).unwrap_or(from.len());
-            let (token, after) = from.split_at(end);
-            if is_secret(token) {
-                let shown: String = token.chars().take(6).collect();
-                self.secrets
-                    .push(format!("{shown}… ({} chars)", token.chars().count()));
-                out.push_str(REDACTED);
-            } else {
-                out.push_str(token);
-            }
-            rest = after;
+        for secret in redact::find(text) {
+            let token = text.get(secret.range).unwrap_or_default();
+            let shown: String = token.chars().take(6).collect();
+            self.secrets
+                .push(format!("{shown}… ({} chars)", token.chars().count()));
         }
-        out.push_str(rest);
-        out
+        redact::text(text).into_owned()
     }
 
     /// The whole page.
@@ -153,20 +117,6 @@ impl Page {
             self.body
         )
     }
-}
-
-/// Whether `c` may be part of a key.
-fn is_token_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-' || c == '_'
-}
-
-/// Whether `token` looks like a key: a known prefix and a long tail.
-fn is_secret(token: &str) -> bool {
-    SECRET_PREFIXES.iter().any(|prefix| {
-        token
-            .strip_prefix(prefix)
-            .is_some_and(|tail| tail.len() >= MIN_SECRET_TAIL)
-    })
 }
 
 /// `text` safe inside HTML.

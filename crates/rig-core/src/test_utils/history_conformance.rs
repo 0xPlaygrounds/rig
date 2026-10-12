@@ -16,25 +16,16 @@ use crate::wire::{Call, Mode, Operation, Reply, Shared, Wire};
 
 /// The response `frames` fold into on `wire`, as a reply to `request`.
 ///
-/// # Panics
+/// # Errors
 ///
-/// Never; decode failures are returned.
+/// What the reply fails with ([`decode_reply`](crate::wire::decode_reply)).
 pub fn decode<W: Wire<Op = Completion>>(
     wire: &W,
     request: &CompletionRequest,
     mode: Mode,
     frames: impl IntoIterator<Item = W::Frame>,
 ) -> Result<CompletionResponse, ProviderError> {
-    let describe = wire.describe();
-    let fold = Completion::fold(request, &mut Call::new(&describe, mode));
-    let shared = Mutex::new(Shared::new(fold));
-    let fed = crate::driver::feed(
-        &mut wire.decoder(),
-        Some(wire.reassembler()),
-        &shared,
-        frames,
-    );
-    crate::driver::settle(shared, fed, reply_of(describe.name)).outcome
+    crate::wire::decode_reply(wire, request, mode, frames)
 }
 
 /// What a reply cut off after `frames` leaves: the partial response a

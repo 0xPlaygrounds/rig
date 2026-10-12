@@ -56,3 +56,41 @@ fn without_one_the_project_is_the_working_directory() {
         here
     );
 }
+
+/// The secret this file's tests run a copy of themselves with.
+const PROBE: &str = "RIG_SECRET_PROBE";
+
+/// Runs the test `name` of this binary again with a secret in its
+/// environment, and whether it ran and passed.
+#[cfg(unix)]
+fn with_a_secret(name: &str) -> bool {
+    let output = std::env::current_exe().and_then(|test| {
+        std::process::Command::new(test)
+            .args(["--exact", name, "--nocapture", "--test-threads", "1"])
+            .env(PROBE, "hunter2")
+            .output()
+    });
+    output.is_ok_and(|output| {
+        output.status.success() && String::from_utf8_lossy(&output.stdout).contains("1 passed")
+    })
+}
+
+#[cfg(unix)]
+#[test]
+fn no_secret_reaches_a_process_started_through_processes() {
+    if std::env::var_os(PROBE).is_none() {
+        let name = "services::tests::no_secret_reaches_a_process_started_through_processes";
+        assert!(with_a_secret(name), "the run with a secret failed");
+        return;
+    }
+    // A sandbox replaces the whole launcher; the secret is still kept out.
+    let processes = Processes::default();
+    processes.set(rig_tools::process::Launcher::default().wrapped(["env"]));
+    let output = processes
+        .launcher()
+        .command("sh")
+        .args(["-c", "printf %s \"${RIG_SECRET_PROBE-none}\""])
+        .output();
+    let seen = output.map(|output| String::from_utf8_lossy(&output.stdout).into_owned());
+    assert_eq!(seen.ok().as_deref(), Some("none"));
+}

@@ -15,24 +15,28 @@
 //! and each user message after its recorded gap. A replay that ends with
 //! recorded model calls not replayed (a turn failed before its call reached
 //! the replay) stops with why, as at a divergence, and `--replay` then
-//! exits with 1.
+//! exits with 1. A recorded exit that ended the session for good, such as
+//! `/quit`, is asked for again where it was, so what held it, such as a
+//! summary call, replays too, and the replay ends as the exit goes; one
+//! that restarted the session, a reload or a switch, is passed over.
 //!
 //! `rig --replay=DIR` gives the run to the replay's own front, which keeps
-//! no session: it replays the session kept in `DIR`, prints the report and
-//! exits. A [`ReplaySource`] inserted before the plugin is added replays
-//! inside whatever front runs. Nothing recorded is written to.
+//! no session: it replays the session kept in `DIR`, prints the report as
+//! the app exits, and exits with 0, or 1 when the replay diverged. A
+//! [`ReplaySource`] inserted before the plugin is added replays inside
+//! whatever front runs. Nothing recorded is written to.
 
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io;
-use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
 use rig_cassette::journal::EFFECT_LOG;
+use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
@@ -72,7 +76,8 @@ pub struct ReplayFlags {
 }
 
 /// The recorded session to replay: its effect log, which holds every
-/// effect its agents settled, the user's messages included.
+/// effect its agents settled, the user's messages and the app's exits
+/// included.
 #[derive(Resource, Clone)]
 pub struct ReplaySource {
     /// Every recorded effect.
@@ -82,23 +87,24 @@ pub struct ReplaySource {
 }
 
 impl ReplaySource {
-    /// The session kept in the directory `dir`, read only.
-    pub fn from_dir(dir: &Path, flags: ReplayFlags) -> io::Result<Self> {
+    /// The session kept in `store`, read only.
+    pub fn from_store(store: &dyn JournalStore, flags: ReplayFlags) -> io::Result<Self> {
         Ok(Self {
-            effects: jsonl::read(dir.join(EFFECT_LOG))?,
+            effects: jsonl::read_from(store.read_file(EFFECT_LOG)?.as_slice())?,
             flags,
         })
     }
 
-    /// The source the options name.
-    fn from_invocation(invoked: &Invoked) -> io::Result<Self> {
+    /// The source the options name, kept in the directory they name, read
+    /// through `stores`.
+    fn from_invocation(invoked: &Invoked, stores: &SessionStores) -> io::Result<Self> {
         let dir = invoked.flag_value(REPLAY).unwrap_or_default();
         let flags = ReplayFlags {
             continue_live: invoked.flag(CONTINUE_LIVE),
             live_tools: invoked.flag(LIVE_TOOLS),
             original_timing: invoked.flag(SPEED),
         };
-        Self::from_dir(Path::new(dir), flags)
+        Self::from_store(&*stores.open(&SessionDir::at(dir))?, flags)
     }
 }
 
@@ -143,9 +149,9 @@ pub enum ReplayStatus {
     /// Waiting for the session to be restored.
     #[default]
     Waiting,
-    /// Sending the user's messages.
+    /// Sending the user's messages, or exiting as recorded.
     Running,
-    /// Every user message was replayed.
+    /// Every user message was replayed, and the recorded exit asked for.
     Finished,
     /// Stopped at the first divergence, or finished with recorded model
     /// calls not replayed.
@@ -156,11 +162,18 @@ pub enum ReplayStatus {
 #[derive(Event, Clone, Copy, Debug)]
 pub struct ReplayEnded(pub ReplayStatus);
 
-/// A user message of the recording, and when it was accepted.
+/// What the user did in the recording, and when it was accepted.
 #[derive(Clone, Debug)]
-struct Said {
-    message: MessageRecord,
+struct Step {
+    act: Act,
     at_ms: u64,
+}
+
+/// A user's message, or an exit that ended the session for good.
+#[derive(Clone, Debug)]
+enum Act {
+    Say(MessageRecord),
+    Exit(ExitReason),
 }
 
 /// What the replay's systems and its model handlers, which answer inside
@@ -265,8 +278,8 @@ pub struct Replay {
     spawned: HashMap<Arc<str>, VecDeque<Arc<str>>>,
     /// The recorded agent each replaying agent stands for.
     paired: HashMap<Entity, Arc<str>>,
-    /// The user messages not sent yet.
-    messages: VecDeque<Said>,
+    /// The user messages not sent yet, and the recorded exit.
+    steps: VecDeque<Step>,
     primary: Option<Entity>,
     /// When the last message was sent: originally, and now.
     last_sent: Option<(u64, Duration)>,
@@ -292,15 +305,18 @@ impl Replay {
                 spawned.entry(parent.clone()).or_default().push_back(agent);
             }
         }
-        let messages = effects
+        let steps = effects
             .records
             .iter()
-            .filter(|record| record.scope == first)
-            .filter_map(said)
+            .filter_map(|record| match &record.scope {
+                Some(_) if record.scope == first => said(record),
+                Some(_) => None,
+                None => exited(record),
+            })
             .collect();
-        effects
-            .records
-            .retain(|record| MessageRecord::read(&record.kind).is_none());
+        effects.records.retain(|record| {
+            MessageRecord::read(&record.kind).is_none() && exit_reason(record).is_none()
+        });
         let recorded_models = effects
             .records
             .iter()
@@ -316,7 +332,7 @@ impl Replay {
             first,
             spawned,
             paired: HashMap::new(),
-            messages,
+            steps,
             primary: None,
             last_sent: None,
             recorded_models,
@@ -390,14 +406,54 @@ fn spawned_agent(record: &EffectRecord) -> Option<Arc<str>> {
 }
 
 /// The user's message `record` holds, if it was delivered.
-fn said(record: &EffectRecord) -> Option<Said> {
+fn said(record: &EffectRecord) -> Option<Step> {
     let message = MessageRecord::read(&record.kind)?;
     let delivered = matches!(&record.outcome,
         Ok(effect::Outcome::Custom { payload }) if payload == "delivered");
-    (delivered && message.origin.kind == OriginKind::User).then(|| Said {
-        message,
-        at_ms: record.started_ms.or(record.finished_ms).unwrap_or_default(),
+    (delivered && message.origin.kind == OriginKind::User).then(|| Step {
+        act: Act::Say(message),
+        at_ms: recorded_at(record),
     })
+}
+
+/// The exit `record` holds, if it ended the session for good: a reload or
+/// a switch restarted it, and what the session did after is replayed in
+/// the same run.
+fn exited(record: &EffectRecord) -> Option<Step> {
+    match exit_reason(record)? {
+        ExitReason::Reload | ExitReason::Switch(_) => None,
+        reason => Some(Step {
+            act: Act::Exit(reason),
+            at_ms: recorded_at(record),
+        }),
+    }
+}
+
+/// The reason of the app's exit `record` holds, if it holds one. The
+/// harness records it as the custom kind `exit` with the reason's debug
+/// form; a switch's target is not needed, as a switch is not replayed.
+fn exit_reason(record: &EffectRecord) -> Option<ExitReason> {
+    let EffectKind::Custom { kind, payload } = &record.kind else {
+        return None;
+    };
+    let reason = payload.as_str().filter(|_| &**kind == "exit")?;
+    match reason {
+        "Quit" => Some(ExitReason::Quit),
+        "Reload" => Some(ExitReason::Reload),
+        "Signal" => Some(ExitReason::Signal),
+        _ if reason.starts_with("Switch(") => Some(ExitReason::Switch(None)),
+        _ => reason
+            .strip_prefix("Failed(")?
+            .strip_suffix(')')?
+            .parse()
+            .ok()
+            .map(ExitReason::Failed),
+    }
+}
+
+/// When `record` started, else when it finished.
+fn recorded_at(record: &EffectRecord) -> u64 {
+    record.started_ms.or(record.finished_ms).unwrap_or_default()
 }
 
 /// What differs between the recorded request and the new one, as lines.
@@ -559,7 +615,7 @@ impl Plugin for SessionReplayPlugin {
             AgentPass,
             (
                 ReplaySystems::Prepare.in_set(PrepareSystems::Edit),
-                ReplaySystems::Gate.in_set(AnswerFromRecord),
+                ReplaySystems::Gate.in_set(GateSystems::FromRecord),
                 ReplaySystems::Review.in_set(Stage::Review),
             ),
         );
@@ -568,7 +624,9 @@ impl Plugin for SessionReplayPlugin {
     fn finish(&self, app: &mut App) {
         let source = if app.runs_front(REPLAY) {
             let invoked = app.world().get_resource::<Invoked>().cloned();
-            let source = ReplaySource::from_invocation(&invoked.unwrap_or_default());
+            let stores = app.world().get_resource::<SessionStores>().cloned();
+            let stores = stores.unwrap_or_default();
+            let source = ReplaySource::from_invocation(&invoked.unwrap_or_default(), &stores);
             app.add_observer(report_and_exit);
             match source {
                 Ok(source) => source,
@@ -612,13 +670,20 @@ impl Plugin for SessionReplayPlugin {
                 ),
             )
             .add_observer(next_message)
+            .add_observer(exit_started)
             .add_observer(pair_spawned);
     }
 }
 
 /// The replay front: prints the report once the replay is over, and exits,
-/// with 1 when it found a divergence.
-fn report_and_exit(ended: On<ReplayEnded>, replay: Res<Replay>, mut commands: Commands) {
+/// with 1 when it found a divergence. When the replay ended as the app
+/// exits, the exit leaves with that code instead of the recorded one.
+fn report_and_exit(
+    ended: On<ReplayEnded>,
+    replay: Res<Replay>,
+    exiting: Option<Res<ExitReason>>,
+    mut commands: Commands,
+) {
     for divergence in replay.divergences() {
         println!("{divergence}");
     }
@@ -632,7 +697,10 @@ fn report_and_exit(ended: On<ReplayEnded>, replay: Res<Replay>, mut commands: Co
         true => ExitReason::Quit,
         false => ExitReason::Failed(1),
     };
-    commands.trigger(Exit(exit));
+    match exiting {
+        Some(_) => commands.insert_resource(exit),
+        None => commands.trigger(Exit(exit)),
+    }
 }
 
 /// Pairs the primary agent with the recorded first, and sends the first
@@ -655,7 +723,11 @@ fn start(
         replay.paired.insert(agent, first);
     }
     replay.status = ReplayStatus::Running;
-    let count = replay.messages.len();
+    let count = replay
+        .steps
+        .iter()
+        .filter(|step| matches!(step.act, Act::Say(_)))
+        .count();
     notices.write(Notice::info(
         agent,
         format!("Replaying {count} user messages."),
@@ -691,9 +763,9 @@ fn pair_spawned(
     }
 }
 
-/// Sends the next user message to `agent`, with its original gap after the
-/// last one when timing is kept; or finishes, stopped when recorded model
-/// calls were not replayed.
+/// Sends the next user message to `agent`, or asks for the recorded exit,
+/// with its original gap after the last one when timing is kept; or
+/// finishes.
 fn send_next(
     replay: &mut Replay,
     agent: Entity,
@@ -701,35 +773,63 @@ fn send_next(
     commands: &mut Commands,
     notices: &mut MessageWriter<Notice>,
 ) {
-    let Some(said) = replay.messages.pop_front() else {
-        let (models, others) = replay.answered();
-        if let Some(missed) = replay.missed() {
-            notices.write(Notice::error(agent, missed.to_string()));
-            lock(&replay.answers).divergences.push(missed);
-            end(replay, ReplayStatus::Stopped, commands);
-            return;
-        }
-        notices.write(Notice::info(
-            agent,
-            format!("Replay finished: {models} model calls and {others} other effects replayed."),
-        ));
-        end(replay, ReplayStatus::Finished, commands);
+    let Some(step) = replay.steps.pop_front() else {
+        finish(replay, agent, commands, notices);
         return;
     };
-    let deliver = Deliver::new(agent, said.message.text, said.message.mode).literal();
     let wait = match (replay.flags.original_timing, replay.last_sent) {
         (true, Some((then_ms, sent))) => {
-            let gap = Duration::from_millis(said.at_ms.saturating_sub(then_ms));
+            let gap = Duration::from_millis(step.at_ms.saturating_sub(then_ms));
             (sent + gap).saturating_sub(now)
         }
         _ => Duration::ZERO,
     };
-    replay.last_sent = Some((said.at_ms, now + wait));
-    if wait.is_zero() {
-        commands.trigger(deliver);
-    } else {
-        commands.delayed().duration(wait).trigger(deliver);
+    replay.last_sent = Some((step.at_ms, now + wait));
+    match step.act {
+        Act::Say(message) => {
+            let deliver = Deliver::new(agent, message.text, message.mode).literal();
+            trigger_after(commands, wait, deliver);
+        }
+        Act::Exit(reason) => {
+            notices.write(Notice::info(agent, "Replaying the recorded exit."));
+            trigger_after(commands, wait, Exit(reason));
+        }
     }
+}
+
+/// Triggers `event` after `wait`, or now when there is none.
+fn trigger_after<'a>(
+    commands: &mut Commands,
+    wait: Duration,
+    event: impl Event<Trigger<'a>: Default>,
+) {
+    if wait.is_zero() {
+        commands.trigger(event);
+    } else {
+        commands.delayed().duration(wait).trigger(event);
+    }
+}
+
+/// Ends the replay: stopped when recorded model calls were not replayed,
+/// else finished, and says so to `agent`.
+fn finish(
+    replay: &mut Replay,
+    agent: Entity,
+    commands: &mut Commands,
+    notices: &mut MessageWriter<Notice>,
+) {
+    let (models, others) = replay.answered();
+    if let Some(missed) = replay.missed() {
+        notices.write(Notice::error(agent, missed.to_string()));
+        lock(&replay.answers).divergences.push(missed);
+        end(replay, ReplayStatus::Stopped, commands);
+        return;
+    }
+    notices.write(Notice::info(
+        agent,
+        format!("Replay finished: {models} model calls and {others} other effects replayed."),
+    ));
+    end(replay, ReplayStatus::Finished, commands);
 }
 
 /// Ends the replay with `status`, and says so.
@@ -859,7 +959,7 @@ fn answer_from_record(
             if replay.flags.continue_live {
                 return;
             }
-            decision.decide(Outcome::refused(STOPPED));
+            decision.decide(Decider::plugin("session-replay"), Outcome::refused(STOPPED));
             continue;
         }
         let replays = |kind: &EffectKind| {
@@ -876,7 +976,7 @@ fn answer_from_record(
                 if replay.flags.original_timing {
                     answers.time(effect.id(), &record);
                 }
-                decision.decide(Outcome(record.outcome));
+                decision.decide(Decider::plugin("session-replay"), Outcome(record.outcome));
                 if let Some(published) = record.tool_output {
                     commands.entity(entity).insert(Published(published));
                 }
@@ -887,7 +987,7 @@ fn answer_from_record(
                 if replay.flags.continue_live {
                     return;
                 }
-                decision.decide(Outcome(Err(report)));
+                decision.decide(Decider::plugin("session-replay"), Outcome(Err(report)));
             }
         }
     }
@@ -906,6 +1006,21 @@ fn keep_recorded_timing(
             let hold = commands.spawn(HoldOf(entity)).id();
             commands.delayed().duration(took).entity(hold).try_despawn();
         }
+    }
+}
+
+/// The replay ends as the app's exit goes, once whatever held it, such as a
+/// recorded summary call, is done.
+fn exit_started(
+    started: On<Add<Started>>,
+    exits: Query<(), With<ExitRequest>>,
+    mut replay: ResMut<Replay>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let running = replay.status == ReplayStatus::Running;
+    if let (true, true, Some(agent)) = (exits.contains(started.entity), running, replay.primary) {
+        finish(&mut replay, agent, &mut commands, &mut notices);
     }
 }
 

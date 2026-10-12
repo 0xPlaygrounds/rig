@@ -35,15 +35,37 @@ fn project(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// `rig -p --schema=out.json 'classify these failing tests'` in `dir`,
+/// `rig -p --schema out.json -m deepseek/deepseek-flash 'classify these
+/// failing tests'`, read as the launcher reads it: against what the plugin
+/// says it takes when the build describes itself.
+fn args() -> Option<Invocation> {
+    let (mut describing, _) = app_on(&MemoryStore::default());
+    describing.add_plugins((AgentPlugin, SubmitResultPlugin));
+    describing.finish();
+    let report = rig_harness::describe::report(describing.world_mut()).ok()?;
+    let words = [
+        "-p",
+        "--schema",
+        "out.json",
+        "-m",
+        "deepseek/deepseek-flash",
+        "classify these failing tests",
+    ];
+    report.invocation(&words).ok()
+}
+
+/// `rig -p --schema out.json 'classify these failing tests'` in `dir`,
 /// answered by `model`, until it asked to exit.
 fn run(dir: &Path, model: &MockCompletionModel) -> Option<App> {
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    let args = Invocation {
+    let args = args()?;
+    let expected = Invocation {
         print: Some("classify these failing tests".to_owned()),
         model: Some("deepseek/deepseek-flash".to_owned()),
         flags: vec![(SCHEMA.to_owned(), Some("out.json".to_owned()))],
+        ..Invocation::default()
     };
+    assert_eq!(args, expected, "--schema takes the next word");
     app.insert_resource(Invoked {
         args,
         terminal: false,
@@ -98,7 +120,12 @@ fn a_valid_result_ends_the_turn_after_the_other_calls() {
     let outputs = &app.world().resource::<ToolOutputs>().0;
     let output = |id: &str| outputs.get(id).cloned().unwrap_or_default();
     let invalid = output("c1");
-    assert!(invalid.contains("`verdict` is required"), "{invalid}");
+    // rig-core refuses arguments that do not fit the tool's schema before
+    // the plugin sees them.
+    assert!(
+        invalid.contains("do not fit its schema") && invalid.contains("verdict"),
+        "{invalid}"
+    );
     assert!(output("c3").contains("the a file"), "{}", output("c3"));
     let result = app.world().resource::<SubmitResult>();
     assert_eq!(result.0, Some(serde_json::json!({ "verdict": "flaky" })));
@@ -140,6 +167,30 @@ fn two_text_answers_get_one_reminder_then_fail_the_run() {
         .map(|request| serde_json::to_string(request).unwrap_or_default())
         .unwrap_or_default();
     assert_eq!(last.matches(REMINDER).count(), 1, "one reminder: {last}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn three_refused_results_fail_the_run() {
+    let dir = project("invalid");
+    assert!(dir.is_some(), "a scratch project");
+    let Some(dir) = dir else { return };
+    let empty = || calls("c", TOOL, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([
+        empty(),
+        empty(),
+        empty(),
+        reply("never asked for"),
+    ]);
+    let app = run(&dir, &model);
+    assert!(app.is_some(), "the app starts");
+    let Some(app) = app else { return };
+
+    assert_eq!(model.request_count(), 3, "no request after the third");
+    assert_eq!(
+        app.world().get_resource::<ExitReason>(),
+        Some(&ExitReason::Failed(INVALID_EXIT))
+    );
     std::fs::remove_dir_all(&dir).ok();
 }
 

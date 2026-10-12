@@ -59,7 +59,7 @@
 //! ) {
 //!     for (ForAgent(parent), mut decision) in &mut requests {
 //!         if roots.get(*parent).is_ok_and(|spawned| spawned.iter().next().is_some()) {
-//!             decision.decide(Outcome::refused("one at a time"));
+//!             decision.decide(Decider::plugin("one-at-a-time"), Outcome::refused("one at a time"));
 //!         }
 //!     }
 //! }

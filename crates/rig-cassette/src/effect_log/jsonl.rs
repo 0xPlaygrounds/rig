@@ -31,6 +31,9 @@
 //!   reads it once, on its first append or [`Writer::last_id`], and
 //!   continues its header, requests and ids.
 //!
+//! A [`Writer`] appends to a file by path, or to a session's file in its
+//! [`JournalStore`] ([`Writer::on`]); [`read_from`] reads either back.
+//!
 //! The writer also leaves out the parts of a completion's raw provider
 //! document that echo the request (`instructions`, `tools`) and the
 //! per-item usage attribution (`usage.attribution`); nothing reads them
@@ -54,6 +57,7 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::journal::JournalStore;
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -66,7 +70,7 @@ use super::{EffectLog, LogHeader};
 /// [`EffectLogRecorder::take`]: super::EffectLogRecorder::take
 #[derive(Debug)]
 pub struct Writer {
-    path: PathBuf,
+    file: Target,
     /// The header last appended, to tell whether the next one changed.
     given: Option<LogHeader>,
     /// What a reader knows after the file's lines: `None` until they are
@@ -75,13 +79,43 @@ pub struct Writer {
     known: Option<Known>,
 }
 
+/// Where a [`Writer`] appends.
+enum Target {
+    Path(PathBuf),
+    Store {
+        store: Arc<dyn JournalStore>,
+        name: String,
+    },
+}
+
+impl std::fmt::Debug for Target {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Path(path) => f.debug_tuple("Path").field(path).finish(),
+            Self::Store { name, .. } => f.debug_tuple("Store").field(name).finish(),
+        }
+    }
+}
+
 impl Writer {
     /// A writer appending to the file at `path`, created on first write.
     /// When the file has lines, the first append reads them and continues
     /// from them.
     pub fn new(path: impl Into<PathBuf>) -> Self {
+        Self::writing(Target::Path(path.into()))
+    }
+
+    /// A writer appending to the file `name` of the session `store` holds,
+    /// such as [`EFFECT_LOG`](crate::journal::EFFECT_LOG), as
+    /// [`Self::new`] appends to a path.
+    pub fn on(store: Arc<dyn JournalStore>, name: impl Into<String>) -> Self {
+        let name = name.into();
+        Self::writing(Target::Store { store, name })
+    }
+
+    fn writing(file: Target) -> Self {
         Self {
-            path: path.into(),
+            file,
             given: None,
             known: None,
         }
@@ -117,11 +151,14 @@ impl Writer {
             known.highest = known.highest.max(Some(record.id));
             lines.push(b'\n');
         }
-        OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&self.path)?
-            .write_all(&lines)?;
+        match &self.file {
+            Target::Path(path) => OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)?
+                .write_all(&lines)?,
+            Target::Store { store, name } => store.append_file(name, &lines)?,
+        }
         known.has_lines = true;
         self.known = Some(known);
         if header_due {
@@ -147,7 +184,23 @@ impl Writer {
     fn fold(&mut self) -> io::Result<Known> {
         match self.known.take() {
             Some(known) => Ok(known),
-            None => Known::of(&self.path),
+            None => {
+                let read = match &self.file {
+                    Target::Path(path) => {
+                        File::open(path).map(|file| Known::of(BufReader::new(file)))
+                    }
+                    Target::Store { store, name } => {
+                        store.read_file(name).map(|bytes| Known::of(&bytes[..]))
+                    }
+                };
+                match read {
+                    Ok(known) => known,
+                    Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
+                        Ok(Known::default())
+                    }
+                    Err(failure) => Err(failure),
+                }
+            }
         }
     }
 
@@ -289,26 +342,19 @@ impl Reply {
 }
 
 impl Known {
-    /// What the lines of the file at `path` establish; nothing when it is
-    /// missing. From a line that cannot be read back on, only ids are read,
-    /// so a writer continues with whole records and a whole header and
-    /// with ids above every id a line states.
-    fn of(path: &Path) -> io::Result<Self> {
+    /// What the lines `file` reads establish. From a line that cannot be
+    /// read back on, only ids are read, so a writer continues with whole
+    /// records and a whole header and with ids above every id a line
+    /// states.
+    fn of(file: impl BufRead) -> io::Result<Self> {
         /// A record line's id.
         #[derive(Deserialize)]
         struct IdOnly {
             id: EffectId,
         }
-        let file = match File::open(path) {
-            Ok(file) => file,
-            Err(failure) if failure.kind() == io::ErrorKind::NotFound => {
-                return Ok(Self::default());
-            }
-            Err(failure) => return Err(failure),
-        };
         let mut known = Self::default();
         let mut whole = true;
-        for line in BufReader::new(file).split(b'\n') {
+        for line in file.split(b'\n') {
             let line = line?;
             whole = whole
                 && std::str::from_utf8(&line)
@@ -762,9 +808,20 @@ fn chain_of(record: &Value) -> String {
 /// nor a record, or a continuation that refers to a request that is not
 /// recent or places messages it does not have, is an error.
 pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
+    read_from(BufReader::new(File::open(path)?))
+}
+
+/// Reads a JSON-lines log from `lines` as [`read`] reads a file, such as
+/// the bytes of a session's file in its store
+/// ([`JournalStore::read_file`]).
+///
+/// # Errors
+///
+/// When `lines` cannot be read, or holds a line [`read`] refuses.
+pub fn read_from(lines: impl BufRead) -> io::Result<EffectLog> {
     let mut known = Known::default();
     let mut records = Vec::new();
-    for line in BufReader::new(File::open(path)?).lines() {
+    for line in lines.lines() {
         if let Some(record) = known.line(&line?, true)? {
             records.push(serde_json::from_value(record)?);
         }

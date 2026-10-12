@@ -334,3 +334,54 @@ fn arguments_the_schema_does_not_declare_are_refused() {
     );
     assert_eq!(arguments_refusal(&schema, &tool_call("c2")), None);
 }
+
+#[test]
+fn ill_typed_arguments_are_refused() {
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}},
+        "required": ["path"],
+    });
+    let mut ill_typed = tool_call("c1");
+    ill_typed.function = ToolFunction::new(
+        crate::message::ToolName::new("read").expect("tool name"),
+        serde_json::json!({"limit": "ten"}),
+    );
+    assert_eq!(
+        arguments_refusal(&schema, &ill_typed).as_deref(),
+        Some(
+            "`read`'s arguments do not fit its schema: /limit: expected an integer, got a \
+             string; /path: missing. Call it again with arguments that fit."
+        )
+    );
+}
+
+#[test]
+fn a_refusal_names_five_problems_and_counts_the_rest() {
+    let schema = serde_json::json!({
+        "type": "object",
+        "properties": {},
+        "required": ["a", "b", "c", "d", "e", "f", "g"],
+    });
+    assert_eq!(
+        arguments_refusal(&schema, &tool_call("c1")).as_deref(),
+        Some(
+            "`add`'s arguments do not fit its schema: /a: missing; /b: missing; /c: missing; \
+             /d: missing; /e: missing; and 2 more. Call it again with arguments that fit."
+        )
+    );
+}
+
+#[test]
+fn arguments_that_are_not_an_object_are_refused_before_the_schema() {
+    let mut call = tool_call("c1");
+    call.function = ToolFunction::parse(
+        crate::message::ToolName::new("add").expect("tool name"),
+        "[1, 2]",
+    );
+    let schema = serde_json::json!({"properties": {}, "required": ["a"]});
+    assert_eq!(
+        arguments_refusal(&schema, &call),
+        Some(invalid_arguments_feedback("add", "[1, 2]"))
+    );
+}

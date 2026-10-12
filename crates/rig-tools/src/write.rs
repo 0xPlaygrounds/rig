@@ -1,7 +1,7 @@
 //! The `write` tool.
 
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -10,20 +10,34 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{file_change, io_error, place, resolve, write_atomic};
-use crate::{MAX_FILE_BYTES, blocking};
+use crate::blocking;
+use crate::fs::{file_change, io_error};
+use crate::workspace::{Local, Workspace};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
-/// it changed ([`FilesChanged`]): its [resolved](crate::fs::resolve) path,
+/// it changed ([`FilesChanged`]): its [resolved](Workspace) path,
 /// and the diff.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Write {
-    /// The directory a relative path is written in; `None` is this
-    /// process's working directory.
+    /// Where the file is written.
+    pub workspace: Arc<dyn Workspace>,
+    /// The directory a relative path is written in; `None` is the
+    /// workspace's working directory.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is written.
     pub confine: bool,
+}
+
+impl Default for Write {
+    /// Writes this machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self {
+            workspace: Arc::new(Local),
+            base: None,
+            confine: false,
+        }
+    }
 }
 
 /// Arguments of [`Write`].
@@ -76,10 +90,9 @@ impl Tool for Write {
     }
 
     fn footprint(&self, args: &WriteArgs) -> Touches {
-        Touches::Writes(Scope::Paths(vec![resolve(
-            self.base.as_deref(),
-            &args.path,
-        )]))
+        Touches::Writes(Scope::Paths(vec![
+            self.workspace.resolve(self.base.as_deref(), &args.path),
+        ]))
     }
 
     async fn call(
@@ -87,11 +100,15 @@ impl Tool for Write {
         context: &mut ToolContext,
         args: WriteArgs,
     ) -> Result<String, ToolExecutionError> {
-        let resolved = place(self.base.as_deref(), self.confine, &args.path)?;
+        let resolved = self
+            .workspace
+            .place(self.base.as_deref(), self.confine, &args.path)?;
+        let workspace = self.workspace.clone();
         let (output, change) = blocking(move || {
             let path = resolved.to_string_lossy();
-            let before = previous(&resolved);
-            write_atomic(&resolved, args.content.as_bytes())
+            let before = workspace.previous(&resolved);
+            workspace
+                .write(&resolved, args.content.as_bytes())
                 .map_err(|error| io_error(&path, error))?;
             let change = file_change(&path, before.as_deref(), &args.content)
                 .with_after(content_hash(args.content.as_bytes()));
@@ -102,17 +119,6 @@ impl Tool for Write {
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
     }
-}
-
-/// The text `path` held before it is written: `None` when there was no
-/// file; empty when it was too large or not a file to diff.
-fn previous(path: &Path) -> Option<String> {
-    let meta = fs::metadata(path).ok()?;
-    if !meta.is_file() || meta.len() > MAX_FILE_BYTES {
-        return Some(String::new());
-    }
-    let bytes = fs::read(path).unwrap_or_default();
-    Some(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 #[cfg(test)]

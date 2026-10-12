@@ -9,19 +9,14 @@ description = "Plugin corpus (fresh held-out): FH-05: 05. @-mentions and image a
 workspace = true
 
 [dependencies]
-# Images attached as base64.
-base64 = { workspace = true }
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }

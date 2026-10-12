@@ -5,7 +5,8 @@
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
 
-use rig_tools::fs::{file_change, place, read_text};
+use rig_tools::fs::file_change;
+use rig_tools::workspace::{Stat, Workspace};
 
 /// One file operation of a patch.
 enum Op {
@@ -30,41 +31,34 @@ struct Hunk {
     new: Vec<String>,
 }
 
-/// A file the patch writes whole: what it held (`None`: no file) and what
-/// it will hold.
-pub(crate) struct FileWrite {
-    /// The resolved path.
-    pub path: PathBuf,
-    /// Its text before, `None` when there was no file.
-    pub before: Option<String>,
-    /// Its text after.
-    pub after: String,
-}
-
-/// A patch that applies: the files to write, then the files to delete,
-/// and a line per file for the result.
+/// A patch that applies: the files to write whole and the files to
+/// delete, by the paths the patch names, and a line per file for the
+/// result.
+#[derive(Default)]
 pub(crate) struct Plan {
-    /// Whole-file writes, each run as a `write` call.
-    pub writes: Vec<FileWrite>,
-    /// Files to delete once every write succeeded.
-    pub deletes: Vec<PathBuf>,
+    /// Each file written whole, with its text after.
+    pub writes: Vec<(String, String)>,
+    /// Each file deleted.
+    pub deletes: Vec<String>,
     /// `A path (+n)`, `M path (+n -m)`, `D path (-m)`, `R from -> to (+n -m)`.
     pub summary: Vec<String>,
 }
 
-/// Parses `input` and checks it against the files under `base`, which a
-/// path may not leave: the plan, or every reason it does not apply.
-pub(crate) fn check(input: &str, base: &Path) -> Result<Plan, String> {
+/// Parses `input` and checks it against the files of `workspace`, placing
+/// each path from `base` as the file tools do (refused outside it when
+/// `confine`): the plan, or every reason it does not apply.
+pub(crate) fn check(
+    input: &str,
+    workspace: &dyn Workspace,
+    base: &Path,
+    confine: bool,
+) -> Result<Plan, String> {
     let ops = parse(input)?;
-    let mut plan = Plan {
-        writes: Vec::new(),
-        deletes: Vec::new(),
-        summary: Vec::new(),
-    };
+    let mut plan = Plan::default();
     let mut problems = Vec::new();
     let mut touched: Vec<PathBuf> = Vec::new();
     let mut place_once =
-        |path: &str, problems: &mut Vec<String>| match place(Some(base), true, path) {
+        |path: &str, problems: &mut Vec<String>| match workspace.place(Some(base), confine, path) {
             Ok(resolved) if touched.contains(&resolved) => {
                 problems.push(format!("{path}: named twice in the patch"));
                 None
@@ -78,34 +72,31 @@ pub(crate) fn check(input: &str, base: &Path) -> Result<Plan, String> {
                 None
             }
         };
+    let exists = |path: &Path| !matches!(workspace.stat(path), Ok(Stat::Missing));
     for op in ops {
         match op {
             Op::Add { path, lines } => {
                 let Some(resolved) = place_once(&path, &mut problems) else {
                     continue;
                 };
-                if resolved.exists() {
+                if exists(&resolved) {
                     problems.push(format!("{path}: the file to add exists"));
                     continue;
                 }
                 let after = join(&lines, true);
                 let change = file_change(&path, None, &after);
                 plan.summary.push(format!("A {path} (+{})", change.added));
-                plan.writes.push(FileWrite {
-                    path: resolved,
-                    before: None,
-                    after,
-                });
+                plan.writes.push((path, after));
             }
             Op::Delete { path } => {
                 let Some(resolved) = place_once(&path, &mut problems) else {
                     continue;
                 };
-                match read_text(&resolved.to_string_lossy()) {
+                match workspace.read_text(&resolved) {
                     Ok(before) => {
                         let change = file_change(&path, Some(&before), "");
                         plan.summary.push(format!("D {path} (-{})", change.removed));
-                        plan.deletes.push(resolved);
+                        plan.deletes.push(path);
                     }
                     Err(error) => problems.push(format!("{path}: the file to delete: {error}")),
                 }
@@ -118,7 +109,7 @@ pub(crate) fn check(input: &str, base: &Path) -> Result<Plan, String> {
                 let Some(resolved) = place_once(&path, &mut problems) else {
                     continue;
                 };
-                let before = match read_text(&resolved.to_string_lossy()) {
+                let before = match workspace.read_text(&resolved) {
                     Ok(before) => before,
                     Err(error) => {
                         problems.push(format!("{path}: the file to update: {error}"));
@@ -140,27 +131,19 @@ pub(crate) fn check(input: &str, base: &Path) -> Result<Plan, String> {
                 let counts = format!("(+{} -{})", change.added, change.removed);
                 let Some(to) = move_to else {
                     plan.summary.push(format!("M {path} {counts}"));
-                    plan.writes.push(FileWrite {
-                        path: resolved,
-                        before: Some(before),
-                        after,
-                    });
+                    plan.writes.push((path, after));
                     continue;
                 };
                 let Some(target) = place_once(&to, &mut problems) else {
                     continue;
                 };
-                if target.exists() {
+                if exists(&target) {
                     problems.push(format!("{to}: the file to move to exists"));
                     continue;
                 }
                 plan.summary.push(format!("R {path} -> {to} {counts}"));
-                plan.writes.push(FileWrite {
-                    path: target,
-                    before: None,
-                    after,
-                });
-                plan.deletes.push(resolved);
+                plan.writes.push((to, after));
+                plan.deletes.push(path);
             }
         }
     }

@@ -212,7 +212,7 @@ fn limit(
         .find_map(|(most, used, per)| most.filter(|most| used >= *most).map(|most| (most, per)));
         if let Some((most, per)) = over.filter(|_| !restored) {
             let why = format!("limit reached: {most} per {per} for `{tool}`");
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("tool-rate-limit"), Outcome::refused(why));
             continue;
         }
         let busy = running.entry(key.clone()).or_default();

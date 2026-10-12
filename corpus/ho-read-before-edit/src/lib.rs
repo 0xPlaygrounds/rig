@@ -61,7 +61,10 @@ fn refuse_unread(
         let read = agents.get(agent).ok();
         let why = paths.iter().find_map(|path| unread(read, path));
         if let Some(why) = why {
-            decision.decide(Outcome::refused(why));
+            decision.decide(
+                Decider::plugin("ho-read-before-edit"),
+                Outcome::refused(why),
+            );
         }
     }
 }

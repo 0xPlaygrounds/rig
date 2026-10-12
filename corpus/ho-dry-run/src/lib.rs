@@ -215,13 +215,16 @@ fn preview(
                 let command = command.unwrap_or_default();
                 if !read_only(&command) {
                     let skipped = ToolResult::skipped(format!("{NOT_EXECUTED} {command}"));
-                    decision.decide(skipped);
+                    decision.decide(Decider::plugin("ho-dry-run"), skipped);
                 }
                 continue;
             }
             _ => {
                 if !footprint.0.reads_only() {
-                    decision.decide(ToolResult::skipped(NOT_EXECUTED));
+                    decision.decide(
+                        Decider::plugin("ho-dry-run"),
+                        ToolResult::skipped(NOT_EXECUTED),
+                    );
                 }
                 continue;
             }
@@ -229,12 +232,15 @@ fn preview(
         match previewed {
             Ok((change, text)) => {
                 let text = format!("{text}\n{NOT_APPLIED}");
-                if decision.decide(ToolResult::success(ToolOutput::text(text))) {
+                if decision.decide(
+                    Decider::plugin("ho-dry-run"),
+                    ToolResult::success(ToolOutput::text(text)),
+                ) {
                     commands.entity(call).insert(Pending(change));
                 }
             }
             Err(error) => {
-                decision.decide(ToolResult::failed(error));
+                decision.decide(Decider::plugin("ho-dry-run"), ToolResult::failed(error));
             }
         }
     }

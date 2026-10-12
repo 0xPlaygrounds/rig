@@ -5,14 +5,18 @@
 //! call of the plugin's own (on `[suggest] model`, else the agent's model)
 //! reads the last message the user typed and the final reply, and answers
 //! up to three next prompts. The terminal view shows them as numbered chips
-//! in a one-row panel above the status line; `Alt+1..3` sends one to the
-//! agent as the user's message and `Alt+0` hides them. Any message the user
+//! in a one-row panel under the input; `Alt+1..3` sends one to the
+//! agent as the user's message and `Alt+0` hides them. Those keys are bound
+//! only while chips show and no question waits beside the work, so they
+//! never take the question's own `Alt+N` keys. Any message the user
 //! sends, and any new turn, takes them away and cancels a call still
 //! running. A failed or stopped turn, a subagent, and a run without the
 //! terminal view get none. The suggestions are no part of the conversation
 //! and are not restored; the call's usage counts under the purpose
 //! `suggest`. `/suggest off|on` switches them for the session.
 
+use bevy_ecs::entity_disabling::Disabled;
+use bevy_ecs::query::Allow;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::message::Message;
@@ -65,8 +69,12 @@ impl Plugin for NextStepSuggestionsPlugin {
             .add_observer(on_message)
             .add_observer(on_turn)
             .add_observer(follow_successor::<SuggestCall>)
-            .add_systems(PostUpdate, place_panel.in_set(TuiSystems::Prepare))
+            .add_systems(
+                PostUpdate,
+                (place_panel, arm_keys).in_set(TuiSystems::Prepare),
+            )
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
+        let mut bound = Vec::new();
         for (index, key) in ['1', '2', '3'].into_iter().enumerate() {
             let label = format!("Send suggestion {}", index + 1);
             let send = move |pressed: On<KeyPressed>,
@@ -74,12 +82,13 @@ impl Plugin for NextStepSuggestionsPlugin {
                              mut commands: Commands| {
                 send(&pressed, index, &agents, &mut commands);
             };
-            app.add_key_binding(KeyBinding::new(KeyPress::alt(key), label), send);
+            bound.extend(app.add_key_binding(KeyBinding::new(KeyPress::alt(key), label), send));
         }
-        app.add_key_binding(
-            KeyBinding::new(KeyPress::alt('0'), "Hide the suggestions"),
-            hide,
-        );
+        let label = "Hide the suggestions";
+        bound.extend(app.add_key_binding(KeyBinding::new(KeyPress::alt('0'), label), hide));
+        for key in bound {
+            app.world_mut().entity_mut(key).insert((ChipKey, Disabled));
+        }
     }
 
     fn finish(&self, app: &mut App) {
@@ -120,6 +129,10 @@ pub struct SuggestCall;
 /// The panel the chips are drawn in.
 #[derive(Component)]
 struct ChipsPanel;
+
+/// On the plugin's key bindings, which are `Disabled` while no chips show.
+#[derive(Component)]
+struct ChipKey;
 
 /// Asks for suggestions when a turn of the agent shown ended with an
 /// answer, unless they are off, no front shows them, or it is a subagent.
@@ -286,7 +299,7 @@ fn place_panel(
         .and_then(|agent| agents.get(agent).ok());
     match (suggested, panels.iter().next()) {
         (Some(_), None) => {
-            let panel = TuiPanel::new(Placement::Bottom(Constraint::Length(1)));
+            let panel = TuiPanel::new(Placement::BelowInput(Constraint::Length(1)));
             commands.spawn((ChipsPanel, panel));
         }
         (Some(suggested), Some(_)) if suggested.is_changed() => {
@@ -294,6 +307,33 @@ fn place_panel(
         }
         (None, Some(panel)) => commands.entity(panel).despawn(),
         _ => {}
+    }
+}
+
+/// Binds the chips' keys while the agent shown has suggestions and no
+/// question waits beside the work, whose `Alt+N` keys a global binding
+/// would shadow; frees them otherwise.
+fn arm_keys(
+    shown: Option<Res<Shown>>,
+    agents: Query<(), With<Suggestions>>,
+    asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
+    keys: Query<(Entity, Has<Disabled>), (With<ChipKey>, Allow<Disabled>)>,
+    mut commands: Commands,
+) {
+    let suggested = shown
+        .and_then(|shown| shown.0)
+        .is_some_and(|agent| agents.contains(agent));
+    let armed = suggested && !asks.iter().any(|ask| ask.inline);
+    for (key, disabled) in &keys {
+        match (armed, disabled) {
+            (true, true) => {
+                commands.entity(key).remove::<Disabled>();
+            }
+            (false, false) => {
+                commands.entity(key).insert(Disabled);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -309,25 +349,22 @@ fn draw(
     else {
         return;
     };
-    let mut spans = Vec::new();
-    for (index, text) in suggested.iter().enumerate() {
-        spans.push(Span::from(format!(" [{}] ", index + 1)).bold());
-        spans.push(Span::from(text.clone()).dim());
-    }
-    spans.push(Span::from("  Alt+0 hides").dim().italic());
+    let line = chips(suggested);
     for mut canvas in &mut panels {
-        canvas.render(Paragraph::new(Line::from(spans.clone())));
+        canvas.render(Paragraph::new(line.clone()));
     }
 }
 
-/// The chips as text: `[1] run the full test suite  [2] update CHANGELOG`.
-pub fn chips(suggested: &[String]) -> String {
-    let chips: Vec<String> = suggested
-        .iter()
-        .enumerate()
-        .map(|(index, text)| format!("[{}] {text}", index + 1))
-        .collect();
-    chips.join("  ")
+/// The chips' row: `[1] run the full test suite  [2] update CHANGELOG`.
+pub fn chips(suggested: &[String]) -> Line<'static> {
+    let mut spans = Vec::new();
+    for (index, text) in suggested.iter().enumerate() {
+        let gap = if index == 0 { "" } else { "  " };
+        spans.push(Span::from(format!("{gap}[{}] ", index + 1)).bold());
+        spans.push(Span::from(text.clone()).dim());
+    }
+    spans.push(Span::from("   Alt+0 hides").dim().italic());
+    Line::from(spans)
 }
 
 /// The suggestions in a reply: up to three non-empty lines, without

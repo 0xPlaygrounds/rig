@@ -10,12 +10,14 @@
 //! data. It orders its Prepare and Review systems by what they do, in a
 //! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
 //! one other plugin with `.before` and `.after` that plugin's sets; an
-//! answer from a record of an earlier run goes before every gate
-//! ([`AnswerFromRecord`]). Every
+//! answer from a record of an earlier run goes before every gate, and an
+//! answer that stands in for running the effect after them
+//! ([`GateSystems`]). Every
 //! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
 //! in their order, before it starts, wherever it was spawned. A gate
 //! answers in the effect's [`Decision`], where the first decision wins; a
-//! reviewer edits the [`Outcome`] in place, and the record keeps both. Bevy
+//! reviewer edits the [`Outcome`] in place, and the record keeps both and
+//! who decided. Bevy
 //! sees both writes, so two unordered systems writing them are reported in
 //! debug builds. Any entity [`HoldOf`] an effect
 //! keeps it where it is, and holds add up. A system that fails in Prepare,
@@ -32,7 +34,7 @@
 //! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (Undecided, PluginEffects)>) {
 //!     for (request, mut decision) in &mut effects {
 //!         if request.kind.name() == "deploy" {
-//!             decision.decide(Outcome::refused("no deploys today"));
+//!             decision.decide(Decider::plugin("no-deploys"), Outcome::refused("no deploys today"));
 //!         }
 //!     }
 //! }
@@ -60,9 +62,10 @@ use bevy_log::{info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
+use rig_cassette::journal::now_ms;
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
-    self, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
+    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Origin, Recorder, Reply, cancelled};
@@ -74,15 +77,15 @@ use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
-use super::journal::{SessionLog, millis, now_ms};
+use super::journal::{SessionLog, millis};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
+    refuse_calls,
 };
 use super::turn::{
-    Adapters, ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
-    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
-    judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
-    wait_in_order,
+    Adapters, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
+    keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -121,7 +124,8 @@ pub enum Stage {
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
-    /// start ([`Undecided`]).
+    /// start ([`Undecided`]), once the kernel answered the tool calls it
+    /// refuses ([`ToolRequest`]).
     Gate,
     /// The kernel applies the decisions made since the last pass as
     /// [`Outcome`]s, then starts what is admitted, unheld and unanswered: it
@@ -160,8 +164,9 @@ pub enum PrepareSystems {
     /// messages, tools and options, the model it goes to, its [`Adapters`],
     /// a tool call's [`CallHandler`].
     Edit,
-    /// The request as it will be sent is measured against the window of
-    /// the model it goes to and fitted, such as by compaction.
+    /// The request as it will be sent ([`ModelStarts::sent`]) is measured
+    /// against the window of the model it goes to and fitted, such as by
+    /// compaction.
     Fit,
 }
 
@@ -177,15 +182,30 @@ pub enum ReviewSystems {
     Act,
 }
 
-/// Where a plugin decides effects from a record of an earlier run of them,
-/// such as a session replay: as [`Stage::Gate`] opens, before every Gate
-/// system, so each gate after it sees the effect decided. The record holds
-/// what every gate decided in that run; a gate deciding again would judge
-/// today's settings and files instead. An answer that stands in for
-/// running the effect now, such as a cached result or a dry run, is no
-/// record: it is a Gate system after the gates that refuse.
+/// The positions around [`Stage::Gate`], in this order: `FromRecord`,
+/// every gate (`in_set(Stage::Gate)`), then `After`. A system that fails in
+/// either closes Gate for the pass, as a gate does.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AnswerFromRecord;
+pub enum GateSystems {
+    /// Decides effects from a record of an earlier run of them, such as a
+    /// session replay, before every gate, so each gate sees the effect
+    /// decided. The record holds what every gate decided in that run; a
+    /// gate deciding again would judge today's settings and files instead.
+    FromRecord,
+    /// After every gate had its say: an answer that stands in for running
+    /// the effect (a cached result, a dry run, an editor's buffer), which
+    /// must not answer what a gate refused, and a coordinator of a group
+    /// that starts together or not at all. A decision made in Gate is
+    /// applied at Start, so here a decided effect still matches
+    /// [`Undecided`]: read its [`Decision`]. A tool call the kernel refuses
+    /// is answered before every gate: read its [`Outcome`]. No gate sees an
+    /// effect held from its spawn, so a coordinator spawns its members
+    /// unheld and queries them without [`Undecided`]. While any member is
+    /// held by another or [`Waiting`], it holds the free ones with holds of
+    /// its own; once none is, it refuses them all if one was refused or
+    /// answered with an error, else releases its holds.
+    After,
+}
 
 /// The kernel's systems that open a stage, before any of its own.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -208,6 +228,8 @@ pub struct Effect {
     answered: Option<Disposition>,
     /// The first answer, which a reviewer may edit.
     raw: Option<Result<effect::Outcome, ErrorReport>>,
+    /// Who decided the answer, when the kernel applied a decision.
+    decided_by: Option<Decider>,
 }
 
 impl Default for Effect {
@@ -226,6 +248,7 @@ impl Effect {
             purpose: None,
             answered: None,
             raw: None,
+            decided_by: None,
         }
     }
 
@@ -351,26 +374,34 @@ impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
 /// owner of an open effect decides whenever its work is done, through
 /// `Query<&mut Decision>`, so Bevy sees two unordered deciders. The kernel
 /// applies the decision as the effect's [`Outcome`] when the pass reaches
-/// Start, unless the effect was answered meanwhile; it stays decided
-/// afterwards. Until then the effect is still [`Undecided`] for the gates
+/// Start, unless the effect was answered meanwhile, and its record names
+/// who decided (`EffectRecord::decided_by`); it stays decided afterwards.
+/// An effect no one decided, such as a call every gate let run, records
+/// no decider. Until then the effect is still [`Undecided`] for the gates
 /// after the one that decided: a gate that holds or asks checks
 /// [`is_decided`](Self::is_decided) first.
 #[derive(Component, Debug, Default)]
-pub struct Decision(Option<Outcome>);
+pub struct Decision(Option<(Outcome, Decider)>);
 
 impl Decision {
-    /// Decides `outcome` unless a decision was made; whether this one won.
-    pub fn decide(&mut self, outcome: impl Into<Outcome>) -> bool {
+    /// Decides `outcome` for `by`, such as `Decider::plugin("protected-paths")`,
+    /// unless a decision was made; whether this one won.
+    pub fn decide(&mut self, by: Decider, outcome: impl Into<Outcome>) -> bool {
         if self.0.is_some() {
             return false;
         }
-        self.0 = Some(outcome.into());
+        self.0 = Some((outcome.into(), by));
         true
     }
 
     /// The decision, if one was made.
     pub fn get(&self) -> Option<&Outcome> {
-        self.0.as_ref()
+        self.0.as_ref().map(|(outcome, _)| outcome)
+    }
+
+    /// Who made the decision, if one was made.
+    pub fn by(&self) -> Option<&Decider> {
+        self.0.as_ref().map(|(_, by)| by)
     }
 
     /// Whether a decision was made.
@@ -399,8 +430,10 @@ pub struct Published(pub ToolResultContext);
 
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
-/// add up: releasing one never releases another's.
+/// add up: releasing one never releases another's, and every release wakes
+/// the loop.
 #[derive(Component, Reflect, Debug)]
+#[component(on_remove = moved::<HoldOf>)]
 #[reflect(Component)]
 #[relationship(relationship_target = Holds)]
 pub struct HoldOf(pub Entity);
@@ -408,7 +441,6 @@ pub struct HoldOf(pub Entity);
 /// The holds on an effect, removed with the last one. Despawning the
 /// effect despawns its holds.
 #[derive(Component, Reflect, Debug)]
-#[component(on_remove = moved::<Holds>)]
 #[reflect(Component)]
 #[relationship_target(relationship = HoldOf, linked_spawn)]
 pub struct Holds(Vec<Entity>);
@@ -451,8 +483,8 @@ pub struct Recorded(pub EffectRecord);
 
 /// On a call of a model's reply that waits for an earlier call of that
 /// reply it must not run beside ([`Footprint`]) to settle. The kernel sets
-/// and clears it when [`Stage::Gate`] opens, from the calls as Prepare left
-/// them, so Gate sees each call when it is about to run.
+/// and clears it when [`Stage::Gate`] opens, from the calls as they stand
+/// then, so Gate sees each call when it is about to run.
 #[derive(Component, Reflect, Debug, Default)]
 #[component(storage = "SparseSet", on_remove = moved::<Waiting>)]
 #[reflect(Component, Default)]
@@ -523,8 +555,6 @@ struct Passes {
     quiet_at: u64,
     /// What moved last, for the warning when the loop does not settle.
     last: Option<(&'static str, Entity)>,
-    /// The effects admitted this pass.
-    admitted: Vec<Entity>,
     /// The failed systems already named in a notice.
     noticed: HashSet<String>,
 }
@@ -570,8 +600,9 @@ pub(crate) fn build(app: &mut App) {
                 Enter(Stage::Prepare),
                 Stage::Prepare,
                 Enter(Stage::Gate),
-                AnswerFromRecord,
+                GateSystems::FromRecord,
                 Stage::Gate,
+                GateSystems::After,
                 Enter(Stage::Start),
                 Stage::Start,
             )
@@ -600,8 +631,9 @@ pub(crate) fn build(app: &mut App) {
                 Stage::Commit,
                 Stage::Admit,
                 Stage::Prepare,
-                AnswerFromRecord,
+                GateSystems::FromRecord,
                 Stage::Gate,
+                GateSystems::After,
                 Stage::Start,
             )
                 .distributive_run_if(moved_since_quiet),
@@ -632,6 +664,10 @@ pub(crate) fn build(app: &mut App) {
                 )
                     .chain()
                     .in_set(Enter(Stage::Gate)),
+                refuse_calls
+                    .after(GateSystems::FromRecord)
+                    .before(Stage::Gate)
+                    .run_if(moved_since_quiet),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
                     .chain()
@@ -672,16 +708,18 @@ fn run_passes(world: &mut World, settled: &mut QueryState<Entity, With<Settled>>
         // A settled effect may go with its parent.
         world.try_despawn(entity).ok();
     }
-    let clocks = Clocks::save(world);
-    let mut zeroed = false;
+    let mut clocks = None;
     let app_handler = world.get_resource::<FallbackErrorHandler>().copied();
     APP_HANDLER.set(Some(world.fallback_error_handler()));
     world.insert_resource(FallbackErrorHandler(fail_closed));
     let quiet = world.try_schedule_scope(AgentPass, |world, pass| {
         (0..MAX_PASSES).any(|n| {
             if n == 1 {
-                Clocks::zero(world);
-                zeroed = true;
+                clocks = Some((
+                    zero_step::<()>(world),
+                    zero_step::<Real>(world),
+                    zero_step::<Virtual>(world),
+                ));
             }
             FAILED.with_borrow_mut(Vec::clear);
             let before = moves(world);
@@ -698,8 +736,10 @@ fn run_passes(world: &mut World, settled: &mut QueryState<Entity, With<Settled>>
             world.remove_resource::<FallbackErrorHandler>();
         }
     }
-    if zeroed {
-        clocks.restore(world);
+    if let Some((time, real, virtual_time)) = clocks {
+        put_back(world, time);
+        put_back(world, real);
+        put_back(world, virtual_time);
     }
     let Some(mut passes) = world.get_resource_mut::<Passes>() else {
         return;
@@ -724,49 +764,21 @@ fn moves(world: &World) -> u64 {
         .map_or(0, |passes| passes.moved)
 }
 
-/// The clocks as the frame left them, put back after passes with a zero
-/// time step. A change a stage system makes to them, such as a pause, is
-/// lost then.
-struct Clocks {
-    time: Option<Time>,
-    real: Option<Time<Real>>,
-    virtual_time: Option<Time<Virtual>>,
+/// Steps the clock `Time<T>` by zero (the same elapsed time, a zero
+/// delta), and returns it as it was, to put back after the passes. A change
+/// a stage system makes to a clock after the first pass, such as a pause,
+/// is lost then.
+fn zero_step<T: Default + Copy + Send + Sync + 'static>(world: &mut World) -> Option<Time<T>> {
+    let mut time = world.get_resource_mut::<Time<T>>()?;
+    let was = *time;
+    time.advance_by(Duration::ZERO);
+    Some(was)
 }
 
-impl Clocks {
-    fn save(world: &World) -> Self {
-        Self {
-            time: world.get_resource::<Time>().copied(),
-            real: world.get_resource::<Time<Real>>().copied(),
-            virtual_time: world.get_resource::<Time<Virtual>>().copied(),
-        }
-    }
-
-    /// Steps every clock by zero: the same elapsed time, a zero delta.
-    fn zero(world: &mut World) {
-        if let Some(mut time) = world.get_resource_mut::<Time>() {
-            time.advance_by(Duration::ZERO);
-        }
-        if let Some(mut time) = world.get_resource_mut::<Time<Real>>() {
-            time.advance_by(Duration::ZERO);
-        }
-        if let Some(mut time) = world.get_resource_mut::<Time<Virtual>>() {
-            time.advance_by(Duration::ZERO);
-        }
-    }
-
-    fn restore(self, world: &mut World) {
-        if let (Some(saved), Some(mut time)) = (self.time, world.get_resource_mut::<Time>()) {
-            *time = saved;
-        }
-        if let (Some(saved), Some(mut time)) = (self.real, world.get_resource_mut::<Time<Real>>()) {
-            *time = saved;
-        }
-        if let (Some(saved), Some(mut time)) =
-            (self.virtual_time, world.get_resource_mut::<Time<Virtual>>())
-        {
-            *time = saved;
-        }
+/// Puts back a clock [`zero_step`] took.
+fn put_back<T: Default + Copy + Send + Sync + 'static>(world: &mut World, was: Option<Time<T>>) {
+    if let (Some(was), Some(mut time)) = (was, world.get_resource_mut::<Time<T>>()) {
+        *time = was;
     }
 }
 
@@ -885,31 +897,29 @@ fn answered(mut world: DeferredWorld, context: HookContext) {
 /// effects were spawned, unless it was answered meanwhile. The decision
 /// stays, so it still reads as decided.
 fn apply_decisions(
-    decided: Query<
-        (Entity, &Effect, &Decision),
+    mut decided: Query<
+        (Entity, &mut Effect, &Decision),
         (Changed<Decision>, Without<Outcome>, Without<Settled>),
     >,
     mut commands: Commands,
 ) {
     let mut decided: Vec<_> = decided
-        .iter()
-        .filter_map(|(entity, effect, decision)| Some((effect.id(), entity, decision.get()?)))
+        .iter_mut()
+        .filter_map(|(entity, effect, decision)| Some((entity, effect, decision.0.as_ref()?)))
         .collect();
-    decided.sort_unstable_by_key(|(id, ..)| *id);
-    for (_, effect, outcome) in decided {
-        commands.entity(effect).try_insert(outcome.clone());
+    decided.sort_unstable_by_key(|(_, effect, _)| effect.id());
+    for (entity, mut effect, (outcome, by)) in decided {
+        effect.decided_by = Some(by.clone());
+        commands.entity(entity).try_insert(outcome.clone());
     }
 }
 
 /// Admits every effect spawned since the last pass.
 fn admit(
     new: Query<Entity, (With<Effect>, Without<Admitted>, Without<Settled>)>,
-    mut passes: ResMut<Passes>,
     mut commands: Commands,
 ) {
-    passes.admitted.clear();
     for entity in &new {
-        passes.admitted.push(entity);
         commands.entity(entity).try_insert(Admitted);
     }
 }
@@ -917,6 +927,7 @@ fn admit(
 /// After a Prepare system failed, answers what was admitted this pass with
 /// an error: its preparation is unknown, and edits do not run twice.
 fn answer_unprepared(
+    admitted: Query<Entity, Added<Admitted>>,
     mut passes: ResMut<Passes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -925,7 +936,7 @@ fn answer_unprepared(
         return;
     };
     let why = format!("{} in Prepare: {}", failure.system, failure.error);
-    for &entity in &passes.admitted {
+    for entity in &admitted {
         let failed = ErrorReport::new(ErrorKind::Internal, why.clone());
         commands
             .entity(entity)
@@ -996,12 +1007,16 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, kind) = match models.start(&mut model, item.adapters, agent) {
-                ModelStart::Run(connection, kind) => (connection, kind),
-                ModelStart::Refused(report) => {
+            let connection = match models.start(&mut model, item.adapters, agent, true) {
+                Ok(connection) => connection,
+                Err(report) => {
                     started.try_insert_if_new(Outcome(Err(report)));
                     continue;
                 }
+            };
+            let kind = EffectKind::Completion {
+                request: model.request.clone(),
+                stream: true,
             };
             let reference = connection.spec.reference();
             let span =
@@ -1023,26 +1038,23 @@ fn start(
                 }),
                 _,
             ) => (handler.clone(), kind.clone()),
-            (_, Some(ToolRequest { call })) => {
-                match tools.start(call, item.handler, agent.zip(caller)) {
-                    ToolStart::Run(handler, kind) => (handler, kind),
-                    ToolStart::Open(open) => {
-                        started.try_insert(Started { at });
-                        let parent = effect.parent;
-                        let (id, call) = (effect.id, call.clone());
-                        commands.queue(move |world: &mut World| {
-                            if world.get_entity(entity).is_ok() {
-                                open(world, entity, id, parent, call);
-                            }
-                        });
-                        continue;
-                    }
-                    ToolStart::Refused(report) => {
-                        started.try_insert_if_new(Outcome(Err(report)));
-                        continue;
-                    }
+            (_, Some(ToolRequest { call })) => match tools.start(call, item.handler, agent) {
+                ToolStart::Run(handler, kind) => (handler, kind),
+                ToolStart::Open(open, tool) => {
+                    commands.queue(move |world: &mut World| {
+                        if let Err(report) = open(world, tool, entity, Started { at })
+                            && let Ok(mut call) = world.get_entity_mut(entity)
+                        {
+                            call.insert_if_new(Outcome(Err(report)));
+                        }
+                    });
+                    continue;
                 }
-            }
+                ToolStart::Refused(report) => {
+                    started.try_insert_if_new(Outcome(Err(report)));
+                    continue;
+                }
+            },
             _ => {
                 started.try_insert(Started { at });
                 continue;
@@ -1148,17 +1160,6 @@ fn settle_now(world: &mut World, entity: Entity, disposition: Option<Disposition
     }
 }
 
-/// Despawns whatever holds `effect`.
-pub(crate) fn despawn_holds(world: &mut World, effect: Entity) {
-    let holds: Vec<Entity> = world
-        .get::<Holds>(effect)
-        .map(|holds| holds.iter().collect())
-        .unwrap_or_default();
-    for hold in holds {
-        world.try_despawn(hold).ok();
-    }
-}
-
 /// Despawns `holds`, the holds on an effect or a turn's outcome.
 pub(crate) fn release(commands: &mut Commands, holds: Option<&Holds>) {
     for hold in holds.into_iter().flat_map(Holds::iter) {
@@ -1177,7 +1178,9 @@ pub(crate) fn cancel(world: &mut World, entity: Entity, why: &str) {
     if !unsettled {
         return;
     }
-    despawn_holds(world, entity);
+    if let Ok(mut effect) = world.get_entity_mut(entity) {
+        effect.despawn_related::<Holds>();
+    }
     let Ok(mut effect) = world.get_entity_mut(entity) else {
         return;
     };
@@ -1282,11 +1285,13 @@ fn assemble(
                 finished_ms: Some(now_ms()),
                 reviewed: None,
                 disposition: Disposition::Ran,
+                decided_by: None,
             }
         }
     };
     record.reviewed = reviewed;
     record.disposition = disposition;
+    record.decided_by.clone_from(&effect.decided_by);
     record.turn = world
         .get::<CallOf>(entity)
         .and_then(|call| world.get::<Turn>(call.0))

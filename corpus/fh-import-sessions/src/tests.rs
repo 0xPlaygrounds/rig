@@ -3,11 +3,14 @@ use std::path::{Path, PathBuf};
 
 use rig_core::message::{Message, ToolResultContent};
 use rig_core::test_utils::MockCompletionModel;
-use rig_harness::rig_ecs::journal::read_session;
+use rig_harness::prelude::read_session;
 use rig_harness_test_support::{
     Collected, Ended, app_in, collect, first_agent, log_ended, reply, run_until, scratch_home,
     scripted_models,
 };
+
+use rig_harness::harness_protocol::Invocation;
+use rig_harness::host::exit::ExitPlugin;
 
 use super::*;
 
@@ -45,8 +48,10 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 
 /// The conversation of the main agent of `session`, as its logs left it.
 fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
-    let store = JsonlDirStore::new(home.session(session).path());
-    let saved = read_session(&store).unwrap_or_default();
+    let store = SessionStores::default().open(&home.session(session));
+    let saved = store
+        .and_then(|store| read_session(&*store))
+        .unwrap_or_default();
     let main = saved
         .agents
         .into_iter()
@@ -77,18 +82,37 @@ fn imports_resumes_and_reimports() {
     fs::write(&claude, CLAUDE).ok();
     fs::write(&codex, CODEX).ok();
 
+    // `rig import claude-code <file>`: imports, then exits.
+    let (mut command, _wakes) = app_in(&home, &SessionId::generate());
+    command
+        .insert_resource(Invoked {
+            args: Invocation {
+                command: Some("import".to_owned()),
+                arguments: vec!["claude-code".to_owned(), claude.display().to_string()],
+                ..Invocation::default()
+            },
+            terminal: false,
+        })
+        .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, ImportSessionsPlugin));
+    collect::<SessionImported>(&mut command);
+    command.finish();
+    command.update();
+    let world = command.world();
+    assert_eq!(world.get_resource::<ExitReason>(), Some(&ExitReason::Quit));
+    let mut reported = world.resource::<Collected<SessionImported>>().0.clone();
+
+    // `/import codex <file>` in a session.
     let current = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &current);
     app.add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin));
     collect::<SessionImported>(&mut app);
     app.finish();
     app.update();
-    import_with(&mut app, "claude-code", &claude);
-    let reported = import_with(&mut app, "codex", &codex);
+    reported.extend(import_with(&mut app, "codex", &codex));
 
     // Two sessions, which `/resume` lists.
     let current_dir = home.session(&current);
-    let listed = rig_sessions::list(&home, current_dir.path());
+    let listed = rig_sessions::list(&home, &SessionStores::default(), current_dir.path());
     assert_eq!(listed.len(), 2, "{reported:?}");
     assert_eq!(reported.len(), 2, "{reported:?}");
     let (Some(first), Some(second)) = (reported.first(), reported.get(1)) else {
@@ -113,21 +137,23 @@ fn imports_resumes_and_reimports() {
         .and_then(|call| call.function.arguments.get("command")?.as_str());
     assert_eq!(command, Some("ls -la"));
     let (_, answered) = paired(&messages, "toolu_1").unwrap_or_default();
-    // The sidechain is a subagent of it, and each agent keeps where it came
-    // from with the source's times.
-    let store = JsonlDirStore::new(home.session(&first.session).path());
-    let agents = read_session(&store).unwrap_or_default().agents;
+    // The sidechain is a subagent of it, and each message is logged at the
+    // source's time.
+    let store = SessionStores::default().open(&home.session(&first.session));
+    let agents = store
+        .and_then(|store| read_session(&*store))
+        .unwrap_or_default()
+        .agents;
     assert_eq!(
         agents.iter().filter(|agent| agent.parent.is_some()).count(),
         1
     );
-    let from = agents.iter().filter(|agent| {
-        agent
-            .saved
-            .keys()
-            .any(|path| path.ends_with("ImportedFrom"))
-    });
-    assert_eq!(from.count(), 2);
+    let first_stamp = agents
+        .iter()
+        .find(|agent| agent.parent.is_none())
+        .and_then(|agent| agent.stamps.first());
+    // 2026-10-01T10:00:00Z
+    assert_eq!(first_stamp.map(|stamp| stamp.t), Some(1_790_848_800_000));
     assert!(answered, "the call is followed by its result");
     let result_text = messages.iter().flat_map(|message| match message {
         Message::User { content } => content.clone(),
@@ -210,6 +236,13 @@ fn imports_resumes_and_reimports() {
     // added.
     let more = r#"{"type":"user","uuid":"u3","parentUuid":"a2","isSidechain":false,"sessionId":"cc-1","timestamp":"2026-10-03T08:00:00Z","message":{"role":"user","content":"One more thing"}}"#;
     fs::write(&claude, format!("{CLAUDE}{more}\n")).ok();
+    // Not while it is open elsewhere.
+    let lock = fs::File::create(home.session(&first.session).launcher_lock());
+    let held = lock.as_ref().is_ok_and(|lock| lock.try_lock().is_ok());
+    assert!(held);
+    // Only the Codex import of this app so far.
+    assert_eq!(import_with(&mut app, "claude-code", &claude).len(), 1);
+    drop(lock);
     let reported = import_with(&mut app, "claude-code", &claude);
     let again = reported.last();
     assert!(
@@ -218,7 +251,10 @@ fn imports_resumes_and_reimports() {
             && again.added == 1),
         "{again:?}"
     );
-    assert_eq!(rig_sessions::list(&home, current_dir.path()).len(), 2);
+    assert_eq!(
+        rig_sessions::list(&home, &SessionStores::default(), current_dir.path()).len(),
+        2
+    );
     let messages = conversation_of(&home, &first.session);
     let last = messages.last().and_then(|message| match message {
         Message::User { content } => content.iter().find_map(|item| match item {

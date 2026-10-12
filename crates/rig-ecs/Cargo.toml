@@ -27,7 +27,9 @@ bevy_tasks = { workspace = true }
 bevy_time = { workspace = true }
 crossbeam-channel = { workspace = true }
 futures = { workspace = true }
-rig-cassette = { workspace = true }
+# The journal: the conversation model, the session log format and its
+# stores, reflected for the components that hold them.
+rig-cassette = { workspace = true, features = ["reflect"] }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # Open tools' parameters, derived from their arguments types.
 schemars = { workspace = true }

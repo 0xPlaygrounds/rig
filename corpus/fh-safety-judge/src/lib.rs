@@ -363,7 +363,10 @@ fn time_out(
 ) {
     if let Ok(mut decision) = judges.get_mut(due.entity) {
         let why = format!("it took longer than {} s", config.timeout_secs);
-        decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))));
+        decision.decide(
+            Decider::plugin("fh-safety-judge"),
+            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+        );
     }
 }
 
@@ -415,10 +418,10 @@ fn decide(
     match verdict {
         Verdict::Allow => {}
         Verdict::Deny => {
-            decision.decide(blocked());
+            decision.decide(Decider::plugin("fh-safety-judge"), blocked());
         }
         Verdict::Ask if !answerers.can_answer(Some(agent)) => {
-            decision.decide(blocked());
+            decision.decide(Decider::plugin("fh-safety-judge"), blocked());
         }
         Verdict::Ask => {
             let ask = Ask::new("Run this call?")
@@ -454,7 +457,10 @@ fn user_answered(
     for (ask, Asking { call }, outcome) in &asks {
         let allowed = Answer::of(outcome).is_some_and(|answer| answer.is("allow"));
         if !allowed && let Ok(mut decision) = calls.get_mut(*call) {
-            decision.decide(Outcome::refused("The user denied this call."));
+            decision.decide(
+                Decider::plugin("fh-safety-judge"),
+                Outcome::refused("The user denied this call."),
+            );
         }
         commands.entity(ask).remove::<HoldOf>();
     }

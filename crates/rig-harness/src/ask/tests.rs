@@ -2,7 +2,7 @@ use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig_cassette::journal::MemoryStore;
-use rig_core::effect::{Disposition, EffectKind, Outcome as EffectOutcome};
+use rig_core::effect::{Decider, Disposition, EffectKind, Outcome as EffectOutcome};
 use rig_ecs::agent::{Agent, Conversation};
 use rig_ecs::inbox::{Deliver, DeliveryMode, Incoming};
 use rig_ecs::journal::SessionStore;
@@ -10,6 +10,7 @@ use rig_ecs::stage::{ForAgent, Outcome, Recorded, Started};
 
 use super::{Answer, Answerer, Answerers, Ask, AskPlugin};
 use crate::commands::CommandPlugin;
+use crate::pick::{Chosen, Pick, PickPlugin};
 
 /// The kernel's records, frame after frame.
 #[derive(Resource, Default)]
@@ -19,7 +20,7 @@ struct Records(Vec<rig_core::effect::EffectRecord>);
 /// agent.
 fn app() -> (App, Entity) {
     let mut app = App::new();
-    let harness = (AskPlugin, CommandPlugin);
+    let harness = (AskPlugin, CommandPlugin, PickPlugin);
     app.add_plugins((TaskPoolPlugin::default(), rig_ecs::AgentPlugin, harness))
         .insert_resource(SessionStore::new(MemoryStore::default()))
         .init_resource::<Records>()
@@ -77,6 +78,10 @@ fn a_question_is_an_open_effect_recorded_with_its_answer() {
 #[test]
 fn the_users_next_line_answers_a_question_that_takes_text() {
     let (mut app, agent) = app();
+    // One beside the work, though older, leaves the user's lines to the
+    // agent.
+    let inline = Ask::new("Note it?").initial("cache").inline();
+    let beside = app.world_mut().spawn((inline, ForAgent(agent))).id();
     let question = app
         .world_mut()
         .spawn((Ask::new("Why deny it?").free_text(), ForAgent(agent)))
@@ -95,6 +100,7 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
         outcome.and_then(Answer::of),
         Some(Answer::Text("it deletes the cache".to_owned()))
     );
+    assert!(app.world().get::<Outcome>(beside).is_none());
     // The answer never reached the model's conversation, and no turn started.
     let conversation = app.world().get::<Conversation>(agent);
     assert!(conversation.is_some_and(|conversation| conversation.messages().is_empty()));
@@ -107,6 +113,37 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
         .map(|(incoming, _)| incoming.text.clone())
         .collect();
     assert_eq!(answered, ["it deletes the cache"]);
+}
+
+#[test]
+fn a_questions_record_names_who_answered_it() {
+    let (mut app, agent) = app();
+    let world = app.world_mut();
+    let asked = world.spawn((Ask::yes_no("Run?"), ForAgent(agent))).id();
+    let auto = world.spawn((Ask::yes_no("Write?"), ForAgent(agent))).id();
+    app.update();
+    let world = app.world_mut();
+    world.trigger(Pick::person(asked, Some(Chosen::Item(0))));
+    world.trigger(Pick {
+        entity: auto,
+        chosen: Some(Chosen::Item(1)),
+        by: Decider::plugin("auto-approve"),
+    });
+    app.update();
+    let records = &app.world().resource::<Records>().0;
+    let answered_by = |title: &str| {
+        let record = records.iter().find(|record| match &record.kind {
+            EffectKind::Custom { payload, .. } => payload["title"] == title,
+            _ => false,
+        });
+        record.map(|record| record.decided_by.clone())
+    };
+    assert_eq!(answered_by("Run?"), Some(Some(Decider::Person)));
+    assert_eq!(
+        answered_by("Write?"),
+        Some(Some(Decider::plugin("auto-approve"))),
+        "{records:?}"
+    );
 }
 
 #[test]

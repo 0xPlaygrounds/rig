@@ -8,21 +8,27 @@ description = "Plugin corpus (fresh held-out): FH-18: 18. Encrypted sessions at 
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# Keeps typed prompts out of the terminal view's plain prompt history.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Already in Cargo.lock (through rustls and others): authenticated
 # encryption, randomness and HMAC from ring, the slow KDF from argon2.
 argon2 = { version = "0.5", default-features = false, features = ["alloc"] }
+# Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
-rig-cassette = { workspace = true }
+rig-cassette = { workspace = true, features = ["jsonl"] }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 ring = "0.17"
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
 toml = "1"
 
 [dev-dependencies]
+bevy_reflect = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+serde_json = { workspace = true }

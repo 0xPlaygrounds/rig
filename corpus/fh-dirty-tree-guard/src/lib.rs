@@ -264,7 +264,10 @@ impl Waiters<'_, '_> {
     fn end(&mut self, check: Entity, refusal: Option<&str>) {
         for (hold, &HoldOf(call)) in &self.holds {
             if let (Some(why), Ok(mut decision)) = (refusal, self.calls.get_mut(call)) {
-                decision.decide(Outcome::refused(why));
+                decision.decide(
+                    Decider::plugin("fh-dirty-tree-guard"),
+                    Outcome::refused(why),
+                );
             }
             self.commands.entity(hold).try_despawn();
         }

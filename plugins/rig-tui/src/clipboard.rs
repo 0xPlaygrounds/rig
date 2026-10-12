@@ -1,13 +1,15 @@
 //! Images into the input: Ctrl+V saves the clipboard's image in the
-//! session's [`SessionDir::images`](rig_harness::harness_protocol::SessionDir::images)
-//! and types `@path` for it, and a pasted path to an image file (a file
+//! session's [`Scratch::images`](rig_harness::prelude::Scratch::images)
+//! directory and types `@path` for it, or says there is none, and a pasted path to an image file (a file
 //! dropped on the terminal) becomes `@path` too. The message attaches what
 //! `@path` names (see [`attach`](rig_tools::attach)). The clipboard is
-//! read by `wl-paste`, `xclip` or `pngpaste` on a thread of its own, which
-//! wakes the loop when it is done.
+//! read by `wl-paste`, `xclip` or `pngpaste`, started as the app's
+//! [`Processes`](rig_harness::prelude::Processes) start every program, on a
+//! thread of its own, which wakes the loop when it is done. A plugin reads
+//! the clipboard's image the same way with [`read_clipboard_image`].
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use bevy_ecs::prelude::*;
@@ -18,6 +20,7 @@ use rig_core::message::ImageMediaType;
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
 use rig_harness::primary::Shown;
+use rig_tools::process::Launcher;
 
 /// Clipboard reads in flight; each sends the saved image's path, or why
 /// there is none.
@@ -35,13 +38,16 @@ impl Default for Clipboard {
 }
 
 impl Clipboard {
-    /// Reads the clipboard's image into `directory` on a thread.
-    pub(crate) fn paste_image(&self, directory: PathBuf, wake: Wake) {
+    /// Reads the clipboard's image into `directory` on a thread, starting
+    /// the reader as `launcher` says.
+    pub(crate) fn paste_image(&self, directory: PathBuf, launcher: Launcher, wake: Wake) {
         let sender = self.sender.clone();
         let spawned = std::thread::Builder::new()
             .name("rig-harness-clipboard".to_owned())
             .spawn(move || {
-                sender.send(save_clipboard_image(&directory)).ok();
+                sender
+                    .send(read_clipboard_image(&launcher, &directory))
+                    .ok();
                 wake.wake();
             });
         if let Err(failure) = spawned {
@@ -120,8 +126,13 @@ fn readers() -> Vec<(&'static str, Vec<&'static str>)> {
     readers
 }
 
-/// Saves the clipboard's image in `directory`, named by the time.
-fn save_clipboard_image(directory: &Path) -> Result<PathBuf, String> {
+/// Saves the clipboard's image as a file in `directory`, named by the
+/// time, and returns its path; or says why there is none. It reads the
+/// clipboard with `wl-paste`, `xclip` or `pngpaste`, started as `launcher`
+/// says, such as `Processes::launcher()`, which keeps the session's secrets
+/// from them. Blocking: run it off the main thread, such as in
+/// `Running::spawn`.
+pub fn read_clipboard_image(launcher: &Launcher, directory: &Path) -> Result<PathBuf, String> {
     let readers = readers();
     if readers.is_empty() {
         return Err(
@@ -131,7 +142,8 @@ fn save_clipboard_image(directory: &Path) -> Result<PathBuf, String> {
         );
     }
     let image = readers.iter().find_map(|(program, args)| {
-        let output = Command::new(program)
+        let output = launcher
+            .command(program)
             .args(args)
             .stdin(Stdio::null())
             .stderr(Stdio::null())

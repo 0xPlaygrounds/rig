@@ -38,12 +38,16 @@ use std::fmt;
 use std::str::FromStr;
 
 use bevy_app::App;
+use bevy_ecs::entity_disabling::Disabled;
 use bevy_ecs::prelude::*;
+use bevy_ecs::query::Allow;
 use bevy_ecs::system::IntoObserverSystem;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use rig_harness::commands::RunCommand;
+
+use super::view::TuiView;
 
 /// One key with its modifiers, as the terminal reports it. A character
 /// carries its case instead of Shift (`A` is Shift+a); Shift+Tab is
@@ -498,7 +502,26 @@ pub enum InputAction {
     Stop,
     /// Pastes an image from the clipboard as an attachment.
     PasteImage,
+    /// Selects the item of the transcript above the one selected, or the
+    /// newest.
+    SelectUp,
+    /// Selects the item below the one selected; past the newest, none.
+    SelectDown,
+    /// Expands or collapses the item selected, or with none, the newest
+    /// tool call.
+    Expand,
+    /// Answers the question shown beside the work with its choice of this
+    /// number, counted from 1, or the number after its choices: types its
+    /// answer in the input.
+    AnswerInline(u8),
+    /// Closes the question shown beside the work, refused.
+    DismissInline,
 }
+
+/// On the bindings of the keys that answer a question shown beside the
+/// work: bound only while one shows.
+#[derive(Component)]
+pub(crate) struct InlineKey;
 
 /// The view's own keys, as `(keys, label, action)`.
 fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
@@ -578,16 +601,56 @@ fn built_in() -> Vec<(Keys, &'static str, InputAction)> {
             Do::Stop,
         ),
         (ctrl('v'), "Paste an image", Do::PasteImage),
+        (with(meta, K::Up), "Select the item above", Do::SelectUp),
+        (with(meta, K::Down), "Select the item below", Do::SelectDown),
+        (ctrl('o'), "Expand or collapse", Do::Expand),
     ]
 }
 
-/// Spawns the view's own key bindings, in the input's scope.
+/// Spawns the view's own key bindings, in the input's scope; the keys that
+/// answer a question shown beside the work, Alt+1 to Alt+9 and Alt+0,
+/// stay disabled until one shows. A plugin's global binding of the same
+/// keys wins over them.
 pub(crate) fn add_built_in(app: &mut App) {
     app.init_resource::<KeyFocus>();
     for (keys, label, action) in built_in() {
         let binding = KeyBinding::new(keys, label).in_scope(KeyScope::Input);
         if let Some(mut bound) = bind(app.world_mut(), binding) {
             bound.insert(action);
+        }
+    }
+    let inline = (1..=9u8).map(|number| (number, "Answer the question beside the work"));
+    let inline = inline.chain([(0, "Dismiss the question beside the work")]);
+    for (number, label) in inline {
+        let digit = char::from(b'0' + number);
+        let binding = KeyBinding::new(KeyPress::alt(digit), label).in_scope(KeyScope::Input);
+        let action = match number {
+            0 => InputAction::DismissInline,
+            number => InputAction::AnswerInline(number),
+        };
+        if let Some(mut bound) = bind(app.world_mut(), binding) {
+            bound.insert((action, InlineKey, Disabled));
+        }
+    }
+}
+
+/// Binds the keys that answer a question shown beside the work while one
+/// shows, and frees them otherwise.
+pub(crate) fn arm_inline_keys(
+    shown: Res<TuiView>,
+    keys: Query<(Entity, Has<Disabled>), (With<InlineKey>, Allow<Disabled>)>,
+    mut commands: Commands,
+) {
+    let showing = !shown.inline.is_empty();
+    for (key, disabled) in &keys {
+        match (showing, disabled) {
+            (true, true) => {
+                commands.entity(key).remove::<Disabled>();
+            }
+            (false, false) => {
+                commands.entity(key).insert(Disabled);
+            }
+            _ => {}
         }
     }
 }

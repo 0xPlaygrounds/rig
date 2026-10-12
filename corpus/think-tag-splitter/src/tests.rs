@@ -80,7 +80,7 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
     let conversation = app
         .world()
         .get::<Conversation>(agent)
-        .map(Conversation::messages);
+        .map(|conversation| conversation.messages());
     let answer = match conversation {
         Some([_, message::Message::Assistant(answer)]) => Some(&answer.content),
         _ => None,

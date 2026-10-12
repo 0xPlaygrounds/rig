@@ -507,7 +507,7 @@ fn on_verdict(
             Err(why) => Outcome::refused(why),
         };
         if let Ok(mut decision) = decisions.get_mut(called.call) {
-            decision.decide(outcome);
+            decision.decide(Decider::plugin("supervisor"), outcome);
         }
     };
     let Ok(&SpawnedBy(worker)) = supervisors.get(called.agent) else {

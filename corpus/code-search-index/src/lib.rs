@@ -579,7 +579,10 @@ fn searched(
     {
         save(&index, &embedder);
     }
-    decision.decide(searched.result.clone());
+    decision.decide(
+        Decider::plugin("code-search-index"),
+        searched.result.clone(),
+    );
     commands.entity(add.entity).remove::<Searched>();
 }
 

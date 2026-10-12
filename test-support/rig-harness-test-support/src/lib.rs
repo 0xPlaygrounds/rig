@@ -12,7 +12,7 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::journal::{JsonlDirStore, MemoryStore};
+use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::effect::EffectId;
 use rig_core::message::{Message as ChatMessage, ToolFunction, ToolName};
@@ -37,13 +37,19 @@ const DEADLINE: Duration = Duration::from_secs(10);
 /// An app with a task pool on the session in `store`, no user settings,
 /// and its loop's wakes.
 pub fn app_on(store: &MemoryStore) -> (App, Receiver<()>) {
+    let (mut app, wakes) = app();
+    app.insert_resource(SessionStore::new(store.clone()));
+    (app, wakes)
+}
+
+/// An app with a task pool, no user settings, and its loop's wakes.
+fn app() -> (App, Receiver<()>) {
     let (sender, wakes) = channel();
     let mut app = App::new();
     app.add_plugins(TaskPoolPlugin::default())
         .insert_resource(Wake::new(move || {
             sender.send(()).ok();
         }))
-        .insert_resource(SessionStore::new(store.clone()))
         .insert_resource(Settings::default());
     (app, wakes)
 }
@@ -58,14 +64,15 @@ pub fn scratch_home(name: &str) -> Home {
 
 /// An app with a task pool on the session `id` of `home`, kept in its
 /// directory by the harness's session service, and its loop's wakes. The
-/// service sends panics to the session's log; a test shows them, so its
+/// service opens the session's store as the app finishes building
+/// (`app.finish()`), from the app's `SessionStores`, as it does in the
+/// agent. It sends panics to the session's log; a test shows them, so its
 /// failed assertions print.
 pub fn app_in(home: &Home, id: &SessionId) -> (App, Receiver<()>) {
     let dir = home.session(id);
     fs::create_dir_all(dir.path()).ok();
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
-        .insert_resource(SessionPaths(dir))
+    let (mut app, wakes) = app();
+    app.insert_resource(SessionPaths(dir))
         .insert_resource(RigHome(home.clone()))
         .add_plugins(SessionPlugin);
     drop(std::panic::take_hook());
@@ -202,7 +209,7 @@ pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
         world.query_filtered::<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>();
     open.iter_mut(world)
         .find(|(ask, decision)| ask.title == title && !decision.is_decided())
-        .is_some_and(|(_, mut decision)| decision.decide(answer.outcome()))
+        .is_some_and(|(_, mut decision)| decision.decide(Decider::Person, answer.outcome()))
 }
 
 /// Runs one frame of `app` `by` later on Bevy's clock, which timers and
@@ -324,7 +331,7 @@ fn answer_asks(
             continue;
         }
         if let Some(answer) = answers.script.pop_front() {
-            decision.decide(answer.outcome());
+            decision.decide(Decider::Person, answer.outcome());
         }
     }
 }

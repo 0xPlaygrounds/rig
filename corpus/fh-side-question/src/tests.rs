@@ -4,6 +4,7 @@ use rig_cassette::journal::MemoryStore;
 use rig_core::completion::CompletionRequest;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
+use rig_harness::transcript::TranscriptPlugin;
 use rig_harness_test_support::{app_on, calls, reply, run_until, scripted_models};
 use rig_subagents::SubagentsPlugin;
 
@@ -41,6 +42,7 @@ fn start(
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
+            TranscriptPlugin,
             SubagentsPlugin,
             SideQuestionPlugin,
         ))
@@ -90,6 +92,16 @@ fn open_shell(world: &mut World) -> Option<Entity> {
         .iter(world)
         .find(|(_, request)| request.call.function.name.as_str() == "shell")
         .map(|(call, _)| call)
+}
+
+/// The side conversations in `agent`'s transcript.
+fn side_entries(world: &mut World, agent: Entity) -> Vec<TranscriptEntry> {
+    let mut entries = world.query::<(&TranscriptEntry, &EntryOf)>();
+    entries
+        .iter(world)
+        .filter(|(entry, of)| of.0 == agent && entry.origin == TITLE)
+        .map(|(entry, _)| entry.clone())
+        .collect()
 }
 
 /// Presses the panel's binding labelled `label`.
@@ -176,7 +188,10 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     if let Some(call) = open_shell(app.world_mut())
         && let Some(mut decision) = app.world_mut().get_mut::<Decision>(call)
     {
-        decision.decide(ToolResult::success("migrated".into()));
+        decision.decide(
+            Decider::plugin("fh-side-question"),
+            ToolResult::success("migrated".into()),
+        );
     }
     run_until(&mut app, &wakes, idle_after(&main, 2, agent));
     let main_requests = main.requests();
@@ -206,6 +221,13 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
     assert_eq!(before, after);
     assert_eq!(main.requests().len(), 2);
     assert!(app.world().resource::<SideChat>().main.is_none());
+    // The side conversation is an entry after the message it was asked at,
+    // the reply calling `shell`.
+    let at = app.world().get::<Conversation>(agent).and_then(|c| c.id(1));
+    let entries = side_entries(app.world_mut(), agent);
+    assert_eq!(entries.len(), 1);
+    let entry = entries.first().cloned();
+    assert_eq!(entry.as_ref().map(|entry| entry.after), Some(at));
     drop(app);
 
     // Resumed, the side exchange is its own entry, and the main agent's
@@ -215,15 +237,16 @@ fn a_side_question_is_answered_beside_a_running_turn_and_kept_apart() {
         Vec<rig_core::test_utils::MockStreamEvent>,
     >::new());
     let (mut app, wakes, agent) = start(&store, &main, &side);
-    let kept = app.world().get::<SideConversations>(agent).cloned();
-    let exchange = SideExchange {
-        question: "what is X?".to_owned(),
-        answer: "X is Y".to_owned(),
-    };
-    assert_eq!(kept, Some(SideConversations(vec![vec![exchange]])));
+    let kept = side_entries(app.world_mut(), agent);
+    assert_eq!(kept.first(), entry.as_ref());
+    assert_eq!(kept.len(), 1);
+    let kept = kept
+        .first()
+        .map(|entry| (entry.title.as_str(), entry.text.as_str()));
+    assert_eq!(kept, Some(("btw: what is X?", "› what is X?\nX is Y")));
     let world = app.world_mut();
-    let mut helpers = world.query::<&Helper>();
-    assert_eq!(helpers.iter(world).count(), 0, "the side agent was retired");
+    let mut sides = world.query::<&SideAgent>();
+    assert_eq!(sides.iter(world).count(), 0, "the side agent was retired");
     app.world_mut()
         .trigger(Deliver::new(agent, "And now?", DeliveryMode::Steer));
     run_until(&mut app, &wakes, idle_after(&main, 1, agent));

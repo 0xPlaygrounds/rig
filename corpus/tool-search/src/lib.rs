@@ -16,7 +16,7 @@ use std::cmp::Reverse;
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::ToolDefinition;
+use rig_harness::rig_core::completion::{Section, ToolDefinition};
 use rig_harness::rig_core::effect::Outcome as Answered;
 use rig_harness::rig_core::message::ToolResultContent;
 use rig_harness::rig_core::tool::ToolOutput;
@@ -186,11 +186,14 @@ fn offer(
             .any(|tool| tool.name == TOOL_SEARCH);
         if deferred > 0
             && searchable
-            && let Some(prompt) = call.system_prompt_mut()
+            && let Some(prompt) = &mut call.prompt
         {
             // The total, not what is left, so the prompt stays cached.
-            prompt.push_str(&format!(
-                "\n\n{deferred} more tools are deferred: `tool_search` finds and activates them."
+            prompt.sections.push(Section::new(
+                "tool_search",
+                format!(
+                    "{deferred} more tools are deferred: `tool_search` finds and activates them."
+                ),
             ));
         }
     }
@@ -236,7 +239,10 @@ fn search(
         }
     }
     if let Ok(mut decision) = decisions.get_mut(called.call) {
-        decision.decide(ToolResult::success(ToolOutput::text(text)));
+        decision.decide(
+            Decider::plugin("tool-search"),
+            ToolResult::success(ToolOutput::text(text)),
+        );
     }
 }
 

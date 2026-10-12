@@ -1,49 +1,51 @@
 //! FH-18: encrypted sessions at rest.
 //!
 //! With `RIG_HOME/crypt.toml` saying so (`enabled = true`, or `projects =
-//! ["/path"]` for some projects), the session's journal (every agent's
-//! conversation, the plugins' saved state, subagents' logs and stored
-//! images) is kept by a [`CryptStore`] in place of the plain one: sealed
-//! with ChaCha20-Poly1305 under a key Argon2id derives from a passphrase.
-//! The passphrase comes from an environment variable (`passphrase_env`,
-//! [`PASSPHRASE_ENV`] by default), read once at startup; a run without it,
-//! or with a wrong one, refuses to start and keeps nothing. A file that
-//! does not authenticate fails to load with [`TAMPERED`] and is left as it
-//! is.
+//! ["/path"]` for some projects), every session's store, this one's,
+//! forks' and those `/resume` lists, is a [`CryptStore`]: every file the
+//! harness and its plugins keep of a session (agent logs, saved plugin
+//! state, blobs, the effect log, the listing, a fork's parent, the
+//! terminal view's notices and draft, a plugin's own files) is sealed with
+//! ChaCha20-Poly1305 under a key Argon2id derives from the passphrase,
+//! the secret `crypt`: the launcher asks for it once when started at a
+//! terminal, and a scripted run takes it from `RIG_SECRET_CRYPT`. A run
+//! without it, or with a wrong one, is refused and keeps nothing. A file
+//! that does not authenticate fails to load with [`TAMPERED`] and is left
+//! as it is. What rig keeps plain by path (cut tool output, pasted images,
+//! the text log) is kept nowhere, and typed prompts stay out of the prompt
+//! history.
 //!
-//! What the stack would otherwise write in plain text, the plugin keeps
-//! out where it can: the effect log gets no records, `/resume` lists the
-//! session as "encrypted session" with its date and cost, and a fork is
-//! sealed once written. `/crypt migrate` encrypts the other plain sessions
-//! in place, `/crypt rekey` seals every session again under the passphrase
-//! in [`NEW_PASSPHRASE_ENV`]. Other plugins seal their own files in the
-//! session's directory with the [`Crypt`] resource.
+//! A session is told sealed or plain by its logs' header: a plain session
+//! of a project that is not encrypted opens as it is, and one of a project
+//! that is is refused until `rig crypt migrate` encrypts the plain
+//! sessions in place. `rig crypt rekey` seals every session again under
+//! the passphrase in `RIG_SECRET_CRYPT_NEW`, and `rig crypt list` shows
+//! each session's date and size without the key.
 
-use std::fs::{self, File, TryLockError};
+use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, OnceLock};
 
-use rig_harness::harness_protocol::{Home, SessionDir};
+use rig_cassette::journal::JsonlDirStore;
+use rig_harness::harness_protocol::{Home, SessionDir, secret_variable};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_ecs::{StopTurns, WriteJournal};
-use rig_harness::rig_tools::fs::{read_json, write_json};
-use rig_sessions::{Meta, SessionTitle};
 use serde::Deserialize;
 
+mod reseal;
 mod store;
 
-pub use store::{
-    Crypt, CryptStore, Kdf, TAMPERED, encrypt_session, new_salt, rekey_session, shred,
-};
+pub use reseal::{list, migrate, rekey};
+pub use store::{Crypt, CryptStore, Kdf, Sealing, TAMPERED, new_salt};
 
-/// The environment variable the passphrase is read from by default.
-pub const PASSPHRASE_ENV: &str = "RIG_CRYPT_PASSPHRASE";
+/// The secret holding the passphrase.
+pub const SECRET: &str = "crypt";
 
-/// The environment variable `/crypt rekey` reads the new passphrase from.
-pub const NEW_PASSPHRASE_ENV: &str = "RIG_CRYPT_NEW_PASSPHRASE";
+/// The secret `rig crypt rekey` takes the new passphrase from.
+pub const NEW_SECRET: &str = "crypt-new";
 
-/// What `/resume` lists an encrypted session as, without its title.
-pub const LISTED_AS: &str = "encrypted session";
+/// The command, `rig crypt list|migrate|rekey`.
+const COMMAND: &str = "crypt";
 
 /// `RIG_HOME/crypt.toml`.
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -53,8 +55,6 @@ pub struct CryptConfig {
     pub enabled: bool,
     /// Encrypt the sessions of these projects (and their subdirectories).
     pub projects: Vec<PathBuf>,
-    /// The environment variable holding the passphrase.
-    pub passphrase_env: Option<String>,
     /// Argon2id's memory in KiB.
     pub kdf_memory_kib: Option<u32>,
     /// Argon2id's passes.
@@ -86,11 +86,6 @@ impl CryptConfig {
             memory_kib: self.kdf_memory_kib.unwrap_or(default.memory_kib),
             iterations: self.kdf_iterations.unwrap_or(default.iterations),
         }
-    }
-
-    /// The environment variable holding the passphrase.
-    pub fn passphrase_env(&self) -> &str {
-        self.passphrase_env.as_deref().unwrap_or(PASSPHRASE_ENV)
     }
 }
 
@@ -126,9 +121,9 @@ pub fn unlock(
 ) -> Result<Crypt, String> {
     let Some(passphrase) = passphrase.filter(|passphrase| !passphrase.is_empty()) else {
         return Err(format!(
-            "sessions are encrypted and there is no key: set {} (no OS keyring or \
-             prompt is supported). Nothing was saved.",
-            config.passphrase_env()
+            "sessions are encrypted and there is no key: give the passphrase when rig asks, \
+             or set {}",
+            secret_variable(SECRET)
         ));
     };
     let crypt = Crypt::derive(passphrase.as_bytes(), &salt(home)?, config.kdf())
@@ -139,216 +134,160 @@ pub fn unlock(
     Ok(crypt)
 }
 
-/// Why this run refused to start a session.
-#[derive(Resource, Clone, Debug)]
-pub struct CryptRefusal(pub String);
+/// How this run opens a session's store: a sealed one through a
+/// [`CryptStore`] under the key, unlocked on first need; a plain one as
+/// it is, unless its project is encrypted; a new one, such as a fork,
+/// sealed when this run is encrypted.
+#[derive(Resource, Clone)]
+struct Vault(Arc<VaultState>);
 
-/// Keeps the session encrypted at rest.
+struct VaultState {
+    home: Home,
+    config: Result<CryptConfig, String>,
+    /// Whether this run's project is encrypted, or its session sealed.
+    encrypted: bool,
+    passphrase: Option<String>,
+    key: OnceLock<Result<Crypt, String>>,
+}
+
+impl Vault {
+    /// The key, or why there is none.
+    fn key(&self) -> Result<Crypt, String> {
+        let state = &*self.0;
+        state
+            .key
+            .get_or_init(|| {
+                let config = state.config.clone()?;
+                unlock(&state.home, &config, state.passphrase.as_deref())
+            })
+            .clone()
+    }
+
+    /// The store of the session in `dir`.
+    fn open(&self, dir: &SessionDir) -> io::Result<Arc<dyn JournalStore>> {
+        let config = self.0.config.clone().map_err(io::Error::other)?;
+        let plain = Arc::new(JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES));
+        let sealed = match Sealing::of(&*plain)? {
+            Sealing::Sealed => true,
+            Sealing::Empty => self.0.encrypted,
+            Sealing::Plain => {
+                let project = dir.working_directory();
+                if project.map_or(self.0.encrypted, |project| config.applies_to(&project)) {
+                    return Err(io::Error::other(
+                        "this session is plain; encrypt it with `rig crypt migrate` first",
+                    ));
+                }
+                false
+            }
+        };
+        if !sealed {
+            return Ok(plain);
+        }
+        let crypt = self.key().map_err(io::Error::other)?;
+        Ok(Arc::new(CryptStore::new(plain, crypt)))
+    }
+}
+
+/// Keeps the sessions encrypted at rest.
 #[derive(Default)]
 pub struct EncryptedSessionsPlugin;
 
 impl Plugin for EncryptedSessionsPlugin {
     fn build(&self, app: &mut App) {
-        let home = RigHome::of(app.world());
-        let project = app.world().get_resource::<ProjectRoot>().cloned();
-        let config = match CryptConfig::read(&home) {
-            Ok(config) => config,
-            Err(why) => return refuse(app, why),
-        };
-        if !config.applies_to(&project.unwrap_or_default().0) {
-            return;
+        app.add_secret(Secret::new(SECRET, "Passphrase of the encrypted sessions"))
+            .add_front(Front::new(COMMAND).sessionless().on_command(
+                COMMAND,
+                "list|migrate|rekey",
+                "List the sessions without the key, encrypt the plain ones, \
+                 or seal them all under RIG_SECRET_CRYPT_NEW",
+            ));
+        let world = app.world();
+        let home = RigHome::of(world);
+        let project = world
+            .get_resource::<ProjectRoot>()
+            .cloned()
+            .unwrap_or_default()
+            .0;
+        let passphrase = world
+            .get_resource::<Secrets>()
+            .and_then(|secrets| secrets.get(SECRET))
+            .map(str::to_owned);
+        let config = CryptConfig::read(&home);
+        let sealing = world
+            .get_resource::<SessionPaths>()
+            .and_then(|paths| Sealing::of(&JsonlDirStore::new(paths.path())).ok());
+        let encrypted = sealing == Some(Sealing::Sealed)
+            || config
+                .as_ref()
+                .map_or(true, |config| config.applies_to(&project));
+        // Only a session kept sealed keeps no plain files: a plain one
+        // keeps them, whether it runs or is refused.
+        let seals = encrypted && sealing != Some(Sealing::Plain);
+        let vault = Vault(Arc::new(VaultState {
+            home,
+            config,
+            encrypted,
+            passphrase,
+            key: OnceLock::new(),
+        }));
+        let opening = vault.clone();
+        app.insert_resource(SessionStores::new(move |dir| opening.open(dir)))
+            .insert_resource(vault);
+        if seals {
+            app.insert_resource(Scratch(None));
+            #[cfg(feature = "tui")]
+            app.add_systems(Startup, keep_no_history);
         }
-        let passphrase = std::env::var(config.passphrase_env()).ok();
-        let crypt = match unlock(&home, &config, passphrase.as_deref()) {
-            Ok(crypt) => crypt,
-            Err(why) => return refuse(app, why),
-        };
-        // The harness's session plugin put a plain store in; this one takes
-        // its place before the session is restored (PreStartup).
-        if let Some(paths) = app.world().get_resource::<SessionPaths>() {
-            let store = CryptStore::new(paths.path(), crypt.clone());
-            app.insert_resource(SessionStore::new(store));
+    }
+
+    fn finish(&self, app: &mut App) {
+        if app.runs_front(COMMAND) {
+            app.add_systems(Startup, crypt_command);
         }
-        app.insert_resource(crypt)
-            .add_command(
-                "crypt",
-                "Encrypted sessions: /crypt migrate, /crypt rekey",
-                crypt_command,
-            )
-            .add_systems(Startup, hide_title)
-            .add_systems(Update, seal_forks)
-            .add_systems(
-                Last,
-                drop_effect_records.after(StopTurns).before(WriteJournal),
-            );
     }
 }
 
-/// Keeps nothing of the session, and exits at startup saying why.
-fn refuse(app: &mut App, why: String) {
-    app.world_mut().remove_resource::<SessionStore>();
-    app.insert_resource(CryptRefusal(why))
-        .add_systems(Startup, refuse_to_start)
-        .add_systems(
-            Last,
-            drop_effect_records.after(StopTurns).before(WriteJournal),
-        );
+/// The terminal view keeps typed prompts in a plain file across sessions:
+/// not those of an encrypted one.
+#[cfg(feature = "tui")]
+fn keep_no_history(history: Option<ResMut<rig_tui::PromptHistory>>) {
+    if let Some(mut history) = history {
+        history.file = None;
+    }
 }
 
-fn refuse_to_start(
-    refusal: Res<CryptRefusal>,
-    mut notices: MessageWriter<Notice>,
+/// `rig crypt list|migrate|rekey`: prints what it did, and exits.
+fn crypt_command(
+    invoked: Res<Invoked>,
+    vault: Res<Vault>,
+    paths: Res<SessionPaths>,
+    secrets: Option<Res<Secrets>>,
     mut commands: Commands,
 ) {
-    notices.write(Notice::error(None, refusal.0.clone()));
-    commands.trigger(Exit(ExitReason::Failed(2)));
-}
-
-/// The effect log is plain JSON lines its plugin writes itself: it gets no
-/// record of an encrypted session.
-fn drop_effect_records(mut records: ResMut<Messages<Recorded>>) {
-    records.clear();
-}
-
-/// `/resume` lists sessions from their plain `meta.json`, whose title is
-/// the start of the first message typed: this session's says only that it
-/// is encrypted.
-fn hide_title(title: Option<ResMut<SessionTitle>>) {
-    if let Some(mut title) = title
-        && title.typed.is_empty()
-    {
-        title.typed = LISTED_AS.to_owned();
-    }
-}
-
-/// The harness writes a fork as a plain session: seals it as soon as it
-/// is written, and takes the forked message's text out of its parent file.
-fn seal_forks(
-    mut forked: MessageReader<SessionForked>,
-    home: Res<RigHome>,
-    crypt: Res<Crypt>,
-    mut notices: MessageWriter<Notice>,
-) {
-    for fork in forked.read() {
-        let dir = home.0.session(&fork.to);
-        let sealed = encrypt_session(dir.path(), &crypt).map_err(|failure| failure.to_string());
-        if let Err(why) = sealed.and_then(|_| forget_fork_text(&dir)) {
-            let why = format!("Could not encrypt the fork {}: {why}", fork.to);
-            notices.write(Notice::error(None, why));
-        }
-    }
-}
-
-/// Removes the text of the message a fork stopped before from its parent
-/// file.
-fn forget_fork_text(dir: &SessionDir) -> Result<(), String> {
-    let Some(mut parent) = read_json::<serde_json::Map<String, serde_json::Value>>(&dir.parent())
-    else {
-        return Ok(());
+    let arguments = invoked.command().map(|(_, arguments)| arguments.join(" "));
+    let (home, current) = (&vault.0.home, paths.path());
+    let done = match arguments.as_deref() {
+        Some("list") => Ok(list(home, current)),
+        Some("migrate") => vault.key().and_then(|crypt| migrate(home, current, &crypt)),
+        Some("rekey") => vault.key().and_then(|crypt| {
+            let new = secrets
+                .as_deref()
+                .and_then(|secrets| secrets.get(NEW_SECRET));
+            rekey(home, current, &crypt, new)
+        }),
+        _ => Err("usage: rig crypt list|migrate|rekey".to_owned()),
     };
-    if parent.shift_remove("text").is_some() {
-        write_json(&dir.parent(), &parent).map_err(|failure| failure.to_string())?;
-    }
-    Ok(())
-}
-
-/// Whether a launcher runs `session`.
-fn runs_elsewhere(session: &SessionDir) -> bool {
-    File::options()
-        .write(true)
-        .open(session.launcher_lock())
-        .is_ok_and(|lock| matches!(lock.try_lock(), Err(TryLockError::WouldBlock)))
-}
-
-/// The session directories of `home` other than `current`.
-fn other_sessions(home: &Home, current: Option<&Path>) -> Vec<SessionDir> {
-    let Ok(entries) = fs::read_dir(home.sessions()) else {
-        return Vec::new();
-    };
-    entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| entry.file_name().to_str()?.parse().ok())
-        .map(|id| home.session(&id))
-        .filter(|dir| Some(dir.path()) != current)
-        .collect()
-}
-
-/// `/crypt migrate`: encrypts every other plain session no launcher runs.
-/// `/crypt rekey`: seals every session again under the passphrase in
-/// [`NEW_PASSPHRASE_ENV`], once no other session runs.
-fn crypt_command(
-    In(args): In<CommandArgs>,
-    home: Res<RigHome>,
-    paths: Option<Res<SessionPaths>>,
-    crypt: Res<Crypt>,
-    mut notices: MessageWriter<Notice>,
-) {
-    let current = paths.as_deref().map(|paths| paths.path());
-    let text = match args.args.as_str() {
-        "migrate" => migrate(&home.0, current, &crypt),
-        "rekey" => rekey(&home.0, current, &crypt),
-        _ => Err("Use /crypt migrate or /crypt rekey.".to_owned()),
-    };
-    notices.write(match text {
-        Ok(text) => Notice::info(args.agent, text),
-        Err(why) => Notice::error(args.agent, why),
-    });
-}
-
-fn migrate(home: &Home, current: Option<&Path>, crypt: &Crypt) -> Result<String, String> {
-    let (mut sessions, mut skipped) = (0, 0);
-    for dir in other_sessions(home, current) {
-        if runs_elsewhere(&dir) {
-            skipped += 1;
-            continue;
+    let reason = match done {
+        Ok(text) => {
+            println!("{text}");
+            ExitReason::Quit
         }
-        let files = encrypt_session(dir.path(), crypt)
-            .map_err(|failure| format!("{}: {failure}", dir.path().display()))?;
-        forget_fork_text(&dir)?;
-        if let Some(meta) = read_json::<Meta>(&dir.meta()) {
-            let title = SessionTitle {
-                typed: LISTED_AS.to_owned(),
-                ..meta.title
-            };
-            write_json(&dir.meta(), &Meta { title, ..meta })
-                .map_err(|failure| failure.to_string())?;
+        Err(why) => {
+            eprintln!("rig crypt: {why}");
+            ExitReason::Failed(1)
         }
-        sessions += usize::from(files > 0);
-    }
-    Ok(format!(
-        "Encrypted {sessions} sessions; {skipped} running elsewhere were left."
-    ))
-}
-
-fn rekey(home: &Home, current: Option<&Path>, crypt: &Crypt) -> Result<String, String> {
-    let config = CryptConfig::read(home)?;
-    let passphrase = std::env::var(NEW_PASSPHRASE_ENV)
-        .ok()
-        .filter(|passphrase| !passphrase.is_empty())
-        .ok_or_else(|| format!("Set {NEW_PASSPHRASE_ENV} to the new passphrase first."))?;
-    let others = other_sessions(home, current);
-    if others.iter().any(runs_elsewhere) {
-        return Err("Another rig runs an encrypted session; quit it first.".to_owned());
-    }
-    let salt = new_salt().map_err(|failure| failure.to_string())?;
-    let new = Crypt::derive(passphrase.as_bytes(), &salt, config.kdf())
-        .map_err(|failure| failure.to_string())?;
-    let dirs = others.iter().map(SessionDir::path).chain(current);
-    let mut count = 0;
-    for dir in dirs {
-        // A session still plain is sealed first.
-        encrypt_session(dir, crypt).map_err(|failure| failure.to_string())?;
-        rekey_session(dir, crypt, &new)
-            .map_err(|failure| format!("{}: {failure}", dir.display()))?;
-        count += 1;
-    }
-    let check = key_dir(home).join("check");
-    fs::remove_file(&check).ok();
-    fs::write(key_dir(home).join("salt"), salt)
-        .map_err(|failure| failure.to_string())
-        .and_then(|()| new.check(&check).map_err(|failure| failure.to_string()))?;
-    crypt.take_key_of(&new);
-    Ok(format!("Sealed {count} sessions under the new passphrase."))
+    };
+    commands.trigger(Exit(reason));
 }
 
 #[cfg(test)]

@@ -22,13 +22,13 @@ tui = ["dep:rig-tui"]
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
+# The pool attachments are read on in a workspace that is not this machine.
+bevy_tasks = { workspace = true }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
 
 [dev-dependencies]
-# Runs a tool's future in its test.
-bevy_tasks = { workspace = true }
 # Calls of an agent's tools, started as its model's reply would.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

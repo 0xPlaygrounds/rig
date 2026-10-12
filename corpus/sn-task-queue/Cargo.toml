@@ -1,0 +1,34 @@
+[package]
+name = "corpus-sn-task-queue"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (stack-next fresh held-out): SN-15: 15. Background task queue"
+
+[lints]
+workspace = true
+
+[features]
+default = ["tui"]
+# The queue's panel and status-line item in the terminal view.
+tui = ["dep:rig-tui"]
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# Each task is a helper agent spawned through a SpawnSubagent effect.
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# A task's cost: its agent's Spending.
+rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
+serde = { workspace = true, features = ["derive"] }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+schemars = { workspace = true }
+serde_json = { workspace = true }

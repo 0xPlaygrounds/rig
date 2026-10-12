@@ -312,7 +312,7 @@ fn ask(
                 continue;
             }
         };
-        decision.decide(Outcome::refused(why));
+        decision.decide(Decider::plugin("permission-modes"), Outcome::refused(why));
     }
 }
 
@@ -346,7 +346,7 @@ fn answered(
                  user or do something else."
             );
             if let Ok(mut decision) = calls.get_mut(call) {
-                decision.decide(Outcome::refused(why));
+                decision.decide(Decider::plugin("permission-modes"), Outcome::refused(why));
             }
         }
         commands.entity(ask).remove::<HoldOf>();

@@ -6,15 +6,20 @@ fn only_a_session_with_a_conversation_is_offered_to_resume() {
     use std::os::unix::process::ExitStatusExt;
 
     let (status, session) = (ExitStatus::from_raw(2 << 8), SessionId::generate());
-    let log = Path::new("/home/.rig/sessions/s/agent.log");
-    let saved = stopped(status, &session, true, log);
+    let log = Some(Path::new("/home/.rig/sessions/s/agent.log"));
+    let saved = stopped(status, &session, true, None, log);
     assert!(
         saved.contains(&format!("`rig --resume {session}`")),
         "{saved}"
     );
-    let empty = stopped(status, &session, false, log);
+    let empty = stopped(status, &session, false, None, log);
     let expected = "The agent stopped (exit status: 2). Log: /home/.rig/sessions/s/agent.log";
     assert_eq!(empty, expected);
+    // A refusal said where a restarted view kept the screen comes again.
+    let refused = stopped(status, &session, false, Some("rig: plain.\n"), log);
+    assert_eq!(refused, format!("rig: plain.\n{expected}"));
+    let no_log = stopped(status, &session, false, None, None);
+    assert_eq!(no_log, "The agent stopped (exit status: 2).");
 }
 
 /// A home whose staged build is `trial` and whose good build is `good`:
@@ -73,4 +78,88 @@ fn a_one_shot_run_is_never_run_again_on_the_previous_build() {
     let (code, ran, good) = one_shot(&home);
     assert_eq!(ran, "trial\n");
     assert_eq!((code, good.as_str()), (Some(ExitCode::from(1)), "trial"));
+}
+
+#[cfg(unix)]
+#[test]
+fn a_build_without_a_report_is_described_once_and_the_command_line_read_against_it() {
+    // The scratch home a describe runs in is `run/<launcher>/describe/home`.
+    let describe = "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+echo described >> \"$RIG_HOME/../../../../described\"
+printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > \"$RIG_DESCRIBE\"";
+    let home = builds("report", describe, "exit 0");
+    let session = SessionId::generate();
+    let first = report(&home, &session);
+    let again = report(&home, &session);
+    let described = fs::read_to_string(home.root().join("described")).unwrap_or_default();
+    // A build from before reports ignores the request: it has none.
+    fs::remove_file(home.staged()).ok();
+    let old = report(&home, &session);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(first.command("stats").is_some(), "{first:?}");
+    assert_eq!((first.clone(), described.as_str()), (again, "described\n"));
+    assert_eq!(old, Described::default());
+    let unknown = first.invocation(&["statz"]).err().unwrap_or_default();
+    assert!(
+        unknown.ends_with("commands: build, plugin, help, stats"),
+        "{unknown}"
+    );
+}
+
+/// A run that failed before its session saved anything, such as one
+/// refused, leaves no session directory; its text log stays in the
+/// launcher's run directory, where the launcher points.
+#[cfg(unix)]
+#[test]
+fn a_failed_run_leaves_no_unsaved_session_but_its_log() {
+    let failing = "touch \"$RIG_RUN/ready\"
+echo refused > \"$RIG_HOME/sessions/$RIG_SESSION/agent.log\"
+exit 2";
+    let home = builds("unsaved", failing, "exit 0");
+    let print = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let left = home::hold_run(&home).and_then(|run| {
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let session = home.session(&claimed.id);
+        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
+        let log = fs::read_to_string(run.dir().log()).ok();
+        Ok((code, session.path().exists(), log))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let left = left.ok();
+    let log = Some("refused\n".to_owned());
+    assert_eq!(left, Some((ExitCode::from(2), false, log)));
+}
+
+/// A build that describes itself as adding the command `name`.
+#[cfg(unix)]
+fn describing(name: &str) -> String {
+    format!(
+        "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+printf 'rig-describe 1\\ncommand\\t{name}\\t-\\theadless\\tsession\\tCount\\n' > \"$RIG_DESCRIBE\""
+    )
+}
+
+/// `rig help` lists what the build a new session starts with adds: the
+/// staged one, newer than the good one that ran before.
+#[cfg(unix)]
+#[test]
+fn help_reads_the_build_that_starts_next() {
+    let home = builds("help", &describing("new"), &describing("old"));
+    let kept = [home.staged(), home.good()].map(|binary| build::described(&home, &binary));
+    let report = last_report(&home);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(kept.iter().all(Result::is_ok));
+    let report = report.unwrap_or_default();
+    assert!(report.command("new").is_some(), "{report:?}");
+}
+
+#[test]
+fn a_secret_is_read_byte_by_byte_and_ctrl_c_gives_none() {
+    let read = |typed: &[u8]| read_secret(&mut &typed[..]).ok().flatten();
+    assert_eq!(read(b"ab\x7fc\rleft over"), Some(b"ac".to_vec()));
+    assert_eq!(read("pé\x7f".as_bytes()), Some(b"p".to_vec()));
+    assert_eq!(read(b"ab\x03\r"), None);
 }

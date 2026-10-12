@@ -169,7 +169,13 @@ fn a_program_answers_calls_tools_and_fails() {
         .resource::<Collected<StreamDelta>>()
         .0
         .iter()
-        .map(|delta| delta.text.as_str())
+        .filter_map(|delta| match &delta.event {
+            StreamEvent::Text { text, .. } | StreamEvent::Reasoning { text, .. } => {
+                Some(text.as_str())
+            }
+            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
+            _ => None,
+        })
         .collect();
     assert_eq!(deltas, ["hel", "lo"]);
 

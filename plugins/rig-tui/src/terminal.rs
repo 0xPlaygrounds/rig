@@ -7,7 +7,7 @@
 
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus, Stdio};
 
 use base64::Engine;
@@ -31,7 +31,8 @@ use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
+use rig_harness::harness_protocol::secret_variables;
+use rig_harness::prelude::{Exit, ExitReason, Scratch};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -42,7 +43,8 @@ use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
 /// it is spawned.
 ///
 /// Ctrl+C in a program that leaves the terminal as it is (not an editor,
-/// which takes the keys itself) also stops the agent.
+/// which takes the keys itself) also stops the agent. The program gets
+/// none of the session's secrets.
 #[derive(Component, Debug)]
 pub struct RunInTerminal(pub Command);
 
@@ -101,6 +103,9 @@ pub(crate) struct Tui {
     /// A copy of the screen's file, for a program's output.
     screen: File,
 }
+
+/// Where stray output goes when the session keeps no text log.
+const NOWHERE: &str = "/dev/null";
 
 /// What the terminal is asked to report while a key binding wants key
 /// releases: releases need keys sent as escape codes.
@@ -206,13 +211,15 @@ impl Drop for Tui {
 /// Opens the terminal and starts reading it at startup, or asks to exit
 /// with code 1 when there is none.
 pub(crate) fn open_terminal(
-    paths: Option<Res<SessionPaths>>,
+    scratch: Option<Res<Scratch>>,
     wake: Res<Wake>,
     mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
 ) {
-    let opened = Tui::open(paths.map(|paths| paths.log()).as_deref())
-        .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
+    // Stray output goes to the text log, or nowhere without a place for it.
+    let log = scratch.map(|scratch| scratch.log().unwrap_or_else(|| PathBuf::from(NOWHERE)));
+    let opened =
+        Tui::open(log.as_deref()).and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
     match opened {
         Ok((tui, input)) => {
             if let Ok(size) = tui.terminal.size() {
@@ -335,8 +342,11 @@ pub(crate) fn run_in_terminal(world: &mut World) {
 }
 
 /// Runs `command` until it exits, its output on `screen` when the view
-/// sends its own output elsewhere.
+/// sends its own output elsewhere, without the session's secrets.
 fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, String> {
+    for secret in secret_variables() {
+        command.env_remove(secret);
+    }
     if let Some(screen) = screen {
         let output = screen.try_clone().map_err(|failure| failure.to_string())?;
         let errors = screen.try_clone().map_err(|failure| failure.to_string())?;
@@ -365,6 +375,9 @@ fn screen() -> io::Result<File> {
 #[cfg(unix)]
 fn redirect_output(log: &Path) -> io::Result<()> {
     use std::os::fd::AsRawFd;
+    if let Some(directory) = log.parent() {
+        std::fs::create_dir_all(directory)?;
+    }
     let file = std::fs::OpenOptions::new()
         .create(true)
         .append(true)

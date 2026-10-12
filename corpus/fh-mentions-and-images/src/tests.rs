@@ -7,6 +7,10 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, collect, first_agent, log_ended, reply, run_until, scripted_models,
 };
 
+use std::fs;
+
+use rig_coding_tools::AttachPlugin;
+
 use super::*;
 
 const TYPED: &str = "fix @src/a.rs see @shot.png and @missing.rs";
@@ -45,13 +49,14 @@ fn models(
     models
 }
 
-/// An app on `store` working in `root`, with the plugin, after its first
+/// An app on `store` working in `root`, with the plugin beside
+/// rig-coding-tools' `AttachPlugin`, which it turns off, after its first
 /// frame, and its agent.
 fn app(store: &MemoryStore, root: &Path, models: Models) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
     app.insert_resource(ProjectRoot(root.to_owned()))
         .insert_resource(models)
-        .add_plugins((AgentPlugin, JournalPlugin, MentionsPlugin))
+        .add_plugins((AgentPlugin, JournalPlugin, AttachPlugin, MentionsPlugin))
         .insert_resource(Mentions {
             vision_model: Some("test/vision".to_owned()),
             ..Mentions::default()
@@ -135,7 +140,7 @@ fn mentions_go_with_the_message_as_sent() {
     assert_eq!(
         sent_texts.len(),
         2,
-        "the text and src/a.rs, nothing for missing.rs: {sent_texts:?}"
+        "the text and src/a.rs once, nothing for missing.rs: {sent_texts:?}"
     );
     assert!(warned_about_missing(&first));
     drop(first);

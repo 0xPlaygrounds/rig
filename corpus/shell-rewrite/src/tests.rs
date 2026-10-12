@@ -97,7 +97,9 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
     // The guard judged `trash b`, not `rm -rf b`: nobody was asked.
     assert_eq!(world.resource::<Answers>().asked, Vec::<String>::new());
     // The conversation keeps the model's own calls.
-    let messages = world.get::<Conversation>(agent).map(Conversation::messages);
+    let messages = world
+        .get::<Conversation>(agent)
+        .map(|conversation| conversation.messages());
     let called: Vec<String> = messages
         .unwrap_or_default()
         .iter()

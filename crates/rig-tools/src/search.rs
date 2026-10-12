@@ -1,10 +1,10 @@
 //! The `search` tool, and [`find`], the search it runs, as data.
 
 use std::fmt;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
-use ignore::WalkBuilder;
-use ignore::overrides::OverrideBuilder;
 use regex::Regex;
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
@@ -14,7 +14,8 @@ use rig_core::tool::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::{place, resolve};
+use crate::fs::io_error;
+use crate::workspace::{Local, Stat, Workspace};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
 /// Most matches a search returns.
@@ -23,17 +24,30 @@ const MAX_LINE: usize = 300;
 
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`. Publishes what it found ([`SearchHits`]) and the files it
-/// found matches in ([`FilesRead`]), by their [resolved](crate::fs::resolve)
+/// found matches in ([`FilesRead`]), by their [resolved](Workspace)
 /// paths.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Search {
+    /// Where the files are searched.
+    pub workspace: Arc<dyn Workspace>,
     /// The directory searched, and a relative path is searched from;
-    /// `None` is this process's working directory. Hits under a base are
-    /// shown by their paths joined onto it.
+    /// `None` is the workspace's working directory. Hits under a base are
+    /// shown, and published, by their paths below it.
     pub base: Option<PathBuf>,
     /// Whether a path that resolves outside `base` is refused, before
     /// anything is searched.
     pub confine: bool,
+}
+
+impl Default for Search {
+    /// Searches this machine's files, from this process's working directory.
+    fn default() -> Self {
+        Self {
+            workspace: Arc::new(Local),
+            base: None,
+            confine: false,
+        }
+    }
 }
 
 /// Arguments of [`Search`].
@@ -105,7 +119,7 @@ pub struct Found {
     /// more.
     pub stopped: bool,
     /// The files with hits, each once, in walk order, by their
-    /// [resolved](crate::fs::resolve) paths, with the hash of the bytes
+    /// [resolved](Workspace) paths, with the hash of the bytes
     /// searched.
     #[serde(default)]
     pub files: Vec<FileRead>,
@@ -151,10 +165,10 @@ impl Tool for Search {
     }
 
     fn footprint(&self, args: &SearchArgs) -> Touches {
-        Touches::Reads(Scope::Paths(vec![resolve(
-            self.base.as_deref(),
-            args.path.as_deref().unwrap_or("."),
-        )]))
+        Touches::Reads(Scope::Paths(vec![
+            self.workspace
+                .resolve(self.base.as_deref(), args.path.as_deref().unwrap_or(".")),
+        ]))
     }
 
     async fn call(
@@ -163,11 +177,20 @@ impl Tool for Search {
         mut args: SearchArgs,
     ) -> Result<String, ToolExecutionError> {
         let path = args.path.as_deref().unwrap_or(".");
-        place(self.base.as_deref(), self.confine, path)?;
+        self.workspace
+            .place(self.base.as_deref(), self.confine, path)?;
         if let Some(base) = &self.base {
             args.path = Some(base.join(path).to_string_lossy().into_owned());
         }
-        let found = blocking(move || find(&args, is_hidden)).await?;
+        let workspace = self.workspace.clone();
+        let mut found = blocking(move || find(&*workspace, &args)).await?;
+        if let Some(base) = &self.base {
+            for hit in &mut found.hits {
+                if let Ok(below) = hit.path.strip_prefix(base) {
+                    hit.path = below.to_path_buf();
+                }
+            }
+        }
         if !found.files.is_empty() {
             context.insert_result(FilesRead(found.files.clone()))?;
         }
@@ -190,62 +213,44 @@ pub fn render(found: &Found) -> String {
     lines.join("\n")
 }
 
-/// Whether `path` is hidden: its name starts with a `.`, such as `.env` or
-/// `.github/`. [`Search`] skips these.
-pub fn is_hidden(path: &Path) -> bool {
-    path.file_name()
-        .is_some_and(|name| name.as_encoded_bytes().starts_with(b"."))
-}
-
-/// Searches as [`Search`] does, the files git ignores and `target`
-/// directories left out, and returns the matches as data. Every file and
-/// directory below the searched path for which `skip` holds is left out too,
-/// a directory with all it holds: [`Search`] skips the [hidden](is_hidden)
-/// ones; `|_| false` searches them. `skip` sees paths as [`Hit::path`]
-/// spells them. Blocks: run it on a thread of its own ([`blocking`]).
+/// Searches as [`Search`] does, in `workspace`, and returns the matches as
+/// data: the [files](Workspace::files) under the searched path that git
+/// does not ignore and that are not hidden or in a `target` directory, each
+/// of at most [`MAX_FILE_BYTES`] and read as UTF-8. Blocks: run it on a
+/// thread of its own ([`blocking`]).
 ///
 /// # Errors
 ///
-/// When the pattern or the glob is malformed.
-pub fn find(
-    args: &SearchArgs,
-    skip: impl Fn(&Path) -> bool + Send + Sync + 'static,
-) -> Result<Found, ToolExecutionError> {
+/// When the pattern or the glob is malformed, or the walk fails.
+pub fn find(workspace: &dyn Workspace, args: &SearchArgs) -> Result<Found, ToolExecutionError> {
     let pattern = Regex::new(&args.pattern)
         .map_err(|error| ToolExecutionError::invalid_args(format!("bad pattern: {error}")))?;
     let root = args.path.as_deref().unwrap_or(".");
-    let mut walk = WalkBuilder::new(root);
-    walk.hidden(false).filter_entry(move |entry| {
-        entry.depth() == 0 || (entry.file_name() != "target" && !skip(walked(entry.path())))
-    });
-    if let Some(glob) = &args.glob {
-        let overrides = OverrideBuilder::new(root)
-            .add(glob)
-            .and_then(|builder| builder.build())
-            .map_err(|error| ToolExecutionError::invalid_args(format!("bad glob: {error}")))?;
-        walk.overrides(overrides);
-    }
+    let files = workspace
+        .files(Path::new(root), args.glob.as_deref())
+        .map_err(|error| match error.kind() {
+            ErrorKind::InvalidInput => ToolExecutionError::invalid_args(error.to_string()),
+            _ => io_error(root, error),
+        })?;
     let mut found = Found::default();
-    for entry in walk.build().flatten() {
-        // Only regular files: reading a FIFO or a device could block
-        // forever. Symbolic links are not followed.
-        let regular = entry.file_type().is_some_and(|kind| kind.is_file())
-            && entry
-                .metadata()
-                .is_ok_and(|meta| meta.len() <= MAX_FILE_BYTES);
-        if !regular {
-            continue;
-        }
-        let Ok(text) = std::fs::read_to_string(entry.path()) else {
+    for file in files {
+        let small = matches!(
+            workspace.stat(&file),
+            Ok(Stat::File { size, .. }) if size <= MAX_FILE_BYTES
+        );
+        let text = small
+            .then(|| workspace.read(&file, MAX_FILE_BYTES).ok())
+            .flatten()
+            .and_then(|contents| String::from_utf8(contents.bytes).ok());
+        let Some(text) = text else {
             continue;
         };
-        let path = walked(entry.path());
+        let path = walked(&file);
         for (number, line) in text.lines().enumerate() {
             if pattern.is_match(line) {
                 if found.hits.last().is_none_or(|last| last.path != path) {
-                    let file = resolve(None, &path.to_string_lossy());
                     found.files.push(FileRead::new(
-                        file.to_string_lossy(),
+                        workspace.canonical(path).to_string_lossy(),
                         content_hash(text.as_bytes()),
                     ));
                 }

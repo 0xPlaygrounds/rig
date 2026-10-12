@@ -168,13 +168,13 @@ impl Events<'_, '_> {
             deltas
                 .read(&self.deltas)
                 .filter_map(|delta| {
-                    let kind = match delta.kind {
-                        DeltaKind::Text => "text",
-                        DeltaKind::Reasoning => "reasoning",
-                        DeltaKind::Arguments => return None,
+                    let (kind, text) = match &delta.event {
+                        StreamEvent::Text { text, .. } => ("text", text),
+                        StreamEvent::Reasoning { text, .. } => ("reasoning", text),
+                        _ => return None,
                     };
                     let agent = delta.agent.and_then(|agent| self.names.get(agent).ok());
-                    Some(json!({ "type": kind, "agent": agent.map(Name::as_str), "text": delta.text }))
+                    Some(json!({ "type": kind, "agent": agent.map(Name::as_str), "text": text }))
                 })
                 .collect()
         };
@@ -299,7 +299,7 @@ fn handle(
 
 /// The `backlog` event: the last [`BACKLOG`] messages of the focused agent.
 fn backlog(agent: Option<String>, conversation: Option<&Conversation>) -> Value {
-    let messages = conversation.map_or(&[][..], Conversation::messages);
+    let messages = conversation.map_or(&[][..], |conversation| conversation.messages());
     let first = messages.len().saturating_sub(BACKLOG);
     let items: Vec<Value> = messages.iter().skip(first).map(item).collect();
     json!({ "type": "backlog", "agent": agent, "items": items })
@@ -388,7 +388,7 @@ fn choose(
         (None, Value::Null) => None,
         _ => return Err(format!("no such choice in picker {id}")),
     };
-    commands.trigger(Pick { entity, chosen });
+    commands.trigger(Pick::person(entity, chosen));
     Ok(())
 }
 

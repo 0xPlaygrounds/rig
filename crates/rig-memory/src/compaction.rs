@@ -19,6 +19,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::fmt::{self, Write as _};
+use std::sync::Arc;
 
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{
@@ -190,11 +191,60 @@ pub enum CompactReason {
     Overflow,
 }
 
+/// Where a compaction ends: the first message it keeps, as
+/// [`CompactionPolicy::cut`] answers it.
+///
+/// ```
+/// use std::sync::Arc;
+///
+/// use rig_core::completion::Message;
+/// use rig_memory::{CompactReason, CompactionPolicy, Cut};
+///
+/// // Summarize everything before the newest user message.
+/// let policy = CompactionPolicy {
+///     cut: Cut::With(Arc::new(|messages, _, _, _| {
+///         messages.iter().rposition(|message| matches!(message, Message::User { .. }))
+///     })),
+///     ..CompactionPolicy::default()
+/// };
+/// let messages = [Message::user("a"), Message::assistant("b"), Message::user("c")];
+/// assert_eq!(policy.cut(&messages, 0, &CompactReason::Threshold, None), Some(2));
+/// ```
+#[derive(Clone, Default)]
+pub enum Cut {
+    /// After the newest messages within [`CompactionPolicy::keep`], never
+    /// between a tool call and its result.
+    #[default]
+    Budget,
+    /// A rule given what [`CompactionPolicy::cut`] is given: the messages,
+    /// how many of the first are summarized already, the reason and the
+    /// model. It answers the first message to keep, or `None` when nothing
+    /// new would be summarized; an answer that summarizes nothing new or
+    /// lies past the end counts as `None`.
+    With(
+        Arc<
+            dyn Fn(&[Message], usize, &CompactReason, Option<&ModelSpec>) -> Option<usize>
+                + Send
+                + Sync,
+        >,
+    ),
+}
+
+impl fmt::Debug for Cut {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Budget => f.write_str("Budget"),
+            Self::With(_) => f.debug_tuple("With").finish_non_exhaustive(),
+        }
+    }
+}
+
 /// How a conversation is compacted: what the summarizer is asked, the tool
 /// arguments a summary keeps track of, such as the files a coding agent's
 /// file tools read and changed, how much of the newest conversation stays
-/// as it is, and how old tool outputs are cleared first. Tokens are
-/// estimated by the default [`HeuristicTokenCounter`].
+/// as it is, where a compaction cuts, how many one turn may make, and how
+/// old tool outputs are cleared first. Tokens are estimated by the default
+/// [`HeuristicTokenCounter`].
 #[derive(Clone, Debug)]
 pub struct CompactionPolicy {
     /// The summarizer; its reserve is how much of the model's window is
@@ -211,13 +261,20 @@ pub struct CompactionPolicy {
     pub keep_asked: usize,
     /// How old tool outputs are cleared before a summary is asked for.
     pub clearing: ClearToolOutputs,
+    /// Where a compaction ends.
+    pub cut: Cut,
+    /// Summaries one turn may ask for, asked for by the user or not, so a
+    /// model that keeps overflowing ends the turn rather than compacting
+    /// forever.
+    pub per_turn: u32,
 }
 
 impl Default for CompactionPolicy {
     /// [`Summarizer::DEFAULT`], nothing tracked, the newest 20k tokens kept
     /// by an automatic compaction and none beyond the newest reply or
-    /// message by an asked one, and all but the newest 40k tokens of tool
-    /// output cleared (opencode's `PRUNE_PROTECT`).
+    /// message by an asked one, all but the newest 40k tokens of tool
+    /// output cleared (opencode's `PRUNE_PROTECT`), cut by [`Cut::Budget`],
+    /// and two summaries a turn.
     fn default() -> Self {
         Self {
             summarizer: Summarizer::DEFAULT,
@@ -225,6 +282,8 @@ impl Default for CompactionPolicy {
             keep_recent: 20_000,
             keep_asked: 0,
             clearing: ClearToolOutputs::new(40_000),
+            cut: Cut::Budget,
+            per_turn: 2,
         }
     }
 }
@@ -262,11 +321,12 @@ impl CompactionPolicy {
     }
 
     /// Where a new compaction for `reason` of `messages`, whose first
-    /// `from` are summarized already, should end with `spec`: the first
-    /// message it keeps, or `None` when nothing new would be summarized. A
-    /// compaction that must happen (the user asked, or the model refused
-    /// the request as too long) still summarizes a short conversation's
-    /// older messages.
+    /// `from` are summarized already, should end with `spec`, by the
+    /// policy's [`Cut`]: the first message it keeps, after `from` and at
+    /// most `messages.len()`, or `None` when nothing new would be
+    /// summarized. By [`Cut::Budget`], a compaction that must happen (the
+    /// user asked, or the model refused the request as too long) still
+    /// summarizes a short conversation's older messages.
     pub fn cut(
         &self,
         messages: &[Message],
@@ -274,14 +334,18 @@ impl CompactionPolicy {
         reason: &CompactReason,
         spec: Option<&ModelSpec>,
     ) -> Option<usize> {
-        let force = !matches!(reason, CompactReason::Threshold);
-        cut_at(
-            messages,
-            from,
-            self.keep(reason, spec),
-            force,
-            &HeuristicTokenCounter::default(),
-        )
+        match &self.cut {
+            Cut::Budget => cut_at(
+                messages,
+                from,
+                self.keep(reason, spec),
+                !matches!(reason, CompactReason::Threshold),
+                &HeuristicTokenCounter::default(),
+            ),
+            Cut::With(rule) => {
+                rule(messages, from, reason, spec).filter(|&at| at > from && at <= messages.len())
+            }
+        }
     }
 
     /// Plans a compaction for `reason` ending at `upto` (from

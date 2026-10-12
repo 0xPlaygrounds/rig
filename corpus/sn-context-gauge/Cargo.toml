@@ -1,0 +1,28 @@
+[package]
+name = "corpus-sn-context-gauge"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (stack-next fresh held-out): SN-19: 19. Context window gauge"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+# `ContextUse` and `tokens_label`.
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The status line item.
+rig-tui = { path = "../../plugins/rig-tui" }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The default meter, whose context item the gauge takes over.
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+serde_json = { workspace = true }

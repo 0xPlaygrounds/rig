@@ -32,7 +32,7 @@ fn answered(input: u64, cached: u64) -> Vec<MockStreamEvent> {
 
 fn noop(_: On<ToolCalled<Value>>) {}
 
-/// `request` as an Anthropic Messages body, with the plugin's markers.
+/// `request` as an Anthropic Messages body.
 fn on_the_wire(request: &CompletionRequest) -> Value {
     let wire = Messages {
         provider: AnthropicConfig::new("test-key"),
@@ -50,7 +50,6 @@ fn on_the_wire(request: &CompletionRequest) -> Value {
     let Body::Bytes(bytes) = encoded.request.into_body() else {
         return Value::Null;
     };
-    let bytes = place_markers(&bytes).unwrap_or(bytes);
     serde_json::from_slice(&bytes).unwrap_or_default()
 }
 
@@ -126,8 +125,8 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
     let [first, second, third] = bodies.as_slice() else {
         return;
     };
-    // The clock is no part of the system prompt: it ends each request,
-    // after every marker.
+    // The clock is no part of the system prompt: it ends each request's
+    // last message, after every marker.
     for (request, body) in requests.iter().zip(&bodies) {
         let system = request.system_instructions().unwrap_or_default();
         assert!(
@@ -159,7 +158,7 @@ fn requests_keep_their_prefix_and_breaks_are_named() {
         );
         assert_eq!(marked_messages(body).len(), 1, "{body}");
     }
-    // The previous request ended with its user message, then the clock.
+    // The end of the previous request's messages, without the clock.
     assert_eq!(marked_messages(second), [0]);
     assert_eq!(marked_messages(third), [2]);
     // The prefix up to the system prompt's marker is the same bytes.

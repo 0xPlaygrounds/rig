@@ -4,7 +4,10 @@
 //! the app's, such as the project's instructions and the environment, and
 //! the agent's own ([`SectionOf`]). Nothing in it depends on the turn, so it stays the same
 //! from call to call and the provider's prompt cache keeps it; a section
-//! that changes rarely sorts before one that changes more often.
+//! that changes rarely sorts before one that changes more often. A request
+//! carries it in parts, rig-core's `SystemPrompt`
+//! ([`ModelRequest::prompt`](super::turn::ModelRequest::prompt)), until
+//! Start sends it as one system message.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
@@ -68,10 +71,14 @@ pub struct AgentSections(Vec<Entity>);
 #[reflect(Component, Clone, Debug, Default)]
 pub struct ToolRules(pub Vec<String>);
 
-/// The `<tool_rules>` block of tools with `rules` (in the order the tools
-/// are sent), saying a rule two tools share once; empty without rules. The
-/// kernel writes it in a request's system prompt for the tools it offers.
-pub fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
+/// The tag of the section the kernel writes the tool rules in, which
+/// Start fills ([`ModelStarts::prompt`](super::turn::ModelStarts::prompt)).
+pub const TOOL_RULES: &str = "tool_rules";
+
+/// The text of the `tool_rules` section of tools with `rules` (in the
+/// order the tools are sent): a line per rule, saying a rule two tools
+/// share once; empty without rules.
+pub(crate) fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
     let mut lines: Vec<&str> = Vec::new();
     for rule in rules.into_iter().flat_map(|rules| rules.0.iter()) {
         let rule = rule.trim();
@@ -79,65 +86,6 @@ pub fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String 
             lines.push(rule);
         }
     }
-    let mut block = String::new();
-    if !lines.is_empty() {
-        let rules: Vec<String> = lines.iter().map(|line| format!("- {line}")).collect();
-        push_tagged(&mut block, "tool_rules", &rules.join("\n"));
-    }
-    block
-}
-
-/// The system prompt of an agent whose own prompt is `role`, with the
-/// [`tool_rules`] of the tools it is offered and the `sections` it gets,
-/// the app's and its own, as the kernel builds a request's: the role,
-/// then the rules, then each non-empty section between its tags, by
-/// `order`, then `tag`.
-pub fn system_prompt<'a>(
-    role: &str,
-    tool_rules: &str,
-    sections: impl IntoIterator<Item = &'a PromptSection>,
-) -> String {
-    let mut sections: Vec<&PromptSection> = sections
-        .into_iter()
-        .filter(|section| !section.text.trim().is_empty())
-        .collect();
-    sections.sort_by(|a, b| a.order.cmp(&b.order).then_with(|| a.tag.cmp(&b.tag)));
-
-    let mut prompt = role.trim().to_owned();
-    push_block(&mut prompt, tool_rules);
-    for section in sections {
-        push_tagged(&mut prompt, &section.tag, section.text.trim());
-    }
-    prompt
-}
-
-/// `preamble` with its tool rules `written` swapped for `rules`, those of
-/// the tools the request carries once Prepare systems changed it: taken out with the blank line before them, or appended to a
-/// preamble that had none. The rest of the preamble is left as it is.
-pub(crate) fn swap_tool_rules(mut preamble: String, written: &str, rules: &str) -> String {
-    if written.is_empty() {
-        push_block(&mut preamble, rules);
-        return preamble;
-    }
-    let separated = format!("\n\n{written}");
-    if rules.is_empty() && preamble.contains(&separated) {
-        return preamble.replacen(&separated, "", 1);
-    }
-    preamble.replacen(written, rules, 1)
-}
-
-/// Appends `text` between `<tag>` and `</tag>`, after a blank line.
-fn push_tagged(prompt: &mut String, tag: &str, text: &str) {
-    push_block(prompt, &format!("<{tag}>\n{text}\n</{tag}>"));
-}
-
-/// Appends `block`, if any, after a blank line.
-fn push_block(prompt: &mut String, block: &str) {
-    if block.is_empty() {
-        return;
-    }
-    if !prompt.is_empty() {
-        prompt.push_str("\n\n");
-    }
-    prompt.push_str(block);
+    let lines: Vec<String> = lines.iter().map(|line| format!("- {line}")).collect();
+    lines.join("\n")
 }

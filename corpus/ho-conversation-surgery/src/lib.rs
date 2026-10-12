@@ -21,7 +21,6 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{Usage, tokens_label};
 use rig_harness::rig_core::message::{CallId, Message, ToolResultContent};
 use rig_harness::rig_core::serde_json;
-use rig_harness::rig_ecs::agent::Halt;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 
 #[derive(Default)]

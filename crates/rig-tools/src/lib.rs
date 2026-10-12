@@ -1,5 +1,5 @@
-//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`]
-//! and [`Shell`]. Each has a description of what it does, its usage
+//! Coding tools for Rig agents: [`Read`], [`Write`], [`Edit`], [`Search`],
+//! [`Shell`], [`Delete`] and [`Move`]. Each has a description of what it does, its usage
 //! `RULES`, the lines a system prompt carries on when to pick it, such as
 //! "use `read`, not `cat`", and annotations saying what it does to the
 //! world (read-only or destructive). They are [`Tool`](rig_core::tool::Tool)s
@@ -7,22 +7,27 @@
 //! ([`FilesRead`](rig_core::tool::FilesRead)), what a search found
 //! ([`SearchHits`]), the files they changed, with their diffs
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
-//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). The file tools name
-//! files by their resolved paths ([`fs::resolve`]), from an optional base
-//! directory they can be confined to. Each call says what it may read and
-//! change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
-//! `search` read the path they name, `write` and `edit` write it, and
-//! `shell` may change anything, so a host runs calls on different files
-//! side by side. Their arguments are plain data with public fields, to
-//! build or read a call's.
+//! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). Each acts on a
+//! [`Workspace`](workspace::Workspace): this machine
+//! ([`Local`](workspace::Local), the default) or another, such as one
+//! reached over SSH. The file tools name files by their resolved paths
+//! (`resolve` on [`Workspace`](workspace::Workspace)), from an optional
+//! base directory they can be confined to. Each call says what it may read
+//! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
+//! `search` read the path they name, `write`, `edit`, `delete` and `move`
+//! write theirs, and `shell` may change anything, so a host runs calls on
+//! different files side by side. `shell` reports its output as it comes to
+//! a [`Live`]. Their arguments are plain data with public fields, to build
+//! or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
 //! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
 //!   and [`ReadArgs::show`]: what `read` shows of it;
+//! - [`workspace`]: the disk and the commands the tools act on;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
-//! - [`fs`]: an atomic file write and capped text reads;
+//! - [`fs`]: an atomic file write and capped text reads on this machine;
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
 //! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
 //!   much of a long output is kept;
@@ -40,22 +45,27 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 pub mod attach;
 mod blocking;
 pub mod context;
+mod delete;
 pub mod edit;
 pub mod fs;
+mod live;
+mod move_file;
 pub mod process;
 mod read;
 mod search;
 mod shell;
 mod spill;
+pub mod workspace;
 mod write;
 
 pub use blocking::blocking;
+pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
+pub use live::Live;
+pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, numbered};
-pub use search::{
-    Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, is_hidden, render,
-};
-pub use shell::{Shell, ShellArgs, ShellRun};
+pub use search::{Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render};
+pub use shell::{Shell, ShellArgs, ShellRun, split_status};
 pub use spill::Spill;
 pub use write::{Write, WriteArgs};
 

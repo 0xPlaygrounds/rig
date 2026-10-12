@@ -12,7 +12,7 @@ use rig_harness_test_support::{
 use super::*;
 
 /// The key the tool result holds.
-const KEY: &str = "sk-test1234567890abcdef1234";
+const KEY: &str = "sk-test1234567890abcdef1234567890abcd";
 
 /// What the user asks.
 const ASKED: &str = "Which key does the environment hold?";
@@ -155,7 +155,7 @@ fn share_posts_a_redacted_page_then_updates_the_same_one() {
         .cloned()
         .unwrap_or_default();
     assert!(
-        body.contains("sk-tes… (27 chars)") && !body.contains(KEY),
+        body.contains("sk-tes… (37 chars)") && !body.contains(KEY),
         "{body}"
     );
     let id = app

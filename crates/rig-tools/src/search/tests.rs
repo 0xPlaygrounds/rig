@@ -1,13 +1,12 @@
-use std::path::PathBuf;
-
 use rig_core::tool::{FileRead, FilesRead, Tool, ToolContext, content_hash};
 
-use super::{Search, SearchArgs, SearchHits, find, is_hidden, render};
+use super::{Search, SearchArgs, SearchHits, find, render};
+use crate::workspace::Local;
 
-/// A search's matches are data, what `skip` names is left out (hidden files
-/// for the tool), and the tool shows the same matches as text.
+/// A search's matches are data, hidden files and those outside the glob are
+/// left out, and the tool shows the same matches as text.
 #[test]
-fn matches_are_data_and_skipped_files_are_left_out() {
+fn matches_are_data_and_hidden_files_are_left_out() {
     let dir = std::env::temp_dir().join(format!("rig-tools-search-{}", std::process::id()));
     std::fs::create_dir_all(dir.join(".github")).ok();
     std::fs::write(dir.join("code.rs"), "fn main() {}\nlet secret = 1;\n").ok();
@@ -16,7 +15,7 @@ fn matches_are_data_and_skipped_files_are_left_out() {
     let root = dir.to_string_lossy().into_owned();
     let args = SearchArgs::new("(?i)secret").in_path(&root);
 
-    let visible = find(&args, is_hidden).unwrap_or_default();
+    let visible = find(&Local, &args).unwrap_or_default();
     assert_eq!(
         visible
             .hits
@@ -31,23 +30,10 @@ fn matches_are_data_and_skipped_files_are_left_out() {
         format!("{}:2: let secret = 1;", dir.join("code.rs").display())
     );
 
-    let all = find(&args, |_| false).unwrap_or_default();
-    let mut paths: Vec<PathBuf> = all.hits.into_iter().map(|hit| hit.path).collect();
-    paths.sort();
-    assert_eq!(
-        paths,
-        [
-            dir.join(".env"),
-            dir.join(".github").join("ci.yml"),
-            dir.join("code.rs")
-        ]
-    );
-    let no_env = find(&args, |path| path.ends_with(".env")).unwrap_or_default();
-    assert_eq!(no_env.hits.len(), 2);
-
-    let only_toml = find(&args.clone().glob("*.toml"), |_| false).unwrap_or_default();
+    let only_toml = find(&Local, &args.clone().glob("*.toml")).unwrap_or_default();
     assert_eq!(render(&only_toml), "No matches.");
-    assert!(find(&SearchArgs::new("("), is_hidden).is_err());
+    assert!(find(&Local, &SearchArgs::new("(")).is_err());
+    assert!(find(&Local, &args.glob("[")).is_err());
     std::fs::remove_dir_all(dir).ok();
 }
 
@@ -85,5 +71,23 @@ fn the_tool_publishes_its_hits_and_the_files_it_read() {
     let text = futures::executor::block_on(Tool::call(&Search::default(), &mut context, none));
     assert_eq!(text.ok().as_deref(), Some("No matches."));
     assert_eq!(context.result::<FilesRead>().ok().flatten(), None);
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// A search from a base names its hits by their paths below it, as the
+/// model would name them to the tools on that base.
+#[test]
+fn a_search_from_a_base_names_hits_below_it() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-base-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("src")).ok();
+    std::fs::write(dir.join("src").join("a.rs"), "todo one\n").ok();
+    let search = Search {
+        base: Some(dir.clone()),
+        ..Search::default()
+    };
+    let mut context = ToolContext::new();
+    let text =
+        futures::executor::block_on(Tool::call(&search, &mut context, SearchArgs::new("todo")));
+    assert_eq!(text.ok().as_deref(), Some("src/a.rs:1: todo one"));
     std::fs::remove_dir_all(dir).ok();
 }

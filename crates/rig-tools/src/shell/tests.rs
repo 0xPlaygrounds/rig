@@ -1,6 +1,6 @@
 use rig_core::tool::{ExitStatus, Tool, ToolContext};
 
-use super::{Shell, ShellArgs};
+use super::{Shell, ShellArgs, split_status};
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -104,4 +104,130 @@ fn cut_output_is_read_back_by_its_handle() {
     assert!(shell("seq 1 3", spill).starts_with("1\n2\n3\n"));
     assert_eq!(std::fs::read_dir(&dir).map(Iterator::count).ok(), Some(2));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// Each piece of output reaches the shell's `Live` while the command still
+/// runs: here the command waits for a file the sink makes on its first line.
+#[cfg(unix)]
+#[test]
+fn live_output_arrives_before_the_command_ends() {
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::Live;
+
+    let flag = std::env::temp_dir().join(format!("rig-tools-live-{}", std::process::id()));
+    std::fs::remove_file(&flag).ok();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let live = Live::new({
+        let (seen, flag) = (seen.clone(), flag.clone());
+        move |text| {
+            std::fs::write(&flag, "").ok();
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(text.to_owned());
+        }
+    });
+    let shell = Shell {
+        live: Some(live),
+        ..Shell::default()
+    };
+    let command = format!(
+        "echo one; while [ ! -e '{}' ]; do sleep 0.05; done; echo two",
+        flag.display()
+    );
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new(command).timeout_secs(5)));
+    assert_eq!(ran.map(|ran| ran.status).ok(), Some(ExitStatus::Exited(0)));
+    assert_eq!(
+        *seen.lock().unwrap_or_else(PoisonError::into_inner),
+        ["one\n", "two\n"]
+    );
+    std::fs::remove_file(flag).ok();
+}
+
+/// The command starts through the shell's workspace, in the directory the
+/// call names below the launcher's.
+#[cfg(unix)]
+#[test]
+fn the_command_starts_through_the_workspace_in_the_calls_directory() {
+    use std::ffi::{OsStr, OsString};
+    use std::path::{Path, PathBuf};
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::process::{Process, Spawn};
+    use crate::workspace::{Contents, Local, Stat, Workspace};
+
+    /// This machine, noting the directory of every command it starts.
+    #[derive(Debug, Default)]
+    struct Recording(Mutex<Vec<Option<PathBuf>>>);
+
+    impl Workspace for Recording {
+        fn stat(&self, path: &Path) -> std::io::Result<Stat> {
+            Local.stat(path)
+        }
+        fn read(&self, path: &Path, limit: u64) -> std::io::Result<Contents> {
+            Local.read(path, limit)
+        }
+        fn write(&self, path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+            Local.write(path, bytes)
+        }
+        fn remove(&self, path: &Path) -> std::io::Result<()> {
+            Local.remove(path)
+        }
+        fn rename(&self, from: &Path, to: &Path) -> std::io::Result<()> {
+            Local.rename(from, to)
+        }
+        fn canonical(&self, path: &Path) -> PathBuf {
+            Local.canonical(path)
+        }
+        fn files(&self, root: &Path, glob: Option<&str>) -> std::io::Result<Vec<PathBuf>> {
+            Local.files(root, glob)
+        }
+        fn spawn(
+            &self,
+            launcher: &Launcher,
+            dir: Option<&Path>,
+            program: &OsStr,
+            args: &[OsString],
+            how: Spawn,
+        ) -> std::io::Result<Process> {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(dir.map(Path::to_path_buf));
+            Local.spawn(launcher, dir, program, args, how)
+        }
+    }
+
+    let dir = std::env::temp_dir().join(format!("rig-tools-spawn-{}", std::process::id()));
+    std::fs::create_dir_all(dir.join("sub")).ok();
+    let recording = Arc::new(Recording::default());
+    let shell = Shell {
+        workspace: recording.clone(),
+        launcher: Launcher::default().in_dir(&dir),
+        confine: true,
+        ..Shell::default()
+    };
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("sub")));
+    assert!(ran.is_ok_and(|ran| ran.output.contains("sub\n")));
+    let refused = futures::executor::block_on(shell.run(ShellArgs::new("pwd").in_dir("..")));
+    assert!(refused.is_err());
+    assert_eq!(
+        *recording.0.lock().unwrap_or_else(PoisonError::into_inner),
+        [Some(dir.join("sub"))]
+    );
+    std::fs::remove_dir_all(dir).ok();
+}
+
+/// The status line splits off a run's output, also after a line the
+/// command printed that reads like one.
+#[cfg(unix)]
+#[test]
+fn the_status_line_splits_off_what_the_command_printed() {
+    let output = shell("echo one; echo '[exit code 0]'; exit 4", None);
+    assert_eq!(
+        split_status(&output),
+        ("one\n[exit code 0]\n", Some("[exit code 4]"))
+    );
+    let output = shell("kill -9 $$", None);
+    assert_eq!(split_status(&output), ("", Some("[killed by a signal]")));
 }

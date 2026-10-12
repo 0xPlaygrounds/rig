@@ -358,7 +358,7 @@ impl Agents<'_, '_> {
     fn came(&mut self, agent: Entity, from: &AgentId) -> Option<bool> {
         let mut came = None;
         for (mut sent, to, accepted) in &mut self.inboxes {
-            if to.0 != agent || sent.origin.from.as_ref() != Some(from) {
+            if to.0 != agent || sent.origin.from.as_deref() != Some(from.0.as_str()) {
                 continue;
             }
             came = Some(came == Some(true) || accepted);

@@ -17,42 +17,23 @@
 //! assert_every_variant(&[Item::Text, Item::Call], index, 2);
 //! ```
 
-use std::sync::Mutex;
-
 use crate::completion::{CompletionRequest, CompletionResponse};
 use crate::error::ProviderError;
 use crate::operation::Completion;
-use crate::wire::{Call, Mode, Operation, Reply, Shared, Wire};
+use crate::wire::{Mode, Wire};
 
 /// The response `frames` fold into through `wire`'s decoder, as one reply
 /// in `mode`, without a transport.
+///
+/// # Errors
+///
+/// What the reply fails with ([`decode_reply`](crate::wire::decode_reply)).
 pub fn decode<W: Wire<Op = Completion>>(
     wire: &W,
     mode: Mode,
     frames: impl IntoIterator<Item = W::Frame>,
 ) -> Result<CompletionResponse, ProviderError> {
-    let describe = wire.describe();
-    let fold = Completion::fold(
-        &CompletionRequest::new("restate"),
-        &mut Call::new(&describe, mode),
-    );
-    let shared = Mutex::new(Shared::new(fold));
-    let fed = crate::driver::feed(
-        &mut wire.decoder(),
-        Some(wire.reassembler()),
-        &shared,
-        frames,
-    );
-    crate::driver::settle(
-        shared,
-        fed,
-        Reply {
-            provider: describe.name.to_owned(),
-            raw: serde_json::Value::Null,
-            provider_request_id: None,
-        },
-    )
-    .outcome
+    crate::wire::decode_reply(wire, &CompletionRequest::new("restate"), mode, frames)
 }
 
 /// Assert a reply decoded whole (`whole`) and the same reply restated as a

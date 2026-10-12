@@ -274,12 +274,12 @@ fn stream_deltas(
         if !turn_calls.contains(delta.effect) {
             continue;
         }
-        let kind = match delta.kind {
-            DeltaKind::Text => "text_delta",
-            DeltaKind::Reasoning => "reasoning_delta",
-            DeltaKind::Arguments => continue,
+        let (kind, text) = match &delta.event {
+            StreamEvent::Text { text, .. } => ("text_delta", text),
+            StreamEvent::Reasoning { text, .. } => ("reasoning_delta", text),
+            _ => continue,
         };
-        out.emit(kind, delta.agent, json!({ "text": delta.text }));
+        out.emit(kind, delta.agent, json!({ "text": text }));
     }
 }
 
@@ -450,10 +450,7 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
                 (None, Some(text)) if free_text => Chosen::Text(text),
                 _ => return Err("the answer needs a choice".to_owned()),
             };
-            rpc.commands.trigger(Pick {
-                entity,
-                chosen: Some(chosen),
-            });
+            rpc.commands.trigger(Pick::person(entity, Some(chosen)));
         }
     }
     Ok(())

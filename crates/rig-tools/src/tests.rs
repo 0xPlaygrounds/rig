@@ -61,18 +61,22 @@ fn each_call_names_what_it_touches() {
     let read = Read {
         base: Some(base.clone()),
         confine: false,
+        ..Default::default()
     };
     let search = Search {
         base: Some(base.clone()),
         confine: false,
+        ..Default::default()
     };
     let edit = Edit {
         base: Some(base.clone()),
         confine: false,
+        ..Default::default()
     };
     let write = Write {
         base: Some(base.clone()),
         confine: false,
+        ..Default::default()
     };
     assert_eq!(
         read.footprint(&ReadArgs::new("src/../a.rs")),

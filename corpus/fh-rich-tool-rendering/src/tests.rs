@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+use std::time::SystemTime;
+
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{EditTool, ShellTool};
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{ToolFunction, ToolName, ToolResult, UserContent};
-use rig_core::streaming::Part;
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
+use rig_core::streaming::parse_partial_arguments;
 use rig_core::test_utils::MockCompletionModel;
+use rig_core::tool::ToolResultContext;
 use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
@@ -13,36 +17,47 @@ use serde_json::json;
 
 use super::*;
 
-/// The transcript lines of `call` with `result`, drawn as the terminal view
-/// draws them: by the tool's renderer, else the default look.
-fn drawn(
-    world: &mut World,
-    call: &rig_core::message::ToolCall,
-    result: Option<&ToolResult>,
-) -> Vec<String> {
-    let view = ToolCallView {
-        call,
-        result,
-        state: CallState::Done,
-    };
+/// What each tool call published and how long it ran, as the terminal
+/// view hands them to a renderer.
+#[derive(Resource, Default)]
+struct Facts(HashMap<CallId, (ToolResultContext, Duration)>);
+
+fn note_facts(
+    settled: On<Add<Settled>>,
+    calls: Query<(&ToolRequest, &Published, &Started)>,
+    mut facts: ResMut<Facts>,
+) {
+    if let Ok((request, Published(published), started)) = calls.get(settled.entity) {
+        let took = SystemTime::now()
+            .duration_since(started.at)
+            .unwrap_or_default();
+        facts
+            .0
+            .insert(request.call.id.clone(), (published.clone(), took));
+    }
+}
+
+/// The lines of `view` as the terminal view draws them: by its tool's
+/// renderer, else the default look.
+fn drawn(world: &mut World, view: &ToolCallView<'_>) -> Vec<String> {
     // A query skips a disabled renderer, as the view's does.
     let mut renderers = world.query::<&ToolRenderer>();
     let renderer = renderers
         .iter(world)
-        .find(|renderer| renderer.tool == call.function.name.as_str());
+        .find(|renderer| renderer.tool == view.name());
     let lines = match renderer {
-        Some(renderer) => (renderer.render)(&view),
+        Some(renderer) => (renderer.render)(view),
         None => view.default_lines(),
     };
     lines.iter().map(ToString::to_string).collect()
 }
 
 /// A call of `tool` with `args`.
-fn call(tool: &str, args: serde_json::Value) -> Option<rig_core::message::ToolCall> {
+fn call(tool: &str, args: serde_json::Map<String, serde_json::Value>) -> Option<ToolCall> {
     let name = ToolName::new(tool).ok()?;
-    Some(rig_core::message::ToolCall::from_wire(
+    Some(ToolCall::from_wire(
         "c1",
-        ToolFunction::new(name, args),
+        ToolFunction::new(name, serde_json::Value::Object(args)),
     ))
 }
 
@@ -56,6 +71,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let model = MockCompletionModel::from_stream_turns([
         calls("e1", "edit", json!({ "path": "a.rs", "edits": edits })),
         calls("s1", "shell", json!({ "command": "exit 3" })),
+        calls("s2", "shell", json!({ "command": "seq 100000" })),
         reply("done"),
     ]);
     let connection = connect(&model);
@@ -64,12 +80,13 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         return;
     };
     let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.insert_resource(Invoked::default())
-        .add_plugins((AgentPlugin, JournalPlugin, EditTool, ShellTool, TuiPlugin))
+    app.add_plugins((AgentPlugin, JournalPlugin, EditTool, ShellTool, TuiPlugin))
         .add_plugins(RichToolRenderingPlugin)
         .add_tool_renderer("probe", |call| vec![call.header("probe says hi", "")])
         .init_resource::<Ended>()
-        .add_observer(log_ended);
+        .init_resource::<Facts>()
+        .add_observer(log_ended)
+        .add_observer(note_facts);
     app.finish();
     app.update();
     let world = app.world_mut();
@@ -112,6 +129,8 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
             _ => None,
         })
         .collect();
+    let facts = world.remove_resource::<Facts>().unwrap_or_default();
+    assert_eq!(facts.0.len(), 3, "every call published what they did");
     let mut screen = Vec::new();
     for message in &messages {
         let Message::Assistant(assistant) = message else {
@@ -123,7 +142,11 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
                     .iter()
                     .copied()
                     .find(|result| result.call == call.id);
-                screen.extend(drawn(world, call, result));
+                let mut view = ToolCallView::new(call, result, CallState::Done);
+                let known = facts.0.get(&call.id);
+                view.facts = known.map(|(published, _)| published);
+                view.took = known.map(|(_, took)| *took);
+                screen.extend(drawn(world, &view));
             }
         }
     }
@@ -137,91 +160,66 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         "{screen:#?}"
     );
     assert!(has(&|line| line.contains("$ exit 3")), "{screen:#?}");
-    assert!(has(&|line| line.contains("exit 3 · ")), "{screen:#?}");
+    assert!(has(&|line| line.contains("⎿ exit 3 · ")), "{screen:#?}");
     assert!(
         !has(&|line| line.contains("old_text") || line.contains("{\"")),
         "{screen:#?}"
     );
 
     // Another plugin's renderer is used; a tool without one looks as by default.
-    let probe = call("probe", json!({}));
-    let other = call("other", json!({ "x": 1 }));
+    let probe = call("probe", serde_json::Map::new());
+    let other = call("other", parse_partial_arguments(r#"{"x": 1}"#));
     let (Some(probe), Some(other)) = (probe, other) else {
         return;
     };
+    let probe = drawn(world, &ToolCallView::new(&probe, None, CallState::Done));
+    assert!(probe.concat().contains("probe says hi"));
+    let other = drawn(world, &ToolCallView::new(&other, None, CallState::Done));
+    assert!(other.concat().contains(r#"other {"x":1}"#));
+
+    // The command that printed 100k lines: the tool's note of what it
+    // cut, how many lines are hidden, the last lines, how it ended.
+    let end = screen.iter().position(|line| line.contains("⎿ exit 0 · "));
+    let seq = end.and_then(|end| screen.get(end.saturating_sub(7)..end));
+    let seq: Vec<&str> = seq.unwrap_or_default().iter().map(|l| l.trim()).collect();
     assert!(
-        drawn(world, &probe, None)
-            .concat()
-            .contains("probe says hi")
-    );
-    assert!(
-        drawn(world, &other, None)
-            .concat()
-            .contains(r#"other {"x":1}"#)
+        matches!(
+            seq.as_slice(),
+            [note, more, "99996", "99997", "99998", "99999", "100000"]
+                if note.contains("earlier lines cut") && more.ends_with("more lines (Ctrl+O to expand)")
+        ),
+        "{screen:#?}"
     );
 
-    // A command that printed 100k lines: its last lines and what was cut.
-    let Some(big) = call("shell", json!({ "command": "seq 100000" })) else {
+    // While a command runs, its output so far.
+    let Some(running) = call("shell", parse_partial_arguments(r#"{"command": "make"}"#)) else {
         return;
     };
-    let numbers: Vec<String> = (1..=100_000).map(|n| n.to_string()).collect();
-    let output = format!("{}\n[exit code 0]", numbers.join("\n"));
-    let result = big.answer(&rig_core::tool::ToolResult::success(output.into()));
-    let lines = drawn(world, &big, Some(&result));
-    let shown: Vec<&str> = lines.iter().map(|line| line.trim()).collect();
-    assert!(
-        shown.contains(&"… 99995 more lines (Ctrl+O to expand)"),
-        "{shown:?}"
-    );
-    assert!(
-        shown.ends_with(&[
-            "99996",
-            "99997",
-            "99998",
-            "99999",
-            "100000",
-            "⎿ exit 0 · earlier run"
-        ]),
-        "{shown:?}"
-    );
+    let mut view = ToolCallView::new(&running, None, CallState::Running(Some("c".into())));
+    view.output = Some("a\nb\nc\n");
+    let shown = drawn(world, &view);
+    let shown: Vec<&str> = shown.iter().map(|line| line.trim()).collect();
+    assert!(shown.ends_with(&["a", "b", "c"]), "{shown:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
 
 #[test]
 fn a_streaming_write_shows_its_path_before_its_last_chunk() {
     let mut app = App::new();
-    app.add_plugins(AgentPlugin)
-        .add_plugins(RichToolRenderingPlugin);
+    app.add_plugins(RichToolRenderingPlugin);
     app.finish();
-    // A model call still streaming: no outcome yet.
-    let reply = app.world_mut().spawn_empty().id();
     let arguments = r#"{"path": "big.txt", "content": "one\ntwo\nthree\nfour\nfive\n"}"#;
     let length = arguments.chars().count();
-    let chunks: Vec<String> = (0..10)
-        .map(|n| {
-            let (from, to) = (n * length / 10, (n + 1) * length / 10);
-            arguments.chars().skip(from).take(to - from).collect()
-        })
-        .collect();
-    assert_eq!(chunks.len(), 10);
-    let mut seen = None;
-    for (index, text) in chunks.into_iter().enumerate() {
-        app.world_mut().write_message(StreamDelta {
-            effect: reply,
-            agent: None,
-            kind: DeltaKind::Arguments,
-            part: Part::new(1),
-            text,
-        });
-        app.update();
-        let preview = app.world().resource::<StreamingCalls>().preview();
-        if seen.is_none()
-            && preview
-                .iter()
-                .any(|line| line.to_string().contains("big.txt"))
-        {
-            seen = Some(index);
-        }
-    }
-    assert!(seen.is_some_and(|index| index < 9), "{seen:?}");
+    // The call as the view has it after each of 10 chunks.
+    let seen = (1..=10).position(|chunks| {
+        let so_far: String = arguments.chars().take(chunks * length / 10).collect();
+        let Some(call) = call("write", parse_partial_arguments(&so_far)) else {
+            return false;
+        };
+        let view = ToolCallView::new(&call, None, CallState::Streaming);
+        drawn(app.world_mut(), &view)
+            .concat()
+            .contains("write big.txt")
+    });
+    assert!(seen.is_some_and(|chunk| chunk < 9), "{seen:?}");
 }

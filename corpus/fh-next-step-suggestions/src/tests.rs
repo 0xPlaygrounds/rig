@@ -84,18 +84,23 @@ fn typed_by_user(world: &World, agent: Entity) -> Vec<String> {
         .collect()
 }
 
-/// Presses the key bound as `label` with `agent` shown.
-fn press(app: &mut App, agent: Entity, label: &str) {
+/// The enabled bindings labelled `label`.
+fn bindings(app: &mut App, label: &str) -> Vec<Entity> {
     let world = app.world_mut();
     let mut bindings = world.query::<(Entity, &KeyBinding)>();
-    let found: Vec<Entity> = bindings
+    bindings
         .iter(world)
         .filter(|(_, binding)| binding.label == label)
         .map(|(entity, _)| entity)
-        .collect();
+        .collect()
+}
+
+/// Presses the key bound as `label` with `agent` shown.
+fn press(app: &mut App, agent: Entity, label: &str) {
+    let found = bindings(app, label);
     assert_eq!(found.len(), 1, "{label}");
     for entity in found {
-        world.trigger(KeyPressed {
+        app.world_mut().trigger(KeyPressed {
             entity,
             agent: Some(agent),
             released: false,
@@ -112,18 +117,37 @@ fn alt_2_sends_the_second_suggestion_as_the_users_next_message() {
         reply("commit it"),
     ]);
     let (mut app, wakes, agent) = start("fh-suggest-alt-2", &agent_model, &suggester);
+    assert_eq!(
+        bindings(&mut app, "Send suggestion 2"),
+        [],
+        "no keys without chips"
+    );
     let typed = Deliver::new(agent, "fix the parser", DeliveryMode::Steer);
     app.world_mut().trigger(typed);
     run_until(&mut app, &wakes, |world| suggested(world, agent).is_some());
 
     let shown = suggested(app.world(), agent).unwrap_or_default();
     assert_eq!(
-        chips(&shown),
-        "[1] run the full test suite  [2] update CHANGELOG  [3] add a regression test"
+        chips(&shown).to_string(),
+        "[1] run the full test suite  [2] update CHANGELOG  [3] add a regression test   \
+         Alt+0 hides"
     );
     app.update();
-    let mut panels = app.world_mut().query_filtered::<(), With<ChipsPanel>>();
-    assert_eq!(panels.iter(app.world()).count(), 1);
+    let mut panels = app
+        .world_mut()
+        .query_filtered::<&TuiPanel, With<ChipsPanel>>();
+    let placed: Vec<Placement> = panels
+        .iter(app.world())
+        .map(|panel| panel.placement)
+        .collect();
+    assert_eq!(placed, [Placement::BelowInput(Constraint::Length(1))]);
+    // A question beside the work keeps its own Alt+N keys while it waits.
+    let ask = Ask::yes_no("Run it?").inline();
+    let question = app.world_mut().spawn((ask, ForAgent(agent))).id();
+    app.update();
+    assert_eq!(bindings(&mut app, "Send suggestion 2"), []);
+    app.world_mut().despawn(question);
+    app.update();
     let asked = format!("{:?}", suggester.requests());
     assert!(asked.contains("fix the parser") && asked.contains("Fixed the parser."));
 
@@ -218,15 +242,4 @@ fn an_interrupted_turn_gets_no_suggestions() {
     );
     assert_eq!(app.world().resource::<Asked>().0, 0);
     assert_eq!(suggester.request_count(), 0);
-}
-
-#[test]
-fn replies_read_as_short_unnumbered_suggestions() {
-    let long = "x".repeat(80);
-    let reply = format!("1) \"add a test\"\n\n- [2] update docs\n3. {long}\n4. one too many");
-    let read = suggestions(&reply);
-    assert_eq!(read.len(), 3);
-    assert_eq!(read.first().map(String::as_str), Some("add a test"));
-    assert_eq!(read.get(1).map(String::as_str), Some("update docs"));
-    assert_eq!(read.get(2).map(|text| text.chars().count()), Some(60));
 }

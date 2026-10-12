@@ -6,9 +6,10 @@
 //!
 //! The fronts plugins offer and the options they take
 //! ([`cli`]) are checked against how rig was started once
-//! every plugin is built: an option no plugin takes, or an interactive
-//! terminal no front takes, is refused with exit code 2 once the launcher
-//! knows the build started, so it is not rolled back.
+//! every plugin is built: an option no plugin takes, an unknown command,
+//! or an interactive terminal no front takes, is refused with exit code 2
+//! once the launcher knows the build started, so it is not rolled back.
+//! The secrets the launcher passed on are [`Secrets`].
 //!
 //! A failed build, the launcher's before this start or `/reload`'s, goes
 //! into the primary agent's conversation from [`BUILD_ORIGIN`]
@@ -24,14 +25,16 @@ use bevy_ecs::prelude::*;
 use bevy_log::error;
 use rig::harness_protocol::{Home, Invocation, RunDir, env};
 
-use super::cli::{self, Cli};
+use super::cli;
 use super::exit::{Exit, ExitReason, reason_from_exit};
-use crate::services::RigHome;
+use crate::describe::{Describing, describing};
+use crate::secrets::Secrets;
 use crate::settings::Settings;
+use rig_cassette::journal::Origin;
 use rig_ecs::agent::Notice;
 
 use crate::primary::{PrimaryQuery, primary};
-use rig_ecs::inbox::{Deliver, DeliveryMode, Origin};
+use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_ecs::journal::SessionRestored;
 
 /// The plugin name in the [`Origin`] of a failed build's note.
@@ -39,8 +42,8 @@ pub const BUILD_ORIGIN: &str = "build";
 
 /// How this process was started, for the plugins that read their part of
 /// it: the agent's arguments (`--print` for `rig-print`, `--model` for
-/// `rig-models`, the plugins' own options with [`Invoked::flag`]) and
-/// whether stdin is a terminal. [`LauncherPlugin`]
+/// `rig-models`, the plugins' own options with [`Invoked::flag`] and
+/// commands with [`Invoked::command`]) and whether stdin is a terminal. [`LauncherPlugin`]
 /// inserts it from the process unless the app inserted one before.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct Invoked {
@@ -78,9 +81,9 @@ impl Invoked {
 #[derive(Resource, Clone, Debug)]
 pub struct LauncherRun(pub RunDir);
 
-/// Inserts [`Invoked`] and [`LauncherRun`], shows the launcher's startup
-/// notice, hands a failed build to the primary agent, and writes the ready
-/// file.
+/// Inserts [`Invoked`], [`LauncherRun`] and [`Secrets`], shows the
+/// launcher's startup notice, hands a failed build to the primary agent,
+/// and writes the ready file.
 pub struct LauncherPlugin;
 
 impl Plugin for LauncherPlugin {
@@ -92,6 +95,12 @@ impl Plugin for LauncherPlugin {
             && let Some(run) = RunDir::from_env()
         {
             app.insert_resource(LauncherRun(run));
+        }
+        if !app.world().contains_resource::<Secrets>() {
+            app.insert_resource(Secrets::from_env());
+        }
+        if describing().is_some() {
+            app.insert_resource(Describing);
         }
         app.add_systems(Startup, launcher_notice)
             .add_systems(
@@ -106,24 +115,42 @@ impl Plugin for LauncherPlugin {
     /// Refuses a run the build cannot take: see [`cli`].
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app) {
-            app.insert_resource(Refused(refusal)).add_systems(
-                Last,
-                exit_refused
-                    .after(signal_ready)
-                    .run_if(resource_exists::<Refused>),
-            );
+            refuse(app, refusal);
         }
     }
 }
 
-/// Why this run cannot go on.
+/// Marks a run refused, until it exits.
 #[derive(Resource)]
-struct Refused(String);
+struct Refused;
 
-/// Says why the run cannot go on, and asks to exit once the launcher knows
-/// that the build started: it is not rolled back.
-fn exit_refused(refused: Res<Refused>, mut commands: Commands) {
-    eprintln!("rig: {}.", refused.0);
+/// Refuses this run, once the app is built: says `why` on stderr now,
+/// before any front takes the terminal, and in the launcher's
+/// [`RunDir::refusal`], and exits with code 2 at the end of the first
+/// frame. Only the first refusal is said.
+pub(crate) fn refuse(app: &mut App, why: String) {
+    if app.world().contains_resource::<Refused>() {
+        return;
+    }
+    let stop = if why.ends_with('.') { "" } else { "." };
+    let said = format!("rig: {why}{stop}\n");
+    eprint!("{said}");
+    if let Some(run) = app.world().get_resource::<LauncherRun>()
+        && let Err(failure) = std::fs::write(run.0.refusal(), said)
+    {
+        error!("could not tell the launcher why the run is refused: {failure}");
+    }
+    app.insert_resource(Refused).add_systems(
+        Last,
+        exit_refused
+            .after(signal_ready)
+            .run_if(resource_exists::<Refused>),
+    );
+}
+
+/// Exits a refused run once the launcher knows that the build started: it
+/// is not rolled back.
+fn exit_refused(mut commands: Commands) {
     commands.remove_resource::<Refused>();
     commands.trigger(Exit(ExitReason::Failed(2)));
 }
@@ -223,15 +250,12 @@ fn deliver_build_failure(
 /// without a plain `AppExit`. An exit asked for with
 /// [`Exit`](super::exit::Exit), which gives its [`ExitReason`] at once, is
 /// deliberate, such as a finished replay or a plugin's refusal to start,
-/// so it counts as started. It also leaves the plugins' options for the
-/// launcher's `rig help`.
+/// so it counts as started.
 fn signal_ready(
     mut signalled: Local<bool>,
     exits: MessageReader<AppExit>,
     reason: Option<Res<ExitReason>>,
     run: Option<Res<LauncherRun>>,
-    cli: Option<Res<Cli>>,
-    home: Option<Res<RigHome>>,
 ) {
     if *signalled || (!exits.is_empty() && reason.is_none()) {
         return;
@@ -242,13 +266,6 @@ fn signal_ready(
     };
     if let Err(failure) = std::fs::write(run.0.ready(), b"") {
         error!("could not write the ready file: {failure}");
-    }
-    let flags = home
-        .map_or_else(Home::from_env, |home| home.0.clone())
-        .flags();
-    let usage = cli.map(|cli| cli.usage()).unwrap_or_default();
-    if std::fs::read_to_string(&flags).ok().as_deref() != Some(usage.as_str()) {
-        std::fs::write(&flags, usage).ok();
     }
 }
 

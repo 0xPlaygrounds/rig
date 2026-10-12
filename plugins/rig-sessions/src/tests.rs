@@ -1,34 +1,44 @@
+use std::collections::HashMap;
 use std::fs;
+use std::sync::{Arc, Mutex, PoisonError};
 
+use rig_cassette::journal::{EFFECT_LOG, MemoryStore, SavedAgent, SavedSession, write_session};
+use rig_core::completion::Message;
+use rig_core::effect::{EffectId, EffectKind, EffectRecord, Outcome};
 use rig_ecs::AgentPlugin;
+use rig_ecs::journal::JournalPlugin;
+use rig_ecs::stage::Recorded;
 use rig_harness::harness_protocol::Home;
+use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
+use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
+use rig_telemetry::EffectLogPlugin;
 
 use super::*;
 
 /// An empty home of this test's own.
 fn home(test: &str) -> Home {
-    let root = std::env::temp_dir().join(format!("rig-sessions-{test}-{}", std::process::id()));
-    fs::remove_dir_all(&root).ok();
-    Home::at(root)
+    scratch_home(&format!("rig-sessions-{test}"))
 }
 
-/// An app running session `id` under `home`, which has an agent log, so
+/// An app running session `id` under `home`, which an agent logged to, so
 /// it is saved.
 fn running(home: &Home, id: &str) -> Option<App> {
     let id: SessionId = id.parse().ok()?;
     let dir = home.session(&id);
     fs::create_dir_all(dir.path()).ok()?;
-    fs::write(dir.path().join("a1.jsonl"), "").ok()?;
+    let store = SessionStores::default().open(&dir).ok()?;
+    store.append("a1", b"").ok()?;
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(dir))
+        .insert_resource(SessionStore(store))
         .add_plugins((AgentPlugin, SessionsPlugin));
     Some(app)
 }
 
 /// The `/resume` lines of the sessions under `home`.
 fn lines(home: &Home) -> Vec<String> {
-    let listed = list(home, Path::new("/nowhere"));
+    let listed = list(home, &SessionStores::default(), Path::new("/nowhere"));
     listed.iter().map(SessionEntry::label).collect()
 }
 
@@ -68,7 +78,10 @@ fn naming_another_session_changes_only_its_title() {
     let other: SessionId = "1-1".parse().unwrap_or_else(|_| SessionId::generate());
     let dir = home.session(&other);
     fs::create_dir_all(dir.path()).ok();
-    fs::write(dir.path().join("a1.jsonl"), "").ok();
+    let store = SessionStores::default().open(&dir);
+    assert!(store.is_ok(), "the default store opens");
+    let Ok(store) = store else { return };
+    store.append("a1", b"").ok();
     let before = Meta {
         title: SessionTitle {
             name: None,
@@ -79,7 +92,7 @@ fn naming_another_session_changes_only_its_title() {
         updated: 1000,
         ..Meta::default()
     };
-    assert!(write_json(&dir.meta(), &before).is_ok());
+    assert!(write_meta(&*store, &before).is_ok());
     let Some(mut app) = running(&home, "2-2") else {
         return;
     };
@@ -88,7 +101,7 @@ fn naming_another_session_changes_only_its_title() {
         name: "The parser".to_owned(),
     });
     app.update();
-    let after = read_json::<Meta>(&dir.meta()).unwrap_or_default();
+    let after = Meta::of(&*store).unwrap_or_default();
     assert_eq!(after.title.name.as_deref(), Some("The parser"));
     assert_eq!(after.title.typed, before.title.typed);
     assert_eq!(
@@ -97,9 +110,132 @@ fn naming_another_session_changes_only_its_title() {
     );
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
-    let listed = list(&home, home.session(&running).path());
+    let stores = SessionStores::default();
+    let listed = list(&home, &stores, home.session(&running).path());
     let labels: Vec<String> = listed.iter().map(SessionEntry::label).collect();
     assert_eq!(labels, ["The parser"]);
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// Stores a plugin keeps in memory, one per session directory.
+#[derive(Clone, Default)]
+struct InMemory(Arc<Mutex<HashMap<PathBuf, MemoryStore>>>);
+
+impl InMemory {
+    /// The store of the session in `dir`.
+    fn of(&self, dir: &Path) -> MemoryStore {
+        let mut stores = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+        stores.entry(dir.to_owned()).or_default().clone()
+    }
+
+    /// The app's stores, as a plugin puts them in.
+    fn stores(&self) -> SessionStores {
+        let kept = self.clone();
+        SessionStores::new(move |dir| Ok(Arc::new(kept.of(dir.path())) as Arc<dyn JournalStore>))
+    }
+}
+
+/// A plugin's store holds every file of the session, a fork's included,
+/// and the session directory only the plain files the launcher reads; the
+/// fork is saved, so `/resume` lists it, and the session stays saved
+/// after a clean exit.
+#[test]
+fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
+    let home = home("stores");
+    let id = SessionId::generate();
+    let dir = home.session(&id);
+    let memory = InMemory::default();
+    let (mut app, _wakes) = app_in(&home, &id);
+    app.insert_resource(memory.stores()).add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        EffectLogPlugin,
+        SessionsPlugin,
+    ));
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    let said = commit_message(app.world_mut(), agent, Message::user("Fix the parser"));
+    assert_eq!(said, Ok(()));
+    let kind = EffectKind::Custom {
+        kind: "note".into(),
+        payload: serde_json::Value::Null,
+    };
+    let outcome = Ok(Outcome::Custom {
+        payload: serde_json::Value::Null,
+    });
+    let record = EffectRecord::new(EffectId::from_raw(1), "plugin".into(), kind, outcome);
+    app.world_mut().write_message(Recorded(record));
+    app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
+    app.update();
+    app.world_mut().trigger(ForkSession::default());
+    app.update();
+    let mut forks = app.world_mut().resource_mut::<Messages<SessionForked>>();
+    let fork = forks.drain().next().map(|forked| forked.to);
+    assert!(fork.is_some(), "the session was forked");
+    let Some(fork) = fork else { return };
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+
+    let session = memory.of(dir.path());
+    assert!(session.agents().is_ok_and(|agents| !agents.is_empty()));
+    let meta = Meta::of(&session).and_then(|meta| meta.title.name);
+    assert_eq!(meta.as_deref(), Some("Parser"));
+    assert!(session.read_file(EFFECT_LOG).is_ok());
+    let copy = home.session(&fork);
+    let forked = memory.of(copy.path());
+    assert!(forked.agents().is_ok_and(|agents| !agents.is_empty()));
+    let parent = ForkedFrom::of(&forked).map(|parent| parent.session);
+    assert_eq!(parent, Some(id.clone()));
+
+    // On disk, only the plain markers the launcher reads.
+    let plain = |dir: &SessionDir| -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(dir.path())
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok()?.file_name().into_string().ok())
+            .collect();
+        names.sort();
+        names
+    };
+    assert_eq!(plain(&dir), ["saved", "started"]);
+    assert_eq!(plain(&copy), ["saved"]);
+    assert!(dir.is_saved() && copy.is_saved());
+
+    let listed = list(&home, &memory.stores(), Path::new("/nowhere"));
+    let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
+    assert!(ids.contains(&fork) && ids.contains(&id), "{ids:?}");
+    fs::remove_dir_all(home.root()).ok();
+}
+
+/// A session written from data, such as an import, through the app's
+/// stores is saved, so `/resume` lists it.
+#[test]
+fn a_session_written_through_the_stores_is_listed() {
+    let home = home("import");
+    let made = home.new_session();
+    assert!(made.is_ok(), "{made:?}");
+    let Ok((id, dir)) = made else { return };
+    let stores = SessionStores::default();
+    let mut agent = SavedAgent {
+        id: "imported".to_owned(),
+        ..SavedAgent::default()
+    };
+    agent
+        .conversation
+        .append(Message::user("Port the CLI"), None);
+    let session = SavedSession {
+        agents: vec![agent],
+        ..SavedSession::default()
+    };
+    let written = stores
+        .open(&dir)
+        .and_then(|store| write_session(&*store, &session));
+    assert!(written.is_ok(), "{written:?}");
+    let listed = list(&home, &stores, Path::new("/nowhere"));
+    let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();
+    assert_eq!(ids, [id]);
     fs::remove_dir_all(home.root()).ok();
 }
 

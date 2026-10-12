@@ -517,7 +517,6 @@ fn read<W: Wire>(
 
 /// A reply decoded from frames already in hand: its items, then its
 /// response or the error that ended it.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) struct Decoded<Op: Operation> {
     /// Read only by relays and tests; a websocket session needs the outcome.
     #[cfg(any(test, feature = "test-utils"))]
@@ -619,7 +618,6 @@ where
 /// Feed frames already in hand through `reassembler` and `decoder` into
 /// `reply`, as [`read`] does: the reply ends at the provider's end, or the
 /// decoder decides at EOF, and what the reassembler rebuilt is recorded.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn feed<'id, Op, F, D, R>(
     decoder: &mut D,
     mut reassembler: Option<R>,
@@ -636,7 +634,6 @@ where
     fed
 }
 
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 fn feed_until_end<'id, Op, F, D, R>(
     decoder: &mut D,
     mut reassembler: Option<&mut R>,
@@ -670,7 +667,6 @@ pub(crate) fn record<Op: Operation>(
 /// Fold a fed reply as a stream does: its items, then its response, or the
 /// error that ended it. `reply.raw` stands unless it is null, when the
 /// decoder's record does.
-#[cfg(any(test, feature = "websocket", feature = "test-utils"))]
 pub(crate) fn settle<Op: Operation>(
     shared: Mutex<Shared<Op>>,
     fed: Result<(), ProviderError>,
@@ -707,6 +703,33 @@ pub(crate) fn settle<Op: Operation>(
         items,
         outcome,
     }
+}
+
+/// [`decode_reply`](crate::wire::decode_reply), with `raw` the reply's
+/// whole document as a transport reports it (`Null` for none, so the
+/// reassembler's stands), for tests that state what the transport read.
+pub(crate) fn decode_reply<W: Wire>(
+    wire: &W,
+    request: &Request<W>,
+    mode: Mode,
+    frames: impl IntoIterator<Item = W::Frame>,
+    raw: serde_json::Value,
+) -> Result<Response<W>, ProviderError> {
+    let describe = wire.describe();
+    let fold = <W::Op as Operation>::fold(request, &mut Call::new(&describe, mode));
+    let shared = Mutex::new(Shared::new(fold));
+    let fed = feed(
+        &mut wire.decoder(),
+        Some(wire.reassembler()),
+        &shared,
+        frames,
+    );
+    let reply = crate::wire::Reply {
+        provider: describe.name.to_owned(),
+        raw,
+        provider_request_id: None,
+    };
+    settle(shared, fed, reply).outcome
 }
 
 /// A completion reply decoded from frames already in hand, as the bus

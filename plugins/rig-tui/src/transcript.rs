@@ -1,58 +1,224 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
 //! on its neighbours: a tool call is drawn with the result the next message
-//! carries, and on the notices written inside it), re-wraps without
-//! re-rendering when the width changed, and copies out only the rows on
-//! screen. Before, every frame and every streamed delta re-wrapped the
-//! whole history.
+//! carries, and on the notices written inside it, and on what is expanded),
+//! re-wraps without re-rendering when the width changed, and copies out
+//! only the rows on screen. Each message keeps where its items are (the
+//! message, its calls), so the view can scroll to one, select it and say
+//! which is at the top. Before, every frame and every streamed delta
+//! re-wrapped the whole history.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::ops::Range;
 use std::sync::Arc;
+use std::time::{Duration, SystemTime};
 
-use bevy_ecs::entity::Entity;
+use bevy_ecs::prelude::*;
 use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{CallId, ToolResult, UserContent};
+use rig_core::message::{CallId, ToolCall, ToolFunction, ToolResult, UserContent};
+use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
+use rig_core::tool::ToolResultContext;
 
 use super::markdown;
+use super::render::{Lights, light, lit};
 use super::renderers::{
-    CallState, RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
+    CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
+    result_style, result_text,
 };
-use super::view::ShownNotice;
-use super::wrap::wrap_all;
-use rig_ecs::agent::{Conversation, NoticeLevel, STOPPED};
-use rig_ecs::inbox::{Origin, OriginKind};
-use rig_harness::prelude::launcher::BUILD_ORIGIN;
+use super::view::{
+    Continuation, DrawnRow, DrawnTranscript, Highlight, ItemRow, ShownNotice, TranscriptItem,
+};
+use super::wrap::wrap;
+use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
+use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
+use rig_ecs::stage::{Published, Settled, Started};
+use rig_ecs::tools::ToolRequest;
+use rig_ecs::turn::StreamDelta;
+use rig_harness::transcript::TranscriptEntry;
 use rig_tools::attach::attached_file;
 
-/// The renderers by tool name.
+/// The tool renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
+
+/// The entry renderers by origin.
+pub(crate) type EntryRenderers<'a> = HashMap<&'a str, &'a Arc<RenderEntry>>;
+
+/// An item's rows (or lines) within a part.
+pub(crate) type Marks = Vec<(TranscriptItem, Range<usize>)>;
+
+/// What this run knows of the tool calls that settled in it: what each
+/// published and how long it ran, by call id.
+#[derive(Resource, Default)]
+pub(crate) struct CallFacts(HashMap<CallId, (Option<ToolResultContext>, Option<Duration>)>);
+
+impl CallFacts {
+    /// What `call` published and how long it ran, as far as known.
+    fn of(&self, call: &CallId) -> (Option<&ToolResultContext>, Option<Duration>) {
+        self.0
+            .get(call)
+            .map_or((None, None), |(facts, took)| (facts.as_ref(), *took))
+    }
+}
+
+/// Notes what a tool call published and how long it ran, as it settles.
+pub(crate) fn note_call_facts(
+    settled: On<Add<Settled>>,
+    calls: Query<(&ToolRequest, Option<&Published>, Option<&Started>)>,
+    mut facts: ResMut<CallFacts>,
+) {
+    let Ok((request, published, started)) = calls.get(settled.entity) else {
+        return;
+    };
+    let took = started.and_then(|started| SystemTime::now().duration_since(started.at).ok());
+    let published = published.map(|Published(context)| context.clone());
+    facts.0.insert(request.call.id.clone(), (published, took));
+}
+
+/// The tool calls a model call is streaming, by the model call, in the
+/// order they opened: each as far as its arguments came, or finished.
+#[derive(Resource, Default)]
+pub(crate) struct StreamingCalls(HashMap<Entity, Vec<(rig_core::streaming::Part, ToolCall)>>);
+
+/// The JSON of a streaming call's arguments so far, by model call and part.
+#[derive(Default)]
+pub(crate) struct Fragments(HashMap<(Entity, rig_core::streaming::Part), String>);
+
+impl StreamingCalls {
+    /// The calls `effect` streams.
+    pub(crate) fn of(&self, effect: Entity) -> &[(rig_core::streaming::Part, ToolCall)] {
+        self.0.get(&effect).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// Follows the tool calls models stream: a call opens with its tool's
+/// name, its arguments grow, and it ends with the finished call. A model
+/// call's go once it is in the conversation, its [`Partial`] gone.
+pub(crate) fn follow_streams(
+    mut deltas: MessageReader<StreamDelta>,
+    live: Query<(), With<Partial>>,
+    mut streaming: ResMut<StreamingCalls>,
+    mut fragments: Local<Fragments>,
+) {
+    let calls = streaming.bypass_change_detection();
+    let mut changed = false;
+    for delta in deltas.read() {
+        let effect = delta.effect;
+        match &delta.event {
+            StreamEvent::Start {
+                part,
+                kind: PartKind::ToolCall,
+                name: Some(name),
+            } => {
+                let id = CallId::from_wire(format!("streaming-{}", part.index()));
+                let call = ToolCall::new(id, ToolFunction::new(name.clone(), Default::default()));
+                calls.0.entry(effect).or_default().push((*part, call));
+            }
+            StreamEvent::Arguments { part, json } => {
+                let text = fragments.0.entry((effect, *part)).or_default();
+                text.push_str(json);
+                let found = calls.0.get_mut(&effect).into_iter().flatten();
+                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                    call.function.arguments = parse_partial_arguments(text);
+                }
+            }
+            StreamEvent::End {
+                part,
+                content: AssistantContent::ToolCall(done),
+            } => {
+                let found = calls.0.get_mut(&effect).into_iter().flatten();
+                if let Some((_, call)) = found.into_iter().find(|(at, _)| at == part) {
+                    *call = done.clone();
+                }
+            }
+            _ => continue,
+        }
+        changed = true;
+    }
+    let before = calls.0.len();
+    calls.0.retain(|effect, _| live.contains(*effect));
+    fragments.0.retain(|(effect, _), _| live.contains(*effect));
+    if changed || calls.0.len() != before {
+        streaming.set_changed();
+    }
+}
 
 /// What the messages' look depends on besides the messages.
 pub(crate) struct Look<'a> {
-    /// The renderers by tool name.
+    /// The tool renderers by tool name.
     pub(crate) renderers: &'a Renderers<'a>,
+    /// The entry renderers by origin.
+    pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
-    /// The notices written inside a message, by its index, each with the
-    /// content item it goes before.
-    pub(crate) notices: HashMap<usize, Vec<(usize, &'a ShownNotice)>>,
+    /// The output so far of each of its running calls that reports it.
+    pub(crate) outputs: &'a BTreeMap<CallId, String>,
+    /// The notices and entries drawn inside a message, by its index, each
+    /// with the content item it goes before.
+    pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
+    /// The items drawn whole.
+    pub(crate) expanded: &'a HashSet<TranscriptItem>,
+    /// Whether every item is drawn whole, as if expanded.
+    pub(crate) whole: bool,
+    /// Whether to note which items are drawn cut, which draws each item
+    /// not expanded whole too.
+    pub(crate) note_cut: bool,
+    /// What settled calls published and how long they ran.
+    pub(crate) facts: &'a CallFacts,
+}
+
+/// What is drawn inside a message, before one of its items.
+#[derive(Clone, Copy)]
+pub(crate) enum Inside<'a> {
+    /// A notice written there, and its index in the notices shown.
+    Notice(usize, &'a ShownNotice),
+    /// An entry whose message was taken out, after the start of what
+    /// stands for it.
+    Entry(Entity, &'a TranscriptEntry),
 }
 
 impl Look<'_> {
-    /// The notices inside message `index`.
-    fn notices(&self, index: usize) -> &[(usize, &ShownNotice)] {
-        self.notices.get(&index).map_or(&[], Vec::as_slice)
+    /// Whether `item` is drawn whole.
+    pub(crate) fn is_expanded(&self, item: &TranscriptItem) -> bool {
+        self.whole || self.expanded.contains(item)
     }
 
-    /// Hashes the notices inside message `index`.
-    fn hash_notices(&self, index: usize, hasher: &mut DefaultHasher) {
-        for (item, notice) in self.notices(index) {
+    /// The lines `draw` draws, whole when `expanded`, and whether they are
+    /// cut: noted only when asked, by drawing them whole too.
+    pub(crate) fn drawn(
+        &self,
+        expanded: bool,
+        draw: impl Fn(bool) -> Vec<Line<'static>>,
+    ) -> (Vec<Line<'static>>, bool) {
+        let lines = draw(expanded);
+        let cut = self.note_cut && !expanded && draw(true) != lines;
+        (lines, cut)
+    }
+
+    /// The notices and entries inside message `index`.
+    fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
+        self.inside.get(&index).map_or(&[], Vec::as_slice)
+    }
+
+    /// Hashes the notices and entries inside message `index`.
+    fn hash_inside(&self, index: usize, hasher: &mut DefaultHasher) {
+        for (item, inside) in self.inside(index) {
             item.hash(hasher);
-            level_code(notice.level).hash(hasher);
-            notice.text.hash(hasher);
+            match inside {
+                Inside::Notice(at, notice) => {
+                    at.hash(hasher);
+                    level_code(notice.level).hash(hasher);
+                    notice.text.hash(hasher);
+                }
+                Inside::Entry(entity, entry) => {
+                    entity.hash(hasher);
+                    (&entry.origin, &entry.title, &entry.text).hash(hasher);
+                    self.is_expanded(&TranscriptItem::Entry(*entity))
+                        .hash(hasher);
+                }
+            }
         }
     }
 
@@ -66,14 +232,27 @@ impl Look<'_> {
         }
     }
 
-    /// Hashes what message `index` looks like besides its messages: its
-    /// notices and the states of its calls.
-    fn hash_message(&self, index: usize, message: &Message, hasher: &mut DefaultHasher) {
-        self.hash_notices(index, hasher);
+    /// Hashes what message `index` (with `id`) looks like besides its
+    /// messages: its notices, whether it is expanded, and its calls' states,
+    /// output so far, expansion and running times.
+    fn hash_message(
+        &self,
+        (index, id): (usize, Option<rig_ecs::prelude::MessageId>),
+        message: &Message,
+        hasher: &mut DefaultHasher,
+    ) {
+        self.hash_inside(index, hasher);
+        (self.whole, self.note_cut).hash(hasher);
+        id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
+            .hash(hasher);
         if let Message::Assistant(assistant) = message {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
+                    self.outputs.get(&call.id).hash(hasher);
+                    self.is_expanded(&TranscriptItem::Call(call.id.clone()))
+                        .hash(hasher);
+                    self.facts.of(&call.id).1.hash(hasher);
                 }
             }
         }
@@ -83,13 +262,29 @@ impl Look<'_> {
     /// [`Transcript::clear`] handles.
     fn digest(&self) -> u64 {
         let mut hasher = DefaultHasher::new();
-        let mut indices: Vec<&usize> = self.notices.keys().collect();
+        let mut indices: Vec<&usize> = self.inside.keys().collect();
         indices.sort();
         for index in indices {
             index.hash(&mut hasher);
-            self.hash_notices(*index, &mut hasher);
+            self.hash_inside(*index, &mut hasher);
         }
         self.calls.hash(&mut hasher);
+        self.outputs.hash(&mut hasher);
+        (self.whole, self.note_cut).hash(&mut hasher);
+        // Sets in no order: a sum of each one's hash.
+        let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
+            let mut hasher = DefaultHasher::new();
+            item(&mut hasher);
+            hasher.finish()
+        };
+        let expanded = self
+            .expanded
+            .iter()
+            .map(|item| unordered(&|h| item.hash(h)));
+        expanded.fold(0u64, u64::wrapping_add).hash(&mut hasher);
+        let facts = self.facts.0.iter();
+        let facts = facts.map(|(call, (_, took))| unordered(&|h| (call, took).hash(h)));
+        facts.fold(0u64, u64::wrapping_add).hash(&mut hasher);
         hasher.finish()
     }
 }
@@ -103,11 +298,23 @@ fn level_code(level: NoticeLevel) -> u8 {
     }
 }
 
-/// One message's look: its lines, and those lines wrapped to the width.
-struct Entry {
+/// One message's look: its lines and where its items are in them, those
+/// lines wrapped to the width, and the items drawn cut, when noted.
+struct Cached {
     fingerprint: u64,
-    rows: Vec<Line<'static>>,
     lines: Vec<Line<'static>>,
+    line_marks: Marks,
+    wrapped: Wrapped,
+    cut: Vec<TranscriptItem>,
+}
+
+/// Lines wrapped to a width: the rows, whether each continues the row
+/// before it (a line wrapped), and where the items are in the rows.
+#[derive(Default)]
+pub(crate) struct Wrapped {
+    rows: Vec<Line<'static>>,
+    continues: Vec<Option<Continuation>>,
+    marks: Marks,
 }
 
 /// The wrapped rows of the shown agent's messages.
@@ -117,14 +324,44 @@ pub(crate) struct Transcript {
     width: u16,
     /// The [`Look::digest`] the rows were made with.
     look: u64,
-    entries: Vec<Entry>,
+    messages: Vec<Cached>,
 }
 
 /// A part of the transcript, in order: a message's cached rows, or rows
-/// made for this frame (notices, a summary, the reply streaming in).
+/// made for this frame (notices, an entry, the reply streaming in), with
+/// where the items among them are and those drawn cut.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Vec<Line<'static>>),
+    Rows(Wrapped, Vec<TranscriptItem>),
+}
+
+impl Part {
+    /// `lines`, with the items `marks` says are in them, `cut` of them
+    /// drawn cut, wrapped to `width`.
+    pub(crate) fn rows(
+        lines: &[Line<'static>],
+        marks: &[(TranscriptItem, Range<usize>)],
+        cut: Vec<TranscriptItem>,
+        width: usize,
+    ) -> Self {
+        Self::Rows(wrap_marked(lines, marks, width), cut)
+    }
+}
+
+/// The rows of the transcript on screen, and where it is.
+pub(crate) struct Visible {
+    /// The rows shown.
+    pub(crate) rows: Vec<Line<'static>>,
+    /// What is below them.
+    pub(crate) below: Below,
+    /// The first one's row in the whole transcript.
+    pub(crate) first: usize,
+    /// Every item's rows in the whole transcript, top to bottom; a call's
+    /// are within its message's.
+    pub(crate) marks: Marks,
+    /// The item at the top and the row of it there, while the view is
+    /// scrolled up.
+    pub(crate) top: Option<(TranscriptItem, usize)>,
 }
 
 impl Transcript {
@@ -143,73 +380,136 @@ impl Transcript {
     ) {
         if self.agent != Some(agent) {
             self.agent = Some(agent);
-            self.entries.clear();
+            self.messages.clear();
         }
         let usable = usize::from(width.max(1));
         if self.width != width {
             self.width = width;
-            for entry in &mut self.entries {
-                entry.rows = wrap_all(&entry.lines, usable);
+            for cached in &mut self.messages {
+                cached.wrapped = wrap_marked(&cached.lines, &cached.line_marks, usable);
             }
         }
         let messages = conversation.messages();
         let digest = look.digest();
         let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
-        if !changed && looks_alike && self.entries.len() == messages.len() {
+        if !changed && looks_alike && self.messages.len() == messages.len() {
             return;
         }
-        self.entries.truncate(messages.len());
+        self.messages.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             let next = messages.get(index + 1);
-            let fingerprint = fingerprint([previous, Some(message), next], look, index);
+            let id = conversation.id(index);
+            let fingerprint = fingerprint([previous, Some(message), next], look, (index, id));
             if self
-                .entries
+                .messages
                 .get(index)
-                .is_some_and(|entry| entry.fingerprint == fingerprint)
+                .is_some_and(|cached| cached.fingerprint == fingerprint)
             {
                 continue;
             }
-            let lines = message_lines(message, (conversation, index), previous, next, look);
-            let entry = Entry {
+            let (lines, line_marks, cut) =
+                message_lines(message, (conversation, index), previous, next, look);
+            let wrapped = wrap_marked(&lines, &line_marks, usable);
+            let cached = Cached {
                 fingerprint,
-                rows: wrap_all(&lines, usable),
                 lines,
+                line_marks,
+                wrapped,
+                cut,
             };
-            match self.entries.get_mut(index) {
-                Some(slot) => *slot = entry,
-                None => self.entries.push(entry),
+            match self.messages.get_mut(index) {
+                Some(slot) => *slot = cached,
+                None => self.messages.push(cached),
             }
         }
     }
 
     /// Drops every cached row, after the renderers changed.
     pub(crate) fn clear(&mut self) {
-        self.entries.clear();
+        self.messages.clear();
+    }
+
+    /// A part's wrapped rows; `None` for a message not cached.
+    fn wrapped<'a>(&'a self, part: &'a Part) -> Option<&'a Wrapped> {
+        match part {
+            Part::Message(index) => self.messages.get(*index).map(|cached| &cached.wrapped),
+            Part::Rows(wrapped, _) => Some(wrapped),
+        }
     }
 
     /// A part's rows.
     fn rows<'a>(&'a self, part: &'a Part) -> &'a [Line<'static>] {
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.rows.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// Where a part's items are in its rows.
+    fn marks<'a>(&'a self, part: &'a Part) -> &'a [(TranscriptItem, Range<usize>)] {
+        let wrapped = self.wrapped(part);
+        wrapped
+            .map(|wrapped| wrapped.marks.as_slice())
+            .unwrap_or_default()
+    }
+
+    /// A part's items drawn cut, as far as noted.
+    fn cut<'a>(&'a self, part: &'a Part) -> &'a [TranscriptItem] {
         match part {
             Part::Message(index) => self
-                .entries
+                .messages
                 .get(*index)
-                .map(|entry| entry.rows.as_slice())
+                .map(|cached| cached.cut.as_slice())
                 .unwrap_or_default(),
-            Part::Rows(rows) => rows.as_slice(),
+            Part::Rows(_, cut) => cut.as_slice(),
         }
     }
 
+    /// Every item's rows in the whole transcript `parts` make, top to
+    /// bottom; a call's are within its message's.
+    fn marks_of(&self, parts: &[Part]) -> Marks {
+        let mut marks = Marks::new();
+        let mut start = 0;
+        for part in parts {
+            let shifted = self.marks(part).iter();
+            marks.extend(
+                shifted.map(|(item, rows)| (item.clone(), rows.start + start..rows.end + start)),
+            );
+            start += self.rows(part).len();
+        }
+        marks
+    }
+
     /// The rows of `parts` that fit `height` rows at `width`, where
-    /// `scroll` places them, and what is below them.
+    /// `scroll` places them, what is below them, and where the items are.
+    /// A jump to an item's match counts the matches of `highlights`.
     pub(crate) fn visible(
         &self,
         parts: &[Part],
         (width, height): (u16, usize),
         scroll: &mut Scroll,
-    ) -> (Vec<Line<'static>>, Below) {
+        highlights: &[Highlight],
+    ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
-        let (top, below) = scroll.place(&counts, height, width);
+        let marks = self.marks_of(parts);
+        let lights = self.lights(parts, &marks, highlights);
+        scroll.find(&marks);
+        let (mut top, mut below) = scroll.place(&counts, height, width);
+        if let Some((item, to)) = scroll.jump.take() {
+            let rows = marks.iter().find(|(marked, _)| *marked == item);
+            let row = rows.map(|(_, rows)| {
+                let lit = match to {
+                    ItemRow::Lit(n) => self.lit_row(parts, rows, &lights, n),
+                    ItemRow::Top(_) | ItemRow::Reveal => None,
+                };
+                lit.unwrap_or(rows.start)
+            });
+            if let Some(row) = row.filter(|row| !(top..top + height).contains(row)) {
+                scroll.at = Some(row);
+                (top, below) = scroll.place(&counts, height, width);
+            }
+        }
         let mut shown = Vec::with_capacity(height);
         let mut start = 0;
         for (part, count) in parts.iter().zip(&counts) {
@@ -217,20 +517,187 @@ impl Transcript {
             if end > top && start < top + height {
                 let from = top.saturating_sub(start);
                 let to = (top + height - start).min(*count);
-                shown.extend(
-                    self.rows(part)
-                        .get(from..to)
-                        .unwrap_or_default()
-                        .iter()
-                        .cloned(),
-                );
+                shown.extend(self.lit_rows(part, start, from..to, &lights));
             }
             start = end;
             if start >= top + height {
                 break;
             }
         }
-        (shown, below)
+        let at_top = scroll.held.is_some().then(|| {
+            // The innermost item there: the one that starts last.
+            let holding = marks.iter().filter(|(_, rows)| rows.contains(&top));
+            let item = holding.max_by_key(|(_, rows)| rows.start);
+            item.map(|(item, rows)| (item.clone(), top - rows.start))
+        });
+        Visible {
+            rows: shown,
+            below,
+            first: top,
+            marks,
+            top: at_top.flatten(),
+        }
+    }
+
+    /// The transcript of `agent` as `parts` lay it out, with the matches of
+    /// `highlights` in each row, counted only when one is set, and
+    /// `on_screen` on screen.
+    pub(crate) fn laid_out(
+        &self,
+        agent: Option<Entity>,
+        parts: &[Part],
+        highlights: &[Highlight],
+        on_screen: Range<usize>,
+    ) -> DrawnTranscript {
+        let items = self.marks_of(parts);
+        let lights = self.lights(parts, &items, highlights);
+        let counts = if lights.any() {
+            lit(self.joined(parts), 0, &lights)
+        } else {
+            Vec::new()
+        };
+        let mut counts = counts.into_iter().map(|row| row.matches);
+        let rows = self.joined(parts).map(|(row, continues)| DrawnRow {
+            text: row.to_string(),
+            continues: continues.cloned(),
+            lit: counts.next().unwrap_or_default(),
+        });
+        let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
+        DrawnTranscript::new(agent, rows.collect(), items, cut.collect(), on_screen)
+    }
+
+    /// `highlights`, with where in `parts`, whose items `marks` says, their
+    /// spans are.
+    fn lights<'a>(&self, parts: &[Part], marks: &Marks, highlights: &'a [Highlight]) -> Lights<'a> {
+        let mut lights = Lights {
+            highlights,
+            placed: HashMap::new(),
+        };
+        if highlights
+            .iter()
+            .all(|highlight| highlight.spans.is_empty())
+        {
+            return lights;
+        }
+        let starts: Vec<usize> = self
+            .joined(parts)
+            .enumerate()
+            .filter(|(_, (_, joint))| joint.is_none())
+            .map(|(row, _)| row)
+            .collect();
+        let items: HashMap<&TranscriptItem, &Range<usize>> =
+            marks.iter().map(|(item, rows)| (item, rows)).collect();
+        for (index, highlight) in highlights.iter().enumerate() {
+            for span in &highlight.spans {
+                let rows = match &span.item {
+                    Some(item) => items.get(item).map(|rows| (*rows).clone()),
+                    None => Some(0..usize::MAX),
+                };
+                let Some(rows) = rows else { continue };
+                let first = starts.partition_point(|&start| start < rows.start);
+                let line = starts
+                    .get(first.saturating_add(span.line))
+                    .filter(|row| rows.contains(row));
+                if let Some(&row) = line {
+                    let placed = lights.placed.entry((index, row)).or_default();
+                    placed.push(span.bytes.clone());
+                }
+            }
+        }
+        lights
+    }
+
+    /// The row among `rows` of `parts` with match `n` of `lights`.
+    fn lit_row(
+        &self,
+        parts: &[Part],
+        rows: &Range<usize>,
+        lights: &Lights<'_>,
+        n: usize,
+    ) -> Option<usize> {
+        // An item's rows are whole lines, so its matches are all in them.
+        let drawn = self.joined(parts).skip(rows.start).take(rows.len());
+        let mut before = 0;
+        for (at, row) in rows.clone().zip(lit(drawn, rows.start, lights)) {
+            before += row.matches.iter().sum::<usize>();
+            if before > n {
+                return Some(at);
+            }
+        }
+        None
+    }
+
+    /// Every row of `parts`, with how it continues the row before it.
+    fn joined<'a>(
+        &'a self,
+        parts: &'a [Part],
+    ) -> impl Iterator<Item = (&'a Line<'static>, Option<&'a Continuation>)> + 'a {
+        let wrapped = parts.iter().filter_map(|part| self.wrapped(part));
+        let rows = wrapped.flat_map(|wrapped| wrapped.rows.iter().zip(&wrapped.continues));
+        rows.map(|(row, continues)| (row, continues.as_ref()))
+    }
+
+    /// Rows `range` of `part`, which starts at row `start` of the
+    /// transcript, with the matches of `lights` lit; each is sought in the
+    /// whole line it is in, even where the line goes on past `range`.
+    fn lit_rows(
+        &self,
+        part: &Part,
+        start: usize,
+        range: Range<usize>,
+        lights: &Lights<'_>,
+    ) -> Vec<Line<'static>> {
+        let Some(wrapped) = self.wrapped(part) else {
+            return Vec::new();
+        };
+        if !lights.any() {
+            return wrapped.rows.get(range).unwrap_or_default().to_vec();
+        }
+        let continues = |row: usize| wrapped.continues.get(row).is_some_and(Option::is_some);
+        let mut first = range.start;
+        while first > 0 && continues(first) {
+            first -= 1;
+        }
+        let mut end = range.end;
+        while continues(end) {
+            end += 1;
+        }
+        let rows = wrapped.rows.get(first..end).unwrap_or_default();
+        let joints = wrapped.continues.get(first..end).unwrap_or_default();
+        let lit = light(rows, joints, start + first, lights);
+        let shown = lit.into_iter().skip(range.start - first);
+        shown.take(range.len()).collect()
+    }
+}
+
+/// `lines` wrapped to `width`, and `marks` of lines moved to the rows
+/// they wrap to.
+fn wrap_marked(
+    lines: &[Line<'static>],
+    marks: &[(TranscriptItem, Range<usize>)],
+    width: usize,
+) -> Wrapped {
+    let mut rows = Vec::with_capacity(lines.len());
+    let mut continues = Vec::with_capacity(lines.len());
+    // The first row of each line, and past the last.
+    let mut starts = Vec::with_capacity(lines.len() + 1);
+    for line in lines {
+        starts.push(rows.len());
+        for (row, joint) in wrap(line, width) {
+            rows.push(row);
+            continues.push(joint);
+        }
+    }
+    starts.push(rows.len());
+    let row = |line: usize| starts.get(line).copied().unwrap_or(rows.len());
+    let marks = marks
+        .iter()
+        .map(|(item, lines)| (item.clone(), row(lines.start)..row(lines.end)))
+        .collect();
+    Wrapped {
+        rows,
+        continues,
+        marks,
     }
 }
 
@@ -242,6 +709,10 @@ pub(crate) struct Scroll {
     held: Option<Held>,
     /// Rows the keys moved the view since the last frame, up positive.
     moved: isize,
+    /// An item to go to at the next frame, and which row of it.
+    jump: Option<(TranscriptItem, ItemRow)>,
+    /// The row to put at the top at the next frame, where a jump found it.
+    at: Option<usize>,
 }
 
 /// The top row of a view scrolled up.
@@ -291,17 +762,39 @@ impl Scroll {
         *self = Self::default();
     }
 
+    /// Shows `row` of `item` at the next frame.
+    pub(crate) fn to(&mut self, item: TranscriptItem, row: ItemRow) {
+        self.jump = Some((item, row));
+    }
+
+    /// Finds the row a jump to put a row of an item at the top goes to
+    /// among `marks`: the item's first row and the row asked for, within
+    /// the item. An item not there leaves the view where it is.
+    fn find(&mut self, marks: &[(TranscriptItem, Range<usize>)]) {
+        if let Some((item, ItemRow::Top(line))) = &self.jump {
+            let found = marks.iter().find(|(marked, _)| marked == item);
+            self.at = found.map(|(_, rows)| {
+                let last = rows.end.saturating_sub(1).max(rows.start);
+                (rows.start + line).min(last)
+            });
+            self.jump = None;
+        }
+    }
+
     /// The top row of a view `height` rows high over parts of `counts`
-    /// rows at `width`, after the keys' moves; holds it while it is above
-    /// the bottom.
+    /// rows at `width`, after the keys' moves or a jump; holds it while it
+    /// is above the bottom.
     fn place(&mut self, counts: &[usize], height: usize, width: u16) -> (usize, Below) {
         let total: usize = counts.iter().sum();
         let bottom = total.saturating_sub(height);
         let moved = std::mem::take(&mut self.moved);
-        let (top, grew) = match &self.held {
-            None => (bottom, false),
-            Some(held) if held.width == width => (held.top, held.grew || total > held.total),
-            Some(held) => {
+        let (top, grew) = match (self.at.take(), &self.held) {
+            (Some(at), _) => (at, false),
+            (None, None) => (bottom, false),
+            (None, Some(held)) if held.width == width => {
+                (held.top, held.grew || total > held.total)
+            }
+            (None, Some(held)) => {
                 let start: usize = counts.iter().take(held.part).sum();
                 let rows = counts.get(held.part).copied().unwrap_or(0);
                 let row = (held.row * rows / held.rows.max(1)).min(rows.saturating_sub(1));
@@ -336,10 +829,14 @@ impl Scroll {
 
 /// A hash of what message `index`'s look depends on: it and its
 /// neighbours, and `look`'s part for it.
-fn fingerprint(messages: [Option<&Message>; 3], look: &Look<'_>, index: usize) -> u64 {
+fn fingerprint(
+    messages: [Option<&Message>; 3],
+    look: &Look<'_>,
+    at: (usize, Option<rig_ecs::prelude::MessageId>),
+) -> u64 {
     let mut hasher = DefaultHasher::new();
     if let [_, Some(message), _] = messages {
-        look.hash_message(index, message, &mut hasher);
+        look.hash_message(at, message, &mut hasher);
     }
     for message in messages {
         match message {
@@ -376,30 +873,60 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
     }
 }
 
-/// Draws `message`, the `at`-th of `conversation`, with the notices
-/// written inside it before their items. A tool
-/// call's result, which comes in the `next` message, is drawn with the
-/// call, so the results of a reply's calls are not drawn after all of its
-/// calls.
+/// Draws `message`, the `at`-th of `conversation`, with the notices and
+/// entries inside it before their items, and says which lines are the
+/// message and which each of its calls and entries. A tool call's result, which comes
+/// in the `next` message, is drawn with the call, so the results of a
+/// reply's calls are not drawn after all of its calls.
 fn message_lines(
     message: &Message,
     (conversation, at): (&Conversation, usize),
     previous: Option<&Message>,
     next: Option<&Message>,
     look: &Look<'_>,
-) -> Vec<Line<'static>> {
+) -> (Vec<Line<'static>>, Marks, Vec<TranscriptItem>) {
     let mut lines = Vec::new();
-    let notices = look.notices(at);
-    let notices_before = |item: usize, lines: &mut Vec<Line<'static>>| {
-        for (_, notice) in notices.iter().filter(|(before, _)| *before == item) {
-            notice_lines(notice, lines);
+    let mut marks = Marks::new();
+    let mut cut = Vec::new();
+    // Whether the message's own text is drawn cut.
+    let mut message_cut = false;
+    let id = conversation.id(at);
+    let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
+    let inside = look.inside(at);
+    let inside_before = |item: usize,
+                         lines: &mut Vec<Line<'static>>,
+                         marks: &mut Marks,
+                         cut: &mut Vec<TranscriptItem>| {
+        for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
+            match inside {
+                Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
+                Inside::Entry(entity, entry) => {
+                    let item = TranscriptItem::Entry(*entity);
+                    let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                        let view = EntryView {
+                            origin: &entry.origin,
+                            title: &entry.title,
+                            text: &entry.text,
+                            expanded,
+                        };
+                        entry_lines(&view, look.entries)
+                    });
+                    let start = lines.len();
+                    lines.push(Line::default());
+                    lines.extend(drawn);
+                    marks.push((item.clone(), start..lines.len()));
+                    if is_cut {
+                        cut.push(item);
+                    }
+                }
+            }
         }
     };
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
-                notices_before(item_at, &mut lines);
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
                 match item {
                     UserContent::Text(text) => {
                         if let Some((label, count)) = attached_file(&text.text) {
@@ -412,17 +939,27 @@ fn message_lines(
                         }
                         lines.push(Line::default());
                         match conversation.origin(at, item_at) {
-                            Some(origin) => delivered_lines(origin, &text.text, &mut lines),
+                            Some(origin) => {
+                                let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                                    delivered_lines(origin, &text.text, expanded, look)
+                                });
+                                lines.extend(drawn);
+                                message_cut |= is_cut;
+                            }
                             None => user_lines(&text.text, &mut lines),
                         }
                     }
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
-                    UserContent::ToolResult(result) => lines.extend(excerpt(
-                        &result_text(result),
-                        RESULT_LINES,
-                        result_style(result.is_error),
-                    )),
+                    UserContent::ToolResult(result) => {
+                        let (text, style) = (result_text(result), result_style(result.is_error));
+                        let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                            let limit = if expanded { usize::MAX } else { RESULT_LINES };
+                            excerpt(&text, limit, style)
+                        });
+                        lines.extend(drawn);
+                        message_cut |= is_cut;
+                    }
                     UserContent::Image(_) => lines.push(Line::from("  [image]").dim()),
                     _ => lines.push(Line::from("  [attachment]").dim()),
                 }
@@ -430,7 +967,7 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
-                notices_before(item_at, &mut lines);
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());
@@ -441,14 +978,25 @@ fn message_lines(
                     }
                     AssistantContent::ToolCall(call) => {
                         let result = tool_results(next).find(|result| result.call == call.id);
-                        let view = ToolCallView {
-                            call,
-                            result,
-                            state: look.state(&call.id, result),
-                        };
-                        match look.renderers.get(call.function.name.as_str()) {
-                            Some(render) => lines.extend(render(&view)),
-                            None => lines.extend(view.default_lines()),
+                        let (facts, took) = look.facts.of(&call.id);
+                        let item = TranscriptItem::Call(call.id.clone());
+                        let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                            let view = ToolCallView {
+                                call,
+                                result,
+                                state: look.state(&call.id, result),
+                                expanded,
+                                facts,
+                                took,
+                                output: look.outputs.get(&call.id).map(String::as_str),
+                            };
+                            call_lines(&view, look.renderers)
+                        });
+                        let start = lines.len();
+                        lines.extend(drawn);
+                        marks.push((item.clone(), start..lines.len()));
+                        if is_cut {
+                            cut.push(item);
                         }
                     }
                     _ => {}
@@ -456,7 +1004,33 @@ fn message_lines(
             }
         }
     }
-    lines
+    if let Some(id) = id {
+        let message = TranscriptItem::Message(id);
+        marks.insert(0, (message.clone(), 0..lines.len()));
+        if message_cut {
+            cut.insert(0, message);
+        }
+    }
+    (lines, marks, cut)
+}
+
+/// A tool call's lines, by its tool's renderer or the default look.
+pub(crate) fn call_lines(view: &ToolCallView<'_>, renderers: &Renderers<'_>) -> Vec<Line<'static>> {
+    match renderers.get(view.name()) {
+        Some(render) => render(view),
+        None => view.default_lines(),
+    }
+}
+
+/// An entry's lines, by its origin's renderer or the default look.
+pub(crate) fn entry_lines(
+    view: &EntryView<'_>,
+    renderers: &EntryRenderers<'_>,
+) -> Vec<Line<'static>> {
+    match renderers.get(view.origin) {
+        Some(render) => render(view),
+        None => view.default_lines(),
+    }
 }
 
 /// What the user typed, under a `›`.
@@ -471,56 +1045,48 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
     }
 }
 
-/// The origin of rig-compaction's summary, which stands in the conversation
-/// for the messages it replaced.
-const SUMMARY_ORIGIN: &str = "compaction";
-
-/// Lines of a compaction's summary shown in the transcript.
-const SUMMARY_LINES: usize = 12;
-
-/// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads; a compaction's summary as a block
-/// that says it stands for the earlier messages.
-/// `/agents` shows an agent's whole transcript.
-fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
+/// Text an agent or a plugin sent, without the header the model reads:
+/// drawn by the renderer of the plugin that sent it, if it has one, else
+/// as where it came from and its start.
+fn delivered_lines(
+    origin: &Origin,
+    text: &str,
+    expanded: bool,
+    look: &Look<'_>,
+) -> Vec<Line<'static>> {
     let body = origin
         .header()
         .and_then(|header| text.strip_prefix(&header))
         .map_or(text, |body| body.trim_start_matches('\n'));
-    // A failed build's note, which the model reads: told apart by its
-    // origin.
-    if matches!(&origin.kind, OriginKind::Plugin(name) if name == SUMMARY_ORIGIN) {
-        let style = Style::new().magenta();
-        lines.push(Line::styled(
-            "── the earlier messages were compacted into this summary ──",
-            style.bold(),
-        ));
-        lines.extend(excerpt(body, SUMMARY_LINES, style.dim()));
-        return;
-    }
-    if matches!(&origin.kind, OriginKind::Plugin(name) if name == BUILD_ORIGIN) {
-        lines.push(Line::styled(
-            "✗ build failed (noted for the agent)",
-            Style::new().red().bold(),
-        ));
-        lines.extend(excerpt(body, RESULT_LINES, Style::new().red().dim()));
-        return;
-    }
-    lines.push(Line::styled(
-        format!("⤶ {}", origin.label()),
-        Style::new().magenta().bold(),
-    ));
-    lines.extend(excerpt(body, RESULT_LINES, Style::new().dim()));
+    let label = origin.label();
+    let name = match &origin.kind {
+        OriginKind::Plugin(name) => name.as_str(),
+        _ => "",
+    };
+    let view = EntryView {
+        origin: name,
+        title: &label,
+        text: body,
+        expanded,
+    };
+    entry_lines(&view, look.entries)
 }
 
-/// A notice's lines, coloured by its level.
-pub(crate) fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
+/// The lines of the notice `at` in the notices shown, coloured by its
+/// level, marked as that item.
+pub(crate) fn notice_lines(
+    (at, notice): (usize, &ShownNotice),
+    lines: &mut Vec<Line<'static>>,
+    marks: &mut Marks,
+) {
     let style = match notice.level {
         NoticeLevel::Info => Style::new().fg(Color::Magenta),
         NoticeLevel::Warn => Style::new().fg(Color::Yellow),
         NoticeLevel::Error => Style::new().fg(Color::Red),
     };
+    let start = lines.len();
     lines.extend(plain_lines(&notice.text, style));
+    marks.push((TranscriptItem::Notice(at), start..lines.len()));
 }
 
 /// `text`'s lines in one style.

@@ -127,10 +127,7 @@ fn a_hunk_changed_since_the_turn_is_a_conflict() {
 
     // Esc defers the review; `/review` reopens it.
     for picker in pickers(&mut app) {
-        app.world_mut().trigger(Pick {
-            entity: picker,
-            chosen: None,
-        });
+        app.world_mut().trigger(Pick::person(picker, None));
     }
     app.update();
     assert!(pickers(&mut app).is_empty());

@@ -208,7 +208,7 @@ fn on_todo(
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
     if let Ok(mut decision) = decisions.get_mut(called.call) {
-        decision.decide(output);
+        decision.decide(Decider::plugin("todo-tracker"), output);
     }
 }
 

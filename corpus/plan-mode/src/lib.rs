@@ -12,6 +12,7 @@
 //! had.
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::Section;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 #[cfg(test)]
@@ -21,7 +22,7 @@ mod tests;
 const PLAN_ITEM: StatusItem = StatusItem::at(Side::Left, 45, 17);
 
 /// What every request of a planning agent adds to its system prompt.
-pub const PLAN_ONLY: &str = "\n\nPlan mode: you may read and search, but change nothing. \
+pub const PLAN_ONLY: &str = "Plan mode: you may read and search, but change nothing. \
     Explore what you need, then end your turn with a step-by-step plan as your answer. \
     The plan is carried out only once the user approves it.";
 
@@ -136,8 +137,8 @@ fn plan_only(
             call.request
                 .tools
                 .retain(|tool| reads.contains(&tool.name.as_str()));
-            if let Some(prompt) = call.system_prompt_mut() {
-                prompt.push_str(PLAN_ONLY);
+            if let Some(prompt) = &mut call.prompt {
+                prompt.sections.push(Section::new("plan_mode", PLAN_ONLY));
             }
         }
     }
@@ -152,7 +153,7 @@ fn no_changes(
 ) {
     for (footprint, &ForAgent(agent), mut decision) in &mut calls {
         if !footprint.0.reads_only() && plans(agent, &planning, &parents) {
-            decision.decide(Outcome::refused(REFUSED));
+            decision.decide(Decider::plugin("plan-mode"), Outcome::refused(REFUSED));
         }
     }
 }

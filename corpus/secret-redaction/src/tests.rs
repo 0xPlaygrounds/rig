@@ -53,7 +53,15 @@ fn run(
     });
     app.update();
     let streamed = app.world().resource::<Collected<StreamDelta>>().0.iter();
-    let streamed = streamed.map(|delta| delta.text.as_str()).collect();
+    let streamed = streamed
+        .filter_map(|delta| match &delta.event {
+            StreamEvent::Text { text, .. } | StreamEvent::Reasoning { text, .. } => {
+                Some(text.as_str())
+            }
+            StreamEvent::Arguments { json, .. } => Some(json.as_str()),
+            _ => None,
+        })
+        .collect();
     let log = app.world().resource::<EffectLog>().read()?;
     Ok((streamed, serde_json::to_string(&log)?))
 }

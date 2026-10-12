@@ -1,17 +1,44 @@
-//! Where an agent session's journal is kept: one append-only log per
-//! agent and content-addressed blobs such as images, behind a
-//! [`JournalStore`]. [`MemoryStore`] keeps a session in memory;
-//! with feature `jsonl`, [`JsonlDirStore`] keeps it as JSON-lines files in
-//! a directory. A logged message names its images' blobs in place of their
-//! data ([`store_images`]), and gets the data back on reading
-//! ([`load_images`]). [`LogLines`] reads a log's complete lines without
-//! writing to it, whatever their records are, and [`fork`] copies a
-//! session, each log up to a point.
+//! An agent session's journal: each agent's [`Conversation`], and the
+//! session log that keeps it, one append-only log per agent and
+//! content-addressed blobs such as images, behind a [`JournalStore`], which
+//! also holds the session's other files by name. A
+//! [`Writer`] logs a running session's changes, [`read_session`] reads a
+//! session back, [`write_session`] writes one from data, and
+//! [`fork_session`] copies one as of a message. [`MemoryStore`] keeps a
+//! session in memory; with feature `jsonl`, [`JsonlDirStore`] keeps it as
+//! JSON-lines files in a directory. With feature `reflect`, the types a
+//! Bevy app keeps in its components are reflected.
+//!
+//! ```
+//! use rig_cassette::journal::{MemoryStore, Origin, SavedAgent, SavedSession};
+//! use rig_cassette::journal::{read_session, write_session};
+//! use rig_core::completion::Message;
+//!
+//! let mut agent = SavedAgent { id: "imported".to_owned(), ..SavedAgent::default() };
+//! agent.conversation.append(Message::user("Fix the parser"), None);
+//! agent.conversation.append(Message::user("From the CI bot"), Some(Origin::plugin("ci")));
+//! let session = SavedSession { agents: vec![agent], ..SavedSession::default() };
+//! let store = MemoryStore::default();
+//! write_session(&store, &session)?;
+//! let read = read_session(&store)?;
+//! assert_eq!(read.agents[0].conversation, session.agents[0].conversation);
+//! # Ok::<(), std::io::Error>(())
+//! ```
 
+mod conversation;
 #[cfg(feature = "jsonl")]
 mod jsonl;
+mod session;
+
+pub use conversation::{
+    Conversation, Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, Spliced, short_id,
+};
 #[cfg(feature = "jsonl")]
 pub use jsonl::{EFFECT_LOG, JsonlDirStore};
+pub use session::{
+    SESSION, SavedAgent, SavedSession, Stamp, Writer, fork_session, now_ms, read_session,
+    write_session,
+};
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
@@ -25,8 +52,9 @@ use rig_core::message::DocumentSourceKind::{Base64, Raw, Unknown, Url};
 use rig_core::message::{Image, ImageMediaType};
 use sha2::{Digest, Sha256};
 
-/// Storage for a session's journal. Every method takes `&self`, so one
-/// store is shared by every agent's log.
+/// Storage for a session's files: each agent's log, the blobs its messages
+/// name, and the session's other files by name. Every method takes
+/// `&self`, so one store is shared by every agent's log.
 pub trait JournalStore: Send + Sync + 'static {
     /// The ids of the agents that have a log, in no particular order.
     fn agents(&self) -> io::Result<Vec<String>>;
@@ -64,6 +92,56 @@ pub trait JournalStore: Send + Sync + 'static {
         let _ = agent;
         Err(io::ErrorKind::Unsupported.into())
     }
+
+    /// Replaces the session's file `name` with `bytes`, atomically: a
+    /// reader sees the old content or the new. A name is the file's place
+    /// in the session, such as `meta.json` or `tui/notices.jsonl`; a store
+    /// refuses one [`check_file_name`] refuses, and may refuse names its
+    /// own layout uses, with [`io::ErrorKind::InvalidInput`].
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+
+    /// Adds `bytes` at the end of the file `name`, which it creates when
+    /// there is none.
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()>;
+
+    /// The file `name`, [`io::ErrorKind::NotFound`] when there is none.
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>>;
+
+    /// Removes the file `name`; removing one that is not there succeeds.
+    fn remove_file(&self, name: &str) -> io::Result<()>;
+
+    /// The names of the session's files, as [`Self::write_file`] takes
+    /// them, in no particular order, such as to copy a session into
+    /// another store. A store that cannot list them answers
+    /// [`io::ErrorKind::Unsupported`], the default; a store that wraps
+    /// another forwards it.
+    fn files(&self) -> io::Result<Vec<String>> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+}
+
+/// Refuses `name` as a [`JournalStore`] file name unless it is relative and
+/// `/`-separated, with no empty, `.` or `..` part and no `\`, so it names
+/// a place inside the session wherever the store keeps it.
+///
+/// ```
+/// use rig_cassette::journal::check_file_name;
+///
+/// assert!(check_file_name("tui/notices.jsonl").is_ok());
+/// assert!(check_file_name("../elsewhere").is_err());
+/// assert!(check_file_name("/etc/passwd").is_err());
+/// ```
+///
+/// # Errors
+///
+/// [`io::ErrorKind::InvalidInput`], naming the file.
+pub fn check_file_name(name: &str) -> io::Result<()> {
+    let bad = |part: &str| matches!(part, "" | "." | "..") || part.contains('\\');
+    if name.split('/').any(bad) {
+        let why = format!("{name:?} is no file name in a session");
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
+    }
+    Ok(())
 }
 
 /// The complete lines of a JSON-lines log, read from a store without
@@ -251,6 +329,7 @@ pub struct MemoryStore(Arc<Mutex<Memory>>);
 struct Memory {
     logs: BTreeMap<String, Vec<u8>>,
     blobs: BTreeMap<String, Vec<u8>>,
+    files: BTreeMap<String, Vec<u8>>,
 }
 
 impl MemoryStore {
@@ -312,6 +391,39 @@ impl JournalStore for MemoryStore {
     fn remove(&self, agent: &str) -> io::Result<()> {
         self.memory().logs.remove(agent);
         Ok(())
+    }
+
+    fn write_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        check_file_name(name)?;
+        self.memory().files.insert(name.to_owned(), bytes.to_vec());
+        Ok(())
+    }
+
+    fn append_file(&self, name: &str, bytes: &[u8]) -> io::Result<()> {
+        check_file_name(name)?;
+        let mut memory = self.memory();
+        let file = memory.files.entry(name.to_owned()).or_default();
+        file.extend_from_slice(bytes);
+        Ok(())
+    }
+
+    fn read_file(&self, name: &str) -> io::Result<Vec<u8>> {
+        check_file_name(name)?;
+        self.memory()
+            .files
+            .get(name)
+            .cloned()
+            .ok_or_else(|| io::ErrorKind::NotFound.into())
+    }
+
+    fn remove_file(&self, name: &str) -> io::Result<()> {
+        check_file_name(name)?;
+        self.memory().files.remove(name);
+        Ok(())
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        Ok(self.memory().files.keys().cloned().collect())
     }
 }
 

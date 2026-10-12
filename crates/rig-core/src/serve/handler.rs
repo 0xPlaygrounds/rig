@@ -160,6 +160,35 @@ impl ErasedHandler {
         Self(Arc::new(handler))
     }
 
+    /// A handler that serves nothing: it is `descriptor`, and every effect
+    /// it gets is answered [`ErrorKind::HandlerUnavailable`] with `why`. For
+    /// a model whose calls a plugin answers itself, such as from a batch,
+    /// so a call that reaches the handler by mistake fails plainly while
+    /// records still name the model.
+    ///
+    /// ```
+    /// use rig_core::completion::ModelRef;
+    /// use rig_core::effect::{FamilyDescriptor, HandlerDescriptor, model_key};
+    /// use rig_core::serve::ErasedHandler;
+    ///
+    /// let descriptor = HandlerDescriptor {
+    ///     key: model_key("batch/claude"),
+    ///     family: FamilyDescriptor::Completion {
+    ///         model: ModelRef::from("batch/claude"),
+    ///         capabilities: Default::default(),
+    ///     },
+    ///     layers: Vec::new(),
+    /// };
+    /// let handler = ErasedHandler::unavailable(descriptor, "answered from the batch API");
+    /// assert_eq!(handler.descriptor().key, model_key("batch/claude"));
+    /// ```
+    pub fn unavailable(descriptor: HandlerDescriptor, why: impl Into<String>) -> Self {
+        Self::new(Unavailable {
+            descriptor,
+            why: why.into(),
+        })
+    }
+
     /// Wrap this handler in a [`Layer`](super::Layer): `intercept` sees
     /// every dispatch before this handler does and every answer after.
     /// `handler.layered(a).layered(b)` calls `b.before` first and `a.after` first.
@@ -219,6 +248,28 @@ impl std::fmt::Debug for ErasedHandler {
         f.debug_struct("ErasedHandler")
             .field("key", &self.0.descriptor().key)
             .finish_non_exhaustive()
+    }
+}
+
+/// What [`ErasedHandler::unavailable`] erases: it answers every effect
+/// `HandlerUnavailable` with `why`.
+struct Unavailable {
+    descriptor: HandlerDescriptor,
+    why: String,
+}
+
+impl Serve for Unavailable {
+    type Family = crate::effect::family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        self.descriptor.clone()
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Err(ErrorReport::new(
+            ErrorKind::HandlerUnavailable,
+            self.why.clone(),
+        )))
     }
 }
 

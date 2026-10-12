@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
 
-use super::jsonl;
+use super::jsonl::{self, Kept};
 
 /// Prompts kept in the history.
 const KEPT: usize = 500;
@@ -47,7 +47,7 @@ impl PromptHistory {
     /// The newest prompts kept in `file`, which new ones are saved to.
     pub fn load(file: PathBuf) -> Self {
         Self {
-            entries: jsonl::tail(&file, KEPT),
+            entries: jsonl::tail(&Kept::Plain(file.clone()), KEPT),
             file: Some(file),
             unsaved: Vec::new(),
         }
@@ -89,7 +89,7 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     let unsaved = std::mem::take(&mut history.unsaved);
     let kept = unsaved.iter().filter(|text| history.entries.contains(text));
     if let Some(file) = &history.file
-        && let Err(failure) = jsonl::append(file, kept)
+        && let Err(failure) = jsonl::append(&Kept::Plain(file.clone()), kept)
     {
         warn!("could not save the prompt history: {failure}");
     }

@@ -8,24 +8,22 @@ description = "Plugin corpus (fresh held-out): FH-10: 10. Structured compaction"
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# The summary drawn as a collapsible "Summary" entry in the terminal view.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
 # The default compaction this plugin restructures.
-rig-compaction = { path = "../../plugins/rig-compaction" }
-# The summarizer, its prompts and the summary state.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
+# The summary policy, its prompts and the summary state.
 rig-memory = { path = "../../crates/rig-memory", default-features = false }
-schemars = { workspace = true }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
-# `RIG_HOME/compact.toml`.
-toml = "1"
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
@@ -34,3 +32,5 @@ rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-suppo
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 # The saved session's effect log.
 rig-telemetry = { path = "../../plugins/rig-telemetry", default-features = false }
+schemars = { workspace = true }
+serde_json = { workspace = true }

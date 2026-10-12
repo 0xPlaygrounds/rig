@@ -327,7 +327,7 @@ fn refuse_unknown(
 ) {
     for (request, mut decision) in &mut requests {
         if let Some(Err(why)) = named(request).map(|name| profiles.get(&name)) {
-            decision.decide(Outcome::refused(why));
+            decision.decide(Decider::plugin("agent-profiles"), Outcome::refused(why));
         }
     }
 }

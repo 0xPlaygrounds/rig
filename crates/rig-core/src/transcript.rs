@@ -534,9 +534,10 @@ pub fn assistant_text_from_choice(content: &[AssistantContent]) -> String {
 
 /// Why `call`'s arguments do not fit a tool whose JSON schema is
 /// `parameters`, for the model to read as the call's error: they are not a
-/// JSON object ([`invalid_arguments_feedback`]), or name an argument the
-/// schema does not declare. `None` when they fit as far as that goes; the
-/// tool checks their values.
+/// JSON object ([`invalid_arguments_feedback`]), name an argument the
+/// schema does not declare, or do not [`validate`](crate::tool::validate)
+/// against it (up to five of the problems are named). `None` when they fit
+/// as far as the validator checks; the tool checks the rest.
 pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
     let name = call.function.name.as_str();
     if let Some(raw) = &call.function.invalid_arguments {
@@ -557,16 +558,30 @@ pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Opt
             .keys()
             .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str()))),
     );
-    if unknown.is_empty() {
-        return None;
+    if !unknown.is_empty() {
+        let known = declared
+            .map(|declared| quoted(declared.keys()))
+            .filter(|known| !known.is_empty())
+            .unwrap_or_else(|| "none".to_owned());
+        return Some(format!(
+            "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with \
+             only those."
+        ));
     }
-    let known = declared
-        .map(|declared| quoted(declared.keys()))
-        .filter(|known| !known.is_empty())
-        .unwrap_or_else(|| "none".to_owned());
+    const SHOWN: usize = 5;
+    let arguments = serde_json::Value::Object(call.function.arguments.clone());
+    let problems = crate::tool::validate::validate(parameters, &arguments).err()?;
+    let mut named: Vec<String> = problems
+        .iter()
+        .take(SHOWN)
+        .map(ToString::to_string)
+        .collect();
+    if let Some(more) = problems.len().checked_sub(SHOWN).filter(|more| *more > 0) {
+        named.push(format!("and {more} more"));
+    }
     Some(format!(
-        "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with only \
-         those."
+        "`{name}`'s arguments do not fit its schema: {}. Call it again with arguments that fit.",
+        named.join("; ")
     ))
 }
 
@@ -574,17 +589,16 @@ pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Opt
 /// later tool result answers, in call order: what a conversation cut short
 /// still owes the model.
 pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
-    let Some(at) = messages
+    let Some((at, Message::Assistant(reply))) = messages
         .iter()
-        .rposition(|message| matches!(message, Message::Assistant(_)))
+        .enumerate()
+        .rfind(|(_, message)| matches!(message, Message::Assistant(_)))
     else {
         return Vec::new();
     };
-    let mut later = messages.iter().skip(at);
-    let Some(Message::Assistant(reply)) = later.next() else {
-        return Vec::new();
-    };
-    let answered: Vec<&CallId> = later
+    let answered: Vec<&CallId> = messages
+        .iter()
+        .skip(at + 1)
         .flat_map(|message| match message {
             Message::User { content } => content.as_slice(),
             _ => &[],

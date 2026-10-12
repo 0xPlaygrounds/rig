@@ -309,10 +309,13 @@ fn refuse_unsandboxed(
     }
     for (request, mut decision) in &mut calls {
         if request.call.function.name.as_str() == SHELL {
-            decision.decide(Outcome::refused(format!(
-                "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and \
+            decision.decide(
+                Decider::plugin("shell-sandbox"),
+                Outcome::refused(format!(
+                    "{UNAVAILABLE}: no `bwrap` (Linux) or `sandbox-exec` (macOS) on PATH, and \
                  commands never run unsandboxed. Ask the user to install one."
-            )));
+                )),
+            );
         }
     }
 }

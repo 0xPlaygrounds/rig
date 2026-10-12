@@ -2,10 +2,10 @@
 //! directory, read from the most general directory to the most specific,
 //! as text for a system prompt.
 
-use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::fs::{Prefix, read_prefix};
+use crate::fs::Prefix;
+use crate::workspace::{Local, Stat, Workspace};
 
 /// The names of an instruction file, in order of preference: one per
 /// directory is read.
@@ -30,24 +30,39 @@ pub struct Instructions {
 }
 
 impl Instructions {
-    /// Reads the instruction files of the `general` directories, such as
-    /// the user's own, then of each directory from the root down to `cwd`.
-    /// A file reached twice is read once; empty files are left out.
-    pub fn discover(general: impl IntoIterator<Item = PathBuf>, cwd: &Path) -> Self {
-        let mut dirs: Vec<PathBuf> = general.into_iter().collect();
+    /// Reads the instruction files of the `general` directories on this
+    /// machine, such as the user's own, then of each directory of
+    /// `workspace` from the root down to `cwd`. A file reached twice is read
+    /// once; empty files are left out.
+    ///
+    /// Reads `workspace`: on a thread that must not wait, call it only for
+    /// a local one ([`Workspace::host`] is `None`).
+    pub fn discover(
+        general: impl IntoIterator<Item = PathBuf>,
+        cwd: &Path,
+        workspace: &dyn Workspace,
+    ) -> Self {
+        let local: &dyn Workspace = &Local;
+        let mut dirs: Vec<(&dyn Workspace, PathBuf)> =
+            general.into_iter().map(|dir| (local, dir)).collect();
         let above: Vec<&Path> = cwd.ancestors().collect();
-        dirs.extend(above.into_iter().rev().map(Path::to_path_buf));
+        dirs.extend(
+            above
+                .into_iter()
+                .rev()
+                .map(|dir| (workspace, dir.to_path_buf())),
+        );
 
-        let mut found: Vec<PathBuf> = Vec::new();
-        let mut seen: Vec<PathBuf> = Vec::new();
-        for dir in dirs {
-            let Some(path) = instruction_file(&dir) else {
+        let mut found: Vec<(&dyn Workspace, PathBuf)> = Vec::new();
+        let mut seen: Vec<(Option<&str>, PathBuf)> = Vec::new();
+        for (place, dir) in dirs {
+            let Some(path) = instruction_file_in(place, &dir) else {
                 continue;
             };
-            let canonical = fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            let canonical = (place.host(), place.canonical(&path));
             if !seen.contains(&canonical) {
                 seen.push(canonical);
-                found.push(path);
+                found.push((place, path));
             }
         }
 
@@ -55,9 +70,11 @@ impl Instructions {
         let mut budget = MAX_TOTAL_BYTES;
         let mut files = Vec::new();
         let mut unreadable = Vec::new();
-        for path in found.into_iter().rev() {
-            match read_prefix(&path, budget.min(MAX_FILE_BYTES)) {
+        for (place, path) in found.into_iter().rev() {
+            let cap = budget.min(MAX_FILE_BYTES);
+            match place.read(&path, cap as u64) {
                 Ok(contents) => {
+                    let contents = Prefix::of(contents, cap);
                     budget = budget.saturating_sub(contents.text.len());
                     if !contents.text.trim().is_empty() {
                         files.push(InstructionFile { path, contents });
@@ -115,10 +132,16 @@ impl Instructions {
     }
 }
 
-/// The instruction file of `dir`, if it has one.
+/// The instruction file of `dir` on this machine, if it has one.
 pub fn instruction_file(dir: &Path) -> Option<PathBuf> {
+    instruction_file_in(&Local, dir)
+}
+
+/// The instruction file of `dir` in `workspace`, if it has one: the first
+/// of [`FILE_NAMES`] that is a file there.
+pub fn instruction_file_in(workspace: &dyn Workspace, dir: &Path) -> Option<PathBuf> {
     FILE_NAMES
         .iter()
         .map(|name| dir.join(name))
-        .find(|path| fs::metadata(path).is_ok_and(|meta| meta.is_file()))
+        .find(|path| matches!(workspace.stat(path), Ok(Stat::File { .. })))
 }

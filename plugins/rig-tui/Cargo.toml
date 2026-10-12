@@ -22,8 +22,6 @@ bevy_reflect = { workspace = true }
 base64 = { workspace = true }
 crossbeam-channel = { workspace = true }
 crossterm = { workspace = true }
-# Path completion in the input, as git ignores it.
-ignore = { workspace = true }
 # Markdown in replies and the width of wrapped text.
 pulldown-cmark = { workspace = true }
 unicode-width = { workspace = true }

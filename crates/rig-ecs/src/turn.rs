@@ -21,6 +21,7 @@
 
 use std::borrow::Cow;
 use std::fmt;
+use std::iter;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -37,33 +38,33 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
+use rig_cassette::journal::{Halt, now_ms};
 use rig_core::completion::message::turn_failure;
-use rig_core::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Message};
-use rig_core::effect::{self, EffectId, EffectKind};
+use rig_core::completion::{
+    self, CompletionRequest, CompletionResponse, GenerationOptions, Message, Section,
+};
+use rig_core::effect::{self, EffectId};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_core::transcript::close_pending_with;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Halt, Interrupt,
-    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
-    TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
+    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome, TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
-use super::journal::{Commit, SessionLog, now_ms};
+use super::journal::{Commit, SessionLog};
 use super::model::{Connection, Effort};
-use super::prompt::{
-    PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
-};
+use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
-    SupersededBy, Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
+    SupersededBy, Supersedes, Waiting, cancel, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -114,7 +115,8 @@ impl Backoff {
 /// to the result (an option the model cannot take is left out, as
 /// none) and sends it streamed, recording on the call where it went
 /// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
-/// request built by the kernel when it is admitted; a plugin's own call,
+/// request built by the kernel when it is admitted, with its system prompt
+/// in parts beside it ([`ModelRequest::prompt`]); a plugin's own call,
 /// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
@@ -125,9 +127,11 @@ pub struct ModelRequest {
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
-    /// The tool rules the kernel wrote in the system prompt when it built
-    /// the request, swapped at Start for those of the tools it carries.
-    rules: Option<String>,
+    /// The system prompt of a request the kernel built, in parts, until
+    /// Start puts it in front of the request's messages with the rules of
+    /// the tools the request then carries (its `tool_rules` section); `None`
+    /// for a request a plugin brought whole, and from Start on.
+    pub prompt: Option<completion::SystemPrompt>,
 }
 
 impl ModelRequest {
@@ -136,7 +140,7 @@ impl ModelRequest {
         Self {
             request,
             connection: None,
-            rules: None,
+            prompt: None,
         }
     }
 
@@ -146,15 +150,6 @@ impl ModelRequest {
         Self {
             connection: Some(connection),
             ..self
-        }
-    }
-
-    /// The system prompt the request sends, its leading system message, to
-    /// change in place; `None` when it has none.
-    pub fn system_prompt_mut(&mut self) -> Option<&mut String> {
-        match self.request.chat_history.first_mut() {
-            Some(Message::System { content }) => Some(content),
-            _ => None,
         }
     }
 }
@@ -276,40 +271,26 @@ pub(crate) struct Feed(Receiver<Fed>);
 pub(crate) enum Fed {
     /// An item of any kind came at this time, the reply's end too.
     Item(web_time::SystemTime),
-    /// A fragment of text, reasoning or tool-call arguments, of a part.
-    Delta(DeltaKind, Part, String),
+    /// An event of the stream.
+    Event(StreamEvent),
 }
 
-/// What a [`StreamDelta`] streamed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum DeltaKind {
-    /// Answer text.
-    Text,
-    /// Reasoning text.
-    Reasoning,
-    /// A tool call's raw argument JSON.
-    Arguments,
-}
-
-/// A fragment of text, reasoning or tool-call arguments a model call
-/// streamed, any model call, written in [`Stage::Arrive`] in the order it
-/// came, before the call's outcome is applied. Bevy keeps a message at
-/// least two frames, so a reader in `PostUpdate` sees the last fragments
-/// of a reply that settled this frame. A [`TurnCall`]'s text and reasoning
-/// also add up in its [`Partial`].
+/// An event a model call streamed, any model call, written in
+/// [`Stage::Arrive`] in the order it came, before the call's outcome is
+/// applied: a part's start (a tool call's name), its fragments of text,
+/// reasoning or argument JSON, and its end (a finished tool call, with its
+/// id and arguments). The event's part tells parallel tool calls apart.
+/// Bevy keeps a message at least two frames, so a reader in `PostUpdate`
+/// sees the last events of a reply that settled this frame. A
+/// [`TurnCall`]'s text and reasoning also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
     pub effect: Entity,
     /// The agent it is [`ForAgent`], if any.
     pub agent: Option<Entity>,
-    /// What it is.
-    pub kind: DeltaKind,
-    /// The part of the reply it belongs to, which tells the arguments of
-    /// parallel tool calls apart.
-    pub part: Part,
-    /// The text.
-    pub text: String,
+    /// What streamed.
+    pub event: StreamEvent,
 }
 
 /// When a model call's stream sent its first and its latest item of any
@@ -380,7 +361,7 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .try_insert(ForAgent(agent));
     let first_message = world
         .get::<Conversation>(agent)
-        .map(Conversation::turn_start)
+        .map(|conversation| conversation.turn_start())
         .unwrap_or_default();
     let index = match world.get_mut::<TurnsStarted>(agent) {
         Some(mut started) => {
@@ -407,10 +388,11 @@ pub(crate) struct Ending {
 }
 
 /// Stops a running turn at once. The text a streaming reply had sent is
-/// kept as the model's message, every tool call of the last reply gets a
-/// result, real, its [`IfStopped`] or "interrupted", and every call of the turn that has not
-/// settled is answered as interrupted and settled, whatever held it gone.
-/// The turn ends [`TurnOutcome::Stopped`]. The outcome is written to the
+/// kept as the model's message, unless its call was superseded; every
+/// tool call of the last reply gets a result, real, its [`IfStopped`] or
+/// "interrupted", and every call of the turn that has not settled is
+/// answered as interrupted and settled, whatever held it gone. The turn
+/// ends [`TurnOutcome::Stopped`]. The outcome is written to the
 /// log at once, so a log that ends mid-turn always means a crash or a
 /// restart.
 pub(crate) fn on_interrupt(
@@ -418,7 +400,7 @@ pub(crate) fn on_interrupt(
     mut agents: Query<(&mut Conversation, &ActiveTurn)>,
     mut turns: Query<(&mut Turn, Option<&Calls>)>,
     replies: Query<ReplyCall>,
-    partials: Query<&Partial, (With<TurnCall>, Without<Settled>)>,
+    partials: Query<&Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
     mut commit: Commit,
     log: Res<SessionLog>,
     mut commands: Commands,
@@ -460,7 +442,9 @@ pub(crate) fn on_interrupt(
         for call in calls {
             cancel(world, call, &why);
         }
-        despawn_holds(world, turn);
+        if let Ok(mut turn) = world.get_entity_mut(turn) {
+            turn.despawn_related::<Holds>();
+        }
         if let Ok(mut turn) = world.get_entity_mut(turn) {
             turn.remove::<(TurnOf, Ending)>()
                 .insert((TurnOutcome::Stopped(reason), Settled));
@@ -691,13 +675,25 @@ fn build(
         .filter(|(def, _)| builder.access.allows(def.0.name.as_str()))
         .collect();
     offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+    // The role, the rules of the tools offered, then the sections by
+    // order, then tag.
     let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
-    let sections = parts
+    let mut sections: Vec<&PromptSection> = parts
         .sections
         .iter()
         .filter(|(_, of)| of.is_none_or(|of| of.0 == agent))
-        .map(|(section, _)| section);
-    let preamble = system_prompt(&builder.prompt.0, &rules, sections);
+        .map(|(section, _)| section)
+        .collect();
+    sections.sort_by(|a, b| (a.order, &a.tag).cmp(&(b.order, &b.tag)));
+    let sections = sections
+        .into_iter()
+        .map(|section| Section::new(&section.tag, &section.text));
+    let prompt = completion::SystemPrompt {
+        role: builder.prompt.0.clone(),
+        sections: iter::once(Section::new(TOOL_RULES, rules))
+            .chain(sections)
+            .collect(),
+    };
     let effort = builder.effort.0;
     let options = spec.map_or_else(
         || {
@@ -709,47 +705,68 @@ fn build(
         },
         |spec| spec.default_options(effort),
     );
-    let mut request = CompletionRequest::new(Message::system(preamble))
+    let request = CompletionRequest::from(messages)
         .tools(offered.iter().map(|(def, _)| def.0.clone()).collect())
         .options(options.cache_key(&builder.id.0));
-    request.chat_history.extend(messages);
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
-        rules: Some(rules),
+        prompt: Some(prompt),
     }
 }
 
-/// How Start starts a model call.
-pub(crate) enum ModelStart {
-    /// The kernel sends `kind` to the adapted connection.
-    Run(Connection, EffectKind),
-    /// Refused before it was sent.
-    Refused(ErrorReport),
-}
-
-/// What starting a model call reads: the agents' models and the tools'
-/// rules.
+/// What Start sends a model call: read it in Prepare's Fit phase to
+/// measure a request as its model will get it, or in Gate to answer a call
+/// with what its model would have been sent.
 #[derive(SystemParam)]
-pub(crate) struct ModelStarts<'w, 's> {
+pub struct ModelStarts<'w, 's> {
     agents: Query<'w, 's, &'static Connection, With<Agent>>,
     rules: Query<'w, 's, (&'static ToolDef, &'static ToolRules)>,
 }
 
 impl ModelStarts<'_, '_> {
-    /// How `model`, a call for `agent`, starts: on its connection, else the
-    /// agent's model, as its adapters change it, its request fitted to
-    /// that and, when the kernel built it, with the rules of the tools it
-    /// carries; refused without a model.
+    /// The connection `model`, a call for `agent`, goes to, its `adapters`
+    /// applied, and its request as Start sends it: tools taken off a model
+    /// that calls none, options it does not take left out, and the
+    /// [`prompt`](ModelRequest::prompt) in front with the rules of the
+    /// tools it carries. Refused without a model.
+    pub fn sent(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
+        let mut model = model.clone();
+        let connection = self.start(&mut model, adapters, agent, true)?;
+        Ok((connection, model.request))
+    }
+
+    /// The system prompt Start sends in front of `model`, a call for
+    /// `agent`, its [`TOOL_RULES`] section filled for the tools the model
+    /// carries; `None` without a prompt in parts or a model.
+    pub fn prompt(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Option<completion::SystemPrompt> {
+        let mut model = model.clone();
+        self.start(&mut model, adapters, agent, false).ok()?;
+        model.prompt
+    }
+
+    /// Makes `model`'s request the one [`Self::sent`] says, on the
+    /// connection it returns; its prompt stays in parts unless `send`.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> ModelStart {
+        send: bool,
+    ) -> Result<Connection, ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
-            return ModelStart::Refused(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
+            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
         if let Some(adapters) = adapters {
             connection = adapters.apply(connection);
@@ -760,29 +777,24 @@ impl ModelStarts<'_, '_> {
             request.tools.clear();
         }
         spec.fit(request);
-        if let Some(written) = &model.rules {
+        let mut sections = model.prompt.iter_mut().flat_map(|it| &mut it.sections);
+        if let Some(section) = sections.find(|it| it.tag == TOOL_RULES) {
             let carried = request.tools.iter().filter_map(|tool| {
                 let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
                 rules.map(|(_, rules)| rules)
             });
-            let carried = tool_rules(carried);
-            if carried != *written
-                && let Some(Message::System { content }) = request.chat_history.first_mut()
-            {
-                *content = swap_tool_rules(std::mem::take(content), written, &carried);
-                model.rules = Some(carried);
-            }
+            section.text = tool_rules(carried);
         }
-        let kind = EffectKind::Completion {
-            request: request.clone(),
-            stream: true,
-        };
-        ModelStart::Run(connection, kind)
+        if send && let Some(prompt) = model.prompt.take() {
+            let text = Message::system(prompt.text());
+            request.chat_history.insert(0, text);
+        }
+        Ok(connection)
     }
 }
 
 /// Streams the reply, feeding `feed` when each item comes and with its
-/// text, reasoning and tool-call arguments, waking the loop for each, and
+/// events, waking the loop for each, and
 /// returns the response the provider ended it with.
 pub(crate) async fn stream_reply(
     reply: Reply,
@@ -803,20 +815,8 @@ pub(crate) async fn stream_reply(
             Ok(Relayed::Item(item)) => item,
         };
         feed.send(Fed::Item(web_time::SystemTime::now())).ok();
-        let delta = match event {
-            Item::Event(StreamEvent::Text { part, text }) => {
-                Some(Fed::Delta(DeltaKind::Text, part, text))
-            }
-            Item::Event(StreamEvent::Reasoning { part, text }) => {
-                Some(Fed::Delta(DeltaKind::Reasoning, part, text))
-            }
-            Item::Event(StreamEvent::Arguments { part, json }) => {
-                Some(Fed::Delta(DeltaKind::Arguments, part, json))
-            }
-            _ => None,
-        };
-        if let Some(delta) = delta {
-            feed.send(delta).ok();
+        if let Item::Event(event) = event {
+            feed.send(Fed::Event(event)).ok();
         }
         wake.wake();
     }
@@ -832,7 +832,7 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`Streamed`], a [`StreamDelta`] per fragment, in order, and the text
+/// [`Streamed`], a [`StreamDelta`] per event, in order, and the text
 /// and reasoning into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
     mut calls: Query<(
@@ -849,7 +849,7 @@ pub(crate) fn stream_partials(
         // The stamp of a call whose first item came now.
         let mut first: Option<Streamed> = None;
         for fed in feed.0.try_iter() {
-            let (kind, part, text) = match fed {
+            let event = match fed {
                 Fed::Item(at) => {
                     match streamed.as_deref_mut().or(first.as_mut()) {
                         Some(stamp) => {
@@ -866,22 +866,20 @@ pub(crate) fn stream_partials(
                     }
                     continue;
                 }
-                Fed::Delta(kind, part, text) => (kind, part, text),
+                Fed::Event(event) => event,
             };
             if let Some(partial) = partial.as_mut() {
-                match kind {
-                    DeltaKind::Text => partial.text.push_str(&text),
-                    DeltaKind::Reasoning => partial.reasoning.push_str(&text),
-                    DeltaKind::Arguments => {}
+                match &event {
+                    StreamEvent::Text { text, .. } => partial.text.push_str(text),
+                    StreamEvent::Reasoning { text, .. } => partial.reasoning.push_str(text),
+                    _ => {}
                 }
             }
             let agent = agent.map(|agent| agent.0);
             deltas.write(StreamDelta {
                 effect,
                 agent,
-                kind,
-                part,
-                text,
+                event,
             });
         }
         if let Some(first) = first {

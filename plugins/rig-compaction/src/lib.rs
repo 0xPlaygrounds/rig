@@ -16,14 +16,10 @@
 //! measured as it will be sent; the Review system is in
 //! [`ReviewSystems::Act`].
 
-use std::slice;
-use std::sync::Arc;
-
 use bevy_ecs::query::QueryData;
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
-use rig_ecs::prompt::tool_rules;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
 use rig_harness::{PluginEntity, ProvidedBy};
@@ -31,9 +27,6 @@ use rig_memory::{
     Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryState, TrackArgument,
 };
 use serde::{Deserialize, Serialize};
-
-/// Compactions a turn may make, asked for or not.
-pub const MAX_COMPACTIONS: u32 = 2;
 
 /// Compacts agents' conversations near their model's window, after an
 /// overflow, and on `/compact`, by the [`Compaction`] policy.
@@ -66,13 +59,18 @@ impl Plugin for CompactionPlugin {
         .add_observer(take_summary)
         .add_observer(follow_successor::<Summarizing>)
         .add_observer(provided_by_compaction);
+        #[cfg(feature = "tui")]
+        tui::add(app);
     }
 }
 
 /// How agents are compacted: rig-memory's default policy, tracking the
 /// files the built-in file tools read and changed. A plugin whose tool
 /// reads or changes files tracks its argument the same way, by adding a
-/// [`TrackArgument`] to `tracked` (from `finish` or a startup system).
+/// [`TrackArgument`] to `tracked` (from `finish` or a startup system). A
+/// plugin chooses where a compaction cuts with the policy's `cut` (a
+/// [`Cut`](rig_memory::Cut)), given the messages [`unsummarized`] returns,
+/// and how many summaries a turn may ask for with `per_turn`.
 #[derive(Resource, Clone, Debug)]
 pub struct Compaction(pub CompactionPolicy);
 
@@ -111,7 +109,9 @@ pub struct Compact {
 }
 
 /// The agent's summary so far and the files it tracks, which the next
-/// compaction builds on. Saved with the session.
+/// compaction builds on. Saved with the session. A compaction inserts it
+/// after it spliced the summary into the conversation, so an
+/// `On<Insert<Summarized>>` observer sees the conversation with it.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -124,7 +124,7 @@ pub struct Summarized(pub SummaryState);
 pub struct Compactions {
     /// Whether an overflow cleared tool outputs.
     pub cleared: bool,
-    /// Summaries asked for, at most [`MAX_COMPACTIONS`].
+    /// Summaries asked for, at most the policy's `per_turn`.
     pub summaries: u32,
 }
 
@@ -169,10 +169,13 @@ struct Compacting {
     connection: Option<&'static Connection>,
 }
 
-/// The messages of `conversation` without the summary it holds, which the
+/// What a summary does not cover yet: the messages of `conversation`
+/// without the summary content it holds (by [`summary_origin`]), which the
 /// next summary builds on from [`Summarized`] instead of reading it again,
-/// and how many of the first messages held nothing else.
-fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
+/// and how many of the first messages held nothing else. These are the
+/// messages and the `from` the policy's cut is given; an index into them
+/// is an index into the conversation.
+pub fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
     let summary = summary_origin();
     let mut from = 0;
     let mut messages = conversation.messages().to_vec();
@@ -192,6 +195,38 @@ fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
     (messages, from)
 }
 
+/// Plans one summary call of `conversation` with `policy`, for `reason`,
+/// written by the model `spec`, building on `summarized`: the
+/// [`Summarizing`] to spawn it with and its request. `None` when no message
+/// would be summarized that is not already; an error says why the policy
+/// cannot plan it. rig-compaction's own compactions are planned so with the
+/// [`Compaction`] policy; a plugin that summarizes with another, such as a
+/// fallback, replaces a summary call's [`Summarizing`] and
+/// [`ModelRequest`] with what this returns.
+pub fn plan(
+    conversation: &Conversation,
+    summarized: Option<&Summarized>,
+    policy: &CompactionPolicy,
+    reason: CompactReason,
+    spec: &ModelSpec,
+) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
+    let (messages, from) = unsummarized(conversation);
+    let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
+        return Ok(None);
+    };
+    let until = conversation.id(upto).map_or(Until::All, Until::Before);
+    let none = SummaryState::default();
+    let state = summarized.map_or(&none, |summarized| &summarized.0);
+    let planned = policy.plan(state, &messages, from, upto, spec, &reason);
+    let (state, request) = planned.map_err(|why| why.to_string())?;
+    let summarizing = Summarizing {
+        reason,
+        until,
+        state,
+    };
+    Ok(Some((summarizing, request)))
+}
+
 /// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
 fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str) -> Notice {
     let tokens = tokens_label(cleared.tokens as u64);
@@ -199,6 +234,27 @@ fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str)
     Notice::info(
         agent,
         format!("{situation}: cleared {results} older tool outputs (about {tokens} tokens){then}."),
+    )
+}
+
+/// Says that `older` messages of so many tokens were summarized, `kept`
+/// were kept unchanged, and the model now gets `left` tokens.
+fn compacted_text(
+    (older, older_tokens): (usize, u64),
+    (kept, kept_tokens): (usize, u64),
+    left: u64,
+) -> String {
+    let (kept, as_it_was) = match kept {
+        1 => ("the newest message".to_owned(), "as it was"),
+        count => (format!("the newest {count} messages"), "as they were"),
+    };
+    format!(
+        "Compacted {older} {} (about {} tokens) into a summary and kept {kept} (about {} tokens) \
+         {as_it_was}; the model now gets about {} tokens of conversation.",
+        if older == 1 { "message" } else { "messages" },
+        tokens_label(older_tokens),
+        tokens_label(kept_tokens),
+        tokens_label(left)
     )
 }
 
@@ -257,26 +313,16 @@ impl CompactingItem<'_, '_> {
         let Some(connection) = self.connection else {
             return Start::NoModel;
         };
-        let spec = &*connection.spec;
-        let (messages, from) = unsummarized(&self.conversation);
-        let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
-            return Start::NothingNew;
-        };
-        let until = match self.conversation.id(upto) {
-            Some(kept) => Until::Before(kept),
-            None => Until::All,
-        };
-        let none = SummaryState::default();
-        let planned = policy.plan(
-            self.summarized.map_or(&none, |summarized| &summarized.0),
-            &messages,
-            from,
-            upto,
-            spec,
-            &reason,
+        let planned = plan(
+            &self.conversation,
+            self.summarized,
+            policy,
+            reason,
+            &connection.spec,
         );
-        let (state, request) = match planned {
-            Ok(planned) => planned,
+        let (summarizing, request) = match planned {
+            Ok(Some(planned)) => planned,
+            Ok(None) => return Start::NothingNew,
             Err(why) => {
                 notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
                 return Start::Refused;
@@ -284,11 +330,7 @@ impl CompactingItem<'_, '_> {
         };
         let summary = (
             Name::new("compacting"),
-            Summarizing {
-                reason,
-                until,
-                state,
-            },
+            summarizing,
             ModelRequest::new(request),
             Effect::default().with_purpose("compaction"),
             ForAgent(agent),
@@ -339,46 +381,6 @@ fn on_compact(
     notices.write(refusal);
 }
 
-/// The model `model` goes to, as Start will send it: its own connection,
-/// else its agent's `own`, as its `adapters` change it.
-fn routed(
-    model: &ModelRequest,
-    adapters: &Adapters,
-    own: Option<&Connection>,
-) -> Option<Arc<ModelSpec>> {
-    let connection = model.connection.as_ref().or(own)?.clone();
-    Some(adapters.apply(connection).spec)
-}
-
-/// The policy's estimate of `request` as a model of `spec` gets it: one
-/// that calls no tools gets them taken out at Start, and with them their
-/// rules from the system prompt.
-fn sent_tokens(
-    policy: &CompactionPolicy,
-    request: &CompletionRequest,
-    spec: &ModelSpec,
-    tools: &Query<(&ToolDef, &ToolRules)>,
-) -> u64 {
-    let messages = &request.chat_history;
-    let estimate = policy.estimate(messages);
-    if spec.tools {
-        return estimate;
-    }
-    let carried = request.tools.iter().filter_map(|tool| {
-        let rules = tools.iter().find(|(def, _)| def.0.name == tool.name);
-        rules.map(|(_, rules)| rules)
-    });
-    let rules = tool_rules(carried);
-    match messages.first() {
-        Some(system @ Message::System { content }) if !rules.is_empty() => {
-            let without = Message::system(content.replacen(&rules, "", 1));
-            estimate.saturating_sub(policy.estimate(slice::from_ref(system)))
-                + policy.estimate(&[without])
-        }
-        _ => estimate,
-    }
-}
-
 /// Before a turn's request that leaves less than the reserve of the
 /// window of the model it goes to free, clears old tool outputs, which
 /// costs no model call, and asks for a summary only when clearing was not
@@ -391,7 +393,7 @@ fn compact_near_the_window(
     >,
     mut agents: Query<(Compacting, &mut LastUsage)>,
     mut turns: Query<&mut Compactions>,
-    tools: Query<(&ToolDef, &ToolRules)>,
+    starts: ModelStarts,
     policy: Res<Compaction>,
     mut commit: Commit,
     mut commands: Commands,
@@ -404,14 +406,14 @@ fn compact_near_the_window(
         let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
             continue;
         };
-        if compactions.summaries >= MAX_COMPACTIONS {
+        if compactions.summaries >= policy.0.per_turn {
             continue;
         }
-        let Some(spec) = routed(&model, adapters, compacting.connection) else {
+        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
-        let (policy, spec) = (&policy.0, &*spec);
-        let sent = sent_tokens(policy, &model.request, spec, &tools);
+        let (policy, spec) = (&policy.0, &*connection.spec);
+        let sent = policy.estimate(&sent.chat_history);
         let used = last.context().unwrap_or(0).max(sent);
         let messages = &mut model.request.chat_history;
         if !policy.over_threshold(used, spec) {
@@ -480,7 +482,7 @@ fn recover_from_overflow(
                 continue;
             }
         }
-        if compactions.summaries >= MAX_COMPACTIONS {
+        if compactions.summaries >= policy.per_turn {
             continue;
         }
         let reason = (policy, CompactReason::Overflow);
@@ -565,21 +567,8 @@ fn take_summary(
             let left = policy.0.estimate(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
             commands.entity(agent).insert(Summarized(state));
-            notices.write(Notice::info(
-                agent,
-                format!(
-                    "Compacted {older} messages (about {} tokens) into a summary and kept {} \
-                     (about {} tokens) as it was; the model now gets about {} tokens of \
-                     conversation.",
-                    tokens_label(older_tokens),
-                    match kept {
-                        1 => "the newest message".to_owned(),
-                        kept => format!("the newest {kept} messages"),
-                    },
-                    tokens_label(kept_tokens),
-                    tokens_label(left)
-                ),
-            ));
+            let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
+            notices.write(Notice::info(agent, text));
         }
         Err(why) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));
@@ -604,6 +593,9 @@ fn take_summary(
         }
     }
 }
+
+#[cfg(feature = "tui")]
+mod tui;
 
 #[cfg(test)]
 mod tests;

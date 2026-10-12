@@ -8,14 +8,15 @@
 //! remaining in this reply, and Leave step mode. The calls of one reply are
 //! stepped in the order the model asked for them: a call whose earlier
 //! sibling has not settled waits behind a hold of its own, so nothing runs
-//! beside the call being stepped. Editing puts the arguments as JSON in the
-//! terminal view's input (or `$EDITOR`); the user's next line is checked
-//! against the tool's parameters and, if it fits, becomes the call, both
-//! the one that runs and the one the saved conversation says the model
-//! made. Closing the question stops the turn, as an interrupt does.
+//! beside the call being stepped. Editing asks for the arguments as JSON
+//! to edit in the input (and in `$EDITOR`, if set); they are validated
+//! against the tool's schema and, if they fit, become the call, both the
+//! one that runs and the one the saved conversation says the model made,
+//! with a note in the transcript. Closing the question stops the turn, as
+//! an interrupt does.
 //!
 //! Step mode is never saved: a resumed or reloaded session starts without
-//! it. It needs an interactive front.
+//! it. It needs a front that answers questions.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -24,20 +25,21 @@ use std::process::Command;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectId;
 use rig_harness::rig_core::message::Message;
-use rig_harness::rig_core::transcript::arguments_refusal;
-use rig_tui::{
-    RunInTerminal, Side, StatusItem, StatusItems, StatusSystems, TerminalExit, Tone, TuiInput,
-};
+use rig_harness::rig_core::tool::validate::validate;
+use rig_tui::{RunInTerminal, Side, StatusItem, StatusItems, StatusSystems, TerminalExit, Tone};
 use serde_json::{Map, Value};
 
 /// What the model reads for a call the user skipped.
 pub const SKIPPED: &str = "Skipped by the user.";
 
-/// Why `/step` is refused in a run nobody sits at.
+/// Why `/step` is refused in a run nobody answers questions in.
 pub const NEEDS_FRONT: &str = "step mode needs an interactive front";
 
 /// The note on a call whose arguments the user edited.
 pub const EDITED: &str = "(arguments edited by the user)";
+
+/// The origin of the transcript's notes.
+const ORIGIN: &str = "fh-step-mode";
 
 /// The status line's `STEP`, before the agent's status; never dropped.
 const STEP_ITEM: StatusItem = StatusItem::at(Side::Left, 45, u8::MAX);
@@ -50,17 +52,22 @@ pub struct StepAll(pub bool);
 #[derive(Component, Default, Debug)]
 pub struct Stepping;
 
-/// The program arguments are edited in, from `$EDITOR`; `None` edits them
-/// in the terminal view's input. Inserted from the environment unless the
-/// app inserted one before adding the plugin.
+/// The program arguments are also edited in, from `$EDITOR`; `None` edits
+/// them in the input only. Inserted from the environment unless the app
+/// inserted one before adding the plugin.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct StepEditor(pub Option<String>);
 
-/// The plugin's stage systems, in Gate before [`CommandSystems`], since it
-/// takes the user's line with edited arguments over. A gate that decides
-/// tool calls goes `.before` it, so a refused call is never stepped.
+/// The plugin's stage systems. A gate that decides tool calls goes
+/// `.before(StepSystems::Gate)`, so a refused call is never stepped.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StepSystems;
+pub enum StepSystems {
+    /// In [`Stage::Gate`]: holds each call of a stepping agent.
+    Gate,
+    /// In [`ReviewSystems::Edit`]: carries out the answers and lets go of the
+    /// calls, so the next pass's gates see an edited call as it now is.
+    Review,
+}
 
 /// `/step`, the questions that hold each call, and the `STEP` item.
 #[derive(Default)]
@@ -78,20 +85,17 @@ impl Plugin for StepModePlugin {
                 "Step through the agent's tool calls; /step all for every agent",
                 step_command,
             )
-            .configure_sets(
-                AgentPass,
-                StepSystems.in_set(Stage::Gate).before(CommandSystems),
-            )
+            .configure_sets(AgentPass, StepSystems::Gate.in_set(Stage::Gate))
+            .configure_sets(AgentPass, StepSystems::Review.in_set(ReviewSystems::Edit))
             .add_systems(
                 AgentPass,
                 (
-                    release.in_set(Stage::Review),
-                    (take_edits, answered, step).chain().in_set(StepSystems),
+                    step.in_set(StepSystems::Gate),
+                    (answered, release).chain().in_set(StepSystems::Review),
                 ),
             )
-            .add_systems(Update, (edited, release).chain().before(AgentLoop))
-            .add_systems(PostUpdate, show_step.in_set(StatusSystems))
-            .add_observer(apply_args);
+            .add_systems(Update, edited.before(AgentLoop))
+            .add_systems(PostUpdate, show_step.in_set(StatusSystems));
     }
 }
 
@@ -111,9 +115,9 @@ struct StepHold {
 enum HoldKind {
     /// An earlier call of its reply has not settled.
     Queued,
-    /// The question, on the [`Ask`] itself.
+    /// The step's question, on the [`Ask`] itself.
     Asking,
-    /// The user edits its arguments.
+    /// The question for its edited arguments, on the [`Ask`] itself.
     Editing,
 }
 
@@ -122,33 +126,18 @@ enum HoldKind {
 #[component(storage = "SparseSet")]
 struct Stepped;
 
-/// On a hold to let go of once the stages before Gate run again, so every
-/// gate sees the call as it now is.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct Released;
-
 /// On a turn: the calls of this reply run without stepping.
 #[derive(Component)]
 struct RunsFreely(EffectId);
 
-/// `$EDITOR` editing the arguments of the call `hold` holds, in `path`.
+/// `$EDITOR` answering the question `ask` with the file at `path`.
 #[derive(Component)]
 struct InEditor {
-    hold: Entity,
+    ask: Entity,
     path: PathBuf,
-    /// What it started from, for the input when the editor fails.
-    text: String,
 }
 
-/// The arguments the user typed for the call `hold` holds.
-#[derive(Event, Clone, Debug)]
-struct ArgsTyped {
-    hold: Entity,
-    text: String,
-}
-
-/// The question's choices: id and label.
+/// The step question's choices: id and label.
 const CHOICES: [(&str, &str); 5] = [
     ("run", "Run"),
     ("skip", "Skip"),
@@ -174,8 +163,12 @@ impl Steppers<'_, '_> {
 #[derive(bevy_ecs::system::SystemParam)]
 struct Replies<'w, 's> {
     turns: Query<'w, 's, &'static Calls>,
-    calls:
-        Query<'w, 's, (&'static Effect, Has<Settled>), (With<ToolRequest>, Without<SupersededBy>)>,
+    calls: Query<
+        'w,
+        's,
+        (&'static Effect, Option<&'static CallOf>, Has<Settled>),
+        (With<ToolRequest>, Without<SupersededBy>),
+    >,
     free: Query<'w, 's, &'static RunsFreely>,
 }
 
@@ -192,18 +185,20 @@ struct Place {
 }
 
 impl Replies<'_, '_> {
-    fn place(&self, call: Entity, turn: Option<Entity>) -> Place {
-        let parent = self
+    fn place(&self, call: Entity) -> Place {
+        let (parent, turn) = self
             .calls
             .get(call)
             .ok()
-            .and_then(|(effect, _)| effect.parent);
+            .map_or((None, None), |(effect, turn, _)| {
+                (effect.parent, turn.map(|turn| turn.0))
+            });
         let siblings: Vec<(Entity, bool)> = turn
             .and_then(|turn| self.turns.get(turn).ok())
             .into_iter()
             .flat_map(Calls::iter)
             .filter_map(|sibling| {
-                let (effect, settled) = self.calls.get(sibling).ok()?;
+                let (effect, _, settled) = self.calls.get(sibling).ok()?;
                 (effect.parent == parent).then_some((sibling, settled))
             })
             .collect();
@@ -221,36 +216,39 @@ impl Replies<'_, '_> {
     }
 }
 
-/// Where edited arguments are typed: `$EDITOR`, else the input.
+/// Asks for a call's edited arguments: in the input, and in `$EDITOR`.
 #[derive(bevy_ecs::system::SystemParam)]
-struct Editors<'w, 's> {
+struct Edits<'w, 's> {
     editor: Res<'w, StepEditor>,
-    input: Option<ResMut<'w, TuiInput>>,
-    paths: Option<Res<'w, SessionPaths>>,
+    scratch: Option<Res<'w, Scratch>>,
     commands: Commands<'w, 's>,
 }
 
-impl Editors<'_, '_> {
-    /// Opens `text`, the arguments of the call `hold` holds, for editing.
-    fn open(&mut self, hold: Entity, text: &str) {
+impl Edits<'_, '_> {
+    /// Holds the call with a question for its arguments, starting from
+    /// `text`, saying `why` the last ones did not fit, if they did not.
+    fn ask(&mut self, hold: StepHold, tool: &str, text: &str, why: &str) {
+        let ask = Ask::new(format!("Edit the arguments of `{tool}`"))
+            .body(why)
+            .initial(text)
+            .multiline();
+        let hold = StepHold {
+            kind: HoldKind::Editing,
+            ..hold
+        };
+        let ask = (self.commands)
+            .spawn((ask, ForAgent(hold.agent), HoldOf(hold.call), hold))
+            .id();
         let mut words = self.editor.0.iter().flat_map(|it| it.split_whitespace());
-        if let Some(program) = words.next() {
-            let dir = self
-                .paths
-                .as_ref()
-                .map_or_else(std::env::temp_dir, |paths| paths.0.path().to_path_buf());
-            let path = dir.join(format!("step-arguments-{}.json", hold.to_bits()));
-            if std::fs::write(&path, text).is_ok() {
-                let mut command = Command::new(program);
-                command.args(words).arg(&path);
-                let text = text.to_owned();
-                let run = InEditor { hold, path, text };
-                self.commands.spawn((RunInTerminal(command), run));
-                return;
-            }
-        }
-        if let Some(input) = &mut self.input {
-            input.set(text);
+        let dir = self.scratch.as_ref().and_then(|scratch| scratch.0.as_ref());
+        let (Some(program), Some(dir)) = (words.next(), dir) else {
+            return;
+        };
+        let path = dir.join(format!("step-arguments-{}.json", ask.to_bits()));
+        if std::fs::write(&path, text).is_ok() {
+            let mut command = Command::new(program);
+            command.args(words).arg(&path);
+            (self.commands).spawn((RunInTerminal(command), InEditor { ask, path }));
         }
     }
 }
@@ -258,14 +256,14 @@ impl Editors<'_, '_> {
 /// `/step` and `/step all`.
 fn step_command(
     In(args): In<CommandArgs>,
-    invoked: Option<Res<Invoked>>,
+    answerers: Answerers,
     mut all: ResMut<StepAll>,
     flagged: Query<Entity, With<Stepping>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = args.agent;
-    if !invoked.is_some_and(|invoked| invoked.interactive()) {
+    if !answerers.can_answer(Some(agent)) {
         notices.write(Notice::error(agent, NEEDS_FRONT));
         return;
     }
@@ -274,15 +272,15 @@ fn step_command(
             commands.entity(stepping).remove::<Stepping>();
         }
     };
-    match args.args.as_str() {
+    let said = match args.args.as_str() {
         "all" if all.0 => {
             all.0 = false;
             off(&mut commands);
-            notices.write(Notice::info(agent, "Step mode off for every agent."));
+            "Step mode off for every agent."
         }
         "all" => {
             all.0 = true;
-            notices.write(Notice::info(agent, "Step mode on for every agent."));
+            "Step mode on for every agent."
         }
         "" if all.0 || flagged.contains(agent) => {
             if all.0 {
@@ -290,19 +288,18 @@ fn step_command(
                 off(&mut commands);
             }
             commands.entity(agent).remove::<Stepping>();
-            notices.write(Notice::info(agent, "Step mode off."));
+            "Step mode off."
         }
         "" => {
             commands.entity(agent).insert(Stepping);
-            notices.write(Notice::info(
-                agent,
-                "Step mode on: each tool call waits for you.",
-            ));
+            "Step mode on: each tool call waits for you."
         }
         _ => {
             notices.write(Notice::error(agent, "/step takes nothing, or `all`"));
+            return;
         }
-    }
+    };
+    notices.write(Notice::info(agent, said));
 }
 
 /// Holds each call about to run of an agent that steps: behind the
@@ -310,7 +307,7 @@ fn step_command(
 /// question.
 fn step(
     calls: Query<
-        (Entity, &ForAgent, Option<&CallOf>, &ToolRequest, &Decision),
+        (Entity, &ForAgent, &ToolRequest, &Decision),
         (Undecided, ToolCalls, Without<Stepped>),
     >,
     replies: Replies,
@@ -318,134 +315,118 @@ fn step(
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, &ForAgent(agent), turn, request, decision) in &calls {
+    for (call, &ForAgent(agent), request, decision) in &calls {
         if decision.is_decided() || !steppers.on(agent) || !answerers.can_answer(Some(agent)) {
             continue;
         }
-        let place = replies.place(call, turn.map(|turn| turn.0));
+        let place = replies.place(call);
         if place.free {
             continue;
         }
+        let kind = if place.behind {
+            HoldKind::Queued
+        } else {
+            HoldKind::Asking
+        };
+        let hold = (HoldOf(call), StepHold { call, agent, kind });
         if place.behind {
-            let hold = StepHold {
-                call,
-                agent,
-                kind: HoldKind::Queued,
-            };
-            let why = Name::new("waiting for the step before it");
-            commands.spawn((why, HoldOf(call), hold));
+            commands.spawn((Name::new("waiting for the step before it"), hold));
             continue;
         }
         let function = &request.call.function;
-        let arguments = Value::Object(function.arguments.clone());
-        let title = format!(
-            "Step {} of {}: {}",
-            place.nth,
-            place.of,
-            function.name.as_str()
+        let title = format!("Step {} of {}: {}", place.nth, place.of, function.name);
+        let ask = CHOICES.iter().fold(
+            Ask::new(title).body(pretty(&function.arguments)),
+            |ask, (id, label)| ask.choice(*id, *label),
         );
-        let body = serde_json::to_string_pretty(&arguments).unwrap_or_default();
-        let ask = CHOICES
-            .iter()
-            .fold(Ask::new(title).body(body), |ask, (id, label)| {
-                ask.choice(*id, *label)
-            });
-        let hold = StepHold {
-            call,
-            agent,
-            kind: HoldKind::Asking,
-        };
-        commands.spawn((ask, ForAgent(agent), HoldOf(call), hold));
+        commands.spawn((ask, ForAgent(agent), hold));
     }
 }
 
-/// Carries out the user's answer to a step's question; the question lets
-/// go of the call.
+/// Carries out the user's answers to the step's questions; each question
+/// lets go of its call.
 fn answered(
     asks: Query<(Entity, &Outcome, &StepHold), (With<Ask>, Added<Outcome>)>,
-    mut calls: Query<(&ToolRequest, &Effect, Option<&CallOf>, &mut Decision), ToolCalls>,
+    mut calls: Query<(&mut ToolRequest, &Effect, Option<&CallOf>, &mut Decision), ToolCalls>,
+    tools: Query<&ToolDef>,
+    mut agents: Query<&mut Conversation>,
+    mut commit: Commit,
     mut all: ResMut<StepAll>,
-    mut editors: Editors,
+    mut edits: Edits,
 ) {
-    for (ask, outcome, &StepHold { call, agent, .. }) in &asks {
-        editors.commands.entity(ask).remove::<(HoldOf, StepHold)>();
-        let Ok((request, effect, turn, mut decision)) = calls.get_mut(call) else {
+    for (ask, outcome, &hold) in &asks {
+        let StepHold { call, agent, kind } = hold;
+        edits.commands.entity(ask).remove::<(HoldOf, StepHold)>();
+        let Ok((mut request, effect, turn, mut decision)) = calls.get_mut(call) else {
             continue;
         };
-        let choice = match Answer::of(outcome) {
-            Some(Answer::Choice(choice)) => choice,
-            Some(Answer::Text(_)) => continue,
+        let tool = request.call.function.name.as_str().to_owned();
+        let choice = match (kind, Answer::of(outcome)) {
+            (HoldKind::Editing, Some(Answer::Text(text))) => {
+                let schema = tools.iter().find(|def| def.0.name.as_str() == tool);
+                match fitting(&text, schema.map(|def| &def.0.parameters)) {
+                    Ok(arguments) => {
+                        request.call.function.arguments = arguments;
+                        request.call.function.invalid_arguments = None;
+                        let after = agents.get_mut(agent).ok().and_then(|mut conversation| {
+                            record(agent, &mut conversation, &request.call, &mut commit)
+                        });
+                        let title = format!("`{tool}` {EDITED}");
+                        let text = pretty(&request.call.function.arguments);
+                        let note = TranscriptEntry::new(ORIGIN, after, title, text);
+                        edits.commands.spawn((note, EntryOf(agent)));
+                        edits.commands.entity(call).insert(Stepped);
+                    }
+                    Err(why) => {
+                        let why = format!("These do not fit `{tool}`: {why}.");
+                        edits.ask(hold, &tool, &text, &why);
+                    }
+                }
+                continue;
+            }
+            // Closed: the step's question comes back.
+            (HoldKind::Editing, _) => continue,
+            (_, Some(Answer::Choice(choice))) => choice,
+            (_, Some(Answer::Text(_))) => continue,
             // Closed: the user stops the turn, as an interrupt does.
-            None => {
-                editors.commands.trigger(Interrupt::new(agent));
+            (_, None) => {
+                edits.commands.trigger(Interrupt::new(agent));
                 continue;
             }
         };
         match choice.as_str() {
             "skip" => {
-                decision.decide(Outcome::from(ToolResult::success(SKIPPED.into())));
+                decision.decide(
+                    Decider::plugin(ORIGIN),
+                    Outcome::from(ToolResult::success(SKIPPED.into())),
+                );
             }
             "edit" => {
-                let hold = StepHold {
-                    call,
-                    agent,
-                    kind: HoldKind::Editing,
-                };
-                let why = Name::new("editing its arguments");
-                let hold = editors.commands.spawn((why, HoldOf(call), hold)).id();
-                let arguments = Value::Object(request.call.function.arguments.clone());
-                let text = serde_json::to_string_pretty(&arguments).unwrap_or_default();
-                editors.open(hold, &text);
+                let text = pretty(&request.call.function.arguments);
+                edits.ask(hold, &tool, &text, "");
             }
             "rest" => {
-                editors.commands.entity(call).insert(Stepped);
+                edits.commands.entity(call).insert(Stepped);
                 if let (Some(&CallOf(turn)), Some(reply)) = (turn, effect.parent) {
-                    editors.commands.entity(turn).insert(RunsFreely(reply));
+                    edits.commands.entity(turn).insert(RunsFreely(reply));
                 }
             }
             "leave" => {
                 all.0 = false;
-                editors.commands.entity(agent).remove::<Stepping>();
+                edits.commands.entity(agent).remove::<Stepping>();
             }
             _ => {
-                editors.commands.entity(call).insert(Stepped);
+                edits.commands.entity(call).insert(Stepped);
             }
         }
     }
 }
 
-/// The user's next line to an agent whose call's arguments are being
-/// edited is the arguments, not a message; commands still run.
-fn take_edits(
-    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
-    holds: Query<(Entity, &StepHold), Without<Released>>,
-    runs: Query<&InEditor>,
-    mut commands: Commands,
-) {
-    for (incoming, &ForAgent(agent), mut decision) in &mut typed {
-        let typed_by_user = incoming.origin.kind == OriginKind::User;
-        if !typed_by_user || incoming.command().is_some() || decision.is_decided() {
-            continue;
-        }
-        let editing = holds.iter().find(|(hold, step)| {
-            step.agent == agent
-                && step.kind == HoldKind::Editing
-                && !runs.iter().any(|run| run.hold == *hold)
-        });
-        if let Some((hold, _)) = editing {
-            decision.decide(Outcome::custom("step: edited arguments"));
-            let text = incoming.text.clone();
-            commands.trigger(ArgsTyped { hold, text });
-        }
-    }
-}
-
-/// What `$EDITOR` left: the arguments typed, or, when it failed, the
-/// arguments in the input instead.
+/// Answers the question `$EDITOR` edited the arguments for with what it
+/// left, once it exited well; otherwise the question waits in the input.
 fn edited(
     done: Query<(Entity, &TerminalExit, &InEditor), Added<TerminalExit>>,
     holds: Query<&StepHold>,
-    mut input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -455,77 +436,52 @@ fn edited(
         std::fs::remove_file(&editing.path).ok();
         match (exit.success(), text) {
             (true, Ok(text)) => {
-                commands.trigger(ArgsTyped {
-                    hold: editing.hold,
-                    text,
-                });
+                commands.trigger(Pick::person(editing.ask, Some(Chosen::Text(text))));
             }
             _ => {
-                let agent = holds.get(editing.hold).ok().map(|hold| hold.agent);
-                let why = "The editor failed: edit the arguments in the input and send them.";
+                let agent = holds.get(editing.ask).ok().map(|hold| hold.agent);
+                let why = "The editor failed: edit the arguments in the input.";
                 notices.write(Notice::error(agent, why));
-                if let Some(input) = &mut input {
-                    input.set(editing.text.as_str());
-                }
             }
         }
     }
 }
 
-/// Makes the arguments the user typed the call's, if they fit its tool:
-/// the call runs with them, and the conversation says the model asked for
-/// them. Otherwise says why and opens them for editing again.
-fn apply_args(
-    typed: On<ArgsTyped>,
-    holds: Query<&StepHold>,
-    mut calls: Query<&mut ToolRequest>,
-    tools: Query<&ToolDef>,
-    mut agents: Query<&mut Conversation>,
-    mut commit: Commit,
-    mut editors: Editors,
-    mut notices: MessageWriter<Notice>,
-) {
-    let Ok(&StepHold { call, agent, .. }) = holds.get(typed.hold) else {
-        return;
-    };
-    let Ok(mut request) = calls.get_mut(call) else {
-        return;
-    };
-    let name = request.call.function.name.as_str().to_owned();
-    let tool = tools.iter().find(|def| def.0.name.as_str() == name);
-    let parameters = tool.map(|def| &def.0.parameters);
-    let arguments = match fitting(&typed.text, parameters, &request.call) {
-        Ok(arguments) => arguments,
-        Err(why) => {
-            let why = format!("The arguments do not fit `{name}`: {why}. Edit them again.");
-            notices.write(Notice::error(agent, why));
-            editors.open(typed.hold, &typed.text);
-            return;
-        }
-    };
-    request.call.function.arguments = arguments;
-    request.call.function.invalid_arguments = None;
-    if let Ok(mut conversation) = agents.get_mut(agent) {
-        record(agent, &mut conversation, &request.call, &mut commit);
+/// `arguments` as pretty JSON.
+fn pretty(arguments: &Map<String, Value>) -> String {
+    serde_json::to_string_pretty(arguments).unwrap_or_default()
+}
+
+/// The arguments `text` holds, if it is a JSON object that fits the tool's
+/// `schema`; otherwise why not.
+fn fitting(text: &str, schema: Option<&Value>) -> Result<Map<String, Value>, String> {
+    let value: Value =
+        serde_json::from_str(text.trim()).map_err(|error| format!("not JSON ({error})"))?;
+    if let Some(Err(problems)) = schema.map(|schema| validate(schema, &value)) {
+        let problems: Vec<String> = problems.iter().map(ToString::to_string).collect();
+        return Err(problems.join("; "));
     }
-    notices.write(Notice::info(agent, format!("`{name}` {EDITED}")));
-    editors.commands.entity(call).insert(Stepped);
-    editors.commands.entity(typed.hold).insert(Released);
+    match value {
+        Value::Object(arguments) => Ok(arguments),
+        _ => Err("not a JSON object".to_owned()),
+    }
 }
 
 /// Puts `call`, edited, in place of the call of that id in the model's
-/// message that asked for it, so the saved conversation has it.
-fn record(agent: Entity, conversation: &mut Conversation, call: &ToolCall, commit: &mut Commit) {
+/// message that asked for it, so the saved conversation has it; returns
+/// that message's id.
+fn record(
+    agent: Entity,
+    conversation: &mut Conversation,
+    call: &ToolCall,
+    commit: &mut Commit,
+) -> Option<MessageId> {
     let asked = |message: &Message| {
         matches!(message, Message::Assistant(reply)
             if reply.tool_calls().any(|asked| asked.id == call.id))
     };
-    let Some(at) = conversation.messages().iter().rposition(asked) else {
-        return;
-    };
-    let Some(mut entry) = conversation.entry(at) else {
-        return;
-    };
+    let at = conversation.messages().iter().rposition(asked)?;
+    let mut entry = conversation.entry(at)?;
     if let Message::Assistant(reply) = &mut entry.message {
         for content in &mut reply.content {
             if let AssistantContent::ToolCall(asked) = content
@@ -536,90 +492,25 @@ fn record(agent: Entity, conversation: &mut Conversation, call: &ToolCall, commi
         }
     }
     commit.splice(agent, conversation, at..=at, [entry]);
+    conversation.id(at)
 }
 
-/// The arguments `text` holds, if they are a JSON object that fits the
-/// tool's `parameters`: no argument it does not declare, every one it
-/// requires, and each of the type it says.
-fn fitting(
-    text: &str,
-    parameters: Option<&Value>,
-    call: &ToolCall,
-) -> Result<Map<String, Value>, String> {
-    let value: Value =
-        serde_json::from_str(text.trim()).map_err(|error| format!("not JSON ({error})"))?;
-    let Value::Object(arguments) = value else {
-        return Err("not a JSON object".to_owned());
-    };
-    let Some(schema) = parameters else {
-        return Ok(arguments);
-    };
-    let mut candidate = call.clone();
-    candidate.function.arguments = arguments.clone();
-    candidate.function.invalid_arguments = None;
-    if let Some(why) = arguments_refusal(schema, &candidate) {
-        return Err(why);
-    }
-    let required = schema.get("required").and_then(Value::as_array);
-    let missing = required
-        .into_iter()
-        .flatten()
-        .filter_map(Value::as_str)
-        .find(|name| !arguments.contains_key(*name));
-    if let Some(missing) = missing {
-        return Err(format!("`{missing}` is required"));
-    }
-    let properties = schema.get("properties").and_then(Value::as_object);
-    let wrong = arguments.iter().find_map(|(name, value)| {
-        let types = properties?.get(name)?.get("type")?;
-        let fits = match types {
-            Value::String(kind) => is(kind, value),
-            Value::Array(kinds) => kinds
-                .iter()
-                .filter_map(Value::as_str)
-                .any(|it| is(it, value)),
-            _ => true,
-        };
-        (!fits).then(|| format!("`{name}` must be of type {types}"))
-    });
-    wrong.map_or(Ok(arguments), Err)
-}
-
-/// Whether `value` is of the JSON Schema type `kind`.
-fn is(kind: &str, value: &Value) -> bool {
-    match kind {
-        "string" => value.is_string(),
-        "integer" => value.is_i64() || value.is_u64(),
-        "number" => value.is_number(),
-        "boolean" => value.is_boolean(),
-        "array" => value.is_array(),
-        "object" => value.is_object(),
-        "null" => value.is_null(),
-        _ => true,
-    }
-}
-
-/// Lets go of the holds step mode no longer needs: those of agents that
-/// stopped stepping, a queued call once the calls before it settled or the
-/// rest of its reply runs freely, and edited calls.
+/// Lets go of the queued holds step mode no longer needs: those of agents
+/// that stopped stepping (the questions too, so their calls run), and a
+/// queued call once the calls before it settled or the rest of its reply
+/// runs freely.
 fn release(
-    holds: Query<(Entity, &StepHold, Has<Released>)>,
-    calls: Query<Option<&CallOf>>,
+    holds: Query<(Entity, &StepHold)>,
     replies: Replies,
     steppers: Steppers,
     mut commands: Commands,
 ) {
-    for (hold, step, released) in &holds {
-        let queued = || {
-            let turn = calls.get(step.call).ok().flatten().map(|turn| turn.0);
-            let place = replies.place(step.call, turn);
+    for (hold, step) in &holds {
+        let queued = step.kind == HoldKind::Queued && {
+            let place = replies.place(step.call);
             place.free || !place.behind
         };
-        let done = match step.kind {
-            HoldKind::Queued => queued(),
-            HoldKind::Asking | HoldKind::Editing => false,
-        };
-        if released || done || !steppers.on(step.agent) {
+        if queued || !steppers.on(step.agent) {
             commands.entity(hold).try_despawn();
         }
     }

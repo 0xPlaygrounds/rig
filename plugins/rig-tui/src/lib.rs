@@ -7,7 +7,20 @@
 //! The input is a multiline editor with the prompt history
 //! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
-//! [`AppToolRenderersExt::add_tool_renderer`].
+//! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
+//! stream, and its transcript entries
+//! ([`TranscriptEntry`](rig_harness::transcript::TranscriptEntry)) and
+//! delivered texts with [`AppToolRenderersExt::add_entry_renderer`]. The
+//! [`TranscriptView`] says, and lets a plugin set, what is expanded and
+//! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
+//! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
+//! and [`TranscriptView::top`] reads where the view is.
+//! [`ShownNotice::slot`] says where a notice is drawn in an agent's
+//! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
+//! plugin adds, holds the rows the last frame drew, by item, with those
+//! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
+//! agent's transcript the same way without drawing it, cut as drawn or
+//! whole ([`Expanded`]), for an export, a copy or a search.
 //!
 //! It is the front ([`FRONT`]) of a run where someone sits at the
 //! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
@@ -27,10 +40,13 @@
 //! candidates for a command's argument ([`ArgCompletion`]), the terminal's
 //! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
 //! codes ([`TerminalWrite`], [`CopyToClipboard`]), a program run with the
-//! terminal ([`RunInTerminal`]), and a choice for the user, a
+//! terminal ([`RunInTerminal`]), the clipboard's image
+//! ([`read_clipboard_image`]), and a choice for the user, a
 //! [`Picker`](rig_harness::pick::Picker). The view shows every plugin's
 //! pickers and answers every agent's questions ([`Ask`](rig_harness::ask::Ask)),
-//! one at a time. These are there in every run, also
+//! one at a time: in front of the transcript, in the input for one with
+//! initial text or a multi-line answer, or in a strip above the input for
+//! one shown beside the work. These are there in every run, also
 //! one with another front such as `--print`, which never draws a frame.
 //! [`ratatui`] and [`crossterm`] are re-exported so a plugin uses the same
 //! versions.
@@ -58,8 +74,10 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::schedule::common_conditions::any_match_filter;
 use rig_ecs::stage::AgentLoop;
+use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 
+pub use clipboard::read_clipboard_image;
 pub use complete::{ArgCompletion, Candidate};
 pub use crossterm;
 pub use editor::TuiInput;
@@ -71,13 +89,17 @@ pub use keys::{
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
+pub use render::{Expanded, TranscriptLayout};
 pub use renderers::{
-    AppToolRenderersExt, CallState, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer,
-    excerpt,
+    AppToolRenderersExt, CallState, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
+    RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
-pub use view::Focus;
+pub use view::{
+    Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
+    ScrollTo, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
+};
 
 /// The terminal view's name as a front.
 pub const FRONT: &str = "tui";
@@ -95,7 +117,11 @@ impl Plugin for TuiPlugin {
         status::add(app);
         // Spawned in `build`, so a plugin's `finish` may disable one.
         keys::add_built_in(app);
+        app.add_entry_renderer(BUILD_ORIGIN, build_failed);
         app.init_resource::<render::FrameLayout>()
+            .init_resource::<TranscriptView>()
+            .init_resource::<transcript::CallFacts>()
+            .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
@@ -177,7 +203,11 @@ fn add_view(app: &mut App) {
                 // A command typed this frame runs in the agent loop, so
                 // its picker, its notices and a refusal come back in this
                 // frame, and so does a question asked there.
-                (pick::queue_choices, view::collect_notices)
+                (
+                    pick::queue_choices,
+                    keys::arm_inline_keys,
+                    view::collect_notices,
+                )
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),
@@ -193,6 +223,7 @@ fn add_view(app: &mut App) {
                     .before(TuiSystems::Layout),
                 (
                     complete::follow_input,
+                    transcript::follow_streams,
                     render::layout
                         .run_if(resource_exists::<terminal::Tui>.and_then(render::needs_redraw)),
                 )
@@ -212,7 +243,25 @@ fn add_view(app: &mut App) {
                 .after(bevy_app::OnAppExitSystems)
                 .run_if(resource_exists::<terminal::Tui>),
         )
-        .add_observer(view::on_focus);
+        .add_observer(view::on_focus)
+        .add_observer(view::on_scroll_to)
+        .add_observer(transcript::note_call_facts);
+}
+
+/// The look of a failed build's note, which the model reads too.
+fn build_failed(entry: &EntryView<'_>) -> Vec<ratatui::text::Line<'static>> {
+    use ratatui::style::Style;
+    let mut lines = vec![ratatui::text::Line::styled(
+        "✗ build failed (noted for the agent)",
+        Style::new().red().bold(),
+    )];
+    let limit = if entry.expanded {
+        usize::MAX
+    } else {
+        RESULT_LINES
+    };
+    lines.extend(excerpt(entry.text, limit, Style::new().red().dim()));
+    lines
 }
 
 #[cfg(test)]

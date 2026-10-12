@@ -1,91 +1,61 @@
-//! FH-25: model requests through a provider's batch API, for unattended
-//! runs at the batch price.
+//! FH-25: model requests through Anthropic's Message Batches API, for
+//! unattended runs at the batch price.
 //!
-//! Every Anthropic and OpenAI catalog model gets a twin under the vendor
-//! `anthropic-batch` or `openai-batch`, at half its list price. A model
-//! call (a turn's or a plugin's) that goes to such a model is never sent
-//! the usual way: a Gate system holds it (`batch: queued`) and queues it as
-//! a batch item. Items queued within [`BatchSettings::window_ms`] go
-//! together as one batch, up to the endpoint's limit. The batch is then
+//! Every Anthropic catalog model gets a twin under the vendor
+//! `anthropic-batch`, at half its list price, connected to a handler that
+//! serves nothing (`ErasedHandler::unavailable`). A model call to a twin is
+//! held in [`GateSystems::After`] (`batch: queued`), and the request Start
+//! would send it ([`ModelStarts::sent`]), encoded by rig-core's Messages
+//! wire, is queued as a batch item. Items queued within
+//! [`BatchSettings::window_ms`] go together as one batch. The batch is
 //! polled with backoff ([`BatchSettings::first_poll_secs`], doubling up to
-//! [`BatchSettings::max_poll_secs`]) and each item's result decides its
-//! call: a complete reply (no streaming), with its tool calls and its usage
-//! priced at the batch price, or the provider's error. An expired item is
-//! sent once more in a new batch.
+//! [`BatchSettings::max_poll_secs`]); once it ended, each item's result
+//! decides its call: the reply, decoded as a live call would decode it
+//! (`wire::decode_reply`) and priced at the batch price, or the provider's
+//! error. An expired item is sent once more in a new batch.
 //!
 //! A turn's pending item is saved on its agent ([`BatchWait`]): after a
-//! restart, the turn the kernel carries on is attached to the saved item
-//! and polling goes on; nothing is sent again. Interrupting the turn
-//! cancels the item at the provider. The endpoint of each batch vendor is
-//! a [`BatchApi`] in [`BatchEndpoints`].
+//! restart, the turn's call the kernel runs again is held for the saved
+//! item and polling goes on; nothing is sent again. Interrupting the turn
+//! cancels its batch at the provider when no other call waits for it.
+//! Requests go through the app's HTTP client, so `wrap_http` wrappers see
+//! them, with the key of [`BatchAccount`].
 
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use futures::future::BoxFuture;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
-use rig_harness::rig_core::completion::ProviderCapabilities;
-use rig_harness::rig_core::completion::{CompletionRequest, CompletionResponse, ModelRef};
-use rig_harness::rig_core::effect::{
-    self, EffectKind, FamilyDescriptor, HandlerDescriptor, family, model_key,
-};
+use rig_harness::rig_core::catalog::{Catalog, ModelFacts, ModelSpec, Transport};
+use rig_harness::rig_core::completion::{CompletionRequest, ModelRef};
+use rig_harness::rig_core::effect::{self, FamilyDescriptor, HandlerDescriptor, model_key};
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
-use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
-use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
+use rig_harness::rig_core::http_client::{Bytes, DynHttpClient, HeaderMap, HttpClientExt, Request};
+use rig_harness::rig_core::providers::anthropic::AnthropicConfig;
+use rig_harness::rig_core::providers::anthropic::wire::Messages;
+use rig_harness::rig_core::providers::registry::ProviderId;
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::wire::{Body, Mode, Wire, WireFrame, decode_reply};
 use serde::Deserialize;
+use serde_json::{Value, json};
 
-/// Each base vendor and its batch twin.
-pub const VENDORS: [(&str, &str); 2] =
-    [("anthropic", "anthropic-batch"), ("openai", "openai-batch")];
+/// The batch twins' vendor.
+pub const VENDOR: &str = "anthropic-batch";
+
+/// The vendor whose models get batch twins.
+const BASE: &str = "anthropic";
 
 /// What a batch costs, of the list price.
 pub const DISCOUNT: f64 = 0.5;
 
-/// One request in a batch.
-#[derive(Clone, Debug)]
-pub struct BatchItem {
-    /// The id the provider answers it under.
-    pub custom_id: String,
-    /// The model of the base vendor, such as `claude-sonnet-4-5`.
-    pub model: String,
-    /// The request, as the agent built it.
-    pub request: CompletionRequest,
-}
+/// The most requests one batch takes.
+const LIMIT: usize = 100_000;
 
-/// Where an item of a batch stands.
-#[derive(Clone, Debug)]
-pub enum ItemState {
-    /// Not answered yet.
-    Pending,
-    /// The provider's reply.
-    Succeeded(Box<CompletionResponse>),
-    /// The provider refused or failed it, with its message.
-    Errored(String),
-    /// The batch expired before the item was answered.
-    Expired,
-    /// The item was cancelled.
-    Cancelled,
-}
+const NAME: &str = "fh-batch-provider";
 
-/// A provider's batch endpoint. Its futures run on Bevy's IO task pool.
-pub trait BatchApi: Send + Sync + 'static {
-    /// Submits `items` as one batch; the batch's id.
-    fn submit(&self, items: Vec<BatchItem>) -> BoxFuture<'static, Result<String, String>>;
-    /// Where each item of the batch `batch` stands, by custom id.
-    fn poll(&self, batch: String) -> BoxFuture<'static, Result<Vec<(String, ItemState)>, String>>;
-    /// Cancels the item `custom_id` of `batch`, where the provider can.
-    fn cancel(&self, batch: String, custom_id: String) -> BoxFuture<'static, Result<(), String>>;
-    /// How many items one batch takes.
-    fn limit(&self) -> usize {
-        10_000
-    }
-}
-
-/// The endpoint of each batch vendor (`anthropic-batch`, `openai-batch`).
-#[derive(Resource, Default, Clone)]
-pub struct BatchEndpoints(pub HashMap<String, Arc<dyn BatchApi>>);
+/// The account batches are sent with: `ANTHROPIC_API_KEY` and
+/// `ANTHROPIC_BASE_URL` unless the app inserted its own.
+#[derive(Resource, Clone, Debug)]
+pub struct BatchAccount(pub AnthropicConfig);
 
 /// The `[batch]` settings.
 #[derive(Resource, Deserialize, Clone, Debug)]
@@ -118,8 +88,6 @@ pub struct BatchWait(pub Option<PendingItem>);
 /// A submitted batch item.
 #[derive(Reflect, Clone, Debug, Default, PartialEq)]
 pub struct PendingItem {
-    /// The batch vendor, such as `anthropic-batch`.
-    pub vendor: String,
     /// The provider's batch id.
     pub batch: String,
     /// The item's id in it.
@@ -134,41 +102,49 @@ pub struct PendingItem {
 #[derive(Component, Clone, Debug)]
 #[component(storage = "SparseSet")]
 pub struct Batched {
-    /// The batch vendor.
-    pub vendor: String,
-    /// What is sent.
-    pub item: BatchItem,
-    /// The batch it is in, once submitted.
-    pub batch: Option<String>,
-    /// When it was first queued.
-    pub since: SystemTime,
-    /// Whether it was sent again after it expired.
-    pub resubmitted: bool,
-    /// The batch price.
-    pub pricing: Option<Pricing>,
+    custom_id: String,
+    batch: Option<String>,
+    since: SystemTime,
+    resubmitted: bool,
+    /// The wire bound to the batch model's facts, so its reply is priced
+    /// at the batch price.
+    wire: Messages,
+    /// The request as sent, which its reply is decoded against.
+    request: CompletionRequest,
+    /// The Messages body, a batch item's `params`.
+    params: Value,
+    endpoint: Endpoint,
+}
+
+/// The Messages endpoint a request was encoded for, and its headers (key,
+/// version, betas); the batch endpoints are under it.
+#[derive(Clone, Debug)]
+struct Endpoint {
+    url: String,
+    headers: HeaderMap,
 }
 
 /// The hold that keeps a batched call from being sent.
 #[derive(Component)]
 struct BatchHold;
 
-/// Items gathered for the next batch of each vendor.
+/// Calls gathered for the next batch.
 #[derive(Resource, Default)]
-struct Queue(HashMap<String, Vec<Entity>>);
+struct Queue(Vec<Entity>);
 
-/// The batches being polled, by vendor and id.
+/// The batches being polled.
 #[derive(Resource, Default)]
-struct Polled(HashSet<(String, String)>);
+struct Polled(HashSet<String>);
 
-/// A batch window: its vendor's queue is submitted when it is due.
+/// A batch window: the queue is submitted when it is due.
 #[derive(Component)]
-struct Window(String);
+struct Window;
 
 /// A submission on its way, with the calls it carries.
 #[derive(Component)]
 struct Submitting {
-    vendor: String,
     calls: Vec<Entity>,
+    endpoint: Endpoint,
 }
 
 /// A submission's answer: the batch id.
@@ -177,27 +153,42 @@ struct Submitted(Result<String, String>);
 /// A batch polled with backoff.
 #[derive(Component)]
 struct Poller {
-    vendor: String,
     batch: String,
+    endpoint: Endpoint,
     wait: Duration,
 }
 
-/// A poll's answer.
-struct PollAnswer(Result<Vec<(String, ItemState)>, String>);
+/// A poll's answer: each item's result by custom id once the batch ended.
+struct PollAnswer(Result<Option<HashMap<String, ItemResult>>, String>);
+
+/// One item's result, as a batch's results file has it.
+#[derive(Deserialize, Debug)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum ItemResult {
+    Succeeded { message: Value },
+    Errored { error: Value },
+    Canceled,
+    Expired,
+}
 
 /// Adds the batch models and sends their calls through batches.
 #[derive(Default)]
 pub struct BatchProviderPlugin;
+
+/// The plugin's stage systems: in [`GateSystems::After`], so a call a gate
+/// refused is never batched.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BatchSystems;
 
 impl Plugin for BatchProviderPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<BatchSettings>("batch")
             .register_type::<BatchWait>()
             .register_required_components::<Agent, BatchWait>()
-            .init_resource::<BatchEndpoints>()
             .init_resource::<Queue>()
             .init_resource::<Polled>()
-            .add_systems(AgentPass, take_over.in_set(Stage::Gate))
+            .configure_sets(AgentPass, BatchSystems.in_set(GateSystems::After))
+            .add_systems(AgentPass, take_over.in_set(BatchSystems))
             .add_observer(submit)
             .add_observer(submitted)
             .add_observer(poll)
@@ -207,25 +198,43 @@ impl Plugin for BatchProviderPlugin {
         app.add_systems(PostUpdate, status::show.in_set(rig_tui::StatusSystems));
     }
 
-    /// Mirrors the base vendors' models once every plugin added its own.
+    /// Mirrors Anthropic's models once every plugin added its own.
     fn finish(&self, app: &mut App) {
-        let mut models = app.world_mut().get_resource_or_init::<Models>();
-        for (base, batch) in VENDORS {
-            let Ok(id) = ProviderId::declare(batch) else {
-                continue;
-            };
-            let twins: Vec<ModelSpec> = models
-                .0
-                .catalog()
-                .iter()
-                .filter(|spec| spec.provider.vendor() == base)
-                .map(|spec| twin(spec, id))
-                .collect();
-            for spec in twins {
-                models.0.catalog_mut().insert(spec);
-            }
-            models.0.provide(id, unbatched);
+        if !app.world().contains_resource::<BatchAccount>()
+            && let Ok(config) = AnthropicConfig::from_env()
+        {
+            app.insert_resource(BatchAccount(config));
         }
+        let Ok(id) = ProviderId::declare(VENDOR) else {
+            return;
+        };
+        let mut models = app.world_mut().get_resource_or_init::<Models>();
+        let twins: Vec<ModelSpec> = models
+            .0
+            .catalog()
+            .iter()
+            .filter(|spec| spec.provider.vendor() == BASE)
+            .map(|spec| twin(spec, id))
+            .collect();
+        for spec in twins {
+            models.0.catalog_mut().insert(spec);
+        }
+        models
+            .0
+            .provide(id, |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+                let descriptor = HandlerDescriptor {
+                    key: model_key(&spec.reference()),
+                    family: FamilyDescriptor::Completion {
+                        model: ModelRef::from(spec.reference()),
+                        capabilities: Default::default(),
+                    },
+                    layers: Vec::new(),
+                };
+                Ok(ErasedHandler::unavailable(
+                    descriptor,
+                    "answered from the batch API",
+                ))
+            });
     }
 }
 
@@ -244,52 +253,50 @@ fn twin(spec: &ModelSpec, id: ProviderId) -> ModelSpec {
     twin
 }
 
-/// The handler of a batch model: the plugin's Gate system answers every
-/// call to it, so one that reaches it was not batched.
-fn unbatched(spec: &ModelSpec, _: &Catalog, _: &Transport) -> Result<ErasedHandler, ConnectError> {
-    Ok(ErasedHandler::new(Unbatched(ModelRef::from(
-        spec.reference(),
-    ))))
-}
-
-struct Unbatched(ModelRef);
-
-impl Serve for Unbatched {
-    type Family = family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: model_key(self.0.as_str()),
-            family: FamilyDescriptor::Completion {
-                model: self.0.clone(),
-                capabilities: ProviderCapabilities::default(),
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
-        let why = "a batch model is answered only through its batch";
-        Reply::Outcome(Err(ErrorReport::new(ErrorKind::HandlerUnavailable, why)))
-    }
-}
-
-fn now_secs(at: SystemTime) -> u64 {
-    at.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
-}
-
 fn task_pool() -> &'static bevy_tasks::TaskPool {
     bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default)
 }
 
-/// Holds each model call about to go to a batch model and queues it, or
-/// attaches a turn's call to the item its agent saved before a restart.
-#[allow(clippy::too_many_arguments)]
+fn failed(why: impl Into<String>) -> Outcome {
+    Outcome(Err(ErrorReport::new(ErrorKind::Provider, why)))
+}
+
+/// `request` to the batch model `spec`, encoded as a live unary call to
+/// Anthropic's model would send it, by a wire bound to `spec`'s facts.
+fn encode(
+    account: &AnthropicConfig,
+    http: DynHttpClient,
+    catalog: &Catalog,
+    spec: &ModelSpec,
+    request: CompletionRequest,
+) -> Result<(Messages, Value, Endpoint), String> {
+    let model = account.clone().connect(http).completion(&spec.id);
+    let facts = ModelFacts::new(spec.clone()).with_catalog(catalog);
+    let wire = model.wire.with_facts(facts);
+    let encoded = wire
+        .encode(request, Mode::Unary)
+        .map_err(|error| error.to_string())?;
+    let (parts, body) = encoded.request.into_parts();
+    let Body::Bytes(body) = body else {
+        return Err("a multipart request cannot go in a batch".to_owned());
+    };
+    let params = serde_json::from_slice(&body).map_err(|error| error.to_string())?;
+    let endpoint = Endpoint {
+        url: parts.uri.to_string(),
+        headers: parts.headers,
+    };
+    Ok((wire, params, endpoint))
+}
+
+/// Holds each model call to a batch model and queues it, or attaches a
+/// turn's call to the item its agent saved before a restart.
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn take_over(
     mut calls: Query<
         (
             Entity,
             &ModelRequest,
+            Option<&Adapters>,
             &Effect,
             &mut Decision,
             Option<&ForAgent>,
@@ -297,36 +304,47 @@ fn take_over(
         ),
         (Undecided, ModelCalls, Without<Batched>),
     >,
-    agents: Query<(Option<&Connection>, &AgentId, &BatchWait)>,
-    endpoints: Res<BatchEndpoints>,
-    settings: Res<BatchSettings>,
-    invoked: Option<Res<Invoked>>,
+    starts: ModelStarts,
+    agents: Query<&BatchWait>,
+    (models, account, settings, invoked): (
+        Res<Models>,
+        Option<Res<BatchAccount>>,
+        Res<BatchSettings>,
+        Option<Res<Invoked>>,
+    ),
     (mut queue, mut polled): (ResMut<Queue>, ResMut<Polled>),
     mut warned: Local<bool>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    for (call, request, effect, mut decision, agent, turn_call) in &mut calls {
+    for (call, model, adapters, effect, mut decision, agent, turn_call) in &mut calls {
+        let agent = agent.map(|agent| agent.0);
         if decision.is_decided() {
             continue;
         }
-        let agent = agent.map(|agent| agent.0);
-        let owner = agent.and_then(|agent| agents.get(agent).ok());
-        let connection = request
-            .connection
-            .as_ref()
-            .or_else(|| owner.and_then(|(connection, ..)| connection));
-        let Some(connection) = connection else {
+        let Ok((connection, request)) = starts.sent(model, adapters, agent) else {
             continue;
         };
-        let vendor = connection.spec.provider.vendor();
-        if !VENDORS.iter().any(|(_, batch)| *batch == vendor) {
+        if connection.spec.provider.vendor() != VENDOR {
             continue;
         }
-        let Some(api) = endpoints.0.get(vendor) else {
-            let why = format!("no batch endpoint is set up for `{vendor}`");
-            decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))));
+        let (Some(account), Some(http)) = (&account, models.0.transport().shared()) else {
+            let why = "batch models need ANTHROPIC_API_KEY and an HTTP client";
+            decision.decide(Decider::plugin(NAME), failed(why));
             continue;
+        };
+        let (wire, params, endpoint) = match encode(
+            &account.0,
+            http,
+            models.0.catalog(),
+            &connection.spec,
+            request.clone(),
+        ) {
+            Ok(encoded) => encoded,
+            Err(why) => {
+                decision.decide(Decider::plugin(NAME), failed(why));
+                continue;
+            }
         };
         if !*warned && invoked.as_deref().is_some_and(Invoked::interactive) {
             *warned = true;
@@ -334,42 +352,32 @@ fn take_over(
                 "Batch models answer through the provider's batch API: a reply may take hours.";
             notices.write(Notice::warn(agent, text));
         }
-        let saved = owner
-            .and_then(|(.., wait)| wait.0.clone())
-            .filter(|saved| turn_call && saved.vendor == vendor);
-        let id = owner.map_or_else(|| "app".to_owned(), |(_, id, _)| id.0.clone());
-        let mut item = BatchItem {
-            custom_id: format!("{id}-{}", effect.id().as_u64()),
-            model: connection.spec.id.clone(),
-            request: request.request.clone(),
-        };
         let mut batched = Batched {
-            vendor: vendor.to_owned(),
-            item: item.clone(),
+            custom_id: format!("rig-{}", effect.id().as_u64()),
             batch: None,
             since: SystemTime::now(),
             resubmitted: false,
-            pricing: connection.spec.pricing,
+            wire,
+            request,
+            params,
+            endpoint,
         };
+        let saved = agent
+            .and_then(|agent| agents.get(agent).ok())
+            .and_then(|wait| wait.0.clone())
+            .filter(|_| turn_call);
         if let Some(saved) = saved {
-            // Carried on after a restart: wait for the saved item.
-            item.custom_id.clone_from(&saved.custom_id);
-            batched.item = item;
-            batched.batch = Some(saved.batch.clone());
+            // Run again after a restart: wait for the saved item.
+            batched.custom_id = saved.custom_id;
             batched.since = UNIX_EPOCH + Duration::from_secs(saved.since);
             batched.resubmitted = saved.resubmitted;
-            if polled.0.insert((saved.vendor.clone(), saved.batch.clone())) {
-                commands.spawn(poller(&settings, saved.vendor, saved.batch));
+            if polled.0.insert(saved.batch.clone()) {
+                let endpoint = batched.endpoint.clone();
+                commands.spawn(poller(&settings, saved.batch.clone(), endpoint));
             }
+            batched.batch = Some(saved.batch);
         } else {
-            enqueue(
-                &mut queue,
-                &settings,
-                api.limit(),
-                vendor,
-                call,
-                &mut commands,
-            );
+            enqueue(&mut queue, &settings, call, &mut commands);
         }
         commands.entity(call).insert(batched);
         commands.spawn((
@@ -381,89 +389,141 @@ fn take_over(
     }
 }
 
-/// Adds `call` to its vendor's next batch, opening its window, or closing
-/// it at once when the batch is full.
-fn enqueue(
-    queue: &mut Queue,
-    settings: &BatchSettings,
-    limit: usize,
-    vendor: &str,
-    call: Entity,
-    commands: &mut Commands,
-) {
-    let calls = queue.0.entry(vendor.to_owned()).or_default();
-    calls.push(call);
-    if calls.len() == 1 {
+/// Adds `call` to the next batch, opening its window, or closing it at
+/// once when the batch is full.
+fn enqueue(queue: &mut Queue, settings: &BatchSettings, call: Entity, commands: &mut Commands) {
+    queue.0.push(call);
+    if queue.0.len() == 1 {
         let window = WakeAt::after(Duration::from_millis(settings.window_ms));
-        commands.spawn((Window(vendor.to_owned()), window));
-    } else if calls.len() >= limit {
-        commands.spawn((Window(vendor.to_owned()), WakeAt(SystemTime::UNIX_EPOCH)));
+        commands.spawn((Window, window));
+    } else if queue.0.len() == LIMIT {
+        commands.spawn((Window, WakeAt(UNIX_EPOCH)));
     }
 }
 
-fn poller(settings: &BatchSettings, vendor: String, batch: String) -> impl Bundle {
+fn poller(settings: &BatchSettings, batch: String, endpoint: Endpoint) -> impl Bundle {
     let wait = Duration::from_secs(settings.first_poll_secs);
-    (
-        Poller {
-            vendor,
-            batch,
-            wait,
-        },
-        WakeAt::after(wait),
-    )
+    let poller = Poller {
+        batch,
+        endpoint,
+        wait,
+    };
+    (poller, WakeAt::after(wait))
 }
 
-/// Submits a vendor's queue when its window closes.
+/// Sends `body` with `method` to `url` with `headers`; the reply's body,
+/// or why it failed.
+async fn send(
+    http: DynHttpClient,
+    method: &str,
+    url: String,
+    headers: HeaderMap,
+    body: Option<Value>,
+) -> Result<Bytes, String> {
+    let mut request = Request::builder().method(method).uri(url);
+    if let Some(slot) = request.headers_mut() {
+        *slot = headers;
+    }
+    let body = body.map(|body| body.to_string().into_bytes());
+    let request = request
+        .body(body.unwrap_or_default())
+        .map_err(|error| error.to_string())?;
+    let response = http
+        .send::<_, Bytes>(request)
+        .await
+        .map_err(|error| error.to_string())?;
+    let status = response.status();
+    let body = response
+        .into_body()
+        .await
+        .map_err(|error| error.to_string())?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!("{status}: {}", String::from_utf8_lossy(&body)))
+    }
+}
+
+/// A batch as the API describes it.
+#[derive(Deserialize)]
+struct BatchStatus {
+    id: String,
+    processing_status: String,
+    results_url: Option<String>,
+}
+
+fn status_of(body: &[u8]) -> Result<BatchStatus, String> {
+    serde_json::from_slice(body).map_err(|error| error.to_string())
+}
+
+/// Submits the queue when its window closes, up to the batch limit; the
+/// rest go in the next batch at once.
 fn submit(
     due: On<Add<Due>>,
-    windows: Query<&Window>,
+    windows: Query<(), With<Window>>,
     calls: Query<&Batched>,
-    endpoints: Res<BatchEndpoints>,
+    models: Res<Models>,
     mut queue: ResMut<Queue>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let Ok(Window(vendor)) = windows.get(due.entity) else {
+    if !windows.contains(due.entity) {
         return;
-    };
-    let mut window = commands.entity(due.entity);
-    window.remove::<Window>();
-    let taken = queue.0.remove(vendor).unwrap_or_default();
-    let (Some(api), false) = (endpoints.0.get(vendor), taken.is_empty()) else {
-        window.despawn();
-        return;
-    };
-    let items: Vec<BatchItem> = taken
+    }
+    let full = LIMIT.min(queue.0.len());
+    let rest = queue.0.split_off(full);
+    let taken = std::mem::replace(&mut queue.0, rest);
+    if !queue.0.is_empty() {
+        commands.spawn((Window, WakeAt(UNIX_EPOCH)));
+    }
+    let items: Vec<&Batched> = taken
         .iter()
         .filter_map(|&call| calls.get(call).ok())
-        .map(|batched| batched.item.clone())
         .collect();
-    let sending = api.submit(items);
-    let work = async move { Submitted(sending.await) };
-    window.insert((
+    let (Some(first), Some(http)) = (items.first(), models.0.transport().shared()) else {
+        commands.entity(due.entity).despawn();
+        return;
+    };
+    let endpoint = first.endpoint.clone();
+    let requests: Vec<Value> = items
+        .iter()
+        .map(|item| json!({"custom_id": item.custom_id, "params": item.params}))
+        .collect();
+    let sending = send(
+        http,
+        "POST",
+        format!("{}/batches", endpoint.url),
+        endpoint.headers.clone(),
+        Some(json!({ "requests": requests })),
+    );
+    let work = async move { Submitted(sending.await.and_then(|body| Ok(status_of(&body)?.id))) };
+    commands.entity(due.entity).remove::<Window>().insert((
         Submitting {
-            vendor: vendor.clone(),
             calls: taken,
+            endpoint,
         },
         Running::spawn(task_pool(), &wake, work),
     ));
 }
 
 /// Notes each call's batch, on its agent too for a turn's call, and starts
-/// polling; a refused submission fails its calls.
-#[allow(clippy::too_many_arguments)]
+/// polling; a refused submission fails its calls. A batch whose every call
+/// was stopped meanwhile is cancelled.
+#[allow(clippy::type_complexity)]
 fn submitted(
     done: On<Insert<Done<Submitted>>>,
     submissions: Query<(&Submitting, &Done<Submitted>)>,
-    mut calls: Query<(
-        &mut Batched,
-        &mut Decision,
-        Option<&ForAgent>,
-        Has<TurnCall>,
-    )>,
+    mut calls: Query<
+        (
+            &mut Batched,
+            &mut Decision,
+            Option<&ForAgent>,
+            Has<TurnCall>,
+        ),
+        Without<Settled>,
+    >,
     mut agents: Query<&mut BatchWait>,
-    settings: Res<BatchSettings>,
-    mut polled: ResMut<Polled>,
+    (models, settings, mut polled): (Res<Models>, Res<BatchSettings>, ResMut<Polled>),
     holds: Query<(Entity, &HoldOf), With<BatchHold>>,
     mut commands: Commands,
 ) {
@@ -471,38 +531,57 @@ fn submitted(
         return;
     };
     commands.entity(done.entity).despawn();
-    let vendor = &submitting.vendor;
+    let mut waiting = false;
     for &call in &submitting.calls {
         let Ok((mut batched, mut decision, agent, turn_call)) = calls.get_mut(call) else {
             continue;
         };
+        waiting = true;
         match answer {
             Ok(batch) => {
                 batched.batch = Some(batch.clone());
                 if let (true, Some(agent)) = (turn_call, agent)
                     && let Ok(mut wait) = agents.get_mut(agent.0)
                 {
+                    let since = batched.since.duration_since(UNIX_EPOCH);
                     wait.0 = Some(PendingItem {
-                        vendor: vendor.clone(),
                         batch: batch.clone(),
-                        custom_id: batched.item.custom_id.clone(),
-                        since: now_secs(batched.since),
+                        custom_id: batched.custom_id.clone(),
+                        since: since.unwrap_or_default().as_secs(),
                         resubmitted: batched.resubmitted,
                     });
                 }
             }
             Err(why) => {
                 let why = format!("the batch was not accepted: {why}");
-                decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))));
+                decision.decide(Decider::plugin(NAME), failed(why));
                 release(call, &holds, &mut commands);
             }
         }
     }
-    if let Ok(batch) = answer
-        && polled.0.insert((vendor.clone(), batch.clone()))
-    {
-        commands.spawn(poller(&settings, vendor.clone(), batch.clone()));
+    let Ok(batch) = answer else {
+        return;
+    };
+    if !waiting {
+        cancel(&models, &submitting.endpoint, batch);
+    } else if polled.0.insert(batch.clone()) {
+        let endpoint = submitting.endpoint.clone();
+        commands.spawn(poller(&settings, batch.clone(), endpoint));
     }
+}
+
+/// Cancels `batch` at the provider; nothing waits for the answer.
+fn cancel(models: &Models, endpoint: &Endpoint, batch: &str) {
+    let Some(http) = models.0.transport().shared() else {
+        return;
+    };
+    let url = format!("{}/batches/{batch}/cancel", endpoint.url);
+    let cancel = send(http, "POST", url, endpoint.headers.clone(), None);
+    task_pool()
+        .spawn(async move {
+            cancel.await.ok();
+        })
+        .detach();
 }
 
 /// Lets go of a call's batch hold.
@@ -518,36 +597,58 @@ fn release(
     }
 }
 
-/// Polls a batch when its wait is over.
+/// Polls a batch when its wait is over: its status, then its results once
+/// it ended.
 fn poll(
     due: On<Add<Due>>,
     pollers: Query<&Poller, Without<Running>>,
-    endpoints: Res<BatchEndpoints>,
+    models: Res<Models>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let Ok(poller) = pollers.get(due.entity) else {
+    let (Ok(poller), Some(http)) = (pollers.get(due.entity), models.0.transport().shared()) else {
         return;
     };
-    let Some(api) = endpoints.0.get(&poller.vendor) else {
-        return;
+    let url = format!("{}/batches/{}", poller.endpoint.url, poller.batch);
+    let headers = poller.endpoint.headers.clone();
+    let work = async move {
+        let answer = async {
+            let status = status_of(&send(http.clone(), "GET", url, headers.clone(), None).await?)?;
+            let (Some(results), "ended") = (status.results_url, status.processing_status.as_str())
+            else {
+                return Ok(None);
+            };
+            let lines = send(http, "GET", results, headers, None).await?;
+            let mut items = HashMap::new();
+            for line in lines.split(|&byte| byte == b'\n') {
+                if line.iter().all(u8::is_ascii_whitespace) {
+                    continue;
+                }
+                #[derive(Deserialize)]
+                struct Line {
+                    custom_id: String,
+                    result: ItemResult,
+                }
+                let line: Line = serde_json::from_slice(line).map_err(|error| error.to_string())?;
+                items.insert(line.custom_id, line.result);
+            }
+            Ok(Some(items))
+        };
+        PollAnswer(answer.await)
     };
-    let asking = api.poll(poller.batch.clone());
-    let work = async move { PollAnswer(asking.await) };
     commands
         .entity(due.entity)
         .insert(Running::spawn(task_pool(), &wake, work));
 }
 
-/// Answers each call whose item ended, sends an expired one again once,
-/// and polls again later while any call waits for the batch.
+/// Once a batch ended, answers each of its calls, sending an expired one
+/// again once; until then, polls again later.
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn polled(
     done: On<Insert<Done<PollAnswer>>>,
     mut pollers: Query<(&mut Poller, &Done<PollAnswer>)>,
     mut calls: Query<(Entity, &mut Batched, &mut Decision, Option<&ForAgent>)>,
     holds: Query<(Entity, &HoldOf), With<BatchHold>>,
-    endpoints: Res<BatchEndpoints>,
     settings: Res<BatchSettings>,
     (mut queue, mut polled): (ResMut<Queue>, ResMut<Polled>),
     mut notices: MessageWriter<Notice>,
@@ -556,112 +657,89 @@ fn polled(
     let Ok((mut poller, Done(PollAnswer(answer)))) = pollers.get_mut(done.entity) else {
         return;
     };
-    let states = match answer {
-        Ok(states) => states.as_slice(),
-        Err(why) => {
-            notices.write(Notice::warn(
-                None,
-                format!("Polling batch {}: {why}", poller.batch),
-            ));
-            &[]
+    let results = match answer {
+        Ok(Some(results)) => results,
+        Ok(None) | Err(_) => {
+            if let Err(why) = answer {
+                let text = format!("Polling batch {}: {why}", poller.batch);
+                notices.write(Notice::warn(None, text));
+            }
+            poller.wait = (poller.wait * 2).min(Duration::from_secs(settings.max_poll_secs));
+            commands
+                .entity(done.entity)
+                .remove::<Done<PollAnswer>>()
+                .insert(WakeAt::after(poller.wait));
+            return;
         }
     };
-    for (custom_id, state) in states {
-        let call = calls.iter_mut().find(|(_, batched, ..)| {
-            batched.batch.as_ref() == Some(&poller.batch) && batched.item.custom_id == *custom_id
-        });
-        let Some((call, mut batched, mut decision, agent)) = call else {
+    for (call, mut batched, mut decision, agent) in &mut calls {
+        if batched.batch.as_ref() != Some(&poller.batch) || decision.is_decided() {
             continue;
-        };
-        let failed = |why: String| Outcome(Err(ErrorReport::new(ErrorKind::Provider, why)));
-        let outcome = match state {
-            ItemState::Pending => continue,
-            ItemState::Succeeded(reply) => {
-                let mut reply = (**reply).clone();
-                if reply.usage.cost.is_none() {
-                    reply.usage.cost = batched.pricing.and_then(|price| price.cost(&reply.usage));
+        }
+        let outcome = match results.get(&batched.custom_id) {
+            Some(ItemResult::Succeeded { message }) => {
+                let body = WireFrame::Bytes(message.to_string().into_bytes());
+                match decode_reply(&batched.wire, &batched.request, Mode::Unary, [body]) {
+                    Ok(reply) => Outcome(Ok(effect::Outcome::Completion(reply))),
+                    Err(error) => failed(error.to_string()),
                 }
-                Outcome(Ok(effect::Outcome::Completion(reply)))
             }
-            ItemState::Expired if !batched.resubmitted => {
+            Some(ItemResult::Expired) if !batched.resubmitted => {
                 batched.resubmitted = true;
                 batched.batch = None;
-                let limit = endpoints.0.get(&poller.vendor).map_or(1, |api| api.limit());
-                enqueue(
-                    &mut queue,
-                    &settings,
-                    limit,
-                    &poller.vendor,
-                    call,
-                    &mut commands,
-                );
-                let agent = agent.map(|agent| agent.0);
-                notices.write(Notice::info(
-                    agent,
-                    "A batch request expired; sent once more.",
-                ));
+                enqueue(&mut queue, &settings, call, &mut commands);
+                let text = "A batch request expired; sent once more.";
+                notices.write(Notice::info(agent.map(|agent| agent.0), text));
                 continue;
             }
-            ItemState::Expired => failed("the batch request expired twice".to_owned()),
-            ItemState::Errored(why) => failed(why.clone()),
-            ItemState::Cancelled => failed("the batch request was cancelled".to_owned()),
+            Some(ItemResult::Expired) => failed("the batch request expired twice"),
+            Some(ItemResult::Errored { error }) => {
+                let message = error
+                    .pointer("/error/message")
+                    .or_else(|| error.get("message"))
+                    .and_then(Value::as_str);
+                failed(message.map_or_else(|| error.to_string(), str::to_owned))
+            }
+            Some(ItemResult::Canceled) => failed("the batch request was cancelled"),
+            None => failed("the batch ended without this request's result"),
         };
-        decision.decide(outcome);
+        decision.decide(Decider::plugin(NAME), outcome);
         release(call, &holds, &mut commands);
     }
-    let waiting = calls.iter().any(|(_, batched, decision, _)| {
-        batched.batch.as_ref() == Some(&poller.batch) && !decision.is_decided()
-    });
-    let max = Duration::from_secs(settings.max_poll_secs);
-    if waiting {
-        poller.wait = (poller.wait * 2).min(max);
-        commands
-            .entity(done.entity)
-            .remove::<Done<PollAnswer>>()
-            .insert(WakeAt::after(poller.wait));
-    } else {
-        polled
-            .0
-            .remove(&(poller.vendor.clone(), poller.batch.clone()));
-        commands.entity(done.entity).despawn();
-    }
+    polled.0.remove(&poller.batch);
+    commands.entity(done.entity).despawn();
 }
 
-/// Once a batched call settles: its agent waits no more, and an item
-/// stopped by an interrupt is cancelled at the provider. A restart does
-/// not settle the call, so its item stays saved.
+/// Once a batched call settles: its agent waits no more, and a call
+/// stopped before its batch answered (an interrupt) cancels the batch at
+/// the provider when no other call waits for it; one stopped while its
+/// batch is being submitted, once the batch has its id. A restart does not settle
+/// the call, so its item stays saved.
 fn settled(
     settled: On<Add<Settled>>,
-    calls: Query<(&Batched, &Outcome, Option<&ForAgent>, Has<TurnCall>)>,
+    calls: Query<(&Batched, &Decision, Option<&ForAgent>, Has<TurnCall>)>,
+    others: Query<(Entity, &Batched), Without<Settled>>,
     mut agents: Query<&mut BatchWait>,
-    endpoints: Res<BatchEndpoints>,
+    models: Res<Models>,
     mut queue: ResMut<Queue>,
 ) {
-    let Ok((batched, Outcome(outcome), agent, turn_call)) = calls.get(settled.entity) else {
+    let Ok((batched, decision, agent, turn_call)) = calls.get(settled.entity) else {
         return;
     };
-    if let Some(waiting) = queue.0.get_mut(&batched.vendor) {
-        waiting.retain(|&call| call != settled.entity);
-    }
+    queue.0.retain(|&call| call != settled.entity);
     if let (true, Some(agent)) = (turn_call, agent)
         && let Ok(mut wait) = agents.get_mut(agent.0)
     {
         wait.0 = None;
     }
-    let stopped = outcome
-        .as_ref()
-        .is_err_and(|report| report.kind == ErrorKind::Cancelled);
-    if let (true, Some(batch), Some(api)) = (
-        stopped,
-        batched.batch.clone(),
-        endpoints.0.get(&batched.vendor),
-    ) {
-        let cancel = api.cancel(batch, batched.item.custom_id.clone());
-        task_pool()
-            .spawn(async move {
-                cancel.await.ok();
-            })
-            .detach();
+    let Some(batch) = batched.batch.as_ref().filter(|_| !decision.is_decided()) else {
+        return;
+    };
+    let shared = others
+        .iter()
+        .any(|(call, other)| call != settled.entity && other.batch.as_ref() == Some(batch));
+    if !shared {
+        cancel(&models, &batched.endpoint, batch);
     }
 }
 

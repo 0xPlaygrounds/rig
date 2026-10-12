@@ -517,9 +517,8 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     let prompt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
         let long = "word ".repeat(8_000);
         for mut call in &mut calls {
-            match call.system_prompt_mut() {
-                Some(prompt) => prompt.insert_str(0, &long),
-                None => call.request.chat_history.insert(0, Message::system(&long)),
+            if let Some(prompt) = &mut call.prompt {
+                prompt.role.insert_str(0, &long);
             }
         }
     };
@@ -544,5 +543,60 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     assert!(
         matches!(sent.as_slice(), [summary, _] if summary.contains("You summarize a conversation")),
         "a summary, then the request: {sent:?}"
+    );
+}
+
+/// The requests a turn near a 40k window makes when its compacted request
+/// still overflows, with `per_turn` summaries a turn, and its answer.
+fn overflow_after_a_summary(per_turn: u32) -> (Vec<String>, Option<String>) {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.world_mut().resource_mut::<Compaction>().0.per_turn = per_turn;
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe first summary."),
+        too_long(),
+        reply("## Goal\nThe second summary."),
+        reply("done"),
+    ]);
+    let Some(agent) = agent(&mut app, &model, 40_000, long_conversation(6)) else {
+        return (Vec::new(), None);
+    };
+    ask(&mut app, &wakes, agent);
+    (sent(&model), answer(&app))
+}
+
+#[test]
+fn a_turn_asks_for_at_most_per_turn_summaries() {
+    let summaries = |sent: &[String]| {
+        let summary = |request: &&String| request.contains("You summarize a conversation");
+        sent.iter().filter(summary).count()
+    };
+    // By default a second summary rescues the turn.
+    let (sent, answer) = overflow_after_a_summary(2);
+    assert_eq!(
+        (summaries(&sent), answer.as_deref()),
+        (2, Some("done")),
+        "{sent:?}"
+    );
+    // With one a turn, the overflow after the first ends the turn.
+    let (sent, answer) = overflow_after_a_summary(1);
+    assert_eq!(
+        (summaries(&sent), sent.len(), answer),
+        (1, 2, None),
+        "{sent:?}"
+    );
+}
+
+#[test]
+fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
+    let one = compacted_text((1, 100), (1, 38), 500);
+    assert!(
+        one.starts_with("Compacted 1 message (about 100 tokens)")
+            && one.contains("kept the newest message (about 38 tokens) as it was;"),
+        "{one}"
+    );
+    let two = compacted_text((42, 17_000), (2, 38), 500);
+    assert!(
+        two.contains("kept the newest 2 messages (about 38 tokens) as they were;"),
+        "{two}"
     );
 }

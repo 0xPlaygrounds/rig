@@ -6,7 +6,7 @@ use bevy_ecs::prelude::*;
 use rig_ecs::agent::Notice;
 use rig_harness::harness_protocol::Home;
 use rig_harness::pick::{PickItem, Picker};
-use rig_harness::prelude::SessionPaths;
+use rig_harness::prelude::{SessionPaths, SessionStores};
 use rig_tui::{AppStatus, Side, StatusItem, StatusSystems, Tone};
 
 use super::{SessionTitle, list};
@@ -32,14 +32,14 @@ fn show_name(title: Res<SessionTitle>, mut status: ResMut<AppStatus>) {
 /// Lets the user pick an earlier session under `home` to resume.
 pub(super) fn pick_session(
     agent: Entity,
-    (home, paths): (&Home, Option<&SessionPaths>),
+    (home, stores, paths): (&Home, &SessionStores, Option<&SessionPaths>),
     notices: &mut MessageWriter<Notice>,
     commands: &mut Commands,
 ) {
     let Some(paths) = paths else {
         return;
     };
-    let items: Vec<PickItem> = list(home, paths.path())
+    let items: Vec<PickItem> = list(home, stores, paths.path())
         .into_iter()
         .map(|session| PickItem {
             label: session.label(),

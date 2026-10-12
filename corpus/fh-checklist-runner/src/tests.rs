@@ -134,7 +134,7 @@ fn items_run_in_order_fail_block_tick_the_file_and_a_rerun_carries_on() {
         "{:?}",
         app.world()
             .get::<Conversation>(owner)
-            .map(Conversation::messages)
+            .map(|conversation| conversation.messages())
     );
 
     // Rerun after making 2 succeed: the user retries it when asked.

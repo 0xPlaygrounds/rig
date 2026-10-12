@@ -312,10 +312,13 @@ fn decide(
     let Ok(mut decision) = calls.get_mut(call) else {
         return;
     };
-    decision.decide(match result {
-        Ok(text) => ToolResult::success(text.into()),
-        Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
-    });
+    decision.decide(
+        Decider::plugin("background-jobs"),
+        match result {
+            Ok(text) => ToolResult::success(text.into()),
+            Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
+        },
+    );
 }
 
 fn pool() -> &'static TaskPool {

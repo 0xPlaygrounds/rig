@@ -115,7 +115,8 @@ fn new(home: &Home, name: &str) -> Result<()> {
         "Made the plugin crate {} with `{library}::{type_name}`, which adds /{name},\n\
          and listed it in {}.\n\
          `rig plugin check --build` builds the agent with it; /reload in the agent,\n\
-         or `rig build`, builds it and applies it.",
+         or `rig build`, builds it and applies it. Its src/lib.rs lists what else a\n\
+         plugin adds, such as a top-level `rig {name}` command of its own.",
         directory.display(),
         config_path.display()
     );

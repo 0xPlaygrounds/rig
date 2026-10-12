@@ -5,11 +5,9 @@ use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::{ReadTool, ShellTool, WriteTool};
 use rig_core::completion::{CompletionRequest, Message as Chat};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
-use rig_harness::harness_protocol::Invocation;
-use rig_harness::rig_ecs::journal::read_session;
+use rig_harness::prelude::read_session;
 use rig_harness_test_support::{
-    Collected, Ended, answer_open, app_on, collect, connect, first_agent, log_ended, reply,
-    run_until,
+    Ended, answer_open, app_on, connect, first_agent, log_ended, reply, run_until,
 };
 use serde_json::json;
 
@@ -34,24 +32,19 @@ fn start(
     dir: &Path,
 ) -> (App, Receiver<()>, Entity) {
     let (mut app, wakes) = app_on(store);
-    app.insert_resource(Invoked {
-        args: Invocation::default(),
-        terminal: true,
-    })
-    .insert_resource(StepEditor(None))
-    .add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        ShellTool,
-        WriteTool,
-        ReadTool,
-        StepModePlugin,
-    ))
-    .init_resource::<Ended>()
-    .add_observer(log_ended)
-    .init_resource::<Ran>()
-    .add_observer(log_started);
-    collect::<Notice>(&mut app);
+    app.insert_resource(StepEditor(None))
+        .add_plugins((
+            AgentPlugin,
+            JournalPlugin,
+            ShellTool,
+            WriteTool,
+            ReadTool,
+            StepModePlugin,
+        ))
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .init_resource::<Ran>()
+        .add_observer(log_started);
     // A front someone sits at; the test answers its questions.
     app.world_mut().spawn(Answerer::default());
     app.finish();
@@ -79,12 +72,19 @@ fn workspace(name: &str) -> PathBuf {
     dir
 }
 
-/// Whether the question titled `title` is open.
-fn asking(world: &World, title: &str) -> bool {
-    let Some(mut asks) = world.try_query_filtered::<&Ask, Without<Outcome>>() else {
+/// Whether a question titled `title` whose body says `says` is open.
+fn asking_that(world: &World, title: &str, says: &str) -> bool {
+    let Some(mut asks) = world.try_query_filtered::<(&Ask, &Decision), Without<Outcome>>() else {
         return false;
     };
-    asks.iter(world).any(|ask| ask.title == title)
+    asks.iter(world).any(|(ask, decision)| {
+        ask.title == title && ask.body.contains(says) && !decision.is_decided()
+    })
+}
+
+/// Whether the question titled `title` is open.
+fn asking(world: &World, title: &str) -> bool {
+    asking_that(world, title, "")
 }
 
 /// Whether the call `id` started.
@@ -161,26 +161,22 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
         third,
         &Answer::Choice("edit".into())
     ));
-    let editing = |world: &World| {
-        let mut holds = world.try_query::<&StepHold>()?;
-        Some(holds.iter(world).any(|hold| hold.kind == HoldKind::Editing))
+    let edit = "Edit the arguments of `write`";
+    run_until(&mut app, &wakes, |world| asking(world, edit));
+    let answer = |app: &mut App, text: &str| {
+        let text = Answer::Text(text.into());
+        assert!(answer_open(app.world_mut(), edit, &text));
     };
-    run_until(&mut app, &wakes, |world| editing(world) == Some(true));
 
-    // Arguments that are not JSON are refused, and the call waits.
-    send(&mut app, "{ oops");
-    let refused = |world: &World| {
-        let notices = &world.resource::<Collected<Notice>>().0;
-        notices
-            .iter()
-            .any(|notice| notice.text.contains("do not fit `write`"))
-    };
-    run_until(&mut app, &wakes, refused);
-    assert!(refused(app.world()));
+    // Arguments that are not JSON are refused, and asked for again.
+    answer(&mut app, "{ oops");
+    run_until(&mut app, &wakes, |world| {
+        asking_that(world, edit, "not JSON")
+    });
+    assert!(asking_that(app.world(), edit, "not JSON"));
     assert!(!started(app.world(), "c3"));
-    assert_eq!(editing(app.world()), Some(true));
 
-    send(&mut app, r#"{ "path": "notes.txt", "content": "y" }"#);
+    answer(&mut app, r#"{ "path": "notes.txt", "content": "y" }"#);
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
     });
@@ -204,8 +200,12 @@ fn calls_are_stepped_one_at_a_time_skipped_and_edited() {
         .map(|(_, arguments)| arguments)
         .collect();
     assert_eq!(writes, [&json!({ "path": "notes.txt", "content": "y" })]);
-    let notices = &app.world().resource::<Collected<Notice>>().0;
-    assert!(notices.iter().any(|notice| notice.text.contains(EDITED)));
+    let noted = app
+        .world_mut()
+        .query::<&TranscriptEntry>()
+        .iter(app.world())
+        .any(|entry| entry.title.contains(EDITED));
+    assert!(noted);
     // The saved conversation says the model asked for the edited call.
     let saved = read_session(&store).ok().unwrap_or_default();
     let calls: Vec<ToolCall> = (saved.agents.iter())

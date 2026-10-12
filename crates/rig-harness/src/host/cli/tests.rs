@@ -40,7 +40,7 @@ fn options_no_plugin_takes_are_refused_and_the_rest_listed() {
     let mut app = app(&["--serve=127.0.0.1:80", "--jsno"], false);
     let refused = refusal(&mut app).unwrap_or_default();
     assert!(refused.contains("unknown option `--jsno`"), "{refused}");
-    assert!(refused.contains("--serve=ADDR"), "{refused}");
+    assert!(refused.contains("--serve ADDR"), "{refused}");
     assert!(refused.contains("--json"), "{refused}");
     for args in [&["--serve"][..], &["--json=yes"]] {
         assert!(refusal(&mut self::app(args, false)).is_some(), "{args:?}");
@@ -65,4 +65,23 @@ fn a_terminal_no_front_takes_and_two_fronts_given_are_refused() {
     // Without a terminal and without a front, the run goes on headless.
     let mut headless = App::new();
     assert_eq!(refusal(&mut headless), None);
+}
+
+#[test]
+fn a_front_with_a_command_or_option_takes_only_the_runs_that_name_it() {
+    let mut app = App::new();
+    app.insert_resource(Invoked::default())
+        .add_front(
+            Front::new("stats")
+                .headless()
+                .on_command("stats", "", "Count"),
+        )
+        .add_front(
+            Front::new("web")
+                .headless()
+                .on_flag("web", "Serve a web page"),
+        )
+        .add_front(Front::new("print").headless());
+    assert!(app.runs_front("print"));
+    assert_eq!(refusal(&mut app), None);
 }

@@ -2163,14 +2163,16 @@ fn a_forced_choice_names_one_tool() {
     );
 }
 
-/// A request's cache breakpoint marks the end of the prefix it covers: the
-/// last block of the last turn in it, or the system prompt when it covers
-/// only that, beside the markers manual caching places, and never past the
-/// budget.
+/// A request's cache points mark the blocks they end: the final tool, the
+/// system prompt, the last block of the n-th turn; beside the markers manual
+/// caching places, and within the budget, keeping the points furthest into
+/// the request.
 #[test]
-fn a_cache_breakpoint_marks_the_end_of_its_prefix() {
-    let history = || {
-        completion_request_with_history(
+fn cache_points_mark_tools_system_and_messages() {
+    use completion::CachePoint::{Messages, System, Tools};
+
+    let history = |points: Vec<completion::CachePoint>| {
+        let mut request = completion_request_with_history(
             vec![
                 message::Message::from("a"),
                 message::Message::assistant("b"),
@@ -2178,18 +2180,22 @@ fn a_cache_breakpoint_marks_the_end_of_its_prefix() {
             ],
             Some("System prompt".to_owned()),
         )
+        .tools(vec![generic_tool("first"), generic_tool("last")]);
+        request.cache_points = points;
+        request
     };
-    let marked = |value: &Value| -> Vec<bool> {
-        value["messages"]
+    let marked = |value: &Value, list: &str| -> Vec<bool> {
+        value[list]
             .as_array()
             .unwrap()
             .iter()
-            .map(|message| {
-                message["content"]
+            .map(|item| match item.get("content") {
+                Some(content) => content
                     .as_array()
                     .unwrap()
                     .iter()
-                    .any(|block| block.get("cache_control").is_some())
+                    .any(|block| block.get("cache_control").is_some()),
+                None => item.get("cache_control").is_some(),
             })
             .collect()
     };
@@ -2204,33 +2210,36 @@ fn a_cache_breakpoint_marks_the_end_of_its_prefix() {
         .unwrap()
     };
 
-    let mut request = history();
-    request.cache_breakpoint = Some(3);
-    let value = body(request, false);
-    assert_eq!(marked(&value), [false, true, false]);
+    let value = body(history(vec![Tools, System, Messages(2)]), false);
+    assert_eq!(marked(&value, "tools"), [false, true]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [false, true, false]);
+
+    // A fifth point is one too many: the first in the request goes.
+    let five = vec![Messages(3), Tools, System, Messages(1), Messages(2)];
+    let value = body(history(five), false);
+    assert_eq!(marked(&value, "tools"), [false, false]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [true, true, true]);
+
+    // Beside manual caching: the tool, the system prompt, the point, the
+    // tail.
+    let value = body(history(vec![Messages(1)]), true);
+    assert_eq!(marked(&value, "tools"), [false, true]);
+    assert!(system_has_cache_control(&value));
+    assert_eq!(marked(&value, "messages"), [true, false, true]);
+
+    // No points, no markers of their own.
+    let value = body(history(Vec::new()), false);
+    assert_eq!(marked(&value, "tools"), [false, false]);
     assert!(!system_has_cache_control(&value));
-
-    let mut request = history();
-    request.cache_breakpoint = Some(1);
-    let value = body(request, false);
-    assert_eq!(marked(&value), [false, false, false]);
-    assert!(system_has_cache_control(&value));
-
-    // Beside manual caching: the system prompt, the breakpoint, the tail.
-    let mut request = history();
-    request.cache_breakpoint = Some(2);
-    let value = body(request, true);
-    assert_eq!(marked(&value), [true, false, true]);
-    assert!(system_has_cache_control(&value));
-
-    // No breakpoint, no marker of its own.
-    assert_eq!(marked(&body(history(), false)), [false, false, false]);
+    assert_eq!(marked(&value, "messages"), [false, false, false]);
 }
 
-/// A cache breakpoint never marks a block twice, skips a turn of thinking
+/// A cache point never marks a block twice, skips a turn of thinking
 /// alone, and places nothing once explicit tool markers spend the budget.
 #[test]
-fn a_cache_breakpoint_respects_markers_thinking_and_the_budget() {
+fn a_cache_point_respects_markers_thinking_and_the_budget() {
     let markers = |value: &Value| value.to_string().matches("cache_control").count();
     let body = |request: CompletionRequest, prompt_caching: bool| {
         request_body(Params {
@@ -2243,17 +2252,17 @@ fn a_cache_breakpoint_respects_markers_thinking_and_the_budget() {
         .unwrap()
     };
 
-    // Manual caching already marked the system prompt the breakpoint ends at.
+    // Manual caching already marked the system prompt the point ends at.
     let mut request = completion_request_with_history(
         vec![message::Message::from("a")],
         Some("System prompt".to_owned()),
     );
-    request.cache_breakpoint = Some(1);
+    request.cache_points = vec![completion::CachePoint::System];
     let value = body(request, true);
     assert!(system_has_cache_control(&value) && last_message_has_cache_control(&value));
     assert_eq!(markers(&value), 2);
 
-    // The breakpoint's last turn is thinking alone, which takes no marker.
+    // The point's last turn is thinking alone, which takes no marker.
     let thinking = json!({"type": "thinking", "thinking": "hm", "signature": "sig-1"});
     let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
     let reply =
@@ -2267,20 +2276,45 @@ fn a_cache_breakpoint_respects_markers_thinking_and_the_budget() {
         ],
         None,
     );
-    request.cache_breakpoint = Some(2);
+    request.cache_points = vec![completion::CachePoint::Messages(2)];
     let value = body(request, false);
     assert_eq!(value["messages"][1]["content"][0]["type"], "thinking");
     assert_eq!(markers(&value), 0);
 
-    // Four explicit tool markers leave none for the breakpoint.
+    // Four explicit tool markers leave none for the point.
     let tool = |name: &str| {
         json!({"name": name, "description": "d", "input_schema": {"type": "object"},
             "cache_control": {"type": "ephemeral"}})
     };
     let tools = ["t1", "t2", "t3", "t4"].map(tool);
     let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": tools})));
-    request.cache_breakpoint = Some(2);
+    request.cache_points = vec![completion::CachePoint::Messages(1)];
     let value = body(request, false);
     assert!(!system_has_cache_control(&value) && !last_message_has_cache_control(&value));
     assert_eq!(markers(&value), 4);
+}
+
+/// A repeated cache point marks its block once, a point past the history
+/// marks nothing, and a tools point with only deferred tools has no tool
+/// to mark.
+#[test]
+fn repeated_missing_and_deferred_cache_points_mark_nothing_more() {
+    use completion::CachePoint::{Messages, Tools};
+
+    let deferred = json!({"name": "later", "description": "d",
+        "input_schema": {"type": "object"}, "defer_loading": true});
+    let mut request = completion_request_with_tools(Vec::new(), Some(json!({"tools": [deferred]})));
+    request.cache_points = vec![Messages(1), Tools, Messages(9), Messages(1)];
+    let value = request_body(Params {
+        model: CLAUDE_SONNET_4_6,
+        request,
+        prompt_caching: false,
+        cache: None,
+        static_prefix_cache_ttl: None,
+    })
+    .unwrap();
+    assert_eq!(value["tools"][0]["defer_loading"], true);
+    assert!(value["tools"][0].get("cache_control").is_none());
+    assert!(last_message_has_cache_control(&value));
+    assert_eq!(value.to_string().matches("cache_control").count(), 1);
 }

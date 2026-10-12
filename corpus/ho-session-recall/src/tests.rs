@@ -11,7 +11,10 @@ use super::RecallPlugin;
 /// A `read` that finds a secret in every file.
 fn read(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("TOKEN=hunter2".into()));
+        call.decide(
+            Decider::plugin("test"),
+            ToolResult::success("TOKEN=hunter2".into()),
+        );
     }
 }
 
@@ -81,6 +84,7 @@ fn recall_finds_the_past_fix_and_never_the_current_session() {
     let broken = home.session(&"3000-3".parse().unwrap_or_else(|_| SessionId::generate()));
     std::fs::create_dir_all(broken.path()).ok();
     std::fs::write(broken.path().join("agent-x.jsonl"), "not json\n").ok();
+    broken.mark_saved().ok();
 
     let outputs = run_session(
         &home,

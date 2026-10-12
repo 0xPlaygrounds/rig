@@ -58,7 +58,10 @@ fn a_resent_effect_keeps_its_owner_and_its_hold() {
     );
 
     if let Some(mut decision) = world.get_mut::<Decision>(successor) {
-        decision.decide(rig_ecs::stage::Outcome::custom("checked"));
+        decision.decide(
+            rig_core::effect::Decider::plugin("test"),
+            rig_ecs::stage::Outcome::custom("checked"),
+        );
     }
     // Settled, the successor is despawned with the next frame's loop, which
     // releases its hold.

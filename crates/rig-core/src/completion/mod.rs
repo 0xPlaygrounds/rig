@@ -19,6 +19,7 @@ pub mod handle;
 pub mod history;
 pub mod message;
 pub mod options;
+pub mod prompt;
 pub mod provider_options;
 pub mod request;
 
@@ -30,6 +31,7 @@ pub use options::{
     CacheRetention, CheckError, Effort, GenerationOptions, OnUnsupported, Reasoning, ServiceTier,
     UnsupportedOption, Verbosity,
 };
+pub use prompt::{Section, SystemPrompt};
 pub use provider_options::{
     ExtensionOptions, OptionsError, ProviderExtension, ProviderOptions, ReplyExtras, SHARED,
 };

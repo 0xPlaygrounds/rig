@@ -281,6 +281,7 @@ fn run_check(
             lines: TAIL_LINES,
             bytes: MAX_BYTES,
         }),
+        ..Shell::default()
     };
     let args = ShellArgs::new(run.check.command.clone()).timeout_secs(TIMEOUT_SECS);
     let pool = IoTaskPool::get_or_init(TaskPool::default);

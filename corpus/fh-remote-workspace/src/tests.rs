@@ -16,8 +16,9 @@ use super::*;
 /// A fresh scratch directory under the test binary's: `local` (the
 /// project), `remote` (the fake remote project), `remote-home`, and the
 /// `ssh` stand-in, which runs its last argument with `sh` in
-/// `remote-home`, and fails as a dropped connection does once for a
-/// command saying `FAILONCE` while `fail-once` exists.
+/// `remote-home`. A command saying `FAILONCE` drops the connection once
+/// (while `fail-once` exists): it fails, and so does the next try, as if
+/// the host were still unreachable.
 fn scratch() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let base = exe
@@ -30,8 +31,9 @@ fn scratch() -> Option<PathBuf> {
     let b = base.display();
     let script = format!(
         "#!/bin/sh\nfor last; do :; done\n\
+         if [ -e '{b}/dropped' ]; then rm -f '{b}/dropped'; exit 255; fi\n\
          case \"$last\" in *FAILONCE*) if [ -e '{b}/fail-once' ]; then rm -f '{b}/fail-once'; \
-         exit 255; fi;; esac\n\
+         : > '{b}/dropped'; exit 255; fi;; esac\n\
          export HOME='{b}/remote-home'\ncd \"$HOME\" || exit 255\nexec sh -c \"$last\"\n"
     );
     let ssh = base.join("fake-ssh");
@@ -139,6 +141,7 @@ fn tools_act_on_the_remote_and_survive_a_dropped_connection() {
     // reconnect.
     let dropped = output(outputs, "c3");
     assert!(dropped.contains("connection to dev@fake lost"), "{dropped}");
+    assert!(!dropped.contains("[exit code"), "{dropped}");
     let back = output(outputs, "c4");
     assert!(
         back.contains("back") && back.contains("[exit code 0]"),

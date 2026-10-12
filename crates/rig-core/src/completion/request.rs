@@ -1218,14 +1218,30 @@ pub struct CompletionRequest {
     /// provider, above the mapped options and below `additional_params`.
     #[serde(default, skip_serializing_if = "ProviderOptions::is_empty")]
     pub provider_options: ProviderOptions,
-    /// How many leading messages of [`Self::chat_history`] are a stable
-    /// prefix that later requests repeat, so content after it (per-turn
+    /// Where a provider that caches prompts by marker (Anthropic's Messages
+    /// family) may mark the end of a stable prefix that later requests
+    /// repeat, beside its own markers, so content after it (per-turn
     /// memory, a reminder) does not cost the cached prefix. A provider that
-    /// takes cache markers (Anthropic's Messages family) marks the prefix's
-    /// end when it has a marker to spare; one that caches prefixes on its
-    /// own sends nothing for it. `None` marks nothing.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub cache_breakpoint: Option<usize>,
+    /// takes fewer markers keeps the points furthest into the request; one
+    /// that caches prefixes without markers ignores them. Empty marks
+    /// nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_points: Vec<CachePoint>,
+}
+
+/// A point in a [`CompletionRequest`] that ends a stable prefix, for
+/// [`CompletionRequest::cache_points`]. Prefixes run in the order a request
+/// is sent: tools, then the system prompt, then the messages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CachePoint {
+    /// After the tool definitions.
+    Tools,
+    /// After the system prompt.
+    System,
+    /// After the first `n` user and assistant messages. System messages
+    /// are not counted, wherever they sit; `Messages(0)` is [`Self::System`].
+    Messages(usize),
 }
 
 impl CompletionRequest {
@@ -1430,7 +1446,7 @@ impl CompletionRequest {
             accept_unknown_finish_reasons: false,
             options: GenerationOptions::default(),
             provider_options: ProviderOptions::default(),
-            cache_breakpoint: None,
+            cache_points: Vec::new(),
         }
     }
 

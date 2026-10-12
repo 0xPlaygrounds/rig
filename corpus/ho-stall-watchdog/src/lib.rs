@@ -213,7 +213,10 @@ fn model_due(
     };
     let what = if resent {
         let why = format!("the model sent nothing for {}", human(quiet));
-        if decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why)))) {
+        if decision.decide(
+            Decider::plugin("ho-stall-watchdog"),
+            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+        ) {
             stall.ended = Some("failed");
         }
         "giving up"
@@ -263,7 +266,10 @@ fn tool_due(
     let mut timer = commands.entity(due.entity);
     if let Some(kill) = kill.filter(|kill| ran >= *kill) {
         let why = format!("stopped by the stall watchdog after {}", human(kill));
-        if decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why)))) {
+        if decision.decide(
+            Decider::plugin("ho-stall-watchdog"),
+            Outcome(Err(ErrorReport::new(ErrorKind::Timeout, why))),
+        ) {
             let text = format!("{name} stopped after {}.", human(ran));
             notices.write(Notice::warn(agent, text));
             timer.insert(Stall {

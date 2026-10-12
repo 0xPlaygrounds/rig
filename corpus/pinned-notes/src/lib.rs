@@ -13,7 +13,7 @@
 
 use rig_compaction::Summarizing;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::Message;
+use rig_harness::rig_core::completion::{Message, Section};
 use rig_subagents::{SpawnSubagent, SpawnedAgent, TASK};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -308,7 +308,7 @@ fn on_pin_note(
         }
     };
     if let Ok(mut decision) = calls.get_mut(called.call) {
-        decision.decide(result);
+        decision.decide(Decider::plugin("pinned-notes"), result);
     }
 }
 
@@ -336,12 +336,18 @@ fn tell_summaries(
              summary:\n{}",
             pins.listed()
         );
-        match call.system_prompt_mut() {
-            Some(prompt) => {
-                prompt.push_str("\n\n");
-                prompt.push_str(&note);
+        if let Some(prompt) = &mut call.prompt {
+            prompt
+                .sections
+                .push(Section::new("pinned_notes_kept", note));
+            continue;
+        }
+        match call.request.chat_history.first_mut() {
+            Some(Message::System { content }) => {
+                content.push_str("\n\n");
+                content.push_str(&note);
             }
-            None => call.request.chat_history.insert(0, Message::system(note)),
+            _ => call.request.chat_history.insert(0, Message::system(note)),
         }
     }
 }

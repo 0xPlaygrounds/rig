@@ -109,7 +109,10 @@ fn home(name: &str) -> Home {
 /// Everything in `host`'s conversation.
 fn said(world: &World, host: Entity) -> String {
     let conversation = world.get::<Conversation>(host);
-    format!("{:?}", conversation.map(Conversation::messages))
+    format!(
+        "{:?}",
+        conversation.map(|conversation| conversation.messages())
+    )
 }
 
 /// Whether `host`'s pipeline ended and its report was answered.

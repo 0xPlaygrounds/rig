@@ -140,3 +140,23 @@ fn clearing_keeps_the_newest_outputs_and_the_last_message() {
     }));
     assert_eq!(policy.clear(&mut messages), Cleared::default());
 }
+
+#[test]
+fn a_cut_rule_chooses_the_first_kept_message() {
+    // Keep from the newest question on, whatever the budget says.
+    let policy = CompactionPolicy {
+        cut: Cut::With(Arc::new(|messages, _, _, _| {
+            messages
+                .iter()
+                .rposition(|message| matches!(message, Message::User { .. }))
+        })),
+        ..CompactionPolicy::default()
+    };
+    let messages = turns(3);
+    let threshold = CompactReason::Threshold;
+    let budget = CompactionPolicy::default().cut(&messages, 0, &threshold, spec(200_000).as_ref());
+    assert_eq!(budget, None, "the budget keeps a short conversation");
+    assert_eq!(policy.cut(&messages, 0, &threshold, None), Some(4));
+    // An answer that summarizes nothing new counts as none.
+    assert_eq!(policy.cut(&messages, 4, &threshold, None), None);
+}
