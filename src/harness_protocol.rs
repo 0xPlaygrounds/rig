@@ -497,7 +497,7 @@ impl Invocation {
     /// `--print`, the first other word is a command, and every word after
     /// it is the command's.
     pub fn parse<S: AsRef<str>>(args: &[S]) -> Result<Self, String> {
-        read_args(args, |flag, _| Ok(plugin_flag(flag)?))
+        read_args(args, |flag, _| plugin_flag(flag))
     }
 
     /// The agent's own arguments, from the process's.
@@ -624,13 +624,13 @@ const DESCRIBED_HEADER: &str = "rig-describe 1";
 /// their options and the secrets they ask for. The launcher keeps one per
 /// build ([`Home::described`]) and reads the command line against it.
 ///
-/// The text form is a header line, then one tab-separated line each:
+/// The text form is a header line, then one line each, its fields separated by tabs (shown here as `⇥`):
 ///
 /// ```text
 /// rig-describe 1
-/// command	stats	-	headless	sessionless	Count the saved sessions
-/// flag	remote	HOST:PATH	Work in a directory on another machine over SSH
-/// secret	crypt	Passphrase for this machine's sessions
+/// command ⇥ stats ⇥ - ⇥ headless ⇥ sessionless ⇥ Count the saved sessions
+/// flag ⇥ remote ⇥ HOST:PATH ⇥ Work in a directory on another machine over SSH
+/// secret ⇥ crypt ⇥ Passphrase for this machine's sessions
 /// ```
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Described {

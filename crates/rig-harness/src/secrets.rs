@@ -8,7 +8,7 @@
 //! an interactive start, asks the user for each one the environment does
 //! not hold, once per launcher, whatever the restarts. A secret reaches
 //! the agent's process alone, as the variable
-//! [`secret_variable`](rig::harness_protocol::secret_variable) of its name
+//! [`rig::harness_protocol::secret_variable`] of its name
 //! (`RIG_SECRET_CRYPT`); a headless run gets only what the environment
 //! has. A secret not given is `None`, and the plugin decides what then.
 //!
