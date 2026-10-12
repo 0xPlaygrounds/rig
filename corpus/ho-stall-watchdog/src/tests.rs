@@ -66,7 +66,8 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
         reply("ok"),
     ]);
     let home = scratch_home("stall-watchdog");
-    let (mut app, wakes) = app_in(&home, &SessionId::generate());
+    let session = SessionId::generate();
+    let (mut app, wakes) = app_in(&home, &session);
     let settings = "[stall_watchdog]\nmodel_timeout = 0.2\n\
                     [stall_watchdog.tools.sleepy]\nsoft_limit = 0.2\n";
     app.insert_resource(Settings::from_toml(settings))
@@ -144,4 +145,15 @@ fn a_stalled_stream_is_sent_again_and_a_long_tool_is_reported() {
         })
         .collect();
     assert_eq!(ended, [("model", "retried"), ("tool", "finished")], "{log}");
+
+    // The session's next app restores it without a word about its logs.
+    drop(app);
+    let (mut app, _) = app_in(&home, &session);
+    app.add_plugins((AgentPlugin, JournalPlugin, StallWatchdogPlugin));
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let failed = notices.iter().any(|notice| notice.text.contains("restore"));
+    assert!(!failed, "{notices:?}");
 }

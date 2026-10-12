@@ -7,7 +7,7 @@
 //! and sent again once ([`resend`]); a second stall fails it. A tool call
 //! past its soft limit is reported, shown on the status line while it
 //! runs, and stopped only past its `kill_after`. Each stall is a line of
-//! `<session dir>/stalls.jsonl`, which `/stalls` lists.
+//! `<session dir>/stall-watchdog/stalls.jsonl`, which `/stalls` lists.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs::OpenOptions;
@@ -24,8 +24,9 @@ use serde::{Deserialize, Serialize};
 /// The settings table's name.
 const NAME: &str = "stall_watchdog";
 
-/// The file of a session's stalls.
-const FILE: &str = "stalls.jsonl";
+/// The file of a session's stalls, in a directory of the plugin's own: a
+/// top-level `*.jsonl` of the session's is an agent's log.
+const FILE: &str = "stall-watchdog/stalls.jsonl";
 
 /// After the status; gone before most items when the line is narrow.
 const PLACE: StatusItem = StatusItem::at(Side::Left, 55, 9);
@@ -353,10 +354,11 @@ fn settled(
     let written = serde_json::to_string(&entry)
         .map_err(std::io::Error::other)
         .and_then(|line| {
-            let mut file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(file(&paths))?;
+            let path = file(&paths);
+            if let Some(dir) = path.parent() {
+                std::fs::create_dir_all(dir)?;
+            }
+            let mut file = OpenOptions::new().create(true).append(true).open(path)?;
             writeln!(file, "{line}")
         });
     if let Err(failure) = written {
