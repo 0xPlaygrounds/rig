@@ -15,7 +15,7 @@ use bevy_time::{Time, TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
-use rig_core::completion::{Message, Reasoning, ToolDefinition};
+use rig_core::completion::{Message, Reasoning, Section, ToolDefinition};
 use rig_core::effect::{EffectId, EffectRecord, HandlerKey, tool_key};
 use rig_core::message::{ToolName, UserContent};
 use rig_core::operation::Completion;
@@ -487,8 +487,10 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let route = connection(&routed);
     let reshape = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
         for mut call in &mut calls {
-            if let Some(prompt) = call.system_prompt_mut() {
-                prompt.push_str("\n\nPlan only.");
+            if let Some(prompt) = &mut call.prompt {
+                prompt
+                    .sections
+                    .push(Section::new("plan_mode", "Plan only."));
             }
             call.request.tools.clear();
             call.request.options.seed = Some(7);
@@ -507,7 +509,10 @@ fn a_plugin_reshapes_the_request_and_sends_the_turn_to_another_model() {
     let sent = sent.first();
     let prompt = sent.and_then(|request| request.system_instructions());
     assert!(
-        prompt.is_some_and(|prompt| prompt.ends_with("Plan only.") && !prompt.contains("`add`")),
+        prompt.is_some_and(
+            |prompt| prompt.ends_with("<plan_mode>\nPlan only.\n</plan_mode>")
+                && !prompt.contains("`add`")
+        ),
         "{prompt:?}"
     );
     assert!(sent.is_some_and(|request| request.tools.is_empty()

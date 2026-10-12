@@ -81,10 +81,9 @@ use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
 };
 use super::turn::{
-    Adapters, ModelRequest, ModelStart, ModelStarts, SentTo, StreamDelta, TurnCall, back_off,
-    build_requests, carry_on_called, commit_replies, commit_turn_calls, end_turns, feed,
-    judge_failures, keeps_settled, model_pool, stop_calls, stream_partials, stream_reply,
-    wait_in_order,
+    Adapters, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
+    carry_on_called, commit_replies, commit_turn_calls, end_turns, feed, judge_failures,
+    keeps_settled, model_pool, stop_calls, stream_partials, stream_reply, wait_in_order,
 };
 
 /// One pass over the stages. Plugins add their systems to it in a
@@ -162,8 +161,9 @@ pub enum PrepareSystems {
     /// messages, tools and options, the model it goes to, its [`Adapters`],
     /// a tool call's [`CallHandler`].
     Edit,
-    /// The request as it will be sent is measured against the window of
-    /// the model it goes to and fitted, such as by compaction.
+    /// The request as it will be sent ([`ModelStarts::sent`]) is measured
+    /// against the window of the model it goes to and fitted, such as by
+    /// compaction.
     Fit,
 }
 
@@ -982,12 +982,16 @@ fn start(
         };
         let mut started = commands.entity(entity);
         if let Some(mut model) = item.model {
-            let (connection, kind) = match models.start(&mut model, item.adapters, agent) {
-                ModelStart::Run(connection, kind) => (connection, kind),
-                ModelStart::Refused(report) => {
+            let connection = match models.start(&mut model, item.adapters, agent) {
+                Ok(connection) => connection,
+                Err(report) => {
                     started.try_insert_if_new(Outcome(Err(report)));
                     continue;
                 }
+            };
+            let kind = EffectKind::Completion {
+                request: model.request.clone(),
+                stream: true,
             };
             let reference = connection.spec.reference();
             let span =

@@ -73,8 +73,8 @@ pub mod prelude {
         WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Adapters, Backoff, BuildFrom, ModelRequest, Recovery, RetryVerdict, SentTo,
-        StreamDelta, Streamed, TurnCall,
+        Adapter, Adapters, Backoff, BuildFrom, ModelRequest, ModelStarts, Recovery, RetryVerdict,
+        SentTo, StreamDelta, Streamed, TurnCall,
     };
     pub use rig_cassette::journal::{
         Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, SavedAgent, SavedSession,

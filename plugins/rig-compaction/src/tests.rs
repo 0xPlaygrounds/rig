@@ -517,9 +517,8 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
     let prompt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
         let long = "word ".repeat(8_000);
         for mut call in &mut calls {
-            match call.system_prompt_mut() {
-                Some(prompt) => prompt.insert_str(0, &long),
-                None => call.request.chat_history.insert(0, Message::system(&long)),
+            if let Some(prompt) = &mut call.prompt {
+                prompt.role.insert_str(0, &long);
             }
         }
     };

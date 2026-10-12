@@ -2724,17 +2724,61 @@ fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
     assert_eq!((own.request_count(), adapted.request_count()), (0, 1));
 }
 
+/// The system prompts of the model calls Prepare saw, in parts.
+#[derive(Resource, Default)]
+struct Prompts(Vec<Option<rig_core::completion::SystemPrompt>>);
+
 #[test]
 fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
-    app.init_resource::<Ended>().add_observer(log_ended);
-    plain_agent(&mut app, &own);
+    let read = |calls: Query<&ModelRequest, Added<Admitted>>, mut prompts: ResMut<Prompts>| {
+        prompts
+            .0
+            .extend(calls.iter().map(|call| call.prompt.clone()));
+    };
+    app.init_resource::<Ended>()
+        .init_resource::<Prompts>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, read.in_set(PrepareSystems::Edit));
+    let agent = plain_agent(&mut app, &own);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(SystemPrompt("You add.".into()));
+    app.world_mut()
+        .spawn(PromptSection::new(300, "environment", "Today is Monday."));
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    let (tools, rules) = offered(own.requests().first());
+    // Prepare sees the parts, the rules of the tools offered among them.
+    let prompts = &app.world().resource::<Prompts>().0;
+    assert!(matches!(prompts.first(), Some(Some(_))), "{prompts:?}");
+    let Some(Some(prompt)) = prompts.first() else {
+        return;
+    };
+    assert_eq!(prompt.role, "You add.");
+    let tags: Vec<&str> = prompt.sections.iter().map(|s| s.tag.as_str()).collect();
+    assert_eq!(tags, ["tool_rules", "environment"]);
+    assert_eq!(
+        prompt.section("tool_rules").map(|s| s.text.as_str()),
+        Some("- Add with add.")
+    );
+    // The model is sent no tools, and one system message without their
+    // rules.
+    let requests = own.requests();
+    let (tools, rules) = offered(requests.first());
     assert!(tools.is_empty(), "{tools:?}");
     assert!(!rules);
+    let system: Vec<&Message> = requests
+        .iter()
+        .flat_map(|request| &request.chat_history)
+        .filter(|message| matches!(message, Message::System { .. }))
+        .collect();
+    assert_eq!(
+        system,
+        [&Message::system(
+            "You add.\n\n<environment>\nToday is Monday.\n</environment>"
+        )]
+    );
 }
 
 /// What an adapter's stream rewrite says of a reply.

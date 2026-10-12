@@ -318,8 +318,10 @@ fn redact_messages(mut messages: Query<&mut Incoming, Added<Admitted>>) {
 /// Takes API keys out of each request's system prompt.
 fn redact_prompts(mut calls: Query<&mut ModelRequest, Added<Admitted>>) {
     for mut call in &mut calls {
-        if let Some(prompt) = call.system_prompt_mut() {
-            *prompt = redact::text(prompt).into_owned();
+        let Some(prompt) = &mut call.prompt else { continue };
+        prompt.role = redact::text(&prompt.role).into_owned();
+        for section in &mut prompt.sections {
+            section.text = redact::text(&section.text).into_owned();
         }
     }
 }
@@ -837,8 +839,8 @@ tools misses the provider's prompt cache.
   `models.0.provider(vendor)` hands over first, for a provider that wraps
   it. A model the provider has no key for (`ConnectError::MissingKey`)
   falls back to the sign-ins, as one the environment has no key for does.
-- `rig_ecs::prompt::system_prompt` and `tool_rules` put a prompt together
-  exactly as the kernel does, such as for a view of what an agent is told.
+- `ModelStarts::sent` gives a model call's request exactly as Start
+  sends it, such as for a view of what an agent is told.
   `rig_memory::HeuristicTokenCounter` estimates tokens as rig-compaction
   does.
 
@@ -861,6 +863,7 @@ A fixed part of the system prompt is a `PromptSection` entity,
 use std::sync::Arc;
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::Section;
 use rig_harness::rig_core::http_client::{self, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
 use rig_harness::rig_core::wasm_compat::WasmBoxedFuture;
 use rig_harness::rig_ecs::effects::Handler;
@@ -933,8 +936,8 @@ fn plan_only(
         if planning.contains(agent) {
             let reads = |name: &str| matches!(name, "read" | "search");
             call.request.tools.retain(|tool| reads(tool.name.as_str()));
-            if let Some(prompt) = call.system_prompt_mut() {
-                prompt.push_str("\n\nPlan only: change nothing yet.");
+            if let Some(prompt) = &mut call.prompt {
+                prompt.sections.push(Section::new("plan_mode", "Plan only: change nothing yet."));
             }
         }
     }

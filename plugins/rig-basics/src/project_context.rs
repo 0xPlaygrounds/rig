@@ -6,7 +6,7 @@
 //! one per agent, re-read when a turn starts and by `/context`, so an
 //! edited `AGENTS.md` counts from the next message without a rebuild.
 //! A section only changes when its text does, so the prompt stays cached.
-//! An agent with no [`SystemPrompt`] of its own is told it is rig, a coding
+//! An agent with no [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is rig, a coding
 //! agent ([`DEFAULT_SYSTEM_PROMPT`]), at the head of its system prompt.
 //! `/context` lists the prompt's sections and what other plugins put in
 //! the context besides, as [`ContextEntry`]s.
@@ -19,14 +19,14 @@ use bevy_reflect::prelude::*;
 use rig_tools::context::Instructions;
 use rig_tools::workspace::Local;
 
-use rig_ecs::agent::{Agent, Notice, SystemPrompt, TurnOf};
+use rig_ecs::agent::{Agent, Notice, TurnOf};
 use rig_ecs::prompt::{AgentSections, PromptSection, SectionOf};
-use rig_ecs::stage::{Admitted, AgentPass, ForAgent, PrepareSystems};
+use rig_ecs::stage::{Admitted, AgentPass, PrepareSystems};
 use rig_ecs::turn::{BuildFrom, ModelRequest, TurnCall};
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::services::{ProjectRoot, RigHome, WorkDir};
 
-/// What an agent with no [`SystemPrompt`] of its own is told it is.
+/// What an agent with no [`SystemPrompt`](rig_ecs::agent::SystemPrompt) of its own is told it is.
 pub const DEFAULT_SYSTEM_PROMPT: &str = "You are rig, a coding agent. You work in the \
     user's project from their terminal: \
     you read and search code, edit files and run commands with the tools you are \
@@ -71,26 +71,18 @@ impl Plugin for ProjectContextPlugin {
     }
 }
 
-/// Puts [`DEFAULT_SYSTEM_PROMPT`] at the head of the system prompt of each
-/// model call the kernel built from an agent with no prompt of its own,
-/// as its own part of it, in [`PrepareSystems::Compose`], so every plugin
-/// that edits the prompt sees it whole.
+/// Makes [`DEFAULT_SYSTEM_PROMPT`] the role of the system prompt of each
+/// model call the kernel built from an agent with no prompt of its own, in
+/// [`PrepareSystems::Compose`], so every plugin that edits the prompt sees
+/// it whole.
 fn default_prompt(
-    mut calls: Query<
-        (&mut ModelRequest, &ForAgent),
-        (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
-    >,
-    agents: Query<&SystemPrompt>,
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>)>,
 ) {
-    for (mut call, &ForAgent(agent)) in &mut calls {
-        if !agents.get(agent).is_ok_and(|own| own.0.is_empty()) {
-            continue;
-        }
-        if let Some(prompt) = call.system_prompt_mut() {
-            *prompt = match prompt.is_empty() {
-                true => DEFAULT_SYSTEM_PROMPT.to_owned(),
-                false => format!("{DEFAULT_SYSTEM_PROMPT}\n\n{prompt}"),
-            };
+    for mut call in &mut calls {
+        if let Some(prompt) = &mut call.prompt
+            && prompt.role.is_empty()
+        {
+            prompt.role = DEFAULT_SYSTEM_PROMPT.to_owned();
         }
     }
 }

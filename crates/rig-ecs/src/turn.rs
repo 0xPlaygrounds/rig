@@ -21,6 +21,7 @@
 
 use std::borrow::Cow;
 use std::fmt;
+use std::iter;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::{Duration, UNIX_EPOCH};
@@ -39,8 +40,10 @@ use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
 use rig_cassette::journal::{Halt, now_ms};
 use rig_core::completion::message::turn_failure;
-use rig_core::completion::{CompletionRequest, CompletionResponse, GenerationOptions, Message};
-use rig_core::effect::{self, EffectId, EffectKind};
+use rig_core::completion::{
+    self, CompletionRequest, CompletionResponse, GenerationOptions, Message, Section,
+};
+use rig_core::effect::{self, EffectId};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
@@ -58,9 +61,7 @@ use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
 use super::journal::{Commit, SessionLog};
 use super::model::{Connection, Effort};
-use super::prompt::{
-    PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
-};
+use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::stage::{
     Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
     SupersededBy, Supersedes, Waiting, cancel, failed_in, release,
@@ -114,7 +115,8 @@ impl Backoff {
 /// to the result (an option the model cannot take is left out, as
 /// none) and sends it streamed, recording on the call where it went
 /// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
-/// request built by the kernel when it is admitted; a plugin's own call,
+/// request built by the kernel when it is admitted, with its system prompt
+/// in parts beside it ([`ModelRequest::prompt`]); a plugin's own call,
 /// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
@@ -125,9 +127,11 @@ pub struct ModelRequest {
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
-    /// The tool rules the kernel wrote in the system prompt when it built
-    /// the request, swapped at Start for those of the tools it carries.
-    rules: Option<String>,
+    /// The system prompt of a request the kernel built, in parts, until
+    /// Start puts it in front of the request's messages with the rules of
+    /// the tools the request then carries (its `tool_rules` section); `None`
+    /// for a request a plugin brought whole, and from Start on.
+    pub prompt: Option<completion::SystemPrompt>,
 }
 
 impl ModelRequest {
@@ -136,7 +140,7 @@ impl ModelRequest {
         Self {
             request,
             connection: None,
-            rules: None,
+            prompt: None,
         }
     }
 
@@ -146,15 +150,6 @@ impl ModelRequest {
         Self {
             connection: Some(connection),
             ..self
-        }
-    }
-
-    /// The system prompt the request sends, its leading system message, to
-    /// change in place; `None` when it has none.
-    pub fn system_prompt_mut(&mut self) -> Option<&mut String> {
-        match self.request.chat_history.first_mut() {
-            Some(Message::System { content }) => Some(content),
-            _ => None,
         }
     }
 }
@@ -679,13 +674,25 @@ fn build(
         .filter(|(def, _)| builder.access.allows(def.0.name.as_str()))
         .collect();
     offered.sort_by(|a, b| a.0.0.name.as_str().cmp(b.0.0.name.as_str()));
+    // The role, the rules of the tools offered, then the sections by
+    // order, then tag.
     let rules = tool_rules(offered.iter().map(|(_, rules)| *rules));
-    let sections = parts
+    let mut sections: Vec<&PromptSection> = parts
         .sections
         .iter()
         .filter(|(_, of)| of.is_none_or(|of| of.0 == agent))
-        .map(|(section, _)| section);
-    let preamble = system_prompt(&builder.prompt.0, &rules, sections);
+        .map(|(section, _)| section)
+        .collect();
+    sections.sort_by(|a, b| (a.order, &a.tag).cmp(&(b.order, &b.tag)));
+    let sections = sections
+        .into_iter()
+        .map(|section| Section::new(&section.tag, &section.text));
+    let prompt = completion::SystemPrompt {
+        role: builder.prompt.0.clone(),
+        sections: iter::once(Section::new(TOOL_RULES, rules))
+            .chain(sections)
+            .collect(),
+    };
     let effort = builder.effort.0;
     let options = spec.map_or_else(
         || {
@@ -697,47 +704,53 @@ fn build(
         },
         |spec| spec.default_options(effort),
     );
-    let mut request = CompletionRequest::new(Message::system(preamble))
+    let request = CompletionRequest::from(messages)
         .tools(offered.iter().map(|(def, _)| def.0.clone()).collect())
         .options(options.cache_key(&builder.id.0));
-    request.chat_history.extend(messages);
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
-        rules: Some(rules),
+        prompt: Some(prompt),
     }
 }
 
-/// How Start starts a model call.
-pub(crate) enum ModelStart {
-    /// The kernel sends `kind` to the adapted connection.
-    Run(Connection, EffectKind),
-    /// Refused before it was sent.
-    Refused(ErrorReport),
-}
-
-/// What starting a model call reads: the agents' models and the tools'
-/// rules.
+/// What Start sends a model call: read it in Prepare's Fit phase to
+/// measure a request as its model will get it, or in Gate to answer a call
+/// with what its model would have been sent.
 #[derive(SystemParam)]
-pub(crate) struct ModelStarts<'w, 's> {
+pub struct ModelStarts<'w, 's> {
     agents: Query<'w, 's, &'static Connection, With<Agent>>,
     rules: Query<'w, 's, (&'static ToolDef, &'static ToolRules)>,
 }
 
 impl ModelStarts<'_, '_> {
-    /// How `model`, a call for `agent`, starts: on its connection, else the
-    /// agent's model, as its adapters change it, its request fitted to
-    /// that and, when the kernel built it, with the rules of the tools it
-    /// carries; refused without a model.
+    /// The connection `model`, a call for `agent`, goes to, its `adapters`
+    /// applied, and its request as Start sends it: tools taken off a model
+    /// that calls none, options it does not take left out, and the
+    /// [`prompt`](ModelRequest::prompt) in front with the rules of the
+    /// tools it carries. Refused without a model.
+    pub fn sent(
+        &self,
+        model: &ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> Result<(Connection, CompletionRequest), ErrorReport> {
+        let mut model = model.clone();
+        let connection = self.start(&mut model, adapters, agent)?;
+        Ok((connection, model.request))
+    }
+
+    /// Makes `model`'s request the one [`Self::sent`] says, on the
+    /// connection it returns.
     pub(crate) fn start(
         &self,
         model: &mut ModelRequest,
         adapters: Option<&Adapters>,
         agent: Option<Entity>,
-    ) -> ModelStart {
+    ) -> Result<Connection, ErrorReport> {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
         let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
-            return ModelStart::Refused(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
+            return Err(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
         if let Some(adapters) = adapters {
             connection = adapters.apply(connection);
@@ -748,24 +761,19 @@ impl ModelStarts<'_, '_> {
             request.tools.clear();
         }
         spec.fit(request);
-        if let Some(written) = &model.rules {
-            let carried = request.tools.iter().filter_map(|tool| {
-                let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
-                rules.map(|(_, rules)| rules)
-            });
-            let carried = tool_rules(carried);
-            if carried != *written
-                && let Some(Message::System { content }) = request.chat_history.first_mut()
-            {
-                *content = swap_tool_rules(std::mem::take(content), written, &carried);
-                model.rules = Some(carried);
+        if let Some(mut prompt) = model.prompt.take() {
+            if let Some(section) = prompt.sections.iter_mut().find(|it| it.tag == TOOL_RULES) {
+                let carried = request.tools.iter().filter_map(|tool| {
+                    let rules = self.rules.iter().find(|(def, _)| def.0.name == tool.name);
+                    rules.map(|(_, rules)| rules)
+                });
+                section.text = tool_rules(carried);
             }
+            request
+                .chat_history
+                .insert(0, Message::system(prompt.text()));
         }
-        let kind = EffectKind::Completion {
-            request: request.clone(),
-            stream: true,
-        };
-        ModelStart::Run(connection, kind)
+        Ok(connection)
     }
 }
 

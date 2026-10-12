@@ -16,14 +16,9 @@
 //! measured as it will be sent; the Review system is in
 //! [`ReviewSystems::Act`].
 
-use std::slice;
-use std::sync::Arc;
-
 use bevy_ecs::query::QueryData;
-use rig_core::catalog::ModelSpec;
-use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
+use rig_core::completion::{Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
-use rig_ecs::prompt::tool_rules;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
 use rig_harness::{PluginEntity, ProvidedBy};
@@ -344,46 +339,6 @@ fn on_compact(
     notices.write(refusal);
 }
 
-/// The model `model` goes to, as Start will send it: its own connection,
-/// else its agent's `own`, as its `adapters` change it.
-fn routed(
-    model: &ModelRequest,
-    adapters: &Adapters,
-    own: Option<&Connection>,
-) -> Option<Arc<ModelSpec>> {
-    let connection = model.connection.as_ref().or(own)?.clone();
-    Some(adapters.apply(connection).spec)
-}
-
-/// The policy's estimate of `request` as a model of `spec` gets it: one
-/// that calls no tools gets them taken out at Start, and with them their
-/// rules from the system prompt.
-fn sent_tokens(
-    policy: &CompactionPolicy,
-    request: &CompletionRequest,
-    spec: &ModelSpec,
-    tools: &Query<(&ToolDef, &ToolRules)>,
-) -> u64 {
-    let messages = &request.chat_history;
-    let estimate = policy.estimate(messages);
-    if spec.tools {
-        return estimate;
-    }
-    let carried = request.tools.iter().filter_map(|tool| {
-        let rules = tools.iter().find(|(def, _)| def.0.name == tool.name);
-        rules.map(|(_, rules)| rules)
-    });
-    let rules = tool_rules(carried);
-    match messages.first() {
-        Some(system @ Message::System { content }) if !rules.is_empty() => {
-            let without = Message::system(content.replacen(&rules, "", 1));
-            estimate.saturating_sub(policy.estimate(slice::from_ref(system)))
-                + policy.estimate(&[without])
-        }
-        _ => estimate,
-    }
-}
-
 /// Before a turn's request that leaves less than the reserve of the
 /// window of the model it goes to free, clears old tool outputs, which
 /// costs no model call, and asks for a summary only when clearing was not
@@ -396,7 +351,7 @@ fn compact_near_the_window(
     >,
     mut agents: Query<(Compacting, &mut LastUsage)>,
     mut turns: Query<&mut Compactions>,
-    tools: Query<(&ToolDef, &ToolRules)>,
+    starts: ModelStarts,
     policy: Res<Compaction>,
     mut commit: Commit,
     mut commands: Commands,
@@ -412,11 +367,11 @@ fn compact_near_the_window(
         if compactions.summaries >= policy.0.per_turn {
             continue;
         }
-        let Some(spec) = routed(&model, adapters, compacting.connection) else {
+        let Ok((connection, sent)) = starts.sent(&model, Some(adapters), Some(agent)) else {
             continue;
         };
-        let (policy, spec) = (&policy.0, &*spec);
-        let sent = sent_tokens(policy, &model.request, spec, &tools);
+        let (policy, spec) = (&policy.0, &*connection.spec);
+        let sent = policy.estimate(&sent.chat_history);
         let used = last.context().unwrap_or(0).max(sent);
         let messages = &mut model.request.chat_history;
         if !policy.over_threshold(used, spec) {
