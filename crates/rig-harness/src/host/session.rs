@@ -12,7 +12,7 @@
 //! [`typed`].
 
 use std::fmt::{Debug, Write};
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -548,7 +548,7 @@ fn delete_session(
         Some("it is this session".to_owned())
     } else if !session.path().is_dir() {
         Some("there is no such session".to_owned())
-    } else if runs_elsewhere(&session) {
+    } else if session.runs_elsewhere() {
         Some("another rig runs it".to_owned())
     } else {
         fs::remove_dir_all(session.path())
@@ -566,14 +566,6 @@ fn delete_session(
             ));
         }
     }
-}
-
-/// Whether a launcher holds `session`'s lock.
-fn runs_elsewhere(session: &SessionDir) -> bool {
-    File::options()
-        .write(true)
-        .open(session.launcher_lock())
-        .is_ok_and(|lock| matches!(lock.try_lock(), Err(TryLockError::WouldBlock)))
 }
 
 /// The `LogPlugin` formatter: plain text appended to the session's text

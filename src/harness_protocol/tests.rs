@@ -206,3 +206,20 @@ fn help_lists_the_secrets_a_build_asks_for_by_their_variable() {
     );
     assert!(!Described::default().usage().contains("secrets"));
 }
+
+#[test]
+fn a_session_whose_lock_another_file_holds_runs_elsewhere() {
+    let root = std::env::temp_dir().join(format!("rig-runs-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let made = Home::at(&root).new_session();
+    assert!(made.is_ok(), "{made:?}");
+    let Ok((_, dir)) = made else { return };
+    let idle = dir.runs_elsewhere();
+    let lock = std::fs::File::create(dir.launcher_lock());
+    let held = lock.as_ref().is_ok_and(|lock| lock.try_lock().is_ok());
+    let running = dir.runs_elsewhere();
+    drop(lock);
+    let after = dir.runs_elsewhere();
+    std::fs::remove_dir_all(&root).ok();
+    assert!(held && !idle && running && !after);
+}

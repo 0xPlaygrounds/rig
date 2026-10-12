@@ -421,6 +421,16 @@ impl SessionDir {
         self.0.join("launcher.lock")
     }
 
+    /// Whether a launcher runs the session: one holds
+    /// [`Self::launcher_lock`]. A command that rewrites or removes a saved
+    /// session leaves such a one alone.
+    pub fn runs_elsewhere(&self) -> bool {
+        std::fs::File::options()
+            .write(true)
+            .open(self.launcher_lock())
+            .is_ok_and(|lock| matches!(lock.try_lock(), Err(std::fs::TryLockError::WouldBlock)))
+    }
+
     /// The working directory the session runs in, as plain text: written
     /// when the session starts, and where the launcher starts the agent
     /// when it resumes the session from elsewhere.
