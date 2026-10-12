@@ -228,11 +228,6 @@ fn launch(
             }
         };
         promoted?;
-        // A sessionless run that failed moved its log here, out of the
-        // session directory it removed.
-        let log = Some(run.log())
-            .filter(|log| log.exists())
-            .unwrap_or_else(|| directory.log());
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
             build::reject(home, &trial)?;
@@ -246,10 +241,14 @@ fn launch(
             kept_screen = true;
             continue;
         }
+        // Only a session rolled back for someone at the terminal runs again.
+        let ended = !rejected || headless || !home.good().exists();
+        let log = if ended {
+            claimed.leave(home, run, status.success())
+        } else {
+            directory.log()
+        };
         if !rejected && (status.success() || headless) {
-            if status.success() {
-                claimed.discard_if_unsaved(home);
-            }
             return Ok(exit_code(status));
         }
         if !headless {
@@ -260,7 +259,8 @@ fn launch(
             // A refused session would be refused again.
             let resumable = directory.is_saved() && refusal.is_none();
             let lost = refusal.filter(|_| kept_screen);
-            let said = stopped(status, &session, resumable, lost.as_deref(), &log);
+            let log = Some(log.as_path()).filter(|log| log.exists());
+            let said = stopped(status, &session, resumable, lost.as_deref(), log);
             eprintln!("{said}");
             return Ok(exit_code(status));
         }
@@ -289,13 +289,13 @@ fn launch(
 
 /// What the launcher says when the agent of `session` stopped with a
 /// failure: the `refusal` the agent said where it is no longer seen, where
-/// its log is and, when the session can be resumed, how.
+/// its log is when it kept one and, when the session can be resumed, how.
 fn stopped(
     status: ExitStatus,
     session: &SessionId,
     resumable: bool,
     refusal: Option<&str>,
-    log: &Path,
+    log: Option<&Path>,
 ) -> String {
     let refusal = refusal.unwrap_or_default();
     let resume = if resumable {
@@ -303,10 +303,8 @@ fn stopped(
     } else {
         String::new()
     };
-    format!(
-        "{refusal}The agent stopped ({status}).{resume} Log: {}",
-        log.display()
-    )
+    let log = log.map_or_else(String::new, |log| format!(" Log: {}", log.display()));
+    format!("{refusal}The agent stopped ({status}).{resume}{log}")
 }
 
 /// The session the agent asked to run next in `directory`'s switch file,
@@ -357,14 +355,30 @@ struct Claimed {
 impl Claimed {
     /// Removes the session's directory when no agent logged a message in
     /// it, such as a `/new` session left at once: a session with nothing
-    /// to resume leaves nothing behind. Call it once the agent exited
-    /// cleanly or switched away. Best effort: a directory left behind has
-    /// no agent log, so `/resume` does not list it.
+    /// to resume leaves nothing behind. Call it once the agent exited for
+    /// good or switched away. Best effort: a directory left behind has no
+    /// agent log, so `/resume` does not list it.
     fn discard_if_unsaved(&self, home: &Home) {
         let session = home.session(&self.id);
         if !session.is_saved() {
             fs::remove_dir_all(session.path()).ok();
         }
+    }
+
+    /// Ends this launcher's runs of the session for good: discards it when
+    /// unsaved ([`Self::discard_if_unsaved`]), first moving the text log of
+    /// a run that failed into `run`, which keeps it, and returns where the
+    /// text log is. A sessionless run that failed moved it there itself.
+    fn leave(&self, home: &Home, run: &RunDir, succeeded: bool) -> PathBuf {
+        let session = home.session(&self.id);
+        if session.is_saved() {
+            return session.log();
+        }
+        if !succeeded {
+            fs::rename(session.log(), run.log()).ok();
+        }
+        self.discard_if_unsaved(home);
+        run.log()
     }
 }
 

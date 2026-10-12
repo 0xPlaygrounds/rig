@@ -6,7 +6,7 @@ fn only_a_session_with_a_conversation_is_offered_to_resume() {
     use std::os::unix::process::ExitStatusExt;
 
     let (status, session) = (ExitStatus::from_raw(2 << 8), SessionId::generate());
-    let log = Path::new("/home/.rig/sessions/s/agent.log");
+    let log = Some(Path::new("/home/.rig/sessions/s/agent.log"));
     let saved = stopped(status, &session, true, None, log);
     assert!(
         saved.contains(&format!("`rig --resume {session}`")),
@@ -18,6 +18,8 @@ fn only_a_session_with_a_conversation_is_offered_to_resume() {
     // A refusal said where a restarted view kept the screen comes again.
     let refused = stopped(status, &session, false, Some("rig: plain.\n"), log);
     assert_eq!(refused, format!("rig: plain.\n{expected}"));
+    let no_log = stopped(status, &session, false, None, None);
+    assert_eq!(no_log, "The agent stopped (exit status: 2).");
 }
 
 /// A home whose staged build is `trial` and whose good build is `good`:
@@ -102,6 +104,33 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
         unknown.ends_with("commands: build, plugin, help, stats"),
         "{unknown}"
     );
+}
+
+/// A run that failed before its session saved anything, such as one
+/// refused, leaves no session directory; its text log stays in the
+/// launcher's run directory, where the launcher points.
+#[cfg(unix)]
+#[test]
+fn a_failed_run_leaves_no_unsaved_session_but_its_log() {
+    let failing = "touch \"$RIG_RUN/ready\"
+echo refused > \"$RIG_HOME/sessions/$RIG_SESSION/agent.log\"
+exit 2";
+    let home = builds("unsaved", failing, "exit 0");
+    let print = Invocation {
+        print: Some("hi".to_owned()),
+        ..Invocation::default()
+    };
+    let left = home::hold_run(&home).and_then(|run| {
+        let (claimed, _) = claim(&home, Start::New, None)?;
+        let session = home.session(&claimed.id);
+        let code = launch(&home, run.dir(), &print, true, claimed, None, None)?;
+        let log = fs::read_to_string(run.dir().log()).ok();
+        Ok((code, session.path().exists(), log))
+    });
+    fs::remove_dir_all(home.root()).ok();
+    let left = left.ok();
+    let log = Some("refused\n".to_owned());
+    assert_eq!(left, Some((ExitCode::from(2), false, log)));
 }
 
 /// A build that describes itself as adding the command `name`.
