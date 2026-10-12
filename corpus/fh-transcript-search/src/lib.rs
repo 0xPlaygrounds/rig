@@ -10,7 +10,8 @@
 //! and the reply streaming in.
 //!
 //! The matches are lit in the transcript ([`TranscriptView::highlights`],
-//! matching case as the search does). Moving to one scrolls the view to
+//! matching case as the search does), across the rows a wrap split one
+//! into. Moving to one scrolls the view to
 //! its row ([`ScrollTo`] with [`ItemRow::Top`]), expanding the items it
 //! is in that are drawn cut. Enter takes it; `n` (or Enter again) and `N`
 //! (or Shift+Enter) move, wrapping around, and the bar counts (`3/17`).
@@ -130,8 +131,9 @@ pub fn find(regex: &Regex, agent: Entity, laid_out: &DrawnTranscript) -> Vec<Hit
 }
 
 /// Where each of a line's `rows` starts in the line's text, the rows
-/// rejoined as [`DrawnTranscript::lines`] rejoins them: the blanks a wrap
-/// dropped belong to the row before.
+/// rejoined as [`DrawnTranscript::lines`] rejoins them (which says only
+/// the whole line's rows): the blanks a wrap dropped belong to the row
+/// before.
 fn row_starts(rows: &[DrawnRow]) -> Vec<usize> {
     let mut end = 0;
     let mut starts = Vec::with_capacity(rows.len());
@@ -459,7 +461,8 @@ fn type_in_bar(
         close(bar, &mut search, &mut view, &mut commands);
         return;
     }
-    // The view changes with its width too, which the layout wraps at.
+    // The view counts as changed only when it changes, such as on a new
+    // width, which the layout wraps at, or a notice; not on a key.
     if !search.dirty && (transcripts.changed() || view.is_changed()) {
         search.search(&transcripts, &view);
         typed = true;

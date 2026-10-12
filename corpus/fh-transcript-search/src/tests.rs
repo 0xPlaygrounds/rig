@@ -206,17 +206,21 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let counted = format!("{reference}/{reference}");
     assert_eq!(counter(&mut app), Some(counted));
 
-    // Laid out narrow, the error's line wraps: the search rejoins it,
-    // finding the text the wrap split at the row it starts in.
+    press(&mut app, [KeyCode::Esc]);
+
+    // Laid out narrow, the error's line wraps inside the query: the
+    // search rejoins the line to find it, at the row the view counts it
+    // in, and the view lights it across both rows.
     let split = "cannot find function";
+    search(&mut app, agent, typed(split));
+    assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let narrow = laid_out(&mut app, agent, Expanded::All, 24);
     assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));
+    assert_eq!(narrow.lit_in(&call), 1);
     let hits = Regex::new(split).map_or_else(|_| Vec::new(), |regex| find(&regex, agent, &narrow));
     let narrow = narrow.item(&call).unwrap_or_default();
-    let starts = |hit: &Hit| {
-        let row = narrow.rows().get(hit.row);
-        hit.item() == Some(&call) && row.is_some_and(|row| row.text.contains("cannot"))
-    };
+    let lit = narrow.rows().iter().position(|row| row.lit_total() > 0);
+    let starts = |hit: &Hit| hit.item() == Some(&call) && Some(hit.row) == lit;
     assert!(
         matches!(hits.as_slice(), [hit] if starts(hit)),
         "{narrow:#?}"
