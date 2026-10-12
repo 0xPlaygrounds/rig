@@ -23,6 +23,8 @@ rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+# Checked together with it: both edit model requests in Prepare.
+corpus-permission-modes = { path = "../permission-modes" }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }

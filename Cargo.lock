@@ -4871,6 +4871,7 @@ dependencies = [
  "bevy_ecs",
  "bevy_reflect",
  "chrono",
+ "corpus-permission-modes",
  "rig-basics",
  "rig-cassette",
  "rig-coding-tools",

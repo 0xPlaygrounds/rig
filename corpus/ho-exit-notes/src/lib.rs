@@ -176,9 +176,14 @@ fn summarize(agent: Entity, commands: &mut Commands) {
     ));
 }
 
-/// Asks the summary call for the note, on the configured model if any.
+/// Asks the summary call for the note, on the configured model if any. A
+/// summary call is no turn's ([`TurnCall`]), so plugins that edit a turn's
+/// requests need no order against it.
 fn ask_for_notes(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<NotesCall>)>,
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, With<NotesCall>, Without<TurnCall>),
+    >,
     settings: Res<ExitNotesSettings>,
     models: Res<Models>,
     mut notices: MessageWriter<Notice>,

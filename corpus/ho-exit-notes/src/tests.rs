@@ -153,3 +153,12 @@ fn a_session_without_turns_exits_without_a_note() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ExitNotesPlugin);
 }
+
+/// Permission modes edit a turn's model requests, the notes their own.
+#[test]
+fn stages_are_ordered_with_permission_modes() {
+    rig_defaults_test_support::assert_stages_ordered((
+        ExitNotesPlugin,
+        corpus_permission_modes::PermissionModesPlugin,
+    ));
+}
