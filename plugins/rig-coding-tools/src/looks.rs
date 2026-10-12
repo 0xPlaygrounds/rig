@@ -23,7 +23,7 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
     let shown = shown.and_then(|read| read.0.first().and_then(|file| file.lines));
     match (view.result_text(), shown) {
-        (Some(_), _) if view.failed() => rows.extend(view.result_lines(RESULT_LINES)),
+        (Some(_), _) if view.failed() => rows.extend(view.result_lines(view.limit(RESULT_LINES))),
         (Some(_), Some(shown)) => rows.push(Line::from(format!("  ⎿ {}", span(shown))).dim()),
         // A call of an earlier run has no facts: count the file's lines,
         // without the read's `[… more lines …]` note.
@@ -50,7 +50,7 @@ fn span(shown: LinesShown) -> String {
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("edit {path}"), "")];
-    lines.extend(view.result_lines(RESULT_LINES));
+    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
     lines
 }
 
@@ -59,9 +59,13 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let content = view.argument("content").unwrap_or_default();
     let mut rows = vec![view.header(format!("write {path}"), lines(content.lines().count()))];
     if view.failed() {
-        rows.extend(view.result_lines(RESULT_LINES));
+        rows.extend(view.result_lines(view.limit(RESULT_LINES)));
     } else {
-        rows.extend(excerpt(content, RESULT_LINES, Style::new().dim()));
+        rows.extend(excerpt(
+            content,
+            view.limit(RESULT_LINES),
+            Style::new().dim(),
+        ));
     }
     rows
 }
@@ -70,7 +74,7 @@ pub(super) fn delete(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let mut lines = vec![view.header(format!("delete {path}"), "")];
     if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
+        lines.extend(view.result_lines(view.limit(RESULT_LINES)));
     }
     lines
 }
@@ -80,7 +84,7 @@ pub(super) fn moved(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let to = view.argument("to").unwrap_or_default();
     let mut lines = vec![view.header(format!("move {from} → {to}"), "")];
     if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
+        lines.extend(view.result_lines(view.limit(RESULT_LINES)));
     }
     lines
 }
@@ -98,7 +102,7 @@ pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     if lines.is_empty() {
         lines.push(view.header("$", ""));
     }
-    lines.extend(view.tail_lines(RESULT_LINES + 2));
+    lines.extend(view.tail_lines(view.limit(RESULT_LINES + 2)));
     lines
 }
 
@@ -112,7 +116,7 @@ pub(super) fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         detail.push_str(&format!(" ({glob})"));
     }
     let mut lines = vec![view.header(format!("search {pattern}"), detail.trim().to_owned())];
-    lines.extend(view.result_lines(RESULT_LINES));
+    lines.extend(view.result_lines(view.limit(RESULT_LINES)));
     lines
 }
 

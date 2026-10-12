@@ -6,7 +6,7 @@ use rig_harness::rig_core::tool::{
 use rig_tui::ratatui::text::Line;
 use rig_tui::{CallState, ToolCallView};
 
-use super::{read, write};
+use super::{read, shell, write};
 
 /// What `look` draws for a `tool` call with `args` that answered `output`.
 fn drawn(
@@ -15,16 +15,17 @@ fn drawn(
     args: Value,
     output: &str,
 ) -> String {
-    drawn_with(look, tool, args, output, None)
+    drawn_with(look, tool, args, output, None, false)
 }
 
-/// [`drawn`], for a call that published `facts`.
+/// [`drawn`], for a call that published `facts`, expanded or not.
 fn drawn_with(
     look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
     tool: &str,
     args: Value,
     output: &str,
     facts: Option<&ToolResultContext>,
+    expanded: bool,
 ) -> String {
     let Ok(name) = ToolName::new(tool) else {
         return String::new();
@@ -33,6 +34,7 @@ fn drawn_with(
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
     let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
     view.facts = facts;
+    view.expanded = expanded;
     let lines: Vec<String> = look(&view).iter().map(ToString::to_string).collect();
     lines.join("\n")
 }
@@ -73,10 +75,37 @@ fn a_read_says_which_lines_it_showed_when_it_published_them() {
         context.insert_result(FilesRead(vec![file])).ok();
         let facts = context.result_context();
         let output = "     3\tthree\n     4\tfour\n[3 more lines; read on with offset 5]\n";
-        drawn_with(read, "read", json!({ "path": "a" }), output, Some(&facts))
+        drawn_with(
+            read,
+            "read",
+            json!({ "path": "a" }),
+            output,
+            Some(&facts),
+            false,
+        )
     };
     let part = shown(3, 2);
     assert!(part.ends_with("⎿ lines 3–4 of 7"), "{part}");
     let whole = shown(1, 7);
     assert!(whole.ends_with("⎿ 7 lines"), "{whole}");
+}
+
+/// Expanded (Ctrl+O, or a transcript search laying every call out whole),
+/// a call draws all of its output, not only the lines a collapsed one
+/// shows.
+#[test]
+fn an_expanded_call_draws_every_line() {
+    let rows: Vec<String> = (1..=40).map(|row| format!("row-{row}")).collect();
+    let output = rows.join("\n");
+    let command = json!({ "command": "seq 1 40" });
+    let collapsed = drawn(shell, "shell", command.clone(), &output);
+    assert!(!collapsed.contains("row-12\n"), "{collapsed}");
+    let expanded = drawn_with(shell, "shell", command, &output, None, true);
+    assert!(
+        expanded.contains("row-1\n") && expanded.contains("row-12\n"),
+        "{expanded}"
+    );
+    let content = json!({ "path": "a", "content": output });
+    let wrote = drawn_with(write, "write", content, "ok", None, true);
+    assert!(wrote.ends_with("row-40"), "{wrote}");
 }
