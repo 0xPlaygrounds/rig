@@ -6,6 +6,7 @@ use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
+use rig_tui::DrawnRow;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
 use super::*;
@@ -85,6 +86,12 @@ fn laid_out(app: &mut App, agent: Entity, expanded: Expanded, width: u16) -> Dra
     laid_out.unwrap_or_default()
 }
 
+/// The matches lit in the rows of `drawn` with `text`.
+fn lit(drawn: &DrawnTranscript, text: &str) -> usize {
+    let rows = drawn.rows().iter().filter(|row| row.text.contains(text));
+    rows.map(DrawnRow::lit_total).sum()
+}
+
 fn counter(app: &mut App) -> Option<String> {
     let world = app.world_mut();
     let mut bars = world.query::<&TranscriptSearch>();
@@ -162,12 +169,9 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let view = app.world().resource::<TranscriptView>();
     assert!(view.expanded.contains(&call));
-    let lit: Vec<(&str, bool)> = view
-        .highlights
-        .iter()
-        .map(|lit| (lit.text.as_str(), lit.match_case))
-        .collect();
-    assert_eq!(lit, [("e0425", false)]);
+    let spans = view.highlights.iter().flat_map(|lit| &lit.spans);
+    let spans: Vec<Option<&TranscriptItem>> = spans.map(|span| span.item.as_ref()).collect();
+    assert_eq!(spans, [Some(&call)]);
     let scrolls = &app.world().resource::<Scrolls>().0;
     let at = row.map(|row| (Some(call.clone()), ItemRow::Top(row)));
     assert_eq!(scrolls.first(), at.as_ref());
@@ -187,11 +191,9 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         .expanded
         .clear();
 
-    // A capital letter makes the search, and what it lights, match case.
+    // A capital letter makes the search match case.
     search(&mut app, agent, typed("E0425"));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
-    let lit = app.world().resource::<TranscriptView>().highlights.clone();
-    assert!(lit.iter().all(|lit| lit.text == "E0425" && lit.match_case));
     press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
@@ -205,7 +207,16 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(reference, 5, "{whole:#?}");
     let counted = format!("{reference}/{reference}");
     assert_eq!(counter(&mut app), Some(counted));
+    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
+    assert_eq!(lit(&drawn, ""), reference);
+    press(&mut app, [KeyCode::Esc]);
 
+    // The view lights what the expression matched, not each place the
+    // text it matched is: the last reply's `fn main` starts no line.
+    search(&mut app, agent, typed(r"re:^fn \w+"));
+    assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
+    let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
+    assert_eq!((lit(&drawn, "fn run(n"), lit(&drawn, "calls it")), (1, 0));
     press(&mut app, [KeyCode::Esc]);
 
     // Laid out narrow, the error's line wraps inside the query: the
