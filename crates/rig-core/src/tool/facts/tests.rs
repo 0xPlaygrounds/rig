@@ -14,7 +14,11 @@ fn published_facts_read_back_with_a_stable_shape() {
     ]);
     let read = FilesRead(vec![
         FileRead::new("/work/a.rs", ContentHash("aa".to_owned())),
-        FileRead::new("/work/b.rs", ContentHash("bb".to_owned())),
+        FileRead::new("/work/b.rs", ContentHash("bb".to_owned())).with_lines(LinesShown {
+            first: 3,
+            count: 2,
+            total: 10,
+        }),
     ]);
     let mut context = ToolContext::new();
     context.insert_result(read.clone()).expect("encodes");
@@ -37,7 +41,8 @@ fn published_facts_read_back_with_a_stable_shape() {
             "exit_status": {"exited": 2},
             "files_read": [
                 {"path": "/work/a.rs", "hash": "aa"},
-                {"path": "/work/b.rs", "hash": "bb"},
+                {"path": "/work/b.rs", "hash": "bb",
+                 "lines": {"first": 3, "count": 2, "total": 10}},
             ],
             "files_changed": [
                 {"path": "new.rs", "kind": "created", "added": 4, "removed": 0},

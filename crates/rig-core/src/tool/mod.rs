@@ -27,7 +27,7 @@ pub use contextual::{
     DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
 };
 pub use facts::{
-    ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FilesChanged, FilesRead,
+    ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, LinesShown,
     content_hash,
 };
 pub use footprint::{Scope, Touches};
