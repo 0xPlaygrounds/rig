@@ -358,6 +358,13 @@ impl RunDir {
         self.0.join("agent.log")
     }
 
+    /// Why the agent refused its run, as it said it on stderr: the
+    /// launcher says it again once it took the terminal back from a
+    /// full-screen view that a restart kept.
+    pub fn refusal(&self) -> PathBuf {
+        self.0.join("refusal")
+    }
+
     /// Held by the launcher while it lives.
     pub fn lock(&self) -> PathBuf {
         self.0.join("lock")

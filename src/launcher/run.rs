@@ -155,6 +155,10 @@ fn launch(
     // asked too; a piped run passes only what its environment has.
     let ask = std::io::stdin().is_terminal();
     let mut answers: BTreeMap<String, String> = BTreeMap::new();
+    // Whether the agent's full-screen view kept its screen across a
+    // restart, so what the agent said before it took the terminal is gone
+    // once the launcher takes the terminal back.
+    let mut kept_screen = false;
     loop {
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
@@ -175,6 +179,7 @@ fn launch(
         }
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
+        absent(fs::remove_file(run.refusal()))?;
         let mut command = Command::new(binary.path());
         command
             .args(invocation.to_args())
@@ -229,6 +234,7 @@ fn launch(
             if let Some(target) = take_switch(&directory)? {
                 (claimed, notice) = switch(home, claimed, target)?;
             }
+            kept_screen = true;
             continue;
         }
         if !rejected && (status.success() || headless) {
@@ -241,8 +247,12 @@ fn launch(
             restore_terminal();
         }
         if !rejected {
-            let saved = directory.is_saved();
-            eprintln!("{}", stopped(status, &session, saved, &log));
+            let refusal = fs::read_to_string(run.refusal()).ok();
+            // A refused session would be refused again.
+            let resumable = directory.is_saved() && refusal.is_none();
+            let lost = refusal.filter(|_| kept_screen);
+            let said = stopped(status, &session, resumable, lost.as_deref(), &log);
+            eprintln!("{said}");
             return Ok(exit_code(status));
         }
         if !home.good().exists() {
@@ -263,21 +273,29 @@ fn launch(
         if headless {
             return Ok(exit_code(status));
         }
+        kept_screen = false;
         notice = Some(message);
     }
 }
 
 /// What the launcher says when the agent of `session` stopped with a
-/// failure: where its log is and, when the session has a conversation, how
-/// to resume it.
-fn stopped(status: ExitStatus, session: &SessionId, saved: bool, log: &Path) -> String {
-    let resume = if saved {
+/// failure: the `refusal` the agent said where it is no longer seen, where
+/// its log is and, when the session can be resumed, how.
+fn stopped(
+    status: ExitStatus,
+    session: &SessionId,
+    resumable: bool,
+    refusal: Option<&str>,
+    log: &Path,
+) -> String {
+    let refusal = refusal.unwrap_or_default();
+    let resume = if resumable {
         format!(" `rig --resume {session}` resumes the session where it stopped.")
     } else {
         String::new()
     };
     format!(
-        "The agent stopped ({status}).{resume} Log: {}",
+        "{refusal}The agent stopped ({status}).{resume} Log: {}",
         log.display()
     )
 }

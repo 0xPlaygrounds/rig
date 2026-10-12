@@ -4,7 +4,7 @@ use rig::harness_protocol::{Home, Invocation};
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
 
-use super::{Invoked, LauncherPlugin, LauncherRun};
+use super::{Invoked, LauncherPlugin, LauncherRun, refuse};
 use crate::host::exit::{Exit, ExitPlugin, ExitReason};
 
 /// An app started with `args` on a terminal or not, through `finish` and
@@ -66,4 +66,20 @@ fn an_exit_on_purpose_in_the_first_frame_counts_as_started() {
     assert!(ready(Some(Exit(ExitReason::Quit)), None));
     assert!(!ready(None, Some(AppExit::from_code(1))), "a crash path");
     std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// The launcher says a refusal again once it has the terminal back, as a
+/// restarted full-screen view kept the screen it was said on.
+#[test]
+fn a_refusal_is_told_to_the_launcher() {
+    let home = Home::at(std::env::temp_dir().join(format!("rig-refusal-{}", std::process::id())));
+    let run = home.run(1);
+    std::fs::create_dir_all(run.path()).ok();
+    let mut app = App::new();
+    app.insert_resource(LauncherRun(run.clone()));
+    refuse(&mut app, "this session is plain".to_owned());
+    refuse(&mut app, "said once".to_owned());
+    let said = std::fs::read_to_string(run.refusal()).ok();
+    std::fs::remove_dir_all(home.root()).ok();
+    assert_eq!(said.as_deref(), Some("rig: this session is plain.\n"));
 }

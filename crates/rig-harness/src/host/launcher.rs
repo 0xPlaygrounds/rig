@@ -125,14 +125,21 @@ impl Plugin for LauncherPlugin {
 struct Refused;
 
 /// Refuses this run, once the app is built: says `why` on stderr now,
-/// before any front takes the terminal, and exits with code 2 at the end
-/// of the first frame. Only the first refusal is said.
+/// before any front takes the terminal, and in the launcher's
+/// [`RunDir::refusal`], and exits with code 2 at the end of the first
+/// frame. Only the first refusal is said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;
     }
     let stop = if why.ends_with('.') { "" } else { "." };
-    eprintln!("rig: {why}{stop}");
+    let said = format!("rig: {why}{stop}\n");
+    eprint!("{said}");
+    if let Some(run) = app.world().get_resource::<LauncherRun>()
+        && let Err(failure) = std::fs::write(run.0.refusal(), said)
+    {
+        error!("could not tell the launcher why the run is refused: {failure}");
+    }
     app.insert_resource(Refused).add_systems(
         Last,
         exit_refused
