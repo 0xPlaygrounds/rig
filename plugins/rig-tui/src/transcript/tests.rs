@@ -28,8 +28,8 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, DrawnTranscript, Highlight, ItemRow, RenderToolCall, ScrollTo,
-    ToolCallView, TranscriptItem, TranscriptView,
+    AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
+    RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -110,6 +110,8 @@ fn drawn(
         outputs,
         inside: HashMap::new(),
         expanded: &expanded,
+        whole: false,
+        note_cut: false,
         facts: &facts,
     };
     // The conversation is the same each time.
@@ -422,6 +424,81 @@ fn the_drawn_transcript_has_the_rows_drawn_and_the_matches_lit() {
     let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
     expanded.insert(item.clone());
     assert_eq!(drawn(&mut app).lit_in(&item), 10);
+}
+
+/// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
+/// columns, with `expanded` items whole.
+fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> Option<DrawnTranscript> {
+    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, WIDTH, expanded)
+    };
+    app.world_mut().run_system_once(lay_out).ok().flatten()
+}
+
+#[test]
+fn a_layout_is_the_drawn_transcript_cut_as_drawn_or_whole() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // A look that keeps a collapsed output's last lines, as a shell's does.
+    app.add_tool_renderer("shell", |call| {
+        let mut lines = vec![call.header("shell", "")];
+        if call.expanded {
+            lines.extend(call.result_lines(usize::MAX));
+        } else {
+            lines.extend(call.tail_lines(2));
+        }
+        lines
+    });
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name.clone(), json!({})));
+    say(&mut app, agent, Message::user("why does it panic?"));
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    say(&mut app, agent, Message::Assistant(reply));
+    let output = ["panicked at a.rs", "two", "three", "panicked at b.rs"];
+    let result = Message::tool_result(call.id.clone(), name, output.join("\n"));
+    say(&mut app, agent, result);
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "panicked".to_owned(),
+        ..Highlight::default()
+    }];
+    let item = TranscriptItem::Call(call.id.clone());
+    on_screen(&mut app, agent, 5);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    let shown = laid_out(&mut app, agent, Expanded::AsShown);
+    // Laid out as drawn, it is what the frame drew, but on no screen.
+    assert_eq!(
+        shown.as_ref().map(DrawnTranscript::rows),
+        Some(drawn.rows())
+    );
+    assert!(drawn.is_cut(&item));
+    assert_eq!(drawn.lit_in(&item), 1);
+    let Some(whole) = laid_out(&mut app, agent, Expanded::All) else {
+        return;
+    };
+    assert!(!whole.is_cut(&item));
+    assert_eq!(whole.on_screen(), 0..0);
+    // The call alone, whole: its first match is the one the tail cut.
+    let call_rows = whole.item(&item).unwrap_or_default();
+    let texts: Vec<&str> = call_rows
+        .rows()
+        .iter()
+        .map(|row| row.text.as_str())
+        .collect();
+    let lit: Vec<usize> = call_rows.rows().iter().map(DrawnRow::lit_total).collect();
+    assert_eq!(texts.get(1..).map(<[&str]>::len), Some(4), "{texts:#?}");
+    assert_eq!(lit, [0, 1, 0, 0, 1]);
+    assert_eq!(call_rows.items().first(), Some(&(item.clone(), 0..5)));
+    // Expanded in the view, it is drawn as laid out whole.
+    let expanded = &mut app.world_mut().resource_mut::<TranscriptView>().expanded;
+    expanded.insert(item.clone());
+    on_screen(&mut app, agent, 5);
+    let drawn = app.world().resource::<DrawnTranscript>().item(&item);
+    assert_eq!(
+        drawn.map(|drawn| drawn.rows().to_vec()),
+        Some(call_rows.rows().to_vec())
+    );
 }
 
 #[test]

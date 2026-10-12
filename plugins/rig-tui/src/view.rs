@@ -118,6 +118,8 @@ pub struct TranscriptView {
     /// The item and the row of it at the top while the view is scrolled
     /// up; `None` while it follows the newest output.
     top: Option<(TranscriptItem, usize)>,
+    /// The transcript's width at the last frame.
+    width: Option<u16>,
     /// Recent notices, oldest first.
     notices: Vec<ShownNotice>,
     /// Where they are kept for the next build of the session.
@@ -171,17 +173,21 @@ pub enum ItemRow {
 
 /// The transcript as the view drew it at its last frame: every row laid
 /// out, on screen or not, as drawn (wrapped, cut where its item is
-/// collapsed, as its renderer drew it), with the items they belong to and
-/// the matches the view lit in each. A plugin counts and scrolls over this,
-/// not over the source text.
+/// collapsed, as its renderer drew it), with the items they belong to,
+/// those drawn cut, and the matches the view lit in each. A plugin counts
+/// and scrolls over this, not over the source text.
+/// [`TranscriptLayout`](crate::TranscriptLayout) lays one out without
+/// drawing it, for any agent, cut as drawn or whole; a plugin's test, with
+/// no terminal to draw, inserts such a one as this resource.
 ///
 /// It costs nothing until a plugin adds it with
 /// `app.init_resource::<DrawnTranscript>()`. From then on, each frame that
 /// draws the transcript copies the text of every row of it, and with
 /// [`TranscriptView::highlights`] set counts their matches in each, so its
 /// work and memory grow with the transcript; a streaming reply draws at
-/// most about 30 frames a second. Frames that draw the same rows leave it
-/// unchanged, so `Res::is_changed` says what is drawn changed.
+/// most about 30 frames a second. An item laid out again is also drawn
+/// whole once, to tell whether it is cut. Frames that draw the same rows
+/// leave it unchanged, so `Res::is_changed` says what is drawn changed.
 ///
 /// ```no_run
 /// use rig_harness::prelude::*;
@@ -203,6 +209,7 @@ pub struct DrawnTranscript {
     agent: Option<Entity>,
     rows: Vec<DrawnRow>,
     items: Vec<(TranscriptItem, Range<usize>)>,
+    cut: Vec<TranscriptItem>,
     on_screen: Range<usize>,
 }
 
@@ -225,18 +232,20 @@ impl DrawnRow {
 }
 
 impl DrawnTranscript {
-    /// The transcript `agent`'s `rows` make, `items` among them, with
-    /// `on_screen` on screen.
+    /// The transcript `agent`'s `rows` make, `items` among them, `cut` of
+    /// them drawn cut, with `on_screen` on screen.
     pub(crate) fn new(
         agent: Option<Entity>,
         rows: Vec<DrawnRow>,
         items: Vec<(TranscriptItem, Range<usize>)>,
+        cut: Vec<TranscriptItem>,
         on_screen: Range<usize>,
     ) -> Self {
         Self {
             agent,
             rows,
             items,
+            cut,
             on_screen,
         }
     }
@@ -284,9 +293,54 @@ impl DrawnTranscript {
         rows.iter().map(DrawnRow::lit_total).sum()
     }
 
-    /// The rows on screen.
+    /// Whether `item` is drawn cut: collapsed, it draws less than it does
+    /// expanded, such as a shell call's last lines of output. Expanding it
+    /// draws it whole. A message is cut when its own text is, not when
+    /// only a call or an entry in it is.
+    pub fn is_cut(&self, item: &TranscriptItem) -> bool {
+        self.cut.contains(item)
+    }
+
+    /// The rows on screen; none in one laid out without drawing it.
     pub fn on_screen(&self) -> Range<usize> {
         self.on_screen.clone()
+    }
+
+    /// Only `item`'s rows, as a transcript of their own: its rows from 0,
+    /// the items drawn in it with which are cut, and its rows on screen.
+    /// `None` when it is not drawn.
+    pub fn item(&self, item: &TranscriptItem) -> Option<Self> {
+        let at = self.items.iter().position(|(drawn, _)| drawn == item)?;
+        let rows = self.items.get(at).map(|(_, rows)| rows.clone())?;
+        let start = rows.start;
+        let within = |inner: &Range<usize>| rows.start <= inner.start && inner.end <= rows.end;
+        // An item holding it comes before it, though it may have the same
+        // rows, such as a reply that only calls a tool.
+        let items: Vec<(TranscriptItem, Range<usize>)> = self
+            .items
+            .iter()
+            .skip(at)
+            .filter(|(_, inner)| within(inner))
+            .map(|(item, inner)| (item.clone(), inner.start - start..inner.end - start))
+            .collect();
+        let cut = self
+            .cut
+            .iter()
+            .filter(|cut| items.iter().any(|(item, _)| item == *cut));
+        let cut = cut.cloned().collect();
+        let on_screen = self.on_screen.start.max(rows.start)..self.on_screen.end.min(rows.end);
+        let on_screen = if on_screen.is_empty() {
+            0..0
+        } else {
+            on_screen.start - start..on_screen.end - start
+        };
+        Some(Self {
+            agent: self.agent,
+            rows: self.rows.get(rows).unwrap_or_default().to_vec(),
+            items,
+            cut,
+            on_screen,
+        })
     }
 }
 
@@ -468,15 +522,23 @@ impl TranscriptView {
         self.top.as_ref()
     }
 
+    /// The transcript's width in columns at the last frame the view drew;
+    /// `None` before one, as in a run without the terminal.
+    pub fn width(&self) -> Option<u16> {
+        self.width
+    }
+
     /// The notices shown, oldest first, those an earlier build of the
     /// session showed included.
     pub fn notices(&self) -> &[ShownNotice] {
         &self.notices
     }
 
-    /// Notes where the view is scrolled, as it was drawn.
-    pub(crate) fn set_top(&mut self, top: Option<(TranscriptItem, usize)>) {
+    /// Notes where the view is scrolled and how wide the transcript is,
+    /// as it was drawn.
+    pub(crate) fn set_drawn(&mut self, top: Option<(TranscriptItem, usize)>, width: u16) {
         self.top = top;
+        self.width = Some(width);
     }
 
     /// Expands `item` when collapsed, collapses it when expanded.

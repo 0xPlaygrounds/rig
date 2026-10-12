@@ -17,8 +17,10 @@
 //! and [`TranscriptView::top`] reads where the view is.
 //! [`ShownNotice::slot`] says where a notice is drawn in an agent's
 //! transcript ([`TranscriptSlot`]), and [`DrawnTranscript`], which a
-//! plugin adds, holds the rows the last frame drew, by item, with the
-//! matches it lit.
+//! plugin adds, holds the rows the last frame drew, by item, with those
+//! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
+//! agent's transcript the same way without drawing it, cut as drawn or
+//! whole ([`Expanded`]), for an export, a copy or a search.
 //!
 //! It is the front ([`FRONT`]) of a run where someone sits at the
 //! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
@@ -87,6 +89,7 @@ pub use keys::{
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
+pub use render::{Expanded, TranscriptLayout};
 pub use renderers::{
     AppToolRenderersExt, CallState, EntryRenderer, EntryView, RESULT_LINES, RenderEntry,
     RenderToolCall, ToolCallView, ToolRenderer, excerpt,
@@ -117,6 +120,8 @@ impl Plugin for TuiPlugin {
         app.add_entry_renderer(BUILD_ORIGIN, build_failed);
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TranscriptView>()
+            .init_resource::<transcript::CallFacts>()
+            .init_resource::<transcript::StreamingCalls>()
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
             .init_resource::<PromptHistory>()
@@ -179,8 +184,6 @@ fn add_view(app: &mut App) {
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
-        .init_resource::<transcript::CallFacts>()
-        .init_resource::<transcript::StreamingCalls>()
         .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,

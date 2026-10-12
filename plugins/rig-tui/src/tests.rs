@@ -95,61 +95,38 @@ pub(crate) fn drawn_rows(
     height: usize,
     streaming: Vec<rig_core::message::ToolCall>,
 ) -> Vec<ratatui::text::Line<'static>> {
-    use crate::render::{ShownAgent, Sources, decorate, lay_out_transcript};
-    use crate::transcript::{CallFacts, Transcript};
-    use rig_harness::transcript::{TranscriptEntries, TranscriptEntry};
+    use crate::render::{Sources, decorate, lay_out_transcript};
+    use crate::transcript::Transcript;
 
     let draw =
-        move |agents: Query<(&AgentId, &Conversation)>,
+        move |layout: TranscriptLayout,
               (mut view, mut transcript_view): (ResMut<view::TuiView>, ResMut<TranscriptView>),
-              (tools, origins): (Query<&ToolRenderer>, Query<&EntryRenderer>),
-              (lists, entries): (Query<&TranscriptEntries>, Query<&TranscriptEntry>),
               mut drawn: Option<ResMut<DrawnTranscript>>| {
-            let Ok((id, conversation)) = agents.get(agent) else {
+            let Some(mut shown) = layout.agent(agent, true) else {
                 return Vec::new();
             };
-            let shown = ShownAgent {
-                entity: agent,
-                id,
-                conversation,
-                changed: true,
-                inbox: &[],
-            };
-            let renderers = tools.iter().map(|r| (r.tool.as_str(), &r.render)).collect();
-            let entry_renderers = origins
-                .iter()
-                .map(|r| (r.origin.as_str(), &r.render))
-                .collect();
-            let shown_entries: Vec<_> = lists
-                .get(agent)
-                .into_iter()
-                .flat_map(TranscriptEntries::iter)
-                .filter_map(|entry| Some((entry, entries.get(entry).ok()?)))
-                .collect();
-            let (calls, facts) = (Default::default(), CallFacts::default());
-            let outputs = Default::default();
+            shown.streaming = streaming.clone();
+            let (renderers, entry_renderers) = layout.looks();
             let sources = Sources {
                 view: &transcript_view,
                 renderers: &renderers,
                 entry_renderers: &entry_renderers,
-                calls: &calls,
-                outputs: &outputs,
-                facts: &facts,
-                partial: None,
-                streaming: &streaming,
-                entries: &shown_entries,
+                facts: layout.facts(),
+                whole: false,
+                note_cut: drawn.is_some(),
             };
             let mut rows = Transcript::default();
             let parts = lay_out_transcript(&mut rows, &sources, Some(&shown), 80);
             let highlights = transcript_view.highlights.as_slice();
             let visible = rows.visible(&parts, (80, height), &mut view.scroll, highlights);
             if let Some(drawn) = &mut drawn {
-                drawn.set_if_neq(rows.drawn(Some(agent), &parts, &visible, highlights));
+                let on_screen = visible.first..visible.first + visible.rows.len();
+                drawn.set_if_neq(rows.laid_out(Some(agent), &parts, highlights, on_screen));
             }
             let selected = (transcript_view.selected.as_ref(), highlights);
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
-            transcript_view.set_top(visible.top);
+            transcript_view.set_drawn(visible.top, 80);
             lines
         };
     app.world_mut().run_system_once(draw).unwrap_or_default()
@@ -191,6 +168,34 @@ fn a_panel_plugin_is_inert_in_a_print_run() {
     let world = app.world();
     assert_eq!(world.resource::<Drawn>().0, 0);
     assert!(!world.contains_resource::<view::TuiView>());
+}
+
+#[test]
+fn a_plugins_test_lays_out_a_transcript_without_a_terminal() {
+    let mut app = App::new();
+    app.set_error_handler(rig_harness::error::panic)
+        .insert_resource(Invoked::default())
+        .add_plugins((AgentPlugin, TuiPlugin));
+    app.update();
+    let world = app.world_mut();
+    let agent = world.query_filtered::<Entity, With<Agent>>().single(world);
+    let Ok(agent) = agent else { return };
+    let note = Deliver::new(agent, "a note", DeliveryMode::Note);
+    app.world_mut().trigger(note);
+    app.update();
+    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, 40, Expanded::AsShown)
+    };
+    let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
+    assert!(laid_out.is_some());
+    let Some(drawn) = laid_out else { return };
+    assert_eq!(drawn.agent(), Some(agent));
+    assert!(
+        drawn.rows().iter().any(|row| row.text == "› a note"),
+        "{drawn:#?}"
+    );
+    // As the frame that never comes would hold it.
+    app.insert_resource(drawn);
 }
 
 #[test]

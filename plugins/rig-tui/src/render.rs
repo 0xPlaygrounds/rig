@@ -310,7 +310,7 @@ impl CallStates<'_, '_> {
     }
 }
 
-/// The agent shown, as its transcript draws it.
+/// An agent, as its transcript draws it.
 pub(crate) struct ShownAgent<'a> {
     pub(crate) entity: Entity,
     pub(crate) id: &'a AgentId,
@@ -319,10 +319,20 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) changed: bool,
     /// The messages it accepted and has not sent yet, in the order they
     /// came.
-    pub(crate) inbox: &'a [&'a Incoming],
+    pub(crate) inbox: Vec<&'a Incoming>,
+    /// Where its running turn's calls stand.
+    pub(crate) calls: BTreeMap<CallId, CallState>,
+    /// The output so far of its running calls that report it.
+    pub(crate) outputs: BTreeMap<CallId, String>,
+    /// The reply streaming in, if any.
+    pub(crate) partial: Option<&'a Partial>,
+    /// The tool calls it streams.
+    pub(crate) streaming: Vec<ToolCall>,
+    /// Its entries, in order.
+    pub(crate) entries: Vec<(Entity, &'a TranscriptEntry)>,
 }
 
-/// What the transcript is drawn from besides the agent's conversation.
+/// What the transcript is drawn from besides the agent.
 pub(crate) struct Sources<'a> {
     /// The transcript as plugins steer it: what is expanded, the notices.
     pub(crate) view: &'a TranscriptView,
@@ -330,18 +340,155 @@ pub(crate) struct Sources<'a> {
     pub(crate) renderers: &'a Renderers<'a>,
     /// The entry renderers by origin.
     pub(crate) entry_renderers: &'a EntryRenderers<'a>,
-    /// Where the running turn's calls stand.
-    pub(crate) calls: &'a BTreeMap<CallId, CallState>,
-    /// The output so far of its running calls that report it.
-    pub(crate) outputs: &'a BTreeMap<CallId, String>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
-    /// The reply streaming in, if any.
-    pub(crate) partial: Option<&'a Partial>,
-    /// The tool calls it streams.
-    pub(crate) streaming: &'a [ToolCall],
-    /// The shown agent's entries, in order.
-    pub(crate) entries: &'a [(Entity, &'a TranscriptEntry)],
+    /// Whether every item is drawn whole, as if expanded.
+    pub(crate) whole: bool,
+    /// Whether to note which items are drawn cut.
+    pub(crate) note_cut: bool,
+}
+
+/// Lays out an agent's transcript as the terminal view draws it, without
+/// drawing it: for any agent, shown or not, in a run with the terminal or
+/// without, by the view's own layout (its order, its renderers, wrapping
+/// and the matches it lights), so an export, a copy, a search or a screen
+/// reader reads what the view shows. Each layout renders and wraps the
+/// whole transcript, so lay one out when asked, not every frame. It is
+/// there in any run with the [`TuiPlugin`](crate::TuiPlugin), and takes
+/// the [`TranscriptView`] to lay out with, so a system that changes the
+/// view lays out with it too.
+///
+/// ```no_run
+/// use rig_harness::prelude::*;
+/// use rig_tui::{Expanded, TranscriptLayout, TranscriptView};
+///
+/// /// `/export`: the agent's transcript as the view draws it, every item
+/// /// whole, a line per row.
+/// fn export(In(args): In<CommandArgs>, layout: TranscriptLayout, view: Res<TranscriptView>) {
+///     let width = view.width().unwrap_or(100);
+///     let Some(laid_out) = layout.lay_out(&view, args.agent, width, Expanded::All) else {
+///         return;
+///     };
+///     let rows: Vec<&str> = laid_out.rows().iter().map(|row| row.text.as_str()).collect();
+///     std::fs::write("transcript.txt", rows.join("\n")).ok();
+/// }
+/// ```
+#[derive(SystemParam)]
+pub struct TranscriptLayout<'w, 's> {
+    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
+    lists: Query<'w, 's, &'static TranscriptEntries>,
+    entries: Query<'w, 's, &'static TranscriptEntry>,
+    pub(crate) active: Query<'w, 's, &'static ActiveTurn>,
+    turns: Query<'w, 's, &'static Calls>,
+    partials: Query<'w, 's, &'static Partial>,
+    accepted: Query<
+        'w,
+        's,
+        (&'static Effect, &'static Incoming, &'static ForAgent),
+        (With<Started>, Without<Outcome>),
+    >,
+    pub(crate) renderers: Query<'w, 's, Ref<'static, ToolRenderer>>,
+    pub(crate) entry_renderers: Query<'w, 's, Ref<'static, EntryRenderer>>,
+    calls: CallStates<'w, 's>,
+    facts: Res<'w, CallFacts>,
+    streaming: Res<'w, StreamingCalls>,
+}
+
+/// Which items a [`TranscriptLayout`] lays out whole.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Expanded {
+    /// Those the view draws whole, its [`TranscriptView::expanded`]; the
+    /// rest are cut as their look says.
+    #[default]
+    AsShown,
+    /// Every item, as the view draws it once expanded.
+    All,
+}
+
+impl TranscriptLayout<'_, '_> {
+    /// `agent`'s transcript laid out in rows `width` columns wide (as
+    /// [`TranscriptView::width`] says the view draws it; `u16::MAX` keeps
+    /// a line in one row), its items drawn whole as `expanded` says and
+    /// the matches of `view`'s highlights counted, as the view would draw
+    /// it with `view`. It says which items are drawn cut, and has no rows
+    /// on screen. [`DrawnTranscript::item`] takes one item's rows out of
+    /// it. `None` when `agent` is no agent.
+    pub fn lay_out(
+        &self,
+        view: &TranscriptView,
+        agent: Entity,
+        width: u16,
+        expanded: Expanded,
+    ) -> Option<DrawnTranscript> {
+        let shown = self.agent(agent, true)?;
+        let (renderers, entry_renderers) = self.looks();
+        let sources = Sources {
+            view,
+            renderers: &renderers,
+            entry_renderers: &entry_renderers,
+            facts: &self.facts,
+            whole: expanded == Expanded::All,
+            note_cut: true,
+        };
+        let mut transcript = Transcript::default();
+        let parts = lay_out_transcript(&mut transcript, &sources, Some(&shown), width);
+        Some(transcript.laid_out(Some(agent), &parts, &view.highlights, 0..0))
+    }
+
+    /// The agent `entity` as its transcript draws it, its conversation
+    /// `changed` since the last frame or not; `None` when it is no agent.
+    pub(crate) fn agent(&self, entity: Entity, changed: bool) -> Option<ShownAgent<'_>> {
+        let (id, conversation) = self.agents.get(entity).ok()?;
+        let turn = self.active.get(entity).ok();
+        let calls = turn.and_then(|turn| self.turns.get(turn.turn()).ok());
+        let partial = calls.and_then(|calls| {
+            let mut streams = calls.iter();
+            streams.find_map(|call| Some((call, self.partials.get(call).ok()?)))
+        });
+        let streaming = partial.map(|(call, _)| self.streaming.of(call));
+        let streaming = streaming.unwrap_or_default().iter();
+        let entries = self.lists.get(entity).into_iter();
+        let entries = entries.flat_map(TranscriptEntries::iter);
+        let mut inbox: Vec<(&Effect, &Incoming)> = self
+            .accepted
+            .iter()
+            .filter(|(.., to)| to.0 == entity)
+            .map(|(effect, message, _)| (effect, message))
+            .collect();
+        inbox.sort_by_key(|(effect, _)| effect.id());
+        Some(ShownAgent {
+            entity,
+            id,
+            conversation,
+            changed,
+            inbox: inbox.into_iter().map(|(_, message)| message).collect(),
+            calls: self.calls.of(calls.into_iter().flat_map(Calls::iter)),
+            outputs: self.calls.outputs(calls.into_iter().flat_map(Calls::iter)),
+            partial: partial.map(|(_, partial)| partial),
+            streaming: streaming.map(|(_, call)| call.clone()).collect(),
+            entries: entries
+                .filter_map(|entry| Some((entry, self.entries.get(entry).ok()?)))
+                .collect(),
+        })
+    }
+
+    /// The tool renderers by tool name and the entry renderers by origin.
+    pub(crate) fn looks(&self) -> (Renderers<'_>, EntryRenderers<'_>) {
+        let tools = self.renderers.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.tool.as_str(), &renderer.render)
+        });
+        let origins = self.entry_renderers.iter().map(|renderer| {
+            let renderer = renderer.into_inner();
+            (renderer.origin.as_str(), &renderer.render)
+        });
+        (tools.collect(), origins.collect())
+    }
+
+    /// What settled calls published and how long they ran.
+    pub(crate) fn facts(&self) -> &CallFacts {
+        &self.facts
+    }
 }
 
 /// Brings `transcript` up to date with the agent shown and returns its
@@ -365,7 +512,7 @@ pub(crate) fn lay_out_transcript(
         for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra, &mut marks);
         }
-        parts.push(Part::rows(&extra, &marks, wrap_width));
+        parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
         return parts;
     };
     let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
@@ -376,10 +523,12 @@ pub(crate) fn lay_out_transcript(
     let mut look = Look {
         renderers: sources.renderers,
         entries: sources.entry_renderers,
-        calls: sources.calls,
-        outputs: sources.outputs,
+        calls: &shown.calls,
+        outputs: &shown.outputs,
         inside: HashMap::new(),
         expanded: &view.expanded,
+        whole: sources.whole,
+        note_cut: sources.note_cut,
         facts: sources.facts,
     };
     for (at, notice) in view.notices().iter().enumerate() {
@@ -397,7 +546,7 @@ pub(crate) fn lay_out_transcript(
             after.push((at, notice));
         }
     }
-    for &(entity, entry) in sources.entries {
+    for &(entity, entry) in &shown.entries {
         let before = match TranscriptSlot::of_entry(entry, conversation) {
             TranscriptSlot::Top => 0,
             TranscriptSlot::After(index) => index + 1,
@@ -417,39 +566,43 @@ pub(crate) fn lay_out_transcript(
         let (notices, entries) = after.next().unwrap_or_default();
         for (entity, entry) in entries {
             let item = TranscriptItem::Entry(entity);
-            let entry = EntryView {
-                origin: &entry.origin,
-                title: &entry.title,
-                text: &entry.text,
-                expanded: view.expanded.contains(&item),
-            };
+            let (drawn, cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                let entry = EntryView {
+                    origin: &entry.origin,
+                    title: &entry.title,
+                    text: &entry.text,
+                    expanded,
+                };
+                entry_lines(&entry, sources.entry_renderers)
+            });
             let mut lines = vec![Line::default()];
-            lines.extend(entry_lines(&entry, sources.entry_renderers));
-            let marks = [(item, 0..lines.len())];
-            parts.push(Part::rows(&lines, &marks, wrap_width));
+            lines.extend(drawn);
+            let marks = [(item.clone(), 0..lines.len())];
+            let cut = if cut { vec![item] } else { Vec::new() };
+            parts.push(Part::rows(&lines, &marks, cut, wrap_width));
         }
         let (mut extra, mut marks) = (Vec::new(), Marks::new());
         for notice in notices {
             notice_lines(notice, &mut extra, &mut marks);
         }
         if index == count {
-            if let Some(partial) = sources.partial {
+            if let Some(partial) = shown.partial {
                 extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
                 if !partial.text.is_empty() {
                     extra.push(Line::default());
                     extra.extend(markdown::render(&partial.text));
                 }
             }
-            for call in sources.streaming {
+            for call in &shown.streaming {
                 let view = ToolCallView::new(call, None, CallState::Streaming);
                 extra.extend(call_lines(&view, sources.renderers));
             }
-            inbox_lines(shown.inbox, &mut extra);
-            parts.push(Part::rows(&extra, &marks, wrap_width));
+            inbox_lines(&shown.inbox, &mut extra);
+            parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
             break;
         }
         if !extra.is_empty() {
-            parts.push(Part::rows(&extra, &marks, wrap_width));
+            parts.push(Part::rows(&extra, &marks, Vec::new(), wrap_width));
         }
         parts.push(Part::Message(index));
     }
@@ -562,27 +715,9 @@ pub(crate) fn render(
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     (mut transcript, mut drawn): (Local<Transcript>, Option<ResMut<DrawnTranscript>>),
-    (agents, changed, agent_entries, entries): (
-        Query<(&AgentId, &Conversation)>,
-        Query<(), Changed<Conversation>>,
-        Query<&TranscriptEntries>,
-        Query<&TranscriptEntry>,
-    ),
-    (turns, partials, active, accepted): (
-        Query<&Calls>,
-        Query<&Partial>,
-        Query<&ActiveTurn>,
-        Query<(&Effect, &Incoming, &ForAgent), (With<Started>, Without<Outcome>)>,
-    ),
+    (from, changed): (TranscriptLayout, Query<(), Changed<Conversation>>),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
-    (renderers, entry_renderers, call_states, facts, streaming): (
-        Query<Ref<ToolRenderer>>,
-        Query<Ref<EntryRenderer>>,
-        CallStates,
-        Res<CallFacts>,
-        Res<StreamingCalls>,
-    ),
     mut removed_renderers: (
         RemovedComponents<ToolRenderer>,
         RemovedComponents<EntryRenderer>,
@@ -597,47 +732,8 @@ pub(crate) fn render(
     let view = view.bypass_change_detection();
     let transcript_view = transcript_view.bypass_change_detection();
     let shown_agent = shown_agent.0;
-    let turn = shown_agent.and_then(|agent| active.get(agent).ok());
-    let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
-    let partial = calls.and_then(|calls| {
-        let mut streams = calls.iter();
-        streams.find_map(|call| Some((call, partials.get(call).ok()?)))
-    });
-    let streamed: Vec<ToolCall> = partial
-        .map(|(call, _)| {
-            streaming
-                .of(call)
-                .iter()
-                .map(|(_, call)| call.clone())
-                .collect()
-        })
-        .unwrap_or_default();
-    let partial = partial.map(|(_, partial)| partial);
-    let call_outputs = call_states.outputs(calls.into_iter().flat_map(Calls::iter));
-    let call_states = call_states.of(calls.into_iter().flat_map(Calls::iter));
-    let shown_entries: Vec<(Entity, &TranscriptEntry)> = shown_agent
-        .and_then(|agent| agent_entries.get(agent).ok())
-        .into_iter()
-        .flat_map(TranscriptEntries::iter)
-        .filter_map(|entry| Some((entry, entries.get(entry).ok()?)))
-        .collect();
-    let mut inbox: Vec<(&Effect, &Incoming)> = accepted
-        .iter()
-        .filter(|(.., to)| Some(to.0) == shown_agent)
-        .map(|(effect, message, _)| (effect, message))
-        .collect();
-    inbox.sort_by_key(|(effect, _)| effect.id());
-    let inbox: Vec<&Incoming> = inbox.into_iter().map(|(_, message)| message).collect();
-    let shown = shown_agent.and_then(|entity| {
-        let (id, conversation) = agents.get(entity).ok()?;
-        Some(ShownAgent {
-            entity,
-            id,
-            conversation,
-            changed: changed.contains(entity),
-            inbox: &inbox,
-        })
-    });
+    let turn = shown_agent.and_then(|agent| from.active.get(agent).ok());
+    let shown = shown_agent.and_then(|entity| from.agent(entity, changed.contains(entity)));
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
@@ -645,25 +741,15 @@ pub(crate) fn render(
     });
     // A renderer changed: what it drew is drawn again.
     if removed_renderers.0.read().count() + removed_renderers.1.read().count() > 0
-        || renderers.iter().any(|renderer| renderer.is_changed())
-        || entry_renderers.iter().any(|renderer| renderer.is_changed())
+        || from.renderers.iter().any(|renderer| renderer.is_changed())
+        || from
+            .entry_renderers
+            .iter()
+            .any(|renderer| renderer.is_changed())
     {
         transcript.clear();
     }
-    let by_tool: Renderers<'_> = renderers
-        .iter()
-        .map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.tool.as_str(), &renderer.render)
-        })
-        .collect();
-    let by_origin: EntryRenderers<'_> = entry_renderers
-        .iter()
-        .map(|renderer| {
-            let renderer = renderer.into_inner();
-            (renderer.origin.as_str(), &renderer.render)
-        })
-        .collect();
+    let (by_tool, by_origin) = from.looks();
     let edit = view
         .choosing
         .as_ref()
@@ -691,12 +777,9 @@ pub(crate) fn render(
                 view: transcript_view,
                 renderers: &by_tool,
                 entry_renderers: &by_origin,
-                calls: &call_states,
-                outputs: &call_outputs,
-                facts: &facts,
-                partial,
-                streaming: &streamed,
-                entries: &shown_entries,
+                facts: from.facts(),
+                whole: false,
+                note_cut: drawn.is_some(),
             };
             let parts = lay_out_transcript(
                 &mut transcript,
@@ -713,7 +796,8 @@ pub(crate) fn render(
             if let Some(drawn) = &mut drawn {
                 let (agent, highlights) = (shown.as_ref(), &transcript_view.highlights);
                 let agent = agent.map(|shown| shown.entity);
-                drawn.set_if_neq(transcript.drawn(agent, &parts, &visible, highlights));
+                let on_screen = visible.first..visible.first + visible.rows.len();
+                drawn.set_if_neq(transcript.laid_out(agent, &parts, highlights, on_screen));
             }
             let rows = decorate(
                 visible.rows,
@@ -727,7 +811,7 @@ pub(crate) fn render(
             frame.render_widget(Paragraph::new(rows), transcript_area);
             draw_below(frame, visible.below, transcript_area);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
-            transcript_view.set_top(visible.top);
+            transcript_view.set_drawn(visible.top, transcript_area.width);
             let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
             let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
             let app = status.1.as_deref().map(|app| &app.0);

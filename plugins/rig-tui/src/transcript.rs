@@ -158,6 +158,11 @@ pub(crate) struct Look<'a> {
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
     /// The items drawn whole.
     pub(crate) expanded: &'a HashSet<TranscriptItem>,
+    /// Whether every item is drawn whole, as if expanded.
+    pub(crate) whole: bool,
+    /// Whether to note which items are drawn cut, which draws each item
+    /// not expanded whole too.
+    pub(crate) note_cut: bool,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
 }
@@ -173,6 +178,23 @@ pub(crate) enum Inside<'a> {
 }
 
 impl Look<'_> {
+    /// Whether `item` is drawn whole.
+    pub(crate) fn is_expanded(&self, item: &TranscriptItem) -> bool {
+        self.whole || self.expanded.contains(item)
+    }
+
+    /// The lines `draw` draws, whole when `expanded`, and whether they are
+    /// cut: noted only when asked, by drawing them whole too.
+    pub(crate) fn drawn(
+        &self,
+        expanded: bool,
+        draw: impl Fn(bool) -> Vec<Line<'static>>,
+    ) -> (Vec<Line<'static>>, bool) {
+        let lines = draw(expanded);
+        let cut = self.note_cut && !expanded && draw(true) != lines;
+        (lines, cut)
+    }
+
     /// The notices and entries inside message `index`.
     fn inside(&self, index: usize) -> &[(usize, Inside<'_>)] {
         self.inside.get(&index).map_or(&[], Vec::as_slice)
@@ -191,8 +213,8 @@ impl Look<'_> {
                 Inside::Entry(entity, entry) => {
                     entity.hash(hasher);
                     (&entry.origin, &entry.title, &entry.text).hash(hasher);
-                    let expanded = TranscriptItem::Entry(*entity);
-                    self.expanded.contains(&expanded).hash(hasher);
+                    self.is_expanded(&TranscriptItem::Entry(*entity))
+                        .hash(hasher);
                 }
             }
         }
@@ -218,15 +240,16 @@ impl Look<'_> {
         hasher: &mut DefaultHasher,
     ) {
         self.hash_inside(index, hasher);
-        id.map(|id| self.expanded.contains(&TranscriptItem::Message(id)))
+        (self.whole, self.note_cut).hash(hasher);
+        id.map(|id| self.is_expanded(&TranscriptItem::Message(id)))
             .hash(hasher);
         if let Message::Assistant(assistant) = message {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
                     self.outputs.get(&call.id).hash(hasher);
-                    let expanded = TranscriptItem::Call(call.id.clone());
-                    self.expanded.contains(&expanded).hash(hasher);
+                    self.is_expanded(&TranscriptItem::Call(call.id.clone()))
+                        .hash(hasher);
                     self.facts.of(&call.id).1.hash(hasher);
                 }
             }
@@ -245,6 +268,7 @@ impl Look<'_> {
         }
         self.calls.hash(&mut hasher);
         self.outputs.hash(&mut hasher);
+        (self.whole, self.note_cut).hash(&mut hasher);
         // Sets in no order: a sum of each one's hash.
         let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
             let mut hasher = DefaultHasher::new();
@@ -272,14 +296,16 @@ fn level_code(level: NoticeLevel) -> u8 {
     }
 }
 
-/// One message's look: its lines and where its items are in them, and
-/// those lines wrapped to the width with where its items are in the rows.
+/// One message's look: its lines and where its items are in them, those
+/// lines wrapped to the width with where its items are in the rows, and
+/// the items drawn cut, when noted.
 struct Cached {
     fingerprint: u64,
     lines: Vec<Line<'static>>,
     line_marks: Marks,
     rows: Vec<Line<'static>>,
     marks: Marks,
+    cut: Vec<TranscriptItem>,
 }
 
 /// The wrapped rows of the shown agent's messages.
@@ -294,21 +320,23 @@ pub(crate) struct Transcript {
 
 /// A part of the transcript, in order: a message's cached rows, or rows
 /// made for this frame (notices, an entry, the reply streaming in), with
-/// where the items among them are.
+/// where the items among them are and those drawn cut.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Vec<Line<'static>>, Marks),
+    Rows(Vec<Line<'static>>, Marks, Vec<TranscriptItem>),
 }
 
 impl Part {
-    /// `lines`, with the items `marks` says are in them, wrapped to `width`.
+    /// `lines`, with the items `marks` says are in them, `cut` of them
+    /// drawn cut, wrapped to `width`.
     pub(crate) fn rows(
         lines: &[Line<'static>],
         marks: &[(TranscriptItem, Range<usize>)],
+        cut: Vec<TranscriptItem>,
         width: usize,
     ) -> Self {
         let (rows, marks) = wrap_marked(lines, marks, width);
-        Self::Rows(rows, marks)
+        Self::Rows(rows, marks, cut)
     }
 }
 
@@ -373,7 +401,7 @@ impl Transcript {
             {
                 continue;
             }
-            let (lines, line_marks) =
+            let (lines, line_marks, cut) =
                 message_lines(message, (conversation, index), previous, next, look);
             let (rows, marks) = wrap_marked(&lines, &line_marks, usable);
             let cached = Cached {
@@ -382,6 +410,7 @@ impl Transcript {
                 line_marks,
                 rows,
                 marks,
+                cut,
             };
             match self.messages.get_mut(index) {
                 Some(slot) => *slot = cached,
@@ -403,20 +432,47 @@ impl Transcript {
                 .get(*index)
                 .map(|cached| cached.rows.as_slice())
                 .unwrap_or_default(),
-            Part::Rows(rows, _) => rows.as_slice(),
+            Part::Rows(rows, ..) => rows.as_slice(),
         }
     }
 
     /// Where a part's items are in its rows.
-    fn marks(&self, part: &Part) -> Marks {
+    fn marks<'a>(&'a self, part: &'a Part) -> &'a [(TranscriptItem, Range<usize>)] {
         match part {
             Part::Message(index) => self
                 .messages
                 .get(*index)
-                .map(|cached| cached.marks.clone())
+                .map(|cached| cached.marks.as_slice())
                 .unwrap_or_default(),
-            Part::Rows(_, marks) => marks.clone(),
+            Part::Rows(_, marks, _) => marks.as_slice(),
         }
+    }
+
+    /// A part's items drawn cut, as far as noted.
+    fn cut<'a>(&'a self, part: &'a Part) -> &'a [TranscriptItem] {
+        match part {
+            Part::Message(index) => self
+                .messages
+                .get(*index)
+                .map(|cached| cached.cut.as_slice())
+                .unwrap_or_default(),
+            Part::Rows(.., cut) => cut.as_slice(),
+        }
+    }
+
+    /// Every item's rows in the whole transcript `parts` make, top to
+    /// bottom; a call's are within its message's.
+    fn marks_of(&self, parts: &[Part]) -> Marks {
+        let mut marks = Marks::new();
+        let mut start = 0;
+        for part in parts {
+            let shifted = self.marks(part).iter();
+            marks.extend(
+                shifted.map(|(item, rows)| (item.clone(), rows.start + start..rows.end + start)),
+            );
+            start += self.rows(part).len();
+        }
+        marks
     }
 
     /// The rows of `parts` that fit `height` rows at `width`, where
@@ -430,13 +486,7 @@ impl Transcript {
         highlights: &[Highlight],
     ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
-        let mut marks = Marks::new();
-        let mut start = 0;
-        for (part, count) in parts.iter().zip(&counts) {
-            let shifted = self.marks(part).into_iter();
-            marks.extend(shifted.map(|(item, rows)| (item, rows.start + start..rows.end + start)));
-            start += count;
-        }
+        let marks = self.marks_of(parts);
         scroll.find(&marks);
         let (mut top, mut below) = scroll.place(&counts, height, width);
         if let Some((item, to)) = scroll.jump.take() {
@@ -488,14 +538,15 @@ impl Transcript {
         }
     }
 
-    /// The transcript of `agent` as `parts` and `visible` drew it, with the
-    /// matches of `highlights` in each row, counted only when one is set.
-    pub(crate) fn drawn(
+    /// The transcript of `agent` as `parts` lay it out, with the matches of
+    /// `highlights` in each row, counted only when one is set, and
+    /// `on_screen` on screen.
+    pub(crate) fn laid_out(
         &self,
         agent: Option<Entity>,
         parts: &[Part],
-        visible: &Visible,
         highlights: &[Highlight],
+        on_screen: Range<usize>,
     ) -> DrawnTranscript {
         let lighting = highlights
             .iter()
@@ -509,8 +560,9 @@ impl Transcript {
                 Vec::new()
             },
         });
-        let on_screen = visible.first..visible.first + visible.rows.len();
-        DrawnTranscript::new(agent, rows.collect(), visible.marks.clone(), on_screen)
+        let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
+        let items = self.marks_of(parts);
+        DrawnTranscript::new(agent, rows.collect(), items, cut.collect(), on_screen)
     }
 
     /// The row among `rows` of `parts` with match `n` of `highlights`.
@@ -739,28 +791,40 @@ fn message_lines(
     previous: Option<&Message>,
     next: Option<&Message>,
     look: &Look<'_>,
-) -> (Vec<Line<'static>>, Marks) {
+) -> (Vec<Line<'static>>, Marks, Vec<TranscriptItem>) {
     let mut lines = Vec::new();
     let mut marks = Marks::new();
+    let mut cut = Vec::new();
+    // Whether the message's own text is drawn cut.
+    let mut message_cut = false;
     let id = conversation.id(at);
-    let expanded = id.is_some_and(|id| look.expanded.contains(&TranscriptItem::Message(id)));
+    let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
-    let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
+    let inside_before = |item: usize,
+                         lines: &mut Vec<Line<'static>>,
+                         marks: &mut Marks,
+                         cut: &mut Vec<TranscriptItem>| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
                 Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
                 Inside::Entry(entity, entry) => {
                     let item = TranscriptItem::Entry(*entity);
-                    let view = EntryView {
-                        origin: &entry.origin,
-                        title: &entry.title,
-                        text: &entry.text,
-                        expanded: look.expanded.contains(&item),
-                    };
+                    let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                        let view = EntryView {
+                            origin: &entry.origin,
+                            title: &entry.title,
+                            text: &entry.text,
+                            expanded,
+                        };
+                        entry_lines(&view, look.entries)
+                    });
                     let start = lines.len();
                     lines.push(Line::default());
-                    lines.extend(entry_lines(&view, look.entries));
-                    marks.push((item, start..lines.len()));
+                    lines.extend(drawn);
+                    marks.push((item.clone(), start..lines.len()));
+                    if is_cut {
+                        cut.push(item);
+                    }
                 }
             }
         }
@@ -769,7 +833,7 @@ fn message_lines(
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
-                inside_before(item_at, &mut lines, &mut marks);
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
                 match item {
                     UserContent::Text(text) => {
                         if let Some((label, count)) = attached_file(&text.text) {
@@ -783,18 +847,26 @@ fn message_lines(
                         lines.push(Line::default());
                         match conversation.origin(at, item_at) {
                             Some(origin) => {
-                                lines.extend(delivered_lines(origin, &text.text, expanded, look));
+                                let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                                    delivered_lines(origin, &text.text, expanded, look)
+                                });
+                                lines.extend(drawn);
+                                message_cut |= is_cut;
                             }
                             None => user_lines(&text.text, &mut lines),
                         }
                     }
                     // Drawn under its call already.
                     UserContent::ToolResult(result) if answers(previous, result) => {}
-                    UserContent::ToolResult(result) => lines.extend(excerpt(
-                        &result_text(result),
-                        if expanded { usize::MAX } else { RESULT_LINES },
-                        result_style(result.is_error),
-                    )),
+                    UserContent::ToolResult(result) => {
+                        let (text, style) = (result_text(result), result_style(result.is_error));
+                        let (drawn, is_cut) = look.drawn(expanded, |expanded| {
+                            let limit = if expanded { usize::MAX } else { RESULT_LINES };
+                            excerpt(&text, limit, style)
+                        });
+                        lines.extend(drawn);
+                        message_cut |= is_cut;
+                    }
                     UserContent::Image(_) => lines.push(Line::from("  [image]").dim()),
                     _ => lines.push(Line::from("  [attachment]").dim()),
                 }
@@ -802,7 +874,7 @@ fn message_lines(
         }
         Message::Assistant(assistant) => {
             for (item_at, item) in assistant.content.iter().enumerate() {
-                inside_before(item_at, &mut lines, &mut marks);
+                inside_before(item_at, &mut lines, &mut marks, &mut cut);
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());
@@ -815,18 +887,24 @@ fn message_lines(
                         let result = tool_results(next).find(|result| result.call == call.id);
                         let (facts, took) = look.facts.of(&call.id);
                         let item = TranscriptItem::Call(call.id.clone());
-                        let view = ToolCallView {
-                            call,
-                            result,
-                            state: look.state(&call.id, result),
-                            expanded: look.expanded.contains(&item),
-                            facts,
-                            took,
-                            output: look.outputs.get(&call.id).map(String::as_str),
-                        };
+                        let (drawn, is_cut) = look.drawn(look.is_expanded(&item), |expanded| {
+                            let view = ToolCallView {
+                                call,
+                                result,
+                                state: look.state(&call.id, result),
+                                expanded,
+                                facts,
+                                took,
+                                output: look.outputs.get(&call.id).map(String::as_str),
+                            };
+                            call_lines(&view, look.renderers)
+                        });
                         let start = lines.len();
-                        lines.extend(call_lines(&view, look.renderers));
-                        marks.push((item, start..lines.len()));
+                        lines.extend(drawn);
+                        marks.push((item.clone(), start..lines.len()));
+                        if is_cut {
+                            cut.push(item);
+                        }
                     }
                     _ => {}
                 }
@@ -834,9 +912,13 @@ fn message_lines(
         }
     }
     if let Some(id) = id {
-        marks.insert(0, (TranscriptItem::Message(id), 0..lines.len()));
+        let message = TranscriptItem::Message(id);
+        marks.insert(0, (message.clone(), 0..lines.len()));
+        if message_cut {
+            cut.insert(0, message);
+        }
     }
-    (lines, marks)
+    (lines, marks, cut)
 }
 
 /// A tool call's lines, by its tool's renderer or the default look.

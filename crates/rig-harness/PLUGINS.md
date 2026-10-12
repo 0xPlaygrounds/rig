@@ -2094,18 +2094,19 @@ session, so it comes back on `/resume`, `/reload` and in a fork, unless
 
 The terminal view draws entries, and what the conversation holds from a
 plugin's origin (such as rig-compaction's summary), with the look
-`add_entry_renderer(origin, ..)` gives that origin. Its `TranscriptView`
-is what plugins read and set: the items `expanded` and `selected` (Alt+Up
-and Alt+Down select, Ctrl+O expands), the `highlights` lit wherever their
-text is drawn (`match_case` or not; where two overlap, the first placed
-wins), and where it is scrolled (`top()`). `ScrollTo { agent, item, row }`
-scrolls to a `TranscriptItem` (a `Message`, a tool `Call`, an `Entry` or a
-`Notice` by its index in `notices()`): to a row of it (`ItemRow::Top(n)`),
-its first (`Reveal`) or the row of its `n`th lit match (`Lit(n)`); `item:
-None` follows the newest output. A notice's `slot(agent, conversation)` is
-where that agent's transcript draws it (a `TranscriptSlot`, ordered as drawn).
-`DrawnTranscript`, once a plugin adds it, holds each row the last frame drew,
-by item, with the matches lit (`lit_in(item)` is what `Lit(n)` counts).
+`add_entry_renderer(origin, ..)` gives that origin. Its `TranscriptView` is
+what plugins read and set: the items `expanded` and `selected` (Alt+Up and
+Alt+Down select, Ctrl+O expands), the `highlights` lit wherever their text is
+drawn (`match_case` or not; where two overlap, the first placed wins), and
+where it is scrolled (`top()`). `ScrollTo { agent, item, row }` scrolls to a
+`TranscriptItem` (a `Message`, a tool `Call`, an `Entry` or a `Notice` by its
+index in `notices()`): to a row of it (`ItemRow::Top(n)`), its first (`Reveal`)
+or the row of its `n`th lit match (`Lit(n)`); `item: None` follows the newest
+output. A notice's `slot(agent, conversation)` is where that agent's transcript
+draws it (a `TranscriptSlot`, ordered as drawn). `DrawnTranscript`, once a
+plugin adds it, holds each row the last frame drew, by item, with the matches
+lit (`lit_in(item)` is what `Lit(n)` counts) and the items cut (`is_cut`).
+`TranscriptLayout::lay_out` lays out any agent's so, undrawn, cut or whole.
 
 ```rust,no_run
 use rig_harness::prelude::*;
