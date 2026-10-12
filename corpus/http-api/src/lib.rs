@@ -307,7 +307,7 @@ fn choose(id: u64, choice: &Value, (asks, pickers): &Choosable, commands: &mut C
         (None, Value::Null) => None,
         _ => return Reply::error(400, "no such choice"),
     };
-    commands.trigger(Pick { entity, chosen });
+    commands.trigger(Pick::person(entity, chosen));
     Reply::new(202, json!({ "accepted": true }))
 }
 

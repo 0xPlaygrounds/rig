@@ -450,10 +450,7 @@ fn run(rpc: &mut Rpc, command: Command) -> Result<(), String> {
                 (None, Some(text)) if free_text => Chosen::Text(text),
                 _ => return Err("the answer needs a choice".to_owned()),
             };
-            rpc.commands.trigger(Pick {
-                entity,
-                chosen: Some(chosen),
-            });
+            rpc.commands.trigger(Pick::person(entity, Some(chosen)));
         }
     }
     Ok(())

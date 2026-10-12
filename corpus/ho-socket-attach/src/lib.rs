@@ -388,7 +388,7 @@ fn choose(
         (None, Value::Null) => None,
         _ => return Err(format!("no such choice in picker {id}")),
     };
-    commands.trigger(Pick { entity, chosen });
+    commands.trigger(Pick::person(entity, chosen));
     Ok(())
 }
 
