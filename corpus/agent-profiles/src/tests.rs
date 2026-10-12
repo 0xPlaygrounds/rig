@@ -38,7 +38,7 @@ fn start(store: &MemoryStore) -> (App, Receiver<()>) {
         let answer = |called: On<ToolCalled<NoArgs>>,
                       mut calls: Query<&mut Decision, ToolCalls>| {
             if let Ok(mut call) = calls.get_mut(called.call) {
-                call.decide(ToolResult::success("ok".into()));
+                call.decide(Decider::plugin("test"), ToolResult::success("ok".into()));
             }
         };
         app.add_open_tool(tool, "A stand-in.", ToolOptions::default(), answer);

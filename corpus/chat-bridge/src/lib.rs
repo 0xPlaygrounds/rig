@@ -259,10 +259,7 @@ fn receive(
         {
             answered.push(ask);
             let chosen = Some(Chosen::Item(index));
-            commands.trigger(Pick {
-                entity: ask,
-                chosen,
-            });
+            commands.trigger(Pick::person(ask, chosen));
             continue;
         }
         // A question that takes text is answered by this line, by the

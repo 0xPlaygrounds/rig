@@ -132,10 +132,7 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     assert!(picked.is_some(), "a picker with turn 2's message");
     let (picker, index) = picked.unwrap_or((Entity::PLACEHOLDER, 0));
     let chosen = Some(Chosen::Item(index));
-    app.world_mut().trigger(Pick {
-        entity: picker,
-        chosen,
-    });
+    app.world_mut().trigger(Pick::person(picker, chosen));
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Collected<Recalled>>().0.is_empty()
     });
