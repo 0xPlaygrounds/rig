@@ -33,6 +33,7 @@ use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
 use rig_cassette::journal::EFFECT_LOG;
+use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
@@ -151,6 +152,10 @@ pub enum ReplayStatus {
     /// calls not replayed.
     Stopped,
 }
+
+/// The replay finished or stopped; [`Replay`] has its report.
+#[derive(Event, Clone, Copy, Debug)]
+pub struct ReplayEnded(pub ReplayStatus);
 
 /// A user message of the recording, and when it was accepted.
 #[derive(Clone, Debug)]
@@ -527,7 +532,8 @@ pub struct SessionReplayPlugin;
 /// The replay's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ReplaySystems {
-    /// Puts the record outermost on each model call.
+    /// Puts the record outermost on each model call, before compaction
+    /// measures the request.
     Prepare,
     /// Decides tool calls and replayable plugin effects from the record,
     /// before a front answers a question.
@@ -553,7 +559,9 @@ impl Plugin for SessionReplayPlugin {
         app.configure_sets(
             AgentPass,
             (
-                ReplaySystems::Prepare.in_set(Stage::Prepare),
+                ReplaySystems::Prepare
+                    .in_set(Stage::Prepare)
+                    .before(CompactionSystems::Prepare),
                 ReplaySystems::Gate
                     .in_set(Stage::Gate)
                     .after(SubagentSystems::Gate)
@@ -567,12 +575,7 @@ impl Plugin for SessionReplayPlugin {
         let source = if app.runs_front(REPLAY) {
             let invoked = app.world().get_resource::<Invoked>().cloned();
             let source = ReplaySource::from_invocation(&invoked.unwrap_or_default());
-            app.add_systems(
-                Update,
-                report_and_exit
-                    .run_if(resource_exists::<Replay>)
-                    .run_if(not(resource_exists::<ExitReason>)),
-            );
+            app.add_observer(report_and_exit);
             match source {
                 Ok(source) => source,
                 Err(failure) => {
@@ -621,18 +624,12 @@ impl Plugin for SessionReplayPlugin {
 
 /// The replay front: prints the report once the replay is over, and exits,
 /// with 1 when it found a divergence.
-fn report_and_exit(replay: Res<Replay>, mut commands: Commands) {
-    if !matches!(
-        replay.status,
-        ReplayStatus::Finished | ReplayStatus::Stopped
-    ) {
-        return;
-    }
+fn report_and_exit(ended: On<ReplayEnded>, replay: Res<Replay>, mut commands: Commands) {
     for divergence in replay.divergences() {
         println!("{divergence}");
     }
     let (models, others) = replay.answered();
-    let how = match replay.status {
+    let how = match ended.0 {
         ReplayStatus::Stopped => "stopped",
         _ => "finished",
     };
@@ -715,14 +712,14 @@ fn send_next(
         if let Some(missed) = replay.missed() {
             notices.write(Notice::error(agent, missed.to_string()));
             lock(&replay.answers).divergences.push(missed);
-            replay.status = ReplayStatus::Stopped;
+            end(replay, ReplayStatus::Stopped, commands);
             return;
         }
-        replay.status = ReplayStatus::Finished;
         notices.write(Notice::info(
             agent,
             format!("Replay finished: {models} model calls and {others} other effects replayed."),
         ));
+        end(replay, ReplayStatus::Finished, commands);
         return;
     };
     let deliver = Deliver::new(agent, said.message.text, said.message.mode).literal();
@@ -739,6 +736,12 @@ fn send_next(
     } else {
         commands.delayed().duration(wait).trigger(deliver);
     }
+}
+
+/// Ends the replay with `status`, and says so.
+fn end(replay: &mut Replay, status: ReplayStatus, commands: &mut Commands) {
+    replay.status = status;
+    commands.trigger(ReplayEnded(status));
 }
 
 /// Puts the record outermost on each model call, whichever model the call
@@ -870,10 +873,7 @@ fn answer_from_record(
             replayable.iter().any(|replayable| replayable.0 == name)
         };
         let kind = match (tool, request) {
-            (Some(ToolRequest { call }), _) if !replay.flags.live_tools => EffectKind::ToolCall {
-                name: call.function.name.as_str().to_owned(),
-                args: call.function.raw_arguments(),
-            },
+            (Some(ToolRequest { call }), _) if !replay.flags.live_tools => EffectKind::from(call),
             (None, Some(request)) if replays(&request.kind) => request.kind.clone(),
             _ => continue,
         };
@@ -937,7 +937,7 @@ fn next_message(
     if let Some(first) = replay.divergences().first() {
         notices.write(Notice::error(agent, first.to_string()));
         if !replay.flags.continue_live {
-            replay.status = ReplayStatus::Stopped;
+            end(&mut replay, ReplayStatus::Stopped, &mut commands);
             return;
         }
     }

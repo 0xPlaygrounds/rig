@@ -1,8 +1,11 @@
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Connector, ModelSpec};
+use std::borrow::Cow;
+
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
+use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::{Home, Invocation, SessionId};
@@ -196,26 +199,27 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert!(!file.exists());
 }
 
-/// A vendor whose key the environment lacks.
-const KEYLESS: &str = "xiaomimimo";
+/// The model the [`keyless`] catalog holds.
+const KEYLESS: &str = "replay-corp/big";
 
-/// The built-in catalog, and its first model of [`KEYLESS`] that calls
-/// tools.
-fn keyless() -> (Models, String) {
-    let connector = Connector::default();
-    let model = connector
-        .catalog()
-        .iter()
-        .find(|spec| spec.provider.vendor() == KEYLESS && spec.tools)
-        .map(ModelSpec::reference)
-        .unwrap_or_default();
-    (Models(connector), model)
+/// A catalog of [`KEYLESS`], whose provider has no key for it.
+fn keyless() -> Option<Models> {
+    let corp = ProviderId::declare("replay-corp").ok()?;
+    let mut catalog = Catalog::default();
+    catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
+    let mut connector = Connector::new(catalog);
+    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
+        Err(ConnectError::MissingKey {
+            vendor: "replay-corp".to_owned(),
+            tried: vec![Cow::Borrowed("REPLAY_CORP_KEY")],
+        })
+    });
+    Some(Models(connector))
 }
 
-/// `model` as the [`keyless`] model, as if its key were there.
+/// `model` as [`KEYLESS`], as if its key were there.
 fn keyed(model: &MockCompletionModel) -> Option<Connection> {
-    let (models, reference) = keyless();
-    let spec = models.0.catalog().resolve(&reference).ok()?.shared();
+    let spec = keyless()?.0.catalog().resolve(KEYLESS).ok()?.shared();
     let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
     Some(Connection {
         spec,
@@ -234,7 +238,7 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     std::fs::remove_file(&file).ok();
     let recorded_dir = home.session(&recorded_id).path().to_owned();
     // `--replay=DIR` with the key gone; the agent chooses `choice`.
-    let replay = |id: &SessionId, choice: Option<String>| {
+    let replay = |id: &SessionId, choice: Option<&'static str>| {
         let (mut app, wakes) = app_in(&home, id);
         app.insert_resource(Invoked {
             args: Invocation {
@@ -248,10 +252,12 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
         })
         .add_plugins((ExitPlugin, SessionReplayPlugin));
         with_agents(&mut app, None);
-        app.insert_resource(keyless().0);
+        if let Some(models) = keyless() {
+            app.insert_resource(models);
+        }
         if let Some(choice) = choice {
             app.add_observer(move |agent: On<Add<Agent>>, mut commands: Commands| {
-                let choice = ModelChoice(choice.clone());
+                let choice = ModelChoice(choice.to_owned());
                 commands.entity(agent.entity).insert(choice);
             });
         }
@@ -270,8 +276,9 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
         (outcome, exit, replayed)
     };
 
-    // The chosen model does not connect: the record answers it all the same.
-    let (outcome, exit, replayed) = replay(&id("2-2"), Some(keyless().1));
+    // The chosen model's provider has no key: the record answers it all the
+    // same.
+    let (outcome, exit, replayed) = replay(&id("2-2"), Some(KEYLESS));
     assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
     assert_eq!(exit, Some(ExitReason::Quit));
     assert_eq!(replayed, recorded);
