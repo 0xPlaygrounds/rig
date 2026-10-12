@@ -3,6 +3,7 @@
 //! `write` the start of the new file, `delete` and `move` the paths, and
 //! `shell` the command and the end of its output.
 
+use rig_harness::rig_core::tool::{FilesRead, LinesShown};
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{RESULT_LINES, ToolCallView, excerpt};
@@ -17,16 +18,33 @@ pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         (None, None) => String::new(),
     };
     let mut rows = vec![view.header(format!("read {path}"), range)];
-    match view.result_text() {
-        Some(_) if view.failed() => rows.extend(view.result_lines(RESULT_LINES)),
-        Some(text) => {
-            // The file's lines, without the read's `[… more lines …]` note.
+    let shown = view
+        .facts
+        .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
+    let shown = shown.and_then(|read| read.0.first().and_then(|file| file.lines));
+    match (view.result_text(), shown) {
+        (Some(_), _) if view.failed() => rows.extend(view.result_lines(RESULT_LINES)),
+        (Some(_), Some(shown)) => rows.push(Line::from(format!("  ⎿ {}", span(shown))).dim()),
+        // A call of an earlier run has no facts: count the file's lines,
+        // without the read's `[… more lines …]` note.
+        (Some(text), None) => {
             let read = text.lines().filter(|line| !line.starts_with('['));
             rows.push(Line::from(format!("  ⎿ {}", lines(read.count()))).dim());
         }
-        None => {}
+        (None, _) => {}
     }
     rows
+}
+
+/// The lines a read showed: "12 lines" for a whole file, else which of
+/// them, "lines 3–4 of 12".
+fn span(shown: LinesShown) -> String {
+    let last = shown.first.saturating_add(shown.count).saturating_sub(1);
+    match (shown.whole(), shown.count) {
+        (true, _) => lines(shown.total),
+        (false, 0) => format!("no lines of {}", shown.total),
+        (false, _) => format!("lines {}–{last} of {}", shown.first, shown.total),
+    }
 }
 
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {

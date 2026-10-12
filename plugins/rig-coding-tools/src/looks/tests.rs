@@ -1,6 +1,8 @@
 use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
 use rig_harness::rig_core::serde_json::{Value, json};
-use rig_harness::rig_core::tool::ToolResult;
+use rig_harness::rig_core::tool::{
+    ContentHash, FileRead, FilesRead, LinesShown, ToolContext, ToolResult, ToolResultContext,
+};
 use rig_tui::ratatui::text::Line;
 use rig_tui::{CallState, ToolCallView};
 
@@ -13,12 +15,24 @@ fn drawn(
     args: Value,
     output: &str,
 ) -> String {
+    drawn_with(look, tool, args, output, None)
+}
+
+/// [`drawn`], for a call that published `facts`.
+fn drawn_with(
+    look: fn(&ToolCallView<'_>) -> Vec<Line<'static>>,
+    tool: &str,
+    args: Value,
+    output: &str,
+    facts: Option<&ToolResultContext>,
+) -> String {
     let Ok(name) = ToolName::new(tool) else {
         return String::new();
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, args));
     let result = call.answer(&ToolResult::success(output.to_owned().into()));
-    let view = ToolCallView::new(&call, Some(&result), CallState::Done);
+    let mut view = ToolCallView::new(&call, Some(&result), CallState::Done);
+    view.facts = facts;
     let lines: Vec<String> = look(&view).iter().map(ToString::to_string).collect();
     lines.join("\n")
 }
@@ -44,4 +58,25 @@ fn a_read_with_a_limit_counts_the_lines_it_read_not_its_note() {
     let output = "     1\tone\n     2\ttwo\n[5 more lines; read on with offset 3]\n";
     let shown = drawn(read, "read", json!({ "path": "a", "limit": 2 }), output);
     assert!(shown.ends_with("⎿ 2 lines"), "{shown}");
+}
+
+#[test]
+fn a_read_says_which_lines_it_showed_when_it_published_them() {
+    let shown = |first, count| {
+        let lines = LinesShown {
+            first,
+            count,
+            total: 7,
+        };
+        let file = FileRead::new("a", ContentHash("aa".to_owned())).with_lines(lines);
+        let mut context = ToolContext::default();
+        context.insert_result(FilesRead(vec![file])).ok();
+        let facts = context.result_context();
+        let output = "     3\tthree\n     4\tfour\n[3 more lines; read on with offset 5]\n";
+        drawn_with(read, "read", json!({ "path": "a" }), output, Some(&facts))
+    };
+    let part = shown(3, 2);
+    assert!(part.ends_with("⎿ lines 3–4 of 7"), "{part}");
+    let whole = shown(1, 7);
+    assert!(whole.ends_with("⎿ 7 lines"), "{whole}");
 }
