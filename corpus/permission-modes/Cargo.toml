@@ -18,6 +18,9 @@ rig-subagents = { path = "../../plugins/rig-subagents", default-features = false
 # The status item and shift+tab.
 rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
+# A mode refuses or asks after the path guard refused, before a destructive command is asked about.
+corpus-confirm-destructive = { path = "../confirm-destructive" }
+corpus-protected-paths = { path = "../protected-paths" }
 
 [dev-dependencies]
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
