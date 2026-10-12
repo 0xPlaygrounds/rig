@@ -55,6 +55,20 @@ fn stop_ends_a_child_with_sigterm_before_the_grace() {
     assert!(started.elapsed() < Duration::from_secs(5));
 }
 
+/// Waiting with no deadline at all, `Duration::MAX`, waits until the
+/// process ends instead of overflowing the clock.
+#[cfg(unix)]
+#[test]
+fn waiting_for_ever_returns_when_the_process_ends() {
+    let mut process = Launcher::default()
+        .spawn("true", [""; 0], Spawn::default())
+        .ok();
+    let status = process
+        .as_mut()
+        .and_then(|process| process.wait_for(Duration::MAX).ok().flatten());
+    assert!(status.is_some_and(|status| status.success()));
+}
+
 /// Dropping a running process kills its whole group, also a process it
 /// started in the background.
 #[cfg(target_os = "linux")]

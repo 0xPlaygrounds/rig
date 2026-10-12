@@ -205,6 +205,9 @@ impl OutputLine {
 
 type Tag = fn(String) -> OutputLine;
 
+/// How often a waiting [`Process`] is checked.
+const POLL: Duration = Duration::from_millis(10);
+
 /// The longest piece of a line [`forward`] hands over at once.
 const MAX_PIECE: usize = 64 * 1024;
 
@@ -301,15 +304,17 @@ impl Process {
 
     /// Waits at most `timeout` for it to end, and says how it ended if it
     /// did. Its output keeps arriving at [`lines`](Self::lines) meanwhile.
+    /// A timeout too long for the clock, such as `Duration::MAX`, waits
+    /// until it ends.
     pub fn wait_for(&mut self, timeout: Duration) -> io::Result<Option<ExitStatus>> {
-        /// How often the process is checked.
-        const POLL: Duration = Duration::from_millis(10);
-        let deadline = Instant::now() + timeout;
+        let deadline = Instant::now().checked_add(timeout);
         loop {
             if let Some(status) = self.try_wait()? {
                 return Ok(Some(status));
             }
-            let left = deadline.saturating_duration_since(Instant::now());
+            let left = deadline.map_or(POLL, |deadline| {
+                deadline.saturating_duration_since(Instant::now())
+            });
             if left.is_zero() {
                 return Ok(None);
             }
