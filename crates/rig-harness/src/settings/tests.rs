@@ -73,3 +73,29 @@ fn the_file_is_read_from_the_apps_home_once() {
     assert_eq!(Settings::read(&root).problems().len(), 1);
     std::fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn a_bad_file_names_itself() {
+    let root = std::env::temp_dir().join(format!("rig-settings-named-{}", std::process::id()));
+    std::fs::create_dir_all(&root).ok();
+    let think = root.join("think.toml");
+    std::fs::write(&think, "[keywords\n").ok();
+    let unparsed = Settings::read(&think);
+    std::fs::write(&think, "[limits]\ncalls = \"many\"\n").ok();
+    let mistyped = Settings::read(&think).get::<Limits>("limits");
+    std::fs::remove_dir_all(&root).ok();
+    assert!(
+        unparsed
+            .problems()
+            .iter()
+            .all(|problem| problem.starts_with(&format!("{}: ", think.display()))),
+        "{:?}",
+        unparsed.problems()
+    );
+    assert_eq!(unparsed.problems().len(), 1);
+    let problem = mistyped.err().unwrap_or_default();
+    assert!(
+        problem.starts_with(&format!("{} [limits]: ", think.display())),
+        "{problem}"
+    );
+}

@@ -32,38 +32,69 @@ use serde::de::DeserializeOwned;
 
 use crate::services::RigHome;
 
-/// The settings file's tables, and what was wrong with it.
-#[derive(Resource, Clone, Debug, Default)]
+/// A settings file's tables, and what was wrong with it. Each problem
+/// names the file.
+#[derive(Resource, Clone, Debug)]
 pub struct Settings {
+    file: String,
     tables: toml::Table,
     problems: Vec<String>,
 }
 
+impl Default for Settings {
+    /// No settings, as from an empty `settings.toml`.
+    fn default() -> Self {
+        Self::empty("settings.toml".to_owned())
+    }
+}
+
 impl Settings {
-    /// The settings `text` holds; a text that is not TOML holds none and
-    /// says why.
+    /// The settings `text` of `settings.toml` holds; a text that is not
+    /// TOML holds none and says why.
     pub fn from_toml(text: &str) -> Self {
-        match text.parse::<toml::Table>() {
-            Ok(tables) => Self {
-                tables,
-                problems: Vec::new(),
-            },
-            Err(failure) => Self {
-                tables: toml::Table::new(),
-                problems: vec![format!("settings.toml is not TOML: {failure}")],
-            },
-        }
+        Self::parse("settings.toml".to_owned(), text)
     }
 
     /// The settings in the file at `path`; none when it does not exist.
+    /// Its problems start with `path`.
     pub fn read(path: &Path) -> Self {
+        let file = path.display().to_string();
         match std::fs::read_to_string(path) {
-            Ok(text) => Self::from_toml(&text),
-            Err(failure) if failure.kind() == ErrorKind::NotFound => Self::default(),
-            Err(failure) => Self {
-                tables: toml::Table::new(),
-                problems: vec![format!("could not read {}: {failure}", path.display())],
+            Ok(text) => Self::parse(file, &text),
+            Err(failure) if failure.kind() == ErrorKind::NotFound => Self::empty(file),
+            Err(failure) => {
+                let problem = format!("{file}: could not read: {failure}");
+                Self {
+                    problems: vec![problem],
+                    ..Self::empty(file)
+                }
+            }
+        }
+    }
+
+    /// No settings, from `file`.
+    fn empty(file: String) -> Self {
+        Self {
+            file,
+            tables: toml::Table::new(),
+            problems: Vec::new(),
+        }
+    }
+
+    /// The settings `text` of `file` holds.
+    fn parse(file: String, text: &str) -> Self {
+        match text.parse::<toml::Table>() {
+            Ok(tables) => Self {
+                tables,
+                ..Self::empty(file)
             },
+            Err(failure) => {
+                let problem = format!("{file}: not TOML: {failure}");
+                Self {
+                    problems: vec![problem],
+                    ..Self::empty(file)
+                }
+            }
         }
     }
 
@@ -76,7 +107,7 @@ impl Settings {
         table
             .clone()
             .try_into()
-            .map_err(|failure| format!("settings.toml [{section}]: {failure}"))
+            .map_err(|failure| format!("{} [{section}]: {failure}", self.file))
     }
 
     /// What was wrong with the file or with a table a plugin read, to show
