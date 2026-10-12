@@ -90,9 +90,15 @@ impl ModelFacts {
     /// catalog's entry by [`Catalog::get`]'s rule. `None` for a model the
     /// catalog does not list. `vendor` is the provider's descriptor name
     /// (`"anthropic"`, `"aws_bedrock"`).
+    ///
+    /// A spec under a catalog vendor answers only under that vendor, since
+    /// a wire also asks about other vendors' rows for its model. A spec
+    /// under a [declared](crate::providers::registry::ProviderId::declare)
+    /// vendor answers under any: no wire carries a declared vendor's name,
+    /// so the wire it was bound to asks under its own.
     pub fn for_model(&self, vendor: &str, model: &str) -> Option<&ModelSpec> {
         if let Some(bound) = self.bound.as_deref()
-            && bound.spec.provider.vendor() == vendor
+            && (bound.spec.provider.is_declared() || bound.spec.provider.vendor() == vendor)
             && (bound.id == model || bound.spec.id == model)
         {
             return Some(&bound.spec);
