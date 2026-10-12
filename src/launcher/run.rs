@@ -277,7 +277,7 @@ fn claim(home: &Home, start: Start, here: Option<&Path>) -> Result<(Claimed, Opt
             (id, lock, Some("Resumed the session.".to_owned()))
         }
         Start::New => {
-            let id = SessionId::generate();
+            let (id, _) = home.new_session()?;
             let lock = home::hold_session(home, &id)?
                 .ok_or_else(|| format!("session {id} is already running"))?;
             (id, lock, None)

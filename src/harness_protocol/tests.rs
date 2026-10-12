@@ -62,3 +62,18 @@ fn a_session_directory_knows_its_id() {
     let read = id.as_ref().and_then(|id| Home::at("root").session(id).id());
     assert_eq!(read, id);
 }
+
+#[test]
+fn new_sessions_of_one_second_take_the_next_free_id() {
+    let root = std::env::temp_dir().join(format!("rig-new-session-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    let home = Home::at(&root);
+    let made: Vec<_> = (0..2).filter_map(|_| home.new_session().ok()).collect();
+    let created = made
+        .iter()
+        .all(|(id, dir)| dir.id().as_ref() == Some(id) && dir.path().is_dir());
+    std::fs::remove_dir_all(&root).ok();
+    assert!(created && made.len() == 2, "{made:?}");
+    let ids: Vec<_> = made.into_iter().map(|(id, _)| id).collect();
+    assert_ne!(ids.first(), ids.last());
+}

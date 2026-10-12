@@ -273,6 +273,31 @@ impl Home {
     pub fn session(&self, session: &SessionId) -> SessionDir {
         SessionDir(self.sessions().join(session.as_str()))
     }
+
+    /// A new session, its directory created: a [`SessionId::generate`]d
+    /// id, or, when a session of this home has that one, the first free
+    /// one after it, such as `1700000000-42-1`.
+    ///
+    /// # Errors
+    ///
+    /// When the directory cannot be created.
+    pub fn new_session(&self) -> std::io::Result<(SessionId, SessionDir)> {
+        std::fs::create_dir_all(self.sessions())?;
+        let base = SessionId::generate();
+        let mut id = base.clone();
+        let mut taken = 0u64;
+        loop {
+            let dir = self.session(&id);
+            match std::fs::create_dir(dir.path()) {
+                Ok(()) => return Ok((id, dir)),
+                Err(failure) if failure.kind() == std::io::ErrorKind::AlreadyExists => {
+                    taken += 1;
+                    id = SessionId(format!("{base}-{taken}"));
+                }
+                Err(failure) => return Err(failure),
+            }
+        }
+    }
 }
 
 /// A launcher's own directory, outside every session, which lives while

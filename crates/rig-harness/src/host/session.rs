@@ -329,16 +329,7 @@ fn fork_into(
 ) -> Result<(SessionId, SessionId), String> {
     let from = paths.id().ok_or("this session has no id")?;
     let store = store.ok_or("this session is not stored")?;
-    // A second fork in the same second takes the next free id.
-    let base = SessionId::generate();
-    let mut to = base.clone();
-    let mut n = 0;
-    while home.session(&to).path().exists() {
-        n += 1;
-        to = format!("{base}-{n}").parse()?;
-    }
-    let target = home.session(&to);
-    fs::create_dir_all(target.path()).map_err(|failure| failure.to_string())?;
+    let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
     let parent = ForkedFrom {
         session: from.clone(),
         before: before.cloned(),
