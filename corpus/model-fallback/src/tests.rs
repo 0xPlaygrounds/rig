@@ -139,3 +139,14 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ModelFallbackPlugin);
 }
+
+/// The model plugins, loaded together.
+#[test]
+fn stages_are_ordered_with_the_other_model_plugins() {
+    rig_defaults_test_support::assert_stages_ordered((
+        ModelFallbackPlugin,
+        corpus_model_router::ModelRouterPlugin,
+        corpus_local_models::LocalModelsPlugin,
+        corpus_ho_api_key_pool::KeyPoolPlugin,
+    ));
+}

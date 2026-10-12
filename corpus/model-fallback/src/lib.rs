@@ -23,6 +23,7 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
+use corpus_model_router::RouteSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
 use serde::{Deserialize, Deserializer};
@@ -58,7 +59,8 @@ struct Cooling(HashMap<String, Duration>);
 /// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FallbackSystems {
-    /// Prepare: sends a turn's call bound for a cooling model to the chain.
+    /// Prepare: sends a turn's call bound for a cooling model to the chain,
+    /// after model-router chose it.
     Route,
     /// Review: takes over a turn's call that failed for good.
     TakeOver,
@@ -74,7 +76,9 @@ impl Plugin for ModelFallbackPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    FallbackSystems::Route.in_set(PrepareSystems::Edit),
+                    FallbackSystems::Route
+                        .in_set(PrepareSystems::Edit)
+                        .after(RouteSystems),
                     FallbackSystems::TakeOver.in_set(ReviewSystems::Act),
                 ),
             )
