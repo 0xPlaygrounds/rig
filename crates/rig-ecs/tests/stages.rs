@@ -2353,6 +2353,53 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert_eq!(cancelled, ["completion", "check"], "{:?}", records(&app));
 }
 
+/// A model call superseded while it streamed is not the turn's reply: an
+/// interrupt before it settles keeps none of its text.
+#[test]
+fn an_interrupt_keeps_no_text_of_a_superseded_call() {
+    let mut app = app();
+    let model = MockCompletionModel::from_stream_turns([answer("unused")]);
+    let agent = agent_on(&mut app, &model);
+    let halfway = Handler(ErasedHandler::new(Halfway));
+    if let Some(mut connection) = app.world_mut().get_mut::<Connection>(agent) {
+        connection.handler = halfway;
+    }
+    let streamed = |world: &mut World| {
+        let mut partials = world.query_filtered::<&Partial, With<TurnCall>>();
+        partials.iter(world).any(|partial| !partial.text.is_empty())
+    };
+    assert!(run_until(&mut app, streamed), "{:?}", notices(&app));
+    let world = app.world_mut();
+    let connection = world.get::<Connection>(agent).cloned();
+    let mut streaming = world.query_filtered::<(Entity, &ModelRequest, &Effect, &CallOf), (With<TurnCall>, Without<Settled>)>();
+    let loser = streaming
+        .iter(world)
+        .next()
+        .map(|(call, request, effect, of)| (call, request.clone(), effect.parent, of.0));
+    let (Some((loser, request, parent, turn)), Some(connection)) = (loser, connection) else {
+        return;
+    };
+    world.spawn((
+        request.on(connection),
+        TurnCall,
+        Supersedes(loser),
+        CallOf(turn),
+        ForAgent(agent),
+        Effect::child_of(parent),
+    ));
+    world.flush();
+    world.trigger(Interrupt::new(agent));
+    world.flush();
+    let said = conversation(&app, agent);
+    assert!(
+        !said
+            .iter()
+            .filter_map(final_answer)
+            .any(|text| text.contains("The answer is")),
+        "{said:?}"
+    );
+}
+
 /// Retires the agent of each turn that ends, as a plugin whose agents do
 /// one job each does.
 fn retire_when_done(

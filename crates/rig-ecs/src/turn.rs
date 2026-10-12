@@ -388,10 +388,11 @@ pub(crate) struct Ending {
 }
 
 /// Stops a running turn at once. The text a streaming reply had sent is
-/// kept as the model's message, every tool call of the last reply gets a
-/// result, real, its [`IfStopped`] or "interrupted", and every call of the turn that has not
-/// settled is answered as interrupted and settled, whatever held it gone.
-/// The turn ends [`TurnOutcome::Stopped`]. The outcome is written to the
+/// kept as the model's message, unless its call was superseded; every
+/// tool call of the last reply gets a result, real, its [`IfStopped`] or
+/// "interrupted", and every call of the turn that has not settled is
+/// answered as interrupted and settled, whatever held it gone. The turn
+/// ends [`TurnOutcome::Stopped`]. The outcome is written to the
 /// log at once, so a log that ends mid-turn always means a crash or a
 /// restart.
 pub(crate) fn on_interrupt(
@@ -399,7 +400,7 @@ pub(crate) fn on_interrupt(
     mut agents: Query<(&mut Conversation, &ActiveTurn)>,
     mut turns: Query<(&mut Turn, Option<&Calls>)>,
     replies: Query<ReplyCall>,
-    partials: Query<&Partial, (With<TurnCall>, Without<Settled>)>,
+    partials: Query<&Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
     mut commit: Commit,
     log: Res<SessionLog>,
     mut commands: Commands,
