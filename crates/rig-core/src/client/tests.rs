@@ -175,7 +175,7 @@ async fn chatgpt_sign_in_sets_the_token_and_account() {
 #[test]
 fn a_signed_in_model_checks_without_a_credential() {
     use crate::providers::chatgpt;
-    use crate::serve::{ErasedHandler, Serve as _};
+    use crate::serve::ErasedHandler;
     let authenticator = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(std::path::PathBuf::from("/nonexistent/rig/auth.json")),
