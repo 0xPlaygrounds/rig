@@ -18,6 +18,8 @@
 //! gates, or none does. Add rig-coding-tools' `DeleteTool` beside it for
 //! patches that delete or move files.
 
+use corpus_fh_early_tool_start::EarlySystems;
+use corpus_permission_modes::PermissionSystems;
 use rig_core::effect::EffectId;
 use rig_core::message::{CallId, LocalCallId, ToolFunction, ToolName};
 use rig_core::tool::ToolOutput;
@@ -68,11 +70,12 @@ impl PatchModels {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ApplyPatchSystems {
     /// Edits the tools of each turn's request, by the model it goes to, in
-    /// [`PrepareSystems::Edit`]: order a router that picks the model before
-    /// it.
+    /// [`PrepareSystems::Edit`], after permission modes took theirs out:
+    /// order a router that picks the model before it.
     Offer,
     /// Holds, releases or refuses a patch's calls together, in
-    /// [`GateSystems::After`].
+    /// [`GateSystems::After`], before early tool starts answer the calls
+    /// let through.
     Group,
 }
 
@@ -95,8 +98,12 @@ impl Plugin for ApplyPatchPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ApplyPatchSystems::Offer.in_set(PrepareSystems::Edit),
-                    ApplyPatchSystems::Group.in_set(GateSystems::After),
+                    ApplyPatchSystems::Offer
+                        .in_set(PrepareSystems::Edit)
+                        .after(PermissionSystems::Offer),
+                    ApplyPatchSystems::Group
+                        .in_set(GateSystems::After)
+                        .before(EarlySystems),
                 ),
             )
             .add_systems(

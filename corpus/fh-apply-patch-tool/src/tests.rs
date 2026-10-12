@@ -278,3 +278,18 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(ApplyPatchPlugin);
 }
+
+/// With the plugins it is often run with: early tool starts and permission
+/// modes, which it orders itself against, and the other tools.
+#[test]
+fn stages_are_ordered_with_the_plugins_it_runs_with() {
+    rig_defaults_test_support::assert_stages_ordered((
+        ApplyPatchPlugin,
+        DeleteTool,
+        corpus_permission_modes::PermissionModesPlugin,
+        corpus_fh_early_tool_start::EarlyToolStartPlugin,
+        corpus_fh_transcript_search::TranscriptSearchPlugin,
+        corpus_fh_encrypted_sessions::EncryptedSessionsPlugin,
+        corpus_fh_remote_workspace::RemoteWorkspacePlugin,
+    ));
+}

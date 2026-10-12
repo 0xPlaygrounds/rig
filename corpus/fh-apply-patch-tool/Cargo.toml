@@ -23,8 +23,14 @@ serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 # Already in Cargo.lock (through the launcher's dependencies); parses patch.toml.
 toml = "1"
+# A patch's offer goes after a mode's, and its group before early tool starts.
+corpus-fh-early-tool-start = { path = "../fh-early-tool-start", default-features = false }
+corpus-permission-modes = { path = "../permission-modes" }
 
 [dev-dependencies]
+corpus-fh-encrypted-sessions = { path = "../fh-encrypted-sessions" }
+corpus-fh-remote-workspace = { path = "../fh-remote-workspace" }
+corpus-fh-transcript-search = { path = "../fh-transcript-search" }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
