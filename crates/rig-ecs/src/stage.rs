@@ -7,7 +7,9 @@
 //! released goes as far as it can in that frame.
 //!
 //! A plugin steps in with an ordinary system in a stage that queries stage
-//! data, ordered against other plugins with `.before` and `.after`. Every
+//! data. It orders its Prepare and Review systems by what they do, in a
+//! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
+//! one other plugin with `.before` and `.after` that plugin's sets. Every
 //! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
 //! in their order, before it starts, wherever it was spawned. A gate
 //! answers in the effect's [`Decision`], where the first decision wins; a
@@ -102,7 +104,8 @@ pub enum Stage {
     /// [`RetryVerdict`](super::turn::RetryVerdict).
     Arrive,
     /// Plugins read, edit in place or hold an [`Outcome`]
-    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`].
+    /// ([`Unreviewed`]), and a turn's proposed [`TurnOutcome`], in the
+    /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
     /// [`Recorded`], commits replies and their tool results, and ends the
@@ -112,7 +115,8 @@ pub enum Stage {
     /// requests of [`TurnCall`]s and [`BuildFrom`](super::turn::BuildFrom)s,
     /// and marks the calls that wait for an earlier one [`Waiting`].
     Admit,
-    /// Plugins edit the requests admitted this pass (`Added<Admitted>`).
+    /// Plugins edit the requests admitted this pass (`Added<Admitted>`), in
+    /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
     /// start ([`Undecided`]).
@@ -136,6 +140,39 @@ impl Stage {
         Self::Gate,
         Self::Start,
     ];
+}
+
+/// The phases of [`Stage::Prepare`], run in this order. A plugin puts a
+/// Prepare system in the phase of what it does, and so is ordered against
+/// every other plugin's, without naming them.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PrepareSystems {
+    /// What came in is rewritten before anything is read from it: a
+    /// message's text, a tool call's arguments.
+    Input,
+    /// The parts that come from what a request names and from its agent go
+    /// in: the files a message names, a default system prompt, the
+    /// directory a tool call runs in.
+    Compose,
+    /// The composed request is edited as it will be sent: its prompt,
+    /// messages, tools and options, the model it goes to, its [`Adapters`],
+    /// a tool call's [`CallHandler`].
+    Edit,
+    /// The request as it will be sent is measured against the window of
+    /// the model it goes to and fitted, such as by compaction.
+    Fit,
+}
+
+/// The phases of [`Stage::Review`], run in this order.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ReviewSystems {
+    /// An [`Outcome`], a failed model call's
+    /// [`RetryVerdict`](super::turn::RetryVerdict) or a turn's proposed
+    /// [`TurnOutcome`] is edited in place.
+    Edit,
+    /// What was reviewed is acted on: a failed call taken over by a
+    /// successor, a turn held or carried on, a result followed up.
+    Act,
 }
 
 /// The kernel's systems that open a stage, before any of its own.
@@ -526,6 +563,22 @@ pub(crate) fn build(app: &mut App) {
                 Stage::Start,
             )
                 .chain(),
+        )
+        .configure_sets(
+            AgentPass,
+            (
+                (
+                    PrepareSystems::Input,
+                    PrepareSystems::Compose,
+                    PrepareSystems::Edit,
+                    PrepareSystems::Fit,
+                )
+                    .chain()
+                    .in_set(Stage::Prepare),
+                (ReviewSystems::Edit, ReviewSystems::Act)
+                    .chain()
+                    .in_set(Stage::Review),
+            ),
         )
         .configure_sets(
             AgentPass,

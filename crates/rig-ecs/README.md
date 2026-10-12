@@ -31,9 +31,11 @@ What it holds, by module:
   and its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
   moves. A plugin steps in with a system in a stage: it edits a request in
-  Prepare, holds (`HoldOf`) or decides it (`Decision`, the first decision
-  wins) in Gate, and reads or edits the `Outcome` in place in Review, so
-  Bevy reports two unordered deciders or reviewers. Kind filters
+  Prepare, in the phase of what it does (`PrepareSystems`: Input, Compose,
+  Edit, Fit), holds (`HoldOf`) or decides it (`Decision`, the first decision
+  wins) in Gate, and reads or edits the `Outcome` in place in Review
+  (`ReviewSystems`: Edit, then Act), so Bevy reports two unordered
+  deciders or reviewers. Kind filters
   (`ToolCalls`, `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell
   Bevy which effects two systems can never share. A tool call is such an
   effect (`ToolRequest`): as Gate opens, the kernel gives it the
