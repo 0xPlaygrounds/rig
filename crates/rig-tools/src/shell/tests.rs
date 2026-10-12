@@ -231,3 +231,22 @@ fn the_status_line_splits_off_what_the_command_printed() {
     let output = shell("kill -9 $$", None);
     assert_eq!(split_status(&output), ("", Some("[killed by a signal]")));
 }
+
+/// A call's timeout is cut to the shell's `max_timeout`, and the tool's
+/// description names that most.
+#[cfg(unix)]
+#[test]
+fn a_timeout_is_cut_to_the_most_the_shell_allows() {
+    let shell = Shell {
+        max_timeout: 1,
+        ..Shell::default()
+    };
+    assert!(shell.description().contains("at most 1)"));
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new("sleep 10").timeout_secs(60)));
+    let ran = ran.ok();
+    assert_eq!(
+        ran.as_ref().map(|ran| ran.status),
+        Some(ExitStatus::TimedOut)
+    );
+    assert!(ran.is_some_and(|ran| ran.output.ends_with("[timed out after 1s and killed]")));
+}

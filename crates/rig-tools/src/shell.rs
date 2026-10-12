@@ -20,7 +20,6 @@ use crate::workspace::{Local, Workspace};
 use crate::{Cut, Live, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
-const MAX_TIMEOUT: u64 = 600;
 /// How long output pipes may stay open after the command exits before the
 /// rest of its process group is killed, and how long reading goes on after
 /// that kill.
@@ -54,11 +53,15 @@ pub struct Shell {
     /// refused. What the command itself does is not confined: it may still
     /// `cd` anywhere.
     pub confine: bool,
+    /// The most seconds a call may ask for in `timeout_secs`; a longer
+    /// timeout is cut to it.
+    pub max_timeout: u64,
 }
 
 impl Default for Shell {
     /// Started on this machine as this process starts it, nothing spilled
-    /// or reported live, output cut as [`Cut::default`] cuts it.
+    /// or reported live, output cut as [`Cut::default`] cuts it, timeouts
+    /// of at most ten minutes.
     fn default() -> Self {
         Self {
             workspace: Arc::new(Local),
@@ -67,6 +70,7 @@ impl Default for Shell {
             spill: None,
             cut: Some(Cut::default()),
             confine: false,
+            max_timeout: 600,
         }
     }
 }
@@ -133,8 +137,8 @@ impl Shell {
     pub async fn run(&self, args: ShellArgs) -> Result<ShellRun, ToolExecutionError> {
         let timeout = Duration::from_secs(
             args.timeout_secs
-                .unwrap_or(DEFAULT_TIMEOUT)
-                .clamp(1, MAX_TIMEOUT),
+                .unwrap_or(DEFAULT_TIMEOUT.min(self.max_timeout))
+                .clamp(1, self.max_timeout.max(1)),
         );
         let process = self.start(&args)?;
         let _stop = KillOnDrop(process.group());
@@ -161,8 +165,10 @@ impl Tool for Shell {
         format!(
             "Run a shell command with `sh -c` in the current directory, or in cwd. stdin is \
              empty. Returns the exit code and stdout and stderr interleaved, {kept}. The \
-             command is killed after timeout_secs (default {DEFAULT_TIMEOUT}, at most \
-             {MAX_TIMEOUT}), or once it printed more than {} MB.",
+             command is killed after timeout_secs (default {}, at most {}), or once it \
+             printed more than {} MB.",
+            DEFAULT_TIMEOUT.min(self.max_timeout).max(1),
+            self.max_timeout.max(1),
             OUTPUT_LIMIT / 1024 / 1024
         )
     }
