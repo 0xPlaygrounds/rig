@@ -8,7 +8,7 @@
 //! again. A recorded model the environment has no key for, such as one
 //! whose credentials are gone, is reached through the replay's sign-in,
 //! which answers from the record only. Tool calls and replayable plugin
-//! effects are decided in Gate. Each request is checked against the
+//! effects are decided as Gate opens, before any gate. Each request is checked against the
 //! recorded one at the same place of the same agent; the first difference
 //! stops the replay, or with `--continue-live` is reported and the run goes
 //! on live. With `--speed` each answer settles after its recorded duration
@@ -29,7 +29,6 @@ use std::io;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use corpus_plan_mode::PlanModeSystems;
 use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
@@ -45,7 +44,7 @@ use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::providers::registry::ConnectError;
 use rig_harness::rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_subagents::{SUBAGENT, SpawnedAgent, SubagentSystems};
+use rig_subagents::{SUBAGENT, SpawnedAgent};
 
 #[cfg(test)]
 mod tests;
@@ -536,7 +535,7 @@ pub enum ReplaySystems {
     /// measures the request.
     Prepare,
     /// Decides tool calls and replayable plugin effects from the record,
-    /// before plan mode refuses a call or a front answers a question.
+    /// before any gate refuses or holds them or a front answers a question.
     Gate,
     /// Holds each answer for its recorded duration, with `--speed`.
     Review,
@@ -560,11 +559,7 @@ impl Plugin for SessionReplayPlugin {
             AgentPass,
             (
                 ReplaySystems::Prepare.in_set(PrepareSystems::Edit),
-                ReplaySystems::Gate
-                    .in_set(Stage::Gate)
-                    .after(SubagentSystems::Gate)
-                    .before(PlanModeSystems::Gate)
-                    .before(AskSystems),
+                ReplaySystems::Gate.in_set(AnswerFromRecord),
                 ReplaySystems::Review.in_set(Stage::Review),
             ),
         );

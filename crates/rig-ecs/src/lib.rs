@@ -64,10 +64,10 @@ pub mod prelude {
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::stage::{
-        Admitted, AgentLoop, AgentPass, AgentWork, Decision, Effect, EffectRequest, ForAgent,
-        HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome, PluginEffects,
-        PrepareSystems, Published, Recorded, ReviewSystems, Settled, Stage, Started, SupersededBy,
-        Supersedes, ToolCalls, Undecided, Unreviewed, Waiting,
+        Admitted, AgentLoop, AgentPass, AgentWork, AnswerFromRecord, Decision, Effect,
+        EffectRequest, ForAgent, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
+        PluginEffects, PrepareSystems, Published, Recorded, ReviewSystems, Settled, Stage, Started,
+        SupersededBy, Supersedes, ToolCalls, Undecided, Unreviewed, Waiting,
     };
     pub use crate::tools::{
         AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,

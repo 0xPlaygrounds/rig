@@ -5611,7 +5611,10 @@ name = "corpus-session-replay"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "corpus-confirm-destructive",
+ "corpus-permission-modes",
  "corpus-plan-mode",
+ "corpus-protected-paths",
  "rig-cassette",
  "rig-core",
  "rig-defaults-test-support",

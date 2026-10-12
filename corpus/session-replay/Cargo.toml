@@ -17,10 +17,13 @@ rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 # Pairing replayed subagents through their spawn.
 rig-subagents = { path = "../../plugins/rig-subagents" }
-# A recorded answer goes before plan mode refuses the call.
-corpus-plan-mode = { path = "../plan-mode" }
 
 [dev-dependencies]
+# The tool guards a replayed session may have run with.
+corpus-confirm-destructive = { path = "../confirm-destructive" }
+corpus-permission-modes = { path = "../permission-modes" }
+corpus-plan-mode = { path = "../plan-mode" }
+corpus-protected-paths = { path = "../protected-paths" }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }

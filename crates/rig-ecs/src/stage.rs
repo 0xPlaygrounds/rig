@@ -175,6 +175,16 @@ pub enum ReviewSystems {
     Act,
 }
 
+/// Where a plugin decides effects from a record of an earlier run of them,
+/// such as a session replay: as [`Stage::Gate`] opens, before every Gate
+/// system, so each gate after it sees the effect decided. The record holds
+/// what every gate decided in that run; a gate deciding again would judge
+/// today's settings and files instead. An answer that stands in for
+/// running the effect now, such as a cached result or a dry run, is no
+/// record: it is a Gate system after the gates that refuse.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AnswerFromRecord;
+
 /// The kernel's systems that open a stage, before any of its own.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 struct Enter(Stage);
@@ -558,6 +568,7 @@ pub(crate) fn build(app: &mut App) {
                 Enter(Stage::Prepare),
                 Stage::Prepare,
                 Enter(Stage::Gate),
+                AnswerFromRecord,
                 Stage::Gate,
                 Enter(Stage::Start),
                 Stage::Start,
@@ -587,6 +598,7 @@ pub(crate) fn build(app: &mut App) {
                 Stage::Commit,
                 Stage::Admit,
                 Stage::Prepare,
+                AnswerFromRecord,
                 Stage::Gate,
                 Stage::Start,
             )
