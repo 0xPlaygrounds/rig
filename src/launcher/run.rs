@@ -19,9 +19,9 @@
 //! that does not take the terminal) is not restarted on the reload code,
 //! nor run again on the previous build when its new build is rolled back;
 //! its exit code and output pass through. Before each start with stdin on
-//! a terminal, whatever the front, the launcher asks for each secret the build's plugins want that the
-//! environment does not hold ([`ask_secret`]); only the agent's process
-//! gets the answers.
+//! a terminal, whatever the front, the launcher asks for each secret the
+//! build's plugins want that the environment does not hold
+//! ([`ask_secret`]); only the agent's process gets the answers.
 
 use std::collections::BTreeMap;
 use std::fs::{self, File};
