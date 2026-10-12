@@ -7,6 +7,8 @@ use rig_harness_test_support::{
     Collected, Ended, app_on, collect, first_agent, log_ended, reply, run_until, scripted_models,
 };
 
+use std::fs;
+
 use super::*;
 
 const TYPED: &str = "fix @src/a.rs see @shot.png and @missing.rs";

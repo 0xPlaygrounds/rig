@@ -2,41 +2,55 @@
 //!
 //! Each file the user names as `@path` in a message goes with it, so the
 //! agent spends no turn reading it. Paths resolve from the agent's
-//! [`WorkDir`], else the [`ProjectRoot`]:
+//! [`WorkDir`], else the [`ProjectRoot`], in the app's
+//! [`ProjectWorkspace`]:
 //!
 //! - a text file is attached whole, headed with its path; one over
 //!   [`Mentions::max_bytes`] keeps its first and last lines with a note on
 //!   what was cut;
 //! - `@file:10-40` attaches those lines, numbered;
-//! - `@dir/` attaches a listing of the directory;
+//! - `@dir/` attaches a listing of the files under the directory;
 //! - an image (`png`, `jpg`, `gif`, `webp`) is attached as an image when
 //!   the agent's model reads images; otherwise a configured vision model
 //!   ([`Mentions::vision_model`]) describes it, and the message waits for
 //!   the description (the description call holds it); without one, the
 //!   image is dropped with a notice and the model is told so;
-//! - a path that does not exist stays plain text, with a warning.
+//! - a path reference with nothing there stays plain text, with a warning.
 //!
 //! The attachments go into the conversation as they were sent, so a
 //! resumed session shows the file contents of send time and the images
 //! are stored with the session. Each attached text file is published as
-//! read ([`FilesRead`]) on the message's effect.
+//! read ([`FilesRead`]) on the message's effect, which the effect log
+//! records.
 //!
 //! This plugin replaces `rig_coding_tools::AttachPlugin`: take that entry
-//! out of `plugins.toml`. When both are loaded, this one runs after it and
-//! replaces each attachment of a path it handles, so none is sent twice.
-//! Completion of `@` paths as you type and pasting an image from the
-//! clipboard (Ctrl+V types `@path` of the saved image) are the terminal
-//! view's own.
+//! out of `plugins.toml` (`rig plugin remove rig_coding_tools::AttachPlugin`).
+//! Ctrl+V in the terminal view pastes the clipboard's image as
+//! `[image N]`, in place of the view's own `@path` of it, and the message
+//! attaches it as it would an `@` image. Completion of `@` paths as you
+//! type is the view's own.
 
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base64::Engine;
+use bevy_ecs::system::SystemParam;
+use bevy_log::warn;
+use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_coding_tools::{AttachPlugin, AttachSystems};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::message::{ImageMediaType, Message as ChatMessage, UserContent};
-use rig_harness::rig_core::tool::{FileRead, FilesRead, ToolContext, content_hash};
+use rig_harness::rig_core::tool::{
+    FileRead, FilesRead, ToolContext, ToolExecutionError, content_hash,
+};
+use rig_tools::attach::is_image_path;
+use rig_tools::workspace::{Local, Stat, Workspace};
+use rig_tools::{blocking, numbered};
+use rig_tui::{
+    AppKeyBindingsExt, InputAction, KeyBinding, KeyPress, KeyPressed, KeyScope, TuiInput,
+    read_clipboard_image,
+};
 use serde::Deserialize;
 
 /// Attaches the files a user's message names as `@path`.
@@ -47,14 +61,19 @@ impl Plugin for MentionsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<Mentions>("mentions")
             .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
             .add_observer(follow_successor::<Describing>)
+            .init_resource::<Pasted>()
+            .add_observer(attach_read)
+            .add_observer(paste_read)
             .configure_sets(
                 AgentPass,
-                MentionSystems::Attach.in_set(PrepareSystems::Edit),
-            )
-            .configure_sets(
-                AgentPass,
-                MentionSystems::Describe.in_set(ReviewSystems::Act),
+                (
+                    MentionSystems::Attach
+                        .in_set(PrepareSystems::Compose)
+                        .after(AttachSystems),
+                    MentionSystems::Describe.in_set(ReviewSystems::Act),
+                ),
             )
             .add_systems(
                 AgentPass,
@@ -64,13 +83,39 @@ impl Plugin for MentionsPlugin {
                 ),
             );
     }
+
+    fn finish(&self, app: &mut App) {
+        if app.is_plugin_added::<AttachPlugin>() {
+            warn!(
+                "fh-mentions-and-images replaces rig_coding_tools::AttachPlugin, which is loaded \
+                 too, so each @path file goes twice: rig plugin remove \
+                 rig_coding_tools::AttachPlugin"
+            );
+        }
+        // Ctrl+V pastes `[image N]` in place of the view's `@path`.
+        let world = app.world_mut();
+        let mut actions = world.query::<(Entity, &InputAction)>();
+        let view_paste: Vec<Entity> = actions
+            .iter(world)
+            .filter(|(_, action)| **action == InputAction::PasteImage)
+            .map(|(binding, _)| binding)
+            .collect();
+        for binding in view_paste {
+            world.entity_mut(binding).insert(Disabled);
+        }
+        let paste = KeyBinding::new(KeyPress::ctrl('v'), "Paste an image as [image N]")
+            .in_scope(KeyScope::Input);
+        app.add_key_binding(paste, paste_image);
+    }
 }
 
 /// The plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum MentionSystems {
     /// Reads the files a user's message names into its attachments, in
-    /// [`PrepareSystems::Edit`].
+    /// [`PrepareSystems::Compose`]. In a workspace that is not this
+    /// machine, they are read off the main thread under a hold on the
+    /// message, so they come later than this set.
     Attach,
     /// Puts each finished image description into its message and lets the
     /// message go, in [`ReviewSystems::Act`].
@@ -120,8 +165,8 @@ pub const UNSEEN: &str = "an image was attached but this model cannot see it";
 const DESCRIBE: &str = "Describe this image for a coding agent that cannot see it: what it \
 shows, and every piece of text, number, error message and label in it, verbatim.";
 
-/// The file extensions attached as images.
-const IMAGES: [&str; 5] = ["png", "jpg", "jpeg", "gif", "webp"];
+/// The largest image attached: providers refuse bigger ones.
+const MOST_IMAGE_BYTES: u64 = 5 * 1024 * 1024;
 
 /// One `@` mention: the path as written, and the lines it asks for.
 struct Mention<'a> {
@@ -161,85 +206,131 @@ fn lines(range: &str) -> Option<(usize, usize)> {
     (first >= 1 && last >= first).then_some((first, last))
 }
 
-/// Whether `path` names an image by its extension.
-fn is_image(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            IMAGES
-                .iter()
-                .any(|known| extension.eq_ignore_ascii_case(known))
+/// Whether `reference`, an `@` token without its `@`, names a path rather
+/// than, say, a person: it holds a `/`, or ends in a dot and one to four
+/// letters or digits (the rule of `rig_tools::attach`).
+fn names_a_path(reference: &str) -> bool {
+    reference.contains('/')
+        || reference.rsplit_once('.').is_some_and(|(name, extension)| {
+            !name.is_empty()
+                && (1..=4).contains(&extension.len())
+                && extension.chars().all(|c| c.is_ascii_alphanumeric())
         })
 }
 
-/// What a mention attaches.
-enum Read {
-    /// Text content, and the file's bytes when it is a file read.
-    Text(String, Option<Vec<u8>>),
-    /// An image.
-    Image(UserContent),
+/// What a message's mentions came to, read from the workspace.
+#[derive(Debug, Default)]
+struct Found {
+    /// Each mention attached: its label and its content.
+    attached: Vec<(String, UserContent)>,
+    /// A line for the user about each mention not attached.
+    warnings: Vec<String>,
+    /// Each text file attached, whole or in part.
+    read: Vec<FileRead>,
 }
 
-/// Reads what `mention` names at `path`, or why it cannot be.
-fn read(mention: &Mention<'_>, path: &Path, max_bytes: usize) -> Result<Read, String> {
-    let label = mention.label;
-    if path.is_dir() {
-        return listing(path).map(|list| {
-            Read::Text(
-                format!("<directory path=\"{label}\">\n{list}</directory>"),
-                None,
-            )
-        });
+/// Reads what the mentions in `text` name, resolved from `base` in
+/// `workspace`. Reads `workspace`: on the main thread only for a local
+/// one.
+fn read_mentions(text: &str, base: &Path, workspace: &dyn Workspace, max_bytes: usize) -> Found {
+    let mut found = Found::default();
+    for mention in mentions(text) {
+        let label = mention.label;
+        let path = workspace.resolve(Some(base), mention.path);
+        let content = match workspace.stat(&path) {
+            Ok(Stat::Missing) if names_a_path(mention.path) => {
+                found.warnings.push(format!(
+                    "@{label} does not exist; it is sent as plain text."
+                ));
+                continue;
+            }
+            Ok(Stat::Missing) => continue,
+            Ok(Stat::Dir) => listing(workspace, &path, max_bytes).map(|list| {
+                UserContent::text(format!("<directory path=\"{label}\">\n{list}</directory>"))
+            }),
+            Ok(Stat::File { .. }) if is_image_path(&path) && mention.lines.is_none() => {
+                read_image(workspace, &path)
+            }
+            Ok(Stat::File { .. }) => {
+                read_text(workspace, &path, &mention, max_bytes).map(|(block, read)| {
+                    found.read.push(read);
+                    UserContent::text(block)
+                })
+            }
+            Ok(Stat::Other) => Err("it is not a regular file".to_owned()),
+            Err(failure) => Err(failure.to_string()),
+        };
+        match content {
+            Ok(content) => found.attached.push((label.to_owned(), content)),
+            Err(why) => found
+                .warnings
+                .push(format!("@{label} is not attached: {why}.")),
+        }
     }
-    let bytes = fs::read(path).map_err(|failure| failure.to_string())?;
-    if is_image(path) && mention.lines.is_none() {
-        let media =
-            ImageMediaType::sniff(&bytes).ok_or("it is not a PNG, JPEG, GIF or WebP image")?;
-        let data = base64::engine::general_purpose::STANDARD.encode(&bytes);
-        return Ok(Read::Image(UserContent::image_base64(
-            data,
-            Some(media),
-            None,
-        )));
+    found
+}
+
+/// The files under the directory `path`, as `files` walks them (without
+/// what `.gitignore` leaves out), one per line, within `max_bytes`.
+fn listing(workspace: &dyn Workspace, path: &Path, max_bytes: usize) -> Result<String, String> {
+    let files = workspace
+        .files(path, None)
+        .map_err(|failure| failure.to_string())?;
+    let mut list = String::new();
+    for (at, file) in files.iter().enumerate() {
+        let line = format!("{}\n", file.strip_prefix(path).unwrap_or(file).display());
+        if list.len() + line.len() > max_bytes {
+            list.push_str(&format!("[… {} more files]\n", files.len() - at));
+            break;
+        }
+        list.push_str(&line);
     }
-    if bytes.contains(&0) {
+    Ok(list)
+}
+
+/// The image at `path` as message content, its type told by its first
+/// bytes.
+fn read_image(workspace: &dyn Workspace, path: &Path) -> Result<UserContent, String> {
+    let contents = workspace
+        .read(path, MOST_IMAGE_BYTES)
+        .map_err(|failure| failure.to_string())?;
+    if contents.size > MOST_IMAGE_BYTES {
+        return Err(format!(
+            "it has {} KB, more than the {} KB a provider takes",
+            contents.size / 1024,
+            MOST_IMAGE_BYTES / 1024
+        ));
+    }
+    let media =
+        ImageMediaType::sniff(&contents.bytes).ok_or("it is not a PNG, JPEG, GIF or WebP image")?;
+    let data = base64::engine::general_purpose::STANDARD.encode(&contents.bytes);
+    Ok(UserContent::image_base64(data, Some(media), None))
+}
+
+/// The text file at `path` as `mention` asks for it, headed with its
+/// label, and the read of it.
+fn read_text(
+    workspace: &dyn Workspace,
+    path: &Path,
+    mention: &Mention<'_>,
+    max_bytes: usize,
+) -> Result<(String, FileRead), String> {
+    let text = workspace
+        .read_text(path)
+        .map_err(|failure| failure.to_string())?;
+    if text.contains('\0') {
         return Err("it is not a text file".to_owned());
     }
-    let text = String::from_utf8_lossy(&bytes);
     let body = match mention.lines {
-        Some((first, last)) => numbered(&text, first, last),
+        Some((first, last)) => numbered(&text, first, last + 1 - first, max_bytes),
         None if text.len() > max_bytes => head_and_tail(&text, max_bytes),
-        None => text.into_owned(),
+        None => text.clone(),
     };
     let newline = if body.ends_with('\n') { "" } else { "\n" };
+    let label = mention.label;
     let block = format!("<file path=\"{label}\">\n{body}{newline}</file>");
-    Ok(Read::Text(block, Some(bytes)))
-}
-
-/// The entries of the directory `path`, sorted, a directory's ending in
-/// `/`, one per line.
-fn listing(path: &Path) -> Result<String, String> {
-    let mut names: Vec<String> = fs::read_dir(path)
-        .map_err(|failure| failure.to_string())?
-        .flatten()
-        .map(|entry| {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
-            if dir { format!("{name}/") } else { name }
-        })
-        .collect();
-    names.sort();
-    Ok(names.iter().map(|name| format!("{name}\n")).collect())
-}
-
-/// Lines `first` to `last` of `text`, numbered from 1.
-fn numbered(text: &str, first: usize, last: usize) -> String {
-    text.lines()
-        .enumerate()
-        .skip(first - 1)
-        .take(last - first + 1)
-        .map(|(index, line)| format!("{:>6}\t{line}\n", index + 1))
-        .collect()
+    let read = FileRead::new(path.to_string_lossy(), content_hash(text.as_bytes()));
+    Ok((block, read))
 }
 
 /// The first and last whole lines of `text` within `max_bytes` in all,
@@ -274,113 +365,265 @@ fn head_and_tail(text: &str, max_bytes: usize) -> String {
     )
 }
 
-/// Reads the files each user's message names into its attachments as it
-/// comes in, with a warning about each that does not exist. An image for
-/// a model that reads none is described by the vision model while the
-/// message waits, or dropped.
+/// The images pasted into the input: `[image N]` is the `N`th.
+#[derive(Resource, Default)]
+struct Pasted(Vec<PathBuf>);
+
+/// The `[image N]` placeholders in `text`, each `N` once.
+fn pasted_images(text: &str) -> Vec<usize> {
+    let mut found: Vec<usize> = text
+        .split("[image ")
+        .skip(1)
+        .filter_map(|rest| rest.split_once(']')?.0.parse().ok())
+        .collect();
+    found.sort_unstable();
+    found.dedup();
+    found
+}
+
+/// A clipboard image being saved for the input: its path, or why there is
+/// none.
+#[derive(Component)]
+struct Pasting(Result<PathBuf, String>);
+
+impl From<Result<Result<PathBuf, String>, ToolExecutionError>> for Pasting {
+    fn from(read: Result<Result<PathBuf, String>, ToolExecutionError>) -> Self {
+        Self(read.unwrap_or_else(|failure| Err(failure.to_string())))
+    }
+}
+
+/// Saves the clipboard's image in the session's images directory, off the
+/// main thread.
+fn paste_image(
+    _: On<KeyPressed>,
+    (scratch, processes): (Option<Res<Scratch>>, Option<Res<Processes>>),
+    (shown, wake): (Res<Shown>, Res<Wake>),
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let Some(images) = scratch.and_then(|scratch| scratch.images()) else {
+        let why = "This session keeps no files to paste an image into.";
+        notices.write(Notice::info(shown.0, why));
+        return;
+    };
+    let launcher = processes
+        .map(|processes| processes.launcher())
+        .unwrap_or_default();
+    let read = blocking(move || Ok(read_clipboard_image(&launcher, &images)));
+    let pool = IoTaskPool::get_or_init(TaskPool::default);
+    commands.spawn((
+        Name::new("pasting an image"),
+        Running::spawn_into::<Pasting, _>(pool, &wake, read),
+    ));
+}
+
+/// Types `[image N]` for a saved clipboard image, or says why there is
+/// none.
+fn paste_read(
+    read: On<Insert<Pasting>>,
+    pasting: Query<&Pasting>,
+    (mut input, mut pasted, shown): (Option<ResMut<TuiInput>>, ResMut<Pasted>, Res<Shown>),
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    commands.entity(read.entity).despawn();
+    let (Ok(Pasting(saved)), Some(input)) = (pasting.get(read.entity), input.as_mut()) else {
+        return;
+    };
+    match saved {
+        Ok(path) => {
+            pasted.0.push(path.clone());
+            let before = input.text().get(..input.cursor()).unwrap_or_default();
+            let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
+                ""
+            } else {
+                " "
+            };
+            input.insert(&format!("{space}[image {}] ", pasted.0.len()));
+        }
+        Err(why) => {
+            notices.write(Notice::info(shown.0, why.clone()));
+        }
+    }
+}
+
+/// The mentions of a message read off the main thread, on the hold that
+/// keeps the message ([`HoldOf`]) until they are attached.
+#[derive(Component)]
+struct ReadMentions(Result<Found, ToolExecutionError>);
+
+impl From<Result<Found, ToolExecutionError>> for ReadMentions {
+    fn from(read: Result<Found, ToolExecutionError>) -> Self {
+        Self(read)
+    }
+}
+
+/// Reads the files each user's message names as it comes in: inline in
+/// this machine's workspace, else off the main thread under a hold on the
+/// message.
 fn attach(
     mut typed: Query<
         (Entity, &mut Incoming, &ForAgent, &Effect),
         (Added<Admitted>, IncomingMessages),
     >,
-    agents: Query<(Option<&Connection>, Option<&WorkDir>)>,
-    (config, root, models): (Res<Mentions>, Res<ProjectRoot>, Res<Models>),
-    mut notices: MessageWriter<Notice>,
-    mut commands: Commands,
+    dirs: Query<&WorkDir>,
+    (root, workspace, wake): (Res<ProjectRoot>, Res<ProjectWorkspace>, Res<Wake>),
+    pasted: Res<Pasted>,
+    mut adding: Adding,
 ) {
     for (message, mut typed, &ForAgent(agent), effect) in &mut typed {
         if typed.origin.kind != OriginKind::User || typed.command().is_some() {
             continue;
         }
-        let (connection, work_dir) = agents.get(agent).unwrap_or((None, None));
-        let base = work_dir.map_or(&root.0, |dir| &dir.0);
-        let sees_images = connection.is_some_and(|connection| connection.spec.input.image);
-        let mut attached: Vec<Attachment> = Vec::new();
-        let mut read_files = Vec::new();
-        for mention in mentions(&typed.text) {
-            let path = rig_tools::fs::resolve(Some(base), mention.path);
-            if !path.exists() {
-                let text = format!(
-                    "@{} does not exist; it is sent as plain text.",
-                    mention.label
-                );
-                notices.write(Notice::warn(agent, text));
-                continue;
+        // Pasted images are on this machine, whatever the workspace.
+        let mut images = Found::default();
+        for number in pasted_images(&typed.text) {
+            let pasted = number.checked_sub(1).and_then(|at| pasted.0.get(at));
+            if let Some(path) = pasted {
+                let label = format!("[image {number}]");
+                match read_image(&Local, path) {
+                    Ok(image) => images.attached.push((label, image)),
+                    Err(why) => images
+                        .warnings
+                        .push(format!("{label} is not attached: {why}.")),
+                }
             }
-            let label = mention.label.to_owned();
-            let content = match read(&mention, &path, config.max_bytes) {
-                Err(why) => {
-                    notices.write(Notice::warn(
-                        agent,
-                        format!("@{label} is not attached: {why}."),
-                    ));
-                    continue;
-                }
-                Ok(Read::Text(text, bytes)) => {
-                    if let Some(bytes) = bytes {
-                        let path = path.to_string_lossy().into_owned();
-                        read_files.push(FileRead::new(path, content_hash(&bytes)));
-                    }
-                    UserContent::text(text)
-                }
-                Ok(Read::Image(image)) if sees_images => image,
-                Ok(Read::Image(image)) => {
-                    let vision = config
-                        .vision_model
-                        .as_deref()
-                        .map(|model| models.connect(model));
-                    match vision {
-                        Some(Ok(vision)) => {
-                            let model = vision.spec.reference();
-                            let ask = ChatMessage::User {
-                                content: vec![image, UserContent::text(DESCRIBE)],
-                            };
-                            let describe = commands.spawn((
-                                Name::new(format!("describing {label}")),
-                                Describing {
-                                    message,
-                                    label: label.clone(),
-                                    model: model.clone(),
-                                },
-                                ModelRequest::new(CompletionRequest::new(ask)).on(vision),
-                                Effect::child_of(Some(effect.id())).with_purpose("vision"),
-                                ForAgent(agent),
-                                HoldOf(message),
-                            ));
-                            time_out(describe.id(), config.describe_secs, &mut commands);
-                            UserContent::text(format!(
-                                "[description of {label} by {model}: pending]"
-                            ))
-                        }
-                        vision => {
-                            let why = match vision {
-                                Some(Err(why)) => why,
-                                _ => "no vision model is configured".to_owned(),
-                            };
-                            let text = format!(
-                                "{label} was dropped: this model cannot see images, and {why}."
-                            );
-                            notices.write(Notice::warn(agent, text));
-                            UserContent::text(format!("[{label}: {UNSEEN}]"))
-                        }
-                    }
-                }
-            };
-            attached.push(Attachment { label, content });
         }
-        // Each path once: what another plugin attached for it is replaced.
-        typed
-            .attachments
-            .retain(|old| !attached.iter().any(|new| new.label == old.label));
-        typed.attachments.extend(attached);
-        if !read_files.is_empty() {
+        adding.add(message, effect, agent, &mut typed, images);
+        let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
+        let max_bytes = adding.config.max_bytes;
+        if workspace.0.host().is_none() {
+            let found = read_mentions(&typed.text, &base, &*workspace.0, max_bytes);
+            adding.add(message, effect, agent, &mut typed, found);
+            continue;
+        }
+        let (text, workspace) = (typed.text.clone(), workspace.0.clone());
+        let read = blocking(move || Ok(read_mentions(&text, &base, &*workspace, max_bytes)));
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        adding.commands.spawn((
+            Name::new("reading mentions"),
+            HoldOf(message),
+            Running::spawn_into::<ReadMentions, _>(pool, &wake, read),
+        ));
+    }
+}
+
+/// Attaches the mentions read off the main thread to their message, and
+/// releases it.
+fn attach_read(
+    read: On<Insert<ReadMentions>>,
+    mut holds: Query<(&HoldOf, &mut ReadMentions)>,
+    mut messages: Query<(&mut Incoming, &ForAgent, &Effect)>,
+    mut adding: Adding,
+) {
+    let Ok((&HoldOf(message), mut found)) = holds.get_mut(read.entity) else {
+        return;
+    };
+    let found = std::mem::replace(&mut found.0, Ok(Found::default()));
+    if let Ok((mut typed, &ForAgent(agent), effect)) = messages.get_mut(message) {
+        match found {
+            Ok(found) => adding.add(message, effect, agent, &mut typed, found),
+            Err(failure) => {
+                let text = format!("No @path files attached: {failure}");
+                adding.notices.write(Notice::warn(agent, text));
+            }
+        }
+    }
+    adding.commands.entity(read.entity).despawn();
+}
+
+/// What adding a message's mentions to it needs.
+#[derive(SystemParam)]
+struct Adding<'w, 's> {
+    agents: Query<'w, 's, &'static Connection>,
+    config: Res<'w, Mentions>,
+    models: Res<'w, Models>,
+    notices: MessageWriter<'w, Notice>,
+    commands: Commands<'w, 's>,
+}
+
+impl Adding<'_, '_> {
+    /// Adds `found` to the message `typed`, with a warning about each
+    /// mention not attached. An image for a model that reads none is
+    /// described by the vision model while the message waits, or dropped.
+    fn add(
+        &mut self,
+        message: Entity,
+        effect: &Effect,
+        agent: Entity,
+        typed: &mut Incoming,
+        found: Found,
+    ) {
+        for warning in found.warnings {
+            self.notices.write(Notice::warn(agent, warning));
+        }
+        let sees_images = self
+            .agents
+            .get(agent)
+            .is_ok_and(|connection| connection.spec.input.image);
+        for (label, content) in found.attached {
+            let content = match content {
+                UserContent::Image(_) if !sees_images => {
+                    self.describe(message, effect, agent, &label, content)
+                }
+                content => content,
+            };
+            typed.attachments.push(Attachment { label, content });
+        }
+        if !found.read.is_empty() {
             let mut published = ToolContext::new();
-            if published.insert_result(FilesRead(read_files)).is_ok() {
-                commands
+            if published.insert_result(FilesRead(found.read)).is_ok() {
+                self.commands
                     .entity(message)
                     .insert(Published(published.result_context()));
             }
         }
+    }
+
+    /// What goes in place of `image` for a model that reads no images
+    /// until the vision model's description comes: the call that asks for
+    /// it holds the message. Without a vision model, the note that the
+    /// model cannot see it.
+    fn describe(
+        &mut self,
+        message: Entity,
+        effect: &Effect,
+        agent: Entity,
+        label: &str,
+        image: UserContent,
+    ) -> UserContent {
+        let vision = self
+            .config
+            .vision_model
+            .as_deref()
+            .map(|model| self.models.connect(model));
+        let why = match vision {
+            Some(Ok(vision)) => {
+                let model = vision.spec.reference();
+                let ask = ChatMessage::User {
+                    content: vec![image, UserContent::text(DESCRIBE)],
+                };
+                let describe = self.commands.spawn((
+                    Name::new(format!("describing {label}")),
+                    Describing {
+                        message,
+                        label: label.to_owned(),
+                        model: model.clone(),
+                    },
+                    ModelRequest::new(CompletionRequest::new(ask)).on(vision),
+                    Effect::child_of(Some(effect.id())).with_purpose("vision"),
+                    ForAgent(agent),
+                    HoldOf(message),
+                ));
+                time_out(describe.id(), self.config.describe_secs, &mut self.commands);
+                return UserContent::text(format!("[description of {label} by {model}: pending]"));
+            }
+            Some(Err(why)) => why,
+            None => "no vision model is configured".to_owned(),
+        };
+        let text = format!("{label} was dropped: this model cannot see images, and {why}.");
+        self.notices.write(Notice::warn(agent, text));
+        UserContent::text(format!("[{label}: {UNSEEN}]"))
     }
 }
 

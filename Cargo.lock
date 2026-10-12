@@ -4809,18 +4809,17 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "bevy_ecs",
- "bevy_reflect",
+ "bevy_log",
  "bevy_tasks",
- "futures",
  "rig-cassette",
+ "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
  "rig-tools",
- "schemars 1.2.1",
+ "rig-tui",
  "serde",
- "serde_json",
 ]
 
 [[package]]
