@@ -27,6 +27,8 @@
 //!   [`overlay`]: one that keeps the tools' writes from the disk, to
 //!   preview them;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
+//! - [`checkpoint`]: the files under a root at one moment, what changed by
+//!   a later one, and a handler that reports what any call changed;
 //! - [`clipboard`]: the system clipboard's text and images;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
@@ -47,6 +49,7 @@ use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
 
 pub mod attach;
 mod blocking;
+pub mod checkpoint;
 pub mod clipboard;
 pub mod context;
 mod delete;
