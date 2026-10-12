@@ -30,15 +30,6 @@ const CODEX: &str = r#"{"timestamp":"2026-10-02T09:00:00Z","type":"session_meta"
 {"timestamp":"2026-10-02T09:00:10Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"They pass."}]}}
 "#;
 
-/// A session run: interactive with no terminal front, as a headless run
-/// would be taken by `rig import`'s front, the first headless front offered.
-fn interactive() -> Invoked {
-    Invoked {
-        terminal: true,
-        ..Invoked::default()
-    }
-}
-
 /// Runs `/import <tool> <path>` for the app's agent; the sessions it
 /// reported so far.
 fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
@@ -113,11 +104,7 @@ fn imports_resumes_and_reimports() {
     // `/import codex <file>` in a session.
     let current = SessionId::generate();
     let (mut app, _wakes) = app_in(&home, &current);
-    app.insert_resource(interactive()).add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        ImportSessionsPlugin,
-    ));
+    app.add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin));
     collect::<SessionImported>(&mut app);
     app.finish();
     app.update();
@@ -200,7 +187,6 @@ fn imports_resumes_and_reimports() {
         let (mut resumed, wakes) = app_in(&home, &first.session);
         resumed
             .insert_resource(scripted_models([("test/model", &model)]))
-            .insert_resource(interactive())
             .add_plugins((AgentPlugin, JournalPlugin, ImportSessionsPlugin))
             // A `shell` here, so the request declares tools and keeps the
             // imported calls as calls.
@@ -250,6 +236,13 @@ fn imports_resumes_and_reimports() {
     // added.
     let more = r#"{"type":"user","uuid":"u3","parentUuid":"a2","isSidechain":false,"sessionId":"cc-1","timestamp":"2026-10-03T08:00:00Z","message":{"role":"user","content":"One more thing"}}"#;
     fs::write(&claude, format!("{CLAUDE}{more}\n")).ok();
+    // Not while it is open elsewhere.
+    let lock = fs::File::create(home.session(&first.session).launcher_lock());
+    let held = lock.as_ref().is_ok_and(|lock| lock.try_lock().is_ok());
+    assert!(held);
+    // Only the Codex import of this app so far.
+    assert_eq!(import_with(&mut app, "claude-code", &claude).len(), 1);
+    drop(lock);
     let reported = import_with(&mut app, "claude-code", &claude);
     let again = reported.last();
     assert!(

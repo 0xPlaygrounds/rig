@@ -33,7 +33,7 @@ use rig_core::message::{Message, Origin as MadeBy};
 use rig_core::transcript::{close_pending_with, pending_calls};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_sessions::{Meta, SessionTitle, write_meta};
+use rig_sessions::{Meta, SessionTitle, title_of, write_meta};
 use serde::{Deserialize, Serialize};
 
 use parse::{Parsed, Step, StepKind};
@@ -157,7 +157,7 @@ pub struct ImportSessionsPlugin;
 
 impl Plugin for ImportSessionsPlugin {
     fn build(&self, app: &mut App) {
-        let front = Front::new(COMMAND).headless().sessionless();
+        let front = Front::new(COMMAND).sessionless();
         app.add_message::<SessionImported>()
             .init_resource::<RigHome>()
             .add_front(front.on_command(
@@ -311,10 +311,9 @@ fn picker(agent: Entity) -> Picker {
     picker
 }
 
-/// The first thing the user said, on one line.
+/// The first thing the user said, as `/resume` titles it.
 fn first_line(parsed: &Parsed) -> String {
-    let first = parsed.first_message().unwrap_or_default();
-    first.split_whitespace().collect::<Vec<_>>().join(" ")
+    title_of(parsed.first_message().unwrap_or_default())
 }
 
 /// The session files at `path`: it, or every `*.jsonl` under it but a
@@ -437,6 +436,11 @@ fn import_file(
         parsed.id = stem.unwrap_or_default();
     }
     let (session, dir, marker) = match imported_session((home, stores), source, &parsed.id) {
+        Some((session, dir, _)) if dir.runs_elsewhere() => {
+            return Err(io::Error::other(format!(
+                "its session {session} is open; close it to import again"
+            )));
+        }
         Some(found) => found,
         None => {
             let (session, dir) = home.new_session()?;
@@ -558,7 +562,7 @@ fn write(
     let mut meta = Meta::of(store).unwrap_or_default();
     if meta.title.typed.is_empty() {
         meta.title = SessionTitle {
-            typed: rig_tools::shorten(&first_line(parsed), 60),
+            typed: first_line(parsed),
             ..meta.title
         };
     }
