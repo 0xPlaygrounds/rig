@@ -13,7 +13,7 @@ struct Stats;
 
 impl Plugin for Stats {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new("stats").headless().sessionless().on_command(
+        app.add_front(Front::new("stats").sessionless().on_command(
             "stats",
             "[--all]",
             "Count the saved sessions",
@@ -29,11 +29,7 @@ struct OtherStats;
 
 impl Plugin for OtherStats {
     fn build(&self, app: &mut App) {
-        app.add_front(
-            Front::new("other")
-                .headless()
-                .on_command("stats", "", "Other stats"),
-        );
+        app.add_front(Front::new("other").on_command("stats", "", "Other stats"));
     }
 }
 
@@ -43,7 +39,7 @@ struct Help;
 
 impl Plugin for Help {
     fn build(&self, app: &mut App) {
-        app.add_front(Front::new("help").headless().on_command("help", "", "Help"));
+        app.add_front(Front::new("help").on_command("help", "", "Help"));
     }
 }
 

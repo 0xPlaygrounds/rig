@@ -50,7 +50,7 @@ impl Plugin for ScaffoldPlugin {
         // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
         // - a setting:          app.add_setting::<MySettings>("my-plugin"), read from
         //                       RIG_HOME/settings.toml ("Settings")
-        // - a `rig <name>`:     app.add_front(Front::new("name").headless()
+        // - a `rig <name>`:     app.add_front(Front::new("name")
         //                       .on_command("name", "<args>", "What it does")), and in
         //                       `finish`, `if app.runs_front("name") { … }` with its words
         //                       from Invoked::command ("Commands of your own")

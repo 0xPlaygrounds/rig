@@ -37,9 +37,9 @@
 //! impl Plugin for JsonFront {
 //!     fn build(&self, app: &mut App) {
 //!         app.add_front(Front::new("json").on_flag("json", "Stream the session as JSON lines"))
-//!             // `rig stats [--all]`: headless, so its output and exit code
-//!             // pass through the launcher.
-//!             .add_front(Front::new("stats").headless().sessionless().on_command(
+//!             // `rig stats [--all]`: not `on_terminal`, so it runs headless
+//!             // and its output and exit code pass through the launcher.
+//!             .add_front(Front::new("stats").sessionless().on_command(
 //!                 "stats",
 //!                 "[--all]",
 //!                 "Count the saved sessions",
