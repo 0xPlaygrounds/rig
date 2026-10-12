@@ -629,87 +629,90 @@ fn safety_detects_aws_keys_in_base64_bodies_without_echoing_value() {
     assert!(failures.iter().all(|failure| !failure.contains(leaked)));
 }
 
+/// The safety check names each key-shaped token a cassette that skipped
+/// the scrubber holds, by kind, and never echoes it.
 #[test]
-fn safety_detects_token_shaped_openai_keys_without_echoing_value() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1/responses
-  method: POST
-then:
-  status: 200
-  body: '{"leaked":"sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"}'
-"#,
-    );
+fn safety_detects_unscrubbed_keys_without_echoing_value() {
+    for (key, kind) in [
+        (
+            "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",
+            "OpenAI API key",
+        ),
+        (
+            "sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890",
+            "Anthropic API key",
+        ),
+        ("AIzaSyExampleSecretToken1234567890", "Google API key"),
+    ] {
+        let cassette = format!(
+            "when:\n  path: /v1/messages\n  method: POST\nthen:\n  status: 200\n  body: '{{\"leaked\":\"{key}\"}}'\n"
+        );
 
-    let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+        let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
 
-    assert!(
-        failures
+        let shaped = failures
             .iter()
-            .any(|failure| failure.contains("OpenAI API key-shaped token(s)"))
-    );
-    assert!(
-        failures
-            .iter()
-            .all(|failure| !failure.contains("sk-proj-abcdefghijklmnopqrstuvwxyz1234567890"))
-    );
+            .filter(|failure| failure.contains("-shaped token(s)"))
+            .collect::<Vec<_>>();
+        assert_eq!(shaped.len(), 1, "{failures:?}");
+        assert!(
+            shaped
+                .iter()
+                .all(|failure| failure.contains(&format!("{kind}-shaped"))),
+            "{failures:?}"
+        );
+        assert!(failures.iter().all(|failure| !failure.contains(key)));
+    }
 }
 
+/// A recorded secret of every kind `rig_core::redact` knows is scrubbed,
+/// wherever it is: in a request query, header or body, or in a response
+/// header or body, plain text or JSON. The result passes the safety check.
 #[test]
-fn safety_detects_token_shaped_anthropic_keys_without_echoing_value() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1/messages
-  method: POST
-then:
-  status: 200
-  body: '{"leaked":"sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"}'
-"#,
-    );
+fn recording_scrubs_every_redact_kind() {
+    let keys = [
+        "sk-proj-abcdefghijklmnopqrstuvwxyz1234567890",
+        "sk-ant-api03-abcdefghijklmnopqrstuvwxyz",
+        "AIzaSyExampleSecretToken1234567890",
+        "AKIA1234567890ABCDEF",
+        "ghp_abcdefghijklmnopqrstuvwxyz0123456789",
+        "glpat-abcdefghijklmnopqrstuvwxyz",
+        "xoxb-1234567890-abcdefghijk",
+        concat!("sk_", "live_abcdefghijklmnopqrstuvwxyz"),
+        "hf_abcdefghijklmnopqrstuvwxyz0123456789",
+        "-----BEGIN RSA PRIVATE KEY-----\nMIIEabc\n-----END RSA PRIVATE KEY-----",
+    ];
+    let kinds = keys
+        .iter()
+        .flat_map(|key| redact::find(key).map(|secret| secret.kind))
+        .collect::<std::collections::HashSet<_>>();
+    assert_eq!(kinds.len(), keys.len(), "one sample per kind: {kinds:?}");
 
-    let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
+    let mut scrubber = CassetteScrubber::new(CassettePolicy::default());
+    for key in keys {
+        let mut request = cassette_request("/v1/messages");
+        request.query_param.push(query_pair("q", key));
+        request.header.push(query_pair("anthropic-beta", key));
+        request.body = Some(serde_json::json!({ "input": key }).to_string());
+        let mut response = cassette_response();
+        response.header.push(query_pair("x-request-id", key));
+        response.body = Some(format!("error: {key} is invalid"));
+        let mut interaction = CassetteInteraction {
+            when: request,
+            then: response,
+        };
 
-    assert!(
-        failures
-            .iter()
-            .any(|failure| failure.contains("Anthropic API key-shaped token(s)"))
-    );
-    assert!(
-        failures
-            .iter()
-            .all(|failure| !failure.contains("sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"))
-    );
-    assert!(
-        failures
-            .iter()
-            .all(|failure| !failure.contains("OpenAI API key-shaped token(s)"))
-    );
-}
+        scrubber.scrub_request(&mut interaction.when);
+        scrubber.scrub_response(&mut interaction.then);
 
-#[test]
-fn safety_detects_google_api_keys_without_echoing_value() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1beta/models/gemini
-  method: POST
-then:
-  status: 200
-  body: '{"leaked":"AIzaSyExampleSecretToken1234567890"}'
-"#,
-    );
-
-    let failures = cassette_safety_failures(Path::new("fixture.yaml"), &cassette);
-
-    assert!(
-        failures
-            .iter()
-            .any(|failure| failure.contains("Google API key-shaped token(s)"))
-    );
-    assert!(
-        failures
-            .iter()
-            .all(|failure| !failure.contains("AIzaSyExampleSecretToken1234567890"))
-    );
+        let recorded = serialize_cassette_interactions(&[interaction]);
+        assert!(!redact::has_secret(&recorded), "{recorded}");
+        assert_eq!(recorded.matches(REDACTED).count(), 5, "{recorded}");
+        assert!(
+            cassette_safety_failures(Path::new("fixture.yaml"), &recorded).is_empty(),
+            "{recorded}"
+        );
+    }
 }
 
 /// Provider ids are recorded verbatim: a file id, a message id and the

@@ -43,6 +43,7 @@ use rig_core::redact;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::any::Any;
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::convert::Infallible;
 use std::fmt;
@@ -73,7 +74,7 @@ use shape::BodyMatching;
 
 const MODE_ENV: &str = "RIG_PROVIDER_TEST_MODE";
 const ATTEMPT_DIR_ENV: &str = "RIG_CASSETTE_ATTEMPT_DIR";
-const REDACTED: &str = "[REDACTED]";
+const REDACTED: &str = redact::REDACTED;
 const DUMMY_API_KEY: &str = REDACTED;
 static TEMP_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
@@ -1790,7 +1791,7 @@ fn headers_match(actual: &axum::http::HeaderMap, expected: &[NameValue]) -> bool
                 {
                     value.starts_with("multipart/form-data;")
                 } else {
-                    value == expected.value
+                    redact::text(value) == expected.value
                 }
             })
     })
@@ -2989,8 +2990,9 @@ const VOLATILE_JSON_KEYS: &[&str] = &[
 /// Credential material a token exchange can return in a body.
 const OAUTH_TOKEN_KEYS: &[&str] = &["access_token", "id_token", "refresh_token"];
 
-/// Removes credentials, AWS account numbers and home-directory paths from a
-/// recording and normalizes its volatile fields. Everything else the provider
+/// Removes credentials (sensitive headers and query parameters, and every
+/// secret [`rig_core::redact`] finds), AWS account numbers and home-directory
+/// paths from a recording and normalizes its volatile fields. Everything else the provider
 /// sent is kept verbatim, so a fixture can seed a live call and a replay
 /// decodes the provider's own bytes.
 struct CassetteScrubber {
@@ -3200,7 +3202,7 @@ impl CassetteScrubber {
     }
 
     fn scrub_text(&mut self, text: &str) -> String {
-        let mut scrubbed = text.to_string();
+        let mut scrubbed = redact::text(text).into_owned();
         for key in self.policy.sensitive_query_params {
             scrubbed = scrub_query_param(&scrubbed, key, REDACTED);
         }
@@ -3276,7 +3278,7 @@ enum HeaderMode {
 fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: HeaderMode) {
     match mode {
         HeaderMode::Request => {
-            for header in headers {
+            for header in headers.iter_mut() {
                 if policy.is_sensitive_header(&header.name) {
                     header.value = REDACTED.to_string();
                 }
@@ -3284,6 +3286,12 @@ fn scrub_headers(policy: CassettePolicy, headers: &mut Vec<NameValue>, mode: Hea
         }
         HeaderMode::Response => {
             headers.retain(|header| policy.is_allowed_response_header(&header.name));
+        }
+    }
+    // A key-shaped token in any header that stays is a secret too.
+    for header in headers {
+        if let Cow::Owned(value) = redact::text(&header.value) {
+            header.value = value;
         }
     }
 }
