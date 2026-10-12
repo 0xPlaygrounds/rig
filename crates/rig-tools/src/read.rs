@@ -85,8 +85,17 @@ impl ReadArgs {
         self.shown(text).0
     }
 
-    /// [`Self::show`], and which lines it shows.
-    fn shown(&self, text: &str) -> (String, LinesShown) {
+    /// [`Self::show`], and which lines it shows: what [`Read`] publishes
+    /// in its [`FileRead`], for code that shows a file as `read` would and
+    /// records what it showed.
+    ///
+    /// ```
+    /// use rig_tools::ReadArgs;
+    ///
+    /// let (_, lines) = ReadArgs::new("a.txt").lines(2, 1).shown("one\ntwo\nthree\n");
+    /// assert_eq!((lines.first, lines.count, lines.total), (2, 1, 3));
+    /// ```
+    pub fn shown(&self, text: &str) -> (String, LinesShown) {
         let first = self.offset.unwrap_or(1);
         let limit = self.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
         number(text, first, limit, MAX_BYTES)
