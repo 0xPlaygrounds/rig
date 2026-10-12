@@ -98,7 +98,12 @@ fn a_valid_result_ends_the_turn_after_the_other_calls() {
     let outputs = &app.world().resource::<ToolOutputs>().0;
     let output = |id: &str| outputs.get(id).cloned().unwrap_or_default();
     let invalid = output("c1");
-    assert!(invalid.contains("`verdict` is required"), "{invalid}");
+    // rig-core refuses arguments that do not fit the tool's schema before
+    // the plugin sees them.
+    assert!(
+        invalid.contains("do not fit its schema") && invalid.contains("verdict"),
+        "{invalid}"
+    );
     assert!(output("c3").contains("the a file"), "{}", output("c3"));
     let result = app.world().resource::<SubmitResult>();
     assert_eq!(result.0, Some(serde_json::json!({ "verdict": "flaky" })));
