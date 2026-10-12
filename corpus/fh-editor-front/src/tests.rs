@@ -62,6 +62,35 @@ impl FakeEditor {
     }
 }
 
+/// An app with the file tools and the editor front on `model`, plus what
+/// `add` adds.
+fn app_with(
+    model: &MockCompletionModel,
+    add: impl FnOnce(&mut App),
+) -> (App, std::sync::mpsc::Receiver<()>) {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    app.add_plugins((
+        AgentPlugin,
+        JournalPlugin,
+        ReadTool,
+        EditTool,
+        WriteTool,
+        EditorFrontPlugin,
+    ))
+    .init_resource::<Ended>()
+    .add_observer(log_ended)
+    .init_resource::<ToolOutputs>()
+    .add_observer(log_tool_outputs);
+    add(&mut app);
+    app.finish();
+    app.update();
+    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
+    if let Some(connection) = connect_model(model) {
+        app.world_mut().entity_mut(agent).insert(connection);
+    }
+    (app, wakes)
+}
+
 /// Two editors on one session, `a.txt` open in the first with the unsaved
 /// text `draft…`: the agent reads the buffer, its edit of `a.txt` is
 /// reviewed (hunk 1 accepted, hunk 2 rejected; the second editor's late
@@ -84,25 +113,7 @@ fn open_buffers_win_and_edits_are_reviewed() {
         calls("w1", "write", json!({ "path": b_path, "content": "new\n" })),
         reply("Done."),
     ]);
-    let (mut app, wakes) = app_on(&MemoryStore::default());
-    app.add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        ReadTool,
-        EditTool,
-        WriteTool,
-        EditorFrontPlugin,
-    ))
-    .init_resource::<Ended>()
-    .add_observer(log_ended)
-    .init_resource::<ToolOutputs>()
-    .add_observer(log_tool_outputs);
-    app.finish();
-    app.update();
-    let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
-    if let Some(connection) = connect_model(&model) {
-        app.world_mut().entity_mut(agent).insert(connection);
-    }
+    let (mut app, wakes) = app_with(&model, |_| {});
     let mut first = FakeEditor {
         link: connect(app.world_mut()),
         got: Vec::new(),
@@ -181,4 +192,99 @@ fn open_buffers_win_and_edits_are_reviewed() {
     assert!(answered_late);
     assert_eq!(first.streamed(), "Done.");
     assert_eq!(second.streamed(), "Done.");
+}
+
+/// An approval-like gate's hold on an `edit`.
+#[derive(Component)]
+struct Approval;
+
+/// Holds each `edit` once, as a gate that asks the user does.
+fn ask_about_edits(
+    calls: Query<(Entity, &ToolRequest, &Decision), (Undecided, ToolCalls)>,
+    asked: Query<&HoldOf, With<Approval>>,
+    mut commands: Commands,
+) {
+    for (call, request, decision) in &calls {
+        let held = asked.iter().any(|&HoldOf(of)| of == call);
+        if request.call.function.name.as_str() == Edit::NAME && !decision.is_decided() && !held {
+            commands.spawn((Approval, Name::new("waiting for approval"), HoldOf(call)));
+        }
+    }
+}
+
+/// A gate's question on an edit of an open file comes first: no editor
+/// is asked to review it while the question is open, and once the user
+/// refuses it, the buffer and the disk stay as they were.
+#[test]
+fn a_gate_that_asks_goes_before_the_review() {
+    let dir = scratch_home("fh-editor-front-gate").root().to_owned();
+    std::fs::create_dir_all(&dir).ok();
+    let a = dir.join("a.txt");
+    std::fs::write(&a, "disk\n").ok();
+    let a_path = a.display().to_string();
+    let edits = json!([{ "old_text": "draft", "new_text": "DRAFT" }]);
+    let model = MockCompletionModel::from_stream_turns([
+        calls("e1", "edit", json!({ "path": a_path, "edits": edits })),
+        reply("Done."),
+    ]);
+    let (mut app, wakes) = app_with(&model, |app| {
+        app.add_systems(AgentPass, ask_about_edits.in_set(Stage::Gate));
+    });
+    let mut editor = FakeEditor {
+        link: connect(app.world_mut()),
+        got: Vec::new(),
+    };
+    editor.send(&FromEditor::Buffer {
+        path: a_path.clone(),
+        text: "draft\n".to_owned(),
+    });
+    editor.send(&FromEditor::Send {
+        text: "Shout.".to_owned(),
+        selection: None,
+    });
+
+    let mut frames_held = 0;
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(10)
+        && app.world().resource::<Ended>().0.is_empty()
+    {
+        app.update();
+        wakes.recv_timeout(Duration::from_millis(20)).ok();
+        editor.drain();
+        let holds: Vec<(Entity, Entity)> = app
+            .world_mut()
+            .query_filtered::<(Entity, &HoldOf), With<Approval>>()
+            .iter(app.world())
+            .map(|(hold, &HoldOf(call))| (hold, call))
+            .collect();
+        for (hold, call) in holds {
+            frames_held += 1;
+            if frames_held < 5 {
+                continue;
+            }
+            if let Some(mut decision) = app.world_mut().get_mut::<Decision>(call) {
+                decision.decide(Decider::Person, Outcome::refused("the user said no"));
+            }
+            app.world_mut().despawn(hold);
+        }
+    }
+
+    let output = app.world().resource::<ToolOutputs>().0.get("e1").cloned();
+    assert!(frames_held >= 5);
+    assert!(
+        output
+            .as_deref()
+            .unwrap_or_default()
+            .contains("the user said no"),
+        "{output:?}"
+    );
+    assert!(editor.reviews().is_empty());
+    let buffer = app
+        .world()
+        .resource::<Buffers>()
+        .0
+        .get(&resolve(None, &a_path))
+        .cloned();
+    assert_eq!(buffer.map(|buffer| buffer.text).as_deref(), Some("draft\n"));
+    assert_eq!(std::fs::read_to_string(&a).ok().as_deref(), Some("disk\n"));
 }

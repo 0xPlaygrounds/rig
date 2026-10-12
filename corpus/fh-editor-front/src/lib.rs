@@ -374,11 +374,6 @@ struct DiagnosticsWait {
     result: String,
 }
 
-/// On a call held for review.
-#[derive(Component)]
-#[component(storage = "SparseSet")]
-struct Reviewing;
-
 /// Connects an editor: every line it sends is read as a [`FromEditor`],
 /// and it is sent every [`ToEditor`]. It answers questions about every
 /// agent while it is connected.
@@ -869,11 +864,13 @@ fn from_buffers(
 
 /// Holds each `edit` and `write` of an open file with a review the
 /// editors answer, unless a gate decided it already or no editor is
-/// connected.
+/// connected. A call a gate holds, such as one waiting for the user's
+/// approval, is not [`Undecided`], so it is reviewed only once the gate
+/// lets it go.
 fn review_edits(
     mut calls: Query<
         (Entity, &ToolRequest, &ForAgent, &Footprint, &mut Decision),
-        (Undecided, ToolCalls, Without<Reviewing>),
+        (Undecided, ToolCalls),
     >,
     dirs: Query<&WorkDir>,
     buffers: Res<Buffers>,
@@ -945,7 +942,6 @@ fn review_edits(
                 HoldOf(call),
             ))
             .id();
-        commands.entity(call).insert(Reviewing);
         broadcast(
             &clients,
             &ToEditor::Review {
