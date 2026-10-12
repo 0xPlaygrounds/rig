@@ -33,7 +33,8 @@ What it holds, by module:
   moves. A plugin steps in with a system in a stage: it edits a request in
   Prepare, in the phase of what it does (`PrepareSystems`: Input, Compose,
   Edit, Fit), holds (`HoldOf`) or decides it (`Decision`, the first decision
-  wins) in Gate, and reads or edits the `Outcome` in place in Review
+  wins) in Gate, where an answer from a record of an earlier run, such as a
+  session replay's, goes first (`AnswerFromRecord`), and reads or edits the `Outcome` in place in Review
   (`ReviewSystems`: Edit, then Act), so Bevy reports two unordered
   deciders or reviewers. Kind filters
   (`ToolCalls`, `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell

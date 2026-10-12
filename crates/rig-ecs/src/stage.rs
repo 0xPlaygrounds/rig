@@ -9,7 +9,9 @@
 //! A plugin steps in with an ordinary system in a stage that queries stage
 //! data. It orders its Prepare and Review systems by what they do, in a
 //! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
-//! one other plugin with `.before` and `.after` that plugin's sets. Every
+//! one other plugin with `.before` and `.after` that plugin's sets; an
+//! answer from a record of an earlier run goes before every gate
+//! ([`AnswerFromRecord`]). Every
 //! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
 //! in their order, before it starts, wherever it was spawned. A gate
 //! answers in the effect's [`Decision`], where the first decision wins; a

@@ -279,6 +279,7 @@ The sets of Gate systems that edit shared data:
 
 | Set | Crate | What it does | Order against it |
 |---|---|---|---|
+| `AnswerFromRecord` | `rig_ecs` | as Gate opens, before every Gate system: decides effects from a record of an earlier run (a session replay), which holds each gate's decision then | nothing; a cached or dry-run answer is no record and goes after the gates that refuse |
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
@@ -447,8 +448,7 @@ ones included. What a tool published beside its text, such as rig-tools'
 `FilesRead` and `FilesChanged` (each file with the hash of the bytes read
 or written) or `ExitStatus`, is the call's `Published` component. A call
 of a tool the agent's `ToolAccess` leaves out is refused at Start (a
-`Denied` refusal in its record), and the model reads it as a tool it does
-not have.
+`Denied` refusal in its record): the model reads it as a tool it lacks.
 
 ```rust,no_run
 use rig_harness::prelude::*;
