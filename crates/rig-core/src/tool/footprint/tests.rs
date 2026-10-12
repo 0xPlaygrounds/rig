@@ -107,3 +107,23 @@ fn a_tool_handler_gives_each_call_its_footprint() {
     assert_eq!(handler.footprint(&call("open", "{")), None);
     assert_eq!(handler.footprint(&call("other", "\"/w/a.rs\"")), None);
 }
+
+/// `..` and `.` fold away, so a path cannot climb past what a guard
+/// compares; a relative path, which names no checkable place, is anything.
+#[test]
+fn normalized_folds_dots_and_widens_relative_paths() {
+    let climbing = Touches::Writes(paths(&["/work/src/../../etc/./passwd", "/work/a.rs"]));
+    assert_eq!(
+        climbing.normalized(),
+        Touches::Writes(paths(&["/etc/passwd", "/work/a.rs"]))
+    );
+    assert_eq!(
+        Touches::Reads(paths(&["/../x"])).normalized(),
+        Touches::Reads(paths(&["/x"]))
+    );
+    assert_eq!(
+        Touches::Writes(paths(&["/work/a.rs", "notes.txt"])).normalized(),
+        Touches::Writes(Scope::Anything)
+    );
+    assert_eq!(Touches::Independent.normalized(), Touches::Independent);
+}

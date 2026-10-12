@@ -1463,6 +1463,61 @@ fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
     );
 }
 
+/// The footprints Gate saw, by call id.
+#[derive(Resource, Default)]
+struct GatedFootprints(Vec<(String, Touches)>);
+
+fn log_footprints(
+    calls: Query<(&ToolRequest, &Footprint), (Undecided, ToolCalls)>,
+    mut log: ResMut<GatedFootprints>,
+) {
+    for (request, footprint) in &calls {
+        log.0
+            .push((request.call.id.to_string(), footprint.0.clone()));
+    }
+}
+
+/// A handler's `..` cannot climb past a guard that compares footprint
+/// paths: Gate sees each path folded, and a relative one as anything.
+#[test]
+fn gate_sees_footprint_paths_normalized() {
+    let mut app = app();
+    let path = |id: &str, path: &str| {
+        MockStreamEvent::tool_call(id, "edit", serde_json::json!({ "path": path }))
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            path("climbs", "/work/src/../../etc/./passwd"),
+            path("relative", "notes.txt"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("done"),
+    ]);
+    app.add_tool(EditFile)
+        .init_resource::<GatedFootprints>()
+        .add_systems(AgentPass, log_footprints.in_set(Stage::Gate));
+    let agent = agent_on(&mut app, &model);
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let seen = &app.world().resource::<GatedFootprints>().0;
+    let at_gate = |id: &str| {
+        seen.iter()
+            .find(|(call, _)| call == id)
+            .map(|(_, touches)| touches.clone())
+    };
+    let etc = Scope::Paths(vec![PathBuf::from("/etc/passwd")]);
+    assert_eq!(at_gate("climbs"), Some(Touches::Writes(etc)), "{seen:?}");
+    assert_eq!(
+        at_gate("relative"),
+        Some(Touches::Writes(Scope::Anything)),
+        "{seen:?}"
+    );
+}
+
 #[test]
 fn a_refused_call_answers_in_call_order_and_is_recorded_as_refused() {
     let mut app = app();

@@ -166,7 +166,8 @@ pub struct ToolCalled<A: Send + Sync + 'static> {
 /// reply that touch different things run side by side. On a tool's entity,
 /// what its calls touch when they cannot say more; on a call, what it
 /// touches as Gate sees it, computed by the kernel when Gate opens: what
-/// its handler says of its final arguments, else its tool's. A call waits
+/// its handler says of its final arguments, else its tool's, its paths
+/// [`normalized`](Touches::normalized). A call waits
 /// while an earlier call of its reply that conflicts with it is not
 /// settled ([`Waiting`](super::stage::Waiting)).
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -370,21 +371,23 @@ fn register_tool(
 
 /// What `call` touches, run by `handler`, of the tool `tool` (its default
 /// footprint, and whether that was declared): the declared one, else what
-/// the handler says of the call, else the tool's default. A call of a tool
-/// that is not registered may change anything.
+/// the handler says of the call, else the tool's default, made
+/// [`normalized`](Touches::normalized) so no `..` climbs past a guard. A
+/// call of a tool that is not registered may change anything.
 pub(crate) fn footprint_of(
     call: &ToolCall,
     handler: Option<&Handler>,
     tool: Option<(&Footprint, bool)>,
 ) -> Footprint {
-    match tool {
+    let Footprint(touches) = match tool {
         Some((footprint, true)) => footprint.clone(),
         _ => handler
             .and_then(|handler| handler.0.footprint(&EffectKind::from(call)))
             .map(Footprint)
             .or_else(|| tool.map(|(footprint, _)| footprint.clone()))
             .unwrap_or_default(),
-    }
+    };
+    Footprint(touches.normalized())
 }
 
 /// Completes each tool call about to be admitted with its tool's
