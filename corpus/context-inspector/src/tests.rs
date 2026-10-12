@@ -129,3 +129,8 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
     assert_eq!(model.requests().len(), sent, "/why calls no model");
     std::fs::remove_dir_all(home.root()).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ContextInspectorPlugin);
+}

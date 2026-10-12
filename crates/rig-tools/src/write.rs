@@ -1,19 +1,30 @@
 //! The `write` tool.
 
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema, content_hash,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{absolute, file_change, io_error, write_atomic};
+use crate::fs::{file_change, io_error, place, resolve, write_atomic};
 use crate::{MAX_FILE_BYTES, blocking};
 
 /// Writes a whole file, creating its parent directories. Publishes the file
-/// it changed ([`FilesChanged`]): its absolute path, and the diff.
-pub struct Write;
+/// it changed ([`FilesChanged`]): its [resolved](crate::fs::resolve) path,
+/// and the diff.
+#[derive(Clone, Debug, Default)]
+pub struct Write {
+    /// The directory a relative path is written in; `None` is this
+    /// process's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is written.
+    pub confine: bool,
+}
 
 /// Arguments of [`Write`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -64,17 +75,26 @@ impl Tool for Write {
             .with_open_world(false)
     }
 
+    fn footprint(&self, args: &WriteArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
+    }
+
     async fn call(
         &self,
         context: &mut ToolContext,
         args: WriteArgs,
     ) -> Result<String, ToolExecutionError> {
+        let resolved = place(self.base.as_deref(), self.confine, &args.path)?;
         let (output, change) = blocking(move || {
-            let path = args.path.as_str();
-            let before = previous(Path::new(path));
-            write_atomic(Path::new(path), args.content.as_bytes())
-                .map_err(|error| io_error(path, error))?;
-            let change = file_change(&absolute(path), before.as_deref(), &args.content);
+            let path = resolved.to_string_lossy();
+            let before = previous(&resolved);
+            write_atomic(&resolved, args.content.as_bytes())
+                .map_err(|error| io_error(&path, error))?;
+            let change = file_change(&path, before.as_deref(), &args.content)
+                .with_after(content_hash(args.content.as_bytes()));
             let output = format!("Wrote {} bytes to {}.", args.content.len(), args.path);
             Ok::<_, ToolExecutionError>((output, change))
         })

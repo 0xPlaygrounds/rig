@@ -27,7 +27,11 @@ impl Plugin for RetryWithModelPlugin {
             .register_required_components::<TurnOf, TurnChanges>()
             .add_observer(note_change)
             .add_observer(note_turn)
-            .add_systems(AgentPass, route.in_set(Stage::Prepare))
+            .configure_sets(
+                AgentPass,
+                RetryWithModelSystems.in_set(PrepareSystems::Edit),
+            )
+            .add_systems(AgentPass, route.in_set(RetryWithModelSystems))
             .add_systems(Update, complete.run_if(resource_changed::<Models>))
             .add_command(
                 "retry-with",
@@ -47,13 +51,19 @@ impl Plugin for RetryWithModelPlugin {
     }
 }
 
+/// The plugin's stage system, in [`Stage::Prepare`]: it routes a retried
+/// turn's calls, after the default prompt went in and before compaction
+/// measures them.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RetryWithModelSystems;
+
 /// The agent's last turn, the answer the conversation holds to it, and the
 /// answers `/retry-with` replaced. Saved with the session.
 #[derive(Component, Reflect, Clone, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 pub struct Alternatives {
-    /// The index of the user message the last turn answered.
-    pub turn: Option<usize>,
+    /// The user message the last turn answered.
+    pub turn: Option<MessageId>,
     /// The model of the answer the conversation holds.
     pub model: String,
     /// What that answer's tool calls changed.
@@ -69,11 +79,9 @@ impl Alternatives {
         Alternative {
             model: std::mem::take(&mut self.model),
             changed: std::mem::take(&mut self.changed),
-            messages: conversation
-                .messages()
-                .get(turn + 1..)
-                .unwrap_or_default()
-                .to_vec(),
+            messages: (turn + 1..conversation.messages().len())
+                .filter_map(|at| conversation.entry(at))
+                .collect(),
         }
     }
 }
@@ -85,14 +93,19 @@ pub struct Alternative {
     pub model: String,
     /// What its tool calls changed.
     pub changed: Vec<String>,
-    /// The answer's messages, the tool calls and results included.
-    pub messages: Vec<Message>,
+    /// The answer's messages, the tool calls and results included, with
+    /// their origins and ids.
+    pub messages: Vec<Entry>,
 }
 
 impl Alternative {
     /// The start of the answer's last text, on one line.
     fn excerpt(&self) -> String {
-        let text = self.messages.iter().rev().find_map(final_answer);
+        let text = self
+            .messages
+            .iter()
+            .rev()
+            .find_map(|entry| final_answer(&entry.message));
         let line = text
             .unwrap_or_default()
             .split_whitespace()
@@ -130,7 +143,7 @@ fn note_change(
     let files = published.and_then(|published| published.0.get::<FilesChanged>().ok().flatten());
     match files {
         Some(files) => changed.0.extend(files.paths().map(str::to_owned)),
-        None if *footprint == Footprint::Exclusive => {
+        None if matches!(footprint.0, Touches::Writes(_)) => {
             changed.0.push(format!(
                 "whatever `{}` changed",
                 request.call.function.name.as_str()
@@ -160,7 +173,9 @@ fn note_turn(
     let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let asked = conversation.messages().get(turn.first_message);
+    let asked = conversation
+        .messages()
+        .get(conversation.start_of(turn.first_message));
     if !matches!(outcome, TurnOutcome::Answered(_)) || !matches!(asked, Some(Message::User { .. }))
     {
         return;
@@ -179,7 +194,7 @@ fn note_turn(
 
 /// Sends the calls of a turn `/retry-with` started to its model.
 fn route(
-    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     turns: Query<&RetryOn>,
 ) {
     for (mut call, &CallOf(turn)) in &mut calls {
@@ -225,7 +240,7 @@ fn complete(
 /// The index of the last turn's user message, when the conversation still
 /// holds it.
 fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
-    let turn = alternatives.turn?;
+    let turn = conversation.index_of(alternatives.turn?)?;
     matches!(
         conversation.messages().get(turn),
         Some(Message::User { .. })
@@ -306,7 +321,7 @@ fn retry_with(
     if !current.messages.is_empty() {
         alternatives.kept.push(current);
     }
-    commit.truncate(agent, &mut conversation, turn + 1);
+    commit.splice(agent, &mut conversation, turn + 1.., []);
     notices.write(Notice::info(
         agent,
         format!("Retrying the last turn on {}.", connection.spec.reference()),
@@ -380,10 +395,7 @@ fn pick(
         return;
     };
     let chosen = std::mem::replace(slot, current);
-    commit.truncate(agent, &mut conversation, turn + 1);
-    for message in chosen.messages {
-        commit.message(agent, &mut conversation, message);
-    }
+    commit.splice(agent, &mut conversation, turn + 1.., chosen.messages);
     notices.write(Notice::info(
         agent,
         format!("Picked the answer of {}.", chosen.model),

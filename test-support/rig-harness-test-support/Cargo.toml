@@ -3,7 +3,7 @@ name = "rig-harness-test-support"
 version = "0.0.0"
 edition.workspace = true
 publish = false
-description = "What the rig agent's plugin tests share, and the test that every default plugin can be left out."
+description = "What the rig agent's plugin tests share."
 
 [lints]
 workspace = true
@@ -12,8 +12,9 @@ workspace = true
 doctest = false
 
 [dependencies]
-# Named by the derive of `Ended`.
-bevy_ecs = { workspace = true }
+# Named by the derive of `Ended`; `debug` names the systems of an
+# ambiguity report, and only tests link it.
+bevy_ecs = { workspace = true, features = ["debug"] }
 # The clock `advance` moves on.
 bevy_time = { workspace = true }
 rig-cassette = { workspace = true }
@@ -22,22 +23,3 @@ rig-ecs = { path = "../../crates/rig-ecs" }
 # The questions `AnswerAsks` answers.
 rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-# The default plugins of `plugins.toml`, and the optional inspect plugin
-# added on top of them in `tests/removal.rs`.
-rig-activity = { path = "../../plugins/rig-activity" }
-rig-basics = { path = "../../plugins/rig-basics" }
-rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
-rig-compaction = { path = "../../plugins/rig-compaction" }
-rig-inspect = { path = "../../plugins/rig-inspect" }
-rig-login-chatgpt = { path = "../../plugins/rig-login-chatgpt" }
-rig-models = { path = "../../plugins/rig-models" }
-rig-print = { path = "../../plugins/rig-print" }
-rig-reload = { path = "../../plugins/rig-reload" }
-rig-sessions = { path = "../../plugins/rig-sessions" }
-rig-subagents = { path = "../../plugins/rig-subagents" }
-rig-telemetry = { path = "../../plugins/rig-telemetry" }
-rig-tui = { path = "../../plugins/rig-tui" }
-# Named by the derives of the plugin `rig plugin new` writes.
-bevy_reflect = { workspace = true }

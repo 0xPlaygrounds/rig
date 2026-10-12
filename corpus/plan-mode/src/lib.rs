@@ -1,17 +1,16 @@
 //! Plan mode (corpus spec `09-plan-mode.md`). `/plan` lets the shown agent
 //! read but not change anything: a Prepare system offers its model calls
-//! only the read-only tools ([`Footprint::ReadOnly`], which a tool's
+//! only the read-only tools ([`Touches::Reads`], which a tool's
 //! read-only annotation gives it) and tells the model to plan, and a Gate
 //! system refuses, with its own reason, any other call, of the agent or
 //! of an agent it spawned. A tool that changes nothing its reply's other
-//! calls see ([`Footprint::Independent`]: starting a subagent, scheduling
+//! calls see ([`Touches::Independent`]: starting a subagent, scheduling
 //! a job, a reload) still acts, so it waits until the plan is approved. The answer that ends
 //! a planning turn is the plan: it is written to `.rig/plan.md` and the
 //! user is asked whether to execute it, keep planning or discard it. The
 //! agent's tools are never changed, so leaving gives back exactly what it
 //! had.
 
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
@@ -47,8 +46,9 @@ struct PlanQuestion;
 /// The plan mode plugin's stage systems, for others to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PlanModeSystems {
-    /// In [`Stage::Prepare`], before compaction measures the request: a
-    /// planning agent's requests offer only the read-only tools.
+    /// In [`Stage::Prepare`], after the default prompt went in and before
+    /// compaction measures the request: a planning agent's requests offer
+    /// only the read-only tools.
     Prepare,
     /// In [`Stage::Gate`]: refuses a planning agent's calls of any other
     /// tool.
@@ -72,9 +72,7 @@ impl Plugin for PlanModePlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PlanModeSystems::Prepare
-                        .in_set(Stage::Prepare)
-                        .before(CompactionSystems::Prepare),
+                    PlanModeSystems::Prepare.in_set(PrepareSystems::Edit),
                     PlanModeSystems::Gate.in_set(Stage::Gate),
                 ),
             )
@@ -123,14 +121,14 @@ fn plans(agent: Entity, planning: &Query<(), With<PlanMode>>, parents: &Query<&S
 /// A planning agent's turn calls offer only the read-only tools, and tell
 /// the model to plan only.
 fn plan_only(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     tools: Query<(&ToolDef, &Footprint)>,
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
 ) {
     let reads: Vec<&str> = tools
         .iter()
-        .filter(|(_, footprint)| **footprint == Footprint::ReadOnly)
+        .filter(|(_, footprint)| footprint.0.reads_only())
         .map(|(def, _)| def.0.name.as_str())
         .collect();
     for (mut call, &ForAgent(agent)) in &mut calls {
@@ -148,16 +146,13 @@ fn plan_only(
 /// Refuses each call of a tool that is not read-only, of a planning agent,
 /// when it is about to run.
 fn no_changes(
-    calls: Query<(Entity, &Footprint, &ForAgent), (Undecided, With<ToolRequest>)>,
+    mut calls: Query<(&Footprint, &ForAgent, &mut Decision), (Undecided, ToolCalls)>,
     planning: Query<(), With<PlanMode>>,
     parents: Query<&SpawnedBy>,
-    mut commands: Commands,
 ) {
-    for (call, footprint, &ForAgent(agent)) in &calls {
-        if *footprint != Footprint::ReadOnly && plans(agent, &planning, &parents) {
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused(REFUSED));
+    for (footprint, &ForAgent(agent), mut decision) in &mut calls {
+        if !footprint.0.reads_only() && plans(agent, &planning, &parents) {
+            decision.decide(Outcome::refused(REFUSED));
         }
     }
 }

@@ -1,7 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::ErasedHandler;
@@ -20,11 +20,14 @@ fn models(a: MockCompletionModel, b: MockCompletionModel) -> Models {
                 .catalog_mut()
                 .insert(ModelSpec::new(vendor, id).with_tools(true));
         }
-        connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-            let model = if spec.id == "a" { a.clone() } else { b.clone() };
-            let adapter = ModelAdapter::<Completion>::new(spec.reference(), model);
-            Ok(ErasedHandler::new(adapter))
-        });
+        connector.provide(
+            vendor,
+            move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+                let model = if spec.id == "a" { a.clone() } else { b.clone() };
+                let adapter = ModelAdapter::<Completion>::new(spec.reference(), model);
+                Ok(ErasedHandler::new(adapter))
+            },
+        );
     }
     Models(connector)
 }
@@ -127,4 +130,9 @@ fn a_retried_turn_answers_on_another_model_and_the_old_answer_can_be_picked() {
     assert_eq!(asked(app.world(), agent), 1);
     let listed = command(&mut app, agent, "alternatives");
     assert!(listed.contains("test/b: answer B"), "{listed}");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(RetryWithModelPlugin);
 }

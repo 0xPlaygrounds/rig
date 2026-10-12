@@ -50,7 +50,9 @@ impl Plugin for AutoCommitPlugin {
             .add_observer(touch)
             .add_observer(take_subject)
             .add_observer(commit_turn)
-            .add_systems(AgentPass, ask_subject.in_set(Stage::Review))
+            .add_observer(follow_successor::<WritesSubject>)
+            .configure_sets(AgentPass, AutoCommitSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, ask_subject.in_set(AutoCommitSystems))
             .add_command("undo", "Undo the last auto-commit", undo)
             .add_command(
                 "autocommit",
@@ -59,6 +61,11 @@ impl Plugin for AutoCommitPlugin {
             );
     }
 }
+
+/// The Review system that holds a turn's proposed end while the message
+/// model writes its commit's subject, to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AutoCommitSystems;
 
 /// The `[auto-commit]` table of the settings.
 #[derive(Resource, Clone, Debug, Default, Deserialize)]
@@ -140,12 +147,14 @@ struct Subject(String);
 #[derive(Component)]
 struct WritesSubject(Entity);
 
-/// Records on its agent what is dirty as a turn starts; a turn a restart
-/// carries on keeps the snapshot saved when it first started.
+/// Records on its agent what is dirty as a turn starts, in the repository
+/// it works in (its `WorkDir`, else the project); a turn a restart carries
+/// on keeps the snapshot saved when it first started.
 fn snapshot(
     turn: On<Add<TurnOf>>,
     turns: Query<(&TurnOf, Has<Restored>)>,
     snapshots: Query<(), With<Before>>,
+    dirs: Query<&WorkDir>,
     state: Res<AutoCommit>,
     project: Res<ProjectRoot>,
     processes: Res<Processes>,
@@ -159,7 +168,8 @@ fn snapshot(
     if !state.enabled || (restored && snapshots.contains(agent)) {
         return;
     }
-    let before = repository(&processes, &project.0).and_then(|root| {
+    let dir = dirs.get(agent).map_or(&project.0, |WorkDir(dir)| dir);
+    let before = repository(&processes, dir).and_then(|root| {
         let dirty = status(&processes, &root)?;
         Ok(Before {
             root,
@@ -318,7 +328,7 @@ fn commit_turn(
         || {
             clip(&format!(
                 "rig: {}",
-                request(conversation, turn.first_message)
+                request(conversation, conversation.start_of(turn.first_message))
             ))
         },
         |subject| subject.0.clone(),

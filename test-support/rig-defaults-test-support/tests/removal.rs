@@ -16,6 +16,7 @@ use std::process::{Command, Stdio};
 
 use bevy_ecs::schedule::{ScheduleBuildWarning, ScheduleBuilt, ScheduleLabel};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_defaults_test_support::DEFAULTS;
 use rig_ecs::journal::SessionRestored;
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::load;
@@ -24,41 +25,6 @@ use rig_harness_test_support::connect;
 
 /// The plugin a child process leaves out.
 const LEAVE_OUT: &str = "RIG_TEST_LEAVE_OUT";
-
-/// The default `plugins.toml`'s plugins, in its order, each loaded from
-/// its crate as the generated `main.rs` loads it.
-macro_rules! defaults {
-    ($($plugin:path),* $(,)?) => {
-        [$((stringify!($plugin), |app: &mut App| {
-            let krate = stringify!($plugin).split("::").next().unwrap_or_default();
-            load::<$plugin>(app, &krate.replace('_', "-"), "")
-        })),*]
-    };
-}
-
-const DEFAULTS: [(&str, fn(&mut App)); 21] = defaults![
-    rig_basics::ProjectContextPlugin,
-    rig_models::ModelsPlugin,
-    rig_login_chatgpt::ChatgptLoginPlugin,
-    rig_models::DefaultsPlugin,
-    rig_sessions::SessionsPlugin,
-    rig_compaction::CompactionPlugin,
-    rig_telemetry::UsagePlugin,
-    rig_activity::ActivityPlugin,
-    rig_telemetry::EffectLogPlugin,
-    rig_coding_tools::ReadTool,
-    rig_coding_tools::EditTool,
-    rig_coding_tools::WriteTool,
-    rig_coding_tools::SearchTool,
-    rig_coding_tools::ShellTool,
-    rig_coding_tools::AttachPlugin,
-    rig_reload::ReloadPlugin,
-    rig_basics::BasicCommandsPlugin,
-    rig_subagents::SubagentsPlugin,
-    rig_telemetry::DiagnosticsPlugin,
-    rig_print::PrintPlugin,
-    rig_tui::TuiPlugin,
-];
 
 /// The case that adds the optional `rig-inspect` plugin to the defaults.
 const WITH_INSPECT: &str = "with rig_inspect::InspectPlugin";

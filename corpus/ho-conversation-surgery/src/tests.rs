@@ -110,7 +110,10 @@ fn stub_and_drop_edit_the_logged_conversation_and_wait_for_the_turn() {
     let listed = typed(&mut app, agent, "/history");
     assert!(listed.contains("result of shell (c1)"), "{listed}");
 
+    let id = |app: &App| app.world().get::<Conversation>(agent).and_then(|c| c.id(2));
+    let result_id = id(&app);
     let stubbed = typed(&mut app, agent, "/stub 3");
+    assert_eq!(id(&app), result_id, "the stubbed result keeps its id");
     assert!(stubbed.contains("200 KB"), "{stubbed}");
     let result = messages(&app, agent).get(2).map(json).unwrap_or_default();
     assert!(
@@ -150,7 +153,8 @@ fn stub_and_drop_edit_the_logged_conversation_and_wait_for_the_turn() {
         "{ended:?}"
     );
     let sent = model.requests().last().map(json).unwrap_or_default();
-    assert!(!sent.contains("c1"), "{sent}");
+    // Quoted: the request's cache key is a random UUID that may hold "c1".
+    assert!(!sent.contains("\"c1\""), "{sent}");
     let edited = messages(&app, agent);
     drop(app);
 

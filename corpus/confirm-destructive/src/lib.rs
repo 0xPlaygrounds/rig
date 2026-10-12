@@ -86,6 +86,11 @@ pub struct Matched(pub String);
 #[component(storage = "SparseSet")]
 struct Approved;
 
+/// This plugin's Gate systems: they read each answer, then ask about or
+/// refuse each destructive `shell` call about to run.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ConfirmSystems;
+
 /// Asks before a `shell` command matching a [`DestructivePatterns`] runs.
 #[derive(Default)]
 pub struct ConfirmDestructivePlugin;
@@ -97,21 +102,26 @@ impl Plugin for ConfirmDestructivePlugin {
         let built_in = BUILT_IN.iter().copied().map(str::to_owned);
         app.insert_resource(DestructivePatterns::new(built_in.chain(own)))
             .init_resource::<SessionAllowances>()
-            .add_systems(AgentPass, (answered, gate).chain().in_set(Stage::Gate));
+            .configure_sets(AgentPass, ConfirmSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, (answered, gate).chain().in_set(ConfirmSystems));
     }
 }
 
 /// Asks about each destructive `shell` call about to run, holding it, or
 /// refuses it with nobody to ask; any other runs.
 fn gate(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Approved>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &mut Decision),
+        (Undecided, ToolCalls, Without<Approved>),
+    >,
     patterns: Res<DestructivePatterns>,
     allowed: Res<SessionAllowances>,
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, ToolRequest { call: request }, &ForAgent(agent)) in &calls {
-        if request.function.name.as_str() != Shell::NAME {
+    for (call, ToolRequest { call: request }, &ForAgent(agent), mut decision) in &mut calls {
+        // A gate before this one decided it already: nothing to ask.
+        if request.function.name.as_str() != Shell::NAME || decision.is_decided() {
             continue;
         }
         // Arguments the tool cannot read never run.
@@ -127,8 +137,7 @@ fn gate(
             continue;
         };
         if !answerers.can_answer(Some(agent)) {
-            let refused = Outcome::refused(format!("`{command}` {HEADLESS}"));
-            commands.entity(call).insert_if_new(refused);
+            decision.decide(Outcome::refused(format!("`{command}` {HEADLESS}")));
             continue;
         }
         let ask = Ask::new(format!("Allow `{command}`?"))
@@ -146,26 +155,26 @@ fn gate(
 /// Carries out each answer: the call runs, or is refused with the reason
 /// typed, and the question lets go of it.
 fn answered(
-    asks: Query<(Entity, &Outcome, &HoldOf, &Matched), Added<Outcome>>,
+    asks: Query<(Entity, &Outcome, &HoldOf, &Matched), (With<Ask>, Added<Outcome>)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut allowed: ResMut<SessionAllowances>,
     mut commands: Commands,
 ) {
     for (ask, outcome, &HoldOf(call), Matched(pattern)) in &asks {
-        match Answer::of(outcome) {
-            Some(answer) if answer.is(ALLOW) || answer.is(SESSION) => {
-                if answer.is(SESSION) && !allowed.0.contains(pattern) {
-                    allowed.0.push(pattern.clone());
+        let answer = Answer::of(outcome);
+        if let Some(answer) = answer.as_ref().filter(|a| a.is(ALLOW) || a.is(SESSION)) {
+            if answer.is(SESSION) && !allowed.0.contains(pattern) {
+                allowed.0.push(pattern.clone());
+            }
+            commands.entity(call).insert(Approved);
+        } else if let Ok(mut decision) = calls.get_mut(call) {
+            let why = match answer {
+                Some(Answer::Text(reason)) if !reason.trim().is_empty() => {
+                    format!("{DENIED}: {}", reason.trim())
                 }
-                commands.entity(call).insert(Approved);
-            }
-            Some(Answer::Text(reason)) if !reason.trim().is_empty() => {
-                let why = format!("{DENIED}: {}", reason.trim());
-                commands.entity(call).insert_if_new(Outcome::refused(why));
-            }
-            _ => {
-                let why = format!("{DENIED}.");
-                commands.entity(call).insert_if_new(Outcome::refused(why));
-            }
+                _ => format!("{DENIED}."),
+            };
+            decision.decide(Outcome::refused(why));
         }
         commands.entity(ask).remove::<HoldOf>();
     }

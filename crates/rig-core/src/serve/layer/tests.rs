@@ -437,3 +437,51 @@ async fn tool_argument_patches_keep_the_bound_target_and_reach_inner_policy() {
     );
     assert_eq!(tap.patched.lock().expect("patches").len(), 1);
 }
+
+/// Says every effect is independent of every other.
+struct Independent;
+
+impl Serve for Independent {
+    type Family = family::Dynamic;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from("independent"),
+            family: FamilyDescriptor::Custom {
+                kind: "test".into(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        Reply::Outcome(Ok(Outcome::Custom {
+            payload: json!(null),
+        }))
+    }
+
+    fn footprint(&self, _kind: &EffectKind) -> Option<crate::tool::Touches> {
+        Some(crate::tool::Touches::Independent)
+    }
+}
+
+/// A footprint passes through sharing, erasure, re-erasure and a layer; a
+/// handler that says nothing stays silent through them.
+#[test]
+fn a_footprint_passes_through_every_wrapper() {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let wrapped = |inner: ErasedHandler| {
+        ErasedHandler::new(Layer::new(
+            ErasedHandler::new(inner),
+            Policy::observing("p", &seen),
+        ))
+    };
+    let kind = custom(json!(1));
+    let independent = wrapped(ErasedHandler::new(Arc::new(Independent)));
+    assert_eq!(
+        independent.footprint(&kind),
+        Some(crate::tool::Touches::Independent)
+    );
+    let (echo, _) = echo();
+    assert_eq!(wrapped(echo).footprint(&kind), None);
+}

@@ -179,3 +179,8 @@ fn the_supervisor_checks_the_worker_and_steers_or_stops_it() {
     let checked = format!("{:?}", supervisor.requests().first());
     assert!(checked.contains("contents of src/parser.rs"), "{checked}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SupervisorPlugin);
+}

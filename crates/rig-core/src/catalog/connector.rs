@@ -1,24 +1,33 @@
 //! How a catalog's models are reached: through a provider registered for
 //! their vendor, else with the environment's keys, else through a sign-in,
-//! such as a subscription plan's.
+//! such as a subscription plan's. Every HTTP client a model is reached
+//! through can be wrapped, such as to log or rotate keys.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::Arc;
 
 use super::{Catalog, ModelSpec};
+use crate::http_client::DynHttpClient;
 use crate::operation::Completion;
 use crate::providers::registry::{ConnectError, ConnectOptions, ProviderId};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::ModelAdapter;
 
-/// A way to reach catalog models the environment has no key for, such as
-/// a subscription plan signed in to. A [`Connector`] asks it for a model
-/// only when the environment has no key for the model's provider.
+/// A way to reach catalog models no key is set for, such as a
+/// subscription plan signed in to. A [`Connector`] asks it for a model only
+/// when the provider registered for the model's vendor, else the
+/// environment, has no key for it.
 pub trait SignIn: Send + Sync + 'static {
     /// The handler serving `spec` with the signed-in credential, or `None`
-    /// when this sign-in does not serve `spec` now.
-    fn handler(&self, spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>>;
+    /// when this sign-in does not serve `spec` now. A handler that sends
+    /// HTTP sends through `transport`.
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        transport: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>>;
     /// The plan a sign-in to which serves `spec`, such as `ChatGPT`, for
     /// pickers; signed in or not.
     fn plan(&self, spec: &ModelSpec) -> Option<&'static str>;
@@ -31,29 +40,56 @@ pub trait SignIn: Send + Sync + 'static {
 ///
 /// [`ConnectOptions`] is one, natively: the vendor's models connect with
 /// those options (a base URL, a key, an HTTP client, a protocol family). A
-/// closure from the spec and the catalog to a handler is another.
+/// closure from the spec, the catalog and the transport to a handler is
+/// another.
 pub trait Provide: Send + Sync + 'static {
-    /// The handler serving `spec`, a model of `catalog`.
-    fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError>;
+    /// The handler serving `spec`, a model of `catalog`. A handler that
+    /// sends HTTP sends through `transport`: its shared client, or a client
+    /// of its own that it wraps.
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        catalog: &Catalog,
+        transport: &Transport,
+    ) -> Result<ErasedHandler, ConnectError>;
 }
 
 impl<F> Provide for F
 where
-    F: Fn(&ModelSpec, &Catalog) -> Result<ErasedHandler, ConnectError> + Send + Sync + 'static,
+    F: Fn(&ModelSpec, &Catalog, &Transport) -> Result<ErasedHandler, ConnectError>
+        + Send
+        + Sync
+        + 'static,
 {
-    fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
-        self(spec, catalog)
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        catalog: &Catalog,
+        transport: &Transport,
+    ) -> Result<ErasedHandler, ConnectError> {
+        self(spec, catalog, transport)
     }
 }
 
 /// The vendor's models connect as [`Catalog::connect_with`] connects them
-/// with these options. Native only: on the web an HTTP client is not
-/// `Send`, so a connector there takes a closure.
+/// with these options, on their HTTP client, else the shared one, wrapped
+/// by the transport. Native only: on the web an HTTP client is not `Send`,
+/// so a connector there takes a closure.
 #[cfg(not(target_family = "wasm"))]
 impl Provide for ConnectOptions {
-    fn handler(&self, spec: &ModelSpec, catalog: &Catalog) -> Result<ErasedHandler, ConnectError> {
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        catalog: &Catalog,
+        transport: &Transport,
+    ) -> Result<ErasedHandler, ConnectError> {
+        let mut options = self.clone();
+        options.http = match options.http {
+            Some(own) => Some(transport.wrap(own)),
+            None => transport.shared(),
+        };
         catalog
-            .connect_with(spec, self.clone())
+            .connect_with(spec, options)
             .map(|model| adapted(spec, model))
     }
 }
@@ -62,6 +98,57 @@ impl Provide for ConnectOptions {
 /// spec's reference.
 fn adapted(spec: &ModelSpec, model: crate::driver::DynModel<Completion>) -> ErasedHandler {
     ErasedHandler::new(ModelAdapter::<Completion>::new(spec.reference(), model))
+}
+
+/// One wrapper of a [`Transport`].
+type Wrapper = Arc<dyn Fn(DynHttpClient) -> DynHttpClient + Send + Sync>;
+
+/// The wrappers a [`Connector`] applies to every HTTP client its models are
+/// reached through, in the order added: the first is closest to the
+/// network. Cloning is cheap.
+///
+/// ```
+/// use rig_core::catalog::Transport;
+/// use rig_core::http_client::DynHttpClient;
+///
+/// fn reach(transport: &Transport, own: DynHttpClient) -> DynHttpClient {
+///     // A provider with a client of its own wraps it; one without takes
+///     // the shared client, when the build has one.
+///     transport.wrap(own)
+/// }
+/// ```
+#[derive(Clone, Default)]
+pub struct Transport {
+    wrappers: Vec<Wrapper>,
+}
+
+impl Transport {
+    /// `base` with every wrapper applied.
+    pub fn wrap(&self, base: DynHttpClient) -> DynHttpClient {
+        self.wrappers.iter().fold(base, |client, wrap| wrap(client))
+    }
+
+    /// The shared client, wrapped, when the build has one (the `reqwest`
+    /// feature); `None` otherwise, such as on the web.
+    pub fn shared(&self) -> Option<DynHttpClient> {
+        #[cfg(feature = "reqwest")]
+        {
+            Some(self.wrap(rig_reqwest::shared()))
+        }
+        #[cfg(not(feature = "reqwest"))]
+        {
+            None
+        }
+    }
+}
+
+/// Shows how many wrappers there are.
+impl fmt::Debug for Transport {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Transport")
+            .field("wrappers", &self.wrappers.len())
+            .finish()
+    }
 }
 
 /// Whether a [`Connector`] can reach a catalog model for an agent, and why
@@ -81,13 +168,14 @@ pub enum ModelStatus {
 /// The models an application can use and how each is reached: a catalog,
 /// rig's built-in one by default, whose models connect through the
 /// provider registered for their vendor ([`Self::provide`]), else with the
-/// environment's keys, else through the first [`SignIn`] that serves them.
-/// Cloning is cheap.
+/// environment's keys, else through the first [`SignIn`] that serves them,
+/// each on an HTTP client wrapped by its [`Transport`]. Cloning is cheap.
 #[derive(Clone)]
 pub struct Connector {
     catalog: Catalog,
     providers: HashMap<&'static str, Arc<dyn Provide>>,
     sign_ins: Vec<Arc<dyn SignIn>>,
+    transport: Transport,
 }
 
 impl Default for Connector {
@@ -104,7 +192,33 @@ impl Connector {
             catalog,
             providers: HashMap::new(),
             sign_ins: Vec::new(),
+            transport: Transport::default(),
         }
+    }
+
+    /// Wraps the HTTP client every model of this connector is reached
+    /// through, outside the wrappers added before. Connections made before
+    /// the call are not rebuilt.
+    ///
+    /// ```
+    /// use rig_core::catalog::Connector;
+    /// use rig_core::http_client::DynHttpClient;
+    ///
+    /// let mut connector = Connector::default();
+    /// // A wrapper sees every request and response, such as to log them.
+    /// connector.wrap_http(|inner: DynHttpClient| inner);
+    /// ```
+    pub fn wrap_http(
+        &mut self,
+        wrap: impl Fn(DynHttpClient) -> DynHttpClient + Send + Sync + 'static,
+    ) {
+        self.transport.wrappers.push(Arc::new(wrap));
+    }
+
+    /// The transport this connector's models are reached through, for a
+    /// host that builds a model of its own beside them.
+    pub fn transport(&self) -> &Transport {
+        &self.transport
     }
 
     /// Falls back to `sign_in` for a model the environment has no key for
@@ -114,8 +228,11 @@ impl Connector {
     }
 
     /// Reaches every model of `vendor` (any of its protocol families)
-    /// through `provider`, before the environment and the sign-ins. A later
-    /// provider for the same vendor replaces this one.
+    /// through `provider`, before the environment. A model the provider
+    /// has no key for ([`ConnectError::MissingKey`]) falls back to the
+    /// sign-ins, as one the environment has no key for does. A later
+    /// provider for the same vendor replaces this one: to wrap it instead,
+    /// take it first with [`Self::provider`].
     ///
     /// ```
     /// use rig_core::catalog::{Catalog, Connector, ModelSpec};
@@ -139,6 +256,13 @@ impl Connector {
         self.providers.contains_key(vendor.vendor())
     }
 
+    /// The provider registered for `vendor`'s models, if any: what a
+    /// provider that wraps it, such as one that changes the key, delegates
+    /// to.
+    pub fn provider(&self, vendor: ProviderId) -> Option<Arc<dyn Provide>> {
+        self.providers.get(vendor.vendor()).cloned()
+    }
+
     /// The catalog.
     pub fn catalog(&self) -> &Catalog {
         &self.catalog
@@ -154,27 +278,22 @@ impl Connector {
     fn signed_in(&self, spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>> {
         self.sign_ins
             .iter()
-            .find_map(|sign_in| sign_in.handler(spec))
-    }
-
-    /// The provider registered for `spec`'s vendor, if any.
-    fn provider(&self, spec: &ModelSpec) -> Option<&Arc<dyn Provide>> {
-        self.providers.get(spec.provider.vendor())
+            .find_map(|sign_in| sign_in.handler(spec, &self.transport))
     }
 
     /// The catalog model `reference` names, as [`Catalog::resolve`] finds
     /// it, and that model as an effect handler: from the provider
     /// registered for its vendor, else its provider's client built from the
     /// environment, on the shared HTTP client of the `reqwest` feature, or,
-    /// without a key in the environment, the handler of a sign-in that
-    /// serves it.
+    /// without a key in either, the handler of a sign-in that serves it. The HTTP client is wrapped by [`Self::wrap_http`]'s
+    /// wrappers.
     ///
     /// # Errors
     ///
     /// [`ConnectError::NotFound`] for a model the catalog does not list,
     /// what the registered provider reports, else what
     /// [`Catalog::connect_with`] reports, when no sign-in serves a model
-    /// the environment has no key for.
+    /// the provider or the environment has no key for.
     pub fn connect(
         &self,
         reference: &str,
@@ -186,15 +305,23 @@ impl Connector {
 
     /// The handler serving `spec`, as [`Self::connect`] finds it.
     fn handler(&self, spec: &ModelSpec) -> Result<ErasedHandler, ConnectError> {
-        if let Some(provider) = self.provider(spec) {
-            return provider.handler(spec, &self.catalog);
-        }
-        match self.catalog.connect_with(spec, ConnectOptions::new()) {
-            Ok(model) => Ok(adapted(spec, model)),
+        let connected = match self.providers.get(spec.provider.vendor()) {
+            Some(provider) => provider.handler(spec, &self.catalog, &self.transport),
+            None => {
+                let options = match self.transport.shared() {
+                    Some(http) => ConnectOptions::new().http(http),
+                    None => ConnectOptions::new(),
+                };
+                self.catalog
+                    .connect_with(spec, options)
+                    .map(|model| adapted(spec, model))
+            }
+        };
+        match connected {
             Err(error @ ConnectError::MissingKey { .. }) => {
                 self.signed_in(spec).unwrap_or(Err(error))
             }
-            Err(error) => Err(error),
+            other => other,
         }
     }
 
@@ -249,7 +376,7 @@ impl Connector {
             .collect();
         // Stable: catalog order within each group.
         models.sort_by_key(|spec| {
-            self.provider(spec).is_none() && !spec.provider.requires_credential()
+            !self.is_provided(spec.provider) && !spec.provider.requires_credential()
         });
         models
     }

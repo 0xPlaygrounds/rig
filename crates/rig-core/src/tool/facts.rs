@@ -1,6 +1,9 @@
 //! Facts a tool call publishes about what it did, beside the text the model
 //! reads: the files it read ([`FilesRead`]), the files it changed
-//! ([`FilesChanged`]) and how a process it ran ended ([`ExitStatus`]). They are [`ContextValue`]s a tool publishes with
+//! ([`FilesChanged`]) and how a process it ran ended ([`ExitStatus`]). A
+//! file's [`ContentHash`] says which content the tool saw or left, so a
+//! host can tell whether a file changed since without reading it again.
+//! They are [`ContextValue`]s a tool publishes with
 //! [`ToolContext::insert_result`](super::ToolContext::insert_result), so
 //! they reach the host in the call's [`ToolResultContext`](super::ToolResultContext)
 //! and the effect log, whatever the tool: a built-in one, a plugin's, or an
@@ -8,10 +11,13 @@
 //! [`ToolResultContext::get`](super::ToolResultContext::get).
 //!
 //! ```
-//! use rig_core::tool::{ExitStatus, FileChange, FilesChanged, FilesRead, ToolContext};
+//! use rig_core::tool::{
+//!     ExitStatus, FileChange, FileRead, FilesChanged, FilesRead, ToolContext, content_hash,
+//! };
 //!
 //! let mut context = ToolContext::new();
-//! context.insert_result(FilesRead(vec!["/work/README.md".into()]))?;
+//! let readme = FileRead::new("/work/README.md", content_hash(b"# Work\n"));
+//! context.insert_result(FilesRead(vec![readme]))?;
 //! context.insert_result(FilesChanged(vec![FileChange::modified("/work/src/lib.rs", 3, 1)]))?;
 //! context.insert_result(ExitStatus::Exited(0))?;
 //! let published = context.result_context();
@@ -19,7 +25,8 @@
 //! let changed = published.get::<FilesChanged>()?.unwrap_or_default();
 //! assert_eq!(changed.paths().collect::<Vec<_>>(), ["/work/src/lib.rs"]);
 //! let read = published.get::<FilesRead>()?.unwrap_or_default();
-//! assert_eq!(read.0, ["/work/README.md"]);
+//! assert_eq!(read.paths().collect::<Vec<_>>(), ["/work/README.md"]);
+//! assert_eq!(read.0.first().map(|file| &file.hash), Some(&content_hash(b"# Work\n")));
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
@@ -27,15 +34,62 @@ use serde::{Deserialize, Serialize};
 
 use super::ContextValue;
 
+/// The SHA-256 of a file's bytes, as lowercase hex: which content a tool
+/// read or left ([`content_hash`]).
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ContentHash(pub String);
+
+/// The [`ContentHash`] of `bytes`.
+///
+/// ```
+/// use rig_core::tool::content_hash;
+///
+/// assert_eq!(
+///     content_hash(b"").0,
+///     "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+/// );
+/// ```
+pub fn content_hash(bytes: &[u8]) -> ContentHash {
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(bytes);
+    ContentHash(digest.iter().map(|byte| format!("{byte:02x}")).collect())
+}
+
 /// The files a tool call read, in the order it read them, each once: a
-/// file it showed the model, or one it found matches in. Paths are as
-/// [`FileChange::path`] spells them.
+/// file it showed the model, or one it found matches in.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct FilesRead(pub Vec<String>);
+pub struct FilesRead(pub Vec<FileRead>);
 
 impl ContextValue for FilesRead {
     const KEY: &'static str = "files_read";
+}
+
+impl FilesRead {
+    /// The read files' paths, in order.
+    pub fn paths(&self) -> impl Iterator<Item = &str> {
+        self.0.iter().map(|file| file.path.as_str())
+    }
+}
+
+/// One file a tool call read.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FileRead {
+    /// The file, as [`FileChange::path`] spells it.
+    pub path: String,
+    /// The hash of the bytes the tool read.
+    pub hash: ContentHash,
+}
+
+impl FileRead {
+    /// `path` was read, and held the content `hash` names.
+    pub fn new(path: impl Into<String>, hash: ContentHash) -> Self {
+        Self {
+            path: path.into(),
+            hash,
+        }
+    }
 }
 
 /// The files a tool call changed, in the order it changed them.
@@ -69,6 +123,10 @@ pub struct FileChange {
     /// The change as a unified diff, when the tool made one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<String>,
+    /// The hash of the bytes the tool left in the file, when it knows them;
+    /// `None` for a deleted file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<ContentHash>,
 }
 
 impl FileChange {
@@ -80,6 +138,7 @@ impl FileChange {
             added: lines,
             removed: 0,
             diff: None,
+            after: None,
         }
     }
 
@@ -91,6 +150,7 @@ impl FileChange {
             added,
             removed,
             diff: None,
+            after: None,
         }
     }
 
@@ -102,6 +162,7 @@ impl FileChange {
             added: 0,
             removed: lines,
             diff: None,
+            after: None,
         }
     }
 
@@ -109,6 +170,13 @@ impl FileChange {
     #[must_use]
     pub fn with_diff(mut self, diff: impl Into<String>) -> Self {
         self.diff = Some(diff.into());
+        self
+    }
+
+    /// This change, leaving the content `after` names.
+    #[must_use]
+    pub fn with_after(mut self, after: ContentHash) -> Self {
+        self.after = Some(after);
         self
     }
 }

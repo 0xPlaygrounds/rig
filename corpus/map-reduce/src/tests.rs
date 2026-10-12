@@ -138,3 +138,8 @@ fn five_files_two_at_a_time_one_fails_and_writes_elsewhere_are_refused() {
     assert!(!elsewhere.exists());
     assert!(a_heard.contains("You may change only"), "{a_heard}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(MapReducePlugin);
+}

@@ -10,14 +10,15 @@
 //! stubbed.
 
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 
-use rig_compaction::CompactionSystems;
+use corpus_few_shot_examples::ExampleSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::tokens_label;
 use rig_harness::rig_core::message::{CallId, Message, ToolResult, ToolResultContent};
 use rig_harness::rig_core::tool::Tool;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
-use rig_tools::fs::absolute;
+use rig_tools::fs::resolve;
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde_json::{Map, Value};
 
@@ -29,8 +30,8 @@ mod tests;
 pub struct StaleReadElisionPlugin;
 
 /// The plugin's Prepare system, which edits turn requests' `read` results,
-/// for others to order against. It runs before
-/// [`CompactionSystems::Prepare`].
+/// for others to order against. It runs in [`PrepareSystems::Edit`], after
+/// few-shot-examples put its examples in.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ElisionSystems;
 
@@ -50,8 +51,8 @@ impl Plugin for StaleReadElisionPlugin {
             .configure_sets(
                 AgentPass,
                 ElisionSystems
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
+                    .in_set(PrepareSystems::Edit)
+                    .after(ExampleSystems),
             )
             .add_systems(AgentPass, elide.in_set(ElisionSystems))
             .add_command(
@@ -98,7 +99,7 @@ struct FileResult {
     call: CallId,
     /// The path as the model wrote it.
     path: String,
-    /// The path as the tool resolved it.
+    /// The path as the tool resolved it, in the agent's directory.
     file: String,
     access: Access,
 }
@@ -109,8 +110,12 @@ fn args<T: serde::de::DeserializeOwned>(arguments: &Map<String, Value>) -> Optio
 }
 
 /// What the successful `result` of the call with `arguments` did to which
-/// file, when it is a built-in file tool's.
-fn file_result(result: &ToolResult, arguments: &Map<String, Value>) -> Option<FileResult> {
+/// file, when it is a built-in file tool's working in `dir`.
+fn file_result(
+    result: &ToolResult,
+    arguments: &Map<String, Value>,
+    dir: Option<&Path>,
+) -> Option<FileResult> {
     if result.is_error {
         return None;
     }
@@ -126,7 +131,7 @@ fn file_result(result: &ToolResult, arguments: &Map<String, Value>) -> Option<Fi
     };
     Some(FileResult {
         call: result.call.clone(),
-        file: absolute(&path),
+        file: resolve(dir, &path).to_string_lossy().into_owned(),
         path,
         access,
     })
@@ -152,8 +157,9 @@ fn stub(earlier: &FileResult, later: &[FileResult]) -> Option<String> {
 }
 
 /// Stubs the `read` results of `messages` answering a call of `eligible`
-/// that a later result supersedes; what it stubbed.
-fn elide_stale(messages: &mut [Message], eligible: &HashSet<CallId>) -> Elided {
+/// that a later result supersedes, the file tools working in `dir`; what
+/// it stubbed.
+fn elide_stale(messages: &mut [Message], eligible: &HashSet<CallId>, dir: Option<&Path>) -> Elided {
     let mut arguments = HashMap::new();
     let mut results = Vec::new();
     for message in messages.iter() {
@@ -171,7 +177,7 @@ fn elide_stale(messages: &mut [Message], eligible: &HashSet<CallId>) -> Elided {
                     if let UserContent::ToolResult(result) = item
                         && let Some(called) = arguments.get(&result.call)
                     {
-                        results.extend(file_result(result, called));
+                        results.extend(file_result(result, called, dir));
                     }
                 }
             }
@@ -226,18 +232,23 @@ fn answered(messages: &[Message]) -> HashSet<CallId> {
 /// Stubs each turn request's superseded reads from before the turn began,
 /// and keeps what it stubbed on the agent.
 fn elide(
-    mut calls: Query<(&mut ModelRequest, &CallOf, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<
+        (&mut ModelRequest, &CallOf, &ForAgent),
+        (Added<Admitted>, ModelCalls, With<TurnCall>),
+    >,
     turns: Query<&Turn>,
-    agents: Query<&Conversation>,
+    agents: Query<(&Conversation, Option<&WorkDir>)>,
     mut commands: Commands,
 ) {
     for (mut call, &CallOf(turn), &ForAgent(agent)) in &mut calls {
-        let (Ok(turn), Ok(conversation)) = (turns.get(turn), agents.get(agent)) else {
+        let (Ok(turn), Ok((conversation, dir))) = (turns.get(turn), agents.get(agent)) else {
             continue;
         };
-        let before = conversation.messages().get(..turn.first_message);
+        let first = conversation.start_of(turn.first_message);
+        let before = conversation.messages().get(..first);
         let eligible = answered(before.unwrap_or_default());
-        let elided = elide_stale(&mut call.request.chat_history, &eligible);
+        let dir = dir.map(|WorkDir(dir)| dir.as_path());
+        let elided = elide_stale(&mut call.request.chat_history, &eligible, dir);
         commands.entity(agent).try_insert(elided);
     }
 }

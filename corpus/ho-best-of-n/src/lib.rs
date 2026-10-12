@@ -4,12 +4,11 @@
 //! `/best-of 3 --verify "cargo test" fix the flaky test in net.rs` makes 3
 //! git worktrees of the project as it is now (HEAD plus the uncommitted
 //! changes, as a snapshot commit) under `.rig/best-of/<id>/<k>`, and spawns
-//! one one-job helper agent per worktree with the task. A candidate's file
-//! and shell tools work in its worktree: a Prepare system resolves the
-//! `path` of `read`, `write`, `edit` and `search`, and `shell`'s `cwd`,
-//! against the worktree, and a Gate system refuses a path that leaves it.
-//! When a candidate's turn ends, its tree is snapshotted, its diff measured
-//! and the verify command run in it. Once all are done, a picker lists them
+//! one one-job helper agent per worktree with the task. Each candidate has
+//! the project's directory in its worktree as its `WorkDir`, so its file
+//! and shell tools work there and refuse paths outside it. When a
+//! candidate's turn ends, its tree is snapshotted, its diff measured and
+//! the verify command run in it. Once all are done, a picker lists them
 //! (passing first, then the smaller diff) with their diffs; `--auto`, or a
 //! run nobody answers, takes the first passing one. The winner is merged
 //! into the project's tree with a 3-way merge against the user's changes
@@ -19,19 +18,19 @@
 //! after an apply or a discard; `/best-of clean` removes leftovers.
 //!
 //! Every git step and verify run is an effect of the agent (`best-of-*`),
-//! recorded, gateable and cancelled with its run.
+//! recorded, gateable and cancelled with its run, which kills its process.
 
-use std::path::{Component as Part, Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_tools::process::Launcher;
+use rig_tools::process::{KillOnDrop, Launcher, OutputLine, Spawn};
 use rig_tools::{Cut, MAX_BYTES, Shell, ShellArgs, blocking};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -45,12 +44,15 @@ pub const MAX_CANDIDATES: usize = 5;
 const DEFAULT_CANDIDATES: usize = 2;
 /// Where the worktrees go, from the project.
 const DIR: &str = ".rig/best-of";
-/// The tools a candidate gets, those of them its parent has.
+/// The tools a candidate gets, those of them its parent has: the ones that
+/// work in an agent's `WorkDir`.
 const TOOLS: [&str; 5] = ["read", "write", "edit", "search", "shell"];
 /// Lines of each diff the picker shows.
 const DIFF_LINES: usize = 40;
 /// How long the verify command may run.
 const VERIFY_SECS: u64 = 600;
+/// How long one git command may run.
+const GIT_TIMEOUT: Duration = Duration::from_secs(600);
 
 const HELP: &str = "N agents try a task in git worktrees; the verified winner is applied: \
     /best-of [N] [--verify \"cmd\"] [--auto] [--models a,b] <task>, or /best-of clean";
@@ -62,11 +64,6 @@ const HELP: &str = "N agents try a task in git worktrees; the verified winner is
 pub struct BestOfConfig {
     pub verify: Option<String>,
 }
-
-/// The best-of plugin's Prepare system that resolves candidates' paths in
-/// their worktree, for a plugin that edits tool arguments to order against.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct WorktreeSystems;
 
 /// Adds `/best-of`.
 #[derive(Default)]
@@ -81,18 +78,10 @@ impl Plugin for BestOfPlugin {
             .init_resource::<Processes>()
             .add_setting::<BestOfConfig>("best_of")
             .add_command("best-of", HELP, best_of)
-            .configure_sets(AgentPass, WorktreeSystems.in_set(Stage::Prepare))
-            .add_systems(
-                AgentPass,
-                (
-                    in_worktree.in_set(WorktreeSystems),
-                    keep_inside.in_set(Stage::Gate),
-                    mark_candidates.in_set(Stage::Review),
-                ),
-            )
             .add_systems(Update, retire_orphans.before(AgentLoop))
             .add_observer(start_job)
             .add_observer(job_done)
+            .add_observer(candidate_spawned)
             .add_observer(spawn_refused)
             .add_observer(candidate_done)
             .add_observer(cancel_on_interrupt);
@@ -116,9 +105,6 @@ pub struct Run {
     base: Option<String>,
     /// The project's directory inside the repository, such as `crates/x/`.
     prefix: String,
-    /// How git and the verify command start, as `Processes` said when the
-    /// run started.
-    launcher: Launcher,
     /// The tools each candidate gets.
     tools: Vec<String>,
     pub candidates: Vec<Candidate>,
@@ -151,6 +137,11 @@ impl Run {
         self.dir.join(k.to_string())
     }
 
+    /// The project's directory in candidate `k`'s worktree, where it works.
+    fn work_dir(&self, k: usize) -> PathBuf {
+        self.worktree(k).join(&self.prefix)
+    }
+
     /// The candidates with a verdict, best first: passing, then the smaller
     /// diff.
     fn ranked(&self) -> Vec<(usize, &Verdict)> {
@@ -170,14 +161,11 @@ impl Run {
     }
 }
 
-/// On a candidate agent: its run, its worktree and the directory its paths
-/// resolve from.
+/// On a candidate agent: its run.
 #[derive(Component, Debug)]
 pub struct CandidateOf {
     pub run: Entity,
     pub k: usize,
-    worktree: PathBuf,
-    cwd: PathBuf,
 }
 
 /// Saved on a candidate, so one a restart brings back without its run is
@@ -214,16 +202,14 @@ enum Work {
         root: PathBuf,
         dir: PathBuf,
         n: usize,
-        launcher: Launcher,
     },
-    /// Snapshots candidate `k`'s worktree and runs `command` in it.
+    /// Snapshots candidate `k`'s worktree and runs `command` in `cwd`.
     Verify {
         k: usize,
         worktree: PathBuf,
         cwd: PathBuf,
         base: String,
         command: String,
-        launcher: Launcher,
     },
     /// Merges candidate `k`'s `commit` into the project's tree.
     Apply {
@@ -232,13 +218,11 @@ enum Work {
         root: PathBuf,
         base: String,
         commit: String,
-        launcher: Launcher,
     },
     /// Removes the worktrees of the run directories `dirs`.
     Clean {
         root: PathBuf,
         dirs: Vec<PathBuf>,
-        launcher: Launcher,
         asked: bool,
     },
 }
@@ -264,6 +248,30 @@ impl Work {
             } => json!({ "candidate": k, "worktree": worktree, "command": command }),
             Self::Apply { k, commit, .. } => json!({ "candidate": k, "commit": commit }),
             Self::Clean { dirs, .. } => json!({ "dirs": dirs }),
+        }
+    }
+
+    /// Does the work, starting processes with `launcher`.
+    async fn run(self, launcher: Launcher) -> Result<Value, String> {
+        let git = Git(launcher.clone());
+        match self {
+            Self::Setup { root, dir, n } => setup(&git, &root, &dir, n).await,
+            Self::Verify {
+                worktree,
+                cwd,
+                base,
+                command,
+                ..
+            } => verify(&git, launcher.in_dir(cwd), &worktree, &base, command).await,
+            Self::Apply {
+                root, base, commit, ..
+            } => apply(&git, &root, &base, &commit).await,
+            Self::Clean { root, dirs, .. } => {
+                for dir in &dirs {
+                    remove_worktrees(&git, &root, dir).await;
+                }
+                Ok(json!({ "removed": dirs.len() }))
+            }
         }
     }
 }
@@ -377,7 +385,6 @@ fn best_of(
     In(args): In<CommandArgs>,
     config: Res<BestOfConfig>,
     root: Res<ProjectRoot>,
-    processes: Res<Processes>,
     runs: Query<&Run>,
     access: Query<&ToolAccess>,
     defs: Query<&ToolDef>,
@@ -393,7 +400,6 @@ fn best_of(
         }
     };
     let root = root.0.clone();
-    let launcher = processes.launcher();
     let Asked::Run {
         n,
         verify,
@@ -411,7 +417,6 @@ fn best_of(
         let work = Work::Clean {
             root,
             dirs,
-            launcher,
             asked: true,
         };
         spawn_job(&mut commands, agent, None, work);
@@ -438,7 +443,6 @@ fn best_of(
         root: root.clone(),
         dir: dir.clone(),
         n,
-        launcher: launcher.clone(),
     };
     let run = Run {
         id,
@@ -450,7 +454,6 @@ fn best_of(
         dir,
         base: None,
         prefix: String::new(),
-        launcher,
         tools: TOOLS
             .iter()
             .filter(|tool| defs.iter().any(|def| def.0.name.as_str() == **tool))
@@ -467,10 +470,12 @@ fn best_of(
     spawn_job(&mut commands, agent, Some(run), work);
 }
 
-/// Runs a job's work off the main thread once its effect started.
+/// Runs a job's work off the main thread once its effect started, its
+/// processes started as `Processes` say now.
 fn start_job(
     started: On<Add<Started>>,
     jobs: Query<&Job>,
+    processes: Res<Processes>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -478,22 +483,9 @@ fn start_job(
         return;
     };
     let pool = IoTaskPool::get_or_init(TaskPool::default);
-    let work = job.work.clone();
+    let done = job.work.clone().run(processes.launcher());
     let task = async move {
-        let done = match work {
-            Work::Verify {
-                worktree,
-                cwd,
-                base,
-                command,
-                launcher,
-                ..
-            } => verify(worktree, cwd, base, command, launcher).await,
-            work => blocking(move || Ok(run_blocking(work)))
-                .await
-                .unwrap_or_else(|error| Err(error.to_string())),
-        };
-        match done {
+        match done.await {
             Ok(payload) => Outcome::custom(payload),
             Err(why) => Outcome(Err(ErrorReport::from(ToolExecutionError::other(why)))),
         }
@@ -501,39 +493,6 @@ fn start_job(
     commands
         .entity(started.entity)
         .insert(Running::answering(pool, &wake, task));
-}
-
-/// The work of a setup, apply or clean job.
-fn run_blocking(work: Work) -> Result<Value, String> {
-    match work {
-        Work::Setup {
-            root,
-            dir,
-            n,
-            launcher,
-        } => setup(&Git(launcher), &root, &dir, n),
-        Work::Apply {
-            root,
-            base,
-            commit,
-            launcher,
-            ..
-        } => apply(&Git(launcher), &root, &base, &commit),
-        Work::Clean {
-            root,
-            dirs,
-            launcher,
-            ..
-        } => {
-            let git = Git(launcher);
-            for dir in &dirs {
-                remove_worktrees(&git, &root, dir);
-            }
-            git.run(&root, &["worktree", "prune"]).ok();
-            Ok(json!({ "removed": dirs.len() }))
-        }
-        Work::Verify { .. } => Err("verify runs on its own".to_owned()),
-    }
 }
 
 /// Git, started as the app's `Processes` say.
@@ -548,94 +507,123 @@ const AUTHOR: [(&str, &str); 4] = [
 ];
 
 impl Git {
-    fn command(&self, dir: &Path, args: &[&str]) -> Command {
-        let mut command = self.0.command("git");
-        command.arg("-C").arg(dir).args(args).stdin(Stdio::null());
-        command.envs(AUTHOR);
-        command
+    /// Runs git `args` in `dir`, with `index` as its index and `stdin` as
+    /// its input when given: whether it succeeded, its stdout and its
+    /// stderr. Dropping the future kills git.
+    async fn output(
+        &self,
+        dir: &Path,
+        args: &[&str],
+        index: Option<&Path>,
+        stdin: Option<Vec<u8>>,
+    ) -> Result<(bool, String, String), String> {
+        let failed = |error: String| format!("git {}: {error}", args.join(" "));
+        let mut launcher = AUTHOR
+            .iter()
+            .fold(self.0.clone(), |launcher, (name, value)| {
+                launcher.with_env(name, value)
+            });
+        if let Some(index) = index {
+            launcher = launcher.with_env("GIT_INDEX_FILE", index);
+        }
+        let all = [OsStr::new("-C"), dir.as_os_str()]
+            .into_iter()
+            .chain(args.iter().map(OsStr::new));
+        let how = Spawn {
+            stdin,
+            merge_stderr: false,
+        };
+        let mut process = launcher
+            .spawn("git", all, how)
+            .map_err(|error| failed(error.to_string()))?;
+        let _stop = KillOnDrop(process.group());
+        let ended = blocking(move || {
+            let status = process
+                .wait_for(GIT_TIMEOUT)
+                .map_err(|error| ToolExecutionError::other(error.to_string()))?
+                .ok_or_else(|| ToolExecutionError::timeout("timed out"))?;
+            let (mut out, mut err) = (String::new(), String::new());
+            for line in process.lines().iter() {
+                match line {
+                    OutputLine::Out(text) => out.push_str(&text),
+                    OutputLine::Err(text) => err.push_str(&text),
+                }
+            }
+            Ok((status.success(), out, err))
+        });
+        ended.await.map_err(|error| failed(error.to_string()))
     }
 
-    /// Runs git in `dir`; its output, or why it failed.
-    fn run(&self, dir: &Path, args: &[&str]) -> Result<String, String> {
-        let (ok, out, err) = self.output(self.command(dir, args), args)?;
-        if ok {
-            Ok(out)
-        } else {
-            Err(format!("git {}: {}", args.join(" "), err.trim()))
+    /// Runs git `args` in `dir`, as [`output`](Self::output) does; its
+    /// stdout, or why it failed.
+    async fn run_with(
+        &self,
+        dir: &Path,
+        args: &[&str],
+        index: Option<&Path>,
+        stdin: Option<Vec<u8>>,
+    ) -> Result<String, String> {
+        match self.output(dir, args, index, stdin).await? {
+            (true, out, _) => Ok(out),
+            (false, _, err) => Err(format!("git {}: {}", args.join(" "), err.trim())),
         }
     }
 
-    /// Runs `command` (git `args`): whether it succeeded, its stdout and
-    /// its stderr.
-    fn output(
-        &self,
-        mut command: Command,
-        args: &[&str],
-    ) -> Result<(bool, String, String), String> {
-        let output = command
-            .output()
-            .map_err(|error| format!("git {}: {error}", args.join(" ")))?;
-        let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
-        Ok((
-            output.status.success(),
-            text(&output.stdout),
-            text(&output.stderr),
-        ))
+    /// Runs git `args` in `dir`; its stdout, or why it failed.
+    async fn run(&self, dir: &Path, args: &[&str]) -> Result<String, String> {
+        self.run_with(dir, args, None, None).await
     }
 
     /// A commit of `dir`'s whole tree as it is, tracked and untracked files
     /// that are not ignored, on top of `parent`, made with an index of its
     /// own so the user's index is left alone.
-    fn snapshot(&self, dir: &Path, parent: &str) -> Result<String, String> {
-        let index = self.run(
-            dir,
-            &["rev-parse", "--path-format=absolute", "--git-path", "index"],
-        )?;
-        let index = PathBuf::from(index.trim());
-        let temporary = index.with_file_name(format!("best-of-index-{}", run_id()));
+    async fn snapshot(&self, dir: &Path, parent: &str) -> Result<String, String> {
+        let args = ["rev-parse", "--path-format=absolute", "--git-path", "index"];
+        let index = PathBuf::from(self.run(dir, &args).await?.trim());
+        let temporary = Removed(index.with_file_name(format!("best-of-index-{}", run_id())));
         // A copy keeps what git knows of the files, so unchanged ones are
         // not read again; a repository with no index starts from none.
-        std::fs::copy(&index, &temporary).ok();
-        let tree = self.write_tree(dir, &temporary);
-        std::fs::remove_file(&temporary).ok();
-        let tree = tree?;
-        let commit = self.run(
-            dir,
-            &["commit-tree", &tree, "-p", parent, "-m", "best-of snapshot"],
-        )?;
-        Ok(commit.trim().to_owned())
+        std::fs::copy(&index, &temporary.0).ok();
+        let index = Some(temporary.0.as_path());
+        self.run_with(dir, &["add", "-A"], index, None).await?;
+        let tree = self.run_with(dir, &["write-tree"], index, None).await?;
+        let args = [
+            "commit-tree",
+            tree.trim(),
+            "-p",
+            parent,
+            "-m",
+            "best-of snapshot",
+        ];
+        Ok(self.run(dir, &args).await?.trim().to_owned())
     }
+}
 
-    /// The tree of every file of `dir` that is not ignored, added to the
-    /// index `index`.
-    fn write_tree(&self, dir: &Path, index: &Path) -> Result<String, String> {
-        let with_index = |args: &[&str]| {
-            let mut command = self.command(dir, args);
-            command.env("GIT_INDEX_FILE", index);
-            match self.output(command, args)? {
-                (true, out, _) => Ok(out),
-                (false, _, err) => Err(format!("git {}: {}", args.join(" "), err.trim())),
-            }
-        };
-        with_index(&["add", "-A"])?;
-        Ok(with_index(&["write-tree"])?.trim().to_owned())
+/// A file removed when this is dropped, also when its job is cancelled.
+struct Removed(PathBuf);
+
+impl Drop for Removed {
+    fn drop(&mut self) {
+        std::fs::remove_file(&self.0).ok();
     }
 }
 
 /// Snapshots the project and adds `n` worktrees of it in `dir`.
-fn setup(git: &Git, root: &Path, dir: &Path, n: usize) -> Result<Value, String> {
-    let prefix = git.run(root, &["rev-parse", "--show-prefix"])?;
+async fn setup(git: &Git, root: &Path, dir: &Path, n: usize) -> Result<Value, String> {
+    let prefix = git.run(root, &["rev-parse", "--show-prefix"]).await?;
     let parent = dir.parent().unwrap_or(dir);
     std::fs::create_dir_all(parent).map_err(|error| format!("{}: {error}", parent.display()))?;
     // Keeps the worktrees out of the project's own snapshots and status.
     std::fs::write(parent.join(".gitignore"), "*\n").ok();
-    let base = git.snapshot(root, "HEAD")?;
+    let base = git.snapshot(root, "HEAD").await?;
     for k in 1..=n {
         let path = dir.join(k.to_string());
         let path = path.to_string_lossy();
-        let added = git.run(root, &["worktree", "add", "--detach", &path, &base]);
+        let added = git
+            .run(root, &["worktree", "add", "--detach", &path, &base])
+            .await;
         if let Err(why) = added {
-            remove_worktrees(git, root, dir);
+            remove_worktrees(git, root, dir).await;
             return Err(why);
         }
     }
@@ -643,53 +631,45 @@ fn setup(git: &Git, root: &Path, dir: &Path, n: usize) -> Result<Value, String> 
 }
 
 /// Removes the worktrees in the run directory `dir`, and `dir`.
-fn remove_worktrees(git: &Git, root: &Path, dir: &Path) {
+async fn remove_worktrees(git: &Git, root: &Path, dir: &Path) {
     let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
     for entry in entries {
         let path = entry.path();
         let path = path.to_string_lossy();
         git.run(root, &["worktree", "remove", "--force", &path])
+            .await
             .ok();
     }
     std::fs::remove_dir_all(dir).ok();
-    git.run(root, &["worktree", "prune"]).ok();
+    git.run(root, &["worktree", "prune"]).await.ok();
 }
 
 /// Snapshots a candidate's worktree, measures its diff from `base` and
-/// runs the verify command in it.
+/// runs the verify command in it, started by `launcher`.
 async fn verify(
-    worktree: PathBuf,
-    cwd: PathBuf,
-    base: String,
-    command: String,
+    git: &Git,
     launcher: Launcher,
+    worktree: &Path,
+    base: &str,
+    command: String,
 ) -> Result<Value, String> {
-    let git = Git(launcher.clone());
-    let measured = blocking(move || {
-        let commit = git
-            .snapshot(&worktree, &base)
-            .map_err(ToolExecutionError::other)?;
-        let measure = || -> Result<(usize, String), String> {
-            let numstat = git.run(&worktree, &["diff", "--numstat", &base, &commit])?;
-            let size = numstat
-                .lines()
-                .flat_map(|line| line.split('\t').take(2))
-                .filter_map(|count| count.parse::<usize>().ok())
-                .sum();
-            let diff = git.run(&worktree, &["diff", &base, &commit])?;
-            Ok((size, diff))
-        };
-        let (size, diff) = measure().map_err(ToolExecutionError::other)?;
-        Ok((commit, size, diff))
-    });
-    let (commit, size, diff) = measured.await.map_err(|error| error.to_string())?;
+    let commit = git.snapshot(worktree, base).await?;
+    let numstat = git
+        .run(worktree, &["diff", "--numstat", base, &commit])
+        .await?;
+    let size = numstat
+        .lines()
+        .flat_map(|line| line.split('\t').take(2))
+        .filter_map(|count| count.parse::<usize>().ok())
+        .sum();
+    let diff = git.run(worktree, &["diff", base, &commit]).await?;
     let shell = Shell {
-        launcher: launcher.in_dir(cwd),
-        spill: None,
+        launcher,
         cut: Some(Cut {
             lines: 20,
             bytes: MAX_BYTES,
         }),
+        ..Shell::default()
     };
     let args = ShellArgs::new(command).timeout_secs(VERIFY_SECS);
     let ran = shell.run(args).await.map_err(|error| error.to_string())?;
@@ -705,10 +685,10 @@ async fn verify(
 /// Merges `commit`, made from `base`, into the project's tree as it is now:
 /// a 3-way merge with what the user changed since, applied to the files
 /// only when it is clean.
-fn apply(git: &Git, root: &Path, base: &str, commit: &str) -> Result<Value, String> {
-    let top = git.run(root, &["rev-parse", "--show-toplevel"])?;
+async fn apply(git: &Git, root: &Path, base: &str, commit: &str) -> Result<Value, String> {
+    let top = git.run(root, &["rev-parse", "--show-toplevel"]).await?;
     let top = PathBuf::from(top.trim());
-    let now = git.snapshot(&top, "HEAD")?;
+    let now = git.snapshot(&top, "HEAD").await?;
     let base_arg = format!("--merge-base={base}");
     let args = [
         "merge-tree",
@@ -719,7 +699,7 @@ fn apply(git: &Git, root: &Path, base: &str, commit: &str) -> Result<Value, Stri
         &now,
         commit,
     ];
-    let (clean, out, err) = git.output(git.command(&top, &args), &args)?;
+    let (clean, out, err) = git.output(&top, &args, None, None).await?;
     let mut lines = out.lines();
     let tree = lines.next().unwrap_or_default().trim().to_owned();
     if !clean {
@@ -732,32 +712,37 @@ fn apply(git: &Git, root: &Path, base: &str, commit: &str) -> Result<Value, Stri
             files.join(", ")
         ));
     }
-    let patch = git.run(&top, &["diff", "--binary", &now, &tree])?;
+    let patch = git.run(&top, &["diff", "--binary", &now, &tree]).await?;
     if !patch.trim().is_empty() {
         let args = ["apply", "--whitespace=nowarn", "-"];
-        let mut command = git.command(&top, &args);
-        command
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-        let mut child = command
-            .spawn()
-            .map_err(|error| format!("git apply: {error}"))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write as _;
-            stdin
-                .write_all(patch.as_bytes())
-                .map_err(|error| format!("git apply: {error}"))?;
-        }
-        let output = child
-            .wait_with_output()
-            .map_err(|error| format!("git apply: {error}"))?;
-        if !output.status.success() {
-            let err = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("git apply: {}", err.trim()));
-        }
+        git.run_with(&top, &args, None, Some(patch.into_bytes()))
+            .await?;
     }
     Ok(json!({ "commit": commit, "tree": tree }))
+}
+
+/// A candidate's agent was spawned: it works in the project's directory in
+/// its worktree, as its `WorkDir`, before it starts its task.
+fn candidate_spawned(
+    spawned: On<Add<SpawnedAgent>>,
+    requests: Query<(&SpawnedAgent, &CandidateRequest)>,
+    mut runs: Query<&mut Run>,
+    mut commands: Commands,
+) {
+    let Ok((&SpawnedAgent(agent), &CandidateRequest { run: run_entity, k })) =
+        requests.get(spawned.entity)
+    else {
+        return;
+    };
+    let Ok(mut run) = runs.get_mut(run_entity) else {
+        return;
+    };
+    let of = CandidateOf { run: run_entity, k };
+    let dir = WorkDir(run.work_dir(k));
+    commands.entity(agent).insert((dir, of, WasCandidate));
+    if let Some(candidate) = run.candidate(k) {
+        candidate.agent = Some(agent);
+    }
 }
 
 /// The payload of an effect answered as hoped, or why it failed.
@@ -805,7 +790,10 @@ fn job_done(
             run.prefix = text("prefix").unwrap_or_default();
             for candidate in &run.candidates {
                 let mut request = SpawnSubagent::helper(format!("best-of {}", candidate.k))
-                    .brief(run.task.clone())
+                    .brief(format!(
+                        "{}\n\nWhen you are done, your changes are checked with `{}`.",
+                        run.task, run.verify
+                    ))
                     .once();
                 request.model.clone_from(&candidate.model);
                 request.tools = Some(run.tools.clone());
@@ -896,7 +884,6 @@ fn finish(run_entity: Entity, run: &Run, commands: &mut Commands) {
     let work = Work::Clean {
         root: run.root.clone(),
         dirs: vec![run.dir.clone()],
-        launcher: run.launcher.clone(),
         asked: false,
     };
     spawn_job(commands, run.owner, None, work);
@@ -991,7 +978,6 @@ fn start_apply(
         root: run.root.clone(),
         base,
         commit: commit.to_owned(),
-        launcher: run.launcher.clone(),
     };
     spawn_job(commands, run.owner, Some(run_entity), work);
 }
@@ -1034,47 +1020,6 @@ fn picked(
             );
         }
         None => finish(*run_entity, run, &mut commands),
-    }
-}
-
-/// Marks each candidate as its request is answered, before it starts its
-/// task: where its tools work, what it is told, and its run.
-fn mark_candidates(
-    spawned: Query<(&SpawnedAgent, &CandidateRequest), Unreviewed>,
-    mut runs: Query<&mut Run>,
-    mut commands: Commands,
-) {
-    for (&SpawnedAgent(agent), &CandidateRequest { run: run_entity, k }) in &spawned {
-        let Ok(mut run) = runs.get_mut(run_entity) else {
-            continue;
-        };
-        let worktree = run.worktree(k);
-        let cwd = worktree.join(&run.prefix);
-        let role = format!(
-            "You are candidate {k} of {n}: other agents try the same task in their own copies \
-             of the project. Your copy is the git worktree {worktree}; your working directory \
-             is {cwd}, where relative paths and `shell` commands resolve. Paths outside the \
-             worktree are refused. Do the whole task there; when you are done, your changes \
-             are checked with `{verify}`. End with a short summary of what you changed.",
-            n = run.candidates.len(),
-            worktree = worktree.display(),
-            cwd = cwd.display(),
-            verify = run.verify,
-        );
-        let section = PromptSection::new(PromptSection::ORDER_ROLE, "best_of_role", role);
-        commands.spawn((Name::new("best_of_role"), section, SectionOf(agent)));
-        commands.entity(agent).insert((
-            CandidateOf {
-                run: run_entity,
-                k,
-                worktree,
-                cwd,
-            },
-            WasCandidate,
-        ));
-        if let Some(candidate) = run.candidate(k) {
-            candidate.agent = Some(agent);
-        }
     }
 }
 
@@ -1132,11 +1077,10 @@ fn candidate_done(
         (None, Some(base)) => {
             let work = Work::Verify {
                 k: of.k,
-                worktree: of.worktree.clone(),
-                cwd: of.cwd.clone(),
+                worktree: run.worktree(of.k),
+                cwd: run.work_dir(of.k),
                 base,
                 command: run.verify.clone(),
-                launcher: run.launcher.clone(),
             };
             spawn_job(&mut commands, run.owner, Some(of.run), work);
         }
@@ -1174,84 +1118,6 @@ fn cancel_on_interrupt(
         ));
         finish(run_entity, run, &mut commands);
     }
-}
-
-/// Resolves the `path` of a candidate's file tools, and `shell`'s `cwd`,
-/// from its working directory in its worktree, as each call is admitted.
-fn in_worktree(
-    mut calls: Query<(&mut ToolRequest, &ForAgent), Added<Admitted>>,
-    candidates: Query<&CandidateOf>,
-) {
-    for (mut request, &ForAgent(agent)) in &mut calls {
-        let Ok(candidate) = candidates.get(agent) else {
-            continue;
-        };
-        let function = &mut request.call.function;
-        let (key, default) = match function.name.as_str() {
-            "shell" => ("cwd", Some(".")),
-            "search" => ("path", Some(".")),
-            "read" | "write" | "edit" => ("path", None),
-            _ => continue,
-        };
-        let named = function
-            .arguments
-            .get(key)
-            .and_then(Value::as_str)
-            .or(default);
-        // A missing `path` is the tool's to refuse.
-        let Some(named) = named else {
-            continue;
-        };
-        let resolved = normalize(&candidate.cwd.join(named));
-        let resolved = resolved.to_string_lossy().into_owned();
-        function
-            .arguments
-            .insert(key.to_owned(), Value::String(resolved));
-    }
-}
-
-/// Refuses a candidate's call whose path leaves its worktree.
-fn keep_inside(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), Undecided>,
-    candidates: Query<&CandidateOf>,
-    mut commands: Commands,
-) {
-    for (call, request, &ForAgent(agent)) in &calls {
-        let Ok(candidate) = candidates.get(agent) else {
-            continue;
-        };
-        let function = &request.call.function;
-        let key = match function.name.as_str() {
-            "shell" => "cwd",
-            "read" | "write" | "edit" | "search" => "path",
-            _ => continue,
-        };
-        let Some(named) = function.arguments.get(key).and_then(Value::as_str) else {
-            continue;
-        };
-        if !normalize(Path::new(named)).starts_with(&candidate.worktree) {
-            let why = format!(
-                "{named} is outside your worktree {}; work only inside it",
-                candidate.worktree.display()
-            );
-            commands.entity(call).insert_if_new(Outcome::refused(why));
-        }
-    }
-}
-
-/// `path` with `.` and `..` taken out, without following links.
-fn normalize(path: &Path) -> PathBuf {
-    let mut normal = PathBuf::new();
-    for part in path.components() {
-        match part {
-            Part::CurDir => {}
-            Part::ParentDir => {
-                normal.pop();
-            }
-            part => normal.push(part),
-        }
-    }
-    normal
 }
 
 /// Retires each candidate a restart brought back without its run, before

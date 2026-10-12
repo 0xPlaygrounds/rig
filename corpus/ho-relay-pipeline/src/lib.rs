@@ -319,6 +319,11 @@ struct StageRequest;
 #[reflect(Component, Saved, Default, Clone, Debug)]
 pub struct PipelineStage;
 
+/// The Gate system that stops a restored stage's turn, for others to order
+/// against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RelayPipelineSystems;
+
 /// Adds `/pipe`; see the [crate](self) docs.
 #[derive(Default)]
 pub struct RelayPipelinePlugin;
@@ -338,7 +343,8 @@ impl Plugin for RelayPipelinePlugin {
             .add_observer(start_stage)
             .add_observer(seat)
             .add_observer(step)
-            .add_systems(AgentPass, stop_restored.in_set(Stage::Gate));
+            .configure_sets(AgentPass, RelayPipelineSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, stop_restored.in_set(RelayPipelineSystems));
     }
 }
 

@@ -1,4 +1,4 @@
-use rig_core::tool::{ChangeKind, FileChange, FilesChanged, Tool, ToolContext};
+use rig_core::tool::{ChangeKind, FileChange, FilesChanged, Tool, ToolContext, content_hash};
 
 use super::{Write, WriteArgs};
 use crate::{Edit, EditArgs, Replacement};
@@ -8,8 +8,12 @@ use crate::{Edit, EditArgs, Replacement};
 /// removed, each with its diff.
 #[test]
 fn writes_and_edits_publish_the_files_they_changed() {
+    let write_tool = Write::default();
+    let edit_tool = Edit::default();
     let dir = std::env::temp_dir().join(format!("rig-tools-changes-{}", std::process::id()));
-    let path = dir.join("a.txt").to_string_lossy().into_owned();
+    let path = crate::fs::resolve(Some(&dir), "a.txt")
+        .to_string_lossy()
+        .into_owned();
     let changed = |context: &ToolContext| {
         context
             .result::<FilesChanged>()
@@ -19,18 +23,24 @@ fn writes_and_edits_publish_the_files_they_changed() {
     };
 
     let mut context = ToolContext::new();
-    let written = Tool::call(&Write, &mut context, WriteArgs::new(&path, "one\ntwo\n"));
+    let written = Tool::call(
+        &write_tool,
+        &mut context,
+        WriteArgs::new(&path, "one\ntwo\n"),
+    );
     assert!(futures::executor::block_on(written).is_ok());
     assert_eq!(
         changed(&context).0,
-        [FileChange::created(&path, 2).with_diff(format!(
-            "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
-        ))]
+        [FileChange::created(&path, 2)
+            .with_diff(format!(
+                "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
+            ))
+            .with_after(content_hash(b"one\ntwo\n"))]
     );
 
     let mut context = ToolContext::new();
     let rewritten = Tool::call(
-        &Write,
+        &write_tool,
         &mut context,
         WriteArgs::new(&path, "one\n2\nthree\n"),
     );
@@ -46,7 +56,7 @@ fn writes_and_edits_publish_the_files_they_changed() {
         Replacement::new("one", "1"),
         Replacement::new("three", "3").all(),
     ];
-    let edited = Tool::call(&Edit, &mut context, EditArgs::new(&path, edits));
+    let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
     assert!(futures::executor::block_on(edited).is_ok());
     let change = changed(&context).0.into_iter().next();
     assert_eq!(
@@ -54,6 +64,10 @@ fn writes_and_edits_publish_the_files_they_changed() {
             .as_ref()
             .map(|change| (change.path.as_str(), change.added, change.removed)),
         Some((path.as_str(), 2, 2))
+    );
+    assert_eq!(
+        change.as_ref().and_then(|change| change.after.clone()),
+        Some(content_hash(b"1\n2\n3\n"))
     );
     assert_eq!(
         change.and_then(|change| change.diff),

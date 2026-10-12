@@ -1,13 +1,16 @@
 use std::path::Path;
 
-use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::providers::registry::{ConnectOptions, ProviderId};
+use rig_core::test_utils::MockStreamingClient;
 use rig_harness::harness_protocol::SessionId;
-use rig_harness_test_support::{
-    Ended, app_in, connect, first_agent, log_ended, reply, run_until, scratch_home,
-};
+use rig_harness_test_support::{Ended, app_in, first_agent, log_ended, run_until, scratch_home};
 use serde_json::json;
 
 use super::*;
+
+/// A key the scrubber knows by its shape.
+const KEY: &str = "sk-proj-abcdefghijklmnopqrstuvwx";
 
 /// The raw folder's files, as `(name, text)`, sorted by name.
 fn raw_files(dir: &Path) -> Vec<(String, String)> {
@@ -34,104 +37,134 @@ fn lines(text: &str) -> Vec<Value> {
         .collect()
 }
 
+/// An OpenAI Responses stream as the provider sends it: an unknown event
+/// between the message's start and its two text deltas, and the response
+/// with its id.
+fn sse(unknown: &Value) -> String {
+    let message = |text: &str| json!({ "type": "message", "id": "msg_1", "role": "assistant", "status": "completed", "content": [{ "type": "output_text", "text": text, "annotations": [] }] });
+    let response = |status: &str, output: Value| json!({ "id": "resp_req_42", "object": "response", "created_at": 0, "status": status, "model": "gpt-5.4", "output": output, "tools": [], "usage": { "input_tokens": 3, "output_tokens": 2, "total_tokens": 5 } });
+    let delta = |text: &str| json!({ "type": "response.output_text.delta", "item_id": "msg_1", "output_index": 0, "content_index": 0, "delta": text });
+    [
+        json!({ "type": "response.created", "response": response("in_progress", json!([])) }),
+        json!({ "type": "response.output_item.added", "output_index": 0, "item": { "type": "message", "id": "msg_1", "role": "assistant", "content": [] } }),
+        unknown.clone(),
+        delta("Hel"),
+        delta("lo"),
+        json!({ "type": "response.output_item.done", "output_index": 0, "item": message("Hello") }),
+        json!({ "type": "response.completed", "response": response("completed", json!([message("Hello")])) }),
+    ]
+    .iter()
+    .map(|event| format!("data: {event}\n\n"))
+    .collect()
+}
+
 #[test]
 fn a_call_is_recorded_raw_and_redacted_and_off_records_nothing() {
     let unknown = json!({ "type": "response.vendor_ping", "seq": 7, "note": "keep me" });
-    let model = MockCompletionModel::from_stream_turns([
-        vec![
-            MockStreamEvent::text_start("msg_1", Some(json!({ "phase": "final_answer" }))),
-            MockStreamEvent::unknown(unknown.clone()),
-            MockStreamEvent::text("Hel"),
-            MockStreamEvent::text("lo"),
-            MockStreamEvent::RequestId("req_42".to_owned()),
-            MockStreamEvent::final_response_with_default_usage(),
-        ],
-        reply("again"),
-    ]);
+    let wire = sse(&unknown);
+    let mut connector = Connector::new(Catalog::builtin().clone());
+    let openai = ProviderId::catalog("openai");
+    let reference = connector
+        .catalog()
+        .iter()
+        .find(|spec| spec.provider.vendor() == "openai" && spec.tools)
+        .map(ModelSpec::reference);
+    assert!(
+        openai.is_some() && reference.is_some(),
+        "the catalog lists OpenAI"
+    );
+    let (Some(openai), Some(reference)) = (openai, reference) else {
+        return;
+    };
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from(wire.clone()),
+    };
+    connector.provide(
+        openai,
+        ConnectOptions::new()
+            .api_key(KEY)
+            .base_url("http://scripted.test/v1")
+            .http(http),
+    );
+
     let home = scratch_home("raw-stream-log");
     let id = SessionId::generate();
     let dir = home.session(&id).path().join("raw");
     let (mut app, wakes) = app_in(&home, &id);
-    app.add_plugins((AgentPlugin, JournalPlugin, RawStreamLogPlugin))
+    app.insert_resource(Models(connector))
+        .add_plugins((AgentPlugin, JournalPlugin, RawStreamLogPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
     app.finish();
     app.update();
     let world = app.world_mut();
     let agent = first_agent(world).unwrap_or(Entity::PLACEHOLDER);
-    let connection = connect(&model);
-    assert!(connection.is_some(), "the scripted model connects");
-    if let Some(connection) = connection {
+    let connection = world.resource::<Models>().connect(&reference);
+    assert!(
+        connection.as_ref().err().is_none(),
+        "{:?}",
+        connection.as_ref().err()
+    );
+    if let Ok(connection) = connection {
         world.entity_mut(agent).insert(connection);
     }
 
     world.trigger(RunCommand::new(agent, "rawlog on"));
     world.trigger(Deliver::new(
         agent,
-        "hello sk-test-123",
+        format!("hello {KEY}"),
         DeliveryMode::Steer,
     ));
-    // The turn ended and the writer thread wrote the response.
+    // The turn ended and the writer thread wrote the body.
     run_until(&mut app, &wakes, |world| {
         !world.resource::<Ended>().0.is_empty()
             && raw_files(&dir)
                 .iter()
-                .any(|(_, text)| text.contains("\"done\""))
+                .any(|(_, text)| text.contains("response.completed"))
     });
     let files = raw_files(&dir);
     assert_eq!(files.len(), 1, "{files:?}");
     let Some((name, text)) = files.first() else {
         return;
     };
+    // Named on the handler the call was served by, `model:<reference>`.
+    let model = rig_core::effect::model_key(&reference);
     assert!(
-        name.ends_with(".jsonl") && name.contains("deepseek"),
+        name.ends_with(&format!("-1-{}.jsonl", file_safe(model.as_str()))),
         "{name}"
     );
+    assert!(!text.contains(KEY), "{text}");
     let lines = lines(text);
     let kinds: Vec<&str> = lines
         .iter()
         .filter_map(|line| line.get("type").and_then(Value::as_str))
         .collect();
     assert_eq!(kinds.first(), Some(&"request"), "{text}");
-    assert_eq!(kinds.last(), Some(&"done"), "{text}");
+    assert_eq!(kinds.get(1), Some(&"response"), "{text}");
+    assert!(kinds.iter().skip(2).all(|kind| *kind == "chunk"), "{text}");
     let request = lines.first().map(Value::to_string).unwrap_or_default();
     assert!(
-        request.contains("hello") && request.contains(REDACTED),
+        request.contains("hello") && request.contains(redact::REDACTED),
         "{request}"
     );
-    assert!(!text.contains("sk-test-123"), "{text}");
-    // The stream items in order: the unknown item verbatim before the two
-    // text fragments, and the request id on the response.
-    let unknown_at = lines
+    // The body exactly as it came: the unknown event verbatim, in its
+    // place, and the response id.
+    let body: String = lines
         .iter()
-        .position(|line| line.get("item") == Some(&unknown));
-    let texts: Vec<usize> = (0..lines.len())
-        .filter(|&at| {
-            lines
-                .get(at)
-                .is_some_and(|line| line.pointer("/event/event") == Some(&json!("text")))
-        })
+        .filter_map(|line| line.get("data").and_then(Value::as_str))
         .collect();
-    assert!(
-        unknown_at.is_some_and(|at| texts.iter().all(|&text| at < text)),
-        "{text}"
-    );
-    assert_eq!(texts.len(), 2, "{text}");
-    assert!(
-        text.contains("final_answer"),
-        "the text start's provider params: {text}"
-    );
+    assert_eq!(body, wire);
+    assert!(body.contains(&unknown.to_string()) && body.contains("resp_req_42"));
     assert!(
         lines
             .iter()
-            .any(|line| line.get("request_id") == Some(&json!("req_42"))),
-        "{text}"
+            .all(|line| line.get("attempt") == Some(&json!(1)))
     );
     let times: Vec<u64> = lines
         .iter()
         .filter_map(|line| line.get("ms").and_then(Value::as_u64))
         .collect();
-    assert!(times.len() + 1 == lines.len(), "{text}");
+    assert_eq!(times.len() + 1, lines.len(), "{text}");
     assert!(
         times.windows(2).all(|pair| pair.first() <= pair.last()),
         "{times:?}"
@@ -147,4 +180,9 @@ fn a_call_is_recorded_raw_and_redacted_and_off_records_nothing() {
     });
     assert!(!app.world().resource::<RawLog>().on);
     assert_eq!(raw_files(&dir), files);
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(RawStreamLogPlugin);
 }

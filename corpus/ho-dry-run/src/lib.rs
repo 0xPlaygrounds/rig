@@ -7,8 +7,8 @@
 //! of the same file diffs against it, and a `read` of a file in the
 //! overlay runs but answers with the overlay's content. `shell` runs only a
 //! read-only command (`ls`, `cat`, `git status`, `git diff`, `rg`, …), and
-//! any other tool only when it changes nothing ([`Footprint`] not
-//! `Exclusive`); the rest are answered "(dry run: not executed)".
+//! any other tool only when it only reads ([`Touches::reads_only`]); the
+//! rest are answered "(dry run: not executed)".
 //!
 //! `/dry-run apply` writes the overlay to disk file by file, refusing (and
 //! naming) a file changed on disk since it was previewed; `/dry-run
@@ -23,8 +23,9 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::{Map, Value, from_value};
 use rig_harness::rig_core::tool::ToolOutput;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
-use rig_tools::fs::{absolute, file_change, write_atomic};
-use rig_tools::{EditArgs, MAX_BYTES, MAX_LINES, ReadArgs, Replacement, ShellArgs, WriteArgs};
+use rig_tools::edit::apply;
+use rig_tools::fs::{self, file_change, read_text, write_atomic};
+use rig_tools::{EditArgs, ReadArgs, ShellArgs, WriteArgs};
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 use serde::de::DeserializeOwned;
 
@@ -86,11 +87,11 @@ impl Overlay {
         file.map(|file| file.content.as_str())
     }
 
-    /// The file at `path` as dry run sees it: previewed, else on disk.
-    fn current(&self, path: &str) -> Option<String> {
+    /// The file at `path` as dry run sees it: previewed, else on disk, read
+    /// as the file tools read it.
+    fn current(&self, path: &str) -> Result<String, ToolExecutionError> {
         self.content(path)
-            .map(str::to_owned)
-            .or_else(|| std::fs::read_to_string(path).ok())
+            .map_or_else(|| read_text(path), |content| Ok(content.to_owned()))
     }
 
     /// Previews `content` for the file at `path`, remembering what is on
@@ -129,10 +130,16 @@ impl Overlay {
     }
 }
 
+/// A file's would-be content, at its absolute path.
+struct Change {
+    path: String,
+    content: String,
+}
+
 /// On a previewed `edit` or `write`: the change it goes into the overlay
 /// with once it settled as previewed.
 #[derive(Component)]
-struct Pending(Previewed);
+struct Pending(Change);
 
 /// On a `read` whose result the overlay replaced: once is enough.
 #[derive(Component)]
@@ -142,7 +149,7 @@ struct Overlaid;
 /// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DryRunSystems {
-    /// Gate: answers the calls of an agent in dry run that would change
+    /// Gate: decides the calls of an agent in dry run that would change
     /// something.
     Gate,
     /// Review: answers a `read` of a previewed file with its overlay.
@@ -183,54 +190,51 @@ impl Plugin for DryRunPlugin {
     }
 }
 
-/// Answers each call of an agent in dry run that would change something:
+/// Decides each call of an agent in dry run that would change something:
 /// `edit` and `write` with the diff they would make, `shell` and other
-/// tools that may change something with "not executed".
+/// tools that do not only read with "not executed".
 fn preview(
-    calls: Query<(Entity, &ToolRequest, &Footprint, &ForAgent), Undecided>,
-    dry: Query<(), With<DryRun>>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &Footprint, &ForAgent, &mut Decision),
+        (Undecided, ToolCalls),
+    >,
+    agents: Query<Option<&WorkDir>, With<DryRun>>,
     overlay: Res<Overlay>,
     mut commands: Commands,
 ) {
-    for (call, request, &footprint, &ForAgent(agent)) in &calls {
-        if !dry.contains(agent) {
+    for (call, request, footprint, &ForAgent(agent), mut decision) in &mut calls {
+        let Ok(dir) = agents.get(agent) else {
             continue;
-        }
+        };
         let arguments = &request.call.function.arguments;
-        let change = match request.call.function.name.as_str() {
-            "edit" => edited(&overlay, arguments),
-            "write" => written(arguments),
+        let previewed = match request.call.function.name.as_str() {
+            "edit" => edited(&overlay, dir, arguments),
+            "write" => written(&overlay, dir, arguments),
             "shell" => {
                 let command = parse::<ShellArgs>(arguments).map(|args| args.command);
                 let command = command.unwrap_or_default();
-                if read_only(&command) {
-                    continue;
+                if !read_only(&command) {
+                    let skipped = ToolResult::skipped(format!("{NOT_EXECUTED} {command}"));
+                    decision.decide(skipped);
                 }
-                let skipped = ToolResult::skipped(format!("{NOT_EXECUTED} {command}"));
-                commands.entity(call).insert_if_new(Outcome::from(skipped));
                 continue;
             }
-            _ if footprint != Footprint::Exclusive => continue,
             _ => {
-                let skipped = ToolResult::skipped(NOT_EXECUTED);
-                commands.entity(call).insert_if_new(Outcome::from(skipped));
+                if !footprint.0.reads_only() {
+                    decision.decide(ToolResult::skipped(NOT_EXECUTED));
+                }
                 continue;
             }
         };
-        match change {
-            Ok(change) => {
-                let before = overlay.current(&change.path);
-                let diff = file_change(&change.path, before.as_deref(), &change.content).diff;
-                let text = format!("{}\n{NOT_APPLIED}", diff.unwrap_or_default());
-                let result = ToolResult::success(ToolOutput::text(text));
-                commands
-                    .entity(call)
-                    .insert(Pending(change))
-                    .insert_if_new(Outcome::from(result));
+        match previewed {
+            Ok((change, text)) => {
+                let text = format!("{text}\n{NOT_APPLIED}");
+                if decision.decide(ToolResult::success(ToolOutput::text(text))) {
+                    commands.entity(call).insert(Pending(change));
+                }
             }
             Err(error) => {
-                let failed = Outcome::from(ToolResult::failed(error));
-                commands.entity(call).insert_if_new(failed);
+                decision.decide(ToolResult::failed(error));
             }
         }
     }
@@ -242,74 +246,51 @@ fn parse<A: DeserializeOwned>(arguments: &Map<String, Value>) -> Result<A, ToolE
         .map_err(|error| ToolExecutionError::invalid_args(format!("{error}; nothing ran")))
 }
 
-/// What a `write` would leave.
-fn written(arguments: &Map<String, Value>) -> Result<Previewed, ToolExecutionError> {
-    let args = parse::<WriteArgs>(arguments)?;
-    Ok(Previewed {
-        path: absolute(&args.path),
-        content: args.content,
-        base: None,
-    })
+/// The absolute path the file tools of an agent working in `dir` open for
+/// `path`: confined to `dir`, as they are for an agent with a [`WorkDir`].
+fn place(dir: Option<&WorkDir>, path: &str) -> Result<String, ToolExecutionError> {
+    let base = dir.map(|WorkDir(dir)| dir.as_path());
+    let path = fs::place(base, base.is_some(), path)?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
-/// What an `edit` would leave, against the overlay.
+/// What a `write` would leave, and its diff against the overlay.
+fn written(
+    overlay: &Overlay,
+    dir: Option<&WorkDir>,
+    arguments: &Map<String, Value>,
+) -> Result<(Change, String), ToolExecutionError> {
+    let args = parse::<WriteArgs>(arguments)?;
+    let path = place(dir, &args.path)?;
+    let before = overlay.current(&path).ok();
+    let diff = file_change(&path, before.as_deref(), &args.content).diff;
+    let change = Change {
+        path,
+        content: args.content,
+    };
+    Ok((change, diff.unwrap_or_default()))
+}
+
+/// What an `edit` would leave, made against the overlay as `edit` makes
+/// it, and its diff with `edit`'s notes.
 fn edited(
     overlay: &Overlay,
+    dir: Option<&WorkDir>,
     arguments: &Map<String, Value>,
-) -> Result<Previewed, ToolExecutionError> {
+) -> Result<(Change, String), ToolExecutionError> {
     let args = parse::<EditArgs>(arguments)?;
-    let path = absolute(&args.path);
-    let Some(text) = overlay.current(&path) else {
-        return Err(ToolExecutionError::not_found(format!(
-            "{path}: no such file"
-        )));
-    };
-    let content = replace(&text, &args.edits).map_err(|why| {
-        ToolExecutionError::invalid_args(format!("{why}. {path} was not changed; fix the edit."))
-    })?;
-    Ok(Previewed {
+    let path = place(dir, &args.path)?;
+    let text = overlay.current(&path)?;
+    let applied = apply(&path, &text, &args.edits)?;
+    let mut shown = applied.change.diff.unwrap_or_default();
+    for note in applied.notes {
+        shown.push_str(&format!("Note: {note}\n"));
+    }
+    let change = Change {
         path,
-        content,
-        base: None,
-    })
-}
-
-/// `text` with `edits` made, each matched exactly against `text` as it is:
-/// `edit`'s own matching is private to rig-tools, so this is its exact
-/// part only.
-fn replace(text: &str, edits: &[Replacement]) -> Result<String, String> {
-    let mut spans = Vec::new();
-    for (index, edit) in edits.iter().enumerate() {
-        if edit.old_text.is_empty() {
-            return Err(format!("edits[{index}]: `old_text` is empty"));
-        }
-        let found: Vec<usize> = text
-            .match_indices(&edit.old_text)
-            .map(|(at, _)| at)
-            .collect();
-        if found.is_empty() {
-            return Err(format!("edits[{index}]: `old_text` is not in the file"));
-        }
-        if found.len() > 1 && !edit.replace_all {
-            let times = found.len();
-            return Err(format!("edits[{index}]: `old_text` matches {times} places"));
-        }
-        let span = |at: &usize| (*at, at + edit.old_text.len(), edit.new_text.as_str());
-        spans.extend(found.iter().map(span));
-    }
-    spans.sort_by_key(|&(start, _, _)| start);
-    let mut out = String::with_capacity(text.len());
-    let mut at = 0;
-    for (start, end, new) in spans {
-        if start < at {
-            return Err("two edits overlap".to_owned());
-        }
-        out.push_str(text.get(at..start).unwrap_or_default());
-        out.push_str(new);
-        at = end;
-    }
-    out.push_str(text.get(at..).unwrap_or_default());
-    Ok(out)
+        content: applied.text,
+    };
+    Ok((change, shown))
 }
 
 /// Whether `command` only reads: no redirection, sequencing or
@@ -345,29 +326,34 @@ fn keep_previewed(
 }
 
 /// A `read` by an agent in dry run of a previewed file answers with the
-/// overlay's content, numbered as `read` shows a file.
+/// overlay's content, shown as `read` shows a file.
 fn read_overlay(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), (Unreviewed, Without<Overlaid>)>,
-    dry: Query<(), With<DryRun>>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &mut Outcome),
+        (Unreviewed, ToolCalls, Without<Overlaid>),
+    >,
+    agents: Query<Option<&WorkDir>, With<DryRun>>,
     overlay: Res<Overlay>,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent)) in &calls {
-        if request.call.function.name.as_str() != "read" || !dry.contains(agent) {
+    for (call, request, &ForAgent(agent), mut outcome) in &mut calls {
+        if request.call.function.name.as_str() != "read" {
             continue;
         }
+        let Ok(dir) = agents.get(agent) else {
+            continue;
+        };
         let Ok(args) = parse::<ReadArgs>(&request.call.function.arguments) else {
             continue;
         };
-        let Some(content) = overlay.content(&absolute(&args.path)) else {
+        let Some(content) = place(dir, &args.path)
+            .ok()
+            .and_then(|path| overlay.content(&path))
+        else {
             continue;
         };
-        let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
-        let text = rig_tools::numbered(content, args.offset.unwrap_or(1), limit, MAX_BYTES);
-        let result = ToolResult::success(ToolOutput::text(text));
-        commands
-            .entity(call)
-            .insert((Outcome::from(result), Overlaid));
+        *outcome = Outcome::from(ToolResult::success(ToolOutput::text(args.show(content))));
+        commands.entity(call).insert(Overlaid);
     }
 }
 

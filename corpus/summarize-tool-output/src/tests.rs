@@ -121,3 +121,8 @@ fn a_failed_summary_sends_the_head_and_tail() {
     assert!(sent.contains(".rig/outputs/call-1.txt"), "{sent}");
     clean(&root);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(SummarizeToolOutputPlugin);
+}

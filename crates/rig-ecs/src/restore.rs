@@ -2,7 +2,7 @@
 //! pass that settles what a crash or a restart left half done, with
 //! ordinary records, so the next restore finds nothing left to fix. Each
 //! log is read as [`read_session`](super::journal::read_session) reads it,
-//! from its newest standing summary, a torn last line cut off; a retired
+//! a torn last line cut off; a retired
 //! agent and the agents it spawned are not restored.
 //!
 //! A call left without a result whose tool may change something is
@@ -45,6 +45,7 @@ use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
 use rig_cassette::journal::{JournalStore, LogLines};
+use rig_core::message::ToolCall;
 use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::de::DeserializeSeed;
 use serde_json::Value;
@@ -53,10 +54,10 @@ use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn
 use super::effects::Effects;
 use super::journal::{
     AgentLog, Commit, Folded, ReflectSaved, SESSION, SessionLog, SessionRestored, SessionStore,
-    fold,
+    fold, load_images,
 };
 use super::stage::{Effect, ForAgent};
-use super::tools::{Footprint, ToolDef, ToolRequest};
+use super::tools::{Declared, Footprint, Serves, ToolDef, ToolRequest, footprint_of};
 use super::turn::TurnCall;
 
 /// The result of a call that may change something and was running when
@@ -77,8 +78,8 @@ pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 #[reflect(Component, Default)]
 pub struct Restored;
 
-/// Spawns the agents of the session's logs, with their conversations,
-/// condensed summaries and saved components, links each agent to the agent that
+/// Spawns the agents of the session's logs, with their conversations and
+/// saved components, links each agent to the agent that
 /// spawned it, restores the saved resources, and starts logging. Anything that does not load is skipped
 /// with a notice.
 pub(crate) fn restore_session(world: &mut World) {
@@ -122,7 +123,6 @@ pub(crate) fn restore_session(world: &mut World) {
         let Folded {
             header,
             conversation,
-            condensed,
             ..
         } = agent;
         if header.agent == SESSION {
@@ -141,9 +141,6 @@ pub(crate) fn restore_session(world: &mut World) {
         }
         let id = AgentId(header.agent.clone());
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
-        if let Some(condensed) = condensed {
-            spawned.insert(condensed);
-        }
         for (path, value) in &log.components {
             let restored = saved(path, value, &registry).map(|(component, value)| {
                 component.insert(&mut spawned, value.as_partial_reflect(), &registry);
@@ -229,15 +226,16 @@ fn resource_entity<'w>(
         .map_err(|failure| failure.to_string())
 }
 
-/// Reads and folds the log of `agent` in `store` from the newest summary
-/// that stands, cutting off a torn last line there first. Images come back
-/// from the store's blobs.
+/// Reads and folds the log of `agent` in `store`, cutting off a torn last
+/// line there first. Images come back from the store's blobs.
 fn read_log(store: &dyn JournalStore, agent: &str) -> Result<Folded, Box<dyn Error>> {
     let log = LogLines::read(store, agent)?;
     if log.torn() {
         store.truncate(agent, log.len())?;
     }
-    Ok(fold(&log, store, false)?)
+    let mut folded = fold(&log)?;
+    load_images(&mut folded, store);
+    Ok(folded)
 }
 
 /// The ids of the agents a restore skips: those retired, and the agents
@@ -295,7 +293,7 @@ pub(crate) fn reconcile(world: &mut World) {
 fn settle(
     In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
-    tools: Query<(&ToolDef, &Footprint)>,
+    tools: Query<(&ToolDef, &Footprint, Has<Declared>, &Serves)>,
     effects: Res<Effects>,
     mut commit: Commit,
     mut commands: Commands,
@@ -303,15 +301,20 @@ fn settle(
     let Ok(mut conversation) = agents.get_mut(agent) else {
         return;
     };
-    // A call runs again when its tool, of any kind, only reads.
-    let reruns = |name: &str| {
-        tools.iter().any(|(def, footprint)| {
-            def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
-        })
+    // A call runs again when it only reads, as its tool says of it.
+    let reruns = |call: &ToolCall| {
+        let name = call.function.name.as_str();
+        let tool = tools.iter().find(|(def, ..)| def.0.name.as_str() == name);
+        let handler = tool.and_then(|(.., serves)| match serves {
+            Serves::Handler(handler) => Some(handler),
+            Serves::Open(_) => None,
+        });
+        let tool = tool.map(|(_, footprint, declared, _)| (footprint, declared));
+        footprint_of(call, handler, tool).0.reads_only()
     };
     let (reruns, interrupted): (Vec<_>, Vec<_>) = pending_calls(conversation.messages())
         .into_iter()
-        .partition(|call| reruns(call.function.name.as_str()));
+        .partition(reruns);
     if !interrupted.is_empty() {
         let results = close_pending_with(&interrupted, INTERRUPTED);
         commit.message(agent, &mut conversation, results);

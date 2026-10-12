@@ -1,41 +1,34 @@
 //! Long commands with live output and per-call cancel (spec
 //! `H09-cancellable-run.md`): the `run` tool, `/cancel-call` and `ctrl+k`.
 //!
-//! `run` is an open tool. Each call starts `sh -c` as every child process
-//! starts ([`Processes`]), in a process group of its own, and a thread
-//! supervises it: it splits the output into lines, sends them through a
-//! channel that a [`Running::stream`] on the call's job entity turns into
-//! [`Done<RunEvent>`]s, and stops the group with SIGTERM, then SIGKILL after
-//! three seconds, when the call is cancelled or times out. Each line goes
-//! into the call's [`RunProgress`], which the terminal view's panel shows
-//! and a `--print` run writes to stderr; the progress is not saved, only the
-//! call's result is. Once the command ended, the call is answered with the
-//! last 4 KB of its output and how it ended, so a cancel lets the turn carry
-//! on with the model deciding what next. The job is [`JobOf`] its call and
-//! ends when the call settles, which kills a command still running: an
-//! interrupt answers the call itself, as "interrupted by the user", without
-//! the output so far, since the kernel gives a plugin no turn there.
+//! `run` is an open tool. Each call starts `sh -c` through the shared
+//! launcher ([`Processes`]) as a process group of its own. A thread hands
+//! the command's output lines to a [`Running::stream`] on the call's job
+//! entity, and each line goes into the call's [`RunOutput`], which keeps
+//! the last 4 KB. From it the plugin keeps the call's [`ToolProgress`]
+//! (which every front shows, the terminal view at most 10 times a second)
+//! and its [`IfStopped`]: the output so far and `[interrupted]`, which the
+//! kernel answers with when the turn is interrupted or stopped.
+//!
+//! A cancel (`/cancel-call`, `ctrl+k`) or the timeout sends the group
+//! SIGTERM, then SIGKILL three seconds later (a [`WakeAt`] on the job).
+//! Once the command ended the call is answered with its last 4 KB of output
+//! and how it ended, so a cancel lets the turn carry on with the model
+//! deciding. The job is [`JobOf`] its call and ends when the call settles,
+//! which kills a command still running.
 
 use std::cmp::Reverse;
-use std::collections::VecDeque;
-use std::io::Read as _;
-use std::process::{Child, Stdio};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
 use std::thread;
 use std::time::Instant;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
-use futures::channel::mpsc::{UnboundedSender, unbounded};
+use futures::channel::mpsc::unbounded;
 use rig_harness::prelude::*;
-use rig_tui::ratatui::layout::Constraint;
-use rig_tui::ratatui::style::Stylize;
+use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
-use rig_tui::ratatui::widgets::Paragraph;
 use rig_tui::{
-    AppKeyBindingsExt, Focused, KeyBinding, KeyPress, PanelCanvas, Placement, RequestRedraw,
-    TuiPanel, TuiSystems, run_command,
+    AppKeyBindingsExt, AppToolRenderersExt, CallState, KeyBinding, KeyPress, ToolCallView, excerpt,
+    run_command,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -47,7 +40,7 @@ mod tests;
 pub const RUN: &str = "run";
 /// The command that cancels a call.
 pub const CANCEL: &str = "cancel-call";
-/// Lines of a running call the fronts show.
+/// Lines of a running call the terminal view shows.
 pub const SHOWN_LINES: usize = 5;
 /// The end of the output a result keeps.
 const KEPT_BYTES: usize = 4 * 1024;
@@ -55,16 +48,11 @@ const KEPT_BYTES: usize = 4 * 1024;
 const GRACE: Duration = Duration::from_secs(3);
 /// Seconds a command runs unless the call says otherwise.
 const DEFAULT_TIMEOUT: u64 = 30 * 60;
-/// How often the panel is redrawn at most, and the loop's pace while a
-/// command runs.
+/// How often the terminal view's progress changes at most, and the loop's
+/// pace while a command runs.
 const REDRAW: Duration = Duration::from_millis(100);
-/// How often the supervisor checks on the command while no output comes.
-const POLL: Duration = Duration::from_millis(20);
-/// How long output may still come once the command exited.
-const PIPE_GRACE: Duration = Duration::from_millis(100);
 
-/// The `run` tool, `/cancel-call`, `ctrl+k`, the output panel and the
-/// `--print` progress lines.
+/// The `run` tool, `/cancel-call` and `ctrl+k`.
 #[derive(Default)]
 pub struct CancellableRunPlugin;
 
@@ -84,7 +72,7 @@ impl Plugin for CancellableRunPlugin {
                          depend on each other in one call. When the user cancels one, decide \
                          from its output so far whether to go on.",
                     ],
-                    footprint: Some(Footprint::Independent),
+                    footprint: Some(Touches::Independent),
                 },
                 start,
             )
@@ -94,6 +82,7 @@ impl Plugin for CancellableRunPlugin {
                 cancel_call,
             )
             .add_observer(take_event)
+            .add_observer(on_due)
             .add_observer(end_job);
         app.add_key_binding(
             KeyBinding::new(KeyPress::ctrl('k'), "Cancel a running command"),
@@ -102,18 +91,15 @@ impl Plugin for CancellableRunPlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        if app.runs_front(rig_print::FRONT) {
-            app.insert_resource(PrintProgress);
-        }
+        // `--print` writes each change of the progress as one line, so the
+        // terminal view alone gets several.
         if app.runs_front(rig_tui::FRONT) {
-            app.add_systems(Startup, spawn_panel).add_systems(
+            app.add_tool_renderer(RUN, look).add_systems(
                 PostUpdate,
-                (
-                    size_panel.in_set(TuiSystems::Prepare),
-                    redraw.run_if(on_real_timer(REDRAW)),
-                    draw_panel.in_set(TuiSystems::Draw),
-                ),
+                show_progress(SHOWN_LINES).run_if(on_real_timer(REDRAW)),
             );
+        } else {
+            app.add_systems(PostUpdate, show_progress(1));
         }
     }
 }
@@ -128,48 +114,69 @@ struct RunArgs {
     timeout_s: Option<u64>,
 }
 
-/// A `run` call's output so far, on the call while it runs. Not saved.
+/// A `run` call's command and its output so far, on the call while it
+/// runs. Not saved.
 #[derive(Component, Debug)]
-pub struct RunProgress {
+pub struct RunOutput {
     /// The command line.
     pub command: String,
     /// The process group's leader.
     pub pid: u32,
     /// When it started.
     pub started: Instant,
-    /// Its last [`SHOWN_LINES`] lines.
-    pub lines: VecDeque<String>,
-    /// The last 4 KB of its output.
-    pub output: String,
-    /// Whether earlier output was dropped from `output`.
+    /// The last 4 KB of its output, line by line.
+    pub text: String,
+    /// Whether earlier output was dropped from `text`.
     pub cut: bool,
     /// The seconds it may run.
     timeout: u64,
+    /// Why it is being stopped, once it is.
+    stop: Option<Stop>,
 }
 
-impl RunProgress {
+impl RunOutput {
     /// Adds a line of output.
     fn push(&mut self, line: &str) {
-        if self.lines.len() == SHOWN_LINES {
-            self.lines.pop_front();
-        }
-        self.lines.push_back(line.to_owned());
-        self.output.push_str(line);
-        self.output.push('\n');
-        let mut excess = self.output.len().saturating_sub(KEPT_BYTES);
+        self.text.push_str(line);
+        self.text.push('\n');
+        let mut excess = self.text.len().saturating_sub(KEPT_BYTES);
         if excess > 0 {
-            while !self.output.is_char_boundary(excess) {
+            while !self.text.is_char_boundary(excess) {
                 excess += 1;
             }
-            self.output.drain(..excess);
+            self.text.drain(..excess);
             self.cut = true;
         }
     }
+
+    /// The output so far, then `ending`.
+    fn result(&self, ending: &str) -> Outcome {
+        let cut = if self.cut {
+            "[earlier output cut]\n"
+        } else {
+            ""
+        };
+        Outcome::from(ToolResult::success(
+            format!("{cut}{}{ending}", self.text).into(),
+        ))
+    }
+
+    /// Its last `count` lines.
+    fn last_lines(&self, count: usize) -> String {
+        let mut lines: Vec<&str> = self.text.lines().rev().take(count).collect();
+        lines.reverse();
+        lines.join("\n")
+    }
 }
 
-/// On a `run` call the user cancelled: how long it had run.
-#[derive(Component, Debug)]
-struct Cancelled(Duration);
+/// Why a command is being stopped.
+#[derive(Clone, Copy, Debug)]
+enum Stop {
+    /// The user cancelled it after this long.
+    Cancelled(Duration),
+    /// It ran past its timeout.
+    TimedOut,
+}
 
 /// A `run` call's command: its output stream and its process group.
 #[derive(Component)]
@@ -181,57 +188,35 @@ pub struct JobOf(pub Entity);
 #[relationship_target(relationship = JobOf, linked_spawn)]
 pub struct Job(Entity);
 
-/// What a job and its supervisor share.
-#[derive(Default)]
-struct Control {
-    /// The leader's pid while it is not reaped, else 0.
-    leader: AtomicU32,
-    /// Set when the user cancels the call.
-    stop: AtomicBool,
+/// A signal to a job's process group.
+#[derive(Clone, Copy)]
+enum Signal {
+    Terminate,
+    Kill,
 }
 
-/// A job's process group, killed when the job is dropped, as an interrupt
-/// does by despawning its call.
+/// Signals a job's process group, which is killed when the job is dropped,
+/// as when its call settled. It acts only while the command is not reaped.
 #[derive(Component)]
-struct Process(Arc<Control>);
+struct Group(Box<dyn Fn(Signal) + Send + Sync>);
 
-impl Drop for Process {
+impl Drop for Group {
     fn drop(&mut self) {
-        let leader = self.0.leader.swap(0, Ordering::SeqCst);
-        if leader != 0 {
-            signal(leader, libc::SIGKILL);
-        }
+        (self.0)(Signal::Kill);
     }
 }
 
-/// What a job's supervisor reports.
+/// What a job's thread reports.
 pub enum RunEvent {
     /// A line of output.
     Line(String),
-    /// The command ended.
-    Ended(End),
+    /// The command ended: its exit code, `None` for a signal, or why
+    /// waiting for it failed.
+    Ended(Result<Option<i32>, String>),
 }
-
-/// How a command ended.
-pub enum End {
-    /// It exited with this code, or by a signal when `None`.
-    Exited(Option<i32>),
-    /// It ran past its timeout and was stopped.
-    TimedOut,
-    /// Waiting for it failed.
-    Failed(String),
-}
-
-/// A `--print` run: progress lines go to stderr.
-#[derive(Resource)]
-struct PrintProgress;
 
 fn pool() -> &'static TaskPool {
     IoTaskPool::get_or_init(TaskPool::default)
-}
-
-fn answer(text: String) -> Outcome {
-    Outcome::from(ToolResult::success(text.into()))
 }
 
 /// Starts a `run` call's command and its job.
@@ -244,227 +229,132 @@ fn start(
     let call = called.call;
     let RunArgs { command, timeout_s } = &called.args;
     let timeout = timeout_s.unwrap_or(DEFAULT_TIMEOUT).max(1);
-    let (child, output) = match launch(&processes, command) {
-        Ok(started) => started,
+    let spawned = processes
+        .launcher()
+        .spawn("sh", ["-c", command.as_str()], Default::default());
+    let mut process = match spawned {
+        Ok(process) => process,
         Err(error) => {
-            let failed = ToolResult::failed(ToolExecutionError::other(format!(
-                "could not run sh: {error}"
-            )));
-            commands.entity(call).insert_if_new(Outcome::from(failed));
+            let failed = ToolExecutionError::other(format!("could not run sh: {error}"));
+            commands
+                .entity(call)
+                .insert_if_new(Outcome::from(ToolResult::failed(failed)));
             return;
         }
     };
-    let pid = child.id();
-    let control = Arc::new(Control::default());
-    control.leader.store(pid, Ordering::SeqCst);
+    let pid = process.id();
+    let group = process.group();
     let (events, received) = unbounded();
-    let supervised = Arc::clone(&control);
-    let limit = Duration::from_secs(timeout);
-    thread::spawn(move || supervise(child, &output, &supervised, limit, &events));
-    commands.entity(call).insert(RunProgress {
+    thread::spawn(move || {
+        // Until every process holding the output closed it.
+        for line in process.lines().iter() {
+            let line = line.text().trim_end_matches(['\n', '\r']).to_owned();
+            events.unbounded_send(RunEvent::Line(line)).ok();
+        }
+        let ended = loop {
+            match process.wait_for(GRACE) {
+                Ok(Some(status)) => break Ok(status.code()),
+                Ok(None) => {}
+                Err(error) => break Err(error.to_string()),
+            }
+        };
+        // What the command left running in its group goes with it.
+        process.kill().ok();
+        events.unbounded_send(RunEvent::Ended(ended)).ok();
+    });
+    let output = RunOutput {
         command: command.clone(),
         pid,
         started: Instant::now(),
-        lines: VecDeque::new(),
-        output: String::new(),
+        text: String::new(),
         cut: false,
         timeout,
-    });
+        stop: None,
+    };
+    let if_stopped = IfStopped(output.result("[interrupted]"));
+    commands
+        .entity(call)
+        .insert((output, ToolProgress::default(), if_stopped));
     commands.spawn((
         Name::new(format!("run job {pid}")),
         JobOf(call),
-        Process(control),
+        Group(Box::new(move |signal| match signal {
+            Signal::Terminate => group.terminate(),
+            Signal::Kill => group.kill(),
+        })),
+        WakeAt::after(Duration::from_secs(timeout)),
         KeepAwake(REDRAW),
         Running::stream(pool(), &wake, received),
     ));
 }
 
-/// Starts `command` with `sh -c`, stdout and stderr on one pipe so their
-/// lines keep their order.
-fn launch(processes: &Processes, command: &str) -> std::io::Result<(Child, std::io::PipeReader)> {
-    let (reader, writer) = std::io::pipe()?;
-    let errors = writer.try_clone()?;
-    let mut sh = processes.launcher().command("sh");
-    sh.arg("-c")
-        .arg(command)
-        .stdin(Stdio::null())
-        .stdout(writer)
-        .stderr(errors);
-    let child = sh.spawn()?;
-    // The parent's write ends must close, or reading never ends.
-    drop(sh);
-    Ok((child, reader))
-}
-
-/// Sends `signal` to the process group `leader` leads.
-fn signal(leader: u32, signal: libc::c_int) {
-    if let Ok(group) = i32::try_from(leader) {
-        // SAFETY: `kill` takes plain integers; a negative pid names the
-        // process group the command leads (the launcher starts it in a
-        // session of its own).
-        unsafe {
-            libc::kill(-group, signal);
-        }
-    }
-}
-
-/// Watches the command until it ends: sends its output line by line, stops
-/// it with SIGTERM, then SIGKILL after [`GRACE`], once cancelled or past
-/// `timeout`, and reports how it ended.
-fn supervise(
-    mut child: Child,
-    output: &std::io::PipeReader,
-    control: &Control,
-    timeout: Duration,
-    events: &UnboundedSender<RunEvent>,
-) {
-    let pid = child.id();
-    let chunks = drain(output);
-    let mut lines = Lines::default();
-    let started = Instant::now();
-    let mut stopping: Option<(Instant, bool)> = None;
-    let exited = loop {
-        match child.try_wait() {
-            Ok(Some(status)) => break Ok(status.code()),
-            Err(error) => break Err(error.to_string()),
-            Ok(None) => {}
-        }
-        match stopping {
-            None if control.stop.load(Ordering::Relaxed) => {
-                signal(pid, libc::SIGTERM);
-                stopping = Some((Instant::now(), false));
-            }
-            None if started.elapsed() >= timeout => {
-                signal(pid, libc::SIGTERM);
-                stopping = Some((Instant::now(), true));
-            }
-            Some((since, _)) if since.elapsed() >= GRACE => signal(pid, libc::SIGKILL),
-            _ => {}
-        }
-        match chunks.recv_timeout(POLL) {
-            Ok(chunk) => lines.push(&chunk, events),
-            Err(RecvTimeoutError::Timeout) => {}
-            // The command closed its output but still runs.
-            Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
-        }
-    };
-    // Reaped: the pid may be reused once its group is empty.
-    control.leader.store(0, Ordering::SeqCst);
-    // Something the command left running may hold the pipe; the rest of
-    // its group goes then.
-    if !lines.read_rest(&chunks, events) {
-        signal(pid, libc::SIGKILL);
-        lines.read_rest(&chunks, events);
-    }
-    lines.finish(events);
-    let end = match (exited, stopping) {
-        (Ok(_), Some((_, true))) => End::TimedOut,
-        (Ok(code), _) => End::Exited(code),
-        (Err(why), _) => End::Failed(why),
-    };
-    events.unbounded_send(RunEvent::Ended(end)).ok();
-}
-
-/// Reads `pipe` on a thread of its own and sends it on in chunks, until
-/// every writer closed it or the receiver is gone.
-fn drain(pipe: &std::io::PipeReader) -> Receiver<Vec<u8>> {
-    let (sender, chunks) = sync_channel(16);
-    let Ok(mut pipe) = pipe.try_clone() else {
-        return chunks;
-    };
-    thread::spawn(move || {
-        let mut buffer = [0; 8192];
-        loop {
-            let read = match pipe.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(read) => read,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
-            };
-            let chunk = buffer.iter().take(read).copied().collect();
-            if sender.send(chunk).is_err() {
-                break;
-            }
-        }
-    });
-    chunks
-}
-
-/// Output cut into lines as it comes.
-#[derive(Default)]
-struct Lines(Vec<u8>);
-
-impl Lines {
-    /// Adds `chunk` and sends each line it completes.
-    fn push(&mut self, chunk: &[u8], events: &UnboundedSender<RunEvent>) {
-        for &byte in chunk {
-            if byte == b'\n' {
-                self.send(events);
-            } else {
-                self.0.push(byte);
-            }
-        }
-    }
-
-    /// Sends the line so far, without a trailing `\r`.
-    fn send(&mut self, events: &UnboundedSender<RunEvent>) {
-        let line = String::from_utf8_lossy(&self.0);
-        let line = line.strip_suffix('\r').unwrap_or(&line).to_owned();
-        events.unbounded_send(RunEvent::Line(line)).ok();
-        self.0.clear();
-    }
-
-    /// Reads the rest of the output for at most [`PIPE_GRACE`]: whether it
-    /// ended, every process holding the pipe gone.
-    fn read_rest(
-        &mut self,
-        chunks: &Receiver<Vec<u8>>,
-        events: &UnboundedSender<RunEvent>,
-    ) -> bool {
-        let deadline = Instant::now() + PIPE_GRACE;
-        loop {
-            match chunks.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(chunk) => self.push(&chunk, events),
-                Err(RecvTimeoutError::Disconnected) => return true,
-                Err(RecvTimeoutError::Timeout) => return false,
-            }
-        }
-    }
-
-    /// Sends a last line that did not end in a newline.
-    fn finish(&mut self, events: &UnboundedSender<RunEvent>) {
-        if !self.0.is_empty() {
-            self.send(events);
-        }
-    }
-}
-
-/// Takes each line into its call's progress, and answers the call once
-/// its command ended.
+/// Takes each line into its call's output, and answers the call once its
+/// command ended.
 fn take_event(
     event: On<Insert<Done<RunEvent>>>,
     jobs: Query<(&Done<RunEvent>, &JobOf)>,
-    mut calls: Query<(&mut RunProgress, Option<&Cancelled>)>,
-    print: Option<Res<PrintProgress>>,
+    mut calls: Query<(&mut RunOutput, &mut IfStopped)>,
     mut commands: Commands,
 ) {
     let Ok((Done(event), &JobOf(call))) = jobs.get(event.entity) else {
         return;
     };
-    let Ok((mut progress, cancelled)) = calls.get_mut(call) else {
+    let Ok((mut output, mut if_stopped)) = calls.get_mut(call) else {
         return;
     };
     match event {
         RunEvent::Line(line) => {
-            if print.is_some() {
-                eprintln!("{RUN} │ {line}");
-            }
-            progress.push(line);
+            output.push(line);
+            if_stopped.0 = output.result("[interrupted]");
         }
-        RunEvent::Ended(end) => {
-            let result = answer(result_text(&progress, end, cancelled));
-            commands.entity(call).try_insert_if_new(result);
+        RunEvent::Ended(ended) => {
+            let ending = match (output.stop, ended) {
+                (Some(Stop::Cancelled(after)), _) => {
+                    format!("[cancelled by user after {:.1} s]", after.as_secs_f64())
+                }
+                (Some(Stop::TimedOut), _) => format!("[timed out after {} s]", output.timeout),
+                (None, Ok(Some(code))) => format!("[exit code {code}]"),
+                (None, Ok(None)) => "[killed by a signal]".to_owned(),
+                (None, Err(why)) => format!("[waiting for the command failed: {why}]"),
+            };
+            commands
+                .entity(call)
+                .try_insert_if_new(output.result(&ending));
         }
+    }
+}
+
+/// Starts stopping a command: SIGTERM now, SIGKILL after [`GRACE`].
+fn stop(output: &mut RunOutput, why: Stop, job: Entity, group: &Group, commands: &mut Commands) {
+    output.stop = Some(why);
+    (group.0)(Signal::Terminate);
+    commands.entity(job).try_insert(WakeAt::after(GRACE));
+}
+
+/// A job's time is up: past its timeout it is stopped, past the grace of
+/// a stop its group is killed.
+fn on_due(
+    due: On<Add<Due>>,
+    jobs: Query<(&JobOf, &Group)>,
+    mut calls: Query<&mut RunOutput>,
+    mut commands: Commands,
+) {
+    let Ok((&JobOf(call), group)) = jobs.get(due.entity) else {
+        return;
+    };
+    let Ok(mut output) = calls.get_mut(call) else {
+        return;
+    };
+    if output.stop.is_some() {
+        (group.0)(Signal::Kill);
+    } else {
+        stop(
+            &mut output,
+            Stop::TimedOut,
+            due.entity,
+            group,
+            &mut commands,
+        );
     }
 }
 
@@ -477,66 +367,59 @@ fn end_job(settled: On<Add<Settled>>, calls: Query<&Job>, mut commands: Commands
     }
 }
 
-/// A call's result: the end of its output and how it ended.
-fn result_text(progress: &RunProgress, end: &End, cancelled: Option<&Cancelled>) -> String {
-    let ending = match (cancelled, end) {
-        (Some(Cancelled(after)), _) => {
-            format!("[cancelled by user after {:.1} s]", after.as_secs_f64())
+/// Keeps each running call's [`ToolProgress`] at its last `count` lines.
+fn show_progress(
+    count: usize,
+) -> impl FnMut(Query<(&RunOutput, &mut ToolProgress), Changed<RunOutput>>) {
+    move |mut calls| {
+        for (output, mut progress) in &mut calls {
+            progress.set_if_neq(ToolProgress(output.last_lines(count)));
         }
-        (None, End::TimedOut) => format!("[timed out after {} s]", progress.timeout),
-        (None, End::Exited(Some(code))) => format!("[exit code {code}]"),
-        (None, End::Exited(None)) => "[killed by a signal]".to_owned(),
-        (None, End::Failed(why)) => format!("[waiting for the command failed: {why}]"),
-    };
-    let cut = if progress.cut {
-        "[earlier output cut]\n"
-    } else {
-        ""
-    };
-    format!("{cut}{}{ending}", progress.output)
+    }
 }
 
-/// The running `run` calls of an agent, newest first.
-type RunningCalls<'w, 's> = Query<
-    'w,
-    's,
-    (
-        Entity,
-        &'static ToolRequest,
-        &'static ForAgent,
-        &'static RunProgress,
-        &'static Job,
-    ),
-    (Without<Outcome>, Without<Cancelled>),
->;
+/// The terminal view's look of a `run` call: the command, then its last
+/// lines while it runs, or the end of its result.
+fn look(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let command = view.argument("command").unwrap_or_default();
+    let mut lines = vec![view.header(RUN, command)];
+    match &view.state {
+        CallState::Running(Some(progress)) if view.result.is_none() => {
+            lines.extend(excerpt(progress, SHOWN_LINES, Style::new().dim()));
+            lines.push(Line::from("    ctrl+k cancels").yellow());
+        }
+        _ => lines.extend(view.tail_lines(SHOWN_LINES)),
+    }
+    lines
+}
 
-/// `/cancel-call [id]`: cancels the agent's running `run` call, the one
-/// named, or offers a picker of them when there are several.
+/// `/cancel-call [id]`: cancels the agent's newest running `run` call, the
+/// one named, or offers a picker of them when there are several.
 fn cancel_call(
     In(args): In<CommandArgs>,
-    calls: RunningCalls,
-    processes: Query<&Process>,
+    mut calls: Query<(Entity, &ToolRequest, &ForAgent, &mut RunOutput, &Job), Without<Outcome>>,
+    groups: Query<&Group>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let mut running: Vec<_> = calls
         .iter()
-        .filter(|&(_, _, &ForAgent(agent), ..)| agent == args.agent)
+        .filter(|&(_, _, &ForAgent(agent), output, _)| agent == args.agent && output.stop.is_none())
         .collect();
-    running.sort_by_key(|(.., progress, _)| Reverse(progress.started));
+    running.sort_by_key(|(.., output, _)| Reverse(output.started));
     let id = args.args.trim();
     let chosen = match (id, running.as_slice()) {
         ("", []) => {
             notices.write(Notice::info(args.agent, "No `run` command is running."));
             return;
         }
-        ("", [one]) => Some(*one),
+        ("", [one]) => Some(one),
         ("", several) => {
             let picker = several.iter().fold(
                 Picker::new("Cancel which command?").for_agent(args.agent),
-                |picker, (_, request, _, progress, _)| {
-                    let secs = progress.started.elapsed().as_secs();
-                    let label = format!("{} ({secs} s)", progress.command);
+                |picker, (_, request, _, output, _)| {
+                    let secs = output.started.elapsed().as_secs();
+                    let label = format!("{} ({secs} s)", output.command);
                     picker.item(label, format!("{CANCEL} {}", request.call.id))
                 },
             );
@@ -545,91 +428,23 @@ fn cancel_call(
         }
         (id, _) => running
             .iter()
-            .find(|(_, request, ..)| request.call.id.to_string() == id)
-            .copied(),
+            .find(|(_, request, ..)| request.call.id.to_string() == id),
     };
-    let Some((call, _, _, progress, &Job(job))) = chosen else {
+    let Some(&(call, .., &Job(job))) = chosen else {
         notices.write(Notice::error(
             args.agent,
             format!("No running `run` call `{id}`."),
         ));
         return;
     };
-    let Ok(Process(control)) = processes.get(job) else {
-        return;
-    };
-    control.stop.store(true, Ordering::Relaxed);
-    commands
-        .entity(call)
-        .insert(Cancelled(progress.started.elapsed()));
-}
-
-/// The terminal view's panel of the running commands' output.
-#[derive(Component)]
-struct RunPanel;
-
-fn spawn_panel(mut commands: Commands) {
-    let panel = TuiPanel::new(Placement::Bottom(Constraint::Length(0)));
-    commands.spawn((RunPanel, panel));
-}
-
-/// The running `run` calls of the agent shown, oldest first.
-fn shown<'a>(
-    calls: &'a Query<(&RunProgress, &ForAgent), Without<Outcome>>,
-    focused: &Query<(), With<Focused>>,
-) -> Vec<&'a RunProgress> {
-    let mut shown: Vec<_> = calls
-        .iter()
-        .filter(|&(_, &ForAgent(agent))| focused.contains(agent))
-        .map(|(progress, _)| progress)
-        .collect();
-    shown.sort_by_key(|progress| progress.started);
-    shown
-}
-
-/// Gives the panel the rows the shown commands need.
-fn size_panel(
-    calls: Query<(&RunProgress, &ForAgent), Without<Outcome>>,
-    focused: Query<(), With<Focused>>,
-    mut panels: Query<&mut TuiPanel, With<RunPanel>>,
-) {
-    let rows: usize = shown(&calls, &focused)
-        .iter()
-        .map(|progress| 1 + progress.lines.len())
-        .sum();
-    let rows = u16::try_from(rows).unwrap_or(u16::MAX);
-    for mut panel in &mut panels {
-        panel.set_if_neq(TuiPanel::new(Placement::Bottom(Constraint::Length(rows))));
-    }
-}
-
-/// Asks for a frame when output came since the last one, at most every
-/// [`REDRAW`].
-fn redraw(changed: Query<(), Changed<RunProgress>>, mut redraws: MessageWriter<RequestRedraw>) {
-    if !changed.is_empty() {
-        redraws.write(RequestRedraw);
-    }
-}
-
-/// Draws each shown command: its line, then its last lines.
-fn draw_panel(
-    calls: Query<(&RunProgress, &ForAgent), Without<Outcome>>,
-    focused: Query<(), With<Focused>>,
-    mut panels: Query<&mut PanelCanvas, With<RunPanel>>,
-) {
-    let mut lines = Vec::new();
-    for progress in shown(&calls, &focused) {
-        let secs = progress.started.elapsed().as_secs();
-        let header = format!("● {RUN} {} ({secs} s, ctrl+k cancels)", progress.command);
-        lines.push(Line::from(header).yellow());
-        lines.extend(
-            progress
-                .lines
-                .iter()
-                .map(|line| Line::from(format!("  {line}")).dim()),
+    if let (Ok((.., mut output, _)), Ok(group)) = (calls.get_mut(call), groups.get(job)) {
+        let after = output.started.elapsed();
+        stop(
+            &mut output,
+            Stop::Cancelled(after),
+            job,
+            group,
+            &mut commands,
         );
-    }
-    for mut canvas in &mut panels {
-        canvas.render(Paragraph::new(lines.clone()));
     }
 }

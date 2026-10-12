@@ -286,14 +286,19 @@ fn spawn_upload(
 
 /// Lets the upload the question holds start, or refuses it, once the user
 /// answered; the question lets go of it either way.
-fn answered(answer: On<Add<Outcome>>, asks: Query<(&Outcome, &HoldOf)>, mut commands: Commands) {
+fn answered(
+    answer: On<Add<Outcome>>,
+    asks: Query<(&Outcome, &HoldOf)>,
+    mut uploads: Query<&mut Decision, With<Upload>>,
+    mut commands: Commands,
+) {
     let Ok((outcome, &HoldOf(effect))) = asks.get(answer.entity) else {
         return;
     };
-    if !Answer::of(outcome).is_some_and(|answer| answer.is("share")) {
-        commands
-            .entity(effect)
-            .insert_if_new(Outcome::refused("not shared"));
+    if !Answer::of(outcome).is_some_and(|answer| answer.is("share"))
+        && let Ok(mut decision) = uploads.get_mut(effect)
+    {
+        decision.decide(Outcome::refused("not shared"));
     }
     commands.entity(answer.entity).remove::<HoldOf>();
 }

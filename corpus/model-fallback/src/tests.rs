@@ -4,7 +4,7 @@ use bevy_time::{TimeUpdateStrategy, Virtual};
 use rig_cassette::journal::MemoryStore;
 use rig_compaction::CompactionPlugin;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::ErasedHandler;
@@ -25,7 +25,10 @@ struct Notices(Vec<String>);
 /// The vendor's models answer as `model` scripts.
 fn scripted(models: &mut Models, vendor: &str, model: &MockCompletionModel) {
     let model = model.clone();
-    let provider = move |spec: &ModelSpec, _: &Catalog| -> Result<ErasedHandler, ConnectError> {
+    let provider = move |spec: &ModelSpec,
+                         _: &Catalog,
+                         _: &Transport|
+          -> Result<ErasedHandler, ConnectError> {
         let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
         Ok(ErasedHandler::new(handler))
     };
@@ -130,4 +133,20 @@ fn an_overloaded_model_falls_back_and_comes_back_after_the_cooldown() {
     assert_eq!(ask(&mut app, &wakes, agent, "later").as_deref(), Some("ok"));
     assert_eq!(a.request_count(), 10, "A is back once it cooled down");
     assert_eq!(b.request_count(), 3);
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ModelFallbackPlugin);
+}
+
+/// The model plugins, loaded together.
+#[test]
+fn stages_are_ordered_with_the_other_model_plugins() {
+    rig_defaults_test_support::assert_stages_ordered((
+        ModelFallbackPlugin,
+        corpus_model_router::ModelRouterPlugin,
+        corpus_local_models::LocalModelsPlugin,
+        corpus_ho_api_key_pool::KeyPoolPlugin,
+    ));
 }

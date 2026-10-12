@@ -6,15 +6,15 @@
 //! message `n` with a stub naming their size. `/drop <n>` or
 //! `/drop <a>-<b>` cuts messages out, taking each tool call and its result
 //! together and joining the messages the cut leaves side by side.
-//! `/drop undo` puts back what the agent's last edit changed. An edit
-//! cuts the conversation back to its first changed message and commits
-//! the rest again, so the session log keeps the edited conversation; it
-//! is refused while the agent's turn runs.
+//! `/drop undo` puts back what the agent's last edit changed. Every edit
+//! is a logged splice, so the session log keeps the edited conversation;
+//! it is refused while the agent's turn runs.
 
 #[cfg(test)]
 mod tests;
 
 use std::collections::{HashMap, HashSet};
+use std::ops::Range;
 
 use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
@@ -48,80 +48,6 @@ impl Plugin for ConversationSurgeryPlugin {
     }
 }
 
-/// A message as it is edited: a user message keeps where each of its
-/// items came from.
-#[derive(Clone, PartialEq, Debug)]
-enum Piece {
-    User(Vec<(UserContent, Option<Origin>)>),
-    Other(Message),
-}
-
-impl Piece {
-    /// The piece without the calls and results of `ids`; `None` when
-    /// nothing worth sending is left.
-    fn without(self, ids: &HashSet<CallId>) -> Option<Self> {
-        match self {
-            Self::User(mut items) => {
-                items.retain(|(item, _)| {
-                    !matches!(item, UserContent::ToolResult(result) if ids.contains(&result.call))
-                });
-                (!items.is_empty()).then_some(Self::User(items))
-            }
-            Self::Other(Message::Assistant(mut turn)) => {
-                turn.content.retain(|block| {
-                    !matches!(block, AssistantContent::ToolCall(call) if ids.contains(&call.id))
-                });
-                let answers = turn.content.iter().any(AssistantContent::is_answer);
-                answers.then_some(Self::Other(Message::Assistant(turn)))
-            }
-            other => Some(other),
-        }
-    }
-
-    /// Joins `next` into this piece when both are the user's or the
-    /// model's, else hands it back.
-    fn join(&mut self, next: Self) -> Option<Self> {
-        match (self, next) {
-            (Self::User(items), Self::User(more)) => {
-                items.extend(more);
-                None
-            }
-            (Self::Other(Message::Assistant(turn)), Self::Other(Message::Assistant(more))) => {
-                if turn.origin != more.origin {
-                    turn.origin = None;
-                }
-                turn.content.extend(more.content);
-                turn.stop = more.stop;
-                None
-            }
-            (_, next) => Some(next),
-        }
-    }
-
-    fn is_user(&self) -> bool {
-        matches!(self, Self::User(_))
-    }
-}
-
-/// The messages of `conversation` from `from` on.
-fn pieces(conversation: &Conversation, from: usize) -> Vec<Piece> {
-    let messages = conversation.messages().iter().enumerate().skip(from);
-    messages
-        .map(|(at, message)| match message {
-            Message::User { content } => Piece::User(
-                content
-                    .iter()
-                    .enumerate()
-                    .map(|(item, content)| {
-                        (content.clone(), conversation.origin(at, item).cloned())
-                    })
-                    .collect(),
-            ),
-            other => Piece::Other(other.clone()),
-        })
-        .collect()
-}
-
 /// The ids of the calls a message makes or answers.
 fn call_ids(message: &Message) -> Vec<CallId> {
     match message {
@@ -137,32 +63,70 @@ fn call_ids(message: &Message) -> Vec<CallId> {
     }
 }
 
-fn estimate<'a>(messages: impl IntoIterator<Item = &'a Message>) -> u64 {
+/// `entry` without the calls and results of `ids`; `None` when nothing
+/// worth sending is left.
+fn without(mut entry: Entry, ids: &HashSet<CallId>) -> Option<Entry> {
+    let Entry {
+        message, origins, ..
+    } = &mut entry;
+    let left = match message {
+        Message::User { content } => {
+            let items = std::mem::take(content);
+            let was = std::mem::take(origins);
+            for (item, value) in items.into_iter().enumerate() {
+                if matches!(&value, UserContent::ToolResult(result) if ids.contains(&result.call)) {
+                    continue;
+                }
+                if let Some((_, origin)) = was.iter().find(|(at, _)| *at == item) {
+                    origins.push((content.len(), origin.clone()));
+                }
+                content.push(value);
+            }
+            !content.is_empty()
+        }
+        Message::Assistant(turn) => {
+            turn.content.retain(|block| {
+                !matches!(block, AssistantContent::ToolCall(call) if ids.contains(&call.id))
+            });
+            turn.content.iter().any(AssistantContent::is_answer)
+        }
+        Message::System { .. } => true,
+    };
+    left.then_some(entry)
+}
+
+fn estimate(entries: &[Entry]) -> u64 {
     let counter = HeuristicTokenCounter::default();
-    let tokens: usize = messages
-        .into_iter()
-        .map(|message| counter.count(message))
+    let tokens: usize = entries
+        .iter()
+        .map(|entry| counter.count(&entry.message))
         .sum();
     u64::try_from(tokens).unwrap_or(u64::MAX)
 }
 
-/// An edit of an agent's conversation, kept for `/drop undo`: its
-/// messages from `from` on before and after it.
+/// Messages `range` of `conversation`, with their ids and origins.
+fn entries(conversation: &Conversation, range: Range<usize>) -> Vec<Entry> {
+    range.filter_map(|at| conversation.entry(at)).collect()
+}
+
+/// An edit of an agent's conversation, kept for `/drop undo`: the
+/// messages it changed, a neighbour on each side included, before and
+/// after it, and where they began.
 #[derive(Clone, Debug)]
 struct Edit {
-    from: usize,
-    before: Vec<Piece>,
-    after: Vec<Piece>,
+    at: usize,
+    before: Vec<Entry>,
+    after: Vec<Entry>,
 }
 
 /// Each agent's last edit in this run.
 #[derive(Resource, Default)]
 struct LastEdits(HashMap<Entity, Edit>);
 
-/// An edit to make: the messages from `from` on become `after`.
+/// An edit to make: messages `range` become `with`.
 struct Plan {
-    from: usize,
-    after: Vec<Piece>,
+    range: Range<usize>,
+    with: Vec<Entry>,
     said: String,
     /// Kept for undo; an undo is not.
     keep: bool,
@@ -177,7 +141,6 @@ struct Surgery<'w, 's> {
         's,
         (
             &'static mut Conversation,
-            Option<&'static Condensed>,
             Has<ActiveTurn>,
             Option<&'static mut LastUsage>,
         ),
@@ -188,16 +151,15 @@ struct Surgery<'w, 's> {
 }
 
 impl Surgery<'_, '_> {
-    /// Makes the edit `plan` gives for `agent`'s conversation, from its
-    /// first message requests still send, and its last edit; refused while
-    /// a turn runs.
+    /// Makes the edit `plan` gives for `agent`'s conversation and its last
+    /// edit; refused while a turn runs.
     fn edit(
         &mut self,
         agent: Entity,
         command: &str,
-        plan: impl FnOnce(&Conversation, usize, Option<&Edit>) -> Result<Plan, String>,
+        plan: impl FnOnce(&Conversation, Option<&Edit>) -> Result<Plan, String>,
     ) {
-        let Ok((mut conversation, condensed, busy, usage)) = self.agents.get_mut(agent) else {
+        let Ok((mut conversation, busy, usage)) = self.agents.get_mut(agent) else {
             return;
         };
         if busy {
@@ -207,10 +169,7 @@ impl Surgery<'_, '_> {
             self.notices.write(Notice::error(agent, why));
             return;
         }
-        let first = condensed.map_or(0, |condensed| condensed.upto);
-        let plan = plan(&conversation, first, self.edits.0.get(&agent))
-            .and_then(|plan| joins_compacted(&conversation, first, &plan).map_or(Ok(plan), Err));
-        let plan = match plan {
+        let plan = match plan(&conversation, self.edits.0.get(&agent)) {
             Ok(plan) => plan,
             Err(why) => {
                 self.notices
@@ -218,29 +177,33 @@ impl Surgery<'_, '_> {
                 return;
             }
         };
-        let from = plan.from;
-        let before = pieces(&conversation, from);
-        let old = estimate(conversation.messages().get(from..).unwrap_or_default());
-        self.commit.truncate(agent, &mut conversation, from);
-        for piece in plan.after {
-            commit_piece(&mut self.commit, agent, &mut conversation, piece);
-        }
-        // A user message left last waits for the next one, as after a
-        // failed turn, rather than going to the model on a restore.
-        self.commit.halt(agent, &mut conversation, Halt::Kept);
-        let new = estimate(conversation.messages().get(from..).unwrap_or_default());
+        // What the splice may change: the range and the neighbours a user
+        // message there may merge with.
+        let len = conversation.messages().len();
+        let start = plan.range.start.saturating_sub(1);
+        let end = plan.range.end.saturating_add(1).min(len);
+        let before = entries(&conversation, start..end);
+        let halted = conversation.halted();
+        self.commit
+            .splice(agent, &mut conversation, plan.range, plan.with);
+        // A splice of the end clears the halt; a user message left last
+        // still waits for the next one rather than going to the model on a
+        // restore, as the user stopped or kept it.
+        self.commit
+            .halt(agent, &mut conversation, halted.unwrap_or(Halt::Kept));
+        let grown = conversation.messages().len();
+        let after = entries(&conversation, start..(end + grown).saturating_sub(len));
         if let Some(mut usage) = usage
             && let Some(context) = usage.context()
         {
-            let left = (context + new).saturating_sub(old);
+            let left = (context + estimate(&after)).saturating_sub(estimate(&before));
             *usage = LastUsage(Some(Usage::new().total_tokens(left)));
         }
         if plan.keep {
-            let after = pieces(&conversation, from);
             self.edits.0.insert(
                 agent,
                 Edit {
-                    from,
+                    at: start,
                     before,
                     after,
                 },
@@ -252,62 +215,22 @@ impl Surgery<'_, '_> {
     }
 }
 
-/// Why `plan` cannot be made: it would change or join a message a summary
-/// replaced, which requests no longer send.
-fn joins_compacted(conversation: &Conversation, first: usize, plan: &Plan) -> Option<String> {
-    if plan.from < first {
-        return Some(format!(
-            "message {} was compacted; requests no longer send it",
-            plan.from + 1
-        ));
-    }
-    let previous = plan.from.checked_sub(1).filter(|_| plan.from == first)?;
-    let previous = conversation.messages().get(previous)?;
-    let next = plan.after.first()?;
-    let same = matches!(previous, Message::User { .. }) == next.is_user();
-    same.then(|| "the edit would join a compacted message".to_owned())
-}
-
-/// Commits `piece` to `agent`'s conversation, a user message's items with
-/// where they came from.
-fn commit_piece(commit: &mut Commit, agent: Entity, conversation: &mut Conversation, piece: Piece) {
-    let items = match piece {
-        Piece::User(items) => items,
-        Piece::Other(message) => {
-            commit.message(agent, conversation, message);
-            return;
-        }
-    };
-    let mut groups: Vec<(Option<Origin>, Vec<UserContent>)> = Vec::new();
-    for (item, origin) in items {
-        match groups.last_mut() {
-            Some((from, group)) if *from == origin => group.push(item),
-            _ => groups.push((origin, vec![item])),
-        }
-    }
-    for (origin, content) in groups {
-        commit.message_from(agent, conversation, Message::User { content }, origin);
-    }
-}
-
 /// `/history`.
 fn history(
     In(args): In<CommandArgs>,
-    agents: Query<(&Conversation, Option<&Condensed>)>,
+    agents: Query<&Conversation>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let Ok((conversation, condensed)) = agents.get(args.agent) else {
+    let Ok(conversation) = agents.get(args.agent) else {
         return;
     };
-    let compacted = condensed.map_or(0, |condensed| condensed.upto);
     let counter = HeuristicTokenCounter::default();
     let mut lines = vec![format!("{} messages:", conversation.messages().len())];
     for (at, message) in conversation.messages().iter().enumerate() {
         let (role, items) = describe(message);
         let tokens = u64::try_from(counter.count(message)).unwrap_or(u64::MAX);
-        let mark = if at < compacted { "  (compacted)" } else { "" };
         lines.push(format!(
-            "{:>4}  {role:<9}  ~{:<5} {}{mark}",
+            "{:>4}  {role:<9}  ~{:<5} {}",
             at + 1,
             tokens_label(tokens),
             items.join(", ")
@@ -372,17 +295,22 @@ const STUB: &str = "[removed by the user: ";
 
 /// `/stub <n>`.
 fn stub(In(args): In<CommandArgs>, mut surgery: Surgery) {
-    surgery.edit(args.agent, "stub", |conversation, _, _| {
+    surgery.edit(args.agent, "stub", |conversation, _| {
         let at = number(&args.args, conversation.messages().len())?;
-        let mut pieces = pieces(conversation, at);
-        let Some(Piece::User(items)) = pieces.first_mut() else {
+        let mut entry = conversation.entry(at);
+        let Some(Message::User { content }) = entry.as_mut().map(|entry| &mut entry.message) else {
             return Err(format!("message {} holds no tool result", at + 1));
         };
         let mut stubbed = Vec::new();
-        for (item, _) in items {
+        for item in content {
             let UserContent::ToolResult(result) = item else {
                 continue;
             };
+            if let [only] = result.content.as_slice()
+                && only.as_text().is_some_and(|text| text.starts_with(STUB))
+            {
+                continue;
+            }
             let bytes = result
                 .content
                 .iter()
@@ -391,13 +319,7 @@ fn stub(In(args): In<CommandArgs>, mut surgery: Surgery) {
                     other => serde_json::to_string(other).map_or(0, |json| json.len()),
                 })
                 .sum();
-            if let [only] = result.content.as_slice()
-                && only.as_text().is_some_and(|text| text.starts_with(STUB))
-            {
-                continue;
-            }
-            let text = format!("{STUB}{}]", size(bytes));
-            result.content = vec![ToolResultContent::text(text)];
+            result.content = vec![ToolResultContent::text(format!("{STUB}{}]", size(bytes)))];
             stubbed.push(format!(
                 "{} ({}): {}",
                 result.name.as_str(),
@@ -408,15 +330,14 @@ fn stub(In(args): In<CommandArgs>, mut surgery: Surgery) {
         if stubbed.is_empty() {
             return Err(format!("message {} holds no tool result to stub", at + 1));
         }
-        let said = format!(
-            "Stubbed the results in message {}: {}.",
-            at + 1,
-            stubbed.join(", ")
-        );
         Ok(Plan {
-            from: at,
-            after: pieces,
-            said,
+            range: at..at + 1,
+            with: entry.into_iter().collect(),
+            said: format!(
+                "Stubbed the results in message {}: {}.",
+                at + 1,
+                stubbed.join(", ")
+            ),
             keep: true,
         })
     });
@@ -425,7 +346,7 @@ fn stub(In(args): In<CommandArgs>, mut surgery: Surgery) {
 /// `/drop <n>`, `/drop <a>-<b>` or `/drop undo`.
 fn drop_messages(In(args): In<CommandArgs>, mut surgery: Surgery) {
     let text = args.args.trim();
-    surgery.edit(args.agent, "drop", |conversation, first, last| {
+    surgery.edit(args.agent, "drop", |conversation, last| {
         if text == "undo" {
             return undo(conversation, last);
         }
@@ -437,110 +358,119 @@ fn drop_messages(In(args): In<CommandArgs>, mut surgery: Surgery) {
         if a > b {
             return Err(format!("{} comes after {}", a + 1, b + 1));
         }
-        plan_drop(conversation, first, (a, b))
+        Ok(plan_drop(conversation, a..b + 1))
     });
 }
 
-/// Drops messages `a` to `b` and every call or result paired with one of
-/// theirs, then joins the messages left side by side.
-fn plan_drop(
-    conversation: &Conversation,
-    first: usize,
-    (a, b): (usize, usize),
-) -> Result<Plan, String> {
+/// Drops messages `chosen` and every call or result paired with one of
+/// theirs, then joins the messages left side by side: the splice merges
+/// the user's, this joins the model's.
+fn plan_drop(conversation: &Conversation, chosen: Range<usize>) -> Plan {
     let messages = conversation.messages();
-    let chosen = a..=b;
     let ids: HashSet<CallId> = messages
-        .get(a..=b)
+        .get(chosen.clone())
         .unwrap_or_default()
         .iter()
         .flat_map(call_ids)
         .collect();
-    let lowest = messages
+    let paired = messages
         .iter()
-        .position(|message| call_ids(message).iter().any(|id| ids.contains(id)))
-        .map_or(a, |paired| paired.min(a));
-    if lowest < first {
-        return Err(format!(
-            "message {} was compacted; requests no longer send it",
-            lowest + 1
-        ));
-    }
-    // From the message before, so what the cut leaves side by side is
-    // joined.
-    let from = if lowest > first { lowest - 1 } else { lowest };
+        .enumerate()
+        .filter(|(_, message)| call_ids(message).iter().any(|id| ids.contains(id)))
+        .map(|(at, _)| at);
+    let (first, last) = paired.fold((chosen.start, chosen.end), |(first, last), at| {
+        (first.min(at), last.max(at + 1))
+    });
+    // With a neighbour on each side, so what the cut leaves side by side
+    // is joined.
+    let range = first.saturating_sub(1)..last.saturating_add(1).min(messages.len());
     let mut notes = Vec::new();
-    let mut kept: Vec<(usize, Piece)> = Vec::new();
-    for (at, piece) in (from..).zip(pieces(conversation, from)) {
+    // Each kept message, and the one it joins into.
+    let mut kept: Vec<(usize, Entry)> = Vec::new();
+    for (at, entry) in entries(conversation, range.clone()).into_iter().enumerate() {
+        let at = range.start + at;
         if chosen.contains(&at) {
             continue;
         }
-        let was = piece.clone();
-        let Some(piece) = piece.without(&ids) else {
+        let was = entry.clone();
+        let Some(mut entry) = without(entry, &ids) else {
             notes.push(format!(
                 "removed message {}, whose calls or results went with them",
                 at + 1
             ));
             continue;
         };
-        if piece != was {
+        if entry != was {
             notes.push(format!(
                 "took the paired calls or results out of message {}",
                 at + 1
             ));
         }
-        match kept.last_mut() {
-            Some((into, last)) => {
-                if let Some(piece) = last.join(piece) {
-                    kept.push((at, piece));
-                } else {
-                    notes.push(format!(
-                        "joined message {} to message {}",
-                        at + 1,
-                        *into + 1
-                    ));
-                }
+        let Some((into, last)) = kept.last_mut() else {
+            kept.push((at, entry));
+            continue;
+        };
+        match (&mut last.message, &mut entry.message) {
+            (Message::User { .. }, Message::User { .. }) => {
+                notes.push(format!(
+                    "joined message {} to message {}",
+                    at + 1,
+                    *into + 1
+                ));
+                let into = *into;
+                kept.push((into, entry));
             }
-            None => kept.push((at, piece)),
+            (Message::Assistant(turn), Message::Assistant(more)) => {
+                notes.push(format!(
+                    "joined message {} to message {}",
+                    at + 1,
+                    *into + 1
+                ));
+                if turn.origin != more.origin {
+                    turn.origin = None;
+                }
+                turn.content.append(&mut more.content);
+                turn.stop = more.stop.take();
+            }
+            _ => kept.push((at, entry)),
         }
     }
-    let span = if a == b {
-        format!("message {}", a + 1)
+    let span = if chosen.len() == 1 {
+        format!("message {}", chosen.end)
     } else {
-        format!("messages {}-{}", a + 1, b + 1)
+        format!("messages {}-{}", chosen.start + 1, chosen.end)
     };
     let mut said = format!("Dropped {span}.");
     for note in notes {
         said.push_str(&format!(" Also {note}."));
     }
     said.push_str(" /drop undo puts it back.");
-    Ok(Plan {
-        from,
-        after: kept.into_iter().map(|(_, piece)| piece).collect(),
+    Plan {
+        range,
+        with: kept.into_iter().map(|(_, entry)| entry).collect(),
         said,
         keep: true,
-    })
+    }
 }
 
-/// Puts back what the agent's last edit changed, with what came after it.
+/// Puts back what the agent's last edit changed.
 fn undo(conversation: &Conversation, last: Option<&Edit>) -> Result<Plan, String> {
     let Some(edit) = last else {
         return Err("nothing to undo in this run".to_owned());
     };
-    let now = pieces(conversation, edit.from);
-    if edit.from > conversation.messages().len() || !now.starts_with(&edit.after) {
+    let start = edit
+        .after
+        .first()
+        .and_then(|entry| entry.id)
+        .map_or(Some(edit.at), |id| conversation.index_of(id));
+    let range = start.map(|start| start..start + edit.after.len());
+    let Some(range) = range.filter(|range| entries(conversation, range.clone()) == edit.after)
+    else {
         return Err("the edited messages changed since; nothing to undo".to_owned());
-    }
-    let mut after = edit.before.clone();
-    after.extend(
-        now.get(edit.after.len()..)
-            .unwrap_or_default()
-            .iter()
-            .cloned(),
-    );
+    };
     Ok(Plan {
-        from: edit.from,
-        after,
+        range,
+        with: edit.before.clone(),
         said: "Put back the messages the last edit changed.".to_owned(),
         keep: false,
     })

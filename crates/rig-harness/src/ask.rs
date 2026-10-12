@@ -1,7 +1,7 @@
 //! Questions for the user that any front answers: an approval, a choice,
 //! or a line of text. An [`Ask`] is an open effect: it moves through the
-//! stages and is recorded like any, and it is answered by inserting its
-//! [`Outcome`], [`Answer::outcome`], first answer first. A plugin that
+//! stages and is recorded like any, and it is answered by deciding it
+//! ([`Decision`]) with [`Answer::outcome`], the first decision first. A plugin that
 //! waits on the answer usually spawns the `Ask` as a hold
 //! (`HoldOf(call)`) on what it asks about, so the call waits, and an
 //! interrupt, which despawns its turn's holds, closes the question in
@@ -10,7 +10,8 @@
 //! A front that can show questions spawns an [`Answerer`] for the agents
 //! it shows, shows the open ones (`Query<(Entity, &Ask), Without<Outcome>>`),
 //! and answers them; once one is answered, `Added<Outcome>` on it closes
-//! it in the others. A plugin asks only when [`Answerers::can_answer`] for
+//! it in the others. A front that answers in Gate does so after
+//! [`AskSystems`], so a line the user typed wins. A plugin asks only when [`Answerers::can_answer`] for
 //! the agent, else it applies its own policy for a run nobody answers,
 //! such as refusing. While a question that takes text is open, the next
 //! line the user sends the agent is its answer, not a message to the
@@ -44,8 +45,11 @@ use bevy_ecs::world::DeferredWorld;
 use rig_core::effect::{EffectKind, Outcome as EffectOutcome};
 use rig_ecs::inbox::{Incoming, OriginKind};
 use rig_ecs::stage::{
-    AgentPass, Effect, EffectRequest, ForAgent, Outcome, Settled, Stage, Undecided,
+    AgentPass, Decision, Effect, EffectRequest, ForAgent, IncomingMessages, Outcome, PluginEffects,
+    Settled, Stage, Undecided,
 };
+
+use crate::commands::CommandSystems;
 use serde::{Deserialize, Serialize};
 
 /// A question for the user. Spawn it with the agent it is about
@@ -169,9 +173,19 @@ impl Answerers<'_, '_> {
 /// Takes a line the user types as the answer to a question that takes text.
 pub struct AskPlugin;
 
+/// The Gate system that answers a question with the line the user typed,
+/// after [`CommandSystems`]. A front that answers questions in Gate runs
+/// after it.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AskSystems;
+
 impl Plugin for AskPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(AgentPass, answer_with_text.in_set(Stage::Gate));
+        app.configure_sets(
+            AgentPass,
+            AskSystems.in_set(Stage::Gate).after(CommandSystems),
+        )
+        .add_systems(AgentPass, answer_with_text.in_set(AskSystems));
     }
 }
 
@@ -196,30 +210,29 @@ fn request(mut world: DeferredWorld, context: HookContext) {
 /// The user's next line to an agent with a question open that takes text
 /// answers the oldest such question, and goes no further.
 fn answer_with_text(
-    typed: Query<(Entity, &Incoming, &ForAgent), Undecided>,
-    asks: Query<(Entity, &Ask, &ForAgent, &Effect), (Without<Outcome>, Without<Settled>)>,
-    mut commands: Commands,
+    mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    mut asks: Query<
+        (Entity, &Ask, &ForAgent, &Effect, &mut Decision),
+        (PluginEffects, Without<Outcome>, Without<Settled>),
+    >,
 ) {
-    let mut answered = Vec::new();
-    for (message, incoming, &ForAgent(agent)) in &typed {
-        if incoming.origin.kind != OriginKind::User || incoming.command().is_some() {
+    for (incoming, &ForAgent(agent), mut taken) in &mut typed {
+        let typed_by_user = incoming.origin.kind == OriginKind::User;
+        if !typed_by_user || incoming.command().is_some() || taken.is_decided() {
             continue;
         }
         let open = asks
             .iter()
-            .filter(|(ask, question, to, _)| {
-                question.free_text && to.0 == agent && !answered.contains(ask)
+            .filter(|(_, question, to, _, decision)| {
+                question.free_text && to.0 == agent && !decision.is_decided()
             })
-            .min_by_key(|(.., effect)| effect.id());
-        let Some((ask, ..)) = open else {
+            .min_by_key(|(_, _, _, effect, _)| effect.id())
+            .map(|(ask, ..)| ask);
+        let Some(Ok((.., mut decision))) = open.map(|ask| asks.get_mut(ask)) else {
             continue;
         };
-        answered.push(ask);
-        let answer = Answer::Text(incoming.text.clone());
-        commands.entity(ask).insert_if_new(answer.outcome());
-        commands
-            .entity(message)
-            .insert_if_new(Outcome::custom("answer"));
+        decision.decide(Answer::Text(incoming.text.clone()).outcome());
+        taken.decide(Outcome::custom("answer"));
     }
 }
 

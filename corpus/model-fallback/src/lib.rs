@@ -9,10 +9,10 @@
 //! Prepare system sends a call bound for a cooling model to the chain
 //! instead. A context overflow is left to compaction, and a failure another
 //! plugin holds or superseded is left to it. Both systems are in the public
-//! [`FallbackSystems`] sets, ordered against [`CompactionSystems`]: a call
-//! is routed before compaction measures it, and a failure is taken over
-//! after compaction had its chance. The `[model-fallback]` table of
-//! `settings.toml`:
+//! [`FallbackSystems`] sets, in the stages' phases: a call is routed in
+//! [`PrepareSystems::Edit`], before compaction measures it, and a failure
+//! is taken over in [`ReviewSystems::Act`], once reviewers edited its
+//! verdict. The `[model-fallback]` table of `settings.toml`:
 //!
 //! ```toml
 //! [model-fallback]
@@ -23,7 +23,7 @@
 use std::collections::HashMap;
 
 use bevy_ecs::system::SystemParam;
-use rig_compaction::CompactionSystems;
+use corpus_model_router::RouteSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::error::ErrorReport;
 use serde::{Deserialize, Deserializer};
@@ -59,7 +59,8 @@ struct Cooling(HashMap<String, Duration>);
 /// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FallbackSystems {
-    /// Prepare: sends a turn's call bound for a cooling model to the chain.
+    /// Prepare: sends a turn's call bound for a cooling model to the chain,
+    /// after model-router chose it.
     Route,
     /// Review: takes over a turn's call that failed for good.
     TakeOver,
@@ -76,11 +77,9 @@ impl Plugin for ModelFallbackPlugin {
                 AgentPass,
                 (
                     FallbackSystems::Route
-                        .in_set(Stage::Prepare)
-                        .before(CompactionSystems::Prepare),
-                    FallbackSystems::TakeOver
-                        .in_set(Stage::Review)
-                        .after(CompactionSystems::Recover),
+                        .in_set(PrepareSystems::Edit)
+                        .after(RouteSystems),
+                    FallbackSystems::TakeOver.in_set(ReviewSystems::Act),
                 ),
             )
             .add_systems(
@@ -162,7 +161,10 @@ fn switched(failed: &Connection, report: &ErrorReport, next: &Connection) -> Str
 /// A turn's call bound for a model that cools down, a new turn's or a
 /// retry's the kernel built from its agent, goes to the chain's first
 /// model that does not.
-fn route(mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>, chain: Chain) {
+fn route(
+    mut calls: Query<&mut ModelRequest, (Added<Admitted>, ModelCalls, With<TurnCall>)>,
+    chain: Chain,
+) {
     for mut call in &mut calls {
         if call
             .connection
@@ -190,7 +192,12 @@ fn fall_back(
             &CallOf,
             &ForAgent,
         ),
-        (Unreviewed, With<TurnCall>, Without<SupersededBy>),
+        (
+            Unreviewed,
+            ModelCalls,
+            With<TurnCall>,
+            Without<SupersededBy>,
+        ),
     >,
     mut turns: Query<&mut Recovery>,
     mut chain: Chain,

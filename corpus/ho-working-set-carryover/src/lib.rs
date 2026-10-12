@@ -1,18 +1,19 @@
 //! The working set, kept across compaction: each agent's files read and
 //! changed and its last test or build commands, tracked from the facts its
 //! tool calls publish ([`FilesRead`], [`FilesChanged`], [`ExitStatus`]).
-//! Whenever the kernel condenses an agent's conversation ([`Condensed`]
-//! inserted, by any compaction plugin or `/compact`), a "Working set"
-//! message is committed to the conversation, so it goes with the next
-//! request and a resumed session has it. The tracking is saved with the
+//! Whenever a compaction splices a summary into an agent's conversation
+//! ([`Committed::Splice`] with an item of the origin `compaction`, by
+//! rig-compaction or `/compact`), a "Working set" block goes into the
+//! conversation right after the summary, by a splice that keeps the
+//! message's id, and into the request already built from it, so it goes
+//! with the next request and a resumed session has it. The tracking is saved with the
 //! session ([`WorkingSet`]).
 
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use regex::Regex;
-use rig_ecs::agent::Halt;
-use rig_ecs::journal::SessionStore;
+use rig_compaction::summary_origin;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead};
 use serde::{Deserialize, Serialize};
@@ -36,9 +37,16 @@ impl Plugin for WorkingSetPlugin {
             .init_resource::<ProjectRoot>()
             .register_required_components::<Agent, WorkingSet>()
             .add_observer(track)
-            .add_observer(carry_over);
+            .configure_sets(AgentPass, WorkingSetSystems.in_set(PrepareSystems::Edit))
+            .add_systems(AgentPass, carry_over.in_set(WorkingSetSystems));
     }
 }
+
+/// The Prepare system that carries the working set over a compaction, for
+/// another plugin to order against. It runs after the default prompt went
+/// in, and before compaction measures the request it adds to.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct WorkingSetSystems;
 
 /// The `[working_set]` table: `test_pattern`, the regex a command that
 /// tests or builds matches.
@@ -123,8 +131,8 @@ fn track(
         .map_or(0, |since| {
             u64::try_from(since.as_millis()).unwrap_or(u64::MAX)
         });
-    if let Ok(Some(FilesRead(paths))) = published.0.get::<FilesRead>() {
-        for path in paths {
+    if let Ok(Some(FilesRead(files))) = published.0.get::<FilesRead>() {
+        for path in files.into_iter().map(|file| file.path) {
             set.read.retain(|read| read.path != path);
             set.read.push(ReadFile { path, at_ms });
         }
@@ -190,39 +198,72 @@ fn track(
     }
 }
 
-/// Commits the working set to an agent's conversation each time it is
-/// condensed, after the summary, and starts the read list over. Not when
-/// a restore puts back the saved summary: that is no new condensation.
+/// Puts the working set right after the summary each time a compaction
+/// splices one into an agent's conversation, in the conversation and in
+/// the agent's turn request built this pass, if any, and starts the read
+/// list over. A restore commits nothing, so it carries nothing over again.
 fn carry_over(
-    insert: On<Insert<Condensed>>,
-    mut agents: Query<(&mut Conversation, &mut WorkingSet, Has<ActiveTurn>)>,
+    // What was committed is read before the splice commits more.
+    mut committing: ParamSet<(MessageReader<Committed>, Commit)>,
+    mut agents: Query<(&mut Conversation, &mut WorkingSet)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     root: Res<ProjectRoot>,
-    store: Option<Res<SessionStore>>,
-    restored: Option<Res<SessionRestored>>,
-    mut commit: Commit,
 ) {
-    if store.is_some() && restored.is_none() {
-        return;
+    let summary = summary_origin();
+    let compactions: Vec<Entity> = committing
+        .p0()
+        .read()
+        .filter_map(|change| match change {
+            Committed::Splice { agent, removed, .. } if !removed.is_empty() => Some(*agent),
+            _ => None,
+        })
+        .collect();
+    for agent in compactions {
+        let Ok((mut conversation, mut set)) = agents.get_mut(agent) else {
+            continue;
+        };
+        let Some(mut entry) = conversation.entry(0) else {
+            continue;
+        };
+        let Some(text) = render(&set, &root.0) else {
+            continue;
+        };
+        // The summary's items lead the first message.
+        let origins = &entry.origins;
+        let leads = |item: &usize| {
+            let summarized = |(at, origin): &(usize, Origin)| at == item && *origin == summary;
+            origins.iter().any(summarized)
+        };
+        let after = (0..usize::MAX).take_while(leads).count();
+        let message::Message::User { content } = &mut entry.message else {
+            continue;
+        };
+        if after == 0 {
+            continue;
+        }
+        let block = UserContent::text(text);
+        content.insert(after, block.clone());
+        for (item, _) in &mut entry.origins {
+            if *item >= after {
+                *item += 1;
+            }
+        }
+        entry.origins.push((after, Origin::plugin("working-set")));
+        committing
+            .p1()
+            .splice(agent, &mut conversation, 0..1, [entry]);
+        for (mut call, _) in calls.iter_mut().filter(|(_, to)| to.0 == agent) {
+            let history = &mut call.request.chat_history;
+            let first = history.iter_mut().find_map(|message| match message {
+                message::Message::User { content } => Some(content),
+                _ => None,
+            });
+            if let Some(content) = first {
+                content.insert(after.min(content.len()), block.clone());
+            }
+        }
+        set.read.clear();
     }
-    let agent = insert.entity;
-    let Ok((mut conversation, mut set, busy)) = agents.get_mut(agent) else {
-        return;
-    };
-    let Some(text) = render(&set, &root.0) else {
-        return;
-    };
-    let origin = Some(Origin::plugin("working-set"));
-    commit.message_from(
-        agent,
-        &mut conversation,
-        message::Message::user(text),
-        origin,
-    );
-    // An idle agent keeps it for its next turn, as a note.
-    if !busy {
-        commit.halt(agent, &mut conversation, Halt::Kept);
-    }
-    set.read.clear();
 }
 
 /// The working set message: changed files that exist with their line

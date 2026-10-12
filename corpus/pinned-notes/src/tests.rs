@@ -74,7 +74,7 @@ fn pins_go_with_every_request_survive_compaction_and_come_back() {
     ask(&mut app, &wakes, agent, "Which approach?");
     run(&mut app, agent, "compact");
     run_until(&mut app, &wakes, |world| {
-        world.get::<Condensed>(agent).is_some()
+        world.get::<rig_compaction::Summarized>(agent).is_some()
     });
     ask(&mut app, &wakes, agent, "And now?");
 
@@ -183,4 +183,9 @@ fn only_a_task_with_inherit_pins_passes_the_pins_on() {
         "{sent:?}"
     );
     assert_eq!(parent.count(), 3, "{sent:?}");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(PinnedNotesPlugin);
 }

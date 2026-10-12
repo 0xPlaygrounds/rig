@@ -54,7 +54,7 @@ impl Plugin for CronPlugin {
         }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         app.world_mut().spawn(CronTimer);
         app.init_resource::<CronJobs>()
@@ -64,9 +64,15 @@ impl Plugin for CronPlugin {
             .add_systems(Startup, catch_up)
             .add_systems(PostUpdate, arm.run_if(resource_changed::<CronJobs>))
             .add_observer(report)
-            .add_systems(AgentPass, adopt.in_set(Stage::Review));
+            .configure_sets(AgentPass, CronSystems.in_set(Stage::Review))
+            .add_systems(AgentPass, adopt.in_set(CronSystems));
     }
 }
+
+/// The Review system that makes a spawned agent its job's run, to order
+/// against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CronSystems;
 
 /// The scheduled jobs, saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default)]
@@ -353,7 +359,7 @@ fn on_schedule(
     mut jobs: ResMut<CronJobs>,
     runs: Query<&SpawnedBy, With<CronRun>>,
     ids: Query<&AgentId>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let args = &called.args;
     let owner = runs
@@ -373,9 +379,9 @@ fn on_schedule(
         ),
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(result);
+    }
 }
 
 /// The timer says the soonest tick passed: runs the jobs due by then or by
@@ -418,7 +424,7 @@ fn adopt(
             &ForAgent,
             Option<&SpawnedAgent>,
         ),
-        Unreviewed,
+        (Unreviewed, PluginEffects),
     >,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,

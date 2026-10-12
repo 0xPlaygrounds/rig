@@ -83,9 +83,10 @@ fn bridge_app(
             "read",
             "Read a file.",
             ToolOptions::default(),
-            |called: On<ToolCalled<ReadArgs>>, mut commands: Commands| {
-                let read = Outcome::from(ToolResult::success("fn main() {}".into()));
-                commands.entity(called.call).insert_if_new(read);
+            |called: On<ToolCalled<ReadArgs>>, mut calls: Query<&mut Decision, ToolCalls>| {
+                if let Ok(mut call) = calls.get_mut(called.call) {
+                    call.decide(ToolResult::success("fn main() {}".into()));
+                }
             },
         );
     if let Some(connection) = model.and_then(connect) {

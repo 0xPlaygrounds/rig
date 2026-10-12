@@ -33,7 +33,7 @@ pub(crate) fn add(app: &mut App) {
             ToolOptions {
                 rules: &[],
                 // Never run again after the restart it causes.
-                footprint: Some(Footprint::Independent),
+                footprint: Some(Touches::Independent),
             },
             on_reload_tool,
         );
@@ -50,7 +50,7 @@ struct ReloadArgs {}
 fn on_reload_tool(
     called: On<ToolCalled<ReloadArgs>>,
     mut status: ResMut<ReloadStatus>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut notices: MessageWriter<Notice>,
 ) {
     let output = match status.ask(called.agent) {
@@ -75,9 +75,9 @@ fn on_reload_tool(
             "{why} Nothing was queued."
         ))),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(output));
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(output);
+    }
 }
 
 /// Spawns the system prompt's section on what this agent is: its plugins,

@@ -110,3 +110,8 @@ fn protected_files_are_neither_read_nor_written_nor_found() {
     );
     assert_eq!(counts.hidden.get("deny_read keys/**"), Some(&1));
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ProtectedPathsPlugin);
+}

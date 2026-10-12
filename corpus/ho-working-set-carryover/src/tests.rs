@@ -81,7 +81,15 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
         focus,
     });
     until_ended(&mut app, &wakes, 2);
-    assert!(app.world().get::<Condensed>(agent).is_some(), "compacted");
+    let summary = Origin::plugin("compaction");
+    let compacted = app
+        .world()
+        .get::<Conversation>(agent)
+        .and_then(|conversation| {
+            let entry = conversation.entry(0)?;
+            Some(entry.origins.iter().any(|(_, origin)| *origin == summary))
+        });
+    assert_eq!(compacted, Some(true), "compacted");
     let next = Deliver::new(agent, "Go on.", DeliveryMode::Steer);
     app.world_mut().trigger(next);
     until_ended(&mut app, &wakes, 3);
@@ -119,4 +127,9 @@ fn the_working_set_follows_a_compaction_and_a_resume() {
     let tracked = world.get::<WorkingSet>(agent).cloned().unwrap_or_default();
     assert_eq!(tracked.changed.len(), 1, "restored");
     assert_eq!(tracked.runs.len(), 1, "restored");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(WorkingSetPlugin);
 }

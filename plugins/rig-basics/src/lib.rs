@@ -12,14 +12,13 @@ use bevy_reflect::prelude::*;
 
 use rig_ecs::agent::{Notice, Retry};
 use rig_harness::commands::{AppCommandsExt, CommandArgs, SlashCommand};
+use rig_harness::host::exit::{Exit, ExitReason};
 
 pub mod project_context;
 #[cfg(feature = "tui")]
 mod tui;
 
-pub use project_context::{
-    ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin, ProjectContextSystems,
-};
+pub use project_context::{ContextEntry, DEFAULT_SYSTEM_PROMPT, ProjectContextPlugin};
 
 /// Registers the basic commands; with the `tui` feature, `/agents` and the
 /// agent tree it picks from in each agent's status line.
@@ -101,6 +100,6 @@ fn help(
     notices.write(Notice::info(args.agent, lines.join("\n")));
 }
 
-fn quit(In(_): In<CommandArgs>, mut exit: MessageWriter<AppExit>) {
-    exit.write(AppExit::Success);
+fn quit(In(_): In<CommandArgs>, mut commands: Commands) {
+    commands.trigger(Exit(ExitReason::Quit));
 }

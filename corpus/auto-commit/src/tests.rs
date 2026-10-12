@@ -102,3 +102,8 @@ fn a_turn_that_writes_a_file_is_committed_with_the_model_subject_and_undone() {
     assert!(told, "the agent is told its changes were undone");
     fs::remove_dir_all(&dir).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(AutoCommitPlugin);
+}

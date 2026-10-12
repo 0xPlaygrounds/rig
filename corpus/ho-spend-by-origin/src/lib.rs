@@ -12,9 +12,8 @@
 //!   call's purpose as its reason;
 //! - a call made under a tool call (its effect's `parent`): the tool's
 //!   plugin and the tool;
-//! - a call that names only a purpose: that purpose, marked as naming no
-//!   plugin;
-//! - else `unknown`.
+//! - else `unknown`. The default plugins mark their own calls, so none of
+//!   theirs ends up there.
 //!
 //! `/spend` shows the session's table, `/spend turn` the last turn's (the
 //! calls since an agent nothing spawned last started a turn). It only
@@ -75,10 +74,6 @@ impl SpendByOrigin {
     }
 }
 
-/// The calls of the tools, by effect, to find the one a call was made
-/// under.
-type ToolCalls<'w, 's> = Query<'w, 's, (&'static Effect, &'static ToolRequest)>;
-
 /// Gives each model call its origin as it is admitted, while the tool call
 /// it may have been made under is still there.
 fn attribute(
@@ -93,7 +88,7 @@ fn attribute(
         Or<(With<ModelRequest>, With<TurnCall>)>,
     >,
     agents: Query<(&Name, Option<&SpawnedBy>), With<Agent>>,
-    tool_calls: ToolCalls,
+    tool_calls: Query<(&Effect, &ToolRequest), ToolCalls>,
     tools: Query<(&ToolDef, Option<&ProvidedBy>)>,
     plugins: Query<&Name, With<PluginSource>>,
     mut commands: Commands,
@@ -117,11 +112,7 @@ fn attribute(
                     None => format!("tool {name}"),
                 })
             });
-            match (tool, reason) {
-                (Some(tool), _) => with_reason(Some(tool), reason),
-                (None, Some(reason)) => format!("{reason} (no plugin named)"),
-                (None, None) => UNKNOWN.to_owned(),
-            }
+            with_reason(tool, reason)
         }
     };
     commands

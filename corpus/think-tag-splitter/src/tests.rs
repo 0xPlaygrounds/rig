@@ -150,3 +150,8 @@ fn think_tags_stream_as_reasoning_and_stay_out_of_the_answer() {
     assert!(matches!(transcript, Ok(Ok(_))), "{transcript:?}");
     assert_eq!(ends, split_choice(&[whole], false));
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ThinkTagSplitterPlugin);
+}

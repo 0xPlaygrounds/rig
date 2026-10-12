@@ -29,7 +29,12 @@ where
             project,
             analysis_only,
         } = payload;
-        let Exchange { mode, observation } = exchange;
+        let Exchange {
+            mode,
+            observation,
+            extensions,
+        } = exchange;
+        request.extensions_mut().extend(extensions);
         // A whole reply has nothing to stream: it is read as a unary one is,
         // so its document is a fact of the reply in both modes.
         let streamed = mode == Mode::Streaming && framing != Framing::Whole;

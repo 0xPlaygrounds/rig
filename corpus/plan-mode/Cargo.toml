@@ -13,12 +13,11 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Ordered before its request measurement.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 # The status item.
 rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

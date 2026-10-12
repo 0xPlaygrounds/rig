@@ -1,4 +1,6 @@
-use super::{EditArgs, batch_failure};
+use rig_core::tool::{Tool, ToolContext};
+
+use super::{Edit, EditArgs, Replacement, apply, batch_failure};
 
 /// A misspelled key inside an edit, such as `replaceAll`, is refused
 /// rather than ignored, which would replace one match instead of all.
@@ -38,5 +40,39 @@ fn a_failure_names_every_failed_edit() {
         two,
         "2 of the 3 edits failed:\nedits[0]: one.\nedits[2]: two.\nNo edit was applied, so \
          a.rs was not changed. Send all 3 edits again, with these fixed."
+    );
+}
+
+/// `apply` makes of a file's text what the tool writes to it: here a CRLF
+/// file with a byte-order mark, edited by a loose match.
+#[test]
+fn apply_gives_the_text_the_tool_writes() {
+    let edit_tool = Edit::default();
+    let path = std::env::temp_dir().join(format!("rig-tools-apply-{}.txt", std::process::id()));
+    let before = "\u{feff}let a = \u{201c}x\u{201d};  \r\nlet b = 2;\r\n";
+    std::fs::write(&path, before).ok();
+    let path = path.to_string_lossy().into_owned();
+    let edits = [Replacement::new("let a = \"x\";\n", "let a = 1;\n")];
+
+    let applied = apply(&path, before, &edits);
+    let mut context = ToolContext::new();
+    let edited = Tool::call(&edit_tool, &mut context, EditArgs::new(&path, edits));
+    let output = futures::executor::block_on(edited).unwrap_or_default();
+    let written = std::fs::read_to_string(&path).ok();
+    std::fs::remove_file(&path).ok();
+
+    let applied = applied.ok();
+    assert_eq!(
+        applied.as_ref().map(|applied| applied.text.as_str()),
+        Some("\u{feff}let a = 1;\r\nlet b = 2;\r\n")
+    );
+    assert_eq!(
+        applied.as_ref().map(|applied| applied.text.clone()),
+        written
+    );
+    assert_eq!(applied.as_ref().map(|applied| applied.notes.len()), Some(1));
+    assert!(
+        output.contains("Note: `old_text` matched lines 1-1 only after"),
+        "{output}"
     );
 }

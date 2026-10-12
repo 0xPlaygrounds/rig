@@ -45,7 +45,8 @@ impl Plugin for CostBudgetPlugin {
             "Show the session's spending and budget, set it (/budget 2.00) or remove it (/budget off)",
             budget,
         )
-        .add_systems(AgentPass, refuse_when_spent.in_set(Stage::Gate))
+        .configure_sets(AgentPass, CostBudgetSystems.in_set(Stage::Gate))
+        .add_systems(AgentPass, refuse_when_spent.in_set(CostBudgetSystems))
         .add_systems(
             PostUpdate,
             (
@@ -57,6 +58,11 @@ impl Plugin for CostBudgetPlugin {
         );
     }
 }
+
+/// The Gate system that refuses every model call once the budget is
+/// spent, to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CostBudgetSystems;
 
 /// The `[budget]` settings table: `default = 2.0`, the budget of a new
 /// session in USD.
@@ -102,21 +108,20 @@ fn valid(limit: f64) -> bool {
 
 /// Once the budget is spent, refuses every model request about to be sent.
 fn refuse_when_spent(
-    calls: Query<Entity, (With<ModelRequest>, Undecided)>,
+    mut calls: Query<&mut Decision, (Undecided, ModelCalls)>,
     budget: Res<Budget>,
     spending: Res<SessionSpending>,
-    mut commands: Commands,
 ) {
     let spent = spent(&spending);
     let Some(limit) = budget.limit.filter(|limit| spent >= *limit) else {
         return;
     };
-    for call in &calls {
+    for mut decision in &mut calls {
         let why = format!(
             "Stopped: budget of ${limit:.2} reached (${spent:.2} spent). Raise it with /budget, \
              then /retry."
         );
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        decision.decide(Outcome::refused(why));
     }
 }
 

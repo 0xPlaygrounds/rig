@@ -8,10 +8,17 @@
 //! ([`SearchHits`]), the files they changed, with their diffs
 //! ([`FilesChanged`](rig_core::tool::FilesChanged)), and how the command
 //! ended ([`ExitStatus`](rig_core::tool::ExitStatus)). The file tools name
-//! files by their absolute paths ([`fs::absolute`]). Their arguments are
-//! plain data with public fields, to build or read a call's.
+//! files by their resolved paths ([`fs::resolve`]), from an optional base
+//! directory they can be confined to. Each call says what it may read and
+//! change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
+//! `search` read the path they name, `write` and `edit` write it, and
+//! `shell` may change anything, so a host runs calls on different files
+//! side by side. Their arguments are plain data with public fields, to
+//! build or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
+//! - [`edit::apply`]: what `edit` makes of a file's text, without the file,
+//!   and [`ReadArgs::show`]: what `read` shows of it;
 //! - [`attach`]: the files a message names as `@path`, read to go with it;
 //! - [`context`]: the project's instruction files (`AGENTS.md`, or
 //!   `CLAUDE.md`) from the working directory up;
@@ -19,17 +26,21 @@
 //! - [`numbered`]: text as numbered lines, the way `read` shows a file;
 //! - [`Spill`]: where output a tool cut is kept whole, and [`Cut`]: how
 //!   much of a long output is kept;
-//! - [`process`]: child processes in a process group of their own, and the
-//!   [`Launcher`](process::Launcher) that says how tools start them;
+//! - [`process`]: child processes in a process group of their own, the
+//!   [`Launcher`](process::Launcher) that says how tools start them, and
+//!   the [`Process`](process::Process) it spawns: input in, output line by
+//!   line, stopped gently or killed with its group;
 //! - [`blocking`]: blocking work on a thread of its own, so no async
 //!   executor thread blocks.
 //!
 //! Native only: the tools use the file system and processes.
 
+use unicode_width::{UnicodeWidthChar as _, UnicodeWidthStr as _};
+
 pub mod attach;
 mod blocking;
 pub mod context;
-mod edit;
+pub mod edit;
 pub mod fs;
 pub mod process;
 mod read;
@@ -114,13 +125,32 @@ pub fn clip(line: &str, limit: usize) -> &str {
     }
 }
 
-/// `text` cut to its first `limit` characters, ending in `…` when cut.
-pub fn shorten(text: &str, limit: usize) -> String {
-    let clipped = clip(text, limit);
-    if clipped.len() < text.len() {
-        format!("{clipped}…")
-    } else {
-        text.to_owned()
+/// `text` cut to fit in `width` terminal columns, ending in `…` when cut:
+/// a wide character, such as most CJK ones, takes two columns.
+///
+/// ```
+/// use rig_tools::shorten;
+///
+/// assert_eq!(shorten("a short label", 20), "a short label");
+/// assert_eq!(shorten("a longer label", 9), "a longer…");
+/// assert_eq!(shorten("日本語のラベル", 7), "日本語…");
+/// ```
+pub fn shorten(text: &str, width: usize) -> String {
+    if text.width() <= width {
+        return text.to_owned();
+    }
+    let room = width.saturating_sub(1);
+    let mut used = 0;
+    let end = text
+        .char_indices()
+        .find(|(_, character)| {
+            used += character.width().unwrap_or(0);
+            used > room
+        })
+        .map_or(text.len(), |(at, _)| at);
+    match width {
+        0 => String::new(),
+        _ => format!("{}…", text.get(..end).unwrap_or_default()),
     }
 }
 

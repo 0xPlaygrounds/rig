@@ -58,6 +58,12 @@ const RULES: &[&str] = &[
      past sessions, in this project or all of them; `recall_open` shows more around a hit.",
 ];
 
+/// The Prepare system that attaches a picked excerpt to the user's next
+/// message, for others to order against. It runs after the files the
+/// message names are attached.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecallSystems;
+
 /// The `recall` and `recall_open` tools, `/recall`, and the index.
 #[derive(Default)]
 pub struct RecallPlugin;
@@ -66,7 +72,7 @@ impl Plugin for RecallPlugin {
     fn build(&self, app: &mut App) {
         let options = || ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
         };
         app.init_resource::<RigHome>()
             .init_resource::<ProjectRoot>()
@@ -84,7 +90,7 @@ impl Plugin for RecallPlugin {
                 "Show a longer excerpt of a past session around a message `recall` found.",
                 ToolOptions {
                     rules: &[],
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(rig_harness::rig_core::tool::Scope::Anything)),
                 },
                 open,
             )
@@ -94,7 +100,8 @@ impl Plugin for RecallPlugin {
                 recall_command,
             )
             .add_systems(Startup, warm_up)
-            .add_systems(AgentPass, attach.in_set(Stage::Prepare))
+            .configure_sets(AgentPass, RecallSystems.in_set(PrepareSystems::Edit))
+            .add_systems(AgentPass, attach.in_set(RecallSystems))
             .add_observer(warmed)
             .add_observer(found);
     }
@@ -824,7 +831,7 @@ fn found(
 
 /// Attaches a picked excerpt to the user's next message to its agent.
 fn attach(
-    mut messages: Query<(&mut Incoming, &ForAgent), Added<Admitted>>,
+    mut messages: Query<(&mut Incoming, &ForAgent), (Added<Admitted>, IncomingMessages)>,
     pending: Query<&PendingRecall>,
     mut commands: Commands,
 ) {

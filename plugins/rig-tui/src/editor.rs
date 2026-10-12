@@ -1,45 +1,35 @@
-//! The input editor: multiline text with a cursor, emacs-style editing
-//! keys and the prompt history, which is kept in `RIG_HOME` across
-//! sessions. It is the [`TuiInput`] resource, so a plugin reads and edits
-//! the draft as the keys do (a template, a dictated message, the text an
-//! editor wrote), and `is_changed` on it says the draft was edited. Up and Down move between lines and, from the first or last
-//! line, through the history, saving the draft as pi's editor does
+//! The input editor: multiline text with a cursor and emacs-style editing
+//! keys. It is the [`TuiInput`] resource, so a plugin reads and edits the
+//! draft as the keys do (a template, a dictated message, the text an
+//! editor wrote), and `is_changed` on it says the draft was edited. Up and
+//! Down move between lines and, from the first or last line, through the
+//! [`PromptHistory`](crate::PromptHistory), saving the draft as pi's
+//! editor does
 //! (`references/pi/packages/tui/src/components/editor.ts:344-347,457-470`).
 
-use std::fs;
-use std::io::Write as _;
-use std::path::PathBuf;
-
 use bevy_ecs::prelude::*;
-use bevy_log::warn;
 use bevy_reflect::prelude::*;
 use ratatui::style::Stylize;
 use ratatui::text::{Line, Span};
 use unicode_width::UnicodeWidthChar;
 
-/// Prompts kept in the history.
-const HISTORY: usize = 500;
-
 /// The prompt before the first line of the input.
 const PROMPT: &str = "› ";
 
 /// The terminal view's input: the text being typed, with its cursor, and
-/// the prompts typed before. It is there in any run, empty unless the view
-/// runs. Enter sends what it holds to the agent shown.
+/// where it is in the prompt history while Up and Down browse it. It is
+/// there in any run, empty unless the view runs. Enter sends what it holds
+/// to the agent shown.
 #[derive(Resource, Reflect, Default)]
 #[reflect(Resource, Default)]
 pub struct TuiInput {
     text: String,
     /// A byte offset in `text`, on a character boundary.
     cursor: usize,
-    /// Earlier prompts, oldest first.
-    history: Vec<String>,
     /// The history entry shown, while browsing it.
     browsing: Option<usize>,
     /// What was typed before browsing started.
     draft: String,
-    /// Where the history is kept.
-    file: Option<PathBuf>,
 }
 
 /// The input laid out to a width: its rows and where the cursor is.
@@ -50,13 +40,6 @@ pub(crate) struct Layout {
 }
 
 impl TuiInput {
-    /// Reads the prompt history kept in `file`, which sent prompts are
-    /// added to.
-    pub(crate) fn load_history(&mut self, file: PathBuf) {
-        self.history = load_history(&file);
-        self.file = Some(file);
-    }
-
     /// The text.
     pub fn text(&self) -> &str {
         &self.text
@@ -97,7 +80,7 @@ impl TuiInput {
     }
 
     /// Empties the editor and stops browsing the history.
-    pub(crate) fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.text.clear();
         self.cursor = 0;
         self.browsing = None;
@@ -117,7 +100,8 @@ impl TuiInput {
         self.cursor += text.len();
     }
 
-    pub(crate) fn insert_char(&mut self, character: char) {
+    /// Types `character` at the cursor, which ends up after it.
+    pub fn insert_char(&mut self, character: char) {
         self.text.insert(self.cursor, character);
         self.cursor += character.len_utf8();
     }
@@ -160,11 +144,13 @@ impl TuiInput {
             .map_or(self.text.len(), |character| from + character.len_utf8())
     }
 
-    pub(crate) fn left(&mut self) {
+    /// A character back.
+    pub fn left(&mut self) {
         self.cursor = self.previous_boundary(self.cursor);
     }
 
-    pub(crate) fn right(&mut self) {
+    /// A character forward.
+    pub fn right(&mut self) {
         self.cursor = self.next_boundary(self.cursor);
     }
 
@@ -197,11 +183,13 @@ impl TuiInput {
         self.cursor + skipped + word
     }
 
-    pub(crate) fn word_left(&mut self) {
+    /// The start of the word before the cursor.
+    pub fn word_left(&mut self) {
         self.cursor = self.word_start();
     }
 
-    pub(crate) fn word_right(&mut self) {
+    /// The end of the word after the cursor.
+    pub fn word_right(&mut self) {
         self.cursor = self.word_end();
     }
 
@@ -221,39 +209,45 @@ impl TuiInput {
             .map_or(self.text.len(), |index| self.cursor + index)
     }
 
-    pub(crate) fn home(&mut self) {
+    /// The start of the cursor's line.
+    pub fn home(&mut self) {
         self.cursor = self.line_start();
     }
 
-    pub(crate) fn end(&mut self) {
+    /// The end of the cursor's line.
+    pub fn end(&mut self) {
         self.cursor = self.line_end();
     }
 
-    pub(crate) fn backspace(&mut self) {
+    /// Deletes the character before the cursor.
+    pub fn backspace(&mut self) {
         let start = self.previous_boundary(self.cursor);
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
-    pub(crate) fn delete(&mut self) {
+    /// Deletes the character after the cursor.
+    pub fn delete(&mut self) {
         let end = self.next_boundary(self.cursor);
         self.text.replace_range(self.cursor..end, "");
     }
 
-    pub(crate) fn delete_word_before(&mut self) {
+    /// Deletes the word before the cursor.
+    pub fn delete_word_before(&mut self) {
         let start = self.word_start();
         self.text.replace_range(start..self.cursor, "");
         self.cursor = start;
     }
 
-    pub(crate) fn delete_word_after(&mut self) {
+    /// Deletes the word after the cursor.
+    pub fn delete_word_after(&mut self) {
         let end = self.word_end();
         self.text.replace_range(self.cursor..end, "");
     }
 
     /// Deletes to the start of the line, or the newline before it when the
     /// cursor is at the start already.
-    pub(crate) fn delete_to_line_start(&mut self) {
+    pub fn delete_to_line_start(&mut self) {
         let start = match self.line_start() {
             start if start == self.cursor => self.previous_boundary(start),
             start => start,
@@ -264,7 +258,7 @@ impl TuiInput {
 
     /// Deletes to the end of the line, or the newline after it when the
     /// cursor is at the end already.
-    pub(crate) fn delete_to_line_end(&mut self) {
+    pub fn delete_to_line_end(&mut self) {
         let end = match self.line_end() {
             end if end == self.cursor => self.next_boundary(end),
             end => end,
@@ -290,11 +284,12 @@ impl TuiInput {
                 .map_or(line.len(), |(index, _)| index);
     }
 
-    /// Up: the line above, else the previous prompt of the history.
-    pub(crate) fn up(&mut self) {
+    /// Up: the line above, else the previous prompt of `history` (oldest
+    /// first).
+    pub fn up(&mut self, history: &[String]) {
         let start = self.line_start();
         if start == 0 {
-            self.history_back();
+            self.history_back(history);
             return;
         }
         let column = self.column();
@@ -306,73 +301,45 @@ impl TuiInput {
         self.move_to_column(above, column);
     }
 
-    /// Down: the line below, else the next prompt of the history.
-    pub(crate) fn down(&mut self) {
+    /// Down: the line below, else the next prompt of `history`, or the
+    /// draft after the newest.
+    pub fn down(&mut self, history: &[String]) {
         let end = self.line_end();
         if end == self.text.len() {
-            self.history_forward();
+            self.history_forward(history);
             return;
         }
         let column = self.column();
         self.move_to_column(end + 1, column);
     }
 
-    fn history_back(&mut self) {
+    fn history_back(&mut self, history: &[String]) {
         let index = match self.browsing {
             Some(0) => return,
-            Some(index) => index - 1,
-            None if self.history.is_empty() => return,
+            Some(index) => index.min(history.len()).saturating_sub(1),
+            None if history.is_empty() => return,
             None => {
                 self.draft = self.text.clone();
-                self.history.len() - 1
+                history.len() - 1
             }
         };
         self.browsing = Some(index);
-        let text = self.history.get(index).cloned().unwrap_or_default();
+        let text = history.get(index).cloned().unwrap_or_default();
         self.show(text);
     }
 
-    fn history_forward(&mut self) {
+    fn history_forward(&mut self, history: &[String]) {
         let Some(index) = self.browsing else {
             return;
         };
-        let text = if index + 1 < self.history.len() {
+        let text = if index + 1 < history.len() {
             self.browsing = Some(index + 1);
-            self.history.get(index + 1).cloned().unwrap_or_default()
+            history.get(index + 1).cloned().unwrap_or_default()
         } else {
             self.browsing = None;
             std::mem::take(&mut self.draft)
         };
         self.show(text);
-    }
-
-    /// Adds a sent prompt to the history and its file, unless it repeats
-    /// the last one.
-    pub(crate) fn remember(&mut self, text: &str) {
-        let text = text.trim();
-        if text.is_empty() || self.history.last().is_some_and(|last| last == text) {
-            return;
-        }
-        self.history.push(text.to_owned());
-        let excess = self.history.len().saturating_sub(HISTORY);
-        self.history.drain(..excess);
-        if let Some(file) = &self.file {
-            let appended = serde_json::to_string(text)
-                .map_err(std::io::Error::from)
-                .and_then(|line| {
-                    if let Some(parent) = file.parent() {
-                        fs::create_dir_all(parent)?;
-                    }
-                    let mut out = fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(file)?;
-                    writeln!(out, "{line}")
-                });
-            if let Err(failure) = appended {
-                warn!("could not save the prompt history: {failure}");
-            }
-        }
     }
 
     /// The text laid out in rows `width` columns wide, broken anywhere, the
@@ -431,32 +398,4 @@ impl TuiInput {
             cursor_column,
         }
     }
-}
-
-/// The last [`HISTORY`] prompts of `file`, rewriting it when it grew past
-/// twice that.
-fn load_history(file: &PathBuf) -> Vec<String> {
-    let Ok(text) = fs::read_to_string(file) else {
-        return Vec::new();
-    };
-    let mut history: Vec<String> = text
-        .lines()
-        .filter_map(|line| serde_json::from_str(line).ok())
-        .collect();
-    let total = history.len();
-    history.drain(..total.saturating_sub(HISTORY));
-    if total > 2 * HISTORY {
-        let kept: String = history
-            .iter()
-            .filter_map(|prompt| serde_json::to_string(prompt).ok())
-            .map(|line| line + "\n")
-            .collect();
-        let temporary = file.with_extension("jsonl.new");
-        if let Err(failure) =
-            fs::write(&temporary, kept).and_then(|()| fs::rename(&temporary, file))
-        {
-            warn!("could not trim the prompt history: {failure}");
-        }
-    }
-    history
 }

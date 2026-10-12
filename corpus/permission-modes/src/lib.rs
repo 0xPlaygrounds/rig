@@ -20,6 +20,9 @@
 
 use std::collections::HashMap;
 
+use corpus_confirm_destructive::ConfirmSystems;
+use corpus_plan_mode::PlanModeSystems;
+use corpus_protected_paths::ProtectedPathsSystems;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::{
@@ -152,10 +155,10 @@ impl Default for Permissions {
 
 impl Permissions {
     /// The class of the tool `name` whose calls have `footprint`.
-    fn class(&self, name: &str, footprint: Footprint) -> ToolClass {
-        self.tools.get(name).copied().unwrap_or(match footprint {
-            Footprint::Exclusive => ToolClass::Other,
-            Footprint::ReadOnly | Footprint::Independent => ToolClass::Read,
+    fn class(&self, name: &str, footprint: &Footprint) -> ToolClass {
+        self.tools.get(name).copied().unwrap_or(match footprint.0 {
+            Touches::Writes(_) => ToolClass::Other,
+            Touches::Reads(_) | Touches::Independent => ToolClass::Read,
         })
     }
 
@@ -184,9 +187,11 @@ struct Approved;
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PermissionSystems {
     /// Prepare: takes the tools that change something out of a read-only
-    /// agent's requests.
+    /// agent's requests, after the default prompt went in and plan mode
+    /// took its own out, and before compaction measures them.
     Offer,
-    /// Gate: refuses, holds and lets go of calls by their agent's mode.
+    /// Gate: refuses, holds and lets go of calls by their agent's mode,
+    /// after the protected-paths guard and before confirm-destructive.
     Gate,
 }
 
@@ -207,8 +212,13 @@ impl Plugin for PermissionModesPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    PermissionSystems::Offer.in_set(Stage::Prepare),
-                    PermissionSystems::Gate.in_set(Stage::Gate),
+                    PermissionSystems::Offer
+                        .in_set(PrepareSystems::Edit)
+                        .after(PlanModeSystems::Prepare),
+                    PermissionSystems::Gate
+                        .in_set(Stage::Gate)
+                        .after(ProtectedPathsSystems::Gate)
+                        .before(ConfirmSystems),
                 ),
             )
             .add_systems(
@@ -229,7 +239,7 @@ impl Plugin for PermissionModesPlugin {
 
 /// An agent in `read-only` is offered only the tools that read.
 fn offer(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
+    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     agents: Query<Option<&PermissionMode>>,
     tools: Query<(&ToolDef, &Footprint)>,
     settings: Res<Permissions>,
@@ -239,7 +249,7 @@ fn offer(
             continue;
         }
         let reads = |name: &str| {
-            tools.iter().any(|(def, &footprint)| {
+            tools.iter().any(|(def, footprint)| {
                 def.0.name.as_str() == name && settings.class(name, footprint) == ToolClass::Read
             })
         };
@@ -249,9 +259,12 @@ fn offer(
 
 /// Decides each call about to run by its agent's mode: lets it run,
 /// refuses it, or holds it with a question, refused when nobody can
-/// answer.
+/// answer. A call another gate decided is left alone.
 fn ask(
-    calls: Query<(Entity, &ToolRequest, &Footprint, &ForAgent), (Undecided, Without<Approved>)>,
+    mut calls: Query<
+        (Entity, &ToolRequest, &Footprint, &ForAgent, &mut Decision),
+        (Undecided, ToolCalls, Without<Approved>),
+    >,
     agents: Query<(
         Option<&Name>,
         Option<&PermissionMode>,
@@ -262,10 +275,13 @@ fn ask(
     answerers: Answerers,
     mut commands: Commands,
 ) {
-    for (call, request, &footprint, &ForAgent(agent)) in &calls {
+    for (call, request, footprint, &ForAgent(agent), mut decision) in &mut calls {
         let Ok((name, mode, always, sub)) = agents.get(agent) else {
             continue;
         };
+        if decision.is_decided() {
+            continue;
+        }
         let mode = settings.mode(mode);
         let tool = request.call.function.name.as_str();
         let allowed = always.is_some_and(|always| always.0.iter().any(|name| name == tool));
@@ -296,7 +312,7 @@ fn ask(
                 continue;
             }
         };
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        decision.decide(Outcome::refused(why));
     }
 }
 
@@ -304,7 +320,8 @@ fn ask(
 /// remembers "Always" for the agent; the question lets go of the call
 /// either way. A question closed unanswered denies.
 fn answered(
-    asks: Query<(Entity, &Approval, &Outcome, &HoldOf, &ForAgent), Added<Outcome>>,
+    asks: Query<(Entity, &Approval, &Outcome, &HoldOf, &ForAgent), (Added<Outcome>, PluginEffects)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut always: Query<&mut AlwaysAllowed>,
     mut commands: Commands,
 ) {
@@ -328,7 +345,9 @@ fn answered(
                 "Denied: the user did not allow this `{tool}` call. Nothing was changed; ask the \
                  user or do something else."
             );
-            commands.entity(call).insert_if_new(Outcome::refused(why));
+            if let Ok(mut decision) = calls.get_mut(call) {
+                decision.decide(Outcome::refused(why));
+            }
         }
         commands.entity(ask).remove::<HoldOf>();
     }

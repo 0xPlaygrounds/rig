@@ -24,6 +24,7 @@ rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 bevy_reflect = { workspace = true }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }

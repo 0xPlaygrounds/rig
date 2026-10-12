@@ -10,23 +10,15 @@
 //! family. Files on disk are never branched, except
 //! that `/branch --files` (with the `checkpoints` feature and spec 31's
 //! plugin) puts them back as that plugin's checkpoint before the message
-//! kept them.
+//! kept them, through its `Rewind` request, before switching.
 
+#[cfg(feature = "checkpoints")]
+use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
-use rig_harness::rig_ecs::inbox::OriginKind;
-use rig_harness::rig_ecs::journal::now_ms;
-use rig_sessions::{Meta, ResumeLabel, SessionTitle, SessionsPlugin, list};
-use rig_tools::attach::attached_file;
-use rig_tools::fs::write_json;
+use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::shorten;
 use rig_tui::{Focus, TuiInput};
-use std::fs;
-
-/// The empty file a branch made by `/branch` starts with: its first start
-/// puts the message it was branched before in the input line and removes
-/// it, so a later start leaves the input alone.
-pub const SEED: &str = "fork-seed";
 
 /// Most characters of a message in the `/branch` picker.
 const LABEL_CHARS: usize = 70;
@@ -46,8 +38,7 @@ impl Plugin for ForkSessionPlugin {
         if !app.is_plugin_added::<SessionsPlugin>() {
             app.add_plugins(SessionsPlugin);
         }
-        app.init_resource::<Pending>()
-            .add_message::<SessionForked>()
+        app.add_message::<SessionForked>()
             .add_command(
                 "fork",
                 "Copy this session into a new one and switch to it: /fork [name]",
@@ -61,51 +52,28 @@ impl Plugin for ForkSessionPlugin {
             .add_command("tree", "Show this session's forks and branches", tree)
             .add_systems(Startup, arrive)
             .add_systems(Update, forked);
+        #[cfg(feature = "checkpoints")]
+        app.add_observer(rewound);
     }
 }
 
-/// The fork asked for, until the harness wrote it.
-#[derive(Resource, Default)]
-struct Pending(Option<Asked>);
-
+/// A fork this plugin asked for, until the harness wrote it: the
+/// [`ForkSession::asker`] that [`SessionForked`] names.
+#[derive(Component)]
 struct Asked {
     agent: Entity,
-    before: Option<(AgentId, u64)>,
     /// The name `/fork` gave it.
     name: Option<String>,
-    /// The command that puts the files back, for `/branch --files`.
-    files: Option<String>,
+    /// The message to put the files back to before, for `/branch --files`.
+    files: Option<MessageId>,
 }
 
-/// The messages the user typed in `conversation`, by index, as text, as
-/// [`ForkedFrom::text`] keeps them.
-fn typed(conversation: &Conversation) -> Vec<(usize, String)> {
-    let mut typed = Vec::new();
-    for (at, message) in conversation.messages().iter().enumerate() {
-        let Message::User { content } = message else {
-            continue;
-        };
-        let texts: Vec<&str> = content
-            .iter()
-            .enumerate()
-            .filter_map(|(item, content)| match content {
-                UserContent::Text(text)
-                    if !text.text.trim().is_empty()
-                        && conversation
-                            .origin(at, item)
-                            .is_none_or(|origin| origin.kind == OriginKind::User)
-                        && attached_file(&text.text).is_none() =>
-                {
-                    Some(text.text.trim())
-                }
-                _ => None,
-            })
-            .collect();
-        if !texts.is_empty() {
-            typed.push((at, texts.join("\n\n")));
-        }
-    }
-    typed
+/// The messages the user typed in `conversation`, as [`ForkedFrom::text`]
+/// keeps them.
+fn typed_messages(conversation: &Conversation) -> Vec<(MessageId, String)> {
+    (0..conversation.messages().len())
+        .filter_map(|at| Some((conversation.id(at)?, typed(conversation, at)?)))
+        .collect()
 }
 
 fn one_line(text: &str) -> String {
@@ -135,7 +103,6 @@ fn fork(
     In(args): In<CommandArgs>,
     turns: Query<(), With<TurnOf>>,
     paths: Option<Res<SessionPaths>>,
-    mut pending: ResMut<Pending>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -144,13 +111,17 @@ fn fork(
         return;
     }
     let name = args.args.trim();
-    pending.0 = Some(Asked {
-        agent: args.agent,
+    let asker = commands
+        .spawn(Asked {
+            agent: args.agent,
+            name: (!name.is_empty()).then(|| name.to_owned()),
+            files: None,
+        })
+        .id();
+    commands.trigger(ForkSession {
         before: None,
-        name: (!name.is_empty()).then(|| one_line(name)),
-        files: None,
+        asker: Some(asker),
     });
-    commands.trigger(ForkSession::default());
 }
 
 /// `/branch [--files]`: a picker of the agent's typed messages.
@@ -180,7 +151,10 @@ fn branch(
             return;
         }
     };
-    let typed = conversations.get(agent).map(typed).unwrap_or_default();
+    let typed = conversations
+        .get(agent)
+        .map(typed_messages)
+        .unwrap_or_default();
     if typed.is_empty() {
         notices.write(Notice::info(agent, "No message of yours to branch from."));
         return;
@@ -192,38 +166,35 @@ fn branch(
     let selected = picker.items.len().saturating_sub(1);
     commands.spawn(Picker { selected, ..picker }).observe(
         move |picked: On<Picked>,
-              agents: Query<(&AgentId, &Conversation)>,
+              ids: Query<&AgentId>,
               snapshots: Snapshots<'_, '_>,
-              mut pending: ResMut<Pending>,
               mut commands: Commands,
               mut notices: MessageWriter<Notice>| {
             let Some(Chosen::Item(index)) = picked.chosen else {
                 return;
             };
-            let (Some((at, _)), Ok((id, conversation))) = (typed.get(index), agents.get(agent))
-            else {
+            let (Some(&(message, _)), Ok(id)) = (typed.get(index), ids.get(agent)) else {
                 return;
             };
-            let Some(seq) = conversation.seq(*at) else {
-                notices.write(Notice::error(agent, "That message is not saved yet."));
-                return;
-            };
-            let files = match files.then(|| restore_files(&snapshots, agent, seq)) {
+            let files = match files.then(|| restore_files(&snapshots, agent, message)) {
                 Some(Err(why)) => {
                     notices.write(Notice::error(agent, why));
                     return;
                 }
-                Some(Ok(line)) => Some(line),
+                Some(Ok(message)) => Some(message),
                 None => None,
             };
-            let before = Some((id.clone(), seq));
-            pending.0 = Some(Asked {
-                agent,
-                before: before.clone(),
-                name: None,
-                files,
+            let asker = commands
+                .spawn(Asked {
+                    agent,
+                    name: None,
+                    files,
+                })
+                .id();
+            commands.trigger(ForkSession {
+                before: Some((id.clone(), message)),
+                asker: Some(asker),
             });
-            commands.trigger(ForkSession { before });
         },
     );
 }
@@ -234,64 +205,103 @@ type Snapshots<'w, 's> = Query<'w, 's, &'static corpus_checkpoint_rewind::Checkp
 #[cfg(not(feature = "checkpoints"))]
 type Snapshots<'w, 's> = ();
 
-/// The command of spec 31's plugin that puts the files back as they were
-/// before the message logged as `seq`.
+/// `message`, when spec 31's plugin kept the files before it.
 #[cfg(feature = "checkpoints")]
-fn restore_files(snapshots: &Snapshots<'_, '_>, agent: Entity, seq: u64) -> Result<String, String> {
+fn restore_files(
+    snapshots: &Snapshots<'_, '_>,
+    agent: Entity,
+    message: MessageId,
+) -> Result<MessageId, String> {
     snapshots
         .get(agent)
         .ok()
-        .and_then(|kept| kept.list.iter().find(|kept| kept.seq == Some(seq)))
-        .map(|checkpoint| format!("rewind --files-only {}", checkpoint.turn))
+        .and_then(|kept| kept.list.iter().find(|kept| kept.message == message))
+        .map(|checkpoint| checkpoint.message)
         .ok_or_else(|| "No checkpoint of the files before that message.".to_owned())
 }
 
 #[cfg(not(feature = "checkpoints"))]
-fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: u64) -> Result<String, String> {
+fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<MessageId, String> {
     Err("/branch --files needs spec 31's checkpoints.".to_owned())
 }
 
-/// Names or seeds each fork this plugin asked for, then switches to it.
+/// On a [`Rewind`] of the files: the session to switch to once it ended.
+#[cfg(feature = "checkpoints")]
+#[derive(Component)]
+struct Switching(SessionId);
+
+/// Puts the files back as they were before `message`, then switches to
+/// `to`.
+#[cfg(feature = "checkpoints")]
+fn switch_after_files(commands: &mut Commands, agent: Entity, message: MessageId, to: SessionId) {
+    let scope = RewindScope::FilesOnly;
+    commands.spawn((
+        Rewind {
+            agent,
+            message,
+            scope,
+        },
+        Switching(to),
+    ));
+}
+
+#[cfg(not(feature = "checkpoints"))]
+fn switch_after_files(commands: &mut Commands, _: Entity, _: MessageId, to: SessionId) {
+    commands.trigger(Exit(ExitReason::Switch(Some(to))));
+}
+
+/// Switches once the files are back, or once the user kept theirs or
+/// the rewind was refused (spec 31's plugin told them which).
+#[cfg(feature = "checkpoints")]
+fn rewound(
+    ended: On<Add<Rewound>>,
+    rewinds: Query<(&Rewind, &Rewound, &Switching)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((rewind, outcome, Switching(to))) = rewinds.get(ended.entity) else {
+        return;
+    };
+    if *outcome != Rewound::Done {
+        notices.write(Notice::info(rewind.agent, FILES));
+    }
+    commands.trigger(Exit(ExitReason::Switch(Some(to.clone()))));
+    commands.entity(ended.entity).despawn();
+}
+
+/// Names each fork this plugin asked for, then switches to it.
 fn forked(
     mut forks: MessageReader<SessionForked>,
-    mut pending: ResMut<Pending>,
-    home: Res<RigHome>,
-    title: Res<SessionTitle>,
+    mut asked: Query<&mut Asked>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     for fork in forks.read() {
-        let Some(asked) = pending.0.take_if(|asked| asked.before == fork.before) else {
+        let Some(asker) = fork.asker else {
             continue;
         };
-        let session = home.0.session(&fork.to);
-        let seeded = match asked.before {
-            // A fork is listed by its name and its parent's title, where
-            // `/resume` and the fork's start read them.
-            None => {
-                let meta = Meta {
-                    title: SessionTitle {
-                        name: asked.name,
-                        typed: title.typed.clone(),
-                    },
-                    updated: now_ms(),
-                    ..Meta::default()
-                };
-                write_json(&session.meta(), &meta)
-            }
-            Some(_) => fs::write(session.path().join(SEED), ""),
-        };
-        if let Err(failure) = seeded {
-            let why = format!("Could not seed session {}: {failure}", fork.to);
-            notices.write(Notice::error(asked.agent, why));
+        let Ok(mut asked) = asked.get_mut(asker) else {
             continue;
+        };
+        commands.entity(asker).despawn();
+        if let Some(name) = asked.name.take() {
+            commands.trigger(NameSession {
+                session: fork.to.clone(),
+                name,
+            });
         }
-        if let Some(line) = asked.files {
-            commands.trigger(RunCommand::new(asked.agent, line));
+        let to = fork.to.clone();
+        if let Some(message) = asked.files.take() {
+            let made = format!("Made session {to}; putting the files back first.");
+            notices.write(Notice::info(asked.agent, made));
+            switch_after_files(&mut commands, asked.agent, message, to);
+        } else {
+            notices.write(Notice::info(
+                asked.agent,
+                format!("Made session {to}. {FILES}"),
+            ));
+            commands.trigger(Exit(ExitReason::Switch(Some(to))));
         }
-        let made = format!("Made session {}. {FILES}", fork.to);
-        notices.write(Notice::info(asked.agent, made));
-        commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone()))));
     }
 }
 
@@ -305,11 +315,12 @@ fn how(parent: &ForkedFrom) -> String {
     }
 }
 
-/// A fork's start: says where it came from in `/resume`, and the first
-/// start of a `/branch` puts the message it was branched before in the
+/// A fork's start: says where it came from in `/resume`, and its first
+/// start, of a branch, puts the message it was branched before in the
 /// input line, showing its agent.
 fn arrive(
     paths: Option<Res<SessionPaths>>,
+    first: Option<Res<FirstStart>>,
     agents: PrimaryQuery,
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
@@ -322,11 +333,7 @@ fn arrive(
     };
     let label = format!("{} of {}", how(&parent), parent.session);
     commands.spawn(ResumeLabel::new("family", label));
-    // Once: a later start of the session leaves its input alone.
-    if fs::remove_file(paths.path().join(SEED)).is_err() {
-        return;
-    }
-    let (Some((agent, _)), Some(text)) = (parent.before, parent.text) else {
+    let (Some(_), Some((agent, _)), Some(text)) = (first, parent.before, parent.text) else {
         return;
     };
     let agent = agents.iter().find(|(_, id, _)| **id == agent);

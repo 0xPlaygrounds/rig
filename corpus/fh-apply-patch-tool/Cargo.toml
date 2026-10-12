@@ -1,0 +1,32 @@
+[package]
+name = "corpus-fh-apply-patch-tool"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-07: 07. Multi-file patch tool per model"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+glob = { workspace = true }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# Already in Cargo.lock (through the launcher's dependencies); parses patch.toml.
+toml = "1"
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

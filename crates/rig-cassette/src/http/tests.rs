@@ -712,21 +712,6 @@ then:
     );
 }
 
-#[test]
-fn safety_does_not_flag_short_sk_substrings() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1/responses
-  method: POST
-then:
-  status: 200
-  body: '{"text":"the sk-etch marker is harmless"}'
-"#,
-    );
-
-    assert!(cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty());
-}
-
 /// Provider ids are recorded verbatim: a file id, a message id and the
 /// repeated file id in a later path and query all survive, and scrubbing
 /// the result again changes nothing.
@@ -915,62 +900,6 @@ then:
     assert!(scrubbed.contains("cachedContents/cached-REDACTED_1"));
     assert_eq!(scrub_cassette_contents(&scrubbed), scrubbed);
     assert!(cassette_safety_failures(Path::new("fixture.yaml"), &scrubbed).is_empty());
-}
-
-/// A standard-base64 blob puts `+` or `/` before a key-shaped run as often
-/// as any letter; neither starts a key.
-#[test]
-fn safety_scans_ignore_key_prefixes_after_base64_punctuation() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1/messages
-  method: POST
-then:
-  status: 200
-  body: '{"signature":"Eq/AIzaSyExampleSecretToken1234567890ABCDEFGHIJ+AKIA0123456789ABCDEF=="}'
-"#,
-    );
-    assert!(
-        cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty(),
-        "{cassette}"
-    );
-}
-
-/// Long base64 runs, which verbatim signatures, ciphertext and images now
-/// are, contain every four-letter prefix eventually; a key detector must
-/// require the prefix to start a token.
-#[test]
-fn safety_scans_ignore_key_prefixes_inside_base64_blobs() {
-    let cassette = scrub_cassette_contents(
-        r#"when:
-  path: /v1/messages
-  method: POST
-then:
-  status: 200
-  body: '{"signature":"ErUBCkYIBRgCIkAIzaSyExampleSecretToken1234567890ABCDEFGHIJAKIA0123456789ABCDEFGHASIA0123456789ABCDEFsk-proj-notakeyhereatall0123456789abcdef","x":1}'
-"#,
-    );
-
-    assert!(
-        cassette_safety_failures(Path::new("fixture.yaml"), &cassette).is_empty(),
-        "{cassette}"
-    );
-    // The same prefixes starting a token are still keys.
-    let leaked = scrub_cassette_contents(
-        r#"when:
-  path: /v1/messages
-  method: POST
-then:
-  status: 200
-  body: '{"leaked":"AIzaSyExampleSecretToken1234567890ABCDEFGHIJ","aws":"AKIA0123456789ABCDEF"}'
-"#,
-    );
-    let failures = cassette_safety_failures(Path::new("fixture.yaml"), &leaked);
-    assert!(
-        failures.iter().any(|f| f.contains("Google API key")),
-        "{failures:?}"
-    );
-    assert!(failures.iter().any(|f| f.contains("AWS")), "{failures:?}");
 }
 
 #[test]

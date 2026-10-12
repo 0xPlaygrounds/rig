@@ -130,7 +130,7 @@ fn the_last_model_chosen_is_kept_in_the_apps_home() {
 fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_typed() {
     use std::borrow::Cow;
 
-    use rig_harness::rig_core::catalog::{Catalog, Connector, ModelSpec};
+    use rig_harness::rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
     use rig_harness::rig_core::providers::registry::{ConnectError, ProviderId};
 
     let Ok(corp) = ProviderId::declare("rig-models-corp") else {
@@ -139,7 +139,7 @@ fn a_model_without_its_key_is_listed_with_why_and_offered_as_the_argument_once_t
     let mut catalog = Catalog::default();
     catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
     let mut connector = Connector::new(catalog);
-    connector.provide(corp, |_: &ModelSpec, _: &Catalog| {
+    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
         Err(ConnectError::MissingKey {
             vendor: "rig-models-corp".to_owned(),
             tried: vec![Cow::Borrowed("CORP_KEY")],

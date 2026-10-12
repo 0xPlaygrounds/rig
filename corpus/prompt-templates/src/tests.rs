@@ -1,6 +1,6 @@
 use rig_basics::BasicCommandsPlugin;
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::completion::Message;
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
@@ -37,10 +37,13 @@ fn models_with(big: &MockCompletionModel) -> Option<Models> {
         .catalog_mut()
         .insert(ModelSpec::new(vendor, "big").with_tools(true));
     let big = big.clone();
-    connector.provide(vendor, move |spec: &ModelSpec, _: &Catalog| {
-        let model = ModelAdapter::<Completion>::new(spec.reference(), big.clone());
-        Ok(ErasedHandler::new(model))
-    });
+    connector.provide(
+        vendor,
+        move |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+            let model = ModelAdapter::<Completion>::new(spec.reference(), big.clone());
+            Ok(ErasedHandler::new(model))
+        },
+    );
     Some(Models(connector))
 }
 
@@ -160,4 +163,9 @@ fn a_template_is_a_command_that_sends_its_expansion() {
     assert_eq!((model.requests().len(), big.requests().len()), (1, 1));
     assert_eq!(last_user_text(&big).as_deref(), Some("Explain lifetimes."));
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(PromptTemplatesPlugin);
 }

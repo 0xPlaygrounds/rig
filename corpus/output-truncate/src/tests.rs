@@ -111,3 +111,8 @@ fn a_long_shell_output_reaches_the_model_cut_and_is_kept_whole() {
 
     fs::remove_dir_all(&root).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(OutputTruncatePlugin);
+}

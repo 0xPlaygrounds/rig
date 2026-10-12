@@ -30,7 +30,6 @@ use super::{Export, ExportedAgent, ModelCall};
 ///                 "model": "provider/model",
 ///                 "usage": rig-core Usage (tokens, cost), "response_id": "…" | null,
 ///                 "disposition": "ran" | "superseded" | … }],
-///     "condensed": { "upto": 4, "summary": "replaces messages[..upto]" } | null,
 ///     "messages": [rig-core Message, …],
 ///     "origins": [{ "message": 0, "item": 0, "origin": Origin }] }] }
 /// ```
@@ -173,10 +172,6 @@ fn walk<'s>(
         .collect();
     let conversation = &agent.saved.conversation;
     for (at, message) in conversation.messages().iter().enumerate() {
-        // The summary that replaced the messages before it.
-        if let Some(condensed) = agent.saved.condensed.as_ref().filter(|c| c.upto == at) {
-            sink.summary(&condensed.summary);
-        }
         match message {
             message::Message::User { content } => {
                 for (item, content) in content.iter().enumerate() {
@@ -226,7 +221,10 @@ fn walk<'s>(
 }
 
 fn user_content(sink: &mut dyn Sink, content: &UserContent, origin: Option<&Origin>) {
+    let summary = origin.is_some_and(|origin| *origin == Origin::plugin("compaction"));
     match content {
+        // A compaction's summary, which stands for the messages it replaced.
+        UserContent::Text(text) if summary => sink.summary(&text.text),
         UserContent::Text(text) => sink.text(&sender(origin), &text.text),
         UserContent::ToolResult(result) => {
             let mut text = String::new();
@@ -336,9 +334,6 @@ fn to_json(session: &Export) -> Value {
                 "retired": agent.saved.retired,
                 "usage": agent.totals(),
                 "calls": agent.calls.iter().map(call_json).collect::<Vec<_>>(),
-                "condensed": agent.saved.condensed.as_ref().map(|condensed| {
-                    json!({ "upto": condensed.upto, "summary": condensed.summary })
-                }),
                 "messages": messages,
                 "origins": origins,
             })
@@ -454,7 +449,7 @@ impl Sink for Markdown {
     fn summary(&mut self, text: &str) {
         let _ = writeln!(
             self.out,
-            "**Compaction summary** (what the model saw in place of the messages above):\n\n{text}\n"
+            "**Compaction summary** (what the model sees in place of the earlier messages):\n\n{text}\n"
         );
     }
 
@@ -551,8 +546,8 @@ impl Sink for Html {
     fn summary(&mut self, text: &str) {
         let _ = writeln!(
             self.0,
-            "<div class=\"summary\"><b>Compaction summary</b> (what the model saw in place of the \
-             messages above)<pre>{}</pre></div>",
+            "<div class=\"summary\"><b>Compaction summary</b> (what the model sees in place of \
+             the earlier messages)<pre>{}</pre></div>",
             escape(text)
         );
     }

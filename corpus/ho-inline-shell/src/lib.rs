@@ -1,10 +1,11 @@
 //! Inline shell expansion (held-out corpus spec `H04-inline-shell.md`).
 //!
 //! In a message the user typed, each `!{cmd}` runs in the project directory
-//! and is replaced by a fenced block of its output. A Prepare system finds
-//! the commands in a new message and holds it with one entity per command,
-//! each running its command off the main thread (rig-tools' `Shell`, raced
-//! against the timeout). Once every command finished, a new message with
+//! (the agent's [`WorkDir`] when it has one) and is replaced by a fenced
+//! block of its output. A Prepare system finds the commands in a new
+//! message and holds it with one entity per command, each running its
+//! command off the main thread (rig-tools' `Shell`, raced against the
+//! timeout). Once every command finished, a new message with
 //! the expanded text supersedes the held one, so it goes through Prepare
 //! again (attachments, redaction) and the conversation keeps the expanded
 //! text. A held message is on its way to its agent, so a turn it steers
@@ -57,6 +58,13 @@ impl InlineShell {
     }
 }
 
+/// The Prepare system that finds a message's commands and holds it while
+/// they run, for others to order against. It runs before the files a
+/// message names are attached, so they are attached to the text the model
+/// reads.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct InlineShellSystems;
+
 #[derive(Default)]
 pub struct InlineShellPlugin;
 
@@ -65,10 +73,11 @@ impl Plugin for InlineShellPlugin {
         app.add_setting::<InlineShell>("inline_shell")
             .init_resource::<ProjectRoot>()
             .init_resource::<Processes>()
+            .configure_sets(AgentPass, InlineShellSystems.in_set(PrepareSystems::Input))
             .add_systems(
                 AgentPass,
                 expand
-                    .in_set(Stage::Prepare)
+                    .in_set(InlineShellSystems)
                     .run_if(|settings: Res<InlineShell>| settings.enabled),
             )
             .add_systems(PostUpdate, show_expanding.in_set(StatusSystems))
@@ -156,7 +165,11 @@ struct Block(String);
 /// and holds the message with one running job per command. A message with
 /// only escapes gets them resolved at once.
 fn expand(
-    mut messages: Query<(Entity, &mut Incoming, &ForAgent), (Added<Admitted>, Without<Expanded>)>,
+    mut messages: Query<
+        (Entity, &mut Incoming, &ForAgent),
+        (Added<Admitted>, IncomingMessages, Without<Expanded>),
+    >,
+    dirs: Query<&WorkDir>,
     settings: Res<InlineShell>,
     processes: Res<Processes>,
     root: Res<ProjectRoot>,
@@ -184,14 +197,18 @@ fn expand(
             }
             continue;
         }
+        // The agent's own directory, else where every process starts, else
+        // the project.
         let launcher = processes.launcher();
-        let launcher = match launcher.cwd {
-            Some(_) => launcher,
-            None => launcher.in_dir(&root.0),
+        let launcher = match (dirs.get(agent), &launcher.cwd) {
+            (Ok(WorkDir(dir)), _) => launcher.in_dir(dir),
+            (Err(_), Some(_)) => launcher,
+            (Err(_), None) => launcher.in_dir(&root.0),
         };
         let shell = Shell {
             launcher,
             spill: None,
+            confine: false,
             cut: None,
         };
         let pool = IoTaskPool::get_or_init(TaskPool::default);

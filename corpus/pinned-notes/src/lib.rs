@@ -59,15 +59,22 @@ impl Plugin for PinnedNotesPlugin {
                         "Use `pin_note` for a decision or constraint that must outlive the \
                          conversation, such as one the user asks you to remember.",
                     ],
-                    footprint: Some(Footprint::Independent),
+                    footprint: Some(Touches::Independent),
                 },
                 on_pin_note,
+            )
+            .configure_sets(
+                AgentPass,
+                (
+                    PinnedNotesSystems::Prepare.in_set(PrepareSystems::Edit),
+                    PinnedNotesSystems::Review.in_set(Stage::Review),
+                ),
             )
             .add_systems(
                 AgentPass,
                 (
-                    tell_summaries.in_set(Stage::Prepare),
-                    inherit.in_set(Stage::Review),
+                    tell_summaries.in_set(PinnedNotesSystems::Prepare),
+                    inherit.in_set(PinnedNotesSystems::Review),
                 ),
             );
         #[cfg(feature = "tui")]
@@ -100,6 +107,17 @@ impl Plugin for PinnedNotesPlugin {
             );
         }
     }
+}
+
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum PinnedNotesSystems {
+    /// Prepare: tells a compaction's summary call the agent's notes, after
+    /// the default prompt went in.
+    Prepare,
+    /// Review: gives a subagent spawned with `inherit_pins` its parent's
+    /// notes.
+    Review,
 }
 
 /// An agent's pinned notes, oldest first. Saved with the session; each
@@ -262,7 +280,12 @@ struct PinArgs {
 
 /// Pins, unpins or lists the calling agent's notes, and answers with
 /// them.
-fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands: Commands) {
+fn on_pin_note(
+    called: On<ToolCalled<PinArgs>>,
+    pins: Query<&Pins>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+    mut commands: Commands,
+) {
     let (agent, args) = (called.agent, &called.args);
     let mut current = pins.get(agent).cloned().unwrap_or_default();
     let mut changed = Ok(());
@@ -284,9 +307,9 @@ fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands
             ToolResult::failed(ToolExecutionError::other(format!("{why} Nothing changed.")))
         }
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut decision) = calls.get_mut(called.call) {
+        decision.decide(result);
+    }
 }
 
 /// Tells each compaction's summary call the agent's pinned notes, so the
@@ -294,7 +317,12 @@ fn on_pin_note(called: On<ToolCalled<PinArgs>>, pins: Query<&Pins>, mut commands
 fn tell_summaries(
     mut calls: Query<
         (&mut ModelRequest, &ForAgent),
-        (Added<Admitted>, With<Summarizing>, Without<TurnCall>),
+        (
+            Added<Admitted>,
+            ModelCalls,
+            With<Summarizing>,
+            Without<TurnCall>,
+        ),
     >,
     pins: Query<&Pins>,
 ) {
@@ -321,7 +349,10 @@ fn tell_summaries(
 /// Gives the subagent of a `task` call with `inherit_pins: true` a copy
 /// of its parent's pinned notes, as it is spawned.
 fn inherit(
-    spawned: Query<(&SpawnSubagent, &SpawnedAgent, &ForAgent), (Unreviewed, Added<SpawnedAgent>)>,
+    spawned: Query<
+        (&SpawnSubagent, &SpawnedAgent, &ForAgent),
+        (Unreviewed, Added<Outcome>, PluginEffects),
+    >,
     pins: Query<&Pins>,
     mut commands: Commands,
 ) {

@@ -194,8 +194,14 @@ fn answer_for_thread(bound: On<Insert<ChatThread>>, mut commands: Commands) {
 type OpenAsks<'w, 's> = Query<
     'w,
     's,
-    (Entity, &'static Ask, &'static ForAgent, &'static Effect),
-    (Without<Outcome>, Without<Settled>),
+    (
+        Entity,
+        &'static Ask,
+        &'static ForAgent,
+        &'static Effect,
+        &'static Decision,
+    ),
+    (PluginEffects, Without<Outcome>, Without<Settled>),
 >;
 
 /// Routes each message received: as the answer to its thread's oldest open
@@ -244,8 +250,10 @@ fn receive(
         };
         let open = asks
             .iter()
-            .filter(|(ask, _, to, _)| to.0 == agent && !answered.contains(ask))
-            .min_by_key(|(.., effect)| effect.id());
+            .filter(|(ask, _, to, _, decision)| {
+                to.0 == agent && !decision.is_decided() && !answered.contains(ask)
+            })
+            .min_by_key(|(.., effect, _)| effect.id());
         if let Some((ask, question, ..)) = open
             && let Some(index) = choice(question, &message.text)
         {

@@ -8,7 +8,7 @@
 //! # Ok::<(), rig_http::http_client::Error>(())
 //! ```
 
-use bytes::Bytes;
+pub use bytes::Bytes;
 use http::HeaderName;
 pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,

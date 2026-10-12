@@ -24,7 +24,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use rig_harness::prelude::*;
-use rig_subagents::{SpawnSubagent, SpawnedAgent, TASK};
+use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentSystems, TASK};
 use serde::Deserialize;
 
 /// The `task` argument naming a profile.
@@ -56,12 +56,23 @@ impl Plugin for AgentProfilesPlugin {
                     .chain()
                     .before(AgentLoop),
             )
+            .configure_sets(
+                AgentPass,
+                (
+                    AgentProfilesSystems::Prepare.in_set(Stage::Prepare),
+                    // A request rig-subagents let through.
+                    AgentProfilesSystems::Gate
+                        .in_set(Stage::Gate)
+                        .after(SubagentSystems::Gate),
+                    AgentProfilesSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    profile_spawn.in_set(Stage::Prepare),
-                    refuse_unknown.in_set(Stage::Gate),
-                    prompt_spawned.in_set(Stage::Review),
+                    profile_spawn.in_set(AgentProfilesSystems::Prepare),
+                    refuse_unknown.in_set(AgentProfilesSystems::Gate),
+                    prompt_spawned.in_set(AgentProfilesSystems::Review),
                 ),
             )
             .add_command(
@@ -70,6 +81,19 @@ impl Plugin for AgentProfilesPlugin {
                 apply_profile,
             );
     }
+}
+
+/// The plugin's stage systems, by stage, to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AgentProfilesSystems {
+    /// Gives a spawn request that names a profile the profile's model,
+    /// reasoning setting and tools.
+    Prepare,
+    /// Refuses a spawn request naming an unknown profile, after
+    /// [`SubagentSystems::Gate`].
+    Gate,
+    /// Gives the agent spawned the profile's prompt.
+    Review,
 }
 
 /// One profile, as its file says.
@@ -298,13 +322,12 @@ fn profile_spawn(
 
 /// Refuses a subagent asked for with a profile nobody defined.
 fn refuse_unknown(
-    requests: Query<(Entity, &SpawnSubagent), Undecided>,
+    mut requests: Query<(&SpawnSubagent, &mut Decision), (Undecided, PluginEffects, Without<Ask>)>,
     profiles: Res<Profiles>,
-    mut commands: Commands,
 ) {
-    for (entity, request) in &requests {
+    for (request, mut decision) in &mut requests {
         if let Some(Err(why)) = named(request).map(|name| profiles.get(&name)) {
-            commands.entity(entity).insert_if_new(Outcome::refused(why));
+            decision.decide(Outcome::refused(why));
         }
     }
 }

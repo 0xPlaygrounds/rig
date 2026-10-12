@@ -139,3 +139,8 @@ fn repeated_calls_are_refused_then_stop_the_turn() {
     let ended = &world.resource::<Ended>().0;
     assert!(busy == 0 && ended.is_empty(), "{busy} turns, {ended:?}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(LoopBreakerPlugin);
+}

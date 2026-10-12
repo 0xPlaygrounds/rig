@@ -159,6 +159,10 @@ impl Debate {
     }
 }
 
+/// The Gate system that stops a debater's restored turn, to order against.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DebateSystems;
+
 /// Adds `/debate`; see the [crate](self) docs.
 #[derive(Default)]
 pub struct DebatePlugin;
@@ -176,10 +180,12 @@ impl Plugin for DebatePlugin {
                 debate,
             )
             .add_observer(seat)
+            .add_observer(follow_successor::<Seat>)
             .add_observer(add_spent_column)
             .add_observer(step)
             .add_observer(stop_on_interrupt)
-            .add_systems(AgentPass, keep_idle.in_set(Stage::Gate))
+            .configure_sets(AgentPass, DebateSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, keep_idle.in_set(DebateSystems))
             .add_systems(Update, show_spent);
     }
 }
@@ -249,9 +255,7 @@ fn debate(
     // The agent's read-only tools; the judge gets none.
     let read_only: Vec<String> = tools
         .iter()
-        .filter(|(def, footprint)| {
-            **footprint == Footprint::ReadOnly && access.allows(def.0.name.as_str())
-        })
+        .filter(|(def, footprint)| footprint.0.reads_only() && access.allows(def.0.name.as_str()))
         .map(|(def, _)| def.0.name.as_str().to_owned())
         .collect();
     let brief = format!("The question: {question}\n\nRound 1 of {rounds}: make your case.");

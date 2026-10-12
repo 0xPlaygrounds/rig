@@ -15,7 +15,6 @@ use std::cmp::Reverse;
 
 use bevy_ecs::system::SystemParam;
 use glob::Pattern;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::ToolDefinition;
 use rig_harness::rig_core::effect::Outcome as Answered;
@@ -59,8 +58,8 @@ impl ActivatedTools {
 }
 
 /// The plugin's stage systems, for others to order against: in Prepare,
-/// the one that takes the deferred tools out of a request (before
-/// compaction measures it); in Review, the one that notes a guessed call's
+/// the one that takes the deferred tools out of a request (after the
+/// default prompt went in, before compaction measures it); in Review, the one that notes a guessed call's
 /// activation at the end of its result.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolSearchSystems {
@@ -85,7 +84,7 @@ impl Plugin for ToolSearchPlugin {
                         "Some tools are deferred: not listed until found. When no listed tool \
                          fits, call `tool_search` with a few keywords before giving up.",
                     ],
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 search,
             )
@@ -93,9 +92,7 @@ impl Plugin for ToolSearchPlugin {
             .configure_sets(
                 AgentPass,
                 (
-                    ToolSearchSystems::Offer
-                        .in_set(Stage::Prepare)
-                        .before(CompactionSystems::Prepare),
+                    ToolSearchSystems::Offer.in_set(PrepareSystems::Edit),
                     ToolSearchSystems::Activate.in_set(Stage::Review),
                 ),
             )
@@ -164,7 +161,11 @@ impl Registry<'_, '_> {
 fn offer(
     mut calls: Query<
         (&mut ModelRequest, &ForAgent),
-        (Added<Admitted>, Or<(With<TurnCall>, With<BuildFrom>)>),
+        (
+            Added<Admitted>,
+            ModelCalls,
+            Or<(With<TurnCall>, With<BuildFrom>)>,
+        ),
     >,
     registry: Registry,
     agents: Query<(&ToolAccess, &ActivatedTools)>,
@@ -201,7 +202,7 @@ fn search(
     called: On<ToolCalled<Search>>,
     registry: Registry,
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
-    mut commands: Commands,
+    mut decisions: Query<&mut Decision, ToolCalls>,
 ) {
     let Ok((access, mut activated)) = agents.get_mut(called.agent) else {
         return;
@@ -234,10 +235,9 @@ fn search(
             activated.0.push(name.to_owned());
         }
     }
-    let result = ToolResult::success(ToolOutput::text(text));
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut decision) = decisions.get_mut(called.call) {
+        decision.decide(ToolResult::success(ToolOutput::text(text)));
+    }
 }
 
 /// The lowercase words of `text`.
@@ -274,12 +274,12 @@ fn score(def: &ToolDefinition, terms: &[String]) -> usize {
 /// allows it): before its result is committed, this activates the tool and
 /// says so at the end of the result.
 fn activate_on_call(
-    calls: Query<(Entity, &ToolRequest, &ForAgent, &Outcome), Unreviewed>,
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut Outcome), (Unreviewed, ToolCalls)>,
     registry: Registry,
     mut agents: Query<(&ToolAccess, &mut ActivatedTools)>,
-    mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent), outcome) in &calls {
+    // Once per call: the tool is active once noted, which this checks.
+    for (request, &ForAgent(agent), mut outcome) in &mut calls {
         let name = request.call.function.name.as_str();
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
@@ -296,8 +296,7 @@ fn activate_on_call(
             "(`{name}` was deferred and not offered yet; it ran and is now active.)"
         )));
         if let Ok(output) = ToolOutput::content(content) {
-            let noted = result.clone().with_output(output);
-            commands.entity(call).insert(Outcome::from(noted));
+            *outcome = Outcome::from(result.clone().with_output(output));
         }
     }
 }

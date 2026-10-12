@@ -1,4 +1,5 @@
-//! Sessions beyond the one running: `/new`, `/resume` and `/name`. The end
+//! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
+//! [`NameSession`] for a plugin naming any session. The end
 //! of each turn rewrites the session's [`SessionDir::meta`] (its
 //! [`SessionTitle`], the [`ResumeLabel`]s other plugins add, cost and when
 //! it was updated), which `/resume` lists and a resumed session reads its
@@ -20,8 +21,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use bevy_reflect::prelude::*;
-use rig_core::completion::Message;
-use rig_core::message::UserContent;
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_tools::fs::{read_json, write_json};
 use rig_tools::shorten;
@@ -30,13 +29,11 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{ActiveTurn, Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
-use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths};
+use rig_harness::prelude::{Exit, ExitReason, RigHome, SessionPaths, first_typed};
 use rig_harness::primary::primary_order;
 use rig_telemetry::SessionSpending;
-use rig_tools::attach::attached_file;
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -67,6 +64,7 @@ impl Plugin for SessionsPlugin {
                 name,
             )
             .add_observer(on_switch_session)
+            .add_observer(name_session)
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
@@ -128,6 +126,16 @@ pub struct SwitchSession {
     pub session: Option<String>,
 }
 
+/// Names a session: its title in `/resume`, and nothing else of its
+/// listing, such as what it cost. Naming this session is `/name`'s.
+#[derive(Event, Clone, Debug)]
+pub struct NameSession {
+    /// The session.
+    pub session: SessionId,
+    /// Its name.
+    pub name: String,
+}
+
 /// What a session's `meta.json` holds, for listing it.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
@@ -160,34 +168,33 @@ pub struct SessionEntry {
 }
 
 impl SessionEntry {
-    /// One line: age, name or title, the [`ResumeLabel`]s, cost,
-    /// directory.
+    /// One line: name or title, the [`ResumeLabel`]s, directory.
     pub fn label(&self) -> String {
-        let age = age(self.saved.elapsed().unwrap_or_default());
-        let title = match (&self.meta.title.name, self.meta.title.typed.as_str()) {
+        let mut label = match (&self.meta.title.name, self.meta.title.typed.as_str()) {
             (Some(name), _) => name.clone(),
             (None, "") => format!("session {}", self.id),
             (None, title) => title.to_owned(),
         };
-        let mut label = format!("{age:>8}  {title}");
         for text in self.meta.labels.values() {
             label.push_str(&format!("  · {text}"));
-        }
-        // The cost before the directory, which may be long enough to be
-        // cut off.
-        match self.meta.cost {
-            Some(cost) if cost > 0.0 => {
-                label.push_str(&format!("  · {}", dollars_label(cost)));
-            }
-            _ if self.meta.tokens > 0 => {
-                label.push_str(&format!("  · {} tokens", tokens_label(self.meta.tokens)));
-            }
-            _ => {}
         }
         if let Some(directory) = &self.directory {
             label.push_str(&format!("  · {}", tilde(directory)));
         }
         label
+    }
+
+    /// What it cost, or its tokens, and its age, shown whole beside the
+    /// label.
+    pub fn detail(&self) -> String {
+        let age = age(self.saved.elapsed().unwrap_or_default());
+        match self.meta.cost {
+            Some(cost) if cost > 0.0 => format!("{} · {age}", dollars_label(cost)),
+            _ if self.meta.tokens > 0 => {
+                format!("{} tokens · {age}", tokens_label(self.meta.tokens))
+            }
+            _ => age,
+        }
     }
 }
 
@@ -304,33 +311,6 @@ fn write_meta(
     }
 }
 
-/// The first text the user typed in `conversation`: never text an agent
-/// or a plugin delivered, such as a notice or a build failure, nor a
-/// file it attached.
-fn first_typed(conversation: &Conversation) -> Option<String> {
-    let mut messages = conversation.messages().iter().enumerate();
-    messages.find_map(|(at, message)| {
-        let Message::User { content } = message else {
-            return None;
-        };
-        content
-            .iter()
-            .enumerate()
-            .find_map(|(index, item)| match item {
-                UserContent::Text(text)
-                    if !text.text.trim().is_empty()
-                        && conversation
-                            .origin(at, index)
-                            .is_none_or(|origin| origin.kind == OriginKind::User)
-                        && attached_file(&text.text).is_none() =>
-                {
-                    Some(text.text.clone())
-                }
-                _ => None,
-            })
-    })
-}
-
 /// `text` on one line, cut to [`TITLE_CHARS`].
 fn one_line(text: &str) -> String {
     shorten(
@@ -398,6 +378,43 @@ fn name(
         format!("This session is now named “{name}”."),
     ));
     title.name = Some(name);
+}
+
+/// Names the session asked for: this one's [`SessionTitle`], another's
+/// listing cache, which keeps its counts.
+fn name_session(
+    named: On<NameSession>,
+    paths: Option<Res<SessionPaths>>,
+    home: Res<RigHome>,
+    mut title: ResMut<SessionTitle>,
+    mut notices: MessageWriter<Notice>,
+) {
+    let name = one_line(&named.name);
+    if paths.and_then(|paths| paths.id()).as_ref() == Some(&named.session) {
+        title.name = Some(name);
+        return;
+    }
+    let dir = home.0.session(&named.session);
+    let meta = read_json::<Meta>(&dir.meta()).unwrap_or_else(|| Meta {
+        updated: now_ms(),
+        ..Meta::default()
+    });
+    let meta = Meta {
+        title: SessionTitle {
+            name: Some(name),
+            ..meta.title
+        },
+        ..meta
+    };
+    let written = if dir.path().is_dir() {
+        write_json(&dir.meta(), &meta).map_err(|failure| failure.to_string())
+    } else {
+        Err("there is no such session".to_owned())
+    };
+    if let Err(why) = written {
+        let why = format!("Could not name session {}: {why}.", named.session);
+        notices.write(Notice::error(None, why));
+    }
 }
 
 /// Exits to run the session asked for next.

@@ -1,9 +1,12 @@
+use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::RELOAD_EXIT_CODE;
+use rig_ecs::AgentPlugin;
 use rig_ecs::agent::Notice;
+use rig_ecs::stage::{AgentPass, Decision, HoldOf, Outcome, PluginEffects, Stage, Undecided};
 
-use super::{Exit, ExitPlugin, ExitReason};
+use super::{Exit, ExitPlugin, ExitReason, ExitRequest};
 
 /// The exits and notices of each frame.
 #[derive(Resource, Default)]
@@ -15,9 +18,8 @@ struct Seen {
 fn app() -> App {
     let mut app = App::new();
     app.add_message::<AppExit>()
-        .add_message::<Notice>()
         .init_resource::<Seen>()
-        .add_plugins(ExitPlugin)
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, ExitPlugin))
         .add_systems(
             Last,
             |mut exits: MessageReader<AppExit>,
@@ -82,4 +84,69 @@ fn a_switch_without_the_launcher_keeps_the_app_running() {
         seen.notices
     );
     assert!(app.world().get_resource::<ExitReason>().is_none());
+}
+
+/// A hold on the first exit asked for.
+#[derive(Component)]
+struct NotesHold;
+
+fn hold_first_exit(
+    exits: Query<(Entity, &Decision), (With<ExitRequest>, Undecided, PluginEffects)>,
+    mut held: Local<bool>,
+    mut commands: Commands,
+) {
+    if *held {
+        return;
+    }
+    if let Some((exit, _)) = exits.iter().find(|(_, decision)| !decision.is_decided()) {
+        *held = true;
+        commands.spawn((NotesHold, HoldOf(exit)));
+    }
+}
+
+#[test]
+fn a_held_exit_waits_for_its_hold_then_exits_once_with_the_first_reason() {
+    let mut app = app();
+    app.add_systems(AgentPass, hold_first_exit.in_set(Stage::Gate));
+    app.world_mut().trigger(Exit(ExitReason::Quit));
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(app.world().resource::<Seen>().exits.is_empty());
+    assert_eq!(
+        app.world().get_resource::<ExitReason>(),
+        Some(&ExitReason::Quit)
+    );
+    let world = app.world_mut();
+    let holds: Vec<Entity> = world
+        .query_filtered::<Entity, With<NotesHold>>()
+        .iter(world)
+        .collect();
+    assert_eq!(holds.len(), 1);
+    for hold in holds {
+        world.despawn(hold);
+    }
+    app.update();
+    app.update();
+    assert_eq!(app.world().resource::<Seen>().exits, [AppExit::Success]);
+}
+
+#[test]
+fn a_refused_exit_still_exits() {
+    let mut app = app();
+    app.add_systems(
+        AgentPass,
+        (|mut exits: Query<&mut Decision, (With<ExitRequest>, Undecided, PluginEffects)>| {
+            for mut decision in &mut exits {
+                decision.decide(Outcome::refused("not now"));
+            }
+        })
+        .in_set(Stage::Gate),
+    );
+    app.world_mut().trigger(Exit(ExitReason::Failed(3)));
+    app.update();
+    assert_eq!(
+        app.world().resource::<Seen>().exits,
+        [AppExit::from_code(3)]
+    );
 }

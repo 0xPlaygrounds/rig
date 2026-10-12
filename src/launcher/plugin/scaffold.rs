@@ -39,9 +39,10 @@ impl Plugin for ScaffoldPlugin {
         // - a command's event:  trigger it from the command, commands.trigger(MyEvent { .. })
         // - a tool:             app.add_tool(MyTool), a `PortableTool`; one found at run time
         //                       with app.add_open_tool or world.spawn_tool ("A tool")
-        // - each model request: a system in `Stage::Prepare` edits a turn's `ModelRequest`
-        //                       (prompt, tools, options, the model it goes to); one in
-        //                       `Stage::Review` takes a failed call over ("Model requests")
+        // - each model request: a system in `PrepareSystems::Edit` edits a turn's
+        //                       `ModelRequest` (prompt, tools, options, the model it goes
+        //                       to); one in `ReviewSystems::Act` takes a failed call over
+        //                       ("Model requests")
         // - a tool call:        a system in `Stage::Gate` refuses or holds it, one in
         //                       `Stage::Review` replaces its result ("Gating and reviewing")
         // - ask the user:       spawn an `Ask` that holds what it asks about ("Asking the user")
@@ -49,7 +50,7 @@ impl Plugin for ScaffoldPlugin {
         //                       RIG_HOME/settings.toml ("Settings and command-line options")
         // - replace a built-in: insert `Disabled` on its entity ("Turning off or replacing")
         // - what the user types: an `Incoming` message, changed by a system in
-        //                       `Stage::Prepare`, taken over in `Stage::Gate`
+        //                       `PrepareSystems::Edit`, taken over in `Stage::Gate`
         //                       ("What the user types")
         // - the status line:    with the crate rig-tui, a rig_tui::StatusItem in the
         //                       agent's StatusItems ("The status line")

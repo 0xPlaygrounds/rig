@@ -4,20 +4,12 @@
 //! `--print` run, a signal), a session that changed files or had at least
 //! three turns gets a note in `.rig/notes/<date>-<session>.md`: what the
 //! main agent's conversation was about, summarized by a model call of the
-//! plugin's own, and the files its tool calls changed. The exit waits for
-//! it at most 15 s; Esc, or a second quit, skips the wait. `/notes-now`
-//! writes the note without quitting.
-//!
-//! The harness has no way to hold an exit: `/quit`, `--print` and signals
-//! write `AppExit` directly. So the plugin takes the `AppExit` messages out
-//! in `Last`, before Bevy's `OnAppExitSystems` see them, and writes the
-//! first one again once the note is written.
+//! plugin's own, and the files its tool calls changed. The plugin holds the
+//! exit effect until the note is written, at most 15 s; Esc, or a second
+//! quit, skips the summary. `/notes-now` writes the note without quitting.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use bevy_app::OnAppExitSystems;
-use bevy_ecs::message::Messages;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::message::{AssistantContent, Message};
 use rig_harness::rig_core::tool::FilesChanged;
@@ -41,6 +33,9 @@ left). Be brief. Do not call tools; the changed files are listed separately.";
 /// What stands in for a summary the model did not give.
 const UNAVAILABLE: &str = "(summary unavailable)";
 
+/// What the exit waits for, on the hold and the status.
+const WRITING: &str = "Writing session notes… (Esc to skip)";
+
 /// The `[exit-notes]` settings: `model = "vendor/name"` writes the summary
 /// on that model instead of the main agent's.
 #[derive(Resource, Deserialize, Default, Debug, Clone)]
@@ -57,7 +52,7 @@ pub struct ExitNotesSettings {
 #[derive(Resource, Reflect, Clone, Debug, Default)]
 #[reflect(Resource, Saved, Default)]
 pub struct SessionNotes {
-    /// The main agent's turns that ended.
+    /// The main agent's turns, over the whole session.
     pub turns: u64,
     /// The changed files, in the order first changed.
     pub files: Vec<String>,
@@ -72,28 +67,34 @@ impl SessionNotes {
     }
 }
 
+/// The plugin's stage systems.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ExitNotesSystems {
+    /// Prepare: asks the summary call for the note.
+    Ask,
+    /// Gate: holds the exit while the note is written.
+    HoldExit,
+}
+
 /// On the plugin's summary call.
 #[derive(Component)]
 pub struct NotesCall;
 
-/// The status shown while the exit waits, and the wait's deadline; both go
-/// once the note is written.
+/// On the plugin's holds of exits, and on its status picker; all go once
+/// the note is written.
 #[derive(Component)]
-struct WaitingUi;
+struct NotesWait;
 
-/// On a hold the plugin keeps on the agents' work while the exit waits.
-#[derive(Component)]
-struct ExitHold;
-
-/// The note being written, and the exit it holds back.
-#[derive(Resource, Default)]
-struct Writing {
-    /// The summary call, until it settled.
-    call: Option<Entity>,
-    /// The exit held back until the note is written.
-    held: Option<AppExit>,
-    /// The exit went through: later ones are not held.
-    released: bool,
+/// Where the app's exit is, for the note.
+#[derive(Resource, Default, PartialEq, Eq)]
+enum Leaving {
+    /// No exit asked for, or none that needs a note.
+    #[default]
+    No,
+    /// The exits are held until the note is written.
+    Waiting,
+    /// The exit goes: nothing more to hold.
+    Released,
 }
 
 /// Writes session notes on exit and on `/notes-now`.
@@ -104,23 +105,28 @@ impl Plugin for ExitNotesPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ExitNotesSettings>("exit-notes")
             .init_resource::<ProjectRoot>()
-            .init_resource::<Writing>()
+            .init_resource::<Leaving>()
             .insert_resource(SessionNotes::default())
             .add_command(
                 "notes-now",
                 "Write this session's notes to .rig/notes now",
                 notes_now,
             )
+            .configure_sets(
+                AgentPass,
+                (
+                    ExitNotesSystems::Ask.in_set(PrepareSystems::Edit),
+                    ExitNotesSystems::HoldExit.in_set(Stage::Gate),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    ask_for_notes
-                        .in_set(Stage::Prepare)
-                        .before(CompactionSystems::Prepare),
-                    hold_work.in_set(Stage::Gate),
+                    ask_for_notes.in_set(ExitNotesSystems::Ask),
+                    hold_exit.in_set(ExitNotesSystems::HoldExit),
                 ),
             )
-            .add_systems(Last, hold_exit.before(OnAppExitSystems))
+            .add_observer(follow_successor::<NotesCall>)
             .add_observer(count_turns)
             .add_observer(count_files)
             .add_observer(take_notes)
@@ -132,50 +138,52 @@ impl Plugin for ExitNotesPlugin {
     }
 }
 
+/// The summary call in flight, if any.
+type InFlight<'w, 's> =
+    Query<'w, 's, &'static mut Decision, (With<NotesCall>, Without<Settled>, ModelCalls)>;
+
 /// `/notes-now`: writes the note without quitting.
 fn notes_now(
     In(args): In<CommandArgs>,
     notes: Res<SessionNotes>,
-    mut writing: ResMut<Writing>,
+    calls: InFlight,
     agents: PrimaryQuery,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if notes.turns == 0 {
-        notices.write(Notice::info(args.agent, "No turns yet: nothing to note."));
-        return;
-    }
-    if writing.call.is_some() {
-        notices.write(Notice::info(
-            args.agent,
-            "The session notes are being written.",
-        ));
-        return;
-    }
-    if let Some(agent) = primary(&agents) {
-        writing.call = Some(summarize(agent, &mut commands));
-        notices.write(Notice::info(args.agent, "Writing session notes…"));
-    }
+    let said = match primary(&agents) {
+        _ if notes.turns == 0 => "No turns yet: nothing to note.",
+        _ if !calls.is_empty() => "The session notes are being written.",
+        Some(agent) => {
+            summarize(agent, &mut commands);
+            "Writing session notes…"
+        }
+        None => return,
+    };
+    notices.write(Notice::info(args.agent, said));
 }
 
 /// Spawns the summary call of `agent`'s conversation: built by the kernel
 /// as a turn's request would be, but outside any turn, so its answer never
 /// reaches the conversation; its usage counts as `notes`.
-fn summarize(agent: Entity, commands: &mut Commands) -> Entity {
-    commands
-        .spawn((
-            Name::new("session notes"),
-            NotesCall,
-            BuildFrom(agent),
-            ForAgent(agent),
-            Effect::default().with_purpose("notes"),
-        ))
-        .id()
+fn summarize(agent: Entity, commands: &mut Commands) {
+    commands.spawn((
+        Name::new("session notes"),
+        NotesCall,
+        BuildFrom(agent),
+        ForAgent(agent),
+        Effect::default().with_purpose("notes"),
+    ));
 }
 
-/// Asks the summary call for the note, on the configured model if any.
+/// Asks the summary call for the note, on the configured model if any. A
+/// summary call is no turn's ([`TurnCall`]), so plugins that edit a turn's
+/// requests need no order against it.
 fn ask_for_notes(
-    mut calls: Query<(&mut ModelRequest, &ForAgent), (Added<Admitted>, With<NotesCall>)>,
+    mut calls: Query<
+        (&mut ModelRequest, &ForAgent),
+        (Added<Admitted>, With<NotesCall>, Without<TurnCall>),
+    >,
     settings: Res<ExitNotesSettings>,
     models: Res<Models>,
     mut notices: MessageWriter<Notice>,
@@ -195,121 +203,90 @@ fn ask_for_notes(
     }
 }
 
-/// While an exit waits for the note, nothing else starts: the agents'
-/// work stays as the exit would leave it, for a restart to carry on.
-fn hold_work(
-    starting: Query<Entity, (Undecided, Without<NotesCall>)>,
-    writing: Res<Writing>,
-    mut commands: Commands,
-) {
-    if writing.held.is_none() {
-        return;
-    }
-    for effect in &starting {
-        commands.spawn((ExitHold, HoldOf(effect)));
-    }
-}
-
-/// Holds back the app's exit while the note is written, and lets it go
-/// once it is: takes every `AppExit` out before `OnAppExitSystems` read
-/// it, and writes the first one again.
-#[expect(clippy::too_many_arguments, reason = "one system decides the exit")]
+/// Holds each exit about to go while the note is written. The first exit
+/// that leaves for good, of a session worth a note, starts the summary and
+/// the deadline; one asked for while waiting skips the summary.
 fn hold_exit(
-    mut exits: ResMut<Messages<AppExit>>,
-    mut writing: ResMut<Writing>,
+    exits: Query<Entity, (With<ExitRequest>, Undecided, PluginEffects)>,
     reason: Option<Res<ExitReason>>,
     notes: Res<SessionNotes>,
     agents: PrimaryQuery,
-    holds: Query<Entity, With<ExitHold>>,
+    mut leaving: ResMut<Leaving>,
+    mut calls: InFlight,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    if writing.released {
-        return;
-    }
-    let asked: Vec<AppExit> = exits.drain().collect();
-    if let Some(held) = writing.held.clone() {
-        if writing.call.is_none() {
-            exits.write(held);
-            writing.released = true;
-            for hold in &holds {
-                commands.entity(hold).despawn();
+    for exit in &exits {
+        if *leaving == Leaving::Released {
+            continue;
+        }
+        let hold = (Name::new(WRITING), NotesWait, HoldOf(exit));
+        if *leaving == Leaving::Waiting {
+            // A second quit: the note goes without a summary.
+            commands.spawn(hold);
+            for mut call in &mut calls {
+                call.decide(Outcome::refused("skipped"));
             }
-        } else if asked
-            .iter()
-            .any(|exit| ExitReason::of(exit) != ExitReason::Signal)
-            && let Some(call) = writing.call
-        {
-            // A second quit; a signal repeats on its own every frame.
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused("skipped"));
+            continue;
         }
-        return;
-    }
-    let Some(first) = asked.first().cloned() else {
-        return;
-    };
-    let reason = reason.map_or_else(|| ExitReason::of(&first), |reason| reason.clone());
-    let leaving = !matches!(reason, ExitReason::Reload | ExitReason::Switch(_));
-    let agent = primary(&agents);
-    let Some(agent) = agent.filter(|_| leaving && notes.worth_a_note()) else {
-        for exit in asked {
-            exits.write(exit);
+        let for_good = !matches!(
+            reason.as_deref(),
+            Some(ExitReason::Reload | ExitReason::Switch(_))
+        );
+        let agent = primary(&agents).filter(|_| for_good && notes.worth_a_note());
+        let Some(agent) = agent else {
+            *leaving = Leaving::Released;
+            continue;
+        };
+        *leaving = Leaving::Waiting;
+        commands.spawn((hold, WakeAt::after(WAIT)));
+        if calls.is_empty() {
+            summarize(agent, &mut commands);
         }
-        writing.released = true;
-        return;
-    };
-    writing.held = Some(first);
-    if writing.call.is_none() {
-        writing.call = Some(summarize(agent, &mut commands));
+        notices.write(Notice::info(None, WRITING));
+        let status = Picker::new(WRITING).item("Skip", "");
+        commands.spawn((NotesWait, status)).observe(skip);
     }
-    notices.write(Notice::info(None, "Writing session notes… (Esc to skip)"));
-    let status = Picker::new("Writing session notes… (Esc to skip)").item("Skip", "");
-    commands.spawn((WaitingUi, status)).observe(skip);
-    commands.spawn((WaitingUi, WakeAt::after(WAIT)));
 }
 
 /// Esc, or `Skip`, on the status: the note goes without a summary.
-fn skip(_: On<Picked>, writing: Res<Writing>, mut commands: Commands) {
-    if let Some(call) = writing.call {
-        commands
-            .entity(call)
-            .insert_if_new(Outcome::refused("skipped"));
+fn skip(_: On<Picked>, mut calls: InFlight) {
+    for mut call in &mut calls {
+        call.decide(Outcome::refused("skipped"));
     }
 }
 
 /// The wait is over: the note goes without a summary.
-fn time_out(
-    due: On<Add<Due>>,
-    deadlines: Query<(), (With<WaitingUi>, With<WakeAt>)>,
-    writing: Res<Writing>,
-    mut commands: Commands,
-) {
-    if let (Ok(()), Some(call)) = (deadlines.get(due.entity), writing.call) {
-        let why = format!("no summary after {} s", WAIT.as_secs());
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+fn time_out(due: On<Add<Due>>, holds: Query<(), With<NotesWait>>, mut calls: InFlight) {
+    if holds.contains(due.entity) {
+        for mut call in &mut calls {
+            call.decide(Outcome::refused(format!(
+                "no summary after {} s",
+                WAIT.as_secs()
+            )));
+        }
     }
 }
 
-/// Counts the main agent's turns as they end.
+/// Keeps the main agent's count of turns, which the kernel keeps over the
+/// whole session, as each starts.
 fn count_turns(
-    settled: On<Add<Settled>>,
-    turns: Query<&TurnOf>,
+    started: On<Add<Turn>>,
+    turns: Query<(&Turn, &TurnOf)>,
     agents: PrimaryQuery,
     mut notes: ResMut<SessionNotes>,
 ) {
-    if let Ok(&TurnOf(agent)) = turns.get(settled.entity)
+    if let Ok((turn, &TurnOf(agent))) = turns.get(started.entity)
         && primary(&agents) == Some(agent)
     {
-        notes.turns += 1;
+        notes.turns = notes.turns.max(turn.index.saturating_add(1));
     }
 }
 
 /// Keeps the files each settled tool call says it changed.
 fn count_files(
     settled: On<Add<Settled>>,
-    calls: Query<&Published, With<ToolRequest>>,
+    calls: Query<&Published, ToolCalls>,
     root: Res<ProjectRoot>,
     mut notes: ResMut<SessionNotes>,
 ) {
@@ -330,16 +307,16 @@ fn count_files(
 }
 
 /// Writes the note once the summary call settled, with its summary or
-/// without one.
+/// without one, and lets the exit go if it waits.
 #[expect(
     clippy::too_many_arguments,
     reason = "the note reads the whole session"
 )]
 fn take_notes(
     settled: On<Add<Settled>>,
-    calls: Query<&Outcome, With<NotesCall>>,
-    ui: Query<Entity, With<WaitingUi>>,
-    mut writing: ResMut<Writing>,
+    calls: Query<&Outcome, (With<NotesCall>, Without<SupersededBy>)>,
+    waiting: Query<Entity, With<NotesWait>>,
+    mut leaving: ResMut<Leaving>,
     mut notes: ResMut<SessionNotes>,
     root: Res<ProjectRoot>,
     (title, paths): (Option<Res<SessionTitle>>, Option<Res<SessionPaths>>),
@@ -349,12 +326,14 @@ fn take_notes(
     let Ok(outcome) = calls.get(settled.entity) else {
         return;
     };
-    writing.call = None;
-    for entity in &ui {
-        commands.entity(entity).despawn();
+    if *leaving == Leaving::Waiting {
+        *leaving = Leaving::Released;
+        for entity in &waiting {
+            commands.entity(entity).try_despawn();
+        }
     }
     let summary = outcome.completion().and_then(|response| {
-        let text: Vec<&str> = response
+        let text: String = response
             .choice
             .iter()
             .filter_map(|item| match item {
@@ -362,8 +341,8 @@ fn take_notes(
                 _ => None,
             })
             .collect();
-        let text = text.join("").trim().to_owned();
-        (response.error.is_none() && !text.is_empty()).then_some(text)
+        let text = text.trim();
+        (response.error.is_none() && !text.is_empty()).then(|| text.to_owned())
     });
     let name = session_name(title.as_deref(), paths.as_deref());
     let file = notes.file.clone().unwrap_or_else(|| {
@@ -371,10 +350,9 @@ fn take_notes(
         format!("{date}-{}.md", slug(&name))
     });
     let dir = root.0.join(".rig").join("notes");
-    let path: PathBuf = dir.join(&file);
+    let path = dir.join(&file);
     let text = note(&name, &notes, summary.as_deref());
-    let written = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, text));
-    match written {
+    match std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, text)) {
         Ok(()) => {
             notes.file = Some(file);
             let said = format!("Session notes written to {}.", path.display());

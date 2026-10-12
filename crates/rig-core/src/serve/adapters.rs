@@ -11,15 +11,16 @@
 
 use crate::{
     completion::ModelRef,
-    driver::DynModel,
+    driver::{DynModel, Sending},
     effect::{
-        EffectFamily, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, FamilyDescriptor,
-        HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome, RetrieveQuery,
-        RetrievedDocuments, ToolEmbeddingDescriptor,
+        EffectFamily, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, Outcome,
+        RetrieveQuery, RetrievedDocuments, ToolEmbeddingDescriptor,
     },
     error::{ErrorKind, ErrorReport},
     memory::ConversationMemory,
     operation::{Completion, Embedding, Rerank},
+    providers::registry::ProviderId,
     tool::{ErasedTool, Tool, ToolEmbedding},
     vector_store::{VectorStoreError, VectorStoreIndex, request::DynamicSearchFilter},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
@@ -55,6 +56,58 @@ impl<Op: Operation> ModelAdapter<Op> {
             model: model.into(),
         }
     }
+
+    /// How the model sends for `dispatch` under `handler`: its HTTP request
+    /// carries the [`Serving`], observed under `observation`.
+    fn sending(
+        &self,
+        handler: HandlerKey,
+        dispatch: &Dispatch,
+        observation: Option<crate::observe::AdapterContext>,
+    ) -> Sending {
+        let mut extensions = http::Extensions::new();
+        extensions.insert(Serving {
+            effect: dispatch.id(),
+            handler,
+            provider: self.model.spec().map(|spec| spec.provider),
+        });
+        Sending {
+            observation,
+            extensions,
+        }
+    }
+}
+
+/// What an outgoing HTTP request to a model serves, in its
+/// [extensions](http::Request::extensions): the effect it answers and the
+/// handler it was dispatched to. A model adapter sets it on every request
+/// it sends, so a [transport wrapper](crate::catalog::Connector::wrap_http)
+/// can tell one model call's requests from another's and from those of no
+/// call, such as a model listing. The request's headers and body are the
+/// wrapper's to read; rig records neither.
+///
+/// ```
+/// use rig_core::http_client::Request;
+/// use rig_core::serve::Serving;
+///
+/// fn served(request: &Request<Vec<u8>>) -> Option<u64> {
+///     request
+///         .extensions()
+///         .get::<Serving>()
+///         .map(|serving| serving.effect.as_u64())
+/// }
+/// assert_eq!(served(&Request::new(Vec::new())), None);
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Serving {
+    /// The effect the request answers, such as an ECS effect's id.
+    pub effect: EffectId,
+    /// The handler it was dispatched to, such as `model:openai/gpt-5`.
+    pub handler: HandlerKey,
+    /// The provider the model is reached through, when the model was
+    /// connected from a catalog spec.
+    pub provider: Option<ProviderId>,
 }
 
 /// Unary and streaming completions both route here; the descriptor carries
@@ -75,31 +128,26 @@ impl Serve for ModelAdapter<Completion> {
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
-        let context = dispatch.adapter_context();
+        let sending = self.sending(
+            crate::effect::model_key(self.label.as_str()),
+            &dispatch,
+            dispatch.adapter_context(),
+        );
         match kind {
             EffectKind::Completion {
                 request,
                 stream: false,
             } => {
-                let result = match context {
-                    Some(context) => model.call_observed(request, context).await,
-                    None => model.call(request).await,
-                };
+                let result = model.finished(request, sending).await;
                 Reply::Outcome(result.map(Outcome::Completion).map_err(ErrorReport::from))
             }
             EffectKind::Completion {
                 request,
                 stream: true,
-            } => {
-                let opened = match context {
-                    Some(context) => model.stream_observed(request, context),
-                    None => model.stream(request),
-                };
-                match opened {
-                    Ok(stream) => Reply::Stream(stream.into_relay()),
-                    Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
-                }
-            }
+            } => match model.opened(request, sending) {
+                Ok(stream) => Reply::Stream(stream.into_relay()),
+                Err(error) => Reply::Outcome(Err(ErrorReport::from(error))),
+            },
             other @ (EffectKind::ToolCall { .. }
             | EffectKind::Embed { .. }
             | EffectKind::Memory { .. }
@@ -130,14 +178,19 @@ impl Serve for ModelAdapter<Embedding> {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
+        let sending = self.sending(
+            crate::effect::embed_key(self.label.as_str()),
+            &dispatch,
+            None,
+        );
         match kind {
             EffectKind::Embed {
                 inputs: EmbedInputs::Texts(texts),
             } => Reply::Outcome(
                 model
-                    .call(texts)
+                    .finished(texts, sending)
                     .await
                     .map(|response| Outcome::Embeddings(EmbedOutputs::Texts(response)))
                     .map_err(ErrorReport::from),
@@ -175,12 +228,17 @@ impl Serve for ModelAdapter<Rerank> {
         }
     }
 
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
+    async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
+        let sending = self.sending(
+            crate::effect::rerank_key(self.label.as_str()),
+            &dispatch,
+            None,
+        );
         match kind {
             EffectKind::Rerank { request } => Reply::Outcome(
                 model
-                    .call(request)
+                    .finished(request, sending)
                     .await
                     .map(Outcome::Reranked)
                     .map_err(ErrorReport::from),
@@ -271,6 +329,16 @@ where
                 embedding: self.embedding.clone(),
             },
             layers: Vec::new(),
+        }
+    }
+
+    fn footprint(&self, kind: &EffectKind) -> Option<crate::tool::Touches> {
+        match kind {
+            EffectKind::ToolCall { name, args } if name == T::NAME => {
+                let args = crate::tool::contextual::parse_tool_args::<T::Args>(args).ok()?;
+                Some(self.tool.footprint(&args))
+            }
+            _ => None,
         }
     }
 

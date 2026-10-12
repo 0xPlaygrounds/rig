@@ -80,30 +80,51 @@ impl ContextValue for Split {
 #[derive(Default)]
 pub struct ThinkTagSplitterPlugin;
 
+/// The plugin's stage systems, to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ThinkTagSystems {
+    /// In [`PrepareSystems::Edit`], before compaction measures the adapted
+    /// call: puts the split on each model call.
+    Prepare,
+    /// In [`Stage::Review`]: learns which models send tags.
+    Review,
+}
+
 impl Plugin for ThinkTagSplitterPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<ThinkTags>("think_tags")
             .init_resource::<SendsTags>()
+            .configure_sets(
+                AgentPass,
+                (
+                    ThinkTagSystems::Prepare.in_set(PrepareSystems::Edit),
+                    ThinkTagSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
-                (adapt.in_set(Stage::Prepare), remember.in_set(Stage::Review)),
+                (
+                    adapt.in_set(ThinkTagSystems::Prepare),
+                    remember.in_set(ThinkTagSystems::Review),
+                ),
             );
     }
 }
 
 /// Puts the split on each new model call, for whichever model it goes to.
 fn adapt(
-    mut calls: Query<&mut ModelRequest, Added<Admitted>>,
+    mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>,
     tags: Res<ThinkTags>,
     sends: Res<SendsTags>,
 ) {
     if !tags.detect && tags.models.is_empty() && sends.0.is_empty() {
         return;
     }
-    for mut call in &mut calls {
+    for mut adapters in &mut calls {
         let tags = tags.clone();
         let sends = sends.0.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new(NAME, move |mut connection: Connection| {
                 let model = connection.spec.reference();
                 let always = tags.models.contains(&model);
@@ -125,7 +146,10 @@ fn adapt(
 }
 
 /// Learns which models send tags from the replies the split rewrote.
-fn remember(calls: Query<(&SentTo, &Published), Unreviewed>, mut sends: ResMut<SendsTags>) {
+fn remember(
+    calls: Query<(&SentTo, &Published), (Unreviewed, ModelCalls)>,
+    mut sends: ResMut<SendsTags>,
+) {
     for (sent, published) in &calls {
         let model = sent.0.spec.reference();
         if matches!(published.0.get::<Split>(), Ok(Some(_))) && !sends.0.contains(&model) {

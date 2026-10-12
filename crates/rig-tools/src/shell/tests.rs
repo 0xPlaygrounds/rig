@@ -1,6 +1,6 @@
 use rig_core::tool::{ExitStatus, Tool, ToolContext};
 
-use super::{Shell, ShellArgs, Stop, run};
+use super::{Shell, ShellArgs};
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -8,7 +8,7 @@ fn shell(command: &str, spill: Option<crate::Spill>) -> String {
         spill,
         ..Shell::default()
     };
-    run(&shell, ShellArgs::new(command), &Stop::default())
+    futures::executor::block_on(shell.run(ShellArgs::new(command)))
         .map(|ran| ran.output)
         .unwrap_or_default()
 }
@@ -90,8 +90,11 @@ fn cut_output_is_read_back_by_its_handle() {
             .map(|(path, _)| path.to_owned())
             .unwrap_or_default();
         let args = crate::ReadArgs::new(handle).lines(lines / 2, 1);
-        let read =
-            futures::executor::block_on(Tool::call(&crate::Read, &mut ToolContext::new(), args));
+        let read = futures::executor::block_on(Tool::call(
+            &crate::Read::default(),
+            &mut ToolContext::new(),
+            args,
+        ));
         let wanted = format!("{}\t{}\n[", lines / 2, lines / 2);
         assert!(
             matches!(&read, Ok(text) if text.contains(&wanted)),

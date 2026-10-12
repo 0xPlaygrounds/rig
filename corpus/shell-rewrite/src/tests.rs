@@ -135,3 +135,20 @@ fn rm_runs_as_trash_the_guard_judges_it_and_the_conversation_keeps_the_models_ca
     }
     std::fs::remove_dir_all(home.root()).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ShellRewritePlugin);
+}
+
+/// The tool guards, loaded together.
+#[test]
+fn stages_are_ordered_with_the_other_tool_guards() {
+    rig_defaults_test_support::assert_stages_ordered((
+        ShellRewritePlugin,
+        ConfirmDestructivePlugin,
+        corpus_permission_modes::PermissionModesPlugin,
+        corpus_protected_paths::ProtectedPathsPlugin,
+        corpus_plan_mode::PlanModePlugin,
+    ));
+}

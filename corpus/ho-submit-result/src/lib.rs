@@ -3,20 +3,23 @@
 //!
 //! `--schema=FILE` (or `/schema FILE`) offers the top-level agent the
 //! `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
-//! schema whose root is no object is a startup error. A valid call is the
-//! run's result ([`SubmitResult`]) and ends the turn once the other calls of
-//! its reply settled, with no further model request: `--print` writes it
-//! alone, on one line. Invalid arguments get the schema's complaints as the
-//! tool's result, and the third invalid call fails the run (exit code 2).
-//! A turn that ends in text gets one reminder; the second such end fails
-//! the run (exit code 3). In the terminal view the result is shown as a
-//! JSON block and the tool goes after one success, unless `--schema-keep`.
+//! schema whose root is no object refuses the start. A valid call is the
+//! run's result ([`SubmitResult`]): once the other calls of its reply
+//! settled, a Gate system answers the turn's next model call with the JSON
+//! itself, so nothing more is sent and the turn ends answered with it, which
+//! `--print` prints alone, on one line. Invalid arguments get the schema's
+//! complaints as the tool's result, and the third invalid call fails the run
+//! (exit code 2). A turn that ends in text gets one reminder; the second
+//! such end fails the run (exit code 3). In the terminal view the answer is
+//! a JSON block and the tool goes after one success, unless `--schema-keep`.
 
 use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::{CompletionResponse, Usage};
+use rig_harness::rig_core::effect;
+use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
 use rig_harness::rig_core::tool::ToolErrorKind;
-use rig_print::PrintSection;
 use serde_json::Value;
 
 /// The tool's name.
@@ -31,7 +34,8 @@ pub const KEEP: &str = "schema-keep";
 /// Invalid calls of one turn that fail the run.
 pub const MAX_INVALID: u32 = 3;
 
-/// The exit code after [`MAX_INVALID`] invalid calls.
+/// The exit code after [`MAX_INVALID`] invalid calls, and of a refused
+/// start.
 pub const INVALID_EXIT: u8 = 2;
 
 /// The exit code after a second turn end without a result.
@@ -40,9 +44,6 @@ pub const NO_RESULT_EXIT: u8 = 3;
 /// What a turn that ended in text is told, once.
 pub const REMINDER: &str =
     "You ended your turn without a result: call submit_result with it, as its schema says.";
-
-/// Why a turn whose result came in ends.
-pub const SUBMITTED: &str = "submit_result was called";
 
 const DESCRIPTION: &str =
     "Submit the task's result, as its parameters' schema says. A valid call ends the turn.";
@@ -56,16 +57,15 @@ const RULES: &[&str] = &[
 #[derive(Resource, Clone, Debug, Default, PartialEq)]
 pub struct SubmitResult(pub Option<Value>);
 
-impl SubmitResult {
-    /// What `--print` writes: the result as one line of JSON.
-    pub fn printed(&self) -> Option<String> {
-        self.0.as_ref().map(Value::to_string)
-    }
-}
-
-/// The plugin's Review systems, for other reviewers to order against.
+/// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SubmitSystems;
+pub enum SubmitSystems {
+    /// Review: counts each `submit_result` outcome, and reminds or fails a
+    /// turn that would end without a result.
+    Review,
+    /// Gate: answers a submitted turn's next model call with the result.
+    Gate,
+}
 
 /// Offers `submit_result` and ends the turns it answers.
 #[derive(Default)]
@@ -84,18 +84,9 @@ impl Plugin for SubmitResultPlugin {
             KEEP,
             "Keep `submit_result` after its first valid call",
         ));
-        let world = app.world_mut();
-        let taken = world
-            .query::<&ToolDef>()
-            .iter(world)
-            .any(|def| def.0.name.as_str() == TOOL);
-        if taken {
-            // Another plugin's tool of the name stays.
-            return;
-        }
         let options = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.add_open_tool(TOOL, DESCRIPTION, options, submit);
         let world = app.world_mut();
@@ -108,7 +99,6 @@ impl Plugin for SubmitResultPlugin {
         };
         // Off until a schema comes.
         world.entity_mut(tool).insert(Disabled);
-        world.spawn((ResultSection, PrintSection::new(TOOL, "")));
         let invoked = world.get_resource::<Invoked>().cloned().unwrap_or_default();
         app.insert_resource(SubmitTool {
             entity: tool,
@@ -122,13 +112,23 @@ impl Plugin for SubmitResultPlugin {
             "Offer submit_result with this JSON schema: /schema FILE",
             schema,
         )
-        .configure_sets(AgentPass, SubmitSystems.in_set(Stage::Review))
+        .configure_sets(
+            AgentPass,
+            (
+                SubmitSystems::Review.in_set(Stage::Review),
+                SubmitSystems::Gate.in_set(Stage::Gate),
+            ),
+        )
         .add_systems(
             AgentPass,
-            (judge, end_submitted, remind).chain().in_set(SubmitSystems),
+            (
+                (judge, remind).chain().in_set(SubmitSystems::Review),
+                end_with_result.in_set(SubmitSystems::Gate),
+            ),
         );
-        if let Some(path) = invoked.flag_value(SCHEMA) {
-            app.insert_resource(StartupSchema(path.to_owned()))
+        if invoked.flag(SCHEMA) {
+            let path = invoked.flag_value(SCHEMA).map(str::to_owned);
+            app.insert_resource(StartupSchema(path))
                 .add_systems(Startup, load_startup_schema);
         }
     }
@@ -144,20 +144,17 @@ struct SubmitTool {
     interactive: bool,
 }
 
-/// `--schema`'s file.
+/// `--schema`'s file; none when it came without `=FILE`.
 #[derive(Resource)]
-struct StartupSchema(String);
-
-/// The `--print` section that holds the result.
-#[derive(Component)]
-struct ResultSection;
+struct StartupSchema(Option<String>);
 
 /// How a turn fares with `submit_result`, on every turn.
 #[derive(Component, Default)]
 struct Submitting {
     invalid: u32,
     reminded: bool,
-    submitted: bool,
+    /// The turn's answer, once a valid result came in.
+    answer: Option<String>,
 }
 
 /// On a `submit_result` call already counted.
@@ -192,18 +189,24 @@ fn offer(commands: &mut Commands, tool: Entity, schema: Value) {
         .remove::<Disabled>();
 }
 
-/// `--schema=FILE`: offers the tool, or fails the start.
+/// `--schema=FILE`: offers the tool, or refuses the start.
 fn load_startup_schema(
     file: Res<StartupSchema>,
     root: Option<Res<ProjectRoot>>,
     tool: Res<SubmitTool>,
     mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
 ) {
-    match read_schema(root.as_deref().map(|root| root.0.as_path()), &file.0) {
+    let schema = match &file.0 {
+        Some(path) => read_schema(root.as_deref().map(|root| root.0.as_path()), path),
+        // The launcher reads a plugin option's value only after `=`.
+        None => Err("give the file as --schema=FILE".to_owned()),
+    };
+    match schema {
         Ok(schema) => offer(&mut commands, tool.entity, schema),
         Err(why) => {
-            eprintln!("rig: --{SCHEMA}: {why}");
-            commands.trigger(Exit(ExitReason::Failed(2)));
+            notices.write(Notice::error(None, format!("--{SCHEMA}: {why}")));
+            commands.trigger(Exit(ExitReason::Failed(INVALID_EXIT)));
         }
     }
 }
@@ -242,17 +245,16 @@ fn submit(
     called: On<ToolCalled<Value>>,
     tools: Query<&ToolDef>,
     spawned: Query<(), With<SpawnedBy>>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let result = if spawned.contains(called.agent) {
         ToolResult::failed(ToolExecutionError::refused(
             "Only the main agent submits the result.",
         ))
     } else {
-        let schema = tools.get(called.entity).map(|def| &def.0.parameters);
         let mut errors = Vec::new();
-        if let Ok(schema) = schema {
-            violations(schema, &called.args, "$", &mut errors);
+        if let Ok(def) = tools.get(called.entity) {
+            violations(&def.0.parameters, &called.args, "$", &mut errors);
         }
         if errors.is_empty() {
             ToolResult::success("Result accepted; the turn ends.".into())
@@ -264,55 +266,48 @@ fn submit(
             ToolResult::failed(ToolExecutionError::new(ToolErrorKind::InvalidArgs, why))
         }
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(result));
+    if let Ok(mut decision) = calls.get_mut(called.call) {
+        decision.decide(result);
+    }
 }
 
-/// Counts each `submit_result` outcome once: a success is the run's
-/// result, and the turn ends; the third failure of a turn fails it, and a
-/// run nobody sits at.
+/// Counts each `submit_result` outcome once: a success is the run's result
+/// and the turn's answer; the third failure of a turn fails it, and a run
+/// nobody sits at.
 fn judge(
     calls: Query<
-        (Entity, &ToolRequest, &Outcome, &ForAgent, Option<&CallOf>),
-        (Unreviewed, Without<Judged>),
+        (Entity, &ToolRequest, &Outcome, &ForAgent, &CallOf),
+        (Unreviewed, ToolCalls, Without<Judged>),
     >,
     mut turns: Query<&mut Submitting>,
     tool: Res<SubmitTool>,
     mut result: ResMut<SubmitResult>,
-    mut sections: Query<&mut PrintSection, With<ResultSection>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
-    for (call, request, outcome, &ForAgent(agent), of) in &calls {
+    for (call, request, outcome, &ForAgent(agent), &CallOf(turn)) in &calls {
         if request.call.function.name.as_str() != TOOL {
             continue;
         }
         commands.entity(call).insert(Judged);
-        let turn = of.map(|of| of.0);
-        let state = turn.and_then(|turn| turns.get_mut(turn).ok());
+        let Ok(mut state) = turns.get_mut(turn) else {
+            continue;
+        };
         let answered = outcome.tool_result();
         if answered.is_success() {
             let value = Value::Object(request.call.function.arguments.clone());
-            for mut section in &mut sections {
-                section.text = value.to_string();
-            }
-            if tool.interactive {
-                let pretty = serde_json::to_string_pretty(&value).unwrap_or_default();
-                notices.write(Notice::info(agent, format!("```json\n{pretty}\n```")));
-            }
+            let answer = match tool.interactive {
+                true => serde_json::to_string_pretty(&value)
+                    .map(|pretty| format!("```json\n{pretty}\n```")),
+                false => serde_json::to_string(&value),
+            };
+            state.answer = answer.ok();
+            result.0 = Some(value);
             if !tool.keep {
                 commands.entity(tool.entity).insert(Disabled);
             }
-            result.0 = Some(value);
-            if let Some(mut state) = state {
-                state.submitted = true;
-            }
             continue;
         }
-        let (Some(turn), Some(mut state)) = (turn, state) else {
-            continue;
-        };
         state.invalid += 1;
         if state.invalid < MAX_INVALID {
             continue;
@@ -327,28 +322,9 @@ fn judge(
     }
 }
 
-/// Ends each turn whose result came in once every other call of its reply
-/// is answered and unheld, so they keep their results and the turn calls
-/// the model no more.
-fn end_submitted(
-    turns: Query<(Entity, &Submitting), (With<TurnOf>, Without<TurnOutcome>)>,
-    calls: Query<(&CallOf, Has<Outcome>, Has<Holds>), (With<ToolRequest>, Without<Settled>)>,
-    mut commands: Commands,
-) {
-    for (turn, _) in turns.iter().filter(|(_, state)| state.submitted) {
-        let open = calls
-            .iter()
-            .any(|(of, answered, held)| of.0 == turn && (!answered || held));
-        if !open {
-            let stopped = TurnOutcome::Stopped(Some(SUBMITTED.to_owned()));
-            commands.entity(turn).insert(stopped);
-        }
-    }
-}
-
 /// A top-level agent's turn that would end in text while the tool is
-/// offered gets one reminder; the second such end fails it, and a run
-/// nobody sits at.
+/// offered gets one reminder; the second such end fails the run, when
+/// nobody sits at it.
 fn remind(
     mut turns: Query<(&TurnOf, &TurnOutcome, &mut Submitting), Added<TurnOutcome>>,
     top: Query<(), (With<Agent>, Without<SpawnedBy>)>,
@@ -361,7 +337,8 @@ fn remind(
         return;
     }
     for (&TurnOf(agent), outcome, mut state) in &mut turns {
-        if !matches!(outcome, TurnOutcome::Answered(_)) || state.submitted || !top.contains(agent) {
+        let answered = matches!(outcome, TurnOutcome::Answered(_));
+        if !answered || state.answer.is_some() || !top.contains(agent) {
             continue;
         }
         if !state.reminded {
@@ -375,6 +352,28 @@ fn remind(
         if !tool.interactive {
             commands.trigger(Exit(ExitReason::Failed(NO_RESULT_EXIT)));
         }
+    }
+}
+
+/// Answers a submitted turn's next model call, which the kernel asks for
+/// once every other call of the reply settled, with the result: nothing is
+/// sent and the turn ends answered with it.
+fn end_with_result(
+    mut calls: Query<(&CallOf, &mut Decision), (Undecided, ModelCalls, With<TurnCall>)>,
+    turns: Query<&Submitting>,
+) {
+    for (&CallOf(turn), mut decision) in &mut calls {
+        let Ok(Submitting {
+            answer: Some(answer),
+            ..
+        }) = turns.get(turn)
+        else {
+            continue;
+        };
+        let choice = vec![AssistantContent::Text(Text::new(answer.clone()))];
+        let made = Made::new("plugin", "submit-result", TOOL);
+        let reply = CompletionResponse::new(choice, Usage::default(), made, Value::Null);
+        decision.decide(Outcome(Ok(effect::Outcome::Completion(reply))));
     }
 }
 

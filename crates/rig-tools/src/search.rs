@@ -7,11 +7,14 @@ use ignore::WalkBuilder;
 use ignore::overrides::OverrideBuilder;
 use regex::Regex;
 use rig_core::completion::ToolAnnotations;
-use rig_core::tool::{ContextValue, FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
+use rig_core::tool::{
+    ContextValue, FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches,
+    args_schema, content_hash,
+};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::fs::absolute;
+use crate::fs::{place, resolve};
 use crate::{MAX_FILE_BYTES, blocking, clip};
 
 /// Most matches a search returns.
@@ -20,8 +23,18 @@ const MAX_LINE: usize = 300;
 
 /// Searches file contents with a regular expression, honouring
 /// `.gitignore`. Publishes what it found ([`SearchHits`]) and the files it
-/// found matches in ([`FilesRead`]), by their absolute paths.
-pub struct Search;
+/// found matches in ([`FilesRead`]), by their [resolved](crate::fs::resolve)
+/// paths.
+#[derive(Clone, Debug, Default)]
+pub struct Search {
+    /// The directory searched, and a relative path is searched from;
+    /// `None` is this process's working directory. Hits under a base are
+    /// shown by their paths joined onto it.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is searched.
+    pub confine: bool,
+}
 
 /// Arguments of [`Search`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -91,21 +104,11 @@ pub struct Found {
     /// Whether it stopped at its [`MAX_MATCHES`] matches, so there may be
     /// more.
     pub stopped: bool,
-}
-
-impl Found {
-    /// The files with hits, each once, in walk order, by their absolute
-    /// paths.
-    pub fn files(&self) -> Vec<String> {
-        let mut files: Vec<String> = Vec::new();
-        for hit in &self.hits {
-            let file = absolute(&hit.path.to_string_lossy());
-            if files.last() != Some(&file) {
-                files.push(file);
-            }
-        }
-        files
-    }
+    /// The files with hits, each once, in walk order, by their
+    /// [resolved](crate::fs::resolve) paths, with the hash of the bytes
+    /// searched.
+    #[serde(default)]
+    pub files: Vec<FileRead>,
 }
 
 /// What a [`Search`] call found, as it published it beside the text.
@@ -147,15 +150,26 @@ impl Tool for Search {
             .with_open_world(false)
     }
 
+    fn footprint(&self, args: &SearchArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            args.path.as_deref().unwrap_or("."),
+        )]))
+    }
+
     async fn call(
         &self,
         context: &mut ToolContext,
-        args: SearchArgs,
+        mut args: SearchArgs,
     ) -> Result<String, ToolExecutionError> {
+        let path = args.path.as_deref().unwrap_or(".");
+        place(self.base.as_deref(), self.confine, path)?;
+        if let Some(base) = &self.base {
+            args.path = Some(base.join(path).to_string_lossy().into_owned());
+        }
         let found = blocking(move || find(&args, is_hidden)).await?;
-        let files = found.files();
-        if !files.is_empty() {
-            context.insert_result(FilesRead(files))?;
+        if !found.files.is_empty() {
+            context.insert_result(FilesRead(found.files.clone()))?;
         }
         let text = render(&found);
         context.insert_result(SearchHits(found))?;
@@ -228,6 +242,13 @@ pub fn find(
         let path = walked(entry.path());
         for (number, line) in text.lines().enumerate() {
             if pattern.is_match(line) {
+                if found.hits.last().is_none_or(|last| last.path != path) {
+                    let file = resolve(None, &path.to_string_lossy());
+                    found.files.push(FileRead::new(
+                        file.to_string_lossy(),
+                        content_hash(text.as_bytes()),
+                    ));
+                }
                 found.hits.push(Hit {
                     path: path.to_path_buf(),
                     line: number + 1,

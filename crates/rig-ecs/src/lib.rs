@@ -50,8 +50,8 @@ pub mod prelude {
 
     pub use crate::AgentPlugin;
     pub use crate::agent::{
-        ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent,
-        Interrupt, LastUsage, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
+        ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Entry, Interrupt,
+        LastUsage, MessageId, Notice, NoticeLevel, Partial, Retry, Spawned, SpawnedBy,
         SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
     };
     pub use crate::calls::{Done, PollCalls, Running, Wake};
@@ -64,21 +64,24 @@ pub mod prelude {
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::Restored;
     pub use crate::stage::{
-        Admitted, AgentLoop, AgentPass, AgentWork, Effect, EffectRequest, ForAgent, HoldOf, Holds,
-        Outcome, Published, Recorded, Settled, Stage, Started, SupersededBy, Supersedes, Undecided,
-        Unreviewed, Waiting,
+        Admitted, AgentLoop, AgentPass, AgentWork, AnswerFromRecord, Decision, Effect,
+        EffectRequest, ForAgent, HoldOf, Holds, IfStopped, IncomingMessages, ModelCalls, Outcome,
+        PluginEffects, PrepareSystems, Published, Recorded, ReviewSystems, Settled, Stage, Started,
+        SupersededBy, Supersedes, ToolCalls, Undecided, Unreviewed, Waiting,
     };
     pub use crate::tools::{
         AppToolsExt, CallHandler, Footprint, ToolCalled, ToolDef, ToolOptions, ToolRequest,
         WorldToolsExt,
     };
     pub use crate::turn::{
-        Adapter, Backoff, BuildFrom, DeltaKind, FirstChunk, ModelRequest, Recovery, RetryVerdict,
-        SentTo, StreamDelta, TurnCall,
+        Adapter, Adapters, Backoff, BuildFrom, DeltaKind, ModelRequest, Recovery, RetryVerdict,
+        SentTo, StreamDelta, Streamed, TurnCall,
     };
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
-    pub use rig_core::tool::{PortableTool, Tool, ToolExecutionError, ToolResult, args_schema};
+    pub use rig_core::tool::{
+        PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
+    };
 }
 
 use bevy_app::prelude::*;
@@ -134,6 +137,10 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
+            // Notices and commits are written by systems that never meet
+            // on one effect, and their order within a pass means nothing.
+            .allow_ambiguous_resource::<Messages<Notice>>()
+            .allow_ambiguous_resource::<Messages<journal::Committed>>()
             .configure_sets(
                 Last,
                 (StopTurns, WriteJournal)

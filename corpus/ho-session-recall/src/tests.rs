@@ -9,9 +9,10 @@ use rig_harness_test_support::{
 use super::RecallPlugin;
 
 /// A `read` that finds a secret in every file.
-fn read(called: On<ToolCalled<serde_json::Value>>, mut commands: Commands) {
-    let read = Outcome::from(ToolResult::success("TOKEN=hunter2".into()));
-    commands.entity(called.call).insert_if_new(read);
+fn read(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success("TOKEN=hunter2".into()));
+    }
 }
 
 /// Runs session `id` of `home`, the user saying `typed` and the model
@@ -106,4 +107,9 @@ fn recall_finds_the_past_fix_and_never_the_current_session() {
     let index = std::fs::read_to_string(index).unwrap_or_default();
     assert!(index.contains("LNK2019"), "the index is kept in RIG_HOME");
     assert!(!index.contains("hunter2"), "{index}");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(RecallPlugin);
 }

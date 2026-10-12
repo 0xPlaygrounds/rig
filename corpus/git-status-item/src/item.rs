@@ -130,7 +130,8 @@ fn after(
     mut looks: ResMut<Looks>,
 ) {
     if let Ok((turn, call, footprint)) = settles.get(settled.entity)
-        && (turn || call && footprint.copied().unwrap_or_default() == Footprint::Exclusive)
+        && (turn
+            || call && footprint.is_none_or(|footprint| matches!(footprint.0, Touches::Writes(_))))
     {
         looks.wanted = true;
     }

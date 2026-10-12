@@ -5,7 +5,9 @@ use serde::Deserialize;
 
 use super::lifecycle::{AgentDataItem, Agents};
 use super::spawn::{Brief, Role, SpawnSubagent, TaskCall};
-use super::{Awaits, Lifecycle, OpenRequests, Peers, Request, Subtask, answered, refused};
+use super::{
+    Awaits, Lifecycle, OpenRequests, Peers, Request, SubagentsPlugin, Subtask, answered, refused,
+};
 use rig_harness::prelude::*;
 
 /// The tool that starts a subagent.
@@ -66,15 +68,16 @@ pub(super) const SUBAGENT_ROLE: &str = "You are a subagent. Another agent gave y
 
 /// What a subagent started with `peers` is told, after [`SUBAGENT_ROLE`].
 pub(super) const PEER_ROLE: &str = "Other subagents of that agent work beside you; your task names the \
-    ones started before or with you, and a note names each one started later. `message` sends \
-    one of them a request by its id, or answers one it sent you; your last message answers the \
-    requests still open. To wait for a peer's message, call `wait`: never end your turn to wait, \
-    since your last message is your answer. Ask only for what you need.";
+    ones started before or with you. Peers may also start later, in a later reply of that \
+    agent: a note names each one when it starts. `message` sends one of them a request by its \
+    id, or answers one it sent you; your last message answers the requests still open. To wait \
+    for a peer's message, call `wait`, which returns once that peer messages you: never end \
+    your turn to wait, since your last message is your answer. Ask only for what you need.";
 
 pub(super) fn add(app: &mut App) {
     let independent = |rules| ToolOptions {
         rules,
-        footprint: Some(Footprint::Independent),
+        footprint: Some(Touches::Independent),
     };
     app.add_open_tool(TASK, TASK_DESCRIPTION, independent(RULES), on_task)
         .add_open_tool(MESSAGE, MESSAGE_DESCRIPTION, independent(&[]), on_message)
@@ -133,7 +136,11 @@ struct WaitArgs {
 
 /// Asks for the subagent of a `task` call: a [`SpawnSubagent`], a child of
 /// the call, which answers the call once it settled.
-fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
+fn on_task(
+    called: On<ToolCalled<TaskArgs>>,
+    me: Option<Res<PluginEntity<SubagentsPlugin>>>,
+    mut commands: Commands,
+) {
     let args = &called.args;
     let request = SpawnSubagent {
         title: args.description.clone(),
@@ -147,7 +154,7 @@ fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
         once: false,
         extra: args.extra.clone(),
     };
-    commands.spawn((
+    let mut spawned = commands.spawn((
         request,
         ForAgent(called.agent),
         ChildOf(called.call),
@@ -157,6 +164,9 @@ fn on_task(called: On<ToolCalled<TaskArgs>>, mut commands: Commands) {
             batch: called.parent,
         },
     ));
+    if let Some(me) = me {
+        spawned.insert(ProvidedBy(me.entity()));
+    }
 }
 
 /// Sends each subagent started since it last ran its task, naming its
@@ -277,10 +287,13 @@ impl Agents<'_, '_> {
             return Ok(reach.swap_remove(at));
         }
         let named: Vec<String> = reach.iter().map(Reachable::named).collect();
-        let named = if named.is_empty() {
-            "none".to_owned()
-        } else {
-            named.join(", ")
+        let named = match (named.is_empty(), me.peers) {
+            (false, _) => named.join(", "),
+            (true, false) => "none".to_owned(),
+            (true, true) => "none yet. Peers may start later, in a later reply of the agent \
+                             that started you: a note names each one when it starts, and `wait` \
+                             returns once a peer messages you"
+                .to_owned(),
         };
         Err(format!(
             "`{wanted}` is not an agent you can reach. You can reach: {named}."
@@ -367,7 +380,7 @@ fn on_message(called: On<ToolCalled<MessageArgs>>, mut agents: Agents) {
         }
         Ok(target) => agents.send(&called, target),
     };
-    agents.commands.entity(called.call).insert_if_new(output);
+    agents.answer(called.call, output);
 }
 
 /// Waits for a message from an agent the caller can reach: ends at once
@@ -379,7 +392,7 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
     let target = match agents.reachable(caller, &called.args.agent) {
         Ok(target) => target,
         Err(why) => {
-            agents.commands.entity(call).insert_if_new(refused(why));
+            agents.answer(call, refused(why));
             return;
         }
     };
@@ -405,5 +418,5 @@ fn on_wait(called: On<ToolCalled<WaitArgs>>, mut agents: Agents) {
             return;
         }
     };
-    agents.commands.entity(call).insert_if_new(output);
+    agents.answer(call, output);
 }

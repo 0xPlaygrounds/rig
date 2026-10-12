@@ -4,6 +4,7 @@ use bevy_time::TimeUpdateStrategy;
 use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
+use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 use super::*;
@@ -94,7 +95,7 @@ fn the_title_follows_the_turn_rings_once_and_is_given_back() {
             hold: true,
             held: false,
         })
-        .add_plugins((AgentPlugin, JournalPlugin, TitlePlugin))
+        .add_plugins((AgentPlugin, JournalPlugin, ExitPlugin, TitlePlugin))
         .add_systems(AgentPass, hold.in_set(Stage::Review));
     let model = MockCompletionModel::from_stream_turns([reply("One."), reply("Two.")]);
     let line = connect(&model);
@@ -168,8 +169,12 @@ fn the_title_follows_the_turn_rings_once_and_is_given_back() {
     });
 
     // On exit the terminal's title and the window's name are given back.
-    app.world_mut().write_message(AppExit::Success);
-    app.update();
+    app.world_mut().trigger(Exit(ExitReason::Quit));
+    run_until(&mut app, &wakes, |world| {
+        world
+            .get_resource::<Messages<AppExit>>()
+            .is_some_and(|exits| !exits.is_empty())
+    });
     let (_, _, bytes) = written(&buffer);
     assert!(bytes.ends_with(POP_TITLE), "{bytes:?}");
     let logged = fs::read_to_string(&log).unwrap_or_default();

@@ -52,10 +52,10 @@ use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use futures::channel::oneshot;
 use futures::future::{self, Either, FutureExt};
 use futures_timer::Delay;
-use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_core::tool::{Scope, ToolExecutionError, ToolResult, Touches};
 use rig_ecs::agent::AgentId;
 use rig_ecs::calls::{Running, Wake};
-use rig_ecs::tools::{AppToolsExt, Footprint, ToolCalled, ToolOptions};
+use rig_ecs::tools::{AppToolsExt, ToolCalled, ToolOptions};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use steel::steel_vm::ThreadStateController;
@@ -131,7 +131,7 @@ impl Plugin for SteelPlugin {
             DESCRIPTION,
             ToolOptions {
                 rules: RULES,
-                footprint: Some(Footprint::Exclusive),
+                footprint: Some(Touches::Writes(Scope::Anything)),
             },
             on_run_steel,
         );

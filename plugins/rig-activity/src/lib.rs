@@ -107,9 +107,17 @@ pub struct ToolActivity {
     pub name: String,
     /// Whether it waits for earlier calls of its reply.
     pub waiting: bool,
-    /// Whether a plugin holds it, such as for the user's approval.
-    pub held: bool,
+    /// The names of the holds on it, which say why, such as `approval`;
+    /// empty when nothing holds it. A hold without a [`Name`] is
+    /// [`UNNAMED_HOLD`].
+    pub held_by: Vec<String>,
+    /// Its [`ToolProgress`] line, which its owner keeps current while it
+    /// runs, such as `12 of 40 files`.
+    pub progress: Option<String>,
 }
+
+/// What [`ToolActivity::held_by`] calls a hold without a [`Name`].
+pub const UNNAMED_HOLD: &str = "unnamed hold";
 
 /// Recent deliveries to agents, oldest first: the user's messages (not
 /// their slash commands, nor what a plugin took over), messages between
@@ -184,8 +192,17 @@ type Named = (
 fn update_activity(
     mut agents: Query<(&mut Activity, Option<&ActiveTurn>, Option<&AgentWork>), With<Agent>>,
     turns: Query<&Calls>,
-    tools: Query<(&ToolRequest, Has<Waiting>, Has<Holds>, Has<Outcome>), Without<Settled>>,
-    holds: Query<&Holds>,
+    tools: Query<
+        (
+            &ToolRequest,
+            Has<Waiting>,
+            Option<&Holds>,
+            Option<&ToolProgress>,
+            Has<Outcome>,
+        ),
+        Without<Settled>,
+    >,
+    (holds, names): (Query<&Holds>, Query<&Name>),
     waits: Query<&Backoff>,
     others: Query<&Name, Named>,
     asks: Query<&Ask, (Without<Outcome>, Without<Settled>)>,
@@ -232,10 +249,20 @@ fn update_activity(
             .iter()
             .filter_map(|call| tools.get(*call).ok())
             .filter(|(.., done)| !done)
-            .map(|(request, waiting, held, _)| ToolActivity {
+            .map(|(request, waiting, held, progress, _)| ToolActivity {
                 name: request.call.function.name.as_str().to_owned(),
                 waiting,
-                held,
+                held_by: held
+                    .into_iter()
+                    .flat_map(Holds::iter)
+                    .map(|hold| {
+                        names
+                            .get(hold)
+                            .map_or(UNNAMED_HOLD, Name::as_str)
+                            .to_owned()
+                    })
+                    .collect(),
+                progress: progress.map(|ToolProgress(line)| line.clone()),
             })
             .collect();
         activity.set_if_neq(Activity {

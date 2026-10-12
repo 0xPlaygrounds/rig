@@ -45,7 +45,6 @@
 use std::collections::BTreeMap;
 
 use bevy_log::warn;
-use rig_compaction::CompactionSystems;
 use rig_harness::prelude::message::Message;
 use rig_harness::prelude::*;
 use rig_models::{ModelItem, ModelLabel};
@@ -77,12 +76,7 @@ impl Plugin for ModelRouterPlugin {
                 "Route each model request by the [router] rules of settings.toml",
                 router,
             )
-            .configure_sets(
-                AgentPass,
-                RouteSystems
-                    .in_set(Stage::Prepare)
-                    .before(CompactionSystems::Prepare),
-            )
+            .configure_sets(AgentPass, RouteSystems.in_set(PrepareSystems::Edit))
             .add_systems(
                 PreUpdate,
                 connect_targets.run_if(resource_changed::<Models>),
@@ -257,7 +251,12 @@ fn leave(inserted: On<Insert<ModelChoice>>, agents: Query<&Routing>, mut command
 fn route(
     mut calls: Query<
         (&mut ModelRequest, &CallOf, &ForAgent),
-        (Added<Admitted>, With<TurnCall>, Without<Supersedes>),
+        (
+            Added<Admitted>,
+            ModelCalls,
+            With<TurnCall>,
+            Without<Supersedes>,
+        ),
     >,
     agents: Query<(&Routing, &Conversation, &LastUsage, Option<&ModelLabel>)>,
     turns: Query<&Turn>,
@@ -270,12 +269,14 @@ fn route(
         let Ok((Routing(true), conversation, last, label)) = agents.get(agent) else {
             continue;
         };
-        let first = turns.get(turn).map_or(0, |turn| turn.first_message);
+        let first = turns
+            .get(turn)
+            .map_or(0, |turn| conversation.start_of(turn.first_message));
         let this_turn = conversation.messages().get(first..).unwrap_or_default();
         let read_only = |name: &str| {
-            tools.iter().any(|(def, footprint)| {
-                def.0.name.as_str() == name && *footprint == Footprint::ReadOnly
-            })
+            tools
+                .iter()
+                .any(|(def, footprint)| def.0.name.as_str() == name && footprint.0.reads_only())
         };
         let request = Request::of(this_turn, read_only);
         let chosen = config.rules.iter().find_map(|rule| {

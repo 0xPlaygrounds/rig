@@ -129,11 +129,33 @@ pub trait Transport<W: Wire>: Clone + WasmCompatSend + WasmCompatSync + 'static 
 }
 
 /// What the driver tells a transport about one send.
+#[derive(Clone)]
 pub struct Exchange {
     /// How the reply is read.
     pub mode: Mode,
     /// The observation an observing transport records the send under.
     pub(crate) observation: Option<AdapterContext>,
+    /// What the HTTP transport puts in the request's extensions, such as
+    /// the [`Serving`](crate::serve::Serving) of a dispatched effect.
+    pub(crate) extensions: http::Extensions,
+}
+
+/// What a caller adds to one send besides the request: the observation to
+/// record it under, and the HTTP request's extensions.
+#[derive(Default)]
+pub(crate) struct Sending {
+    pub(crate) observation: Option<AdapterContext>,
+    pub(crate) extensions: http::Extensions,
+}
+
+impl Sending {
+    /// A send observed under `observation`.
+    pub(crate) fn observed(observation: AdapterContext) -> Self {
+        Self {
+            observation: Some(observation),
+            extensions: http::Extensions::new(),
+        }
+    }
 }
 
 /// One reply, opened when first polled.
@@ -271,7 +293,7 @@ where
         &self,
         request: impl Into<Request<W>>,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), None)
+        self.finished(request.into(), Sending::default())
     }
 
     /// [`Self::call`], with the attempt observed under `observation`.
@@ -280,7 +302,7 @@ where
         request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
-        self.finished(request.into(), Some(observation))
+        self.finished(request.into(), Sending::observed(observation))
     }
 
     /// The call opens when first polled, so its span is created under the
@@ -288,22 +310,17 @@ where
     fn finished(
         &self,
         request: Request<W>,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> impl Future<Output = Result<Response<W>, ProviderError>> + WasmCompatSend + 'static {
         let model = self.clone();
-        async move {
-            model
-                .open(request, Mode::Unary, observation)?
-                .finish()
-                .await
-        }
+        async move { model.open(request, Mode::Unary, sending)?.finish().await }
     }
 
     /// Open a streamed reply. Encoding errors return here; every later
     /// failure arrives in-band, as the stream's last item. Nothing is sent
     /// until the stream is first polled.
     pub fn stream(&self, request: impl Into<Request<W>>) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, None)
+        self.open(request.into(), Mode::Streaming, Sending::default())
     }
 
     /// [`Self::stream`], with the attempt observed under `observation`.
@@ -312,7 +329,11 @@ where
         request: impl Into<Request<W>>,
         observation: AdapterContext,
     ) -> Result<Streamed<W::Op>, ProviderError> {
-        self.open(request.into(), Mode::Streaming, Some(observation))
+        self.open(
+            request.into(),
+            Mode::Streaming,
+            Sending::observed(observation),
+        )
     }
 
     /// [`Self::call`], with a failure paired with the request path of the
@@ -321,7 +342,7 @@ where
         &self,
         request: Request<W>,
     ) -> Result<Response<W>, (ProviderError, String)> {
-        self.open(request, Mode::Unary, None)
+        self.open(request, Mode::Unary, Sending::default())
             .map_err(|error| (error, String::new()))?
             .finish_routed()
             .await
@@ -343,7 +364,7 @@ where
         &self,
         request: Request<W>,
         mode: Mode,
-        observation: Option<AdapterContext>,
+        sending: Sending,
     ) -> Result<Streamed<W::Op>, ProviderError> {
         let describe = self.wire.describe();
         let request = <W::Op as Operation>::prepare(request, &describe)?;
@@ -352,7 +373,16 @@ where
         let fold = <W::Op as Operation>::fold(&request, &mut call);
         let span = call.span;
         let payload = self.wire.encode(request, mode)?;
-        let opening = self.transport.send(payload, Exchange { mode, observation });
+        let Sending {
+            observation,
+            extensions,
+        } = sending;
+        let exchange = Exchange {
+            mode,
+            observation,
+            extensions,
+        };
+        let opening = self.transport.send(payload, exchange);
         let shared = Arc::new(Mutex::new(Shared::new(fold)));
         let reading = read(
             self.wire.clone(),

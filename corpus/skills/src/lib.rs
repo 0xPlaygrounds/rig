@@ -46,7 +46,7 @@ impl Plugin for SkillsPlugin {
                          `load_skill` with its name before starting, and read the files it \
                          names with `read`.",
                     ],
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 load_skill,
             )
@@ -61,7 +61,7 @@ impl Plugin for SkillsPlugin {
                 list_skills,
             )
             .add_observer(delivered)
-            .add_observer(forget_condensed)
+            .add_systems(Update, forget_compacted.after(AgentLoop))
             .add_systems(Startup, watch_roots)
             .add_systems(Update, refresh.before(AgentLoop));
         let section = PromptSection::new(PromptSection::ORDER_PROJECT + 10, "skills", "");
@@ -307,18 +307,36 @@ fn delivered(
     }
 }
 
-/// A conversation condensed, such as by compaction, may have lost the
-/// bodies loaded in the running turn, so they may be loaded again.
-fn forget_condensed(
-    condensed: On<Insert<Condensed>>,
-    agents: Query<&ActiveTurn>,
+/// A conversation compacted into a summary may have lost the bodies
+/// loaded in the running turn, so they may be loaded again.
+fn forget_compacted(
+    mut committed: MessageReader<Committed>,
+    agents: Query<(&Conversation, &ActiveTurn)>,
     mut loaded: Query<&mut LoadedInTurn>,
 ) {
-    if let Ok(turn) = agents.get(condensed.entity)
-        && let Ok(mut loaded) = loaded.get_mut(turn.turn())
-    {
-        loaded.0.clear();
+    for change in committed.read() {
+        if let Committed::Splice {
+            agent,
+            removed,
+            changed,
+        } = change
+            && let Ok((conversation, turn)) = agents.get(*agent)
+            && compacted(conversation, removed, changed)
+            && let Ok(mut loaded) = loaded.get_mut(turn.turn())
+        {
+            loaded.0.clear();
+        }
     }
+}
+
+/// Whether a splice that took out messages put a compaction's summary in
+/// one of the `changed` messages of `conversation`.
+fn compacted(conversation: &Conversation, removed: &[MessageId], changed: &[MessageId]) -> bool {
+    let summary = Origin::plugin("compaction");
+    let changed = changed.iter().filter_map(|id| conversation.index_of(*id));
+    let mut entries = changed.filter_map(|at| conversation.entry(at));
+    !removed.is_empty()
+        && entries.any(|entry| entry.origins.iter().any(|(_, origin)| *origin == summary))
 }
 
 /// `load_skill`'s arguments.
@@ -337,7 +355,7 @@ fn load_skill(
     calls: Query<&CallOf>,
     mut turns: Query<&mut LoadedInTurn>,
     mut session: Query<&mut LoadedSkills>,
-    mut commands: Commands,
+    mut decisions: Query<&mut Decision, ToolCalls>,
 ) {
     let name = called.args.name.trim();
     let mut turn = calls
@@ -366,9 +384,9 @@ fn load_skill(
         }
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(output));
+    if let Ok(mut decision) = decisions.get_mut(called.call) {
+        decision.decide(output);
+    }
 }
 
 /// `/skill <name> [text]`: sends the skill's body with the text, as the

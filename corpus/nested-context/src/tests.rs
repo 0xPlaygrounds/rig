@@ -97,3 +97,8 @@ fn a_nested_agents_md_comes_with_the_first_read_under_it_only() {
         .collect();
     assert_eq!(listed, ["agent: pkg/AGENTS.md"]);
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(NestedContextPlugin);
+}

@@ -19,6 +19,7 @@ use ratatui::layout::Rect;
 
 use super::clipboard::{self, Clipboard};
 use super::editor::TuiInput;
+use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::panel::{TuiPanel, TuiScreen};
 use super::pick::{self, Choices};
@@ -140,9 +141,12 @@ pub(crate) struct Context<'a> {
     clipboard: &'a Clipboard,
     paths: Option<&'a SessionPaths>,
     wake: &'a Wake,
+    /// The prompts Up and Down browse.
+    history: &'a [String],
 }
 
-/// Handles every terminal event written since the last frame.
+/// Handles every terminal event written since the last frame, then every
+/// [`InputAction`] sent.
 pub(crate) fn read_input(
     mut events: MessageReader<TerminalEvent>,
     (mut view, shown): (ResMut<TuiView>, Res<Shown>),
@@ -150,8 +154,13 @@ pub(crate) fn read_input(
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
-    (clipboard, paths, wake): (Res<Clipboard>, Option<Res<SessionPaths>>, Res<Wake>),
-    mut screen: ResMut<TuiScreen>,
+    (clipboard, paths, wake, history): (
+        Res<Clipboard>,
+        Option<Res<SessionPaths>>,
+        Res<Wake>,
+        Res<PromptHistory>,
+    ),
+    (mut screen, mut actions): (ResMut<TuiScreen>, MessageReader<InputAction>),
     mut commands: Commands,
 ) {
     let busy = shown
@@ -164,6 +173,7 @@ pub(crate) fn read_input(
         clipboard: &clipboard,
         paths: paths.as_deref(),
         wake: &wake,
+        history: &history.entries,
     };
     for TerminalEvent(event) in events.read() {
         match event {
@@ -214,6 +224,9 @@ pub(crate) fn read_input(
             }
             _ => {}
         }
+    }
+    for action in actions.read() {
+        act(*action, &mut view, &mut input, &context, &mut commands);
     }
 }
 
@@ -318,15 +331,15 @@ fn act(
         Do::DeleteWordAfter => input.delete_word_after(),
         Do::DeleteToLineStart => input.delete_to_line_start(),
         Do::DeleteToLineEnd => input.delete_to_line_end(),
-        Do::LineUp => input.up(),
-        Do::LineDown => input.down(),
+        Do::LineUp => input.up(context.history),
+        Do::LineDown => input.down(context.history),
         Do::Up => match &mut view.completion {
             Some(completion) => completion.select(-1),
-            None => input.up(),
+            None => input.up(context.history),
         },
         Do::Down => match &mut view.completion {
             Some(completion) => completion.select(1),
-            None => input.down(),
+            None => input.down(context.history),
         },
         Do::ScrollUp => view.scroll.up(1),
         Do::ScrollDown => view.scroll.down(1),
@@ -372,7 +385,7 @@ fn act(
 /// Sends the input to `agent`, the one shown, as the user's [`Deliver`]: a
 /// slash command, or a message that starts a turn, or steers the running
 /// one, or is queued for after it with `queue`. A refused command sent
-/// again unchanged is a message.
+/// again unchanged is a message. The prompt history records it.
 pub(crate) fn send(
     view: &mut TuiView,
     input: &mut TuiInput,
@@ -387,7 +400,7 @@ pub(crate) fn send(
         return;
     }
     let text = input.take();
-    input.remember(&text);
+    commands.write_message(Sent(text.clone()));
     view.scroll.follow();
     let mode = if queue {
         DeliveryMode::Queue

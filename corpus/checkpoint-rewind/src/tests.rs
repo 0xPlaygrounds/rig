@@ -193,7 +193,7 @@ struct Stuck;
 
 /// Holds every call writing `c.txt`, so the turn is still running.
 fn hold_c(
-    calls: Query<(Entity, &ToolRequest), Undecided>,
+    calls: Query<(Entity, &ToolRequest), (Undecided, ToolCalls)>,
     stuck: Query<&HoldOf, With<Stuck>>,
     mut commands: Commands,
 ) {
@@ -283,4 +283,9 @@ fn a_stopped_turns_edits_are_not_the_users() {
         .filter(|item| matches!(item, UserContent::ToolResult(_)));
     assert_eq!((results.count(), content.len()), (1, 1), "{last:?}");
     fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(CheckpointRewindPlugin);
 }

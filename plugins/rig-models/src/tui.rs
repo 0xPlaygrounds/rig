@@ -93,10 +93,12 @@ pub(super) fn pick_model(
     let contributed = contributed.into_iter().map(|item| PickItem {
         label: item.label.clone(),
         command: item.command.clone(),
+        detail: None,
     });
     let listed = catalog(&models.0).into_iter().map(|listed| PickItem {
         label: listed.line,
         command: format!("model {}", listed.reference),
+        detail: None,
     });
     let items: Vec<PickItem> = contributed.chain(listed).collect();
     if items.is_empty() {
@@ -173,6 +175,7 @@ pub(super) fn pick_effort(agent: Entity, spec: &ModelSpec, commands: &mut Comman
             .map(|choice| PickItem {
                 label: choice.label(),
                 command: format!("effort {}", choice.name),
+                detail: None,
             })
             .collect(),
         ..Picker::new(title).for_agent(agent)

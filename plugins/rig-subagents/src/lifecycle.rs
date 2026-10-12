@@ -6,7 +6,8 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
+    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, SubagentSystems,
+    Subtask, answered,
 };
 use rig_harness::prelude::*;
 
@@ -27,7 +28,7 @@ pub(super) fn add(app: &mut App) {
         .add_observer(step_on_turn_end)
         .add_observer(report_when_finished)
         .add_observer(end_waits)
-        .add_systems(AgentPass, stop_restored.in_set(Stage::Gate));
+        .add_systems(AgentPass, stop_restored.in_set(SubagentSystems::Gate));
 }
 
 /// An agent as the subagent tools see it.
@@ -56,11 +57,20 @@ pub(super) struct Agents<'w, 's> {
     waits: Query<'w, 's, (Entity, &'static Awaits, &'static CallOf)>,
     awaited_by: Query<'w, 's, &'static AwaitedBy>,
     turns: Query<'w, 's, &'static TurnOf>,
+    /// The open tool calls' answers.
+    calls: Query<'w, 's, &'static mut Decision, ToolCalls>,
     wake: Res<'w, Wake>,
     pub(super) commands: Commands<'w, 's>,
 }
 
 impl Agents<'_, '_> {
+    /// Decides the open tool call `call` with `outcome`.
+    pub(super) fn answer(&mut self, call: Entity, outcome: impl Into<Outcome>) {
+        if let Ok(mut decision) = self.calls.get_mut(call) {
+            decision.decide(outcome);
+        }
+    }
+
     /// The agent with the id `id`.
     pub(super) fn find(&self, id: &AgentId) -> Option<Entity> {
         id.find_in(self.agents.iter().map(|agent| (agent.entity, agent.id)))
@@ -283,7 +293,7 @@ fn report_when_finished(
                 "`{}` finished without a message for you.",
                 id.short()
             ));
-            agents.commands.entity(call).insert_if_new(output);
+            agents.answer(call, output);
         }
     }
 }
@@ -314,11 +324,8 @@ fn end_waits(accepted: On<Add<Started>>, mut agents: Agents) {
             "`{}` sent you a message; it follows.",
             from.short()
         ));
-        agents
-            .commands
-            .entity(call)
-            .remove::<Awaits>()
-            .insert_if_new(output);
+        agents.commands.entity(call).remove::<Awaits>();
+        agents.answer(call, output);
     }
 }
 

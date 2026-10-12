@@ -63,7 +63,7 @@ impl Plugin for RepoMapPlugin {
                  symbols and their lines; with `symbol`, the files and lines that define it.",
                 ToolOptions {
                     rules: RULES,
-                    footprint: Some(Footprint::ReadOnly),
+                    footprint: Some(Touches::Reads(Scope::Anything)),
                 },
                 answer,
             )
@@ -424,7 +424,7 @@ fn note_work(
         .filter_map(|path| relative(&root, path))
         .collect();
     if let Ok(mut worked) = agents.get_mut(agent) {
-        let read = read.iter().flat_map(|read| read.0.iter());
+        let read = read.iter().flat_map(FilesRead::paths);
         for path in read.filter_map(|path| relative(&root, path)) {
             worked.touch(path);
         }
@@ -461,11 +461,14 @@ struct MapArgs {
 }
 
 /// Answers a `repo_map` call from the map as it stands.
-fn answer(called: On<ToolCalled<MapArgs>>, map: Res<RepoMap>, mut commands: Commands) {
-    let text = map.look_up(&called.args);
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(ToolResult::success(text.into())));
+fn answer(
+    called: On<ToolCalled<MapArgs>>,
+    map: Res<RepoMap>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+) {
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success(map.look_up(&called.args).into()));
+    }
 }
 
 /// `path`, relative to the project unless absolute, made relative to

@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Command;
 
 use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::WriteTool;
@@ -116,5 +117,5 @@ fn the_passing_candidate_is_applied_and_the_worktrees_go() {
     assert!(said.contains("candidate 1 failed verification"), "{said}");
     assert_eq!(main.request_count(), 0, "a note starts no turn");
     let heard = format!("{:?}", one.requests());
-    assert!(heard.contains("outside your worktree"), "{heard}");
+    assert!(heard.contains("file.txt is outside"), "{heard}");
 }

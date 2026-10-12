@@ -153,7 +153,7 @@ fn over_the_concurrent_limit_a_read_only_call_waits_for_the_running_one() {
     let model = model("gate", &["a", "b"]);
     let read_only = ToolOptions {
         rules: &[],
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
     };
     let (mut app, wakes) = start("[gate]\nconcurrent = 1", &model, |app| {
         app.add_tool_with(tool, read_only);
@@ -189,4 +189,9 @@ fn over_the_minute_limit_a_call_starts_once_the_minute_passed() {
     run_until(&mut app, &wakes, ended);
     assert_eq!(ran.load(Ordering::SeqCst), 2);
     assert_eq!([output(&app, "a"), output(&app, "b")], ["a", "b"]);
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ToolRateLimitPlugin);
 }

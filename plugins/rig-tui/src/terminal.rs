@@ -3,7 +3,7 @@
 //! ([`RunInTerminal`]), whether the terminal has the user's focus
 //! ([`TerminalFocus`]), and a plugin's own escape codes, such as a desktop
 //! notification ([`TerminalWrite`]) or a copy to the clipboard
-//! ([`CopyToClipboard`]), written between frames.
+//! ([`CopyToClipboard`]), written after each frame, the last one included.
 
 use std::fs::File;
 use std::io::{self, BufWriter, Write};
@@ -12,7 +12,6 @@ use std::process::{Command, ExitStatus, Stdio};
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
-use bevy_app::AppExit;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
 use crossterm::event::{
@@ -27,13 +26,12 @@ use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use ratatui::layout::Rect;
 
-use super::editor::TuiInput;
 use super::input::{TerminalEvent, TerminalInput};
 use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
-use rig_harness::prelude::{ExitReason, RigHome, SessionPaths};
+use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
 /// view leaves the screen, stops reading keys and lets the program have
@@ -61,21 +59,16 @@ impl TerminalExit {
 }
 
 /// Whether the terminal has the user's focus, as the terminal reports it
-/// where it can; `true` until it says otherwise, and in a run without the
+/// where it can: `None` until its first report, and in a run without the
 /// terminal view.
-#[derive(Resource, Clone, Copy, Debug, PartialEq, Eq)]
-pub struct TerminalFocus(pub bool);
-
-impl Default for TerminalFocus {
-    fn default() -> Self {
-        Self(true)
-    }
-}
+#[derive(Resource, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct TerminalFocus(pub Option<bool>);
 
 /// Bytes for the terminal itself, such as an escape code that shows a
 /// desktop notification (OSC 9 or 777): the view writes them after its
-/// frame, through its own writer, so they never land inside a frame.
-/// Nothing writes them in a run without the terminal view.
+/// frame, through its own writer, so they never land inside a frame. Bytes
+/// sent in Bevy's `OnAppExitSystems` are written before the terminal is
+/// given back. Nothing writes them in a run without the terminal view.
 #[derive(Message, Clone, Debug, PartialEq, Eq)]
 pub struct TerminalWrite(pub Vec<u8>);
 
@@ -210,16 +203,13 @@ impl Drop for Tui {
     }
 }
 
-/// Opens the terminal and starts reading it at startup, or exits with code
-/// 1 when there is none. The input gets the prompt history.
+/// Opens the terminal and starts reading it at startup, or asks to exit
+/// with code 1 when there is none.
 pub(crate) fn open_terminal(
     paths: Option<Res<SessionPaths>>,
-    home: Res<RigHome>,
     wake: Res<Wake>,
-    mut typed: ResMut<TuiInput>,
     mut screen: ResMut<TuiScreen>,
     mut commands: Commands,
-    mut exit: MessageWriter<AppExit>,
 ) {
     let opened = Tui::open(paths.map(|paths| paths.log()).as_deref())
         .and_then(|tui| Ok((tui, TerminalInput::start(wake.clone())?)));
@@ -228,13 +218,12 @@ pub(crate) fn open_terminal(
             if let Ok(size) = tui.terminal.size() {
                 screen.0 = Rect::new(0, 0, size.width, size.height);
             }
-            typed.load_history(home.0.history());
             commands.insert_resource(tui);
             commands.insert_resource(input);
         }
         Err(failure) => {
             error!("could not open the terminal: {failure}");
-            exit.write(AppExit::from_code(1));
+            commands.trigger(Exit(ExitReason::Failed(1)));
         }
     }
 }
@@ -256,15 +245,16 @@ pub(crate) fn track_focus(
 ) {
     for TerminalEvent(event) in events.read() {
         match event {
-            Event::FocusGained => focus.set_if_neq(TerminalFocus(true)),
-            Event::FocusLost => focus.set_if_neq(TerminalFocus(false)),
+            Event::FocusGained => focus.set_if_neq(TerminalFocus(Some(true))),
+            Event::FocusLost => focus.set_if_neq(TerminalFocus(Some(false))),
             _ => false,
         };
     }
 }
 
 /// Writes the [`TerminalWrite`]s and [`CopyToClipboard`]s sent, in order
-/// each, after the frame.
+/// each, after the frame and after Bevy's `OnAppExitSystems`, so bytes
+/// sent on the way out are written too.
 pub(crate) fn write_to_terminal(
     mut tui: ResMut<Tui>,
     mut writes: MessageReader<TerminalWrite>,

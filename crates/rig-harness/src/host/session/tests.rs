@@ -9,13 +9,14 @@ use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, SessionStore};
-use rig_harness_test_support::{commit_message, first_agent};
+use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 
 use super::{
-    DeleteSession, ForkSession, ForkedFrom, SessionDeleted, SessionForked, SessionPaths,
-    SessionPlugin,
+    DeleteSession, FirstStart, ForkSession, ForkedFrom, SessionDeleted, SessionForked,
+    SessionPaths, SessionPlugin, first_typed, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
+use crate::host::launcher::LauncherRun;
 use crate::services::RigHome;
 
 /// What the session plugin said, frame after frame.
@@ -101,7 +102,7 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
 /// A branch before a message keeps what the user wrote in it with its
 /// parent, so a view of the family reads no other log.
 #[test]
-fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
+fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() {
     let root = std::env::temp_dir().join(format!("rig-fork-text-{}", std::process::id()));
     let home = Home::at(&root);
     let id: SessionId = "1700000000-2"
@@ -132,16 +133,19 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
     app.update();
     let world = app.world();
     let agent_id = world.get::<AgentId>(agent).cloned();
-    let seq = world
+    let message = world
         .get::<Conversation>(agent)
-        .and_then(|conversation| conversation.seq(2));
-    let before = agent_id.zip(seq);
+        .and_then(|conversation| conversation.id(2));
+    let before = agent_id.zip(message);
     assert!(before.is_some(), "the message was logged");
+    let asker = app.world_mut().spawn_empty().id();
     app.world_mut().trigger(ForkSession {
         before: before.clone(),
+        asker: Some(asker),
     });
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
+    assert_eq!(forked.as_ref().and_then(|forked| forked.asker), Some(asker));
     let parent = forked.and_then(|forked| ForkedFrom::of(&home.session(&forked.to)));
     let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
     assert_eq!(text, Some("two"), "{parent:?}");
@@ -151,14 +155,17 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent() {
 }
 
 #[test]
-fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
+fn a_sessionless_front_leaves_no_directory_and_a_failed_run_keeps_its_log() {
     let root = std::env::temp_dir().join(format!("rig-sessionless-{}", std::process::id()));
     let home = Home::at(&root);
+    let run = home.run(1);
+    std::fs::create_dir_all(run.path()).ok();
     let ended = |sessionless: bool, exit: AppExit| {
         let id = format!("{}-{}", u8::from(sessionless), exit.is_success());
         let id: SessionId = id.replace("true", "1").replace("false", "0").parse().ok()?;
         let session = home.session(&id);
         std::fs::create_dir_all(session.path()).ok();
+        std::fs::write(session.log(), id.as_str()).ok();
         let front = Front::new("replay").headless();
         let front = if sessionless {
             front.sessionless()
@@ -170,6 +177,7 @@ fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
             .insert_resource(RigHome(home.clone()))
             .insert_resource(SessionPaths(session.clone()))
             .insert_resource(SessionStore::new(JsonlDirStore::new(session.path())))
+            .insert_resource(LauncherRun(run.clone()))
             .add_plugins(SessionPlugin)
             .add_front(front);
         assert!(app.runs_front("replay"));
@@ -178,8 +186,135 @@ fn a_sessionless_front_leaves_no_directory_after_a_run_that_ended_well() {
         Some(session.path().exists())
     };
     assert_eq!(ended(true, AppExit::Success), Some(false));
-    let failed = ended(true, AppExit::from_code(1));
-    assert_eq!(failed, Some(true), "a failed run keeps its log");
-    assert_eq!(ended(false, AppExit::Success), Some(true));
+    assert!(!run.log().exists(), "a run that ended well keeps no log");
+    assert_eq!(ended(true, AppExit::from_code(1)), Some(false));
+    let log = std::fs::read_to_string(run.log()).ok();
+    assert_eq!(log.as_deref(), Some("1-0"), "the launcher points at it");
+    assert_eq!(ended(false, AppExit::from_code(1)), Some(true));
     std::fs::remove_dir_all(&root).ok();
+}
+
+#[test]
+fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
+    let root = std::env::temp_dir().join(format!("rig-first-{}", std::process::id()));
+    let home = Home::at(&root);
+    let id: SessionId = "1700000000-3"
+        .parse()
+        .unwrap_or_else(|_| SessionId::generate());
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    std::fs::write(session.directory(), root.to_string_lossy().as_bytes()).ok();
+    let start = |session: &rig::harness_protocol::SessionDir| {
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .init_resource::<Seen>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .add_plugins(SessionPlugin)
+            .add_systems(Last, watch.after(super::fork_sessions));
+        app.update();
+        app
+    };
+    let mut first = start(&session);
+    assert!(first.world().contains_resource::<FirstStart>());
+    assert!(!start(&session).world().contains_resource::<FirstStart>());
+    first.world_mut().trigger(ForkSession::default());
+    first.update();
+    let fork = first.world().resource::<Seen>().forked.first().cloned();
+    assert!(fork.is_some(), "the session was forked");
+    if let Some(fork) = fork {
+        let fork = start(&home.session(&fork.to));
+        assert!(fork.world().contains_resource::<FirstStart>());
+    }
+    drop(std::panic::take_hook());
+    std::fs::remove_dir_all(&root).ok();
+}
+
+/// A plugin keeps its files of a session in a directory of its own there,
+/// beside the agent logs, and a restore reads only the logs.
+#[test]
+fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
+    let home = scratch_home("rig-restore-plugin-files");
+    let Ok(id) = "1700000000-4".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    let start = || {
+        let mut app = App::new();
+        app.init_resource::<Seen>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(SessionStore::new(JsonlDirStore::new(session.path())))
+            .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+            .add_plugins(SessionPlugin)
+            .add_systems(Last, watch.after(super::fork_sessions));
+        // The session's panic hook would hide a failed assertion.
+        drop(std::panic::take_hook());
+        app.update();
+        app
+    };
+    let mut first = start();
+    let agent = first_agent(first.world_mut());
+    let said = agent.map(|agent| commit_message(first.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    first.update();
+    drop(first);
+    let plugin = session.path().join("tui");
+    std::fs::create_dir_all(&plugin).ok();
+    std::fs::write(plugin.join("notices.jsonl"), "{\"text\":\"kept\"}\n").ok();
+
+    let mut restored = start();
+    let agent = first_agent(restored.world_mut());
+    let messages = agent
+        .and_then(|agent| restored.world().get::<Conversation>(agent))
+        .map(|conversation| conversation.messages().len());
+    assert_eq!(messages, Some(1));
+    let notices = &restored.world().resource::<Seen>().notices;
+    let failed = notices.iter().any(|notice| notice.contains("restore"));
+    assert!(!failed, "{notices:?}");
+    std::fs::remove_dir_all(session.path()).ok();
+}
+
+#[test]
+fn what_the_user_typed_leaves_out_attached_files_and_delivered_notes() {
+    use rig_ecs::inbox::Origin;
+    use rig_ecs::journal::Commit;
+
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin));
+    app.update();
+    let agent = first_agent(app.world_mut());
+    assert!(agent.is_some(), "the app has an agent");
+    let Some(agent) = agent else { return };
+    let attached = "<file path=\"a.txt\">\nfile text\n</file>";
+    let messages = [
+        (Message::user("build failed"), Some(Origin::plugin("build"))),
+        (Message::assistant("ok"), None),
+        (Message::user(attached), None),
+        (Message::user("  fix it  "), None),
+        (Message::user("and test"), None),
+    ];
+    let commit = |In((agent, messages)): In<(Entity, Vec<(Message, Option<Origin>)>)>,
+                  mut agents: Query<&mut Conversation>,
+                  mut commit: Commit| {
+        if let Ok(mut conversation) = agents.get_mut(agent) {
+            for (message, origin) in messages {
+                commit.message_from(agent, &mut conversation, message, origin);
+            }
+        }
+    };
+    let committed = app
+        .world_mut()
+        .run_system_cached_with(commit, (agent, messages.to_vec()));
+    assert!(committed.is_ok());
+    let conversation = app.world().get::<Conversation>(agent);
+    assert!(conversation.is_some(), "the agent has a conversation");
+    let Some(conversation) = conversation else {
+        return;
+    };
+    let both = Some("fix it\n\nand test".to_owned());
+    assert_eq!(typed(conversation, 0), None);
+    assert_eq!(typed(conversation, 2), both);
+    assert_eq!(first_typed(conversation), both);
 }

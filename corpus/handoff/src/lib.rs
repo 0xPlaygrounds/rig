@@ -55,6 +55,7 @@ impl Plugin for HandoffPlugin {
             )
             .add_systems(Update, show_successor)
             .add_observer(take_brief)
+            .add_observer(follow_successor::<Briefing>)
             .add_observer(name_successor);
     }
 
@@ -85,7 +86,8 @@ pub struct HandedOffFrom {
 }
 
 /// On the brief's [`ModelRequest`]: the goal, and whether the brief goes
-/// to the new agent unedited.
+/// to the new agent unedited. It follows the call to a successor that
+/// sends it again.
 #[derive(Component, Clone, Debug)]
 pub struct Briefing {
     /// The next goal.
@@ -102,12 +104,7 @@ struct EditableBrief(bool);
 /// the agent's own. Refused while a turn runs.
 fn handoff(
     In(args): In<CommandArgs>,
-    agents: Query<(
-        &Conversation,
-        Option<&Condensed>,
-        Option<&Connection>,
-        Has<ActiveTurn>,
-    )>,
+    agents: Query<(&Conversation, Option<&Connection>, Has<ActiveTurn>)>,
     settings: Res<HandoffSettings>,
     models: Res<Models>,
     mut commands: Commands,
@@ -123,7 +120,7 @@ fn handoff(
         notices.write(Notice::error(agent, "/handoff needs the next goal."));
         return;
     }
-    let Ok((conversation, condensed, own, busy)) = agents.get(agent) else {
+    let Ok((conversation, own, busy)) = agents.get(agent) else {
         return;
     };
     if busy {
@@ -142,10 +139,7 @@ fn handoff(
         notices.write(Notice::no_model(agent));
         return;
     };
-    let messages = match condensed {
-        Some(condensed) => condensed.request(conversation.messages()),
-        None => conversation.messages().to_vec(),
-    };
+    let messages = conversation.messages().to_vec();
     if messages.is_empty() {
         notices.write(Notice::info(agent, "Nothing to hand off yet."));
         return;

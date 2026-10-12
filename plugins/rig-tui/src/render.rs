@@ -1,15 +1,17 @@
 //! Draws the focused agent: transcript, status line, input editor with its
 //! completion list, and the picker or question shown.
 
+use std::collections::{BTreeMap, HashMap};
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParam;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
 use crossterm::{execute, queue};
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
-use ratatui::style::{Color, Modifier, Style, Stylize};
+use ratatui::style::{Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Clear, List, ListState, Paragraph};
 use unicode_width::UnicodeWidthChar;
@@ -20,23 +22,24 @@ use super::keys::KeyFocus;
 use super::markdown;
 use super::panel::{self, PanelCanvas, Placement, RequestRedraw, TuiPanel};
 use super::pick::{Choices, Choosing, Listing, Row};
-use super::renderers::{ToolRenderer, excerpt};
+use super::renderers::{CallState, ToolRenderer, UNNAMED_HOLD};
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
-use super::transcript::{Below, Part, Renderers, Transcript, plain_lines};
-use super::view::{ShownNotice, TuiView};
+use super::transcript::{Below, Look, Part, Renderers, Transcript, notice_lines, plain_lines};
+use super::view::{ShownNotice, Slot, TuiView};
 use super::wrap::wrap_all;
-use rig_ecs::agent::{ActiveTurn, Calls, Condensed, Conversation, NoticeLevel, Partial};
+use rig_core::message::CallId;
+use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
-use rig_ecs::stage::{Effect, ForAgent, Outcome, Started};
+use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
+use rig_ecs::tools::ToolRequest;
+use rig_harness::prelude::ToolProgress;
 use rig_harness::primary::Shown;
 
 /// Most lines the input box shows.
 const INPUT_LINES: usize = 10;
 /// Most items the completion list shows at once.
 const COMPLETION_ROWS: usize = 8;
-/// Lines of a condensed conversation's summary shown in the transcript.
-const SUMMARY_LINES: usize = 12;
 
 /// The shortest time between two frames drawn only for a streaming
 /// reply's new text: the loop's own limit of 60 frames a second would lay
@@ -53,7 +56,8 @@ pub(crate) struct Paced {
 
 /// Whether anything drawn changed since the last frame: the view state (a
 /// key, a notice, a resize, a picker or question), the input and who has
-/// the keys, an agent's drawn components, a turn's calls, a
+/// the keys, an agent's drawn components, a turn's calls and where a tool
+/// call stands (held, waiting, started, its progress, answered), a
 /// streaming reply, a status line item (a retry's wait counts down there),
 /// a panel, or a plugin's [`RequestRedraw`]. A turn's end changes its
 /// conversation or comes with a notice. A streaming reply alone draws at
@@ -68,7 +72,6 @@ pub(crate) fn needs_redraw(
         Or<(
             Changed<Conversation>,
             Changed<ActiveTurn>,
-            Changed<Condensed>,
             Changed<Calls>,
             Changed<StatusItems>,
             Changed<TuiPanel>,
@@ -76,14 +79,35 @@ pub(crate) fn needs_redraw(
     >,
     partials: Query<(), Changed<Partial>>,
     messages: Query<(), (With<Incoming>, Or<(Added<Started>, Added<Outcome>)>)>,
+    calls: Query<
+        (),
+        (
+            With<ToolRequest>,
+            Or<(
+                Added<Started>,
+                Added<Outcome>,
+                Changed<Holds>,
+                Changed<ToolProgress>,
+            )>,
+        ),
+    >,
     app_status: Option<Res<AppStatus>>,
     mut requests: MessageReader<RequestRedraw>,
-    mut removed: (RemovedComponents<TuiPanel>, RemovedComponents<StatusItems>),
+    mut removed: (
+        RemovedComponents<TuiPanel>,
+        RemovedComponents<StatusItems>,
+        RemovedComponents<Holds>,
+        RemovedComponents<ToolProgress>,
+    ),
     mut paced: Local<Paced>,
 ) -> bool {
     // Every reader is drained, so none redraws again for the same change.
     let requested = requests.read().count() > 0;
-    let removed = removed.0.read().count() + removed.1.read().count() > 0;
+    let removed = removed.0.read().count()
+        + removed.1.read().count()
+        + removed.2.read().count()
+        + removed.3.read().count()
+        > 0;
     let changed = requested
         || removed
         || view.is_changed()
@@ -92,7 +116,8 @@ pub(crate) fn needs_redraw(
         || focus.is_changed()
         || app_status.is_some_and(|status| status.is_changed())
         || !changed.is_empty()
-        || !messages.is_empty();
+        || !messages.is_empty()
+        || !calls.is_empty();
     paced.waiting |= !partials.is_empty();
     let now = Instant::now();
     let next = paced.drawn.map(|drawn| drawn + STREAM_FRAME);
@@ -161,58 +186,143 @@ pub(crate) fn layout(
     };
 }
 
-/// The transcript's parts after the shown agent's messages are laid out:
-/// each message, after the notices that came before it and the summary
-/// sent in place of the messages above; then the notices after the last message, the
-/// reply streaming in and the messages the agent accepted and has not
-/// sent yet. Without an agent, the app's notices.
-fn transcript_parts(
+/// What the transcript reads of where a turn's tool calls stand.
+#[derive(SystemParam)]
+pub(crate) struct CallStates<'w, 's> {
+    calls: Query<
+        'w,
+        's,
+        (
+            &'static ToolRequest,
+            Option<&'static Holds>,
+            Has<Started>,
+            Has<Outcome>,
+            Option<&'static ToolProgress>,
+        ),
+    >,
+    names: Query<'w, 's, &'static Name>,
+}
+
+impl CallStates<'_, '_> {
+    /// Where each tool call of `calls` stands, by its id: held while it
+    /// has holds, else done once answered, running (with its progress
+    /// line) once started, else waiting.
+    pub(crate) fn of(
+        &self,
+        calls: impl IntoIterator<Item = Entity>,
+    ) -> BTreeMap<CallId, CallState> {
+        let found = calls
+            .into_iter()
+            .filter_map(|call| self.calls.get(call).ok());
+        found
+            .map(|(request, holds, started, answered, progress)| {
+                let state = match holds {
+                    Some(holds) => {
+                        CallState::Held(holds.iter().map(|hold| self.name(hold)).collect())
+                    }
+                    None if answered => CallState::Done,
+                    None if started => {
+                        CallState::Running(progress.map(|ToolProgress(line)| line.clone()))
+                    }
+                    None => CallState::Waiting,
+                };
+                (request.call.id.clone(), state)
+            })
+            .collect()
+    }
+
+    /// A hold's name, which says why it holds.
+    fn name(&self, hold: Entity) -> String {
+        let name = self.names.get(hold).map_or(UNNAMED_HOLD, Name::as_str);
+        name.to_owned()
+    }
+}
+
+/// The agent shown, as its transcript draws it.
+pub(crate) struct ShownAgent<'a> {
+    pub(crate) entity: Entity,
+    pub(crate) id: &'a AgentId,
+    pub(crate) conversation: &'a Conversation,
+    /// Whether its conversation changed since the last frame.
+    pub(crate) changed: bool,
+    /// The messages it accepted and has not sent yet, in the order they
+    /// came.
+    pub(crate) inbox: &'a [&'a Incoming],
+}
+
+/// Brings `transcript` up to date with the agent shown and returns its
+/// parts at `width`: each message, with the notices written inside it,
+/// after those written before it; then the notices after the last
+/// message, the reply streaming in and the messages the agent accepted
+/// and has not sent yet. Without an agent, the notices about every agent.
+pub(crate) fn lay_out_transcript(
+    transcript: &mut Transcript,
     view: &TuiView,
-    agent: Option<Entity>,
-    shown: Option<(&Conversation, Option<&Condensed>, &[&Incoming])>,
-    partial: Option<&Partial>,
-    width: usize,
+    shown: Option<&ShownAgent<'_>>,
+    (renderers, calls, partial): (
+        &Renderers<'_>,
+        &BTreeMap<CallId, CallState>,
+        Option<&Partial>,
+    ),
+    width: u16,
 ) -> Vec<Part> {
+    let wrap_width = usize::from(width.max(1));
     let mut parts = Vec::new();
-    let Some((conversation, condensed, inbox)) = shown else {
+    let Some(shown) = shown else {
         let mut extra = Vec::new();
-        for notice in view.notices.iter().filter(|notice| notice.is_for(None)) {
+        let notices = view.notices.iter();
+        for notice in notices.filter(|notice| notice.is_for_every_agent()) {
             notice_lines(notice, &mut extra);
         }
-        parts.push(Part::Rows(wrap_all(&extra, width)));
+        parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
         return parts;
     };
-    let mut notices = view
-        .notices
-        .iter()
-        .filter(|notice| notice.is_for(agent))
-        .peekable();
-    for index in 0..conversation.messages().len() {
+    let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
+    // Notices before the first message, after each message, and inside one.
+    let mut after: Vec<Vec<&ShownNotice>> = vec![Vec::new(); count + 1];
+    let mut look = Look {
+        renderers,
+        calls,
+        notices: HashMap::new(),
+    };
+    for notice in &view.notices {
+        let before = match notice.slot(shown.id, conversation) {
+            None => continue,
+            Some(Slot::Top) => 0,
+            Some(Slot::After(index)) => index + 1,
+            Some(Slot::Inside(index, item)) => {
+                look.notices.entry(index).or_default().push((item, notice));
+                continue;
+            }
+        };
+        if let Some(at) = after.get_mut(before) {
+            at.push(notice);
+        }
+    }
+    transcript.update(shown.entity, conversation, shown.changed, &look, width);
+    let mut after = after.into_iter();
+    for index in 0..=count {
         let mut extra = Vec::new();
-        while let Some(notice) = notices.next_if(|notice| notice.after <= index) {
+        for notice in after.next().unwrap_or_default() {
             notice_lines(notice, &mut extra);
         }
-        if let Some(condensed) = condensed.filter(|condensed| condensed.upto == index) {
-            summary_lines(condensed, &mut extra);
+        if index == count {
+            if let Some(partial) = partial {
+                extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
+                if !partial.text.is_empty() {
+                    extra.push(Line::default());
+                    extra.extend(markdown::render(&partial.text));
+                }
+            }
+            inbox_lines(shown.inbox, &mut extra);
+            parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
+            break;
         }
         if !extra.is_empty() {
-            parts.push(Part::Rows(wrap_all(&extra, width)));
+            parts.push(Part::Rows(wrap_all(&extra, wrap_width)));
         }
         parts.push(Part::Message(index));
     }
-    let mut extra = Vec::new();
-    for notice in notices {
-        notice_lines(notice, &mut extra);
-    }
-    if let Some(partial) = partial {
-        extra.extend(plain_lines(&partial.reasoning, Style::new().dim().italic()));
-        if !partial.text.is_empty() {
-            extra.push(Line::default());
-            extra.extend(markdown::render(&partial.text));
-        }
-    }
-    inbox_lines(inbox, &mut extra);
-    parts.push(Part::Rows(wrap_all(&extra, width)));
     parts
 }
 
@@ -237,7 +347,7 @@ pub(crate) fn render(
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
     mut transcript: Local<Transcript>,
-    agents: Query<(&Conversation, Option<&Condensed>)>,
+    agents: Query<(&AgentId, &Conversation)>,
     changed: Query<(), Changed<Conversation>>,
     (turns, partials, active, accepted): (
         Query<&Calls>,
@@ -247,7 +357,7 @@ pub(crate) fn render(
     ),
     panels: Query<(Entity, &TuiPanel, &PanelCanvas)>,
     status: (Query<&StatusItems>, Option<Res<AppStatus>>),
-    renderers: Query<Ref<ToolRenderer>>,
+    (renderers, call_states): (Query<Ref<ToolRenderer>>, CallStates),
     mut removed_renderers: RemovedComponents<ToolRenderer>,
 ) -> Result {
     let frame_layout = std::mem::take(&mut *frame_layout);
@@ -258,10 +368,10 @@ pub(crate) fn render(
     // redraw for.
     let view = view.bypass_change_detection();
     let shown_agent = shown_agent.0;
-    let shown = shown_agent.and_then(|agent| Some((agent, agents.get(agent).ok()?)));
     let turn = shown_agent.and_then(|agent| active.get(agent).ok());
     let calls = turn.and_then(|turn| turns.get(turn.turn()).ok());
     let partial = calls.and_then(|calls| calls.iter().find_map(|call| partials.get(call).ok()));
+    let call_states = call_states.of(calls.into_iter().flat_map(Calls::iter));
     let mut inbox: Vec<(&Effect, &Incoming)> = accepted
         .iter()
         .filter(|(.., to)| Some(to.0) == shown_agent)
@@ -269,6 +379,16 @@ pub(crate) fn render(
         .collect();
     inbox.sort_by_key(|(effect, _)| effect.id());
     let inbox: Vec<&Incoming> = inbox.into_iter().map(|(_, message)| message).collect();
+    let shown = shown_agent.and_then(|entity| {
+        let (id, conversation) = agents.get(entity).ok()?;
+        Some(ShownAgent {
+            entity,
+            id,
+            conversation,
+            changed: changed.contains(entity),
+            inbox: &inbox,
+        })
+    });
     // The panels at the sides, then the boxes over the screen.
     let mut panels: Vec<_> = panels.iter().collect();
     panels.sort_by_key(|(entity, panel, _)| {
@@ -303,21 +423,12 @@ pub(crate) fn render(
             let layout = input_rows;
             // The input box scrolls to keep the cursor in sight.
             let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            if let Some((agent, (conversation, _))) = shown {
-                transcript.update(
-                    agent,
-                    conversation,
-                    changed.contains(agent),
-                    &by_tool,
-                    transcript_area.width,
-                );
-            }
-            let parts = transcript_parts(
+            let parts = lay_out_transcript(
+                &mut transcript,
                 view,
-                shown_agent,
-                shown.map(|(_, (conversation, condensed))| (conversation, condensed, &inbox[..])),
-                partial,
-                usize::from(transcript_area.width.max(1)),
+                shown.as_ref(),
+                (&by_tool, &call_states, partial),
+                transcript_area.width,
             );
             let (rows, below) = transcript.visible(
                 &parts,
@@ -581,8 +692,8 @@ fn status_pieces(shown: bool, items: [Option<&StatusItems>; 3]) -> (Vec<Piece>, 
 }
 
 /// The picker or question in a centred box over the transcript: its body,
-/// what is typed, then the rows it leaves, and for free text, the typed
-/// answer.
+/// what is typed, then the rows it leaves, each with its detail at the
+/// right, and for free text, the typed answer.
 fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
@@ -624,17 +735,15 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
     .areas(inner);
     frame.render_widget(Paragraph::new(body), body_area);
     frame.render_widget(Line::from(format!("› {}▏", choosing.filter)), typed);
+    let width = usize::from(list.width);
     let items: Vec<Line<'static>> = rows
         .iter()
         .map(|row| match row {
-            Row::Item(index) => Line::from(
-                shown
-                    .labels
-                    .get(*index)
-                    .copied()
-                    .unwrap_or_default()
-                    .to_owned(),
-            ),
+            Row::Item(index) => shown
+                .items
+                .get(*index)
+                .map(|item| item.line(width))
+                .unwrap_or_default(),
             Row::Typed if choosing.filter.trim().is_empty() => {
                 Line::from("✎ or type an answer").dim()
             }
@@ -647,21 +756,6 @@ fn draw_choice(frame: &mut Frame, choosing: &Choosing, shown: &Listing<'_>) {
         list,
         &mut state,
     );
-}
-
-/// Draws where the conversation was condensed: the messages above are sent
-/// to the model as the summary under the line.
-fn summary_lines(condensed: &Condensed, lines: &mut Vec<Line<'static>>) {
-    let style = Style::new().fg(Color::Magenta);
-    lines.push(Line::default());
-    lines.push(Line::styled(
-        format!(
-            "── {} earlier messages are sent as this summary ──",
-            condensed.upto
-        ),
-        style.bold(),
-    ));
-    lines.extend(excerpt(&condensed.summary, SUMMARY_LINES, style.dim()));
 }
 
 /// The messages the agent accepted and has not sent yet, under the
@@ -689,14 +783,6 @@ fn inbox_lines(inbox: &[&Incoming], lines: &mut Vec<Line<'static>>) {
             Span::from(format!("{first}{more}")).dim(),
         ]));
     }
-}
-
-fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
-    let style = match notice.level {
-        NoticeLevel::Info => Style::new().fg(Color::Magenta),
-        NoticeLevel::Error => Style::new().fg(Color::Red),
-    };
-    lines.extend(plain_lines(&notice.text, style));
 }
 
 #[cfg(test)]

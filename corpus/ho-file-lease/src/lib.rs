@@ -1,30 +1,27 @@
 //! Plugin corpus (held-out): H02: File leases across agents (spec `H02-file-lease.md`).
 //!
 //! A call of a file-changing tool (`[file_lease] tools`, by default `edit`
-//! and `write`) takes a lease on the file its `path` names while it runs.
-//! A call on a file another call holds waits, first come first served,
-//! held by an open `file_lease_wait` effect of its turn named "waiting for
-//! `<agent>`" (so the agent's status says so and the effect log records the
-//! wait), until the lease is its own; after `max_wait_secs` it is refused.
-//! Each agent that changed a file owns it until its turn ends, and is told
-//! with its next model request when another agent changed it meanwhile.
+//! and `write`) takes a lease on the files its `Footprint` says it writes
+//! while it runs. A call on a file another call holds waits, first come
+//! first served, held by a hold named "waiting for `<agent>`" (which the
+//! front shows on the call), until the lease is its own; after
+//! `max_wait_secs` it is refused. Each agent that changed a file owns it
+//! until its turn ends, and is told with its next model request when
+//! another agent changed it meanwhile.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use bevy_ecs::system::SystemParam;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::tool::FilesChanged;
 use serde::Deserialize;
-
-/// The kind of the effect that holds a call waiting for a lease.
-pub const WAIT: &str = "file_lease_wait";
 
 /// The `[file_lease]` settings table.
 #[derive(Resource, Deserialize, Clone, Debug)]
 #[serde(default, deny_unknown_fields)]
 pub struct FileLease {
-    /// The tools whose calls take a lease on the file their `path` names.
+    /// The tools whose calls take a lease on the files they write.
     pub tools: Vec<String>,
     /// How long a call waits for a lease before it is refused.
     pub max_wait_secs: u64,
@@ -39,7 +36,8 @@ impl Default for FileLease {
     }
 }
 
-/// The lease gate, in `Stage::Gate`, for other gates to order against.
+/// The lease gate, in `Stage::Gate`. A gate that holds or asks about a
+/// call orders `.before` it, so a call takes its lease once let through.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LeaseSystems;
 
@@ -53,131 +51,174 @@ impl Plugin for FileLeasePlugin {
             .init_resource::<Leases>()
             .configure_sets(AgentPass, LeaseSystems.in_set(Stage::Gate))
             .add_systems(AgentPass, lease.in_set(LeaseSystems))
+            .add_observer(time_out)
             .add_observer(settled)
             .add_observer(release);
     }
 }
 
-/// Every leased file: who holds it, who waits, who owns it.
+/// Who holds which files, who waits for them, and who changed them.
 #[derive(Resource, Default)]
-struct Leases(HashMap<PathBuf, File>);
-
-#[derive(Default)]
-struct File {
-    /// The call that holds the lease.
-    holder: Option<Entity>,
-    /// The calls waiting for it, first come first, with their wait effect.
-    queue: VecDeque<(Entity, Entity)>,
-    /// The agents that changed it, with the turn they did it in.
-    owners: Vec<(Entity, Entity)>,
+struct Leases {
+    /// The calls holding a lease, with the files they write.
+    held: Vec<(Entity, Scope)>,
+    /// The calls waiting for one, first come first.
+    queue: Vec<Waiter>,
+    /// The agents that changed each file, with the turn they did it in.
+    owners: HashMap<PathBuf, Vec<(Entity, Entity)>>,
 }
 
-/// On a call that holds or waits for the lease on this file.
-#[derive(Component)]
-struct LeaseCall(PathBuf);
+struct Waiter {
+    call: Entity,
+    files: Scope,
+    /// The hold that keeps the call from starting.
+    hold: Entity,
+}
 
-/// Gives each call about to run the lease on its file, or queues it behind
-/// the holder, held by a wait effect, with a deadline.
+impl Leases {
+    /// The call that `call` writing `files` must wait for: one holding an
+    /// overlapping lease, else one waiting for it ahead of `call`.
+    fn blocker(&self, call: Entity, files: &Scope) -> Option<Entity> {
+        let held = self.held.iter().map(|(other, scope)| (*other, scope));
+        let queued = self.queue.iter().map(|waiter| (waiter.call, &waiter.files));
+        held.chain(queued)
+            .find(|(other, scope)| *other != call && scope.overlaps(files))
+            .map(|(other, _)| other)
+    }
+}
+
+/// On a call that holds or waits for a lease on these files.
+#[derive(Component)]
+struct LeaseCall(Scope);
+
+/// On a hold that keeps a call waiting for a lease.
+#[derive(Component)]
+struct LeaseWait;
+
+/// Names agents and the files they work on.
+#[derive(SystemParam)]
+struct Who<'w, 's> {
+    agents: Query<'w, 's, &'static ForAgent>,
+    names: Query<'w, 's, &'static Name>,
+    dirs: Query<'w, 's, &'static WorkDir>,
+    root: Res<'w, ProjectRoot>,
+}
+
+impl Who<'_, '_> {
+    /// The name of the agent `effect` works for.
+    fn agent(&self, effect: Entity) -> String {
+        self.agents
+            .get(effect)
+            .and_then(|&ForAgent(agent)| self.names.get(agent))
+            .map_or_else(|_| "another agent".to_owned(), |name| name.to_string())
+    }
+
+    /// `path` as `agent` knows it: relative to the directory it works in,
+    /// when inside it.
+    fn shown(&self, agent: Entity, path: &Path) -> String {
+        let dir = self
+            .dirs
+            .get(agent)
+            .map_or(&self.root.0, |WorkDir(dir)| dir);
+        let dir = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        path.strip_prefix(&dir)
+            .unwrap_or(path)
+            .display()
+            .to_string()
+    }
+}
+
+/// The files a call of a leased tool writes, if it names them.
+fn written<'a>(
+    settings: &FileLease,
+    request: &ToolRequest,
+    footprint: &'a Footprint,
+) -> Option<&'a Scope> {
+    let tool = request.call.function.name.as_str();
+    match &footprint.0 {
+        Touches::Writes(scope @ Scope::Paths(_)) if settings.tools.iter().any(|t| t == tool) => {
+            Some(scope)
+        }
+        _ => None,
+    }
+}
+
+/// Gives each call about to run the lease on the files it writes, or
+/// queues it behind the call it must wait for, held, with a deadline.
 fn lease(
-    calls: Query<(Entity, &ToolRequest, &Effect, &ForAgent, Option<&CallOf>), Undecided>,
-    agents: Query<&ForAgent>,
-    names: Query<&Name>,
+    calls: Query<
+        (Entity, &Effect, &ToolRequest, &Footprint, &Decision),
+        (Undecided, ToolCalls, Without<LeaseCall>),
+    >,
     settings: Res<FileLease>,
-    root: Res<ProjectRoot>,
+    who: Who,
     mut leases: ResMut<Leases>,
     mut commands: Commands,
 ) {
     let mut ready: Vec<_> = calls
         .iter()
-        .filter(|(_, request, ..)| {
-            let tool = request.call.function.name.as_str();
-            settings.tools.iter().any(|leased| leased == tool)
-        })
-        .filter_map(|(call, request, effect, &ForAgent(agent), turn)| {
-            let path = request.call.function.arguments.get("path")?.as_str()?;
-            Some((effect.id(), call, canonical(&root.0, path), agent, turn))
+        .filter(|(.., decision)| !decision.is_decided())
+        .filter_map(|(call, effect, request, footprint, _)| {
+            Some((
+                effect.id(),
+                call,
+                written(&settings, request, footprint)?.clone(),
+            ))
         })
         .collect();
     // First come, first served: in the order the calls were made.
     ready.sort_by_key(|(id, ..)| *id);
-    for (id, call, path, agent, turn) in ready {
-        let file = leases.0.entry(path.clone()).or_default();
-        let Some(holder) = file.holder else {
-            file.holder = Some(call);
-            commands.entity(call).insert(LeaseCall(path));
+    let max_wait = Duration::from_secs(settings.max_wait_secs);
+    for (_, call, files) in ready {
+        commands.entity(call).insert(LeaseCall(files.clone()));
+        let Some(blocker) = leases.blocker(call, &files) else {
+            leases.held.push((call, files));
             continue;
         };
-        if holder == call || file.queue.iter().any(|&(queued, _)| queued == call) {
-            continue;
-        }
-        let holder = agent_name(holder, &agents, &names);
-        let kind = EffectKind::Custom {
-            kind: WAIT.into(),
-            payload: serde_json::json!({ "path": shown(&root.0, &path), "holder": holder }),
-        };
-        let mut wait = commands.spawn((
-            EffectRequest {
-                kind,
-                handler: None,
-            },
-            Effect::child_of(Some(id)),
-            Name::new(format!("waiting for {holder}")),
-            ForAgent(agent),
-            HoldOf(call),
-        ));
-        if let Some(&CallOf(turn)) = turn {
-            wait.insert(CallOf(turn));
-        }
-        let wait = wait.id();
-        file.queue.push_back((call, wait));
-        commands.entity(call).insert(LeaseCall(path));
-        commands
-            .delayed()
-            .duration(Duration::from_secs(settings.max_wait_secs))
-            .queue(move |world: &mut World| time_out(world, call, wait));
+        let hold = commands
+            .spawn((
+                LeaseWait,
+                HoldOf(call),
+                Name::new(format!("waiting for {}", who.agent(blocker))),
+                WakeAt::after(max_wait),
+            ))
+            .id();
+        leases.queue.push(Waiter { call, files, hold });
     }
 }
 
 /// Refuses a call still waiting for its lease when its time is up.
-fn time_out(world: &mut World, call: Entity, wait: Entity) {
-    if !world
-        .get_entity(wait)
-        .is_ok_and(|wait| wait.contains::<HoldOf>())
-    {
-        return;
-    }
-    let Some(LeaseCall(path)) = world.get::<LeaseCall>(call) else {
+fn time_out(
+    due: On<Add<Due>>,
+    waits: Query<&HoldOf, With<LeaseWait>>,
+    mut calls: Query<(&LeaseCall, &mut Decision, &ForAgent)>,
+    who: Who,
+    leases: Res<Leases>,
+    mut commands: Commands,
+) {
+    let Ok(&HoldOf(call)) = waits.get(due.entity) else {
         return;
     };
-    let path = path.clone();
-    let root = world.resource::<ProjectRoot>().0.clone();
-    let holder = world
-        .resource::<Leases>()
-        .0
-        .get(&path)
-        .and_then(|file| file.holder);
-    let holder = holder
-        .and_then(|holder| world.get::<ForAgent>(holder))
-        .and_then(|&ForAgent(agent)| world.get::<Name>(agent))
-        .map_or_else(
-            || "another agent".to_owned(),
-            |name| name.as_str().to_owned(),
-        );
-    if let Some(file) = world.resource_mut::<Leases>().0.get_mut(&path) {
-        file.queue.retain(|&(queued, _)| queued != call);
-    }
-    let why = format!("{} is busy (held by {holder}'s call)", shown(&root, &path));
-    if let Ok(mut call) = world.get_entity_mut(call) {
-        call.insert_if_new(Outcome::refused(why));
-    }
-    if let Ok(mut wait) = world.get_entity_mut(wait) {
-        wait.insert_if_new(Outcome::custom(serde_json::json!({ "timed_out": true })))
-            .remove::<HoldOf>();
-    }
+    let Ok((LeaseCall(files), mut decision, &ForAgent(agent))) = calls.get_mut(call) else {
+        return;
+    };
+    let file = match files {
+        Scope::Paths(paths) => paths.first().map(|path| who.shown(agent, path)),
+        Scope::Anything => None,
+    };
+    let holder = leases
+        .blocker(call, files)
+        .map(|blocker| who.agent(blocker));
+    decision.decide(Outcome::refused(format!(
+        "{} is busy (held by {}'s call)",
+        file.unwrap_or_default(),
+        holder.unwrap_or_else(|| "another agent".to_owned()),
+    )));
+    commands.entity(call).remove::<LeaseCall>();
 }
 
-/// As a leased call settles: if it changed its file, tells the agents that
-/// own the file, and owns it until its turn ends. Then it lets go.
+/// As a leased call settles: if it changed its files, tells the agents
+/// that own them, and owns them until its turn ends. Then it lets go.
 fn settled(
     settled: On<Add<Settled>>,
     calls: Query<(
@@ -188,124 +229,75 @@ fn settled(
         Option<&Published>,
     )>,
     turns: Query<(), (With<Turn>, Without<Settled>)>,
-    agents: Query<&ForAgent>,
-    names: Query<&Name>,
-    root: Res<ProjectRoot>,
+    who: Who,
     mut leases: ResMut<Leases>,
     mut commands: Commands,
 ) {
     let call = settled.entity;
-    let Ok((LeaseCall(path), &ForAgent(agent), turn, outcome, published)) = calls.get(call) else {
+    let Ok((LeaseCall(files), &ForAgent(agent), turn, outcome, published)) = calls.get(call) else {
         return;
     };
     commands.entity(call).remove::<LeaseCall>();
-    let changed = outcome.is_some_and(|outcome| outcome.tool_result().is_success());
-    let Some(file) = leases
-        .0
-        .get_mut(path)
-        .filter(|file| file.holder == Some(call))
-    else {
+    let (Scope::Paths(paths), Some(&CallOf(turn))) = (files, turn) else {
         return;
     };
-    if !changed {
+    if !outcome.is_some_and(|outcome| outcome.tool_result().is_success()) {
         return;
     }
-    file.owners.retain(|&(_, turn)| turns.contains(turn));
-    let name = agent_name(call, &agents, &names);
-    let counts = published
+    let changes = published
         .and_then(|published| published.0.get::<FilesChanged>().ok().flatten())
-        .and_then(|changed| {
-            let change = changed
-                .0
-                .into_iter()
-                .find(|change| canonical(&root.0, &change.path) == *path)?;
-            Some(format!(" (+{} −{})", change.added, change.removed))
-        })
+        .map(|FilesChanged(changes)| changes)
         .unwrap_or_default();
-    let shown = shown(&root.0, path);
-    let note = format!("agent {name} changed {shown}{counts} while you were working on it");
-    for &(owner, _) in file.owners.iter().filter(|(owner, _)| *owner != agent) {
-        let note = Deliver::new(owner, note.clone(), DeliveryMode::Note);
-        commands.trigger(note.with_origin(Origin::plugin("file-lease")));
-    }
-    if let Some(&CallOf(turn)) = turn
-        && !file.owners.iter().any(|&(owner, _)| owner == agent)
-    {
-        file.owners.push((agent, turn));
+    let name = who.agent(call);
+    for path in paths {
+        let counts = changes
+            .iter()
+            .find(|change| Path::new(&change.path) == path)
+            .map(|change| format!(" (+{} −{})", change.added, change.removed))
+            .unwrap_or_default();
+        let owners = leases.owners.entry(path.clone()).or_default();
+        owners.retain(|&(_, turn)| turns.contains(turn));
+        for &(owner, _) in owners.iter().filter(|(owner, _)| *owner != agent) {
+            let file = who.shown(owner, path);
+            let note = format!("agent {name} changed {file}{counts} while you were working on it");
+            let note = Deliver::new(owner, note, DeliveryMode::Note);
+            commands.trigger(note.with_origin(Origin::plugin("file-lease")));
+        }
+        if !owners.iter().any(|&(owner, _)| owner == agent) {
+            owners.push((agent, turn));
+        }
     }
 }
 
-/// A call that held a lease lets go of it, settled or gone: the next live
-/// waiter gets it, its wait answered. A waiter that goes leaves the queue.
+/// A call lets go of its lease or leaves the queue, settled, timed out or
+/// gone; each waiter, first come first, gets its lease once nothing ahead
+/// of it overlaps its files.
 fn release(
     removed: On<Remove<LeaseCall>>,
-    calls: Query<&LeaseCall>,
-    live: Query<(), (With<Effect>, Without<Settled>)>,
-    turns: Query<(), (With<Turn>, Without<Settled>)>,
+    who: Who,
     mut leases: ResMut<Leases>,
     mut commands: Commands,
 ) {
     let call = removed.entity;
-    let Ok(LeaseCall(path)) = calls.get(call) else {
-        return;
-    };
-    let Some(file) = leases.0.get_mut(path) else {
-        return;
-    };
-    file.queue.retain(|&(queued, _)| queued != call);
-    if file.holder == Some(call) {
-        file.holder = None;
-        while let Some((next, wait)) = file.queue.pop_front() {
-            if !live.contains(next) {
-                continue;
+    leases.held.retain(|&(holder, _)| holder != call);
+    let waiting = std::mem::take(&mut leases.queue);
+    for waiter in waiting {
+        if waiter.call == call {
+            commands.entity(waiter.hold).try_despawn();
+            continue;
+        }
+        match leases.blocker(waiter.call, &waiter.files) {
+            None => {
+                commands.entity(waiter.hold).try_despawn();
+                leases.held.push((waiter.call, waiter.files));
             }
-            file.holder = Some(next);
-            commands
-                .entity(wait)
-                .try_insert(Outcome::custom(serde_json::json!({ "granted": true })))
-                .try_remove::<HoldOf>();
-            break;
+            Some(blocker) => {
+                let name = Name::new(format!("waiting for {}", who.agent(blocker)));
+                commands.entity(waiter.hold).try_insert(name);
+                leases.queue.push(waiter);
+            }
         }
     }
-    file.owners.retain(|&(_, turn)| turns.contains(turn));
-    if file.holder.is_none() && file.queue.is_empty() && file.owners.is_empty() {
-        leases.0.remove(&path.clone());
-    }
-}
-
-/// The name of the agent `effect` works for.
-fn agent_name(effect: Entity, agents: &Query<&ForAgent>, names: &Query<&Name>) -> String {
-    agents
-        .get(effect)
-        .and_then(|&ForAgent(agent)| names.get(agent))
-        .map_or_else(
-            |_| "another agent".to_owned(),
-            |name| name.as_str().to_owned(),
-        )
-}
-
-/// `path` as the tools resolve it, against the project, with links and
-/// `..` resolved as far as the file or its directory exists.
-fn canonical(root: &Path, path: &str) -> PathBuf {
-    let path = root.join(path);
-    if let Ok(canonical) = path.canonicalize() {
-        return canonical;
-    }
-    match (path.parent(), path.file_name()) {
-        (Some(dir), Some(name)) => dir
-            .canonicalize()
-            .map_or_else(|_| path.clone(), |dir| dir.join(name)),
-        _ => path,
-    }
-}
-
-/// `path` as the user knows it: relative to the project when inside it.
-fn shown(root: &Path, path: &Path) -> String {
-    let root = root.canonicalize().unwrap_or_else(|_| root.to_owned());
-    path.strip_prefix(&root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
 }
 
 #[cfg(test)]

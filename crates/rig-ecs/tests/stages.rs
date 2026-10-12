@@ -1,21 +1,24 @@
 //! The stage rules on their own: plugin effects ([`EffectRequest`]) and a
 //! scripted model's tool calls ([`ToolRequest`]) on a headless kernel app,
 //! with stage systems as plugins write them. Effects chain within the
-//! frame their outcomes arrive in, the first answer wins, holds add up,
-//! every Prepare and Gate system sees a late spawn before it starts, a
-//! review keeps the raw outcome in the record, a failing stage system
+//! frame their outcomes arrive in, the first decision wins, Bevy sees two
+//! unordered deciders of one kind, holds add up, every Prepare and Gate
+//! system sees a late spawn before it starts, reviewers edit an outcome in
+//! place in their order and the record keeps the raw one, a failing stage system
 //! closes its stage, and every way an effect ends is recorded. A reply's
 //! calls start, and their results go back, in the frames they arrive; a
-//! gate sees each call when it is about to run; a refusal answers in call
-//! order and is recorded as one. A model call that gave up is superseded
+//! gate sees each call when it is about to run; a held call holds back
+//! only the later calls that touch what it writes, as Prepare left them; a
+//! refusal answers in call order and is recorded as one. A model call that gave up is superseded
 //! on another model and the turn goes on; a retry waits on a hold that an
 //! interrupt takes away; a refused model call ends its turn and keeps the
 //! message. A side call is built from its agent like a turn's and leaves
 //! the conversation alone. A tool's annotations give its footprint, and what it publishes
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
-//! cutoff; a message taken over in Gate never reaches the agent, and one
-//! accepted carries an answered turn on; a turn a plugin fails starts nothing more; an interrupt ends a
+//! cutoff; a message taken over in Gate never reaches the agent, one
+//! accepted carries an answered turn on, and an accepted note its sender
+//! decides is withdrawn; a turn a plugin fails starts nothing more; an interrupt ends a
 //! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
@@ -27,14 +30,19 @@
 //! in `src/restore/tests.rs`.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::error::{FallbackErrorHandler, warn};
+use bevy_ecs::schedule::{
+    LogLevel, ScheduleBuildError, ScheduleBuildSettings, ScheduleBuildWarning,
+};
+use bevy_ecs::system::ScheduleSystem;
 use bevy_time::TimeUpdateStrategy;
 use futures::StreamExt;
 use rig_core::ProviderResponseError;
-use rig_core::catalog::{Catalog, ModelSpec};
+use rig_core::catalog::{Catalog, ModelSpec, Transport};
 use rig_core::completion::{FinishReason, ToolAnnotations};
 use rig_core::effect::family::Dynamic;
 use rig_core::effect::{
@@ -48,7 +56,7 @@ use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::tool::{ContextValue, ExitStatus, ToolContext};
+use rig_core::tool::{ContextValue, ExitStatus, ToolContext, ToolOutput, ToolResult};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
@@ -290,28 +298,25 @@ fn effects_chain_in_the_frame_their_outcomes_arrive_and_time_steps_once() {
 }
 
 #[test]
-fn the_first_answer_wins() {
+fn the_first_decision_wins() {
     let mut app = app();
     app.add_systems(
         AgentPass,
         (
-            |effects: Query<Entity, Undecided>, mut commands: Commands| {
-                for effect in &effects {
-                    commands
-                        .entity(effect)
-                        .insert_if_new(Outcome::refused("not now"));
+            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
+                for mut decision in &mut effects {
+                    decision.decide(Outcome::refused("not now"));
                 }
             },
-            // Ordered after the refusal, and blind to it, this one answers
-            // too: it loses.
-            (|effects: Query<Entity, (With<EffectRequest>, Without<Settled>)>,
-              mut commands: Commands| {
-                for effect in &effects {
-                    let late = rig_core::tool::ToolResult::skipped("allowed");
-                    let late = rig_core::effect::Outcome::ToolResult { result: late };
-                    commands.entity(effect).insert_if_new(Outcome(Ok(late)));
+            // Ordered after the refusal, this one decides too: it loses,
+            // and it is told so.
+            |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>,
+             mut seen: ResMut<Seen>| {
+                for mut decision in &mut effects {
+                    let won = decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+                    seen.0.push(format!("won: {won}"));
                 }
-            }),
+            },
         )
             .chain()
             .in_set(Stage::Gate),
@@ -320,6 +325,9 @@ fn the_first_answer_wins() {
     app.update();
     assert!(has::<Settled>(&app, effect), "settled in its first frame");
     assert!(!has::<Started>(&app, effect), "never started");
+    assert_eq!(seen(&app), ["won: false"]);
+    let decided = app.world().get::<Decision>(effect);
+    assert!(decided.is_some_and(Decision::is_decided), "still decided");
     let records = records(&app);
     assert_eq!(records.len(), 1, "{records:?}");
     let Some(record) = records.first() else {
@@ -330,7 +338,60 @@ fn the_first_answer_wins() {
         matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Denied),
         "{record:?}"
     );
+    assert!(record.reviewed.is_none(), "{record:?}");
     assert!(record.started_ms.is_none());
+}
+
+/// A gate that refuses every tool call.
+fn refuse_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+    for mut decision in &mut calls {
+        decision.decide(Outcome::refused("no"));
+    }
+}
+
+/// Another gate that allows every tool call.
+fn allow_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+    for mut decision in &mut calls {
+        decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+    }
+}
+
+/// A gate that takes every message over.
+fn take_messages(mut messages: Query<&mut Decision, (Undecided, IncomingMessages)>) {
+    for mut decision in &mut messages {
+        decision.decide(Outcome::custom("taken"));
+    }
+}
+
+/// Whether the agent loop with `gates` in Gate holds an unordered pair
+/// writing the same data, which `None` means it built without.
+fn unordered<M>(gates: impl IntoScheduleConfigs<ScheduleSystem, M>) -> Option<bool> {
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin))
+        .add_systems(AgentPass, gates.in_set(Stage::Gate));
+    let built = app
+        .world_mut()
+        .try_schedule_scope(AgentPass, |world, pass| {
+            pass.set_build_settings(ScheduleBuildSettings {
+                ambiguity_detection: LogLevel::Error,
+                ..Default::default()
+            });
+            pass.initialize(world).map(drop)
+        })
+        .ok()?;
+    Some(matches!(
+        built,
+        Err(ScheduleBuildError::Elevated(
+            ScheduleBuildWarning::Ambiguity(_)
+        ))
+    ))
+}
+
+#[test]
+fn bevy_sees_two_unordered_deciders_of_one_kind_only() {
+    assert_eq!(unordered((refuse_calls, allow_calls)), Some(true));
+    assert_eq!(unordered((refuse_calls, allow_calls).chain()), Some(false));
+    assert_eq!(unordered((refuse_calls, take_messages)), Some(false));
 }
 
 #[test]
@@ -350,6 +411,61 @@ fn holds_add_up() {
     assert!(
         has::<Started>(&app, effect),
         "started in the frame of the release"
+    );
+}
+
+/// What a question holds until it is answered.
+#[derive(Component)]
+struct Asked {
+    call: Entity,
+    hold: Entity,
+}
+
+#[test]
+fn an_effect_decided_as_its_hold_goes_never_starts() {
+    let mut app = app();
+    // A question is answered in Gate; on its answer, an observer refuses
+    // the call it held and lets go of it, as Start opens.
+    app.add_systems(
+        AgentPass,
+        (|mut asked: Query<&mut Decision, (Undecided, With<Asked>)>| {
+            for mut decision in &mut asked {
+                decision.decide(Outcome::custom("no"));
+            }
+        })
+        .in_set(Stage::Gate),
+    )
+    .add_observer(
+        |answered: On<Add<Outcome>>,
+         asked: Query<&Asked>,
+         mut decisions: Query<&mut Decision>,
+         mut commands: Commands| {
+            let Ok(asked) = asked.get(answered.entity) else {
+                return;
+            };
+            if let Ok(mut decision) = decisions.get_mut(asked.call) {
+                decision.decide(Outcome::refused("the user said no"));
+            }
+            commands.entity(asked.hold).despawn();
+        },
+    );
+    let world = app.world_mut();
+    let call = world.spawn(add()).id();
+    let hold = world.spawn(HoldOf(call)).id();
+    world.spawn((open("question"), Asked { call, hold }));
+    let settled = run_until(&mut app, |world| world.get::<Settled>(call).is_some());
+    assert!(settled, "the refusal settled the call");
+    assert!(!has::<Started>(&app, call), "a refused call never starts");
+    let records = records(&app);
+    let record = records
+        .iter()
+        .find(|record| matches!(record.kind, EffectKind::ToolCall { .. }));
+    assert!(
+        record.is_some_and(
+            |record| record.disposition == Disposition::AnsweredBeforeStart
+                && matches!(&record.outcome, Err(report) if report.kind == ErrorKind::Denied)
+        ),
+        "{records:?}"
     );
 }
 
@@ -453,35 +569,47 @@ fn every_prepare_and_gate_system_sees_a_late_spawn_before_it_starts() {
     assert_eq!(seen(&app), order);
 }
 
-/// Marks an outcome the reviewer replaced.
+/// Marks an outcome the first reviewer edited.
 #[derive(Component)]
 struct Redacted;
 
-/// The reviewer's hold.
+/// Marks an outcome the second reviewer edited.
+#[derive(Component)]
+struct Checked;
+
+/// The first reviewer's hold.
 #[derive(Resource, Default)]
 struct ReviewHold(Option<Entity>);
 
 #[test]
-fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
+fn reviews_edit_in_place_in_order_and_the_record_keeps_the_raw_outcome() {
     let mut app = app();
-    let redact = |effects: Query<Entity, (Unreviewed, Without<Redacted>)>,
+    let redact = |mut effects: Query<(Entity, &mut Outcome), (Unreviewed, Without<Redacted>)>,
                   mut hold: ResMut<ReviewHold>,
                   mut commands: Commands| {
-        for effect in &effects {
-            let redacted = rig_core::tool::ToolResult::skipped("redacted");
-            let redacted = rig_core::effect::Outcome::ToolResult { result: redacted };
-            commands
-                .entity(effect)
-                .insert((Outcome(Ok(redacted)), Redacted));
+        for (effect, mut outcome) in &mut effects {
+            *outcome = Outcome::from(rig_core::tool::ToolResult::skipped("redacted"));
+            commands.entity(effect).insert(Redacted);
             hold.0 = Some(commands.spawn(HoldOf(effect)).id());
         }
     };
-    let read = |outcomes: Query<&Outcome, Unreviewed>, mut seen: ResMut<Seen>| {
-        seen.0
-            .extend(outcomes.iter().map(|outcome| output(&outcome.0)));
+    // Ordered after, it sees the first edit as it would any data.
+    let check = |mut effects: Query<
+        (Entity, &mut Outcome),
+        (Unreviewed, With<Redacted>, Without<Checked>),
+    >,
+                 mut seen: ResMut<Seen>,
+                 mut commands: Commands| {
+        for (effect, mut outcome) in &mut effects {
+            let before = outcome.tool_result().output().render();
+            seen.0.push(before.clone());
+            let checked = format!("{before}, checked");
+            *outcome = Outcome::from(rig_core::tool::ToolResult::skipped(checked));
+            commands.entity(effect).insert(Checked);
+        }
     };
     app.init_resource::<ReviewHold>()
-        .add_systems(AgentPass, (redact, read).chain().in_set(Stage::Review));
+        .add_systems(AgentPass, (redact, check).chain().in_set(Stage::Review));
     let effect = app.world_mut().spawn(add()).id();
     let held = run_until(&mut app, |world| world.resource::<ReviewHold>().0.is_some());
     assert!(held, "the tool answered");
@@ -498,7 +626,7 @@ fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
     let seen = seen(&app);
     assert!(
         matches!(seen.as_slice(), [only] if only.contains("redacted")),
-        "the later reviewer saw the replacement only: {seen:?}"
+        "the later reviewer saw the first edit: {seen:?}"
     );
     let records = records(&app);
     assert_eq!(records.len(), 1, "{records:?}");
@@ -511,8 +639,8 @@ fn a_review_holds_and_replaces_and_the_record_keeps_the_raw_outcome() {
     );
     let reviewed = record.reviewed.as_ref().map(output);
     assert!(
-        reviewed.is_some_and(|reviewed| reviewed.contains("redacted")),
-        "{record:?}"
+        reviewed.is_some_and(|reviewed| reviewed.contains("redacted, checked")),
+        "both edits: {record:?}"
     );
     assert_eq!(record.disposition, Disposition::Ran);
 }
@@ -616,11 +744,12 @@ fn every_way_an_effect_ends_is_recorded() {
         .get::<Effect>(nested)
         .and_then(|effect| effect.parent);
     assert_eq!(child, parent, "a child effect's parent");
-    // Answered from outside while it runs: its task is cancelled.
+    // Decided from outside while it runs: its task is cancelled.
     let answer = rig_core::tool::ToolResult::skipped("answered");
-    let answer = rig_core::effect::Outcome::ToolResult { result: answer };
     let world = app.world_mut();
-    world.entity_mut(running).insert(Outcome(Ok(answer)));
+    if let Some(mut decision) = world.get_mut::<Decision>(running) {
+        decision.decide(answer);
+    }
     // Replaced while held: it never starts.
     let successor = world.spawn((open("successor"), Supersedes(replaced))).id();
     // Despawned before it settles.
@@ -730,7 +859,7 @@ fn agent_on(app: &mut App, model: &MockCompletionModel) -> Entity {
         .resolve("deepseek/deepseek-flash")
         .map(|spec| spec.shared());
     let read_only = ToolOptions {
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
         ..ToolOptions::default()
     };
     app.add_tool_with(Look, read_only)
@@ -828,12 +957,12 @@ struct Gated {
 
 /// Holds `held` once and refuses `refused`; logs every call it sees.
 fn gate(
-    calls: Query<(Entity, &ToolRequest), Undecided>,
+    mut calls: Query<(Entity, &ToolRequest, &mut Decision), (Undecided, ToolCalls)>,
     settled: Query<&ToolRequest, With<Settled>>,
     mut gated: ResMut<Gated>,
     mut commands: Commands,
 ) {
-    for (call, request) in &calls {
+    for (call, request, mut decision) in &mut calls {
         let id = request.call.id.to_string();
         let done = settled.iter().map(|done| done.call.id.to_string());
         gated.seen.push((id.clone(), done.collect()));
@@ -843,9 +972,7 @@ fn gate(
                 gated.hold = Some(commands.spawn(HoldOf(call)).id());
             }
             "refused" => {
-                commands
-                    .entity(call)
-                    .insert_if_new(Outcome::refused("not this one"));
+                decision.decide(Outcome::refused("not this one"));
             }
             _ => {}
         }
@@ -934,6 +1061,161 @@ fn a_gate_sees_each_call_when_it_is_about_to_run() {
     let refusal = app.world().resource::<Refusal>();
     assert!(refusal.answered.is_some(), "the gate refused");
     assert_eq!(refusal.started, refusal.answered);
+}
+
+/// The file a call names.
+#[derive(Deserialize)]
+struct PathArgs {
+    path: PathBuf,
+}
+
+/// Reads the file its call names, and touches nothing else.
+struct ReadFile;
+
+impl PortableTool for ReadFile {
+    const NAME: &'static str = "read";
+    type Args = PathArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Reads a file.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    }
+
+    fn footprint(&self, args: &PathArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![args.path.clone()]))
+    }
+
+    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+        Ok("read".to_owned())
+    }
+}
+
+/// Changes the file its call names, and touches nothing else.
+struct EditFile;
+
+impl PortableTool for EditFile {
+    const NAME: &'static str = "edit";
+    type Args = PathArgs;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Edits a file.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object", "properties": { "path": { "type": "string" } } })
+    }
+
+    fn footprint(&self, args: &PathArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![args.path.clone()]))
+    }
+
+    async fn call(&self, _: PathArgs) -> Result<String, ToolExecutionError> {
+        Ok("edited".to_owned())
+    }
+}
+
+/// Hands work on; registered as independent of the reply's other calls.
+struct Task;
+
+impl PortableTool for Task {
+    const NAME: &'static str = "task";
+    type Args = serde_json::Value;
+    type Output = String;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "Hands work on.".to_owned()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({ "type": "object" })
+    }
+
+    async fn call(&self, _: serde_json::Value) -> Result<String, ToolExecutionError> {
+        Ok("handed on".to_owned())
+    }
+}
+
+/// In Prepare, points the call `moved` at `/work/a`.
+fn move_to_a(mut calls: Query<&mut ToolRequest, Added<Admitted>>) {
+    for mut request in &mut calls {
+        if request.call.id.to_string() == "moved" {
+            let path = serde_json::json!("/work/a");
+            request.call.function.arguments.insert("path".into(), path);
+        }
+    }
+}
+
+#[test]
+fn a_held_call_holds_back_only_the_calls_that_touch_what_it_writes() {
+    let mut app = app();
+    let path = |tool: &str, id: &str, path: &str| {
+        MockStreamEvent::tool_call(id, tool, serde_json::json!({ "path": path }))
+    };
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            path("edit", "held", "/work/a"),
+            path("read", "rb", "/work/b"),
+            path("read", "ra", "/work/a"),
+            MockStreamEvent::tool_call("t", "task", serde_json::json!({})),
+            path("read", "moved", "/work/b"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("done"),
+    ]);
+    let independent = ToolOptions {
+        footprint: Some(Touches::Independent),
+        ..ToolOptions::default()
+    };
+    app.add_tool(ReadFile)
+        .add_tool(EditFile)
+        .add_tool_with(Task, independent)
+        .init_resource::<Gated>()
+        .add_systems(
+            AgentPass,
+            (move_to_a.in_set(Stage::Prepare), gate.in_set(Stage::Gate)),
+        );
+    let agent = agent_on(&mut app, &model);
+    let held = run_until(&mut app, |world| world.resource::<Gated>().hold.is_some());
+    assert!(held, "the gate held the edit");
+    for _ in 0..3 {
+        app.update();
+    }
+    // The read of another file ran past the held edit; the read of its
+    // file, the read Prepare moved onto it and the hand-off wait.
+    let world = app.world_mut();
+    let [rb, ra, t, moved] =
+        ["rb", "ra", "t", "moved"].map(|id| call_named(world, id).unwrap_or(Entity::PLACEHOLDER));
+    assert!(has::<Started>(&app, rb));
+    for waiting in [ra, t, moved] {
+        assert!(has::<Waiting>(&app, waiting) && !has::<Started>(&app, waiting));
+    }
+    if let Some(hold) = app.world().resource::<Gated>().hold {
+        app.world_mut().despawn(hold);
+    }
+    let done = run_until(&mut app, |world| {
+        world
+            .get::<Conversation>(agent)
+            .is_some_and(|c| c.messages().len() == 4)
+    });
+    assert!(done, "{:?}", conversation(&app, agent));
+    let seen = &app.world().resource::<Gated>().seen;
+    let gated_after = |id: &str| {
+        seen.iter()
+            .filter(|(call, _)| call == id)
+            .all(|(_, settled)| settled.iter().any(|done| done == "held"))
+    };
+    assert!(
+        ["ra", "t", "moved"].into_iter().all(gated_after),
+        "{seen:?}"
+    );
 }
 
 #[test]
@@ -1125,11 +1407,9 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
 #[test]
 fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
-    let refuse = |calls: Query<Entity, (Undecided, With<TurnCall>)>, mut commands: Commands| {
-        for call in &calls {
-            commands
-                .entity(call)
-                .insert_if_new(Outcome::refused("not now"));
+    let refuse = |mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>| {
+        for mut decision in &mut calls {
+            decision.decide(Outcome::refused("not now"));
         }
     };
     app.init_resource::<Ended>()
@@ -1216,8 +1496,8 @@ fn a_tools_annotations_give_its_footprint_and_what_it_publishes_lands_on_its_cal
     let footprint = tools
         .iter(world)
         .find(|(def, _)| def.0.name.as_str() == "probe")
-        .map(|(_, footprint)| *footprint);
-    assert_eq!(footprint, Some(Footprint::ReadOnly));
+        .map(|(_, footprint)| footprint.0.clone());
+    assert_eq!(footprint, Some(Touches::Reads(Scope::Anything)));
     assert_eq!(app.world().resource::<Facts>().0, [ExitStatus::Exited(0)]);
     let probe = records(&app).into_iter().find(
         |record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == "probe"),
@@ -1305,10 +1585,17 @@ fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
         .init_resource::<Numbered>()
         .add_observer(log_ended)
         .add_observer(
-            |settled: On<Add<Settled>>, turns: Query<&Turn>, mut log: ResMut<Numbered>| {
-                let turn = turns.get(settled.entity).ok();
-                log.0
-                    .extend(turn.map(|turn| (turn.index, turn.first_message)));
+            |settled: On<Add<Settled>>,
+             turns: Query<(&Turn, &ForAgent)>,
+             agents: Query<&Conversation>,
+             mut log: ResMut<Numbered>| {
+                let Ok((turn, agent)) = turns.get(settled.entity) else {
+                    return;
+                };
+                let conversation = agents.get(agent.0).ok();
+                let first =
+                    conversation.map(|conversation| conversation.start_of(turn.first_message));
+                log.0.extend(first.map(|first| (turn.index, first)));
             },
         )
         .add_systems(AgentPass, nudge.in_set(Stage::Review));
@@ -1458,12 +1745,10 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
 }
 
 /// Takes over the user's messages that start with `!`, as a shell would.
-fn run_in_shell(typed: Query<(Entity, &Incoming), Undecided>, mut commands: Commands) {
-    for (message, typed) in &typed {
+fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
+    for (typed, mut decision) in &mut typed {
         if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
-            commands
-                .entity(message)
-                .insert_if_new(Outcome::custom("ran in a shell"));
+            decision.decide(Outcome::custom("ran in a shell"));
         }
     }
 }
@@ -1550,6 +1835,47 @@ fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_
     assert!(!has::<ActiveTurn>(&app, agent));
     assert_eq!(model.request_count(), 2);
     assert!(message_record(&app, "!pwd").is_some());
+}
+
+/// A sender takes back a note its busy agent accepted and was not given
+/// yet by deciding it: it leaves the inbox and never reaches the
+/// conversation, though the turn ends without another model call.
+#[test]
+fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
+    let mut app = app();
+    app.init_resource::<Ended>()
+        .init_resource::<Judging>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, hold_answers.in_set(Stage::Review));
+    let model = MockCompletionModel::from_stream_turns([answer("done")]);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| world.resource::<Judging>().0.is_some();
+    assert!(run_until(&mut app, held));
+    let note = |text: &str| {
+        let note = Incoming::new(text, DeliveryMode::Note).with_origin(Origin::plugin("check"));
+        (note, ForAgent(agent))
+    };
+    let kept = app.world_mut().spawn(note("the docs build")).id();
+    let taken_back = app.world_mut().spawn(note("the tests fail")).id();
+    let accepted = |world: &mut World| {
+        world.get::<Started>(kept).is_some() && world.get::<Started>(taken_back).is_some()
+    };
+    assert!(run_until(&mut app, accepted));
+    if let Some(mut decision) = app.world_mut().get_mut::<Decision>(taken_back) {
+        decision.decide(Outcome::custom("withdrawn"));
+    }
+    app.update();
+    if let Some((_, hold)) = app.world().resource::<Judging>().0 {
+        app.world_mut().despawn(hold);
+    }
+    let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended_once));
+    let said = serde_json::to_string(&conversation(&app, agent)).unwrap_or_default();
+    assert!(
+        said.contains("the docs build") && !said.contains("the tests fail"),
+        "{said}"
+    );
+    assert_eq!(model.request_count(), 1);
 }
 
 /// A reply cut off at the length limit before it answered.
@@ -1762,12 +2088,99 @@ fn an_agent_retired_as_its_turn_ends_goes_with_the_turn() {
     assert_eq!(turns, 0, "the turn went with its agent");
 }
 
-/// What model calls streamed, as a `PostUpdate` reader saw it, and the
-/// calls whose first item came.
+/// The agent of a turn whose reply called `stall`, once the call runs and
+/// says what its result is if stopped: its output so far.
+fn stalled(app: &mut App) -> Option<(Entity, Entity)> {
+    app.add_tool(Stall);
+    let model = MockCompletionModel::from_stream_turns([
+        vec![
+            MockStreamEvent::tool_call("s1", "stall", serde_json::json!({})),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
+        answer("unused"),
+    ]);
+    let agent = agent_on(app, &model);
+    let running = |world: &mut World| {
+        call_named(world, "s1").is_some_and(|call| world.get::<Started>(call).is_some())
+    };
+    assert!(run_until(app, running), "{:?}", notices(app));
+    let call = call_named(app.world_mut(), "s1")?;
+    let so_far = ToolResult::success(ToolOutput::text("partial"));
+    app.world_mut()
+        .entity_mut(call)
+        .insert(IfStopped(Outcome::from(so_far)));
+    Some((agent, call))
+}
+
+/// The record of the call of the tool `tool`: how it ended and its
+/// outcome.
+fn record_of(app: &App, tool: &str) -> Option<(Disposition, String)> {
+    let records = records(app);
+    let record = records
+        .iter()
+        .find(|record| matches!(&record.kind, EffectKind::ToolCall { name, .. } if name == tool))?;
+    Some((record.disposition, output(&record.outcome)))
+}
+
+#[test]
+fn an_interrupted_call_answers_with_what_it_says_it_is_if_stopped() {
+    let mut app = app();
+    let Some((agent, _)) = stalled(&mut app) else {
+        return;
+    };
+    app.world_mut().trigger(Interrupt::new(agent));
+    app.update();
+    let said = conversation(&app, agent);
+    let results = results_at(&said, said.len().saturating_sub(1));
+    assert!(
+        matches!(results.as_slice(), [(false, result)] if result.contains("partial")),
+        "{said:?}"
+    );
+    let record = record_of(&app, "stall");
+    assert!(
+        matches!(&record, Some((Disposition::Cancelled, outcome)) if outcome.contains("partial")),
+        "{record:?}"
+    );
+}
+
+#[test]
+fn a_call_of_a_failed_turn_answers_with_what_it_says_it_is_if_stopped() {
+    let mut app = app();
+    app.init_resource::<Ended>().add_observer(log_ended);
+    let Some((agent, call)) = stalled(&mut app) else {
+        return;
+    };
+    let turn = app.world().get::<CallOf>(call).map(|of| of.0);
+    let Some(turn) = turn else {
+        return;
+    };
+    let failed = TurnOutcome::Failed("over budget".to_owned());
+    app.world_mut().entity_mut(turn).insert(failed);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let record = record_of(&app, "stall");
+    assert!(
+        matches!(&record, Some((Disposition::AnsweredWhileRunning, outcome)) if outcome.contains("partial")),
+        "{record:?}"
+    );
+    let said = conversation(&app, agent);
+    let results = said
+        .iter()
+        .enumerate()
+        .flat_map(|(at, _)| results_at(&said, at))
+        .collect::<Vec<_>>();
+    assert!(
+        matches!(results.as_slice(), [(false, result)] if result.contains("partial")),
+        "{said:?}"
+    );
+}
+
+/// What model calls streamed, as a `PostUpdate` reader saw it, and each
+/// call's latest stream stamp.
 #[derive(Resource, Default)]
-struct Streamed {
-    deltas: Vec<(Entity, DeltaKind, String)>,
-    first: Vec<Entity>,
+struct Streams {
+    deltas: Vec<(Entity, DeltaKind, Part, String)>,
+    stamps: Vec<(Entity, Streamed)>,
 }
 
 #[test]
@@ -1777,8 +2190,19 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
         id: "r".to_owned(),
         reasoning: "hm".to_owned(),
     };
+    // Two parallel tool calls whose arguments stream interleaved, then an
+    // answer.
     let model = MockCompletionModel::from_stream_turns([
-        reply(&[("look", "l1")]),
+        vec![
+            MockStreamEvent::tool_call_name_delta("l1", "look"),
+            MockStreamEvent::tool_call_name_delta("t1", "touch"),
+            MockStreamEvent::tool_call_arguments_delta("l1", "{\"a\":"),
+            MockStreamEvent::tool_call_arguments_delta("t1", "{}"),
+            MockStreamEvent::tool_call_arguments_delta("l1", "1}"),
+            MockStreamEvent::tool_call_end("l1"),
+            MockStreamEvent::tool_call_end("t1"),
+            MockStreamEvent::final_response_with_default_usage(),
+        ],
         vec![
             thought,
             MockStreamEvent::text("Hel"),
@@ -1786,35 +2210,61 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
             MockStreamEvent::final_response_with_default_usage(),
         ],
     ]);
-    app.init_resource::<Streamed>()
+    app.init_resource::<Streams>()
         .init_resource::<Ended>()
         .add_observer(log_ended)
-        .add_observer(
-            |first: On<Add<FirstChunk>>,
-             calls: Query<(), With<TurnCall>>,
-             mut seen: ResMut<Streamed>| {
-                if calls.contains(first.entity) {
-                    seen.first.push(first.entity);
-                }
-            },
-        )
         .add_systems(
             PostUpdate,
-            |mut deltas: MessageReader<StreamDelta>, mut seen: ResMut<Streamed>| {
+            |mut deltas: MessageReader<StreamDelta>,
+             calls: Query<(Entity, &Streamed), (With<TurnCall>, Changed<Streamed>)>,
+             mut seen: ResMut<Streams>| {
                 let read = deltas
                     .read()
-                    .map(|delta| (delta.effect, delta.kind, delta.text.clone()));
+                    .map(|delta| (delta.effect, delta.kind, delta.part, delta.text.clone()));
                 seen.deltas.extend(read);
+                for (call, stamp) in &calls {
+                    seen.stamps.retain(|(seen, _)| *seen != call);
+                    seen.stamps.push((call, *stamp));
+                }
             },
         );
     let agent = agent_on(&mut app, &model);
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
-    let seen = app.world().resource::<Streamed>();
-    let fragments: Vec<(DeltaKind, &str)> = seen
-        .deltas
+    let seen = app.world().resource::<Streams>();
+    // Both calls, the one that only called tools too, were stamped.
+    assert_eq!(seen.stamps.len(), 2, "{:?}", seen.stamps);
+    let [(tools, tools_stamp), (text, text_stamp)] = seen.stamps.as_slice() else {
+        return;
+    };
+    let of = |call: &Entity| -> Vec<(DeltaKind, Part, &str)> {
+        let of_call = seen.deltas.iter().filter(|(effect, ..)| effect == call);
+        of_call
+            .map(|(_, kind, part, text)| (*kind, *part, text.as_str()))
+            .collect()
+    };
+    let arguments = of(tools);
+    let parts: Vec<Part> = arguments.iter().map(|(_, part, _)| *part).collect();
+    assert_eq!(parts.len(), 3, "{arguments:?}");
+    let [look, touch, again] = parts.as_slice() else {
+        return;
+    };
+    assert!(look == again && look != touch, "{parts:?}");
+    let fragments: Vec<(DeltaKind, &str)> = arguments
         .iter()
-        .map(|(_, kind, text)| (*kind, text.as_str()))
+        .map(|(kind, _, text)| (*kind, *text))
+        .collect();
+    assert_eq!(
+        fragments,
+        [
+            (DeltaKind::Arguments, "{\"a\":"),
+            (DeltaKind::Arguments, "{}"),
+            (DeltaKind::Arguments, "1}")
+        ]
+    );
+    let fragments: Vec<(DeltaKind, &str)> = of(text)
+        .into_iter()
+        .map(|(kind, _, text)| (kind, text))
         .collect();
     assert_eq!(
         fragments,
@@ -1824,12 +2274,12 @@ fn every_streamed_fragment_reaches_a_late_reader_in_order() {
             (DeltaKind::Text, "lo")
         ]
     );
-    // Both calls, the one that only called a tool too, got their first
-    // item; the fragments are the second's.
-    assert_eq!(seen.first.len(), 2, "{:?}", seen.first);
-    let text = seen.first.get(1);
-    assert!(seen.first.first() != text);
-    assert!(seen.deltas.iter().all(|(call, ..)| Some(call) == text));
+    // Every fragment was an item, and so was the end.
+    for (call, stamp) in [(tools, tools_stamp), (text, text_stamp)] {
+        let fragments = of(call).len() as u64;
+        assert!(stamp.items > fragments, "{stamp:?}");
+        assert!(stamp.last >= stamp.first, "{stamp:?}");
+    }
     let said = conversation(&app, agent);
     assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
 }
@@ -1854,11 +2304,13 @@ fn a_chosen_model_the_catalog_lists_only_later_connects_then() {
     let mut models = app.world_mut().resource_mut::<Models>();
     let catalog = models.0.catalog_mut();
     catalog.insert(ModelSpec::new(vendor, "big").with_tools(true));
-    models.0.provide(vendor, |spec: &ModelSpec, _: &Catalog| {
-        let model = MockCompletionModel::from_stream_turns([answer("hi")]);
-        let model = ModelAdapter::<Completion>::new(spec.reference(), model);
-        Ok(ErasedHandler::new(model))
-    });
+    models
+        .0
+        .provide(vendor, |spec: &ModelSpec, _: &Catalog, _: &Transport| {
+            let model = MockCompletionModel::from_stream_turns([answer("hi")]);
+            let model = ModelAdapter::<Completion>::new(spec.reference(), model);
+            Ok(ErasedHandler::new(model))
+        });
     app.update();
     let connected = app.world().get::<Connection>(agent);
     let connected = connected.map(|connection| connection.spec.reference());
@@ -1950,10 +2402,11 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     // What the adapter was given: whether that model calls tools.
     let given = Arc::new(std::sync::Mutex::new(Vec::new()));
     let (seen, wrap) = (Arc::clone(&given), adapted.clone());
-    let adapt = move |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
+    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
             let (seen, wrap) = (Arc::clone(&seen), wrap.clone());
-            call.adapters
+            adapters
+                .0
                 .push(Adapter::new("wrap", move |connection: Connection| {
                     if let Ok(mut seen) = seen.lock() {
                         seen.push(connection.spec.tools);
@@ -1998,6 +2451,59 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
 }
 
 #[test]
+fn an_outermost_adapter_pushed_first_wraps_one_pushed_later() {
+    let mut app = app();
+    let own = MockCompletionModel::from_stream_turns([answer("own")]);
+    let adapted = MockCompletionModel::from_stream_turns([answer("adapted")]);
+    // Each adapter as it was applied, and whether the model it got calls
+    // tools.
+    let applied = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let (seen, wrap) = (Arc::clone(&applied), adapted.clone());
+    let adapt = move |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
+            let outer = Arc::clone(&seen);
+            adapters.0.push(
+                Adapter::new("outer", move |connection: Connection| {
+                    if let Ok(mut applied) = outer.lock() {
+                        applied.push(("outer", connection.spec.tools));
+                    }
+                    connection
+                })
+                .outermost(),
+            );
+            let (inner, wrap) = (Arc::clone(&seen), wrap.clone());
+            adapters
+                .0
+                .push(Adapter::new("inner", move |connection: Connection| {
+                    if let Ok(mut applied) = inner.lock() {
+                        applied.push(("inner", connection.spec.tools));
+                    }
+                    let mut spec = (*connection.spec).clone();
+                    spec.tools = false;
+                    let model = ModelAdapter::<Completion>::new(spec.reference(), wrap.clone());
+                    Connection {
+                        spec: Arc::new(spec),
+                        handler: Handler(ErasedHandler::new(model)),
+                    }
+                }));
+        }
+    };
+    app.init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
+    agent_on(&mut app, &own);
+    let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // The outer adapter got what the inner one made: a model that calls no
+    // tools, on the inner one's handler.
+    assert_eq!(
+        applied.lock().map(|applied| applied.clone()).ok(),
+        Some(vec![("inner", true), ("outer", false)])
+    );
+    assert_eq!((own.request_count(), adapted.request_count()), (0, 1));
+}
+
+#[test]
 fn a_model_that_calls_no_tools_is_sent_none_and_no_rules() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("plain")]);
@@ -2028,9 +2534,10 @@ fn a_call_knows_the_model_it_went_to_and_what_its_adapters_published() {
     let mut app = app();
     let own = MockCompletionModel::from_stream_turns([answer("hi")]);
     // Says the model calls no tools, and tells the call it saw the reply.
-    let adapt = |mut calls: Query<&mut ModelRequest, (Added<Admitted>, With<TurnCall>)>| {
-        for mut call in &mut calls {
-            call.adapters
+    let adapt = |mut calls: Query<&mut Adapters, (Added<Admitted>, With<TurnCall>)>| {
+        for mut adapters in &mut calls {
+            adapters
+                .0
                 .push(Adapter::new("plain", |connection: Connection| {
                     let mut spec = (*connection.spec).clone();
                     spec.tools = false;
@@ -2098,7 +2605,7 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     let mut app = app();
     let model = MockCompletionModel::from_stream_turns([reply(&[("look", "l1")]), answer("done")]);
     let read_only = ToolOptions {
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
         ..ToolOptions::default()
     };
     let parents = |calls: Query<&Effect, (Added<Admitted>, With<TurnCall>)>,

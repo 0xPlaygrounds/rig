@@ -1,0 +1,32 @@
+[package]
+name = "corpus-fh-lsp-tools"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-08: 08. Language server tools"
+
+[lints]
+workspace = true
+
+[dependencies]
+# A call's steps, read as a `Running::stream` on the call.
+async-channel = { workspace = true }
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+rig-core = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+rig-tools = { path = "../../crates/rig-tools" }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+# `lsp.toml`; the version rig-harness reads `settings.toml` with.
+toml = "1"
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

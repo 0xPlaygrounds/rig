@@ -45,7 +45,7 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
             "Reads a file.",
             ToolOptions {
                 rules: &[],
-                footprint: Some(Footprint::ReadOnly),
+                footprint: Some(Touches::Reads(Scope::Anything)),
             },
             |called: On<ToolCalled<serde_json::Value>>, mut commands: Commands| {
                 let output = ToolResult::success("pub fn answer() -> u32 { 42 }".into());
@@ -141,4 +141,9 @@ fn a_plan_goes_to_the_strong_model_and_its_read_only_follow_up_to_the_cheap_one(
     app.update();
     assert_eq!(app.world().get::<Routing>(agent), Some(&Routing(false)));
     assert!(app.world().get::<ModelLabel>(agent).is_none());
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ModelRouterPlugin);
 }

@@ -48,11 +48,11 @@ impl Plugin for BlackboardPlugin {
     fn build(&self, app: &mut App) {
         let post = ToolOptions {
             rules: RULES,
-            footprint: Some(Footprint::Independent),
+            footprint: Some(Touches::Independent),
         };
         let read = ToolOptions {
             rules: &[],
-            footprint: Some(Footprint::ReadOnly),
+            footprint: Some(Touches::Reads(Scope::Anything)),
         };
         app.init_resource::<Board>()
             .register_required_components::<Agent, Subscriptions>()
@@ -342,6 +342,7 @@ fn on_post(
     called: On<ToolCalled<PostArgs>>,
     mut board: ResMut<Board>,
     mut agents: Query<(Entity, Option<&Name>, &mut Subscriptions)>,
+    mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
     let name = agents.get(called.agent).ok().and_then(|(_, name, _)| name);
@@ -363,9 +364,9 @@ fn on_post(
         }
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(output));
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(output);
+    }
 }
 
 /// `board_read`: the posts asked for and the claims held; subscribes the
@@ -374,7 +375,7 @@ fn on_read(
     called: On<ToolCalled<ReadArgs>>,
     board: Res<Board>,
     mut agents: Query<&mut Subscriptions>,
-    mut commands: Commands,
+    mut calls: Query<&mut Decision, ToolCalls>,
 ) {
     let topic = called.args.topic.as_deref().map(str::trim);
     if let Ok(mut subscribed) = agents.get_mut(called.agent) {
@@ -397,9 +398,9 @@ fn on_read(
     };
     text.push_str("\n\n");
     text.push_str(&board.claims_text());
-    commands
-        .entity(called.call)
-        .insert_if_new(Outcome::from(ToolResult::success(text.into())));
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success(text.into()));
+    }
 }
 
 /// Sends `text` to `agent` with its next request; it wakes no idle agent.

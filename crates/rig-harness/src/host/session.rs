@@ -4,7 +4,9 @@
 //! session into a new one with [`ForkSession`] and removes another with
 //! [`DeleteSession`]; [`SessionForked`] and [`SessionDeleted`] tell every
 //! plugin, such as one keeping files of its own per session. A forked
-//! session names the session it came from ([`ForkedFrom`]).
+//! session names the session it came from ([`ForkedFrom`]). The first app
+//! a session runs, a fork's first included, has [`FirstStart`]; what the
+//! user typed in a message is [`typed`].
 
 use std::fmt::{Debug, Write};
 use std::fs::{self, File, OpenOptions, TryLockError};
@@ -27,7 +29,7 @@ use rig_cassette::journal::JsonlDirStore;
 use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
-use rig_ecs::agent::{AgentId, Conversation, Notice};
+use rig_ecs::agent::{AgentId, Conversation, MessageId, Notice};
 use rig_ecs::inbox::OriginKind;
 use rig_ecs::journal::{SessionStore, fork_session};
 use rig_tools::Spill;
@@ -35,10 +37,13 @@ use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
 
 use super::cli::Cli;
+use super::launcher::LauncherRun;
 use crate::services::RigHome;
 
 /// The session's directory: the agent logs the core keeps there through
-/// its [`SessionStore`], the effect log, and the launcher's files.
+/// its [`SessionStore`], the effect log, and the launcher's files. Every
+/// top-level `*.jsonl` file there but the effect log is an agent's log, so
+/// a plugin keeps its files of the session in a directory of its own there.
 #[derive(Resource, Clone, Debug)]
 pub struct SessionPaths(pub SessionDir);
 
@@ -80,9 +85,21 @@ fn session_paths(world: &mut World) -> SessionPaths {
         .clone()
 }
 
+/// This app is its session's first start: no app of the session ran a
+/// whole frame before. A fork's first app has it, a `/reload` of a session
+/// started earlier does not; "a fork's first start" is [`ForkedFrom`]
+/// with it. Inserted when the session plugin is built.
+#[derive(Resource, Clone, Copy, Debug)]
+pub struct FirstStart;
+
+/// The marker file of a session an app started in, beside its logs. A
+/// fork does not copy it.
+const STARTED: &str = "started";
+
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, and the [`SessionStore`] keeping the session there,
-/// routes panics to the log, and forks and deletes sessions.
+/// routes panics to the log, tells a first start ([`FirstStart`]), and
+/// forks and deletes sessions.
 pub struct SessionPlugin;
 
 impl Plugin for SessionPlugin {
@@ -94,11 +111,17 @@ impl Plugin for SessionPlugin {
         if !app.world().contains_resource::<SessionStore>() {
             app.insert_resource(SessionStore::new(JsonlDirStore::new(paths.path())));
         }
+        if !paths.path().join(STARTED).exists() {
+            app.insert_resource(FirstStart).add_systems(
+                Last,
+                mark_started.run_if(run_once).before(discard_sessionless),
+            );
+        }
         app.init_resource::<Forks>()
             .add_message::<SessionForked>()
             .add_message::<SessionDeleted>()
             .add_observer(|fork: On<ForkSession>, mut forks: ResMut<Forks>| {
-                forks.0.push(fork.before.clone());
+                forks.0.push(fork.event().clone());
             })
             .add_observer(delete_session)
             // A fork copies what the session logged up to this frame.
@@ -112,30 +135,47 @@ impl Plugin for SessionPlugin {
     }
 }
 
-/// Removes the session's directory when a sessionless front's run ends
-/// well, once everything was written there.
+/// Marks the session started at the end of its first app's first frame.
+fn mark_started(paths: Res<SessionPaths>) {
+    if let Err(failure) = fs::write(paths.path().join(STARTED), b"") {
+        error!("could not mark the session started: {failure}");
+    }
+}
+
+/// Removes the session's directory when a sessionless front's run ends,
+/// however, once everything was written there. A run that failed first
+/// moves its text log into the launcher's run directory, where the
+/// launcher's failure message points.
 fn discard_sessionless(
     mut exits: MessageReader<AppExit>,
     cli: Option<Res<Cli>>,
     paths: Res<SessionPaths>,
+    run: Option<Res<LauncherRun>>,
 ) {
-    let ended_well = exits.read().all(AppExit::is_success);
-    if ended_well && cli.is_some_and(|cli| cli.sessionless()) {
-        fs::remove_dir_all(paths.path()).ok();
+    if !cli.is_some_and(|cli| cli.sessionless()) {
+        return;
     }
+    if !exits.read().all(AppExit::is_success)
+        && let Some(run) = run
+    {
+        fs::rename(paths.log(), run.0.log()).ok();
+    }
+    fs::remove_dir_all(paths.path()).ok();
 }
 
 /// Copies this session into a new one: every agent's log, saved state and
 /// stored file, and the directory it works in. With `before`, an agent's
-/// id and a message's `seq` in its conversation, the copy stops at that
-/// message, and every other agent's log at what was logged before it (see
-/// [`fork_session`]). The new session's effect log starts empty.
+/// id and the id of a message in its conversation, the copy is the session
+/// as it was before that message was made (see [`fork_session`]). The new session's effect log starts empty.
 /// [`SessionForked`] names it; switching to it is
 /// [`Exit`](super::exit::Exit) with [`ExitReason::Switch`](super::exit::ExitReason::Switch).
 #[derive(Event, Clone, Debug, Default)]
 pub struct ForkSession {
-    /// Where the copy stops: an agent's id and a message's `seq`.
-    pub before: Option<(AgentId, u64)>,
+    /// Where the copy stops: an agent's id and a message's id.
+    pub before: Option<(AgentId, MessageId)>,
+    /// Who asked, such as an entity of the plugin's own: [`SessionForked`]
+    /// says so, so an asker knows its fork from another's.
+    pub asker: Option<Entity>,
 }
 
 /// A session forked from this one, in the frame it was written.
@@ -146,7 +186,9 @@ pub struct SessionForked {
     /// The new session.
     pub to: SessionId,
     /// Where the copy stopped, as [`ForkSession`] asked.
-    pub before: Option<(AgentId, u64)>,
+    pub before: Option<(AgentId, MessageId)>,
+    /// Who asked, as [`ForkSession`] said.
+    pub asker: Option<Entity>,
 }
 
 /// The session a session was forked from, and where the copy stopped,
@@ -157,8 +199,8 @@ pub struct SessionForked {
 pub struct ForkedFrom {
     /// The session it was copied from.
     pub session: SessionId,
-    /// Where the copy stopped: an agent's id and a message's `seq`.
-    pub before: Option<(AgentId, u64)>,
+    /// Where the copy stopped: an agent's id and a message's id.
+    pub before: Option<(AgentId, MessageId)>,
     /// What the user wrote in the message the copy stopped before, its
     /// text without attached files; `None` without `before`, or for a
     /// message with no text of the user's.
@@ -169,7 +211,7 @@ pub struct ForkedFrom {
 #[derive(Serialize, Deserialize)]
 struct Parent {
     session: String,
-    before: Option<(AgentId, u64)>,
+    before: Option<(AgentId, MessageId)>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     text: Option<String>,
 }
@@ -208,7 +250,7 @@ pub struct SessionDeleted(pub SessionId);
 
 /// The forks asked for this frame.
 #[derive(Resource, Default)]
-struct Forks(Vec<Option<(AgentId, u64)>>);
+struct Forks(Vec<ForkSession>);
 
 fn fork_sessions(
     mut forks: ResMut<Forks>,
@@ -219,14 +261,22 @@ fn fork_sessions(
     mut forked: MessageWriter<SessionForked>,
     mut notices: MessageWriter<Notice>,
 ) {
-    for before in forks.0.drain(..) {
+    for ForkSession { before, asker } in forks.0.drain(..) {
         let home = home
             .as_ref()
             .map_or_else(Home::from_env, |home| home.0.clone());
-        let text = before.as_ref().and_then(|before| typed_at(&agents, before));
+        let text = before.as_ref().and_then(|(agent, message)| {
+            let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
+            typed(conversation, conversation.index_of(*message)?)
+        });
         match fork_into(&home, &paths, store.as_deref(), (before.as_ref(), text)) {
             Ok((from, to)) => {
-                forked.write(SessionForked { from, to, before });
+                forked.write(SessionForked {
+                    from,
+                    to,
+                    before,
+                    asker,
+                });
             }
             Err(why) => {
                 notices.write(Notice::error(
@@ -238,14 +288,11 @@ fn fork_sessions(
     }
 }
 
-/// What the user wrote in the message of the agent and `seq` named, its
-/// text items of the user's own that are no attached file.
-fn typed_at(
-    agents: &Query<(&AgentId, &Conversation)>,
-    (agent, seq): &(AgentId, u64),
-) -> Option<String> {
-    let (_, conversation) = agents.iter().find(|(id, _)| *id == agent)?;
-    let at = (0..conversation.messages().len()).find(|&at| conversation.seq(at) == Some(*seq))?;
+/// What the user typed in message `at` of `conversation`: its text items
+/// of the user's own, never text an agent or a plugin delivered, such as a
+/// note, nor a file attached, each trimmed, joined by a blank line; `None`
+/// when it has none.
+pub fn typed(conversation: &Conversation, at: usize) -> Option<String> {
     let Some(Message::User { content }) = conversation.messages().get(at) else {
         return None;
     };
@@ -268,13 +315,18 @@ fn typed_at(
     (!typed.is_empty()).then(|| typed.join("\n\n"))
 }
 
+/// What the user typed first in `conversation` ([`typed`]).
+pub fn first_typed(conversation: &Conversation) -> Option<String> {
+    (0..conversation.messages().len()).find_map(|at| typed(conversation, at))
+}
+
 /// Copies the session at `paths` into a new session of `home`, as of
 /// `before`, whose message's `text` the copy keeps with its parent.
 fn fork_into(
     home: &Home,
     paths: &SessionPaths,
     store: Option<&SessionStore>,
-    (before, text): (Option<&(AgentId, u64)>, Option<String>),
+    (before, text): (Option<&(AgentId, MessageId)>, Option<String>),
 ) -> Result<(SessionId, SessionId), String> {
     let from = paths.id().ok_or("this session has no id")?;
     let store = store.ok_or("this session is not stored")?;
@@ -293,7 +345,7 @@ fn fork_into(
         before: before.cloned(),
         text,
     };
-    let before = before.map(|(agent, seq)| (agent, *seq));
+    let before = before.map(|(agent, message)| (agent, *message));
     let copied = fork_session(&*store.0, &JsonlDirStore::new(target.path()), before)
         .map_err(|failure| failure.to_string())
         .and_then(|()| parent.write(&target))

@@ -1,27 +1,17 @@
 use std::path::PathBuf;
 use std::process::Command;
 
-use super::*;
-use crate::tests::view_app;
+use bevy_app::prelude::*;
+use ratatui::{TerminalOptions, Viewport};
 
-/// A directory of its own for this test, beside the test binary, so
-/// nothing lands in the source tree.
-fn scratch() -> PathBuf {
-    let exe = std::env::current_exe().unwrap_or_default();
-    let dir = exe
-        .parent()
-        .map(|deps| deps.join("rig-tui-run-in-terminal"))
-        .unwrap_or_default();
-    std::fs::remove_dir_all(&dir).ok();
-    std::fs::create_dir_all(&dir).ok();
-    dir
-}
+use super::*;
+use crate::tests::{scratch, view_app};
 
 #[cfg(unix)]
 #[test]
 fn a_program_runs_with_the_terminal_and_its_exit_comes_back() {
     let (mut app, _) = view_app();
-    let draft = scratch().join("draft.md");
+    let draft = scratch("run-in-terminal").join("draft.md");
     let mut editor = Command::new("sh");
     editor
         .arg("-c")
@@ -44,6 +34,44 @@ fn a_program_runs_with_the_terminal_and_its_exit_comes_back() {
     std::fs::remove_file(&draft).ok();
     app.update();
     assert!(!draft.exists());
+}
+
+/// The terminal view drawing to the file at `path`, as the terminal
+/// stands in for it; it never asks the file for its size.
+fn tui_on(path: &PathBuf) -> Option<Tui> {
+    let screen = File::create(path).ok()?;
+    let copy = screen.try_clone().ok()?;
+    let viewport = Viewport::Fixed(Rect::new(0, 0, 20, 4));
+    let backend = CrosstermBackend::new(BufWriter::new(screen));
+    let terminal = Terminal::with_options(backend, TerminalOptions { viewport }).ok()?;
+    Some(Tui {
+        terminal,
+        keep_screen: true,
+        releases: false,
+        screen: copy,
+    })
+}
+
+/// Bytes a plugin writes where Bevy says code runs on the way out reach
+/// the terminal before the view lets it go.
+#[test]
+fn a_terminal_write_sent_on_the_way_out_is_written() {
+    let (mut app, _) = view_app();
+    let path = scratch("exit-write").join("screen");
+    let tui = tui_on(&path);
+    assert!(tui.is_some());
+    let Some(tui) = tui else { return };
+    app.insert_resource(tui).add_systems(
+        Last,
+        (|mut writes: MessageWriter<TerminalWrite>| {
+            writes.write(TerminalWrite(b"\x1b]0;bye\x07".to_vec()));
+        })
+        .in_set(bevy_app::OnAppExitSystems),
+    );
+    app.update();
+    let written = std::fs::read(&path).unwrap_or_default();
+    let title: &[u8] = b"\x1b]0;bye\x07";
+    assert!(written.windows(title.len()).any(|window| window == title));
 }
 
 /// A terminal that answers nothing: it counts the cells drawn and notes a

@@ -154,6 +154,7 @@ impl Events<'_, '_> {
             let kind = match delta.kind {
                 DeltaKind::Text => "text_delta",
                 DeltaKind::Reasoning => "reasoning_delta",
+                DeltaKind::Arguments => continue,
             };
             let agent = delta.agent.and_then(|agent| self.ids.get(agent).ok());
             let data = json!({
@@ -372,6 +373,7 @@ fn relay_notices(mut notices: MessageReader<Notice>, mut events: Events) {
     for notice in notices.read() {
         let level = match notice.level {
             NoticeLevel::Info => "info",
+            NoticeLevel::Warn => "warn",
             NoticeLevel::Error => "error",
         };
         let data = json!({

@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use std::path::{Component as Part, Path, PathBuf};
 use std::sync::Arc;
 
+use corpus_confirm_destructive::ConfirmSystems;
+use corpus_plan_mode::PlanModeSystems;
 use glob::{MatchOptions, Pattern};
 use rig_core::effect::Outcome as Answered;
 use rig_core::tool::ToolOutput;
@@ -51,11 +53,21 @@ impl Plugin for ProtectedPathsPlugin {
             app.insert_resource(PathPolicy::load(&root, &files));
         }
         app.init_resource::<PathGuardCounts>()
+            .configure_sets(
+                AgentPass,
+                (
+                    ProtectedPathsSystems::Gate
+                        .in_set(Stage::Gate)
+                        .after(PlanModeSystems::Gate)
+                        .before(ConfirmSystems),
+                    ProtectedPathsSystems::Review.in_set(Stage::Review),
+                ),
+            )
             .add_systems(
                 AgentPass,
                 (
-                    guard.in_set(Stage::Gate),
-                    filter_searches.in_set(Stage::Review),
+                    guard.in_set(ProtectedPathsSystems::Gate),
+                    filter_searches.in_set(ProtectedPathsSystems::Review),
                 ),
             )
             .add_command(
@@ -64,6 +76,17 @@ impl Plugin for ProtectedPathsPlugin {
                 list_rules,
             );
     }
+}
+
+/// The plugin's stage systems, for other plugins to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ProtectedPathsSystems {
+    /// Gate: refuses a call that names a protected path, after plan mode
+    /// refused it and before confirm-destructive asks about it.
+    Gate,
+    /// Review: hides the matches in read-protected files from a search's
+    /// result.
+    Review,
 }
 
 /// Whether a rule guards reading or writing.
@@ -292,11 +315,11 @@ pub struct PathGuardCounts {
 /// What a call of the tool `name` is checked for: the built-in file tools
 /// as they use their paths; any other for reading, and for writing too
 /// unless it changes nothing.
-fn accesses(name: &str, footprint: Footprint) -> &'static [Access] {
+fn accesses(name: &str, footprint: &Footprint) -> &'static [Access] {
     match name {
         "read" | SEARCH => &[Access::Read],
         "write" => &[Access::Write],
-        _ if footprint == Footprint::ReadOnly => &[Access::Read],
+        _ if footprint.0.reads_only() => &[Access::Read],
         _ => &[Access::Read, Access::Write],
     }
 }
@@ -325,12 +348,15 @@ fn named_paths(arguments: &serde_json::Map<String, serde_json::Value>, search: b
 /// that published search hits, before it is committed, and counts them by
 /// the rule that hid them.
 fn filter_searches(
-    calls: Query<(Entity, &Outcome, &Published, Has<Restored>), (Unreviewed, Without<Filtered>)>,
+    mut calls: Query<
+        (Entity, &mut Outcome, &Published, Has<Restored>),
+        (Unreviewed, ToolCalls, Without<Filtered>),
+    >,
     policy: Res<PathPolicy>,
     mut counts: ResMut<PathGuardCounts>,
     mut commands: Commands,
 ) {
-    for (call, outcome, Published(published), restored) in &calls {
+    for (call, mut outcome, Published(published), restored) in &mut calls {
         commands.entity(call).insert(Filtered);
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
@@ -343,8 +369,8 @@ fn filter_searches(
         }
         let mut hidden = Vec::new();
         let mut kept = Found {
-            hits: Vec::new(),
             stopped: found.stopped,
+            ..Found::default()
         };
         for hit in found.hits {
             match policy.check(Access::Read, &hit.path.to_string_lossy()) {
@@ -365,8 +391,7 @@ fn filter_searches(
             render(&kept),
             hidden.len()
         );
-        let filtered = ToolResult::success(ToolOutput::text(text));
-        commands.entity(call).insert(Outcome::from(filtered));
+        *outcome = Outcome::from(ToolResult::success(ToolOutput::text(text)));
         if !restored {
             for rule in hidden {
                 *counts.hidden.entry(rule).or_default() += 1;
@@ -383,14 +408,16 @@ struct Filtered;
 /// Refuses each tool call about to run that names a path a rule denies to
 /// it.
 fn guard(
-    calls: Query<(Entity, &ToolRequest, Option<&Footprint>, Has<Restored>), Undecided>,
+    mut calls: Query<
+        (&ToolRequest, &Footprint, Has<Restored>, &mut Decision),
+        (Undecided, ToolCalls),
+    >,
     policy: Res<PathPolicy>,
     mut counts: ResMut<PathGuardCounts>,
-    mut commands: Commands,
 ) {
-    for (call, ToolRequest { call: request }, footprint, restored) in &calls {
+    for (ToolRequest { call: request }, footprint, restored, mut decision) in &mut calls {
         let name = request.function.name.as_str();
-        let accesses = accesses(name, footprint.copied().unwrap_or_default());
+        let accesses = accesses(name, footprint);
         let named = named_paths(&request.function.arguments, name == SEARCH);
         let denied = named.into_iter().find_map(|raw| {
             accesses
@@ -400,9 +427,6 @@ fn guard(
         let Some((raw, rule)) = denied else {
             continue;
         };
-        if !restored {
-            *counts.blocked.entry(rule.label()).or_default() += 1;
-        }
         let what = match rule.access {
             Access::Read => "read-protected",
             Access::Write => "write-protected",
@@ -411,7 +435,9 @@ fn guard(
             "`{raw}` is {what} by `{}` ({}). The call did not run; do not try another path to it.",
             rule.glob, rule.source
         );
-        commands.entity(call).insert_if_new(Outcome::refused(why));
+        if decision.decide(Outcome::refused(why)) && !restored {
+            *counts.blocked.entry(rule.label()).or_default() += 1;
+        }
     }
 }
 

@@ -158,3 +158,8 @@ fn a_streamed_text_block_runs_as_a_real_tool_call() {
     });
     assert!(has_result, "{messages:?}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(TextToolCallsPlugin);
+}

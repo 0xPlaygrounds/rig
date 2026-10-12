@@ -1,13 +1,11 @@
 //! The `shell` tool.
 
 use std::collections::VecDeque;
+use std::ffi::OsStr;
 use std::fs::File;
-use std::io::{Read, Write as _};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, sync_channel};
+use std::sync::mpsc::{Receiver, RecvTimeoutError};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -16,7 +14,8 @@ use rig_core::tool::{ExitStatus, Tool, ToolContext, ToolExecutionError, args_sch
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::process::{Launcher, kill_group};
+use crate::fs::place;
+use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::{Cut, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
@@ -44,6 +43,10 @@ pub struct Shell {
     /// to the 10 MB the command is killed at, for a host that cuts output
     /// itself.
     pub cut: Option<Cut>,
+    /// Whether a `cwd` that resolves outside the launcher's directory is
+    /// refused. What the command itself does is not confined: it may still
+    /// `cd` anywhere.
+    pub confine: bool,
 }
 
 impl Default for Shell {
@@ -54,6 +57,7 @@ impl Default for Shell {
             launcher: Launcher::default(),
             spill: None,
             cut: Some(Cut::default()),
+            confine: false,
         }
     }
 }
@@ -114,14 +118,19 @@ impl Shell {
          pagers or servers in the foreground.",
     ];
 
-    /// Runs `args` as the tool does, on a thread of its own, and returns
-    /// the output and how the command ended. Dropping the future kills the
-    /// command.
+    /// Runs `args` as the tool does, waiting on a thread of its own, and
+    /// returns the output and how the command ended. Dropping the future
+    /// kills the command's process group at once.
     pub async fn run(&self, args: ShellArgs) -> Result<ShellRun, ToolExecutionError> {
-        let stop = StopOnDrop(Arc::default());
-        let running = Arc::clone(&stop.0);
+        let timeout = Duration::from_secs(
+            args.timeout_secs
+                .unwrap_or(DEFAULT_TIMEOUT)
+                .clamp(1, MAX_TIMEOUT),
+        );
+        let process = self.start(&args)?;
+        let _stop = KillOnDrop(process.group());
         let shell = self.clone();
-        blocking(move || run(&shell, args, &running)).await
+        blocking(move || shell.finish(process, timeout)).await
     }
 }
 
@@ -168,185 +177,109 @@ impl Tool for Shell {
     }
 }
 
-/// Stops the running command when the call is dropped, which is how an
-/// interrupted turn, or quitting, cancels it. On unix the process group is
-/// killed right away, because the app may exit before the command's thread
-/// sees the flag.
-struct StopOnDrop(Arc<Stop>);
-
-/// What the call and the command's thread share.
-#[derive(Default)]
-struct Stop {
-    /// Set when the call is dropped.
-    stopped: AtomicBool,
-    /// The running command's pid while it is not reaped, else 0.
-    leader: AtomicU32,
-}
-
-impl Drop for StopOnDrop {
-    fn drop(&mut self) {
-        self.0.stopped.store(true, Ordering::Relaxed);
-        let leader = self.0.leader.swap(0, Ordering::SeqCst);
-        #[cfg(unix)]
-        if leader != 0 {
-            crate::process::kill_group_of(leader);
-        }
-        #[cfg(not(unix))]
-        let _ = leader;
+impl Shell {
+    /// Starts the command `args` names, as this shell's launcher starts
+    /// processes, its stdout and stderr in one pipe.
+    fn start(&self, args: &ShellArgs) -> Result<Process, ToolExecutionError> {
+        let launcher = match &args.cwd {
+            Some(dir) => {
+                if self.confine {
+                    place(self.launcher.cwd.as_deref(), true, dir)?;
+                }
+                let base = self.launcher.cwd.as_deref().unwrap_or(Path::new(""));
+                self.launcher.clone().in_dir(base.join(dir))
+            }
+            None => self.launcher.clone(),
+        };
+        let how = Spawn {
+            stdin: None,
+            merge_stderr: true,
+        };
+        launcher
+            .spawn("sh", [OsStr::new("-c"), OsStr::new(&args.command)], how)
+            .map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))
     }
-}
 
-fn run(shell: &Shell, args: ShellArgs, stop: &Stop) -> Result<ShellRun, ToolExecutionError> {
-    let timeout = Duration::from_secs(
-        args.timeout_secs
-            .unwrap_or(DEFAULT_TIMEOUT)
-            .clamp(1, MAX_TIMEOUT),
-    );
-    // stdout and stderr share one pipe, so the output keeps their order.
-    let (reader, writer) = std::io::pipe()
-        .map_err(|error| ToolExecutionError::other(format!("could not open a pipe: {error}")))?;
-    let error_writer = writer
-        .try_clone()
-        .map_err(|error| ToolExecutionError::other(format!("could not open a pipe: {error}")))?;
-    let launcher = match &args.cwd {
-        Some(dir) => {
-            let base = shell.launcher.cwd.as_deref().unwrap_or(Path::new(""));
-            shell.launcher.clone().in_dir(base.join(dir))
+    /// Waits for `process` to end, at most `timeout`, keeping the end of
+    /// its output as the cut says.
+    fn finish(
+        &self,
+        mut process: Process,
+        timeout: Duration,
+    ) -> Result<ShellRun, ToolExecutionError> {
+        let mut tail = Tail {
+            spill: self.spill.clone(),
+            cut: self.cut,
+            ..Tail::default()
+        };
+        let deadline = Instant::now() + timeout;
+        let end = loop {
+            match process.try_wait() {
+                Ok(Some(status)) => break End::Exited(status),
+                Ok(None) if Instant::now() >= deadline => break End::TimedOut,
+                Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
+                Ok(None) => match process.lines().recv_timeout(POLL) {
+                    Ok(line) => tail.push(line.text().as_bytes()),
+                    Err(RecvTimeoutError::Timeout) => {}
+                    // The command closed its output but still runs.
+                    Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+                },
+                Err(error) => {
+                    return Err(ToolExecutionError::other(format!(
+                        "waiting for the command failed: {error}"
+                    )));
+                }
+            }
+        };
+        // After a normal exit, something the command left running in the
+        // background may still hold the output pipe open; then the rest of
+        // its group is killed, at most `PIPE_GRACE` after the exit. A
+        // process that left the group, such as one started with `setsid`,
+        // survives the kill and may hold the pipe for good, so reading
+        // stops a moment later with what came.
+        if !matches!(end, End::Exited(_)) || !tail.read_rest(process.lines()) {
+            process.kill().ok();
+            tail.read_rest(process.lines());
         }
-        None => shell.launcher.clone(),
-    };
-    let mut command = launcher.command("sh");
-    command
-        .arg("-c")
-        .arg(&args.command)
-        .stdin(Stdio::null())
-        .stdout(writer)
-        .stderr(error_writer);
-    let spawned = command.spawn();
-    // The parent's copies of the pipe's write end must close, or reading
-    // never ends.
-    drop(command);
-    let mut child =
-        spawned.map_err(|error| ToolExecutionError::other(format!("could not run sh: {error}")))?;
-    stop.leader.store(child.id(), Ordering::SeqCst);
-    let chunks = drain(reader);
-    let mut tail = Tail {
-        spill: shell.spill.clone(),
-        cut: shell.cut,
-        ..Tail::default()
-    };
-    let deadline = Instant::now() + timeout;
-    let end = loop {
-        let exited = child.try_wait();
-        if !matches!(exited, Ok(None)) {
-            // Reaped, or about to be: its pid may be reused.
-            stop.leader.store(0, Ordering::SeqCst);
-        }
-        match exited {
-            Ok(Some(status)) => break End::Exited(status),
-            Ok(None) if stop.stopped.load(Ordering::Relaxed) => break End::Stopped,
-            Ok(None) if Instant::now() >= deadline => break End::TimedOut,
-            Ok(None) if tail.written > OUTPUT_LIMIT => break End::TooLong,
-            Ok(None) => match chunks.recv_timeout(POLL) {
-                Ok(chunk) => tail.push(&chunk),
-                Err(RecvTimeoutError::Timeout) => {}
-                // The command closed its output but still runs.
-                Err(RecvTimeoutError::Disconnected) => thread::sleep(POLL),
+        let mut output = tail.text();
+        let status = match end {
+            End::Exited(status) => match status.code() {
+                Some(code) => {
+                    output.push_str(&format!("[exit code {code}]"));
+                    ExitStatus::Exited(code)
+                }
+                None => {
+                    output.push_str("[killed by a signal]");
+                    ExitStatus::Signaled
+                }
             },
-            Err(error) => {
-                kill_group(&mut child);
-                return Err(ToolExecutionError::other(format!(
-                    "waiting for the command failed: {error}"
-                )));
+            End::TimedOut => {
+                output.push_str(&format!(
+                    "[timed out after {}s and killed]",
+                    timeout.as_secs()
+                ));
+                ExitStatus::TimedOut
             }
-        }
-    };
-    stop.leader.store(0, Ordering::SeqCst);
-    // After a normal exit, something the command left running in the
-    // background may still hold the output pipe open; then the rest of its
-    // group is killed. The leader was reaped by `try_wait`, so the group id
-    // stays its own only while a member lives; the kill follows the reap by
-    // at most `PIPE_GRACE`, and an empty group just makes it a no-op. A
-    // process that left the group, such as one started with `setsid`,
-    // survives the kill and may hold the pipe for good, so reading stops a
-    // moment later with what came.
-    if !matches!(end, End::Exited(_)) || !tail.read_rest(&chunks) {
-        kill_group(&mut child);
-        tail.read_rest(&chunks);
+            End::TooLong => {
+                output.push_str(&format!(
+                    "[killed after printing more than {} MB]",
+                    OUTPUT_LIMIT / 1024 / 1024
+                ));
+                ExitStatus::Killed
+            }
+        };
+        Ok(ShellRun { output, status })
     }
-    child.wait().ok();
-    let mut output = tail.text();
-    let status = match end {
-        End::Exited(status) => match status.code() {
-            Some(code) => {
-                output.push_str(&format!("[exit code {code}]"));
-                ExitStatus::Exited(code)
-            }
-            None => {
-                output.push_str("[killed by a signal]");
-                ExitStatus::Signaled
-            }
-        },
-        End::Stopped => {
-            output.push_str("[stopped]");
-            ExitStatus::Killed
-        }
-        End::TimedOut => {
-            output.push_str(&format!(
-                "[timed out after {}s and killed]",
-                timeout.as_secs()
-            ));
-            ExitStatus::TimedOut
-        }
-        End::TooLong => {
-            output.push_str(&format!(
-                "[killed after printing more than {} MB]",
-                OUTPUT_LIMIT / 1024 / 1024
-            ));
-            ExitStatus::Killed
-        }
-    };
-    Ok(ShellRun { output, status })
 }
 
 /// How the wait for the command ended.
 enum End {
     /// It exited.
     Exited(std::process::ExitStatus),
-    /// The call was dropped.
-    Stopped,
     /// It ran past its timeout.
     TimedOut,
     /// It printed more than [`OUTPUT_LIMIT`].
     TooLong,
-}
-
-/// Reads the command's output on a thread of its own, until every writer
-/// closed it or the receiver is gone, and sends it on in chunks.
-///
-/// When the call stops reading while a process that left the group still
-/// holds the pipe, this thread stays blocked in `read` until that process
-/// writes again or exits: one parked thread per such call. Its next write
-/// then finds the receiver gone, the thread drops the read end, and the
-/// process gets `EPIPE` or `SIGPIPE`, as after any closed pipe.
-fn drain(mut pipe: impl Read + Send + 'static) -> Receiver<Vec<u8>> {
-    let (sender, chunks) = sync_channel(16);
-    thread::spawn(move || {
-        let mut buffer = [0; 8192];
-        loop {
-            let read = match pipe.read(&mut buffer) {
-                Ok(0) => break,
-                Ok(read) => read,
-                Err(error) if error.kind() == std::io::ErrorKind::Interrupted => continue,
-                Err(_) => break,
-            };
-            let chunk = buffer.iter().take(read).copied().collect();
-            if sender.send(chunk).is_err() {
-                break;
-            }
-        }
-    });
-    chunks
 }
 
 /// The end of a command's output.
@@ -390,11 +323,11 @@ impl Tail {
     /// Receives output until the pipe's end, for at most [`PIPE_GRACE`].
     /// Returns whether the end came: every process holding the pipe exited
     /// or closed it.
-    fn read_rest(&mut self, chunks: &Receiver<Vec<u8>>) -> bool {
+    fn read_rest(&mut self, lines: &Receiver<OutputLine>) -> bool {
         let deadline = Instant::now() + PIPE_GRACE;
         loop {
-            match chunks.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
-                Ok(chunk) => self.push(&chunk),
+            match lines.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(line) => self.push(line.text().as_bytes()),
                 Err(RecvTimeoutError::Disconnected) => return true,
                 Err(RecvTimeoutError::Timeout) => return false,
             }

@@ -18,5 +18,7 @@ serde = { workspace = true, features = ["derive"] }
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
+# Checks the stage systems are ordered against the default plugins.
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 serde_json = { workspace = true }

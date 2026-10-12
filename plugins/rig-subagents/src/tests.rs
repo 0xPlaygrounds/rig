@@ -45,7 +45,7 @@ impl Session {
     fn new(store: &MemoryStore, model: Option<&MockCompletionModel>) -> Self {
         let (mut app, wakes) = app_on(store);
         app.insert_resource(Models(Connector::new(Catalog::default())))
-            .add_plugins((AgentPlugin, JournalPlugin, SubagentsPlugin))
+            .add_plugins((AgentPlugin, JournalPlugin))
             .add_open_tool("look", "Look.", read_only(), look)
             .init_resource::<Delivered>()
             .add_observer(
@@ -61,6 +61,11 @@ impl Session {
                     delivered.0.push(entry);
                 },
             );
+        rig_harness::load::<SubagentsPlugin>(
+            &mut app,
+            "rig-subagents",
+            "path plugins/rig-subagents",
+        );
         if let Some(connection) = model.and_then(connect) {
             let choice = ModelChoice(connection.spec.reference());
             app.world_mut().spawn((Agent, connection, choice));
@@ -274,7 +279,7 @@ fn requests_that_would_deadlock_are_refused_and_a_restart_answers_open_ones_as_i
 fn read_only() -> ToolOptions<'static> {
     ToolOptions {
         rules: &[],
-        footprint: Some(Footprint::ReadOnly),
+        footprint: Some(Touches::Reads(Scope::Anything)),
     }
 }
 
@@ -364,6 +369,9 @@ fn a_plugin_shapes_a_tasks_subagent_through_the_stages_and_the_record_shows_it()
         parent.is_some() && call.is_some() && parent != call,
         "{parent:?} {call:?}"
     );
+    // The plugin's spawns are marked its own.
+    let mine = world.resource::<PluginEntity<SubagentsPlugin>>().entity();
+    assert_eq!(world.get::<ProvidedBy>(child).map(|by| by.0), Some(mine));
 }
 
 #[test]

@@ -12,7 +12,7 @@ workspace = true
 # Named by the `Component` derive.
 bevy_ecs = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# The file tools' names, how they resolve a path, and the atomic write.
+# The file tools' names and the atomic write.
 rig-tools = { path = "../../crates/rig-tools" }
 # The line diff hunks are cut from, as the file tools diff.
 similar = { workspace = true }
@@ -21,5 +21,6 @@ similar = { workspace = true }
 rig-cassette = { workspace = true }
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 serde_json = { workspace = true }

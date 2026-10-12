@@ -1,0 +1,26 @@
+[package]
+name = "corpus-fh-rich-tool-rendering"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Plugin corpus (fresh held-out): FH-19: 19. Rich tool call rendering"
+
+[lints]
+workspace = true
+
+[dependencies]
+# Named by the Bevy derives.
+bevy_ecs = { workspace = true }
+rig-harness = { path = "../../crates/rig-harness" }
+# The diff of a replacement (`fs::file_change`).
+rig-tools = { path = "../../crates/rig-tools" }
+# The terminal view this plugin draws in: its renderers, keys and panels.
+rig-tui = { path = "../../plugins/rig-tui" }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+rig-cassette = { workspace = true }
+# The default tools whose looks this plugin replaces.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
+rig-core = { workspace = true, features = ["test-utils"] }
+rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

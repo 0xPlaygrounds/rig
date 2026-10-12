@@ -16,13 +16,12 @@ bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 # The pool the writer's events stream on.
 bevy_tasks = { workspace = true }
-# Tapping a reply's stream as it passes.
+# Tapping a response body as it passes.
 futures = { workspace = true }
-# The secret patterns.
-regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

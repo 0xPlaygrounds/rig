@@ -19,7 +19,7 @@ use std::fmt::Write as _;
 use std::path::Path;
 
 use rig_harness::prelude::*;
-use rig_tools::fs::{absolute, write_atomic};
+use rig_tools::fs::write_atomic;
 use rig_tools::{Edit, Shell, Write};
 use similar::{Algorithm, DiffTag, TextDiff, capture_diff_slices};
 
@@ -30,7 +30,8 @@ pub struct HunkReviewPlugin;
 impl Plugin for HunkReviewPlugin {
     fn build(&self, app: &mut App) {
         app.register_required_components::<Agent, HunkReview>()
-            .add_systems(AgentPass, snapshot.in_set(Stage::Gate))
+            .configure_sets(AgentPass, HunkReviewSystems.in_set(Stage::Gate))
+            .add_systems(AgentPass, snapshot.in_set(HunkReviewSystems))
             .add_observer(turn_ended)
             .add_command(
                 "review",
@@ -40,6 +41,11 @@ impl Plugin for HunkReviewPlugin {
             );
     }
 }
+
+/// The Gate system that snapshots files before a call changes them, for
+/// others to order against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HunkReviewSystems;
 
 /// A top-level agent's changes under review: the files its turns (and its
 /// subagents') changed since the last review was done.
@@ -107,41 +113,38 @@ fn top(mut agent: Entity, parents: &Query<&SpawnedBy>) -> Entity {
 
 /// Snapshots the file of each `edit` and `write` call about to run, the
 /// first time its file is changed since the last review, and notes each
-/// `shell` command.
+/// `shell` command. The file is the one the call's footprint names, as the
+/// tool resolves it in its agent's directory.
 fn snapshot(
-    calls: Query<(Entity, &ToolRequest, &ForAgent), (Undecided, Without<Noted>)>,
+    calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &Footprint),
+        (Undecided, ToolCalls, Without<Noted>),
+    >,
     parents: Query<&SpawnedBy>,
     mut reviews: Query<&mut HunkReview>,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent)) in &calls {
+    for (call, request, &ForAgent(agent), Footprint(touches)) in &calls {
         let function = &request.call.function;
-        let argument = |name: &str| {
-            function
-                .arguments
-                .get(name)
-                .and_then(|value| value.as_str())
-        };
         let Ok(mut review) = reviews.get_mut(top(agent, &parents)) else {
             continue;
         };
-        match function.name.as_str() {
-            Edit::NAME | Write::NAME => {
-                let Some(path) = argument("path") else {
-                    continue;
-                };
-                let path = absolute(path);
-                review
-                    .files
-                    .entry(path)
-                    .or_insert_with_key(|path| FileReview {
-                        snapshot: std::fs::read_to_string(path).ok(),
-                        ..FileReview::default()
-                    });
+        match (function.name.as_str(), touches) {
+            (Edit::NAME | Write::NAME, Touches::Writes(Scope::Paths(paths))) => {
+                for path in paths {
+                    let path = path.to_string_lossy().into_owned();
+                    review
+                        .files
+                        .entry(path)
+                        .or_insert_with_key(|path| FileReview {
+                            snapshot: std::fs::read_to_string(path).ok(),
+                            ..FileReview::default()
+                        });
+                }
             }
-            Shell::NAME => {
-                let command = argument("command").unwrap_or_default().to_owned();
-                review.shell.push(command);
+            (Shell::NAME, _) => {
+                let command = function.arguments.get("command").and_then(|c| c.as_str());
+                review.shell.push(command.unwrap_or_default().to_owned());
             }
             _ => continue,
         }

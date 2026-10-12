@@ -40,9 +40,19 @@ impl Plugin for PromptTemplatesPlugin {
         app.add_message::<FileChanges>()
             .add_systems(Startup, watch)
             .add_systems(Update, reload)
-            .add_systems(AgentPass, route.in_set(Stage::Prepare));
+            .configure_sets(
+                AgentPass,
+                PromptTemplatesSystems.in_set(PrepareSystems::Edit),
+            )
+            .add_systems(AgentPass, route.in_set(PromptTemplatesSystems));
     }
 }
+
+/// The plugin's Prepare system, which sends the turn of a template with a
+/// `model` there: after the default prompt went in, before compaction
+/// measures the request against the model it goes to.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PromptTemplatesSystems;
 
 /// On the watches of the template directories.
 #[derive(Component)]
@@ -349,7 +359,7 @@ fn command(
 /// Sends each call of a turn a template's message went with to the
 /// template's model.
 fn route(
-    mut calls: Query<(&mut ModelRequest, &CallOf), (With<TurnCall>, Added<Admitted>)>,
+    mut calls: Query<(&mut ModelRequest, &CallOf), (Added<Admitted>, ModelCalls, With<TurnCall>)>,
     templates: Query<(&TemplateModel, &DeliveredIn)>,
 ) {
     for (mut request, &CallOf(turn)) in &mut calls {

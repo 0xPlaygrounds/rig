@@ -4,8 +4,8 @@
 //! loop, `PreUpdate` handles what it read, and drawing is a system in
 //! `PostUpdate` that runs when something drawn changed.
 //!
-//! The input is a multiline editor with the prompt history and `/` and `@`
-//! completion. Answers are drawn as markdown and
+//! The input is a multiline editor with the prompt history
+//! ([`PromptHistory`]) and `/` and `@` completion. Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`].
 //!
@@ -21,7 +21,8 @@
 //! [`Shown`]), and showing another, [`Focus`]; the
 //! status line's items ([`StatusItems`], [`AppStatus`]); and the
 //! [`TuiScreen`]'s size. It takes part in the input too: a key binding
-//! ([`keys`]: the view's own keys are bindings as well), the keys for a
+//! ([`keys`]: the view's own keys are bindings as well, each doing an
+//! [`InputAction`], which a plugin may also send), the keys for a
 //! panel ([`KeyFocus`]), the draft in the input ([`TuiInput`]), the
 //! candidates for a command's argument ([`ArgCompletion`]), the terminal's
 //! events ([`TerminalEvent`]) and focus ([`TerminalFocus`]), its own escape
@@ -38,7 +39,9 @@ mod clipboard;
 mod complete;
 pub mod diff;
 mod editor;
+mod history;
 mod input;
+mod jsonl;
 pub mod keys;
 pub mod markdown;
 pub mod panel;
@@ -60,14 +63,17 @@ use rig_harness::prelude::{Answerer, AppCliExt, Front, RigHome, Shown};
 pub use complete::{ArgCompletion, Candidate};
 pub use crossterm;
 pub use editor::TuiInput;
+pub use history::{HistorySystems, PromptHistory};
 pub use input::TerminalEvent;
 pub use keys::{
-    AppKeyBindingsExt, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys, run_command,
+    AppKeyBindingsExt, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope, Keys,
+    run_command,
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
 pub use renderers::{
-    AppToolRenderersExt, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
+    AppToolRenderersExt, CallState, RESULT_LINES, RenderToolCall, ToolCallView, ToolRenderer,
+    excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
@@ -92,11 +98,13 @@ impl Plugin for TuiPlugin {
         app.init_resource::<render::FrameLayout>()
             .init_resource::<TuiScreen>()
             .init_resource::<TuiInput>()
+            .init_resource::<PromptHistory>()
             .init_resource::<TerminalFocus>()
             .add_message::<RequestRedraw>()
             .add_message::<TerminalEvent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
+            .add_message::<InputAction>()
             .configure_sets(
                 PostUpdate,
                 (
@@ -107,6 +115,10 @@ impl Plugin for TuiPlugin {
                 )
                     .chain()
                     .after(StatusSystems),
+            )
+            .configure_sets(
+                Update,
+                (HistorySystems::Record, HistorySystems::Save).chain(),
             );
         app.add_front(Front::new(FRONT).on_terminal());
     }
@@ -118,10 +130,18 @@ impl Plugin for TuiPlugin {
             return;
         }
         add_view(app);
+        if let Some(home) = app.world().get_resource::<RigHome>() {
+            let history = PromptHistory::load(home.0.history());
+            app.insert_resource(history);
+        }
         app.add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
-                terminal::keep_screen_on_reload.in_set(bevy_app::OnAppExitSystems),
+                (
+                    terminal::keep_screen_on_reload,
+                    view::keep_draft.run_if(on_message::<AppExit>),
+                )
+                    .in_set(bevy_app::OnAppExitSystems),
             );
     }
 }
@@ -132,11 +152,13 @@ impl Plugin for TuiPlugin {
 fn add_view(app: &mut App) {
     app.world_mut()
         .spawn((Name::new("answerer:tui"), Answerer::default()));
-    app.init_resource::<RigHome>()
+    app.add_message::<history::Sent>()
+        .init_resource::<RigHome>()
         .init_resource::<Shown>()
         .init_resource::<view::TuiView>()
         .init_resource::<complete::FileIndex>()
         .init_resource::<clipboard::Clipboard>()
+        .add_systems(Startup, (view::load_notices, view::load_draft))
         .add_systems(
             PreUpdate,
             (
@@ -159,6 +181,8 @@ fn add_view(app: &mut App) {
                     .chain()
                     .after(AgentLoop),
                 view::recall_messages.after(AgentLoop),
+                history::record.in_set(HistorySystems::Record),
+                history::save.in_set(HistorySystems::Save),
             ),
         )
         .add_systems(
@@ -178,10 +202,15 @@ fn add_view(app: &mut App) {
                     .chain()
                     .in_set(TuiSystems::Render)
                     .run_if(resource_exists::<terminal::Tui>),
-                terminal::write_to_terminal
-                    .after(TuiSystems::Render)
-                    .run_if(resource_exists::<terminal::Tui>),
             ),
+        )
+        // After the frame, and after what runs on the way out, which may
+        // write to the terminal before the view lets it go.
+        .add_systems(
+            Last,
+            terminal::write_to_terminal
+                .after(bevy_app::OnAppExitSystems)
+                .run_if(resource_exists::<terminal::Tui>),
         )
         .add_observer(view::on_focus);
 }

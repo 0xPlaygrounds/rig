@@ -8,24 +8,34 @@
 
 use std::fmt::Write as _;
 use std::ops::Range;
-use std::path::Path;
+use std::path::PathBuf;
 
 use rig_core::completion::ToolAnnotations;
 use rig_core::tool::{
-    FileChange, FilesChanged, Tool, ToolContext, ToolExecutionError, args_schema,
+    FileChange, FilesChanged, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{absolute, file_change, io_error, read_text, write_atomic};
+use crate::fs::{file_change, io_error, place, read_text, resolve, write_atomic};
 use crate::{MAX_BYTES, MAX_LINES, blocking};
 
 /// Most matches an ambiguity error lists by line.
 const MAX_LISTED: usize = 8;
 
 /// Replaces text in a file. Publishes the file it changed
-/// ([`FilesChanged`]): its absolute path, and the whole diff.
-pub struct Edit;
+/// ([`FilesChanged`]): its [resolved](crate::fs::resolve) path, and the
+/// whole diff.
+#[derive(Clone, Debug, Default)]
+pub struct Edit {
+    /// The directory a relative path is edited in; `None` is this
+    /// process's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is read.
+    pub confine: bool,
+}
 
 /// Arguments of [`Edit`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -114,35 +124,95 @@ impl Tool for Edit {
             .with_open_world(false)
     }
 
+    fn footprint(&self, args: &EditArgs) -> Touches {
+        Touches::Writes(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
+    }
+
     async fn call(
         &self,
         context: &mut ToolContext,
         args: EditArgs,
     ) -> Result<String, ToolExecutionError> {
-        let (output, change) = blocking(move || edit(args)).await?;
+        let path = place(self.base.as_deref(), self.confine, &args.path)?;
+        let (output, change) = blocking(move || edit(path, args)).await?;
         context.insert_result(FilesChanged(vec![change]))?;
         Ok(output)
     }
 }
 
-fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
-    let path = args.path.as_str();
-    if args.edits.is_empty() {
+fn edit(resolved: PathBuf, args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
+    let path = resolved.to_string_lossy();
+    let raw = read_text(&path)?;
+    let applied = apply(&path, &raw, &args.edits)?;
+    write_atomic(&resolved, applied.text.as_bytes()).map_err(|error| io_error(&path, error))?;
+    let replaced = applied.replaced;
+    let mut out = format!(
+        "Edited {}: {replaced} replacement{}.",
+        args.path,
+        if replaced == 1 { "" } else { "s" }
+    );
+    for note in applied.notes {
+        out.push_str(&format!("\nNote: {note}"));
+    }
+    out.push('\n');
+    out.push_str(&shown(applied.change.diff.as_deref().unwrap_or_default()));
+    Ok((out, applied.change))
+}
+
+/// What [`apply`] makes of a file's text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Applied {
+    /// The edited text, with the byte-order mark and line endings the file
+    /// had: what [`Edit`] writes.
+    pub text: String,
+    /// What the edit does to the file, with its diff and the hash of
+    /// [`text`](Self::text).
+    pub change: FileChange,
+    /// How many places were replaced.
+    pub replaced: usize,
+    /// How each edit that matched only loosely was matched, for the model.
+    pub notes: Vec<String>,
+}
+
+/// Makes `edits` to `text`, the whole text of the file at `path`, exactly
+/// as [`Edit`] does, without touching the file: every edit is matched
+/// against the text as it is, exactly or loosely, and all are applied or
+/// none. A byte-order mark and CRLF line endings are kept. `path` names the
+/// file in the errors and the [`FileChange`].
+///
+/// ```
+/// use rig_tools::{Replacement, edit::apply};
+///
+/// let applied = apply("a.txt", "one\r\ntwo\r\n", &[Replacement::new("two", "2")])?;
+/// assert_eq!(applied.text, "one\r\n2\r\n");
+/// assert_eq!((applied.change.added, applied.change.removed), (1, 1));
+/// assert!(apply("a.txt", "one\n", &[Replacement::new("three", "3")]).is_err());
+/// # Ok::<(), rig_core::tool::ToolExecutionError>(())
+/// ```
+///
+/// # Errors
+///
+/// When an edit matches nowhere or more than once, edits overlap, or they
+/// change nothing: the error says what to send instead.
+pub fn apply(path: &str, text: &str, edits: &[Replacement]) -> Result<Applied, ToolExecutionError> {
+    if edits.is_empty() {
         return Err(ToolExecutionError::invalid_args(format!(
             "`edits` is empty, so {path} was not changed; give at least one \
              {{\"old_text\", \"new_text\"}}"
         )));
     }
-    let raw = read_text(path)?;
-    let file = Decoded::new(&raw);
+    let file = Decoded::new(text);
     let text = file.text.as_str();
-    let count = args.edits.len();
+    let count = edits.len();
     let many = count > 1;
     let mut splices = Vec::new();
     let mut notes = Vec::new();
     // Every edit is checked, so one reply names all that need fixing.
     let mut failed: Vec<String> = Vec::new();
-    for (index, replacement) in args.edits.iter().enumerate() {
+    for (index, replacement) in edits.iter().enumerate() {
         let label = if many {
             format!("edits[{index}]: ")
         } else {
@@ -203,21 +273,13 @@ fn edit(args: EditArgs) -> Result<(String, FileChange), ToolExecutionError> {
             "the edits leave the file as it was; check `new_text`".to_owned(),
         ));
     }
-    write_atomic(Path::new(path), file.encode(&edited).as_bytes())
-        .map_err(|error| io_error(path, error))?;
-
-    let replaced = splices.len();
-    let mut out = format!(
-        "Edited {path}: {replaced} replacement{}.",
-        if replaced == 1 { "" } else { "s" }
-    );
-    for note in notes {
-        out.push_str(&format!("\nNote: {note}"));
-    }
-    out.push('\n');
-    let change = file_change(&absolute(path), Some(text), &edited);
-    out.push_str(&shown(change.diff.as_deref().unwrap_or_default()));
-    Ok((out, change))
+    let encoded = file.encode(&edited);
+    Ok(Applied {
+        change: file_change(path, Some(text), &edited).with_after(content_hash(encoded.as_bytes())),
+        text: encoded,
+        replaced: splices.len(),
+        notes,
+    })
 }
 
 /// The file's text with LF line endings and no byte-order mark, and how to

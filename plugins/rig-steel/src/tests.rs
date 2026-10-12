@@ -63,9 +63,24 @@ fn app(model: &MockCompletionModel) -> (App, Receiver<()>, Entity) {
     };
     app.insert_resource(Models(Connector::new(Catalog::default())))
         .add_plugins((AgentPlugin, JournalPlugin, SteelPlugin))
-        .add_open_tool("look", "Look.", options(Footprint::ReadOnly), look)
-        .add_open_tool("touch", "Touch.", options(Footprint::Exclusive), look)
-        .add_open_tool("poke", "Poke.", options(Footprint::Exclusive), look)
+        .add_open_tool(
+            "look",
+            "Look.",
+            options(Touches::Reads(Scope::Anything)),
+            look,
+        )
+        .add_open_tool(
+            "touch",
+            "Touch.",
+            options(Touches::Writes(Scope::Anything)),
+            look,
+        )
+        .add_open_tool(
+            "poke",
+            "Poke.",
+            options(Touches::Writes(Scope::Anything)),
+            look,
+        )
         .init_resource::<Kept>()
         .add_systems(Last, keep)
         .add_systems(AgentPass, gate.in_set(Stage::Gate));

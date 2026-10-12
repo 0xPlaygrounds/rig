@@ -22,10 +22,11 @@ struct Read {
 
 /// Puts a counter under the cutter on every call, so it sees what was
 /// pulled from the provider.
-fn count_reads(mut calls: Query<&mut ModelRequest, Added<Admitted>>, read: Res<Read>) {
-    for mut call in &mut calls {
+fn count_reads(mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>, read: Res<Read>) {
+    for mut adapters in &mut calls {
         let read = read.clone();
-        call.adapters
+        adapters
+            .0
             .push(Adapter::new("count", move |mut connection: Connection| {
                 let read = read.clone();
                 let count = move |_| {
@@ -45,9 +46,13 @@ fn count_reads(mut calls: Query<&mut ModelRequest, Added<Admitted>>, read: Res<R
 }
 
 /// A `read` that answers at once.
-fn read_file(called: On<ToolCalled<serde_json::Value>>, mut commands: Commands) {
-    let read = Outcome::from(ToolResult::success("file text".into()));
-    commands.entity(called.call).insert_if_new(read);
+fn read_file(
+    called: On<ToolCalled<serde_json::Value>>,
+    mut calls: Query<&mut Decision, ToolCalls>,
+) {
+    if let Ok(mut call) = calls.get_mut(called.call) {
+        call.decide(ToolResult::success("file text".into()));
+    }
 }
 
 /// The text of each assistant message, in order.
@@ -170,4 +175,9 @@ fn looping_and_role_play_replies_are_cut_where_they_go_wrong() {
         [LOOP.to_owned(), "Read it.".to_owned()]
     );
     assert_eq!(app.world().resource::<Cuts>().0.get("test/model"), Some(&3));
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(StreamCutterPlugin);
 }

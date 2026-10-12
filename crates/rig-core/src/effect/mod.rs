@@ -758,6 +758,27 @@ pub enum EffectKind {
     },
 }
 
+/// The effect a model's tool call is: the tool's name and the call's raw
+/// arguments, as a tool handler is dispatched it.
+///
+/// ```
+/// use rig_core::effect::EffectKind;
+/// use rig_core::message::{ToolCall, ToolFunction, ToolName};
+///
+/// let read = ToolFunction::new(ToolName::new("read")?, serde_json::json!({ "path": "a.rs" }));
+/// let kind = EffectKind::from(&ToolCall::from_wire("call-1", read));
+/// assert!(matches!(kind, EffectKind::ToolCall { ref name, .. } if name == "read"));
+/// # Ok::<(), Box<dyn std::error::Error>>(())
+/// ```
+impl From<&crate::message::ToolCall> for EffectKind {
+    fn from(call: &crate::message::ToolCall) -> Self {
+        Self::ToolCall {
+            name: call.function.name.as_str().to_owned(),
+            args: call.function.raw_arguments(),
+        }
+    }
+}
+
 impl EffectKind {
     /// The family of this effect.
     pub const fn family(&self) -> EffectFamily {

@@ -1,4 +1,5 @@
 use rig_harness::rig_core::effect::EffectKind;
+use rig_harness::rig_core::message::{ToolCall, ToolFunction, ToolName};
 
 use super::*;
 
@@ -40,4 +41,36 @@ fn a_question_and_a_plugins_work_outside_the_turn_show() {
         .entity_mut(review)
         .insert(Outcome::custom("done"));
     assert_eq!(status(&mut app, agent), Some(Status::Idle));
+}
+
+#[test]
+fn a_tool_calls_activity_names_its_holds_and_its_progress() {
+    let mut app = App::new();
+    app.add_plugins(ActivityPlugin);
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let turn = world.spawn(TurnOf(agent)).id();
+    let Ok(name) = ToolName::new("edit") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, serde_json::json!({})));
+    let call = world.spawn((ToolRequest { call }, CallOf(turn))).id();
+    world.spawn((Name::new("waiting for lease on src/a.rs"), HoldOf(call)));
+    world.spawn(HoldOf(call));
+    app.update();
+    let activity = app.world().get::<Activity>(agent);
+    let held_by = activity
+        .and_then(|activity| activity.tools.first())
+        .map(|tool| &tool.held_by);
+    let names = ["waiting for lease on src/a.rs", UNNAMED_HOLD].map(str::to_owned);
+    assert_eq!(held_by, Some(&names.to_vec()));
+
+    let progress = ToolProgress("12 of 40 files".to_owned());
+    app.world_mut().entity_mut(call).insert(progress);
+    app.update();
+    let activity = app.world().get::<Activity>(agent);
+    let progress = activity
+        .and_then(|activity| activity.tools.first())
+        .and_then(|tool| tool.progress.as_deref());
+    assert_eq!(progress, Some("12 of 40 files"));
 }

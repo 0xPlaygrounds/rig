@@ -13,15 +13,12 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Taking a failure over before compaction, which only takes overflows.
-rig-compaction = { path = "../../plugins/rig-compaction" }
 serde = { workspace = true, features = ["derive"] }
 # `RIG_HOME/key-pool.toml` (already in Cargo.lock, through rig-harness).
 toml = "1"
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
-# The 429 and 401 replies of the scripted keys.
-http = { workspace = true }
 serde_json = { workspace = true }

@@ -24,7 +24,7 @@ use rig_tools::fs::{read_json, write_json};
 mod tui;
 
 #[cfg(feature = "tui")]
-pub use tui::Activate;
+pub use tui::{Activate, PaletteSystems};
 
 /// How many recent picks are kept.
 const RECENT: usize = 20;

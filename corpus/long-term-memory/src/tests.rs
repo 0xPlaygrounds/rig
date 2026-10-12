@@ -96,3 +96,8 @@ fn a_fact_remembered_in_one_session_is_recalled_in_the_next_but_not_saved() {
     );
     fs::remove_dir_all(home.root()).ok();
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(LongTermMemoryPlugin);
+}

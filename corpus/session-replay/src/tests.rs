@@ -1,8 +1,9 @@
-use std::borrow::Cow;
 use std::sync::mpsc::Receiver;
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::catalog::{Catalog, Connector, ModelSpec};
+use std::borrow::Cow;
+
+use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
 use rig_core::operation::Completion;
 use rig_core::providers::registry::{ConnectError, ProviderId};
 use rig_core::serve::adapters::ModelAdapter;
@@ -20,15 +21,15 @@ use super::*;
 /// Every call goes to its model as to one that calls no tools, so Start
 /// takes the tools and their rules out of the request: what is sent, and
 /// recorded, is not what Gate sees.
-fn without_tools(mut calls: Query<&mut ModelRequest, Added<Admitted>>) {
-    for mut call in &mut calls {
+fn without_tools(mut calls: Query<&mut Adapters, Added<Admitted>>) {
+    for mut adapters in &mut calls {
         let adapter = Adapter::new("no-tools", |mut connection: Connection| {
             let mut spec = (*connection.spec).clone();
             spec.tools = false;
             connection.spec = Arc::new(spec);
             connection
         });
-        call.adapters.push(adapter);
+        adapters.0.push(adapter);
     }
 }
 
@@ -39,10 +40,10 @@ fn with_agents(app: &mut App, connection: Option<Connection>) {
         .add_plugins((AgentPlugin, JournalPlugin))
         .add_systems(AgentPass, without_tools.in_set(Stage::Prepare))
         .add_tool_with(
-            Write,
+            Write::default(),
             ToolOptions {
                 rules: Write::RULES,
-                footprint: Some(Footprint::Exclusive),
+                footprint: Some(Touches::Writes(Scope::Anything)),
             },
         )
         .add_observer(move |agent: On<Add<Agent>>, mut commands: Commands| {
@@ -198,13 +199,16 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert!(!file.exists());
 }
 
-/// The catalog model `replay-corp/big`, whose provider has no key.
+/// The model the [`keyless`] catalog holds.
+const KEYLESS: &str = "replay-corp/big";
+
+/// A catalog of [`KEYLESS`], whose provider has no key for it.
 fn keyless() -> Option<Models> {
     let corp = ProviderId::declare("replay-corp").ok()?;
     let mut catalog = Catalog::default();
     catalog.insert(ModelSpec::new(corp, "big").with_tools(true));
     let mut connector = Connector::new(catalog);
-    connector.provide(corp, |_: &ModelSpec, _: &Catalog| {
+    connector.provide(corp, |_: &ModelSpec, _: &Catalog, _: &Transport| {
         Err(ConnectError::MissingKey {
             vendor: "replay-corp".to_owned(),
             tried: vec![Cow::Borrowed("REPLAY_CORP_KEY")],
@@ -213,14 +217,9 @@ fn keyless() -> Option<Models> {
     Some(Models(connector))
 }
 
-/// `model` as `replay-corp/big`, as if its key were there.
+/// `model` as [`KEYLESS`], as if its key were there.
 fn keyed(model: &MockCompletionModel) -> Option<Connection> {
-    let spec = keyless()?
-        .0
-        .catalog()
-        .resolve("replay-corp/big")
-        .ok()?
-        .shared();
+    let spec = keyless()?.0.catalog().resolve(KEYLESS).ok()?.shared();
     let handler = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
     Some(Connection {
         spec,
@@ -267,11 +266,19 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
             world.contains_resource::<ExitReason>()
         });
         let exit = app.world().get_resource::<ExitReason>().cloned();
-        (outcome, exit, conversation(&mut app))
+        let replayed = conversation(&mut app);
+        app.update();
+        // Whatever the exit, the replay's own session is gone.
+        assert!(
+            !home.session(id).path().exists(),
+            "the replay kept its session"
+        );
+        (outcome, exit, replayed)
     };
 
-    // The chosen model does not connect: the record answers it all the same.
-    let (outcome, exit, replayed) = replay(&id("2-2"), Some("replay-corp/big"));
+    // The chosen model's provider has no key: the record answers it all the
+    // same.
+    let (outcome, exit, replayed) = replay(&id("2-2"), Some(KEYLESS));
     assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
     assert_eq!(exit, Some(ExitReason::Quit));
     assert_eq!(replayed, recorded);
@@ -292,4 +299,60 @@ fn a_model_without_its_key_replays_from_the_record_and_a_turn_without_a_model_fa
     );
     assert!(report.contains("No model is connected"), "{report}");
     assert_eq!(exit, Some(ExitReason::Failed(1)));
+}
+
+/// A call recorded without a question replays where a guard would now ask
+/// and, with nobody to answer, refuse: the record answers it first.
+#[test]
+fn a_recorded_call_is_answered_before_a_guard_decides_it() {
+    let home = scratch_home("session-replay-guarded");
+    let file = home.root().join("a.txt");
+    let id = "3-1".parse().unwrap_or_else(|_| SessionId::generate());
+    let recorded = record(&home, &id, &file.to_string_lossy(), connect);
+    std::fs::remove_file(&file).ok();
+    let source = ReplaySource::from_dir(home.session(&id).path(), ReplayFlags::default());
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    with_agents(&mut app, connect(&model));
+    if let Ok(source) = source {
+        app.insert_resource(source);
+    }
+    app.add_plugins((
+        SessionReplayPlugin,
+        corpus_permission_modes::PermissionModesPlugin,
+    ));
+    let outcome = run_replay(&mut app, &wakes);
+    assert_eq!(outcome, Some((ReplayStatus::Finished, Vec::new(), (2, 1))));
+    assert_eq!(conversation(&mut app), recorded);
+    assert!(!file.exists(), "the write tool ran during the replay");
+}
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(|app: &mut App| {
+        app.insert_resource(ReplaySource {
+            effects: EffectLog::default(),
+            flags: ReplayFlags::default(),
+        })
+        .add_plugins(SessionReplayPlugin);
+    });
+}
+
+/// A replay runs with the plugins of the session it replays, the tool
+/// guards among them: the record answers before any of them.
+#[test]
+fn stages_are_ordered_with_the_tool_guards() {
+    rig_defaults_test_support::assert_stages_ordered(|app: &mut App| {
+        app.insert_resource(ReplaySource {
+            effects: EffectLog::default(),
+            flags: ReplayFlags::default(),
+        })
+        .add_plugins((
+            SessionReplayPlugin,
+            corpus_plan_mode::PlanModePlugin,
+            corpus_permission_modes::PermissionModesPlugin,
+            corpus_protected_paths::ProtectedPathsPlugin,
+            corpus_confirm_destructive::ConfirmDestructivePlugin,
+        ));
+    });
 }

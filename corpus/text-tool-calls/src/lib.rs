@@ -50,19 +50,26 @@ pub struct TextTools {
 #[derive(Default)]
 pub struct TextToolCallsPlugin;
 
+/// The plugin's stage system, in [`PrepareSystems::Edit`], before
+/// compaction measures the adapted call: it gives each model call the
+/// `text-tools` adapter.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct TextToolCallsSystems;
+
 impl Plugin for TextToolCallsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<TextTools>("text_tools")
-            .add_systems(AgentPass, adapt.in_set(Stage::Prepare));
+            .configure_sets(AgentPass, TextToolCallsSystems.in_set(PrepareSystems::Edit))
+            .add_systems(AgentPass, adapt.in_set(TextToolCallsSystems));
     }
 }
 
 /// Gives each model call admitted this pass the `text-tools` adapter.
-fn adapt(mut calls: Query<&mut ModelRequest, Added<Admitted>>, settings: Res<TextTools>) {
+fn adapt(mut calls: Query<&mut Adapters, (Added<Admitted>, ModelCalls)>, settings: Res<TextTools>) {
     let models = Arc::new(settings.models.clone());
-    for mut call in &mut calls {
+    for mut adapters in &mut calls {
         let models = models.clone();
-        call.adapters.push(Adapter::new(NAME, move |connection| {
+        adapters.0.push(Adapter::new(NAME, move |connection| {
             as_text(connection, &models)
         }));
     }

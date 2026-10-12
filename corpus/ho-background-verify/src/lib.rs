@@ -4,19 +4,21 @@
 //! A tool call by any agent that changed a file matching `[verify] files`
 //! (default `*.rs`) schedules the project's check (`[verify] command`,
 //! default `cargo check --message-format short`) after a quiet period
-//! (`[verify] quiet_ms`, default 1500): a later edit restarts the wait and
-//! kills a check that runs. The check is a `verify` effect of the app, one
-//! at a time, whose command runs as `Processes` say.
+//! (`[verify] quiet_ms`, default 1500), a [`WakeAt`] that a later edit puts
+//! off; the edit also kills a check that runs. The check is a `verify`
+//! effect of the app, one at a time, whose command runs as `Processes` say.
 //!
-//! A failure is a [`DeliveryMode::Note`] to each agent that edited since the
-//! last pass, with the first error lines: it starts no turn, and goes with
-//! the agent's next model call. While the agent is idle the note is held,
-//! and let go as a message that starts its next turn is about to start, so
-//! it goes in just before it. Only the newest result counts: a result
-//! withdraws every note not sent yet, and a pass after a failure an agent
-//! saw tells it the check passes again. `/verify on|off|now`.
+//! A failure goes to each agent that edited since the last pass, with the
+//! first error lines, and starts no turn. A busy agent gets it as a
+//! [`DeliveryMode::Note`], which goes with its next model call; an idle
+//! one with its next message from the user, as an attachment added in
+//! Prepare. A note whose agent's turn would end before another call
+//! waits for the user's message instead, so that it stays withdrawable.
+//! Only the newest result counts: a result withdraws every note not sent
+//! yet, and a pass after a failure an agent saw tells it the check passes
+//! again. `/verify on|off|now`.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
@@ -25,7 +27,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::{EffectKind, Outcome as Answered};
 use rig_harness::rig_core::error::ErrorReport;
 use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
-use rig_tools::{Shell, ShellArgs};
+use rig_harness::rig_tools::{Shell, ShellArgs};
 use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
@@ -42,6 +44,13 @@ const TIMEOUT_SECS: u64 = 600;
 #[derive(Default)]
 pub struct BackgroundVerifyPlugin;
 
+/// The plugin's stage systems: in Review, a busy agent's notes wait for
+/// the user when its turn would end; in Prepare, the waiting note goes
+/// with the user's next message, after the files it names; in Gate, a
+/// note to an agent gone idle waits for the user too.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct VerifySystems;
+
 impl Plugin for BackgroundVerifyPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<VerifySettings>("verify")
@@ -55,13 +64,19 @@ impl Plugin for BackgroundVerifyPlugin {
             )
             .add_systems(
                 AgentPass,
-                release_notes.in_set(Stage::Gate).after(CommandSystems),
+                (
+                    before_turn_end.in_set(Stage::Review),
+                    attach_notes.in_set(PrepareSystems::Edit),
+                    to_idle_agents.in_set(Stage::Gate).after(AskSystems),
+                )
+                    .in_set(VerifySystems),
             )
             .add_observer(on_edit)
             .add_observer(due)
             .add_observer(run_check)
             .add_observer(checked)
-            .add_observer(note_sent);
+            .add_observer(release)
+            .add_observer(note_settled);
         #[cfg(feature = "tui")]
         status::add(app);
     }
@@ -110,12 +125,14 @@ pub struct Verify {
     pub enabled: bool,
     /// Where the check is.
     pub status: CheckStatus,
-    /// Bumped by every edit, so only the newest wait starts a check.
-    scheduled: u64,
     /// The agents that edited since the last pass.
     edited: HashSet<Entity>,
     /// The agents that were sent a failure, and not that it passes again.
     saw_failure: HashSet<Entity>,
+    /// The note each idle agent gets with its next message from the user.
+    waiting: HashMap<Entity, CheckNote>,
+    /// How many checks ended: the newest result's number.
+    round: u64,
 }
 
 impl Default for Verify {
@@ -123,30 +140,40 @@ impl Default for Verify {
         Self {
             enabled: true,
             status: CheckStatus::None,
-            scheduled: 0,
             edited: HashSet::new(),
             saw_failure: HashSet::new(),
+            waiting: HashMap::new(),
+            round: 0,
         }
     }
 }
 
-/// The quiet period numbered `0` ended.
-#[derive(Event)]
-struct CheckDue(u64);
+/// The wait for quiet: a [`WakeAt`] that each edit puts off.
+#[derive(Component)]
+struct Quiet;
 
 /// On the `verify` effect: the command it runs.
 #[derive(Component)]
 struct CheckRun(String);
 
-/// On a note to an agent: whether it reports a failure.
-#[derive(Component)]
+/// A note about the check, and on a busy agent's note message.
+#[derive(Component, Clone, Debug)]
 struct CheckNote {
+    text: String,
     failure: bool,
+    /// The result it tells of ([`Verify::round`]).
+    round: u64,
 }
 
-/// On the hold that keeps a note while its agent is idle.
+/// On a message from the user: the note attached to it.
 #[derive(Component)]
-struct IdleHold;
+struct Carries(CheckNote);
+
+/// On a note taken back before its agent's turn ends: the hold that keeps
+/// the turn from ending (and so from committing the note) until the
+/// note is answered.
+#[derive(Component)]
+struct Holding(Entity);
 
 /// How the check's command ended: the `verify` effect's outcome.
 #[derive(Serialize, Deserialize)]
@@ -162,7 +189,7 @@ fn on_edit(
     settings: Res<VerifySettings>,
     root: Res<ProjectRoot>,
     mut verify: ResMut<Verify>,
-    runs: Query<Entity, With<CheckRun>>,
+    pending: Query<Entity, Or<(With<Quiet>, With<CheckRun>)>>,
     mut commands: Commands,
 ) {
     let Ok((published, outcome, &ForAgent(agent))) = calls.get(settled.entity) else {
@@ -182,37 +209,35 @@ fn on_edit(
         return;
     }
     verify.edited.insert(agent);
-    schedule(&mut verify, &runs, &mut commands, settings.quiet_ms);
+    schedule(&mut verify, &pending, &mut commands, settings.quiet_ms);
 }
 
-/// Kills the running check and starts the wait for quiet again.
+/// Calls off the wait and the check, then waits for quiet again.
 fn schedule(
     verify: &mut Verify,
-    runs: &Query<Entity, With<CheckRun>>,
+    pending: &Query<Entity, Or<(With<Quiet>, With<CheckRun>)>>,
     commands: &mut Commands,
     quiet_ms: u64,
 ) {
-    for run in runs {
-        commands.entity(run).despawn();
+    for entity in pending {
+        commands.entity(entity).despawn();
     }
-    verify.scheduled += 1;
     verify.status = CheckStatus::Pending;
-    commands
-        .delayed()
-        .duration(Duration::from_millis(quiet_ms))
-        .trigger(CheckDue(verify.scheduled));
+    let wait = WakeAt::after(Duration::from_millis(quiet_ms));
+    commands.spawn((Quiet, wait, Name::new("verify quiet")));
 }
 
-/// Starts the check once the newest wait ended.
+/// Starts the check once it was quiet long enough.
 fn due(
-    due: On<CheckDue>,
-    verify: Res<Verify>,
+    due: On<Add<Due>>,
+    quiet: Query<(), With<Quiet>>,
     settings: Res<VerifySettings>,
     mut commands: Commands,
 ) {
-    if due.0 != verify.scheduled || !verify.enabled {
+    if !quiet.contains(due.entity) {
         return;
     }
+    commands.entity(due.entity).despawn();
     let kind = EffectKind::Custom {
         kind: VERIFY.into(),
         payload: serde_json::json!({ "command": settings.command }),
@@ -228,7 +253,8 @@ fn due(
     ));
 }
 
-/// Runs the check's command once its effect started.
+/// Runs the check's command once its effect started; despawning the
+/// effect kills it.
 fn run_check(
     started: On<Add<Started>>,
     runs: Query<&CheckRun>,
@@ -247,6 +273,7 @@ fn run_check(
     let shell = Shell {
         launcher,
         spill: None,
+        confine: false,
         cut: None,
     };
     let args = ShellArgs::new(command.clone()).timeout_secs(TIMEOUT_SECS);
@@ -273,7 +300,7 @@ fn run_check(
 fn checked(
     settled: On<Add<Settled>>,
     runs: Query<(&CheckRun, &Outcome)>,
-    unsent: Query<Entity, (With<CheckNote>, Without<Outcome>)>,
+    mut unsent: Query<(Entity, &mut Decision), (With<CheckNote>, Without<Outcome>)>,
     agents: Query<Has<ActiveTurn>, With<Agent>>,
     mut verify: ResMut<Verify>,
     mut commands: Commands,
@@ -294,41 +321,61 @@ fn checked(
         ));
         return;
     };
-    for note in &unsent {
-        commands.entity(note).despawn();
+    verify.waiting.clear();
+    verify.round += 1;
+    for (note, mut decision) in &mut unsent {
+        commands.entity(note).remove::<CheckNote>();
+        decision.decide(Outcome::custom("withdrawn"));
     }
-    let mut send = |agent: Entity, text: String, failure: bool| {
-        let Ok(busy) = agents.get(agent) else {
-            return;
-        };
-        let message = Incoming::new(text, DeliveryMode::Note).with_origin(Origin::plugin(VERIFY));
-        let note = commands
-            .spawn((message, ForAgent(agent), CheckNote { failure }))
-            .id();
-        if !busy {
-            commands.spawn((IdleHold, HoldOf(note)));
+    let (note, to) = match ran.status.success() {
+        true => {
+            verify.status = CheckStatus::Passed;
+            verify.edited.clear();
+            let text = format!("`{command}` passes again.");
+            (
+                CheckNote {
+                    text,
+                    failure: false,
+                    round: verify.round,
+                },
+                &verify.saw_failure,
+            )
+        }
+        false => {
+            let errors: Vec<&str> = error_lines(&ran.output).collect();
+            verify.status = CheckStatus::Failed(errors.len());
+            let shown: Vec<&str> = match errors.is_empty() {
+                true => ran.output.lines().take(ERROR_LINES).collect(),
+                false => errors.into_iter().take(ERROR_LINES).collect(),
+            };
+            let text = format!(
+                "`{command}` fails after your edits. Its first errors:\n\n{}",
+                shown.join("\n")
+            );
+            (
+                CheckNote {
+                    text,
+                    failure: true,
+                    round: verify.round,
+                },
+                &verify.edited,
+            )
         }
     };
-    if ran.status.success() {
-        verify.status = CheckStatus::Passed;
-        verify.edited.clear();
-        for &agent in &verify.saw_failure {
-            send(agent, format!("`{command}` passes again."), false);
+    let mut idle = Vec::new();
+    for &agent in to {
+        match agents.get(agent) {
+            Ok(true) => {
+                let message = Incoming::new(note.text.clone(), DeliveryMode::Note)
+                    .with_origin(Origin::plugin(VERIFY));
+                commands.spawn((message, ForAgent(agent), note.clone()));
+            }
+            Ok(false) => idle.push(agent),
+            Err(_) => {}
         }
-        return;
     }
-    let errors: Vec<&str> = error_lines(&ran.output).collect();
-    verify.status = CheckStatus::Failed(errors.len());
-    let shown: Vec<&str> = match errors.is_empty() {
-        true => ran.output.lines().take(ERROR_LINES).collect(),
-        false => errors.into_iter().take(ERROR_LINES).collect(),
-    };
-    let text = format!(
-        "`{command}` fails after your edits. Its first errors:\n\n{}",
-        shown.join("\n")
-    );
-    for &agent in &verify.edited {
-        send(agent, text.clone(), true);
+    for agent in idle {
+        verify.waiting.insert(agent, note.clone());
     }
 }
 
@@ -342,40 +389,140 @@ fn error_lines(output: &str) -> impl Iterator<Item = &str> {
     })
 }
 
-/// Lets go of each held note once its agent is busy, or a message that
-/// starts its next turn is about to start: the older note goes in first.
-fn release_notes(
-    holds: Query<(Entity, &HoldOf), With<IdleHold>>,
-    notes: Query<&ForAgent, With<CheckNote>>,
-    agents: Query<Has<ActiveTurn>>,
-    starting: Query<(&Incoming, &ForAgent), Undecided>,
+/// A busy agent's turn would end (its end is proposed, and Review is the
+/// last stage before the kernel ends it): its notes not sent yet would be
+/// committed to its conversation, beyond a later result's reach, so each
+/// is taken back and waits for the user's next message, and the turn is
+/// held until the kernel applied that.
+fn before_turn_end(
+    ending: Query<(Entity, &TurnOf), With<TurnOutcome>>,
+    mut notes: Query<
+        (Entity, &CheckNote, &ForAgent, &mut Decision),
+        (With<Started>, Without<Outcome>, IncomingMessages),
+    >,
+    mut verify: ResMut<Verify>,
     mut commands: Commands,
 ) {
-    for (hold, &HoldOf(note)) in &holds {
-        let Ok(&ForAgent(agent)) = notes.get(note) else {
+    let ending: HashMap<Entity, Entity> = ending.iter().map(|(turn, of)| (of.0, turn)).collect();
+    for (entity, note, &ForAgent(agent), mut decision) in &mut notes {
+        let Some(&turn) = ending.get(&agent) else {
             continue;
         };
-        let busy = agents.get(agent).unwrap_or_default();
-        let turn_starts = starting.iter().any(|(message, &ForAgent(to))| {
-            to == agent && message.mode != DeliveryMode::Note && message.command().is_none()
-        });
-        if busy || turn_starts {
-            commands.entity(hold).despawn();
+        if wait_for_user(
+            &mut verify,
+            &mut commands,
+            entity,
+            agent,
+            note,
+            &mut decision,
+        ) {
+            let hold = commands
+                .spawn((HoldOf(turn), Name::new("verify note")))
+                .id();
+            commands.entity(entity).insert(Holding(hold));
         }
     }
 }
 
-/// A note that went into its agent's conversation: the agent saw the
-/// failure, or that it passes again.
-fn note_sent(
+/// A note answered: the turn it held may end (the kernel despawned the
+/// hold already if the turn carried on).
+fn release(answered: On<Add<Outcome>>, holding: Query<&Holding>, mut commands: Commands) {
+    if let Ok(&Holding(hold)) = holding.get(answered.entity) {
+        commands.entity(hold).try_despawn();
+    }
+}
+
+/// A note about to go to an agent whose turn ended meanwhile would be
+/// committed at once: it waits for the user's next message instead.
+fn to_idle_agents(
+    mut notes: Query<(Entity, &CheckNote, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
+    busy: Query<Has<ActiveTurn>>,
+    mut verify: ResMut<Verify>,
+    mut commands: Commands,
+) {
+    for (entity, note, &ForAgent(agent), mut decision) in &mut notes {
+        if !busy.get(agent).unwrap_or(true) {
+            wait_for_user(
+                &mut verify,
+                &mut commands,
+                entity,
+                agent,
+                note,
+                &mut decision,
+            );
+        }
+    }
+}
+
+/// Takes the note message `entity` back; its note waits for the user's
+/// next message to `agent`. Whether it was not taken already.
+fn wait_for_user(
+    verify: &mut Verify,
+    commands: &mut Commands,
+    entity: Entity,
+    agent: Entity,
+    note: &CheckNote,
+    decision: &mut Decision,
+) -> bool {
+    if !decision.decide(Outcome::custom("waits for the user")) {
+        return false;
+    }
+    commands.entity(entity).remove::<CheckNote>();
+    verify.waiting.insert(agent, note.clone());
+    true
+}
+
+/// Adds an idle agent's waiting note to its next message from the user.
+fn attach_notes(
+    mut typed: Query<(Entity, &mut Incoming, &ForAgent), (Added<Admitted>, IncomingMessages)>,
+    mut verify: ResMut<Verify>,
+    mut commands: Commands,
+) {
+    for (entity, mut typed, &ForAgent(agent)) in &mut typed {
+        let note = typed.mode != DeliveryMode::Note && typed.command().is_none();
+        if typed.origin.kind != OriginKind::User || !note {
+            continue;
+        }
+        let Some(note) = verify.waiting.remove(&agent) else {
+            continue;
+        };
+        typed.attachments.push(Attachment {
+            label: VERIFY.to_owned(),
+            content: UserContent::text(note.text.clone()),
+        });
+        commands.entity(entity).insert(Carries(note));
+    }
+}
+
+/// A note went into an agent's conversation, or the user's message that
+/// carries one did not (it was taken over, or handed back at a turn's
+/// end), and the note waits again unless a newer result came.
+fn note_settled(
     settled: On<Add<Settled>>,
-    notes: Query<(&CheckNote, &ForAgent)>,
+    notes: Query<(
+        Option<&CheckNote>,
+        Option<&Carries>,
+        Has<DeliveredIn>,
+        &ForAgent,
+    )>,
     mut verify: ResMut<Verify>,
 ) {
-    let Ok((note, &ForAgent(agent))) = notes.get(settled.entity) else {
+    let Ok((note, carries, delivered, &ForAgent(agent))) = notes.get(settled.entity) else {
         return;
     };
-    match note.failure {
+    match (note, carries) {
+        (Some(note), _) => saw(&mut verify, agent, note.failure),
+        (None, Some(Carries(note))) if delivered => saw(&mut verify, agent, note.failure),
+        (None, Some(Carries(note))) if note.round == verify.round => {
+            verify.waiting.entry(agent).or_insert_with(|| note.clone());
+        }
+        _ => {}
+    }
+}
+
+/// `agent` was told that the check fails, or that it passes again.
+fn saw(verify: &mut Verify, agent: Entity, failure: bool) {
+    match failure {
         true => verify.saw_failure.insert(agent),
         false => verify.saw_failure.remove(&agent),
     };
@@ -385,7 +532,7 @@ fn note_sent(
 fn command(
     In(args): In<CommandArgs>,
     mut verify: ResMut<Verify>,
-    runs: Query<Entity, With<CheckRun>>,
+    pending: Query<Entity, Or<(With<Quiet>, With<CheckRun>)>>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -396,16 +543,15 @@ fn command(
         }
         "off" => {
             verify.enabled = false;
-            verify.scheduled += 1;
             verify.status = CheckStatus::None;
-            for run in &runs {
-                commands.entity(run).despawn();
+            for entity in &pending {
+                commands.entity(entity).despawn();
             }
             notices.write(Notice::info(args.agent, "Checks after edits are off."));
         }
         "now" => {
             verify.enabled = true;
-            schedule(&mut verify, &runs, &mut commands, 0);
+            schedule(&mut verify, &pending, &mut commands, 0);
         }
         _ => {
             notices.write(Notice::error(args.agent, "/verify on|off|now"));

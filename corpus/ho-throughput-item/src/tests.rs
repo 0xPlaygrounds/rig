@@ -93,3 +93,8 @@ fn a_turns_call_shows_its_speed_and_a_plugins_call_only_counts() {
         .any(|notice| notice.text.contains("deepseek-flash: 2 calls"));
     assert!(listed, "{notices:?}");
 }
+
+#[test]
+fn stages_are_ordered_with_the_defaults() {
+    rig_defaults_test_support::assert_stages_ordered(ThroughputPlugin);
+}

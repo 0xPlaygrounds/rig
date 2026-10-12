@@ -4,18 +4,18 @@
 //! call is a [`TurnCall`]: the kernel builds its [`ModelRequest`] from the
 //! agent when it is admitted, plugins edit it in Prepare, and Start fits
 //! it to the model it goes to and sends it. Its reply's tool calls are
-//! [`ToolRequest`] effects; a reply's read-only calls run side by side and
-//! the others alone, in order, as their [`Footprint`]s say ([`Waiting`]),
-//! and once every one settled their results go back in call order and the
+//! [`ToolRequest`] effects; a reply's calls run side by side unless an
+//! earlier one writes what a later one touches, as their [`Footprint`]s
+//! say ([`Waiting`]), and once every one settled their results go back in call order and the
 //! next [`TurnCall`] is spawned. rig-core's turn-failure rule decides when
 //! a reply ends the turn instead. A model call that failed gets the
 //! [`RETRY`] policy's [`RetryVerdict`] in Arrive, which Review may read,
-//! replace or act on by superseding the call; Commit carries out what is
+//! edit in place or act on by superseding the call; Commit carries out what is
 //! left: a [`Backoff`] then a new call, or the turn's end. A call refused
 //! before it was sent ends the turn and keeps the user's message. Each
 //! turn counts its retries in its [`Recovery`]. Every end the kernel
 //! decides is a [`TurnOutcome`] proposed on the turn, which Review may
-//! replace, hold or carry on from; once nothing holds it and every call of
+//! edit in place, hold or carry on from; once nothing holds it and every call of
 //! the turn settled, Commit ends the turn and marks it [`Settled`] for
 //! the readers of how it ended. [`Interrupt`] ends it at once.
 
@@ -44,15 +44,15 @@ use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
-use rig_core::streaming::{Item, Relayed, StreamEvent};
+use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
 use rig_core::transcript::close_pending_with;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Condensed, Conversation, EffectParent, Halt,
-    Interrupt, LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf,
-    TurnOutcome, TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Halt, Interrupt,
+    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
+    TurnsStarted,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on};
@@ -62,8 +62,8 @@ use super::prompt::{
     PromptSection, SectionOf, ToolRules, swap_tool_rules, system_prompt, tool_rules,
 };
 use super::stage::{
-    Admitted, Effect, ForAgent, HoldOf, Holds, Outcome, Settled, Stage, Started, SupersededBy,
-    Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
+    Admitted, Effect, ForAgent, HoldOf, Holds, IfStopped, Outcome, Settled, Stage, Started,
+    SupersededBy, Supersedes, Waiting, cancel, despawn_holds, failed_in, release,
 };
 use super::tools::{Footprint, ToolDef, ToolRequest};
 
@@ -107,10 +107,10 @@ impl Backoff {
 
 /// A model call: an effect entity whose request is `request`, sent to
 /// `connection`, else to the model of the agent it is [`ForAgent`], as its
-/// `adapters` change that model. Its [`Outcome`] is rig-core's
+/// [`Adapters`] change that model. Its [`Outcome`] is rig-core's
 /// `Outcome::Completion` (see [`Outcome::completion`]). Prepare may change
 /// the request, the connection and the adapters; Start then takes the
-/// model it goes to, applies the adapters to it in order, fits the request
+/// model it goes to, applies the adapters to it, fits the request
 /// to the result (an option the model cannot take is left out, as
 /// none) and sends it streamed, recording on the call where it went
 /// ([`SentTo`]). A [`TurnCall`] or [`BuildFrom`] has its
@@ -118,16 +118,13 @@ impl Backoff {
 /// such as a summary, brings its own with [`ModelRequest::new`].
 #[derive(Component, Reflect, Clone)]
 #[reflect(opaque, Component, Clone)]
-#[require(Effect)]
+#[require(Effect, Adapters)]
 pub struct ModelRequest {
     /// The request.
     pub request: CompletionRequest,
     /// The model it goes to, when not its agent's, such as a fallback
     /// model; `Models::connect` makes one.
     pub connection: Option<Connection>,
-    /// What changes the model it goes to, whichever that is, applied in
-    /// order at Start, such as a wrap that sends tools as text.
-    pub adapters: Vec<Adapter>,
     /// The tool rules the kernel wrote in the system prompt when it built
     /// the request, swapped at Start for those of the tools it carries.
     rules: Option<String>,
@@ -139,7 +136,6 @@ impl ModelRequest {
         Self {
             request,
             connection: None,
-            adapters: Vec::new(),
             rules: None,
         }
     }
@@ -174,7 +170,25 @@ impl ModelRequest {
 #[derive(Component, Clone)]
 pub struct SentTo(pub Connection);
 
-/// A change to the model a call goes to, on its [`ModelRequest`]: Start
+/// The adapters of a model call, applied to its final [`Connection`] at
+/// Start: those placed [`outermost`](Adapter::outermost) last, each group
+/// in the order pushed. Its own component beside the [`ModelRequest`], so
+/// pushing an adapter and editing the request are different data: push in
+/// Prepare, `Query<&mut Adapters, Added<Admitted>>`.
+#[derive(Component, Clone, Default, Debug)]
+pub struct Adapters(pub Vec<Adapter>);
+
+impl Adapters {
+    /// `connection`, as these adapters change it.
+    pub fn apply(&self, connection: Connection) -> Connection {
+        let placed = |outermost| self.0.iter().filter(move |it| it.outermost == outermost);
+        placed(false)
+            .chain(placed(true))
+            .fold(connection, |connection, adapter| adapter.apply(connection))
+    }
+}
+
+/// A change to the model a call goes to, in its [`Adapters`]: Start
 /// applies it to the call's final [`Connection`], after every Prepare edit,
 /// so routing a call (its `connection`) and adapting it commute. It may
 /// wrap the handler, such as with a stream transform, and change the spec
@@ -184,6 +198,7 @@ pub struct SentTo(pub Connection);
 pub struct Adapter {
     /// What it does, for readers, such as `text-tools`.
     pub name: Cow<'static, str>,
+    outermost: bool,
     apply: Arc<dyn Fn(Connection) -> Connection + Send + Sync>,
 }
 
@@ -195,7 +210,19 @@ impl Adapter {
     ) -> Self {
         Self {
             name: name.into(),
+            outermost: false,
             apply: Arc::new(apply),
+        }
+    }
+
+    /// This adapter, applied after every adapter not placed outermost: it
+    /// sees what every other adapter made of the model, such as a local
+    /// model's wrap or a recording that replaces the adapted handler.
+    #[must_use]
+    pub fn outermost(self) -> Self {
+        Self {
+            outermost: true,
+            ..self
         }
     }
 
@@ -233,7 +260,7 @@ pub struct BuildFrom(pub Entity);
 
 /// On a model call whose handler failed: what the [`RETRY`] policy says,
 /// put by the kernel in Arrive with the turn's [`Recovery`]. Review may
-/// read it, replace it, or take the failure over by superseding the call;
+/// read it, edit it in place (`Query<&mut RetryVerdict>`), or take the failure over by superseding the call;
 /// for a [`TurnCall`], Commit carries out what is left: `Retry` waits a
 /// [`Backoff`] and sends a new call, `GaveUp` ends the turn and keeps the
 /// user's message, `Overflow` and `Final` end it and take the message out.
@@ -247,10 +274,10 @@ pub(crate) struct Feed(Receiver<Fed>);
 
 /// What a model call's stream feeds its entity.
 pub(crate) enum Fed {
-    /// The stream's first item came, of any kind.
-    First(web_time::SystemTime),
-    /// A fragment of text or reasoning.
-    Delta(DeltaKind, String),
+    /// An item of any kind came at this time, the reply's end too.
+    Item(web_time::SystemTime),
+    /// A fragment of text, reasoning or tool-call arguments, of a part.
+    Delta(DeltaKind, Part, String),
 }
 
 /// What a [`StreamDelta`] streamed.
@@ -260,13 +287,16 @@ pub enum DeltaKind {
     Text,
     /// Reasoning text.
     Reasoning,
+    /// A tool call's raw argument JSON.
+    Arguments,
 }
 
-/// A fragment of text or reasoning a model call streamed, any model call,
-/// written in [`Stage::Arrive`] in the order it came, before the call's
-/// outcome is applied. Bevy keeps a message at least two frames, so a reader in
-/// `PostUpdate` sees the last fragments of a reply that settled this
-/// frame. A [`TurnCall`]'s fragments also add up in its [`Partial`].
+/// A fragment of text, reasoning or tool-call arguments a model call
+/// streamed, any model call, written in [`Stage::Arrive`] in the order it
+/// came, before the call's outcome is applied. Bevy keeps a message at
+/// least two frames, so a reader in `PostUpdate` sees the last fragments
+/// of a reply that settled this frame. A [`TurnCall`]'s text and reasoning
+/// also add up in its [`Partial`].
 #[derive(Message, Clone, Debug)]
 pub struct StreamDelta {
     /// The model call.
@@ -275,17 +305,27 @@ pub struct StreamDelta {
     pub agent: Option<Entity>,
     /// What it is.
     pub kind: DeltaKind,
+    /// The part of the reply it belongs to, which tells the arguments of
+    /// parallel tool calls apart.
+    pub part: Part,
     /// The text.
     pub text: String,
 }
 
-/// When a model call's stream sent its first item of any kind, such as
-/// text or a tool call: the time to the first token, beside its
-/// [`Started`]. It stays on the call until it is despawned.
+/// When a model call's stream sent its first and its latest item of any
+/// kind, such as text, a tool call or the reply's end, and how many it
+/// sent: the time to the first token beside its [`Started`], stalls, and
+/// when the reply ended. On the call from its first item until it is
+/// despawned.
 #[derive(Component, Clone, Copy, Debug)]
-pub struct FirstChunk {
-    /// The wall-clock time.
-    pub at: web_time::SystemTime,
+pub struct Streamed {
+    /// The wall-clock time of the first item.
+    pub first: web_time::SystemTime,
+    /// The wall-clock time of the latest item; the reply's end once it
+    /// ended.
+    pub last: web_time::SystemTime,
+    /// How many items came, the end included.
+    pub items: u64,
 }
 
 /// Model calls wait on the network: they run on the IO pool.
@@ -303,6 +343,7 @@ pub(crate) fn spawn_turn_call(commands: &mut Commands, turn: Entity, agent: Enti
 pub(crate) fn on_retry(
     retry: On<Retry>,
     mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
+    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -314,7 +355,7 @@ pub(crate) fn on_retry(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    if !conversation.resume() {
+    if !commit.resume(agent, &mut conversation) {
         notices.write(Notice::info(
             agent,
             "Nothing to retry: the model answered the last message.",
@@ -337,11 +378,10 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .commands()
         .entity(context.entity)
         .try_insert(ForAgent(agent));
-    let first_message = world.get::<Conversation>(agent).map_or(0, |conversation| {
-        let messages = conversation.messages();
-        let asks = matches!(messages.last(), Some(Message::User { .. }));
-        messages.len().saturating_sub(usize::from(asks))
-    });
+    let first_message = world
+        .get::<Conversation>(agent)
+        .map(Conversation::turn_start)
+        .unwrap_or_default();
     let index = match world.get_mut::<TurnsStarted>(agent) {
         Some(mut started) => {
             let index = started.0;
@@ -368,7 +408,7 @@ pub(crate) struct Ending {
 
 /// Stops a running turn at once. The text a streaming reply had sent is
 /// kept as the model's message, every tool call of the last reply gets a
-/// result, real or "interrupted", and every call of the turn that has not
+/// result, real, its [`IfStopped`] or "interrupted", and every call of the turn that has not
 /// settled is answered as interrupted and settled, whatever held it gone.
 /// The turn ends [`TurnOutcome::Stopped`]. The outcome is written to the
 /// log at once, so a log that ends mid-turn always means a crash or a
@@ -430,13 +470,15 @@ pub(crate) fn on_interrupt(
 }
 
 /// The results of a reply's tool calls, in call order: each answered
-/// call's result, and `missing` for the others, else nothing for them.
+/// call's result, else what it says its result is if stopped
+/// ([`IfStopped`]), and `missing` for the others, else nothing for them.
 /// `None` when that leaves no result.
 fn reply_results(calls: Vec<ReplyCallItem>, missing: Option<&ToolResult>) -> Option<Message> {
     let results: Vec<_> = calls
         .into_iter()
         .filter_map(|call| {
-            let result = call.outcome.map(Outcome::tool_result);
+            let outcome = call.outcome.or(call.if_stopped.map(|stopped| &stopped.0));
+            let result = outcome.map(Outcome::tool_result);
             Some(
                 call.request
                     .call
@@ -539,7 +581,6 @@ pub(crate) struct Builder {
     prompt: &'static SystemPrompt,
     access: &'static ToolAccess,
     conversation: &'static mut Conversation,
-    condensed: Option<&'static Condensed>,
     parent: Option<&'static EffectParent>,
 }
 
@@ -566,7 +607,7 @@ pub(crate) struct Parts<'w, 's> {
 /// Builds the [`ModelRequest`] of each [`TurnCall`] and [`BuildFrom`]
 /// admitted this pass without one, in [`Stage::Admit`]: the agent's system
 /// prompt with the rules of the tools it is offered and its prompt
-/// sections, its conversation after its [`Condensed`] summary, the tools,
+/// sections, its conversation, the tools,
 /// sorted by name so the prompt cache keeps them, and its model's options
 /// with its reasoning setting. A turn's call first delivers the steering
 /// messages and notes its agent accepted meanwhile. A call the kernel
@@ -621,10 +662,7 @@ pub(crate) fn build_requests(
             let into = (turn, &mut commands);
             commit.deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
-        let messages = match builder.condensed {
-            Some(condensed) => condensed.request(builder.conversation.messages()),
-            None => builder.conversation.messages().to_vec(),
-        };
+        let messages = builder.conversation.messages().to_vec();
         if call.turn_call && messages.is_empty() {
             let why = ErrorReport::new(ErrorKind::Internal, "The conversation is empty.");
             commands
@@ -678,7 +716,6 @@ fn build(
     ModelRequest {
         request,
         connection: builder.connection.cloned(),
-        adapters: Vec::new(),
         rules: Some(rules),
     }
 }
@@ -704,15 +741,19 @@ impl ModelStarts<'_, '_> {
     /// agent's model, as its adapters change it, its request fitted to
     /// that and, when the kernel built it, with the rules of the tools it
     /// carries; refused without a model.
-    pub(crate) fn start(&self, model: &mut ModelRequest, agent: Option<Entity>) -> ModelStart {
+    pub(crate) fn start(
+        &self,
+        model: &mut ModelRequest,
+        adapters: Option<&Adapters>,
+        agent: Option<Entity>,
+    ) -> ModelStart {
         let own = agent.and_then(|agent| self.agents.get(agent).ok());
-        let Some(connection) = model.connection.as_ref().or(own).cloned() else {
+        let Some(mut connection) = model.connection.as_ref().or(own).cloned() else {
             return ModelStart::Refused(ErrorReport::new(ErrorKind::HandlerUnavailable, NO_MODEL));
         };
-        let connection = model
-            .adapters
-            .iter()
-            .fold(connection, |connection, adapter| adapter.apply(connection));
+        if let Some(adapters) = adapters {
+            connection = adapters.apply(connection);
+        }
         let spec = &connection.spec;
         let request = &mut model.request;
         if !spec.tools {
@@ -740,34 +781,43 @@ impl ModelStarts<'_, '_> {
     }
 }
 
-/// Streams the reply, feeding `feed` when its first item comes and with
-/// its text and reasoning, waking the loop for each, and returns the
-/// response the provider ended it with.
+/// Streams the reply, feeding `feed` when each item comes and with its
+/// text, reasoning and tool-call arguments, waking the loop for each, and
+/// returns the response the provider ended it with.
 pub(crate) async fn stream_reply(
     reply: Reply,
     feed: Sender<Fed>,
     wake: Wake,
 ) -> Result<effect::Outcome, ErrorReport> {
     let mut events = reply.into_stream();
-    let mut first = true;
     while let Some(item) = events.next().await {
-        if first && item.is_ok() {
-            first = false;
-            // The call may be gone; the reply still finishes.
-            feed.send(Fed::First(web_time::SystemTime::now())).ok();
-        }
-        let delta = match item {
-            Ok(Relayed::Done(response)) => return Ok(effect::Outcome::Completion(*response)),
+        let event = match item {
             Err(report) => return Err(report),
-            Ok(Relayed::Item(Item::Event(StreamEvent::Text { text, .. }))) => {
-                Fed::Delta(DeltaKind::Text, text)
+            // Where the reply is from, before its first item.
+            Ok(Relayed::Origin(_)) => continue,
+            Ok(Relayed::Done(response)) => {
+                // The call may be gone; the reply still finishes.
+                feed.send(Fed::Item(web_time::SystemTime::now())).ok();
+                return Ok(effect::Outcome::Completion(*response));
             }
-            Ok(Relayed::Item(Item::Event(StreamEvent::Reasoning { text, .. }))) => {
-                Fed::Delta(DeltaKind::Reasoning, text)
-            }
-            Ok(_) => continue,
+            Ok(Relayed::Item(item)) => item,
         };
-        feed.send(delta).ok();
+        feed.send(Fed::Item(web_time::SystemTime::now())).ok();
+        let delta = match event {
+            Item::Event(StreamEvent::Text { part, text }) => {
+                Some(Fed::Delta(DeltaKind::Text, part, text))
+            }
+            Item::Event(StreamEvent::Reasoning { part, text }) => {
+                Some(Fed::Delta(DeltaKind::Reasoning, part, text))
+            }
+            Item::Event(StreamEvent::Arguments { part, json }) => {
+                Some(Fed::Delta(DeltaKind::Arguments, part, json))
+            }
+            _ => None,
+        };
+        if let Some(delta) = delta {
+            feed.send(delta).ok();
+        }
         wake.wake();
     }
     Err(stream_truncated())
@@ -782,26 +832,47 @@ pub(crate) fn feed() -> (Sender<Fed>, Feed) {
 
 /// Reads what each model call streamed, in [`Stage::Arrive`] after the
 /// finished calls' outcomes, so a reply that finished has fed it all: its
-/// [`FirstChunk`], a [`StreamDelta`] per fragment, in order, and the
-/// fragments into its [`Partial`], if it has one.
+/// [`Streamed`], a [`StreamDelta`] per fragment, in order, and the text
+/// and reasoning into its [`Partial`], if it has one.
 pub(crate) fn stream_partials(
-    mut calls: Query<(Entity, &Feed, Option<&mut Partial>, Option<&ForAgent>)>,
+    mut calls: Query<(
+        Entity,
+        &Feed,
+        Option<&mut Partial>,
+        Option<&mut Streamed>,
+        Option<&ForAgent>,
+    )>,
     mut deltas: MessageWriter<StreamDelta>,
     mut commands: Commands,
 ) {
-    for (effect, feed, mut partial, agent) in &mut calls {
+    for (effect, feed, mut partial, mut streamed, agent) in &mut calls {
+        // The stamp of a call whose first item came now.
+        let mut first: Option<Streamed> = None;
         for fed in feed.0.try_iter() {
-            let (kind, text) = match fed {
-                Fed::First(at) => {
-                    commands.entity(effect).try_insert(FirstChunk { at });
+            let (kind, part, text) = match fed {
+                Fed::Item(at) => {
+                    match streamed.as_deref_mut().or(first.as_mut()) {
+                        Some(stamp) => {
+                            stamp.last = at;
+                            stamp.items += 1;
+                        }
+                        None => {
+                            first = Some(Streamed {
+                                first: at,
+                                last: at,
+                                items: 1,
+                            });
+                        }
+                    }
                     continue;
                 }
-                Fed::Delta(kind, text) => (kind, text),
+                Fed::Delta(kind, part, text) => (kind, part, text),
             };
             if let Some(partial) = partial.as_mut() {
                 match kind {
                     DeltaKind::Text => partial.text.push_str(&text),
                     DeltaKind::Reasoning => partial.reasoning.push_str(&text),
+                    DeltaKind::Arguments => {}
                 }
             }
             let agent = agent.map(|agent| agent.0);
@@ -809,8 +880,12 @@ pub(crate) fn stream_partials(
                 effect,
                 agent,
                 kind,
+                part,
                 text,
             });
+        }
+        if let Some(first) = first {
+            commands.entity(effect).try_insert(first);
         }
     }
 }
@@ -916,29 +991,33 @@ pub(crate) fn back_off(
 
 /// Answers every admitted call of a failed or stopped turn that has not
 /// settled, in [`Stage::Commit`] before the kernel settles: one not
-/// answered yet as stopped, which cancels it if it runs, and whatever holds
-/// them is despawned, so they settle in this pass and the turn can end. A
+/// answered yet with its [`IfStopped`], else as stopped, which cancels it
+/// if it runs, and whatever holds them is despawned, so they settle in this pass and the turn can end. A
 /// call spawned since the last pass is left for Admit, where a new
 /// [`TurnCall`] carries the turn on.
 pub(crate) fn stop_calls(
     turns: Query<(&TurnOutcome, &Calls), With<TurnOf>>,
-    calls: Query<(Has<Outcome>, Option<&Holds>), (With<Admitted>, Without<Settled>)>,
+    calls: Query<
+        (Has<Outcome>, Option<&Holds>, Option<&IfStopped>),
+        (With<Admitted>, Without<Settled>),
+    >,
     mut commands: Commands,
 ) {
     for (ending, of) in &turns {
         let Some(why) = ending.stops() else {
             continue;
         };
-        for (call, (answered, holds)) in of
+        for (call, (answered, holds, if_stopped)) in of
             .iter()
             .filter_map(|call| Some((call, calls.get(call).ok()?)))
         {
             release(&mut commands, holds);
             if !answered {
-                let stopped = ErrorReport::new(ErrorKind::Cancelled, why.clone());
-                commands
-                    .entity(call)
-                    .try_insert_if_new(Outcome(Err(stopped)));
+                let stopped = match if_stopped {
+                    Some(IfStopped(outcome)) => outcome.clone(),
+                    None => Outcome(Err(ErrorReport::new(ErrorKind::Cancelled, why.clone()))),
+                };
+                commands.entity(call).try_insert_if_new(stopped);
             }
         }
     }
@@ -1152,8 +1231,8 @@ fn drop_unanswered(
             if !content.iter().any(|item| matches!(item, UserContent::ToolResult(_))))
     });
     if unanswered {
-        let len = conversation.messages().len().saturating_sub(1);
-        commit.truncate(agent, conversation, len);
+        let last = conversation.messages().len().saturating_sub(1);
+        commit.splice(agent, conversation, last.., []);
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",
@@ -1195,6 +1274,7 @@ pub(crate) struct ReplyCall {
     effect: &'static Effect,
     request: &'static ToolRequest,
     outcome: Option<&'static Outcome>,
+    if_stopped: Option<&'static IfStopped>,
     successor: Option<&'static SupersededBy>,
     footprint: Option<&'static Footprint>,
     settled: Has<Settled>,
@@ -1233,23 +1313,28 @@ fn reply_calls<'a>(
     asked
 }
 
-/// Marks each call of a running reply [`Waiting`] while an earlier call it
-/// must not run beside is not settled, and takes the mark off once none
-/// is, in [`Stage::Admit`](super::stage::Stage::Admit). A held call holds
-/// back the calls after it; a refused one, once it settled, does not.
+/// Marks each call of a running reply [`Waiting`] while an earlier call
+/// whose [`Footprint`] conflicts with its own is not settled, and takes
+/// the mark off once none is, when [`Stage::Gate`](super::stage::Stage::Gate)
+/// opens. A held call holds back the calls after it that conflict with it;
+/// a refused one, once it settled, does not. A call not yet admitted may
+/// change anything.
 pub(crate) fn wait_in_order(
     turns: Query<(&Turn, &Calls)>,
     replies: Query<ReplyCall>,
     mut commands: Commands,
 ) {
+    let anything = Footprint::default();
     for (state, calls) in &turns {
         let Some(reply) = state.reply else {
             continue;
         };
-        let mut earlier: Vec<Footprint> = Vec::new();
+        let mut earlier: Vec<&Footprint> = Vec::new();
         for call in reply_calls(reply, calls, &replies) {
-            let footprint = call.footprint.copied().unwrap_or_default();
-            let waits = earlier.iter().any(|&before| footprint.waits_for(before));
+            let footprint = call.footprint.unwrap_or(&anything);
+            let waits = earlier
+                .iter()
+                .any(|before| footprint.0.conflicts_with(&before.0));
             let open = !call.started && call.outcome.is_none() && !call.settled;
             if open && waits != call.waiting {
                 let mut entity = commands.entity(call.entity);

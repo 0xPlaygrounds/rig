@@ -35,7 +35,7 @@ fn cargo(args: &[&str]) -> Step {
 /// The rig agent's packages, none of them a default member: the kernel,
 /// the core and its libraries, every plugin crate of `plugins/`, and their
 /// test support.
-pub(crate) const HARNESS_PACKAGES: [&str; 18] = [
+pub(crate) const HARNESS_PACKAGES: [&str; 19] = [
     "rig-ecs",
     "rig-tools",
     "rig-harness",
@@ -54,6 +54,7 @@ pub(crate) const HARNESS_PACKAGES: [&str; 18] = [
     "rig-telemetry",
     "rig-tui",
     "rig-harness-test-support",
+    "rig-defaults-test-support",
 ];
 /// The plugin corpus (`corpus/*`), as one cargo package glob: plugins
 /// written against the harness's public API to shape and prove the kernel,
@@ -91,6 +92,7 @@ pub(super) fn all() -> Vec<Check> {
                 Step::new("@fixture-paths", &[]),
                 Step::new("@ecs-boundary", &[]),
                 Step::new("@options-guards", &[]),
+                Step::new("@stage-order", &[]),
                 Step::new(
                     "node",
                     &[

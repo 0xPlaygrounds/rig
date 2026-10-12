@@ -62,6 +62,47 @@ fn a_label_is_kept_with_the_session_and_shown_in_its_line() {
     fs::remove_dir_all(home.root()).ok();
 }
 
+#[test]
+fn naming_another_session_changes_only_its_title() {
+    let home = home("name");
+    let other: SessionId = "1-1".parse().unwrap_or_else(|_| SessionId::generate());
+    let dir = home.session(&other);
+    fs::create_dir_all(dir.path()).ok();
+    fs::write(dir.path().join("a1.jsonl"), "").ok();
+    let before = Meta {
+        title: SessionTitle {
+            name: None,
+            typed: "Fix the parser".to_owned(),
+        },
+        cost: Some(0.5),
+        tokens: 1234,
+        updated: 1000,
+        ..Meta::default()
+    };
+    assert!(write_json(&dir.meta(), &before).is_ok());
+    let Some(mut app) = running(&home, "2-2") else {
+        return;
+    };
+    app.world_mut().trigger(NameSession {
+        session: other,
+        name: "The parser".to_owned(),
+    });
+    app.update();
+    let after = read_json::<Meta>(&dir.meta()).unwrap_or_default();
+    assert_eq!(after.title.name.as_deref(), Some("The parser"));
+    assert_eq!(after.title.typed, before.title.typed);
+    assert_eq!(
+        (after.cost, after.tokens, after.updated),
+        (before.cost, before.tokens, before.updated)
+    );
+    assert_eq!(app.world().resource::<SessionTitle>().name, None);
+    let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
+    let listed = list(&home, home.session(&running).path());
+    let labels: Vec<String> = listed.iter().map(SessionEntry::label).collect();
+    assert_eq!(labels, ["The parser"]);
+    fs::remove_dir_all(home.root()).ok();
+}
+
 #[cfg(feature = "tui")]
 #[test]
 fn resume_picks_from_the_sessions_of_the_apps_home() {

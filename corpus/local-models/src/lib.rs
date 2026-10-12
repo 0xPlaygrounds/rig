@@ -9,31 +9,35 @@
 //!   connect to their server's OpenAI-compatible `/v1`. So `/model`, the
 //!   picker, `--model`, the saved choice, usage and cost take them like any
 //!   other model.
-//! - A model the server stops listing, or whose server is down, is marked
-//!   unavailable: the vendor's provider refuses to connect it with "Ollama
-//!   not running at …" (so the picker notes it so, and choosing it fails),
-//!   and a model call of an agent already connected to it is refused at the
-//!   gate with the same words. An endpoint that is down is skipped with one
-//!   debug line. A saved choice of a local model connects once a probe
-//!   finds it (the kernel reconnects when the catalog changes).
-//! - A model without tool support is offered none (the kernel's rule for a
-//!   catalog entry without tools), and the system prompt of each call that
-//!   finally goes to it says so: an adapter pushed at the gate, after every
-//!   Prepare system pushed its own, so it sees the model as the other
-//!   adapters left it. A plugin that gives the model tools as text
-//!   (spec 59) says it takes tools, and the line is left out.
+//! - Each model call gets an outermost adapter, which sees the model the
+//!   call finally goes to as every other adapter left it. When that is a
+//!   local model, the adapter:
+//!   - refuses the call with "Ollama not running at …" while the model is
+//!     unavailable: its server stopped listing it, or is down. The vendor's
+//!     provider refuses to connect it with the same words, so the picker
+//!     notes it so and choosing it fails. An endpoint that is down is
+//!     skipped with one debug line. A saved choice of a local model
+//!     connects once a probe finds it (the kernel reconnects when the
+//!     catalog changes);
+//!   - when the model takes no tools, adds a line saying so to the system
+//!     prompt. The kernel already offers it none; a plugin that gives it
+//!     tools as text (spec 59) says it takes tools, and the line is left
+//!     out.
 //! - An agent connected to an Ollama model sends it a small warm-up
 //!   request, so the first turn does not wait for the model to load.
+//! - Probes, warm-ups and model calls go through the connector's HTTP
+//!   transport, so its wrappers see them all.
 
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy_log::{debug, warn};
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing};
+use rig_harness::rig_core::catalog::{Catalog, ModelSpec, Pricing, Transport};
 use rig_harness::rig_core::completion::Message;
 use rig_harness::rig_core::effect::{EffectId, EffectKind, Outcome as Answered};
-use rig_harness::rig_core::error::ErrorReport;
+use rig_harness::rig_core::error::{ErrorKind, ErrorReport};
 use rig_harness::rig_core::http_client::{
     DynHttpClient, HttpClientExt, LazyBody, Method, Request, Response,
 };
@@ -48,9 +52,9 @@ use serde_json::{Value, json};
 /// The vendor local models are filed under: `local/<name>`.
 pub const VENDOR: &str = "local";
 
-/// The adapter that tells a local model without tools so, and the tag of
-/// what it adds to the system prompt.
-const NO_TOOLS_TAG: &str = "local_model";
+/// The adapter of calls to local models, and the tag of what it adds to the
+/// system prompt.
+const TAG: &str = "local_model";
 
 /// What the system prompt says to a model that cannot call tools.
 pub const NO_TOOLS: &str = "This model cannot call tools, so none are offered. Answer in text, \
@@ -170,9 +174,10 @@ impl LocalModel {
     }
 }
 
-/// Every local model found, by its server's name for it.
-#[derive(Resource, Default)]
-pub struct LocalModels(BTreeMap<String, LocalModel>);
+/// Every local model found, by its server's name for it. Each probe makes
+/// a new map, which the vendor's provider and each call's adapter keep.
+#[derive(Resource, Clone, Default)]
+pub struct LocalModels(Arc<BTreeMap<String, LocalModel>>);
 
 impl LocalModels {
     /// The model a server calls `name`.
@@ -192,6 +197,12 @@ impl LocalModels {
 #[derive(Default)]
 pub struct LocalModelsPlugin;
 
+/// The plugin's stage system, for others to order against: in Prepare, it
+/// pushes the outermost adapter of calls to local models, in
+/// [`PrepareSystems::Edit`], before compaction measures the adapted call.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct LocalModelSystems;
+
 impl Plugin for LocalModelsPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<LocalModelsConfig>("local_models")
@@ -202,10 +213,8 @@ impl Plugin for LocalModelsPlugin {
                 models_command,
             )
             .add_systems(Startup, probe_at_startup)
-            .add_systems(
-                AgentPass,
-                (refuse_unavailable, say_no_tools).in_set(Stage::Gate),
-            )
+            .configure_sets(AgentPass, LocalModelSystems.in_set(PrepareSystems::Edit))
+            .add_systems(AgentPass, adapt.in_set(LocalModelSystems))
             .add_observer(found)
             .add_observer(warm_up);
     }
@@ -230,15 +239,25 @@ fn io_pool() -> &'static TaskPool {
     IoTaskPool::get_or_init(TaskPool::default)
 }
 
-fn probe_at_startup(config: Res<LocalModelsConfig>, wake: Res<Wake>, mut commands: Commands) {
-    start_probe(&mut commands, &config, &wake);
+/// The shared HTTP client, through the connector's wrappers.
+fn client(models: &Models) -> DynHttpClient {
+    models.0.transport().wrap(rig_reqwest::shared())
+}
+
+fn probe_at_startup(
+    config: Res<LocalModelsConfig>,
+    models: Res<Models>,
+    wake: Res<Wake>,
+    mut commands: Commands,
+) {
+    start_probe(&mut commands, &config, &models, &wake);
 }
 
 /// Probes every endpoint, in the background; [`found`] takes the result.
-fn start_probe(commands: &mut Commands, config: &LocalModelsConfig, wake: &Wake) {
+fn start_probe(commands: &mut Commands, config: &LocalModelsConfig, models: &Models, wake: &Wake) {
     let endpoints = config.endpoints.clone();
+    let http = client(models);
     let work = async move {
-        let http = rig_reqwest::shared();
         let mut probed = Probed::new();
         for endpoint in endpoints {
             let found = match endpoint.server {
@@ -376,16 +395,17 @@ fn found(
     };
     let probed = std::mem::take(&mut probe.0);
     commands.entity(done.entity).despawn();
+    let found_now = Arc::make_mut(&mut local.0);
     for (endpoint, result) in probed {
         let listed = result.unwrap_or_else(|why| {
             debug!("no local models at {}: {why}", endpoint.base());
             Vec::new()
         });
-        for model in local.0.values_mut().filter(|it| it.endpoint == endpoint) {
+        for model in found_now.values_mut().filter(|it| it.endpoint == endpoint) {
             model.available = listed.iter().any(|found| found.name == model.name);
         }
         for found in listed {
-            let earlier = local.0.get(&found.name);
+            let earlier = found_now.get(&found.name);
             if earlier.is_some_and(|it| it.endpoint != endpoint && it.available) {
                 continue;
             }
@@ -396,7 +416,7 @@ fn found(
                 tools: found.tools,
                 available: true,
             };
-            local.0.insert(found.name, model);
+            found_now.insert(found.name, model);
         }
     }
     let vendor = match ProviderId::declare(VENDOR) {
@@ -404,92 +424,88 @@ fn found(
         Err(why) => return warn!("cannot declare the `{VENDOR}` vendor: {why}"),
     };
     let catalog = models.0.catalog_mut();
-    for model in local.0.values() {
+    for model in found_now.values() {
         catalog.insert(model.spec(vendor));
     }
-    let servers = local.0.clone();
-    models
-        .0
-        .provide(vendor, move |spec: &ModelSpec, catalog: &Catalog| {
-            serve(&servers, spec, catalog)
-        });
+    let servers = local.clone();
+    models.0.provide(
+        vendor,
+        move |spec: &ModelSpec, catalog: &Catalog, transport: &Transport| {
+            serve(&servers, spec, catalog, transport)
+        },
+    );
 }
 
-/// The local model `spec` on its server's OpenAI-compatible `/v1`, or why
-/// it cannot be reached.
+/// The local model `spec` on its server's OpenAI-compatible `/v1`, through
+/// `transport`, or why it cannot be reached.
 fn serve(
-    servers: &BTreeMap<String, LocalModel>,
+    servers: &LocalModels,
     spec: &ModelSpec,
     catalog: &Catalog,
+    transport: &Transport,
 ) -> Result<ErasedHandler, ConnectError> {
     let model = servers
-        .get(&spec.id)
+        .of(spec)
         .ok_or_else(|| ConnectError::Provider(format!("no local server lists {}", spec.id)))?;
     let endpoint = &model.endpoint;
     if !model.available {
         return Err(ConnectError::Provider(endpoint.down()));
     }
     let served = format!("{}/{}", endpoint.server.dialect(), spec.id);
-    let options = ConnectOptions::new().base_url(format!("{}/v1", endpoint.base()));
+    let options = ConnectOptions::new()
+        .base_url(format!("{}/v1", endpoint.base()))
+        .http(transport.wrap(rig_reqwest::shared()));
     let model = catalog.connect_with(served.as_str(), options)?;
     let adapter = ModelAdapter::<Completion>::new(spec.reference(), model);
     Ok(ErasedHandler::new(adapter))
 }
 
-/// Refuses a model call to a local model that is unavailable, before it is
-/// sent.
-fn refuse_unavailable(
-    calls: Query<(Entity, &ModelRequest, Option<&ForAgent>, Option<&BuildFrom>), Undecided>,
-    agents: Query<&Connection, With<Agent>>,
-    local: Res<LocalModels>,
-    mut commands: Commands,
-) {
-    for (call, request, for_agent, from) in &calls {
-        let agent = from.map(|it| it.0).or(for_agent.map(|it| it.0));
-        let own = agent.and_then(|agent| agents.get(agent).ok());
-        let Some(connection) = request.connection.as_ref().or(own) else {
-            continue;
+/// Gives each model call the outermost adapter that serves a local model:
+/// it sees the model the call finally goes to, whoever routed or adapted
+/// it, with the local models as they are now.
+fn adapt(mut calls: Query<&mut Adapters, Added<Admitted>>, local: Res<LocalModels>) {
+    for mut adapters in &mut calls {
+        let local = local.clone();
+        let adapter = Adapter::new(TAG, move |connection| local.adapt(connection));
+        adapters.0.push(adapter.outermost());
+    }
+}
+
+impl LocalModels {
+    /// `connection`, when it is a local model, refusing calls while the
+    /// model is unavailable, and saying so in the system prompt when it
+    /// takes no tools.
+    fn adapt(&self, mut connection: Connection) -> Connection {
+        let Some(model) = self.of(&connection.spec) else {
+            return connection;
         };
-        if let Some(model) = local.of(&connection.spec)
-            && !model.available
-        {
-            let refused = Outcome::refused(model.endpoint.down());
-            commands.entity(call).insert_if_new(refused);
-        }
+        let layer = match (model.available, connection.spec.tools) {
+            (false, _) => Local::Down(model.endpoint.down()),
+            (true, false) => Local::NoTools,
+            (true, true) => return connection,
+        };
+        connection.handler = Handler(connection.handler.0.layered(layer));
+        connection
     }
 }
 
-/// Gives each model call about to start the adapter that tells a local
-/// model without tools so. Pushed at the gate, it comes after every adapter
-/// Prepare systems pushed, so it sees the model the call finally goes to.
-fn say_no_tools(mut calls: Query<&mut ModelRequest, Undecided>) {
-    for mut call in &mut calls {
-        if call.adapters.iter().all(|it| it.name != NO_TOOLS_TAG) {
-            call.adapters.push(Adapter::new(NO_TOOLS_TAG, no_tools));
-        }
-    }
+/// What a call to a local model needs on its way.
+enum Local {
+    /// Refused: its server is down or no longer lists it, for this reason.
+    Down(String),
+    /// [`NO_TOOLS`] added to its system prompt.
+    NoTools,
 }
 
-/// `connection`, when it is a local model that takes no tools, with the
-/// system prompt saying so.
-fn no_tools(mut connection: Connection) -> Connection {
-    let spec = &connection.spec;
-    if spec.tools || spec.provider.vendor() != VENDOR {
-        return connection;
-    }
-    connection.handler = Handler(connection.handler.0.layered(SayNoTools));
-    connection
-}
-
-/// Adds [`NO_TOOLS`] to a completion request's system prompt.
-struct SayNoTools;
-
-impl Intercept for SayNoTools {
+impl Intercept for Local {
     fn name(&self) -> String {
-        NO_TOOLS_TAG.to_owned()
+        TAG.to_owned()
     }
 
     async fn before(&self, _id: EffectId, kind: &EffectKind) -> Decision {
+        if let Self::Down(why) = self {
+            return Decision::Deny(ErrorReport::new(ErrorKind::Http, why).with_retryable(false));
+        }
         let EffectKind::Completion { request, stream } = kind else {
             return Decision::Proceed;
         };
@@ -497,9 +513,7 @@ impl Intercept for SayNoTools {
         let Some(Message::System { content }) = request.chat_history.first_mut() else {
             return Decision::Proceed;
         };
-        content.push_str(&format!(
-            "\n\n<{NO_TOOLS_TAG}>\n{NO_TOOLS}\n</{NO_TOOLS_TAG}>"
-        ));
+        content.push_str(&format!("\n\n<{TAG}>\n{NO_TOOLS}\n</{TAG}>"));
         Decision::Patch(EffectKind::Completion {
             request,
             stream: *stream,
@@ -523,6 +537,7 @@ fn warm_up(
     agents: Query<&Connection, With<Agent>>,
     local: Res<LocalModels>,
     config: Res<LocalModelsConfig>,
+    models: Res<Models>,
 ) {
     let Some(model) = agents
         .get(inserted.entity)
@@ -534,9 +549,9 @@ fn warm_up(
     if config.warm_up && model.available && model.endpoint.server == Server::Ollama {
         let url = format!("{}/api/generate", model.endpoint.base());
         let body = json!({ "model": model.name, "keep_alive": config.keep_alive });
+        let http = client(&models);
         io_pool()
             .spawn(async move {
-                let http = rig_reqwest::shared();
                 if let Err(why) = fetch(&http, Method::POST, &url, Some(body)).await {
                     debug!("the warm-up at {url} failed: {why}");
                 }
@@ -550,6 +565,7 @@ fn models_command(
     In(args): In<CommandArgs>,
     local: Res<LocalModels>,
     config: Res<LocalModelsConfig>,
+    models: Res<Models>,
     probes: Query<(), With<Probe>>,
     wake: Res<Wake>,
     mut commands: Commands,
@@ -558,7 +574,7 @@ fn models_command(
     match args.args.trim() {
         "refresh" => {
             if probes.is_empty() {
-                start_probe(&mut commands, &config, &wake);
+                start_probe(&mut commands, &config, &models, &wake);
             }
             notices.write(Notice::info(args.agent, "Looking for local models."));
         }

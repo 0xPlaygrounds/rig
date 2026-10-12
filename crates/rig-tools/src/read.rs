@@ -1,18 +1,32 @@
 //! The `read` tool.
 
-use rig_core::tool::{FilesRead, Tool, ToolContext, ToolExecutionError, args_schema};
+use std::path::PathBuf;
+
+use rig_core::tool::{
+    FileRead, FilesRead, Scope, Tool, ToolContext, ToolExecutionError, Touches, args_schema,
+    content_hash,
+};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
-use crate::fs::{absolute, read_text};
+use crate::fs::{place, read_text, resolve};
 use crate::{MAX_BYTES, MAX_FILE_BYTES, MAX_LINES, blocking, clip};
 
 /// Characters of one line shown; the rest of a longer line is cut.
 const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines. Publishes the file it read
-/// ([`FilesRead`]), by its absolute path.
-pub struct Read;
+/// ([`FilesRead`]), by its [resolved](crate::fs::resolve) path, with the
+/// hash of the bytes it read.
+#[derive(Clone, Debug, Default)]
+pub struct Read {
+    /// The directory a relative path is read from; `None` is this
+    /// process's working directory.
+    pub base: Option<PathBuf>,
+    /// Whether a path that resolves outside `base` is refused, before
+    /// anything is read.
+    pub confine: bool,
+}
 
 /// Arguments of [`Read`].
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -41,6 +55,22 @@ impl ReadArgs {
         self.offset = Some(offset);
         self.limit = Some(limit);
         self
+    }
+
+    /// What [`Read`] shows of `text`, the file's whole text, for this read:
+    /// its lines from `offset` (default 1), at most `limit` of them (default
+    /// and most [`MAX_LINES`]) and [`MAX_BYTES`], [numbered](numbered).
+    ///
+    /// ```
+    /// use rig_tools::ReadArgs;
+    ///
+    /// let shown = ReadArgs::new("a.txt").lines(2, 1).show("one\ntwo\nthree\n");
+    /// assert_eq!(shown, "     2\ttwo\n[1 more lines; read on with offset 3]\n");
+    /// ```
+    pub fn show(&self, text: &str) -> String {
+        let first = self.offset.unwrap_or(1);
+        let limit = self.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
+        numbered(text, first, limit, MAX_BYTES)
     }
 }
 
@@ -77,23 +107,32 @@ impl Tool for Read {
             .with_open_world(false)
     }
 
+    fn footprint(&self, args: &ReadArgs) -> Touches {
+        Touches::Reads(Scope::Paths(vec![resolve(
+            self.base.as_deref(),
+            &args.path,
+        )]))
+    }
+
     async fn call(
         &self,
         context: &mut ToolContext,
         args: ReadArgs,
     ) -> Result<String, ToolExecutionError> {
-        let path = absolute(&args.path);
-        let output = blocking(move || read(args)).await?;
-        context.insert_result(FilesRead(vec![path]))?;
+        let path = place(self.base.as_deref(), self.confine, &args.path)?
+            .to_string_lossy()
+            .into_owned();
+        let (output, hash) = blocking({
+            let path = path.clone();
+            move || {
+                let text = read_text(&path)?;
+                Ok::<_, ToolExecutionError>((args.show(&text), content_hash(text.as_bytes())))
+            }
+        })
+        .await?;
+        context.insert_result(FilesRead(vec![FileRead::new(path, hash)]))?;
         Ok(output)
     }
-}
-
-fn read(args: ReadArgs) -> Result<String, ToolExecutionError> {
-    let text = read_text(&args.path)?;
-    let first = args.offset.unwrap_or(1);
-    let limit = args.limit.unwrap_or(MAX_LINES).min(MAX_LINES);
-    Ok(numbered(&text, first, limit, MAX_BYTES))
 }
 
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows

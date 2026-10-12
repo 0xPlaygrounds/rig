@@ -1,19 +1,25 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
-//! `write` and `shell` alone. With the `tui` feature (on by default), each
-//! plugin also adds how the terminal view draws its tool's calls.
-//! [`AttachPlugin`] sends the files the user names as `@path` with the
-//! message.
+//! `write` and `shell` alone. A call of an agent with a [`WorkDir`] works
+//! there: its paths resolve from it, a path outside it is refused, and a
+//! command starts in it ([`PrepareSystems::Compose`]). With the `tui` feature
+//! (on by default), each plugin also adds how the terminal view draws its
+//! tool's calls. [`AttachPlugin`] sends the files the user names as
+//! `@path` with the message.
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, PoisonError, RwLock};
 
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, ForAgent, Incoming,
-    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, Processes, Query, Resource,
-    SessionPaths, Stage, SystemSet, Tool, ToolOptions,
+    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, ForAgent, Incoming,
+    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, PrepareSystems, Processes,
+    Query, Res, Resource, SessionPaths, Tool, ToolCalls, ToolOptions, ToolRequest, WorkDir,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
+use rig_harness::rig_core::serve::ErasedHandler;
+use rig_harness::rig_core::serve::adapters::ToolAdapter;
 use rig_harness::rig_core::tool::ToolContext;
+use rig_harness::rig_ecs::effects::Handler;
 use rig_tools::{Cut, Edit, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
@@ -21,8 +27,10 @@ use rig_tui::AppToolRenderersExt;
 #[cfg(feature = "tui")]
 mod looks;
 
-/// Options with `rules`; whether a tool's calls run beside others comes
-/// from its annotations: `read` and `search` only read.
+/// Options with `rules`; what each call touches, so calls on different
+/// files run side by side, the tool says: `read` and `search` read the
+/// path they name, `edit` and `write` write it, `shell` may change
+/// anything.
 fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
     ToolOptions {
         rules,
@@ -36,7 +44,11 @@ pub struct ReadTool;
 
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Read, options(Read::RULES));
+        app.add_tool_with(Read::default(), options(Read::RULES));
+        work_in_dir(app, |base| Read {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
     }
@@ -48,7 +60,11 @@ pub struct SearchTool;
 
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Search, options(Search::RULES));
+        app.add_tool_with(Search::default(), options(Search::RULES));
+        work_in_dir(app, |base| Search {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
     }
@@ -60,7 +76,11 @@ pub struct EditTool;
 
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Edit, options(Edit::RULES));
+        app.add_tool_with(Edit::default(), options(Edit::RULES));
+        work_in_dir(app, |base| Edit {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
     }
@@ -72,7 +92,11 @@ pub struct WriteTool;
 
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
-        app.add_tool_with(Write, options(Write::RULES));
+        app.add_tool_with(Write::default(), options(Write::RULES));
+        work_in_dir(app, |base| Write {
+            base: Some(base),
+            confine: true,
+        });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
     }
@@ -102,7 +126,13 @@ impl Plugin for ShellTool {
             },
             processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
             output,
+            dir: None,
         };
+        let in_dir = shell.clone();
+        work_in_dir(app, move |dir| SharedShell {
+            dir: Some(dir),
+            ..in_dir.clone()
+        });
         app.add_tool_with(shell, options(Shell::RULES));
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Shell::NAME, looks::shell);
@@ -136,12 +166,15 @@ impl Default for ShellOutput {
     }
 }
 
-/// [`Shell`], starting each command as [`Processes`] say at the time, and
-/// cutting its output as [`ShellOutput`] says.
+/// [`Shell`], starting each command as [`Processes`] say at the time, in
+/// `dir` when set, where a `cwd` outside it is refused, and cutting its
+/// output as [`ShellOutput`] says.
+#[derive(Clone)]
 struct SharedShell {
     shell: Shell,
     processes: Processes,
     output: ShellOutput,
+    dir: Option<PathBuf>,
 }
 
 impl Tool for SharedShell {
@@ -167,20 +200,63 @@ impl Tool for SharedShell {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
+        let launcher = self.processes.launcher();
         let shell = Shell {
-            launcher: self.processes.launcher(),
+            launcher: match &self.dir {
+                Some(dir) => launcher.in_dir(dir),
+                None => launcher,
+            },
             cut: self.output.cut(),
+            confine: self.dir.is_some(),
             ..self.shell.clone()
         };
         shell.call(context, args).await
     }
 }
 
-/// The system in [`Stage::Prepare`] that reads the files a user's message
-/// names into its attachments ([`AttachPlugin`]). A plugin that edits the
-/// message's text or attachments orders against it.
-#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct AttachSystems;
+/// How each of these tools works in a directory, by tool name.
+#[derive(Resource, Default)]
+struct InDir(Vec<(&'static str, Box<dyn Fn(&Path) -> Handler + Send + Sync>)>);
+
+/// Lets `T`'s calls work in their agent's [`WorkDir`], as `make` builds
+/// the tool for a directory.
+fn work_in_dir<T: Tool + 'static>(
+    app: &mut App,
+    make: impl Fn(PathBuf) -> T + Send + Sync + 'static,
+) {
+    if !app.world().contains_resource::<InDir>() {
+        app.init_resource::<InDir>()
+            .add_systems(AgentPass, give_work_dirs.in_set(PrepareSystems::Compose));
+    }
+    let handler = move |dir: &Path| {
+        Handler(ErasedHandler::new(ToolAdapter::new(make(
+            dir.to_path_buf(),
+        ))))
+    };
+    if let Some(mut tools) = app.world_mut().get_resource_mut::<InDir>() {
+        tools.0.push((T::NAME, Box::new(handler)));
+    }
+}
+
+/// Gives each call of these tools admitted this pass whose agent has a
+/// [`WorkDir`] the handler of its tool working there, in
+/// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a call's
+/// [`CallHandler`] in [`PrepareSystems::Edit`] gets that one.
+fn give_work_dirs(
+    mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
+    dirs: Query<&WorkDir>,
+    tools: Res<InDir>,
+) {
+    for (request, &ForAgent(agent), mut handler) in &mut calls {
+        let Ok(WorkDir(dir)) = dirs.get(agent) else {
+            continue;
+        };
+        let name = request.call.function.name.as_str();
+        if let Some((_, make)) = tools.0.iter().find(|(tool, _)| *tool == name) {
+            *handler = CallHandler(make(dir));
+        }
+    }
+}
 
 /// Files the user names as `@path` go with the message, before its text,
 /// and the `@path` stays in the text so the model knows which file it is
@@ -192,13 +268,14 @@ pub struct AttachPlugin;
 
 impl Plugin for AttachPlugin {
     fn build(&self, app: &mut App) {
-        app.configure_sets(AgentPass, AttachSystems.in_set(Stage::Prepare))
-            .add_systems(AgentPass, attach.in_set(AttachSystems));
+        app.add_systems(AgentPass, attach.in_set(PrepareSystems::Compose));
     }
 }
 
 /// Reads the files each user's message names into its attachments as it
-/// comes in, in Prepare, with a notice about each that could not be.
+/// comes in, in [`PrepareSystems::Compose`], with a notice about each that
+/// could not be: a plugin that rewrites the text goes before, in `Input`,
+/// one that edits the text or attachments after, in `Edit`.
 fn attach(
     mut typed: Query<(&mut Incoming, &ForAgent), Added<Admitted>>,
     mut notices: MessageWriter<Notice>,

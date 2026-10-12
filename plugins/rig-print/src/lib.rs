@@ -20,7 +20,8 @@
 //! stderr. `--answer=ID[,ID…]` ([`ANSWER`]) answers each question with the
 //! first of those choices it offers instead, and refuses one that offers
 //! none. After the answer, the run prints what other plugins add as
-//! [`PrintSection`]s, such as the agent's todo list.
+//! [`PrintSection`]s, such as the agent's todo list. While it runs, each
+//! change of a running call's [`ToolProgress`] goes to stderr.
 
 use std::io::{IsTerminal, Read as _};
 
@@ -89,12 +90,21 @@ impl Plugin for PrintPlugin {
         // A command's answers are its notices.
         let command = prompt.trim_start().starts_with('/');
         app.insert_resource(Answers(answers))
-            .add_systems(AgentPass, answer.in_set(Stage::Gate))
-            .add_systems(Update, print_notices(command))
+            .configure_sets(
+                AgentPass,
+                PrintSystems.in_set(Stage::Gate).after(AskSystems),
+            )
+            .add_systems(AgentPass, answer.in_set(PrintSystems))
+            .add_systems(Update, (print_notices(command), print_progress))
             .add_observer(print_output)
             .run_headless(full_prompt(&prompt));
     }
 }
+
+/// The Gate system that answers each question of a `--print` run, after
+/// [`AskSystems`], so a line the user typed wins.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PrintSystems;
 
 /// The choices `--answer` gives, in order; none without it.
 #[derive(Resource)]
@@ -102,8 +112,14 @@ struct Answers(Vec<String>);
 
 /// Answers each question with the first of the `--answer` choices it
 /// offers, or refuses it, saying why on stderr.
-fn answer(asks: Query<(Entity, &Ask), Undecided>, answers: Res<Answers>, mut commands: Commands) {
-    for (entity, ask) in &asks {
+fn answer(
+    mut asks: Query<(&Ask, &mut Decision), (Undecided, PluginEffects)>,
+    answers: Res<Answers>,
+) {
+    for (ask, mut decision) in &mut asks {
+        if decision.is_decided() {
+            continue;
+        }
         let offered = |id: &&String| ask.choices.iter().any(|choice| &choice.id == *id);
         let outcome = match answers.0.iter().find(offered) {
             Some(id) => Answer::Choice(id.clone()).outcome(),
@@ -120,7 +136,7 @@ fn answer(asks: Query<(Entity, &Ask), Undecided>, answers: Res<Answers>, mut com
                 Outcome::refused(why)
             }
         };
-        commands.entity(entity).insert_if_new(outcome);
+        decision.decide(outcome);
     }
 }
 
@@ -171,6 +187,21 @@ fn output<'a>(
     (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
+/// Writes each new line of a running call's [`ToolProgress`] to stderr,
+/// after the tool's name.
+fn print_progress(progress: Query<(&ToolProgress, Option<&ToolRequest>), Changed<ToolProgress>>) {
+    for (ToolProgress(line), tool) in &progress {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        match tool {
+            Some(tool) => eprintln!("rig: {}: {line}", tool.call.function.name),
+            None => eprintln!("rig: {line}"),
+        }
+    }
+}
+
 /// Writes error notices and why a command was refused to stderr, with
 /// every notice of a `/command` prompt.
 fn print_notices(
@@ -182,7 +213,7 @@ fn print_notices(
         }
         for notice in notices.read() {
             match notice.level {
-                NoticeLevel::Error => eprintln!("rig: {}", notice.text),
+                NoticeLevel::Warn | NoticeLevel::Error => eprintln!("rig: {}", notice.text),
                 _ if command => eprintln!("{}", notice.text),
                 _ => {}
             }

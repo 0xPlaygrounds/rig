@@ -13,6 +13,7 @@ pub mod builtin;
 pub mod context;
 pub mod contextual;
 mod facts;
+mod footprint;
 pub mod managed;
 mod output;
 pub mod portable;
@@ -24,7 +25,11 @@ pub use context::{
 pub use contextual::{
     DynamicTool, ErasedTool, LivenessFn, Tool, ToolEmbedding, tool_definition, tool_name,
 };
-pub use facts::{ChangeKind, ExitStatus, FileChange, FilesChanged, FilesRead};
+pub use facts::{
+    ChangeKind, ContentHash, ExitStatus, FileChange, FileRead, FilesChanged, FilesRead,
+    content_hash,
+};
+pub use footprint::{Scope, Touches};
 pub use managed::{ManagedToolSink, ManagedToolToken};
 pub use output::{IntoToolOutput, ToolOutput};
 pub use portable::{PortableTool, PortableToolEmbedding};

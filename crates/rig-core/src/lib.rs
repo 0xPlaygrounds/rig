@@ -57,6 +57,7 @@ pub mod operation;
 pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
+pub mod redact;
 pub mod rerank;
 pub mod serve;
 

@@ -19,11 +19,15 @@ changed plugins and restarts in the same session. The
   `RigHarnessPlugins` adds the session directory (with forking and
   deleting sessions), the kernel, the launcher protocol with how the agent
   was started (`Invoked`: its arguments, the plugins' own options, and
-  whether stdin is a terminal) and why it exits (`ExitReason`), slash
-  commands (`add_command`, run from what the user types), and the shared
-  services: the user's settings for plugins (`settings.toml`), the
-  `RIG_HOME`, project root, child-process policy and tokio runtime, file
-  watches, and questions any front answers (`Ask`). Plugins offer fronts
+  whether stdin is a terminal) and how it exits (`Exit`: an effect a
+  plugin may hold until its work is done, never cancel), slash commands
+  (`add_command`, run from what the user types), and the shared services:
+  the user's settings for plugins (`settings.toml`), the `RIG_HOME`,
+  project root, an agent's own working directory (`WorkDir`),
+  child-process policy and tokio runtime, file watches, questions any
+  front answers (`Ask`), a running call's progress line (`ToolProgress`),
+  and following an effect to the successor that took it over
+  (`follow_successor`, `resend`). Plugins offer fronts
   and one takes each run: `rig-tui` on an interactive terminal, `rig-print`
   with `-p` or with stdin piped in, or a front whose option was given; an
   interactive run no front takes says so and exits.
@@ -71,7 +75,11 @@ entry, or run `rig plugin add rig_inspect::InspectPlugin --crate rig-inspect`.
 [`rig-steel`](../../plugins/rig-steel) adds code mode.
 
 [`PLUGINS.md`](PLUGINS.md) shows how to write a plugin, with one example per
-extension point.
+extension point. A plugin's tests use
+[`rig-harness-test-support`](../../test-support/rig-harness-test-support), and
+[`rig-defaults-test-support`](../../test-support/rig-defaults-test-support)'s
+`assert_stages_ordered` checks that its stage systems are ordered against the
+default plugins'.
 
 ## Install
 

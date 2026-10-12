@@ -1,9 +1,10 @@
 //! `rig`: build the agent before every start, then run it.
 //! [`RELOAD_EXIT_CODE`] restarts it on the staged build. A new build runs as this launcher's own trial
-//! and becomes the good build once it signals ready; one that exits before
-//! that is rolled back to the last good build. Several launchers can share
-//! one `RIG_HOME`: building and staging take the root's lock, and a
-//! `/reload` build, its trial and the ready file are per session.
+//! and becomes the good build once it signals ready, in the launcher's
+//! [`RunDir`]; one that exits before that is rolled back to the last good
+//! build. Several launchers can share one `RIG_HOME`: building and staging
+//! take the root's lock, a `/reload` build and its trial are per session,
+//! and the ready file is per launcher.
 //!
 //! `rig` starts a new session, and `rig --resume <id>` an earlier one, in
 //! the directory it ran in. The agent's `/new` and `/resume` leave a
@@ -13,15 +14,18 @@
 //!
 //! The agent's arguments ([`Invocation`]) pass through unchanged. A
 //! headless run (`--print`, or stdin piped in, which the agent answers as
-//! `--print` does) is not restarted on the reload code.
+//! `--print` does) is not restarted on the reload code, nor run again on
+//! the previous build when its new build is rolled back.
 
 use std::fs::{self, File};
 use std::io::{ErrorKind, IsTerminal};
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode, ExitStatus};
+use std::process::{Command, ExitCode, ExitStatus, Stdio};
 use std::time::Duration;
 
-use rig::harness_protocol::{Home, Invocation, RELOAD_EXIT_CODE, SessionDir, SessionId, env};
+use rig::harness_protocol::{
+    Home, Invocation, RELOAD_EXIT_CODE, RunDir, SessionDir, SessionId, env,
+};
 
 use super::build::{self, BuildFailure, Staging};
 use super::{Result, home};
@@ -43,11 +47,13 @@ pub enum Start {
 pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCode> {
     let here = std::env::current_dir().ok();
     let headless = invocation.is_headless() || !std::io::stdin().is_terminal();
-    let (mut claimed, mut notice, mut build_failure) = {
+    let (run, claimed, notice, build_failure) = {
+        let _typing = (!headless).then(TypeAhead::hold).flatten();
         let _lock = home::lock(home)?;
         // Before claiming, so a resumed session's leftover builds from its
         // dead launcher are removed too.
         home::sweep(home)?;
+        let run = home::hold_run(home)?;
         let (claimed, claim_notice) = claim(home, start, here.as_deref())?;
         let failure = rebuild(home, &claimed.id)?;
         let built = failure.as_ref().map(|failure| {
@@ -55,18 +61,41 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
         });
         let notice: Vec<String> = claim_notice.into_iter().chain(built).collect();
         (
+            run,
             claimed,
             (!notice.is_empty()).then(|| notice.join("\n")),
             failure.map(|failure| failure.details()),
         )
     };
+    launch(
+        home,
+        run.dir(),
+        invocation,
+        headless,
+        claimed,
+        notice,
+        build_failure,
+    )
+}
+
+/// Starts the agent of `claimed` with the build [`pick`] finds, again on
+/// the reload code, and returns its exit code. `notice` and
+/// `build_failure` go to the first start.
+fn launch(
+    home: &Home,
+    run: &RunDir,
+    invocation: &Invocation,
+    headless: bool,
+    mut claimed: Claimed,
+    mut notice: Option<String>,
+    mut build_failure: Option<String>,
+) -> Result<ExitCode> {
     let launcher = std::env::current_exe()?;
     loop {
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
-        let ready = directory.ready();
-        let log = directory.log();
+        let ready = run.ready();
         let binary = pick(home, &session, &trial)?;
         absent(fs::remove_file(&ready))?;
         let mut command = Command::new(binary.path());
@@ -75,6 +104,7 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             .env(env::HOME, home.root())
             .env(env::SESSION, session.as_str())
             .env(env::LAUNCHER, &launcher)
+            .env(env::RUN, run.path())
             .env_remove(env::NOTICE)
             .env_remove(env::BUILD_FAILURE);
         if let Some(working) = &claimed.directory {
@@ -106,6 +136,11 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             }
         };
         promoted?;
+        // A sessionless run that failed moved its log here, out of the
+        // session directory it removed.
+        let log = Some(run.log())
+            .filter(|log| log.exists())
+            .unwrap_or_else(|| directory.log());
         let rejected = matches!(binary, Binary::Trial(_)) && !started;
         if rejected {
             build::reject(home, &trial)?;
@@ -146,6 +181,10 @@ pub fn run(home: &Home, start: Start, invocation: &Invocation) -> Result<ExitCod
             log.display()
         );
         eprintln!("{message}");
+        // A one-shot run is not run twice: its output is already out.
+        if headless {
+            return Ok(exit_code(status));
+        }
         notice = Some(message);
     }
 }
@@ -282,6 +321,39 @@ fn restore_terminal() {
     eprint!("\x1b[?1049l\x1b[?25h");
     if std::io::stdin().is_terminal() {
         Command::new("stty").arg("sane").status().ok();
+    }
+}
+
+/// The terminal's line mode, put aside while the launcher waits for and
+/// runs a build before an interactive start, and given back when dropped,
+/// before the agent starts. Meanwhile the terminal neither echoes what is
+/// typed over the build's output nor turns a typed Enter (CR) into a line
+/// feed, which the agent, in raw mode, would read as Ctrl+J.
+struct TypeAhead {
+    /// The mode `stty -g` printed.
+    saved: String,
+}
+
+impl TypeAhead {
+    /// Puts the mode aside, or `None` when `stty` cannot.
+    fn hold() -> Option<Self> {
+        let output = Command::new("stty")
+            .arg("-g")
+            .stdin(Stdio::inherit())
+            .stderr(Stdio::null())
+            .output()
+            .ok()
+            .filter(|output| output.status.success())?;
+        let saved = String::from_utf8(output.stdout).ok()?.trim().to_owned();
+        let set = Command::new("stty").args(["-icrnl", "-echo"]).status();
+        set.is_ok_and(|status| status.success())
+            .then_some(Self { saved })
+    }
+}
+
+impl Drop for TypeAhead {
+    fn drop(&mut self) {
+        Command::new("stty").arg(&self.saved).status().ok();
     }
 }
 

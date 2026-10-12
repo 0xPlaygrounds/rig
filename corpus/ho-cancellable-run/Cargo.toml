@@ -11,22 +11,22 @@ workspace = true
 [dependencies]
 # Named by Bevy's derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # The pool a command's output streams on.
 bevy_tasks = { workspace = true }
 # The channel a command's output comes through, as a stream.
 futures = { workspace = true }
-# SIGTERM, then SIGKILL, to a command's process group.
-libc = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-# Progress lines on stderr in a `--print` run.
-rig-print = { path = "../../plugins/rig-print" }
-# The live output panel and `ctrl+k`.
+# The `run` look in the transcript and `ctrl+k`.
 rig-tui = { path = "../../plugins/rig-tui" }
+# No longer used; kept while Cargo.lock is frozen for the rework.
+bevy_reflect = { workspace = true }
+libc = { workspace = true }
+rig-print = { path = "../../plugins/rig-print" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
 serde_json = { workspace = true }

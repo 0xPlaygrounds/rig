@@ -16,7 +16,7 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use crossbeam_channel::{Receiver, Sender};
-use rig_core::catalog::{ModelSpec, SignIn};
+use rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_core::providers::chatgpt::{
     self, SignedInModel,
     auth::{
@@ -85,8 +85,15 @@ fn auth_file() -> PathBuf {
 struct ChatGptSignIn(Authenticator);
 
 impl SignIn for ChatGptSignIn {
-    fn handler(&self, spec: &ModelSpec) -> Option<Result<ErasedHandler, ConnectError>> {
-        let model = || SignedInModel::new(spec.clone(), self.0.clone(), rig_reqwest::shared());
+    fn handler(
+        &self,
+        spec: &ModelSpec,
+        transport: &Transport,
+    ) -> Option<Result<ErasedHandler, ConnectError>> {
+        let model = || {
+            let http = transport.shared().ok_or(ConnectError::NoHttpClient)?;
+            SignedInModel::new(spec.clone(), self.0.clone(), http)
+        };
         let signed_in = self.plan(spec).is_some() && auth_file().is_file();
         signed_in.then(|| model().map(ErasedHandler::new))
     }

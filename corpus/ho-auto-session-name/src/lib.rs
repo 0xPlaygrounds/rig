@@ -7,15 +7,14 @@
 //! name: rig-sessions' [`SessionTitle`], the one `/name` sets, shown in the
 //! status line and `/resume`. The call is no turn's, so it never reaches
 //! the conversation, and its usage is counted under the purpose
-//! `session-name`. A name the user set first, also while the call runs,
+//! `auto-name`. A name the user set first, also while the call runs,
 //! is kept; a failed call is tried once more after the next turn.
 
 use bevy_log::{debug, warn};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::message::{Message, UserContent};
+use rig_harness::rig_core::message::Message;
 use rig_sessions::{SessionTitle, SessionsPlugin};
-use rig_tools::attach::attached_file;
 use serde::Deserialize;
 
 #[cfg(test)]
@@ -49,7 +48,8 @@ impl Plugin for AutoSessionNamePlugin {
         app.add_setting::<AutoNameConfig>(NAME)
             .init_resource::<Failures>()
             .add_observer(ask_for_a_name)
-            .add_observer(take_the_name);
+            .add_observer(take_the_name)
+            .add_observer(follow_successor::<NamingCall>);
     }
 }
 
@@ -62,7 +62,7 @@ pub struct AutoNameConfig {
     pub model: Option<String>,
 }
 
-/// On the plugin's naming call.
+/// On the plugin's naming call, and on whichever call takes it over.
 #[derive(Component, Debug)]
 pub struct NamingCall;
 
@@ -153,35 +153,6 @@ fn take_the_name(
             debug!("auto-name: the naming call failed: {why}");
         }
     }
-}
-
-/// The first text the user typed in `conversation`, not a file it
-/// attached, nor what an agent or a plugin sent.
-fn first_typed(conversation: &Conversation) -> Option<String> {
-    conversation
-        .messages()
-        .iter()
-        .enumerate()
-        .find_map(|(at, message)| {
-            let Message::User { content } = message else {
-                return None;
-            };
-            content
-                .iter()
-                .enumerate()
-                .find_map(|(item, content)| match content {
-                    UserContent::Text(text)
-                        if !text.text.trim().is_empty()
-                            && attached_file(&text.text).is_none()
-                            && conversation
-                                .origin(at, item)
-                                .is_none_or(|origin| origin.kind == OriginKind::User) =>
-                    {
-                        Some(text.text.clone())
-                    }
-                    _ => None,
-                })
-        })
 }
 
 /// The first line of `answer`, without quotes, markup or trailing

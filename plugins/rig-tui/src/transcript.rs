@@ -1,32 +1,107 @@
 //! The transcript's wrapped rows, kept per message. A frame re-renders and
 //! re-wraps only the messages that changed (a message's look also depends
 //! on its neighbours: a tool call is drawn with the result the next message
-//! carries), re-wraps without re-rendering when the width changed, and
-//! copies out only the rows on screen. Before, every frame and every
-//! streamed delta re-wrapped the whole history.
+//! carries, and on the notices written inside it), re-wraps without
+//! re-rendering when the width changed, and copies out only the rows on
+//! screen. Before, every frame and every streamed delta re-wrapped the
+//! whole history.
 
-use std::collections::HashMap;
-use std::hash::{DefaultHasher, Hasher};
+use std::collections::{BTreeMap, HashMap};
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::sync::Arc;
 
 use bevy_ecs::entity::Entity;
-use ratatui::style::{Style, Stylize};
+use ratatui::style::{Color, Style, Stylize};
 use ratatui::text::Line;
 use rig_core::completion::{AssistantContent, Message};
-use rig_core::message::{ToolResult, UserContent};
+use rig_core::message::{CallId, ToolResult, UserContent};
 
 use super::markdown;
 use super::renderers::{
-    RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
+    CallState, RESULT_LINES, RenderToolCall, ToolCallView, excerpt, result_style, result_text,
 };
+use super::view::ShownNotice;
 use super::wrap::wrap_all;
-use rig_ecs::agent::{Conversation, STOPPED};
+use rig_ecs::agent::{Conversation, NoticeLevel, STOPPED};
 use rig_ecs::inbox::{Origin, OriginKind};
 use rig_harness::prelude::launcher::BUILD_ORIGIN;
 use rig_tools::attach::attached_file;
 
 /// The renderers by tool name.
 pub(crate) type Renderers<'a> = HashMap<&'a str, &'a Arc<RenderToolCall>>;
+
+/// What the messages' look depends on besides the messages.
+pub(crate) struct Look<'a> {
+    /// The renderers by tool name.
+    pub(crate) renderers: &'a Renderers<'a>,
+    /// The state of each call of the running turn.
+    pub(crate) calls: &'a BTreeMap<CallId, CallState>,
+    /// The notices written inside a message, by its index, each with the
+    /// content item it goes before.
+    pub(crate) notices: HashMap<usize, Vec<(usize, &'a ShownNotice)>>,
+}
+
+impl Look<'_> {
+    /// The notices inside message `index`.
+    fn notices(&self, index: usize) -> &[(usize, &ShownNotice)] {
+        self.notices.get(&index).map_or(&[], Vec::as_slice)
+    }
+
+    /// Hashes the notices inside message `index`.
+    fn hash_notices(&self, index: usize, hasher: &mut DefaultHasher) {
+        for (item, notice) in self.notices(index) {
+            item.hash(hasher);
+            level_code(notice.level).hash(hasher);
+            notice.text.hash(hasher);
+        }
+    }
+
+    /// Where the call `call` stands: as its effect says while it has one,
+    /// else done once it has `result`.
+    fn state(&self, call: &CallId, result: Option<&ToolResult>) -> CallState {
+        match self.calls.get(call) {
+            Some(state) => state.clone(),
+            None if result.is_some() => CallState::Done,
+            None => CallState::Running(None),
+        }
+    }
+
+    /// Hashes what message `index` looks like besides its messages: its
+    /// notices and the states of its calls.
+    fn hash_message(&self, index: usize, message: &Message, hasher: &mut DefaultHasher) {
+        self.hash_notices(index, hasher);
+        if let Message::Assistant(assistant) = message {
+            for item in assistant.content.iter() {
+                if let AssistantContent::ToolCall(call) = item {
+                    self.calls.get(&call.id).hash(hasher);
+                }
+            }
+        }
+    }
+
+    /// A hash of all of it but the renderers, whose changes
+    /// [`Transcript::clear`] handles.
+    fn digest(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        let mut indices: Vec<&usize> = self.notices.keys().collect();
+        indices.sort();
+        for index in indices {
+            index.hash(&mut hasher);
+            self.hash_notices(*index, &mut hasher);
+        }
+        self.calls.hash(&mut hasher);
+        hasher.finish()
+    }
+}
+
+/// A number for each notice level.
+fn level_code(level: NoticeLevel) -> u8 {
+    match level {
+        NoticeLevel::Info => 0,
+        NoticeLevel::Warn => 1,
+        NoticeLevel::Error => 2,
+    }
+}
 
 /// One message's look: its lines, and those lines wrapped to the width.
 struct Entry {
@@ -40,6 +115,8 @@ struct Entry {
 pub(crate) struct Transcript {
     agent: Option<Entity>,
     width: u16,
+    /// The [`Look::digest`] the rows were made with.
+    look: u64,
     entries: Vec<Entry>,
 }
 
@@ -51,17 +128,17 @@ pub(crate) enum Part {
 }
 
 impl Transcript {
-    /// Brings the rows up to date with the conversation of `agent` at
-    /// `width`.
-    /// `changed` says whether the messages or the renderers may have
-    /// changed since the last call; when they did not, only a new agent or
-    /// width costs anything.
+    /// Brings the rows up to date with the conversation of `agent` and
+    /// `look` at `width`.
+    /// `changed` says whether the messages may have changed since the last
+    /// call; when neither they nor the look did, only a new agent or width
+    /// costs anything.
     pub(crate) fn update(
         &mut self,
         agent: Entity,
         conversation: &Conversation,
         changed: bool,
-        renderers: &Renderers<'_>,
+        look: &Look<'_>,
         width: u16,
     ) {
         if self.agent != Some(agent) {
@@ -76,14 +153,16 @@ impl Transcript {
             }
         }
         let messages = conversation.messages();
-        if !changed && self.entries.len() == messages.len() {
+        let digest = look.digest();
+        let looks_alike = std::mem::replace(&mut self.look, digest) == digest;
+        if !changed && looks_alike && self.entries.len() == messages.len() {
             return;
         }
         self.entries.truncate(messages.len());
         for (index, message) in messages.iter().enumerate() {
             let previous = index.checked_sub(1).and_then(|before| messages.get(before));
             let next = messages.get(index + 1);
-            let fingerprint = fingerprint([previous, Some(message), next]);
+            let fingerprint = fingerprint([previous, Some(message), next], look, index);
             if self
                 .entries
                 .get(index)
@@ -91,7 +170,7 @@ impl Transcript {
             {
                 continue;
             }
-            let lines = message_lines(message, (conversation, index), previous, next, renderers);
+            let lines = message_lines(message, (conversation, index), previous, next, look);
             let entry = Entry {
                 fingerprint,
                 rows: wrap_all(&lines, usable),
@@ -255,9 +334,13 @@ impl Scroll {
     }
 }
 
-/// A hash of the messages a message's look depends on.
-fn fingerprint(messages: [Option<&Message>; 3]) -> u64 {
+/// A hash of what message `index`'s look depends on: it and its
+/// neighbours, and `look`'s part for it.
+fn fingerprint(messages: [Option<&Message>; 3], look: &Look<'_>, index: usize) -> u64 {
     let mut hasher = DefaultHasher::new();
+    if let [_, Some(message), _] = messages {
+        look.hash_message(index, message, &mut hasher);
+    }
     for message in messages {
         match message {
             Some(message) => {
@@ -293,7 +376,8 @@ fn answers(message: Option<&Message>, result: &ToolResult) -> bool {
     }
 }
 
-/// Draws `message`, the `at`-th of `conversation`. A tool
+/// Draws `message`, the `at`-th of `conversation`, with the notices
+/// written inside it before their items. A tool
 /// call's result, which comes in the `next` message, is drawn with the
 /// call, so the results of a reply's calls are not drawn after all of its
 /// calls.
@@ -302,13 +386,20 @@ fn message_lines(
     (conversation, at): (&Conversation, usize),
     previous: Option<&Message>,
     next: Option<&Message>,
-    renderers: &Renderers<'_>,
+    look: &Look<'_>,
 ) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
+    let notices = look.notices(at);
+    let notices_before = |item: usize, lines: &mut Vec<Line<'static>>| {
+        for (_, notice) in notices.iter().filter(|(before, _)| *before == item) {
+            notice_lines(notice, lines);
+        }
+    };
     match message {
         Message::System { .. } => {}
         Message::User { content } => {
             for (item_at, item) in content.iter().enumerate() {
+                notices_before(item_at, &mut lines);
                 match item {
                     UserContent::Text(text) => {
                         if let Some((label, count)) = attached_file(&text.text) {
@@ -338,7 +429,8 @@ fn message_lines(
             }
         }
         Message::Assistant(assistant) => {
-            for item in &assistant.content {
+            for (item_at, item) in assistant.content.iter().enumerate() {
+                notices_before(item_at, &mut lines);
                 match item {
                     AssistantContent::Text(text) => {
                         lines.push(Line::default());
@@ -348,11 +440,13 @@ fn message_lines(
                         lines.extend(plain_lines(&reasoning.text, Style::new().dim().italic()));
                     }
                     AssistantContent::ToolCall(call) => {
+                        let result = tool_results(next).find(|result| result.call == call.id);
                         let view = ToolCallView {
                             call,
-                            result: tool_results(next).find(|result| result.call == call.id),
+                            result,
+                            state: look.state(&call.id, result),
                         };
-                        match renderers.get(call.function.name.as_str()) {
+                        match look.renderers.get(call.function.name.as_str()) {
                             Some(render) => lines.extend(render(&view)),
                             None => lines.extend(view.default_lines()),
                         }
@@ -377,8 +471,16 @@ fn user_lines(text: &str, lines: &mut Vec<Line<'static>>) {
     }
 }
 
+/// The origin of rig-compaction's summary, which stands in the conversation
+/// for the messages it replaced.
+const SUMMARY_ORIGIN: &str = "compaction";
+
+/// Lines of a compaction's summary shown in the transcript.
+const SUMMARY_LINES: usize = 12;
+
 /// Text an agent or a plugin sent: where it came from, then its start
-/// without the header the model reads.
+/// without the header the model reads; a compaction's summary as a block
+/// that says it stands for the earlier messages.
 /// `/agents` shows an agent's whole transcript.
 fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) {
     let body = origin
@@ -387,6 +489,15 @@ fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) 
         .map_or(text, |body| body.trim_start_matches('\n'));
     // A failed build's note, which the model reads: told apart by its
     // origin.
+    if matches!(&origin.kind, OriginKind::Plugin(name) if name == SUMMARY_ORIGIN) {
+        let style = Style::new().magenta();
+        lines.push(Line::styled(
+            "── the earlier messages were compacted into this summary ──",
+            style.bold(),
+        ));
+        lines.extend(excerpt(body, SUMMARY_LINES, style.dim()));
+        return;
+    }
     if matches!(&origin.kind, OriginKind::Plugin(name) if name == BUILD_ORIGIN) {
         lines.push(Line::styled(
             "✗ build failed (noted for the agent)",
@@ -400,6 +511,16 @@ fn delivered_lines(origin: &Origin, text: &str, lines: &mut Vec<Line<'static>>) 
         Style::new().magenta().bold(),
     ));
     lines.extend(excerpt(body, RESULT_LINES, Style::new().dim()));
+}
+
+/// A notice's lines, coloured by its level.
+pub(crate) fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
+    let style = match notice.level {
+        NoticeLevel::Info => Style::new().fg(Color::Magenta),
+        NoticeLevel::Warn => Style::new().fg(Color::Yellow),
+        NoticeLevel::Error => Style::new().fg(Color::Red),
+    };
+    lines.extend(plain_lines(&notice.text, style));
 }
 
 /// `text`'s lines in one style.
