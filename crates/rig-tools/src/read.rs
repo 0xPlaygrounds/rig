@@ -4,8 +4,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use rig_core::tool::{
-    FileRead, FilesRead, LinesShown, Scope, Tool, ToolContext, ToolExecutionError, Touches,
-    args_schema, content_hash,
+    FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Scope, Tool, ToolContext,
+    ToolExecutionError, Touches, args_schema, content_hash,
 };
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -18,7 +18,8 @@ const MAX_LINE_CHARS: usize = 2000;
 
 /// Reads a text file as numbered lines. Publishes the file it read
 /// ([`FilesRead`]), by its [resolved](Workspace) path, with the
-/// hash of the bytes it read and the lines it showed.
+/// hash of the bytes it read and the lines it showed, and, when lines after
+/// those were left out, [`OutputCut`].
 #[derive(Clone, Debug)]
 pub struct Read {
     /// Where the file is read.
@@ -158,9 +159,25 @@ impl Tool for Read {
             Ok::<_, ToolExecutionError>((output, read))
         })
         .await?;
+        let cut = read.lines.and_then(cut_of);
         context.insert_result(FilesRead(vec![read]))?;
+        if let Some(cut) = cut {
+            context.insert_result(cut)?;
+        }
         Ok(output)
     }
+}
+
+/// How a read that showed `lines` was cut: from its first line on, the
+/// lines after those it showed, which its last line names.
+fn cut_of(lines: LinesShown) -> Option<OutputCut> {
+    let from_first = lines.total.checked_sub(lines.first.saturating_sub(1))?;
+    (lines.count < from_first).then_some(OutputCut {
+        kept: KeptEnd::Start,
+        kept_lines: lines.count,
+        total_lines: from_first,
+        spill: None,
+    })
 }
 
 /// `text`'s lines from line `first` (counted from 1) as [`Read`] shows

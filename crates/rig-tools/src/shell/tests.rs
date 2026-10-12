@@ -1,6 +1,7 @@
-use rig_core::tool::{ExitStatus, Tool, ToolContext};
+use rig_core::tool::{ExitStatus, KeptEnd, OutputCut, Tool, ToolContext};
 
 use super::{Shell, ShellArgs, split_status};
+use crate::Cut;
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -249,4 +250,50 @@ fn a_timeout_is_cut_to_the_most_the_shell_allows() {
         Some(ExitStatus::TimedOut)
     );
     assert!(ran.is_some_and(|ran| ran.output.ends_with("[timed out after 1s and killed]")));
+}
+
+/// A call whose output was cut publishes the cut beside it: the end kept,
+/// how many lines of how many, and the file holding them all.
+#[cfg(unix)]
+#[test]
+fn a_cut_output_publishes_the_cut() {
+    let dir = std::env::temp_dir().join(format!("rig-tools-cut-{}", std::process::id()));
+    let shell = Shell {
+        spill: Some(crate::Spill(dir.clone())),
+        cut: Some(Cut {
+            lines: 2,
+            bytes: 1024,
+        }),
+        ..Shell::default()
+    };
+    let mut context = ToolContext::new();
+    let output =
+        futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new("seq 1 5")));
+    let cut = context.result::<OutputCut>().ok().flatten();
+    let spill = cut
+        .as_ref()
+        .and_then(|cut| cut.spill.clone())
+        .unwrap_or_default();
+    assert!(
+        output.is_ok_and(
+            |output| output.starts_with("[3 earlier lines cut;") && output.contains(&spill)
+        )
+    );
+    assert_eq!(
+        cut,
+        Some(OutputCut {
+            kept: KeptEnd::End,
+            kept_lines: 2,
+            total_lines: 5,
+            spill: Some(spill.clone())
+        })
+    );
+    assert_eq!(
+        std::fs::read_to_string(&spill).ok().as_deref(),
+        Some("1\n2\n3\n4\n5\n")
+    );
+    let mut context = ToolContext::new();
+    futures::executor::block_on(Tool::call(&shell, &mut context, ShellArgs::new("seq 1 2"))).ok();
+    assert_eq!(context.result::<OutputCut>().ok().flatten(), None);
+    std::fs::remove_dir_all(dir).ok();
 }

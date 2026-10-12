@@ -1,10 +1,13 @@
-use rig_core::tool::{FileRead, FilesRead, LinesShown, Tool, ToolContext, content_hash};
+use rig_core::tool::{
+    FileRead, FilesRead, KeptEnd, LinesShown, OutputCut, Tool, ToolContext, content_hash,
+};
 
 use super::{Read, ReadArgs};
 use crate::fs::resolve;
 
 /// Reading a file publishes it by its resolved path, with the hash of the
-/// bytes read and the lines shown; a failed read publishes nothing.
+/// bytes read and the lines shown, and a cut when lines after those were
+/// left out; a failed read publishes nothing.
 #[test]
 fn a_read_publishes_the_file_it_read() {
     let read_tool = Read::default();
@@ -30,6 +33,24 @@ fn a_read_publishes_the_file_it_read() {
                 total: 2
             })
         ]))
+    );
+    assert_eq!(context.result::<OutputCut>().ok().flatten(), None);
+
+    let mut context = ToolContext::new();
+    let first = Tool::call(&read_tool, &mut context, ReadArgs::new(&path).lines(1, 1));
+    let shown = futures::executor::block_on(first).unwrap_or_default();
+    assert_eq!(
+        shown,
+        "     1\tone\n[1 more lines; read on with offset 2]\n"
+    );
+    assert_eq!(
+        context.result::<OutputCut>().ok().flatten(),
+        Some(OutputCut {
+            kept: KeptEnd::Start,
+            kept_lines: 1,
+            total_lines: 2,
+            spill: None
+        })
     );
 
     let mut context = ToolContext::new();
