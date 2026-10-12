@@ -115,14 +115,21 @@ pub struct RecallIndex(Arc<Mutex<Index>>);
 #[derive(Clone)]
 struct Place {
     home: Home,
+    stores: SessionStores,
     current: Option<PathBuf>,
     project: PathBuf,
 }
 
 impl Place {
-    fn of(home: &RigHome, paths: Option<&SessionPaths>, project: &ProjectRoot) -> Self {
+    fn of(
+        home: &RigHome,
+        stores: Option<&SessionStores>,
+        paths: Option<&SessionPaths>,
+        project: &ProjectRoot,
+    ) -> Self {
         Self {
             home: home.0.clone(),
+            stores: stores.cloned().unwrap_or_default(),
             current: paths.map(|paths| paths.path().to_owned()),
             project: project.0.clone(),
         }
@@ -267,7 +274,14 @@ impl Index {
             }
             let id = id.to_string();
             let stamp = stamp(session.path());
-            let info = info(&session, &id, stamp);
+            let store = match place.stores.open(&session) {
+                Ok(store) => store,
+                Err(why) => {
+                    unreadable.push(format!("{} ({why})", session.path().display()));
+                    continue;
+                }
+            };
+            let info = info(&session, &*store, &id, stamp);
             seen.insert(id.clone());
             if let Some(indexed) = self.sessions.get_mut(&id)
                 && indexed.saved.stamp == stamp
@@ -279,8 +293,7 @@ impl Index {
             let saved = match read_json::<Saved>(&file).filter(|saved| saved.stamp == stamp) {
                 Some(saved) => saved,
                 None => {
-                    let store = JsonlDirStore::new(session.path());
-                    let docs = match read_session(&store) {
+                    let docs = match read_session(&*store) {
                         Ok(read) => {
                             unreadable.extend(read.unreadable.iter().map(|(agent, why)| {
                                 format!("{}/{agent}.jsonl ({why})", session.path().display())
@@ -436,9 +449,10 @@ fn stamp(session: &Path) -> Stamp {
     stamp
 }
 
-/// The session's name, date and directory, from its listing cache.
-fn info(session: &SessionDir, id: &str, stamp: Stamp) -> Info {
-    let meta: Option<Meta> = read_json(&session.meta());
+/// The session's name, date and directory, from its listing cache in
+/// `store`.
+fn info(session: &SessionDir, store: &dyn JournalStore, id: &str, stamp: Stamp) -> Info {
+    let meta = Meta::of(store);
     let name = meta.as_ref().and_then(|meta| {
         let typed = Some(meta.title.typed.clone()).filter(|typed| !typed.is_empty());
         meta.title.name.clone().or(typed)
@@ -600,13 +614,13 @@ impl From<Result<(), ToolExecutionError>> for Warmed {
 
 fn warm_up(
     index: Res<RecallIndex>,
-    home: Res<RigHome>,
+    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let place = Place::of(&home, paths.as_deref(), &project);
+    let place = Place::of(&home, stores.as_deref(), paths.as_deref(), &project);
     let work = with_index(index.clone(), place, |_, _| ());
     commands.spawn((
         Name::new("recall index"),
@@ -664,14 +678,14 @@ fn answer(result: Result<Result<String, String>, ToolExecutionError>) -> ToolRes
 fn recall(
     called: On<ToolCalled<RecallArgs>>,
     index: Res<RecallIndex>,
-    home: Res<RigHome>,
+    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let args = called.args.clone();
-    let place = Place::of(&home, paths.as_deref(), &project);
+    let place = Place::of(&home, stores.as_deref(), paths.as_deref(), &project);
     let limit = args.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
     let work = with_index(index.clone(), place, move |index, place| {
         let project = (args.scope == Scope::Project).then_some(place.project.as_path());
@@ -695,14 +709,14 @@ fn recall(
 fn open(
     called: On<ToolCalled<OpenArgs>>,
     index: Res<RecallIndex>,
-    home: Res<RigHome>,
+    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let OpenArgs { session, message } = called.args.clone();
-    let place = Place::of(&home, paths.as_deref(), &project);
+    let place = Place::of(&home, stores.as_deref(), paths.as_deref(), &project);
     let work = with_index(index.clone(), place, move |index, _| {
         let Some(indexed) = index.sessions.get(session.trim()) else {
             return Err(format!("No past session {session}."));
@@ -748,7 +762,7 @@ struct PendingRecall(String);
 fn recall_command(
     In(args): In<CommandArgs>,
     index: Res<RecallIndex>,
-    home: Res<RigHome>,
+    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
     paths: Option<Res<SessionPaths>>,
     project: Res<ProjectRoot>,
     wake: Res<Wake>,
@@ -763,7 +777,7 @@ fn recall_command(
         ));
         return;
     }
-    let place = Place::of(&home, paths.as_deref(), &project);
+    let place = Place::of(&home, stores.as_deref(), paths.as_deref(), &project);
     let searched = query.clone();
     let work = with_index(index.clone(), place, move |index, _| {
         index.search(&searched, None, MAX_LIMIT)

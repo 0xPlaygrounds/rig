@@ -3,11 +3,9 @@
 //! shown, and the transcript as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit,
 //! where it is scrolled, and recent notices, which are kept in the
-//! session's directory for the next build.
+//! session's store for the next build.
 
 use std::collections::HashSet;
-use std::fs;
-use std::path::PathBuf;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
@@ -19,26 +17,27 @@ use serde::{Deserialize, Serialize};
 
 use super::complete::Completion;
 use super::editor::TuiInput;
-use super::jsonl;
+use super::jsonl::{self, Kept};
 use super::keys::KeyPress;
 use super::panel::Focused;
 use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
+use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::MessageId;
-use rig_harness::prelude::{ExitReason, SessionPaths};
+use rig_harness::prelude::ExitReason;
 use rig_harness::primary::Shown;
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
 
-/// The file that keeps the notices shown, in the view's own directory of
-/// the session's: a top-level `*.jsonl` there is an agent's log.
+/// The file of the session's store that keeps the notices shown, in the
+/// view's own directory.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
 
-/// The file that keeps what was typed and not sent for the build a reload
-/// starts, in the view's own directory of the session's.
+/// The file of the session's store that keeps what was typed and not sent
+/// for the build a reload starts, in the view's own directory.
 const DRAFT_FILE: &str = "tui/draft.txt";
 
 /// Ask the view to show the agent and send what is typed to it, such as
@@ -117,7 +116,7 @@ pub struct TranscriptView {
     /// Recent notices, oldest first.
     notices: Vec<ShownNotice>,
     /// Where they are kept for the next build of the session.
-    notices_file: Option<PathBuf>,
+    notices_file: Option<Kept>,
 }
 
 /// Text to light in the transcript, matched without regard to case.
@@ -306,12 +305,12 @@ impl TranscriptView {
 }
 
 /// Reads back the notices an earlier build of the session showed, and
-/// keeps the next ones in the session's directory.
-pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<TranscriptView>) {
-    let Some(paths) = paths else {
+/// keeps the next ones in the session's store.
+pub(crate) fn load_notices(store: Option<Res<SessionStore>>, mut view: ResMut<TranscriptView>) {
+    let Some(store) = store else {
         return;
     };
-    let file = paths.path().join(NOTICES_FILE);
+    let file = Kept::Stored(store.0.clone(), NOTICES_FILE);
     view.notices = jsonl::tail(&file, KEPT_NOTICES);
     view.notices_file = Some(file);
 }
@@ -321,10 +320,10 @@ pub(crate) fn load_notices(paths: Option<Res<SessionPaths>>, mut view: ResMut<Tr
 /// While a question is answered in the input, what was typed before it.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
-    paths: Option<Res<SessionPaths>>,
+    store: Option<Res<SessionStore>>,
     (input, view): (Res<TuiInput>, Option<Res<TuiView>>),
 ) {
-    let (Some(reason), Some(paths)) = (reason, paths) else {
+    let (Some(reason), Some(store)) = (reason, store) else {
         return;
     };
     let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
@@ -333,25 +332,19 @@ pub(crate) fn keep_draft(
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
-    let file = paths.path().join(DRAFT_FILE);
-    let kept = file
-        .parent()
-        .map_or(Ok(()), fs::create_dir_all)
-        .and_then(|()| fs::write(&file, text));
-    if let Err(failure) = kept {
+    if let Err(failure) = store.0.write_file(DRAFT_FILE, text.as_bytes()) {
         warn!("could not keep the input for the next build: {failure}");
     }
 }
 
 /// Puts back in the input what the build before a reload kept.
-pub(crate) fn load_draft(paths: Option<Res<SessionPaths>>, mut input: ResMut<TuiInput>) {
-    let Some(paths) = paths else {
+pub(crate) fn load_draft(store: Option<Res<SessionStore>>, mut input: ResMut<TuiInput>) {
+    let Some(store) = store else {
         return;
     };
-    let file = paths.path().join(DRAFT_FILE);
-    if let Ok(text) = fs::read_to_string(&file) {
-        fs::remove_file(&file).ok();
-        input.set(text);
+    if let Ok(text) = store.0.read_file(DRAFT_FILE) {
+        store.0.remove_file(DRAFT_FILE).ok();
+        input.set(String::from_utf8_lossy(&text).into_owned());
     }
 }
 

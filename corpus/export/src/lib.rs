@@ -18,7 +18,7 @@ use bevy_ecs::system::SystemParam;
 use bevy_reflect::TypeRegistry;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use rig_cassette::effect_log::jsonl;
-use rig_cassette::journal::{EFFECT_LOG, JournalStore, JsonlDirStore};
+use rig_cassette::journal::EFFECT_LOG;
 use rig_core::completion::{Usage, UsageTotals};
 use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome as Answered};
 use rig_ecs::journal::SessionStore;
@@ -175,6 +175,7 @@ impl Request {
 #[derive(SystemParam)]
 struct Sessions<'w> {
     store: Option<Res<'w, SessionStore>>,
+    stores: Option<Res<'w, SessionStores>>,
     paths: Option<Res<'w, SessionPaths>>,
     title: Option<Res<'w, SessionTitle>>,
     home: Option<Res<'w, RigHome>>,
@@ -193,9 +194,12 @@ impl Sessions<'_> {
                 if !dir.is_saved() {
                     return Err(format!("no saved session {id}"));
                 }
-                let meta: Option<Meta> = rig_tools::fs::read_json(&dir.meta());
-                let name = meta.map(|meta| listed(&meta.title)).unwrap_or_default();
-                load(&JsonlDirStore::new(dir.path()), Some(&dir), name, &registry)?
+                let stores = self.stores.as_deref().cloned().unwrap_or_default();
+                let store = stores
+                    .open(&dir)
+                    .map_err(|failure| format!("opening session {id}: {failure}"))?;
+                let name = Meta::of(&*store).map(|meta| listed(&meta.title));
+                load(&*store, Some(&dir), name.unwrap_or_default(), &registry)?
             }
             None => {
                 let store = self.store.as_ref().ok_or("this session is not saved")?;
@@ -249,7 +253,7 @@ fn export_and_exit(invoked: Option<Res<Invoked>>, sessions: Sessions, mut comman
     commands.trigger(Exit(reason));
 }
 
-/// The session in `store`, with the model calls `dir`'s effect log holds.
+/// The session in `store`, with the model calls its effect log holds.
 fn load(
     store: &dyn JournalStore,
     dir: Option<&SessionDir>,
@@ -257,8 +261,10 @@ fn load(
     registry: &TypeRegistry,
 ) -> Result<Export, String> {
     let saved = read_session(store).map_err(|failure| format!("reading the session: {failure}"))?;
-    let records = dir
-        .and_then(|dir| jsonl::read(dir.path().join(EFFECT_LOG)).ok())
+    let records = store
+        .read_file(EFFECT_LOG)
+        .ok()
+        .and_then(|log| jsonl::read_from(log.as_slice()).ok())
         .map(|log| log.records)
         .unwrap_or_default();
     let id = dir.and_then(SessionDir::id).map(|id| id.to_string());

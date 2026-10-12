@@ -18,6 +18,12 @@ use rig_tools::Write;
 
 use super::*;
 
+/// The session recorded in `dir`, read as the app's stores read it.
+fn recorded_source(dir: &std::path::Path) -> io::Result<ReplaySource> {
+    let store = SessionStores::default().open(&SessionDir::at(dir))?;
+    ReplaySource::from_store(&*store, ReplayFlags::default())
+}
+
 /// Every call goes to its model as to one that calls no tools, so Start
 /// takes the tools and their rules out of the request: what is sent, and
 /// recorded, is not what Gate sees.
@@ -132,7 +138,7 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     std::fs::remove_file(&file).ok();
     let recorded_dir = home.session(&recorded_id).path().to_owned();
     // The calls were recorded as sent, without the tools Gate saw.
-    let log = ReplaySource::from_dir(&recorded_dir, ReplayFlags::default());
+    let log = recorded_source(&recorded_dir);
     let sent = log.iter().flat_map(|source| &source.effects.records);
     let tools: Vec<usize> = sent
         .filter_map(|record| match &record.kind {
@@ -175,7 +181,7 @@ fn a_recorded_session_replays_without_model_or_tools_and_a_changed_prompt_diverg
     assert!(recorded_dir.exists());
 
     // A prompt section added: the first request diverges on the system prompt.
-    let source = ReplaySource::from_dir(&recorded_dir, ReplayFlags::default());
+    let source = recorded_source(&recorded_dir);
     let (mut app, wakes) = app_on(&MemoryStore::default());
     with_agents(&mut app, connect(&model));
     app.world_mut().spawn(PromptSection::new(
@@ -310,7 +316,7 @@ fn a_recorded_call_is_answered_before_a_guard_decides_it() {
     let id = "3-1".parse().unwrap_or_else(|_| SessionId::generate());
     let recorded = record(&home, &id, &file.to_string_lossy(), connect);
     std::fs::remove_file(&file).ok();
-    let source = ReplaySource::from_dir(home.session(&id).path(), ReplayFlags::default());
+    let source = recorded_source(home.session(&id).path());
     let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
     let (mut app, wakes) = app_on(&MemoryStore::default());
     with_agents(&mut app, connect(&model));

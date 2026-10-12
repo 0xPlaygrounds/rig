@@ -19,7 +19,7 @@ use rig_harness::prelude::{
     Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, CallOutput, Commands,
     Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessageWriter,
     Name, Notice, On, OriginKind, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace,
-    Query, Res, Resource, Running, SessionPaths, SystemSet, Tool, ToolCalls, ToolOptions,
+    Query, Res, Resource, Running, Scratch, Spill, SystemSet, Tool, ToolCalls, ToolOptions,
     ToolRequest, Wake, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
@@ -157,7 +157,7 @@ impl Plugin for MoveTool {
 /// in its agent's [`WorkDir`], else in the [`ProjectRoot`] unless the
 /// `Processes` name a directory; it cuts its output as the app's
 /// [`ShellOutput`] says then, and output it cuts is kept whole in the
-/// session's [`spill`](SessionPaths::spill) directory. What it prints
+/// [`spill`](Scratch::spill) directory of the session's [`Scratch`] then. What it prints
 /// becomes the call's [`ToolProgress`](rig_harness::prelude::ToolProgress)
 /// as it comes, and its answer if it is stopped ([`CallOutput`]).
 #[derive(Default)]
@@ -170,13 +170,7 @@ impl Plugin for ShellTool {
             .get_resource_or_init::<ShellOutput>()
             .clone();
         let shell = SharedShell {
-            shell: Shell {
-                spill: app
-                    .world()
-                    .get_resource::<SessionPaths>()
-                    .map(SessionPaths::spill),
-                ..Shell::default()
-            },
+            shell: Shell::default(),
             processes: app.world_mut().get_resource_or_init::<Processes>().clone(),
             output,
             dir: None,
@@ -187,6 +181,7 @@ impl Plugin for ShellTool {
                 workspace: place.workspace,
                 live: place.live,
                 confine: place.confine,
+                spill: place.spill,
                 ..per.shell.clone()
             },
             dir: Some(place.base),
@@ -283,6 +278,8 @@ struct Place {
     base: PathBuf,
     confine: bool,
     live: Option<Live>,
+    /// Where output cut short is kept whole, if anywhere.
+    spill: Option<Spill>,
 }
 
 /// How a call of one of these tools is built for its [`Place`].
@@ -331,8 +328,11 @@ fn give_place(
     >,
     dirs: Query<&WorkDir>,
     tools: Res<PerCall>,
-    workspace: Res<ProjectWorkspace>,
-    root: Res<ProjectRoot>,
+    (workspace, root, scratch): (
+        Res<ProjectWorkspace>,
+        Res<ProjectRoot>,
+        Option<Res<Scratch>>,
+    ),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -352,6 +352,7 @@ fn give_place(
             base: dir.map_or_else(|| root.0.clone(), |dir| dir.0.clone()),
             confine: dir.is_some(),
             live,
+            spill: scratch.as_ref().and_then(|scratch| scratch.spill()),
         };
         *handler = CallHandler((made.make)(place));
     }

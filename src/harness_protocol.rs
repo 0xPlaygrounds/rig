@@ -91,12 +91,6 @@ pub fn first_errors<'a>(lines: impl IntoIterator<Item = &'a str>, count: usize) 
         .collect()
 }
 
-/// The extension of an agent log, and of the effect log.
-const AGENT_LOG: &str = ".jsonl";
-
-/// The effect log's file stem, which no agent id takes.
-const EFFECTS: &str = "effects";
-
 /// A session's id: digits and dashes, so it is safe as a path segment. The
 /// launcher makes one per new session; the agent makes its own when it
 /// runs without the launcher.
@@ -370,14 +364,21 @@ impl RunDir {
     }
 }
 
-/// A session's directory: one append-only log per agent, the listing cache,
-/// the stored images, the effect log and text log, and the lock of the
-/// launcher running it. Each top-level `*.jsonl` file but the effect log is
-/// an agent's log; a plugin's files go in a directory of its own.
+/// A session's directory. The agent keeps the session's files there
+/// through its store, which a plugin may replace, so only the files the
+/// launcher reads are named here: the plain marker of a session an agent
+/// logged to ([`Self::is_saved`]), the text log, the lock of the launcher
+/// running it, its working directory and the session to switch to.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
 impl SessionDir {
+    /// The session kept in the directory `path`, such as one a command
+    /// names, rather than one of a [`Home`]'s.
+    pub fn at(path: impl Into<PathBuf>) -> Self {
+        Self(path.into())
+    }
+
     /// The directory itself.
     pub fn path(&self) -> &Path {
         &self.0
@@ -388,21 +389,29 @@ impl SessionDir {
         self.0.file_name()?.to_str()?.parse().ok()
     }
 
-    /// Whether any agent of the session wrote its log, so it can be
-    /// resumed.
+    /// Whether an agent of the session wrote its log, so it can be
+    /// resumed: the session has the marker [`Self::mark_saved`] writes.
     pub fn is_saved(&self) -> bool {
-        std::fs::read_dir(&self.0).is_ok_and(|entries| {
-            entries.filter_map(Result::ok).any(|entry| {
-                entry
-                    .file_name()
-                    .to_str()
-                    .and_then(|name| name.strip_suffix(AGENT_LOG))
-                    .is_some_and(|stem| !stem.is_empty() && stem != EFFECTS)
-            })
-        })
+        self.saved().exists()
     }
 
-    /// The agent's text log.
+    /// Marks the session saved, as the agent's store does when it first
+    /// writes an agent's log there.
+    ///
+    /// # Errors
+    ///
+    /// When the marker cannot be written.
+    pub fn mark_saved(&self) -> std::io::Result<()> {
+        std::fs::write(self.saved(), b"")
+    }
+
+    /// The plain, empty marker of a saved session.
+    fn saved(&self) -> PathBuf {
+        self.0.join("saved")
+    }
+
+    /// The agent's text log, unless a plugin keeps it elsewhere or not at
+    /// all.
     pub fn log(&self) -> PathBuf {
         self.0.join("agent.log")
     }
@@ -419,31 +428,11 @@ impl SessionDir {
         self.0.join("directory")
     }
 
-    /// What `/resume` lists about the session, as JSON the agent rewrites
-    /// at the end of each turn: its name, title, cost and when it was last
-    /// updated. The agent logs hold the same facts.
-    pub fn meta(&self) -> PathBuf {
-        self.0.join("meta.json")
-    }
-
-    /// The session this one was forked from and where the copy stopped,
-    /// as JSON the agent writes when it forks a session; absent for a
-    /// session started afresh.
-    pub fn parent(&self) -> PathBuf {
-        self.0.join("parent.json")
-    }
-
     /// Written by the agent before it exits with [`RELOAD_EXIT_CODE`] to
     /// run another session: the [`SessionId`] to resume, or nothing for a
     /// new session. The launcher reads and removes it.
     pub fn switch(&self) -> PathBuf {
         self.0.join("switch")
-    }
-
-    /// The images pasted into the session's input, which messages attach
-    /// by path.
-    pub fn images(&self) -> PathBuf {
-        self.0.join("images")
     }
 
     /// The session's working directory, when [`Self::directory`] names one

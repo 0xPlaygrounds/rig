@@ -132,8 +132,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, SessionDeleted,
-        SessionForked, SessionPaths, first_typed, typed,
+        DeleteSession, FirstStart, ForkSession, ForkedFrom, LogEvents, Logged, Scratch,
+        SessionDeleted, SessionForked, SessionPaths, SessionStores, first_typed, typed,
     };
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
@@ -148,6 +148,7 @@ pub mod prelude {
     pub use crate::{
         HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
     };
+    pub use rig_cassette::journal::JournalStore;
     pub use rig_core::transcript::final_answer;
     pub use rig_tools::{Spill, blocking};
 }

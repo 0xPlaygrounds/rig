@@ -26,13 +26,13 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt;
 use std::io;
-use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 use rig_cassette::effect_log::{
     EffectLog, EffectLogReplayer, RecordedAnswers, RequestCheck, jsonl,
 };
 use rig_cassette::journal::EFFECT_LOG;
+use rig_harness::harness_protocol::SessionDir;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::catalog::{ModelSpec, SignIn, Transport};
 use rig_harness::rig_core::completion::{CompletionRequest, ModelRef, ProviderCapabilities};
@@ -82,23 +82,24 @@ pub struct ReplaySource {
 }
 
 impl ReplaySource {
-    /// The session kept in the directory `dir`, read only.
-    pub fn from_dir(dir: &Path, flags: ReplayFlags) -> io::Result<Self> {
+    /// The session kept in `store`, read only.
+    pub fn from_store(store: &dyn JournalStore, flags: ReplayFlags) -> io::Result<Self> {
         Ok(Self {
-            effects: jsonl::read(dir.join(EFFECT_LOG))?,
+            effects: jsonl::read_from(store.read_file(EFFECT_LOG)?.as_slice())?,
             flags,
         })
     }
 
-    /// The source the options name.
-    fn from_invocation(invoked: &Invoked) -> io::Result<Self> {
+    /// The source the options name, kept in the directory they name, read
+    /// through `stores`.
+    fn from_invocation(invoked: &Invoked, stores: &SessionStores) -> io::Result<Self> {
         let dir = invoked.flag_value(REPLAY).unwrap_or_default();
         let flags = ReplayFlags {
             continue_live: invoked.flag(CONTINUE_LIVE),
             live_tools: invoked.flag(LIVE_TOOLS),
             original_timing: invoked.flag(SPEED),
         };
-        Self::from_dir(Path::new(dir), flags)
+        Self::from_store(&*stores.open(&SessionDir::at(dir))?, flags)
     }
 }
 
@@ -568,7 +569,9 @@ impl Plugin for SessionReplayPlugin {
     fn finish(&self, app: &mut App) {
         let source = if app.runs_front(REPLAY) {
             let invoked = app.world().get_resource::<Invoked>().cloned();
-            let source = ReplaySource::from_invocation(&invoked.unwrap_or_default());
+            let stores = app.world().get_resource::<SessionStores>().cloned();
+            let stores = stores.unwrap_or_default();
+            let source = ReplaySource::from_invocation(&invoked.unwrap_or_default(), &stores);
             app.add_observer(report_and_exit);
             match source {
                 Ok(source) => source,

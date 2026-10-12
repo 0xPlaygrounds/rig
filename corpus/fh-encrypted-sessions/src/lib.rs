@@ -20,14 +20,15 @@
 //! session's directory with the [`Crypt`] resource.
 
 use std::fs::{self, File, TryLockError};
+use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::*;
-use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_ecs::{StopTurns, WriteJournal};
 use rig_harness::rig_tools::fs::{read_json, write_json};
-use rig_sessions::{Meta, SessionTitle};
+use rig_sessions::{Meta, SessionTitle, write_meta};
 use serde::Deserialize;
 
 mod store;
@@ -44,6 +45,13 @@ pub const NEW_PASSPHRASE_ENV: &str = "RIG_CRYPT_NEW_PASSPHRASE";
 
 /// What `/resume` lists an encrypted session as, without its title.
 pub const LISTED_AS: &str = "encrypted session";
+
+/// A forked session's parent file, which the harness writes through the
+/// session's store.
+const PARENT: &str = "parent.json";
+
+/// A session's listing, which rig-sessions writes through its store.
+const META: &str = "meta.json";
 
 /// `RIG_HOME/crypt.toml`.
 #[derive(Deserialize, Default, Clone, Debug)]
@@ -163,12 +171,13 @@ impl Plugin for EncryptedSessionsPlugin {
             Ok(crypt) => crypt,
             Err(why) => return refuse(app, why),
         };
-        // The harness's session plugin put a plain store in; this one takes
-        // its place before the session is restored (PreStartup).
-        if let Some(paths) = app.world().get_resource::<SessionPaths>() {
-            let store = CryptStore::new(paths.path(), crypt.clone());
-            app.insert_resource(SessionStore::new(store));
-        }
+        // Every session's store the app opens, this one's, forks' and those
+        // `/resume` lists, seals what it keeps.
+        let sealing = crypt.clone();
+        app.insert_resource(SessionStores::new(move |dir| {
+            let store = CryptStore::new(dir.path(), sealing.clone());
+            Ok(Arc::new(store) as Arc<dyn JournalStore>)
+        }));
         app.insert_resource(crypt)
             .add_command(
                 "crypt",
@@ -184,9 +193,13 @@ impl Plugin for EncryptedSessionsPlugin {
     }
 }
 
-/// Keeps nothing of the session, and exits at startup saying why.
+/// Keeps nothing of the session, and exits at startup saying why: no
+/// session's store opens.
 fn refuse(app: &mut App, why: String) {
-    app.world_mut().remove_resource::<SessionStore>();
+    let refused = why.clone();
+    app.insert_resource(SessionStores::new(move |_| {
+        Err(io::Error::other(refused.clone()))
+    }));
     app.insert_resource(CryptRefusal(why))
         .add_systems(Startup, refuse_to_start)
         .add_systems(
@@ -240,14 +253,14 @@ fn seal_forks(
 }
 
 /// Removes the text of the message a fork stopped before from its parent
-/// file.
+/// file, when it is plain.
 fn forget_fork_text(dir: &SessionDir) -> Result<(), String> {
-    let Some(mut parent) = read_json::<serde_json::Map<String, serde_json::Value>>(&dir.parent())
-    else {
+    let file = dir.path().join(PARENT);
+    let Some(mut parent) = read_json::<serde_json::Map<String, serde_json::Value>>(&file) else {
         return Ok(());
     };
     if parent.shift_remove("text").is_some() {
-        write_json(&dir.parent(), &parent).map_err(|failure| failure.to_string())?;
+        write_json(&file, &parent).map_err(|failure| failure.to_string())?;
     }
     Ok(())
 }
@@ -305,13 +318,13 @@ fn migrate(home: &Home, current: Option<&Path>, crypt: &Crypt) -> Result<String,
         let files = encrypt_session(dir.path(), crypt)
             .map_err(|failure| format!("{}: {failure}", dir.path().display()))?;
         forget_fork_text(&dir)?;
-        if let Some(meta) = read_json::<Meta>(&dir.meta()) {
+        if let Some(meta) = read_json::<Meta>(&dir.path().join(META)) {
             let title = SessionTitle {
                 typed: LISTED_AS.to_owned(),
                 ..meta.title
             };
-            write_json(&dir.meta(), &Meta { title, ..meta })
-                .map_err(|failure| failure.to_string())?;
+            let store = CryptStore::new(dir.path(), crypt.clone());
+            write_meta(&store, &Meta { title, ..meta }).map_err(|failure| failure.to_string())?;
         }
         sessions += usize::from(files > 0);
     }

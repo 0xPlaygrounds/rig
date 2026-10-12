@@ -12,8 +12,8 @@ use rig_ecs::journal::{JournalPlugin, SessionStore};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
 
 use super::{
-    DeleteSession, FirstStart, ForkSession, ForkedFrom, SessionDeleted, SessionForked,
-    SessionPaths, SessionPlugin, first_typed, typed,
+    DeleteSession, FirstStart, ForkSession, ForkedFrom, Scratch, SessionDeleted, SessionForked,
+    SessionPaths, SessionPlugin, SessionStores, first_typed, log_layer, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
 use crate::host::launcher::LauncherRun;
@@ -73,14 +73,19 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
         Some(b"{\"line\":1}\n".to_vec())
     );
     assert_eq!(copy.working_directory(), Some(root.clone()));
-    // The copy names the session it came from.
+    // The copy names the session it came from, and is saved, so it can be
+    // resumed.
     let parent = ForkedFrom {
         session: id.clone(),
         before: None,
         text: None,
     };
-    assert_eq!(ForkedFrom::of(&copy), Some(parent));
-    assert_eq!(ForkedFrom::of(&session), None);
+    assert_eq!(
+        ForkedFrom::of(&JsonlDirStore::new(copy.path())),
+        Some(parent)
+    );
+    assert_eq!(ForkedFrom::of(&JsonlDirStore::new(session.path())), None);
+    assert!(copy.is_saved());
 
     // A session another rig runs, and this one, stay.
     let lock = File::create(copy.launcher_lock()).ok();
@@ -146,7 +151,8 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     app.update();
     let forked = app.world().resource::<Seen>().forked.first().cloned();
     assert_eq!(forked.as_ref().and_then(|forked| forked.asker), Some(asker));
-    let parent = forked.and_then(|forked| ForkedFrom::of(&home.session(&forked.to)));
+    let parent = forked
+        .and_then(|forked| ForkedFrom::of(&JsonlDirStore::new(home.session(&forked.to).path())));
     let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
     assert_eq!(text, Some("two"), "{parent:?}");
     assert_eq!(parent.and_then(|parent| parent.before), before);
@@ -212,6 +218,7 @@ fn a_new_session_and_a_fork_start_first_and_a_restart_does_not() {
             .insert_resource(SessionPaths(session.clone()))
             .add_plugins(SessionPlugin)
             .add_systems(Last, watch.after(super::fork_sessions));
+        app.finish();
         app.update();
         app
     };
@@ -274,6 +281,71 @@ fn a_restore_reads_the_agent_logs_and_leaves_a_plugins_files_alone() {
     let failed = notices.iter().any(|notice| notice.contains("restore"));
     assert!(!failed, "{notices:?}");
     std::fs::remove_dir_all(session.path()).ok();
+}
+
+/// The running session's store comes from the app's stores, which mark
+/// it saved on its first log, and it stays saved after a clean exit.
+#[test]
+fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
+    let home = scratch_home("rig-session-saved");
+    let Ok(id) = "1700000000-5".parse::<SessionId>() else {
+        return;
+    };
+    let session = home.session(&id);
+    std::fs::create_dir_all(session.path()).ok();
+    let mut app = App::new();
+    app.insert_resource(RigHome(home.clone()))
+        .insert_resource(SessionPaths(session.clone()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, JournalPlugin))
+        .add_plugins(SessionPlugin);
+    drop(std::panic::take_hook());
+    app.finish();
+    app.update();
+    assert!(app.world().contains_resource::<SessionStore>());
+    assert!(!session.is_saved(), "nothing was logged yet");
+    let agent = first_agent(app.world_mut());
+    let said = agent.map(|agent| commit_message(app.world_mut(), agent, Message::user("hi")));
+    assert_eq!(said, Some(Ok(())));
+    app.update();
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    drop(app);
+    assert!(session.is_saved());
+    let read = SessionStores::default()
+        .open(&session)
+        .ok()
+        .and_then(|store| store.agents().ok());
+    assert!(read.is_some_and(|agents| !agents.is_empty()));
+    std::fs::remove_dir_all(home.root()).ok();
+}
+
+/// The text log moves where a plugin puts the scratch place, and is gone
+/// with none.
+#[test]
+fn the_text_log_follows_the_scratch_place() {
+    let home = scratch_home("rig-session-scratch");
+    let elsewhere = home.root().join("elsewhere");
+    let log_with = |id: &str, scratch: Scratch| {
+        let id: SessionId = id.parse().ok()?;
+        let session = home.session(&id);
+        std::fs::create_dir_all(session.path()).ok();
+        let mut app = App::new();
+        app.insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()));
+        let layer = log_layer(&mut app);
+        let logged = session.log().exists();
+        app.insert_resource(scratch).add_plugins(SessionPlugin);
+        drop(std::panic::take_hook());
+        app.finish();
+        drop((app, layer));
+        Some((logged, session.log().exists()))
+    };
+    let moved = log_with("1700000000-6", Scratch(Some(elsewhere.clone())));
+    assert_eq!(moved, Some((true, false)));
+    assert!(elsewhere.join("agent.log").exists());
+    let dropped = log_with("1700000000-7", Scratch(None));
+    assert_eq!(dropped, Some((true, false)));
+    std::fs::remove_dir_all(home.root()).ok();
 }
 
 #[test]

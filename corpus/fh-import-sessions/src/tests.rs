@@ -45,8 +45,10 @@ fn import_with(app: &mut App, tool: &str, path: &Path) -> Vec<SessionImported> {
 
 /// The conversation of the main agent of `session`, as its logs left it.
 fn conversation_of(home: &Home, session: &SessionId) -> Vec<Message> {
-    let store = JsonlDirStore::new(home.session(session).path());
-    let saved = read_session(&store).unwrap_or_default();
+    let store = SessionStores::default().open(&home.session(session));
+    let saved = store
+        .and_then(|store| read_session(&*store))
+        .unwrap_or_default();
     let main = saved
         .agents
         .into_iter()
@@ -88,7 +90,7 @@ fn imports_resumes_and_reimports() {
 
     // Two sessions, which `/resume` lists.
     let current_dir = home.session(&current);
-    let listed = rig_sessions::list(&home, current_dir.path());
+    let listed = rig_sessions::list(&home, &SessionStores::default(), current_dir.path());
     assert_eq!(listed.len(), 2, "{reported:?}");
     assert_eq!(reported.len(), 2, "{reported:?}");
     let (Some(first), Some(second)) = (reported.first(), reported.get(1)) else {
@@ -115,8 +117,11 @@ fn imports_resumes_and_reimports() {
     let (_, answered) = paired(&messages, "toolu_1").unwrap_or_default();
     // The sidechain is a subagent of it, and each agent keeps where it came
     // from with the source's times.
-    let store = JsonlDirStore::new(home.session(&first.session).path());
-    let agents = read_session(&store).unwrap_or_default().agents;
+    let store = SessionStores::default().open(&home.session(&first.session));
+    let agents = store
+        .and_then(|store| read_session(&*store))
+        .unwrap_or_default()
+        .agents;
     assert_eq!(
         agents.iter().filter(|agent| agent.parent.is_some()).count(),
         1
@@ -218,7 +223,10 @@ fn imports_resumes_and_reimports() {
             && again.added == 1),
         "{again:?}"
     );
-    assert_eq!(rig_sessions::list(&home, current_dir.path()).len(), 2);
+    assert_eq!(
+        rig_sessions::list(&home, &SessionStores::default(), current_dir.path()).len(),
+        2
+    );
     let messages = conversation_of(&home, &first.session);
     let last = messages.last().and_then(|message| match message {
         Message::User { content } => content.iter().find_map(|item| match item {

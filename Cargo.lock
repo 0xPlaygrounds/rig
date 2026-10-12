@@ -16121,13 +16121,16 @@ dependencies = [
  "bevy_ecs",
  "bevy_log",
  "bevy_reflect",
+ "rig-cassette",
  "rig-core",
  "rig-ecs",
  "rig-harness",
+ "rig-harness-test-support",
  "rig-telemetry",
  "rig-tools",
  "rig-tui",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

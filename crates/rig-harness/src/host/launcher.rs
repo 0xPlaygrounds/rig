@@ -115,12 +115,7 @@ impl Plugin for LauncherPlugin {
     /// Refuses a run the build cannot take: see [`cli`].
     fn cleanup(&self, app: &mut App) {
         if let Some(refusal) = cli::refusal(app) {
-            app.insert_resource(Refused(refusal)).add_systems(
-                Last,
-                exit_refused
-                    .after(signal_ready)
-                    .run_if(resource_exists::<Refused>),
-            );
+            refuse(app, refusal);
         }
     }
 }
@@ -128,6 +123,21 @@ impl Plugin for LauncherPlugin {
 /// Why this run cannot go on.
 #[derive(Resource)]
 struct Refused(String);
+
+/// Refuses this run, once the app is built: says `why` and exits with
+/// code 2 at the end of the first frame. The first refusal is the one
+/// said.
+pub(crate) fn refuse(app: &mut App, why: String) {
+    if app.world().contains_resource::<Refused>() {
+        return;
+    }
+    app.insert_resource(Refused(why)).add_systems(
+        Last,
+        exit_refused
+            .after(signal_ready)
+            .run_if(resource_exists::<Refused>),
+    );
+}
 
 /// Says why the run cannot go on, and asks to exit once the launcher knows
 /// that the build started: it is not rolled back.

@@ -397,7 +397,7 @@ fn remote_handlers(
     link: Res<Link>,
     target: Res<RemoteTarget>,
     processes: Res<Processes>,
-    paths: Option<Res<SessionPaths>>,
+    scratch: Option<Res<Scratch>>,
 ) {
     let Some(target) = Target::parse(&target.target) else {
         return;
@@ -416,7 +416,7 @@ fn remote_handlers(
             "search" => ErasedHandler::new(ToolAdapter::new(RemoteSearch(remote))),
             "shell" => ErasedHandler::new(ToolAdapter::new(RemoteShell {
                 remote,
-                spill: paths.as_deref().map(SessionPaths::spill),
+                spill: scratch.as_ref().and_then(|scratch| scratch.spill()),
             })),
             _ => continue,
         };

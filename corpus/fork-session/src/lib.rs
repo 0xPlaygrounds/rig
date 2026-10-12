@@ -16,6 +16,7 @@
 use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
 use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
+use rig_harness::rig_ecs::journal::SessionStore;
 use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::shorten;
 use rig_tui::{Focus, TuiInput};
@@ -319,16 +320,13 @@ fn how(parent: &ForkedFrom) -> String {
 /// start, of a branch, puts the message it was branched before in the
 /// input line, showing its agent.
 fn arrive(
-    paths: Option<Res<SessionPaths>>,
+    store: Option<Res<SessionStore>>,
     first: Option<Res<FirstStart>>,
     agents: PrimaryQuery,
     input: Option<ResMut<TuiInput>>,
     mut commands: Commands,
 ) {
-    let Some(paths) = paths else {
-        return;
-    };
-    let Some(parent) = ForkedFrom::of(&paths) else {
+    let Some(parent) = store.and_then(|store| ForkedFrom::of(&*store.0)) else {
         return;
     };
     let label = format!("{} of {}", how(&parent), parent.session);
@@ -357,8 +355,8 @@ struct Node {
 /// picker that resumes the one chosen.
 fn tree(
     In(args): In<CommandArgs>,
-    paths: Option<Res<SessionPaths>>,
-    home: Res<RigHome>,
+    (paths, store): (Option<Res<SessionPaths>>, Option<Res<SessionStore>>),
+    (home, stores): (Res<RigHome>, Res<SessionStores>),
     title: Res<SessionTitle>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -370,10 +368,14 @@ fn tree(
         return;
     };
     let this = title.name.clone().unwrap_or_else(|| title.typed.clone());
-    let mut nodes: Vec<Node> = list(&home.0, paths.path())
+    let parent_of_session = |id: &SessionId| {
+        let store = stores.open(&home.0.session(id)).ok()?;
+        ForkedFrom::of(&*store)
+    };
+    let mut nodes: Vec<Node> = list(&home.0, &stores, paths.path())
         .into_iter()
         .map(|entry| Node {
-            parent: ForkedFrom::of(&home.0.session(&entry.id)),
+            parent: parent_of_session(&entry.id),
             id: entry.id.to_string(),
             label: entry.label(),
         })
@@ -381,7 +383,7 @@ fn tree(
     nodes.push(Node {
         id: current.clone(),
         label: format!("● this session  {this}"),
-        parent: ForkedFrom::of(&paths),
+        parent: store.and_then(|store| ForkedFrom::of(&*store.0)),
     });
     let parent_of = |id: &str| -> Option<String> {
         let node = nodes.iter().find(|node| node.id == id)?;

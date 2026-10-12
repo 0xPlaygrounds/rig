@@ -24,11 +24,11 @@ use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyP
 use super::panel::{TuiPanel, TuiScreen};
 use super::pick::{self, Choices};
 use super::view::{TranscriptItem, TranscriptView, TuiView};
-use rig_ecs::agent::{ActiveTurn, Interrupt};
+use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
 use rig_ecs::calls::Wake;
 use rig_ecs::inbox::{Deliver, DeliveryMode};
 use rig_harness::pick::{Chosen, Pick};
-use rig_harness::prelude::{Processes, SessionPaths};
+use rig_harness::prelude::{Processes, Scratch};
 use rig_harness::primary::Shown;
 
 /// Lines a page key scrolls.
@@ -139,7 +139,7 @@ pub(crate) struct Context<'a, 'w, 's> {
     agent: Option<Entity>,
     busy: bool,
     clipboard: &'a Clipboard,
-    paths: Option<&'a SessionPaths>,
+    scratch: Option<&'a Scratch>,
     processes: Option<&'a Processes>,
     wake: &'a Wake,
     /// The prompts Up and Down browse.
@@ -164,9 +164,9 @@ pub(crate) fn read_input(
     mut keymap: Keymap,
     choices: Choices,
     agents: Query<Has<ActiveTurn>>,
-    (clipboard, paths, processes, wake, history): (
+    (clipboard, scratch, processes, wake, history): (
         Res<Clipboard>,
-        Option<Res<SessionPaths>>,
+        Option<Res<Scratch>>,
         Option<Res<Processes>>,
         Res<Wake>,
         Res<PromptHistory>,
@@ -182,7 +182,7 @@ pub(crate) fn read_input(
         agent: shown.0,
         busy,
         clipboard: &clipboard,
-        paths: paths.as_deref(),
+        scratch: scratch.as_deref(),
         processes: processes.as_deref(),
         wake: &wake,
         history: &history.entries,
@@ -409,10 +409,11 @@ fn act(action: InputAction, target: &mut Target, context: &Context, commands: &m
             }
         },
         Do::PasteImage => {
-            let images = context.paths.map_or_else(
-                || std::env::temp_dir().join("rig-images"),
-                |paths| paths.images(),
-            );
+            let Some(images) = context.scratch.and_then(Scratch::images) else {
+                let why = "This session keeps no files to paste an image into.";
+                commands.write_message(Notice::info(context.agent, why));
+                return;
+            };
             let launcher = context
                 .processes
                 .map(Processes::launcher)

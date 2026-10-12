@@ -1,6 +1,6 @@
+use rig_cassette::journal::MemoryStore;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
-use rig_harness::harness_protocol::{Home, SessionId};
-use rig_harness_test_support::{app_on, scratch_home};
+use rig_harness_test_support::app_on;
 
 use super::*;
 
@@ -20,14 +20,12 @@ fn record(id: u64, agent: &str, kind: &str, turn: u64) -> EffectRecord {
     record
 }
 
+/// The log is a file of the session's store, whatever keeps it.
 #[test]
-fn the_records_of_one_turn_of_an_agent_read_back() {
-    let home: Home = scratch_home("effect-log-home");
-    let dir = home.session(&SessionId::generate());
-    std::fs::create_dir_all(dir.path()).ok();
-    let (mut app, _wakes) = app_on(&rig_cassette::journal::MemoryStore::default());
-    app.insert_resource(SessionPaths(dir))
-        .add_plugins((AgentPlugin, EffectLogPlugin));
+fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
+    let store = MemoryStore::default();
+    let (mut app, _wakes) = app_on(&store);
+    app.add_plugins((AgentPlugin, EffectLogPlugin));
     app.finish();
     app.update();
     let log = app.world().resource::<EffectLog>().clone();
@@ -54,4 +52,5 @@ fn the_records_of_one_turn_of_an_agent_read_back() {
     assert_eq!(ids(&turn.clone().kind("subagent")), [2]);
     assert_eq!(ids(&EffectFilter::default().turn(1)), [2, 3, 4]);
     assert_eq!(ids(&EffectFilter::default()), [1, 2, 3, 4]);
+    assert!(store.read_file(EFFECT_LOG).is_ok_and(|log| !log.is_empty()));
 }

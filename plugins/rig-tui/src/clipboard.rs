@@ -1,6 +1,6 @@
 //! Images into the input: Ctrl+V saves the clipboard's image in the
-//! session's [`SessionDir::images`](rig_harness::harness_protocol::SessionDir::images)
-//! and types `@path` for it, and a pasted path to an image file (a file
+//! session's [`Scratch::images`](rig_harness::prelude::Scratch::images)
+//! directory and types `@path` for it, or says there is none, and a pasted path to an image file (a file
 //! dropped on the terminal) becomes `@path` too. The message attaches what
 //! `@path` names (see [`attach`](rig_tools::attach)). The clipboard is
 //! read by `wl-paste`, `xclip` or `pngpaste`, started as the app's

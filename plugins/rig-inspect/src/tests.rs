@@ -32,7 +32,7 @@ fn inspect_reads_the_world_and_nothing_else() {
     let spill = std::env::temp_dir().join(format!("rig-inspect-{}", std::process::id()));
     let mut app = App::new();
     app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, InspectPlugin))
-        .insert_resource(Answers(Some(Spill(spill.clone()))));
+        .insert_resource(Scratch(Some(spill.clone())));
     load::<BasicCommandsPlugin>(&mut app, "rig-basics", "test");
     let agent = app.world_mut().spawn(Agent).id();
     app.finish();

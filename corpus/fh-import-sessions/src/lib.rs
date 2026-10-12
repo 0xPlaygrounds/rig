@@ -27,15 +27,15 @@ mod parse;
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use bevy_ecs::schedule::SingleThreadedExecutor;
-use rig_cassette::journal::JsonlDirStore;
 use rig_core::message::{Message, Origin as MadeBy};
 use rig_core::transcript::{close_pending_with, pending_calls};
 use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_sessions::{Meta, SessionTitle};
+use rig_sessions::{Meta, SessionTitle, write_meta};
 use rig_tools::fs::{read_json, write_json};
 use serde::{Deserialize, Serialize};
 
@@ -343,7 +343,7 @@ fn session_files(path: &Path) -> Vec<PathBuf> {
 /// each.
 fn import(
     asked: On<ImportSessions>,
-    home: Res<RigHome>,
+    (home, stores): (Res<RigHome>, Option<Res<SessionStores>>),
     mut imported: MessageWriter<SessionImported>,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -355,13 +355,14 @@ fn import(
         ));
         return;
     };
+    let stores = stores.as_deref().cloned().unwrap_or_default();
     let files = session_files(&path);
     if files.is_empty() {
         let text = format!("No {} sessions at {}.", source.label(), path.display());
         notices.write(Notice::error(asked.agent, text));
     }
     for file in files {
-        match import_file(&home.0, source, &file) {
+        match import_file((&home.0, &stores), source, &file) {
             Ok(done) => {
                 notices.write(Notice::info(asked.agent, done.summary()));
                 imported.write(done);
@@ -387,9 +388,13 @@ fn marker_path(dir: &SessionDir) -> PathBuf {
     dir.path().join("import").join("source.json")
 }
 
-/// Imports the session in `file` into its session under `home`: a new one,
-/// or the one an earlier import of it made.
-fn import_file(home: &Home, source: Source, file: &Path) -> Result<SessionImported, String> {
+/// Imports the session in `file` into its session under `home`, kept in a
+/// store `stores` open: a new one, or the one an earlier import of it made.
+fn import_file(
+    (home, stores): (&Home, &SessionStores),
+    source: Source,
+    file: &Path,
+) -> Result<SessionImported, String> {
     let text = fs::read_to_string(file).map_err(|failure| failure.to_string())?;
     let mut parsed = parse::parse(source, &text);
     if parsed.id.is_empty() {
@@ -404,7 +409,9 @@ fn import_file(home: &Home, source: Source, file: &Path) -> Result<SessionImport
         Some(found) => found,
         None => new_session(home)?,
     };
-    let written = write_session(&dir, source, &parsed).and_then(|added| {
+    let store = stores.open(&dir).map_err(|failure| failure.to_string());
+    let written = store.and_then(|store| {
+        let added = write_session(store.clone(), source, &parsed)?;
         let marker = Marker {
             source,
             id: parsed.id.clone(),
@@ -416,7 +423,7 @@ fn import_file(home: &Home, source: Source, file: &Path) -> Result<SessionImport
             fs::write(dir.directory(), cwd.to_string_lossy().as_bytes())
                 .map_err(|failure| failure.to_string())?;
         }
-        write_meta(&dir, source, &parsed).map_err(|failure| failure.to_string())?;
+        update_meta(&*store, source, &parsed).map_err(|failure| failure.to_string())?;
         Ok(added)
     });
     let added = match written {
@@ -468,8 +475,8 @@ fn new_session(home: &Home) -> Result<(SessionId, SessionDir), String> {
 /// The listing `/resume` shows: the first message, `from Claude Code`, and
 /// the source's last change as when it was updated; a name given since is
 /// kept.
-fn write_meta(dir: &SessionDir, source: Source, parsed: &Parsed) -> std::io::Result<()> {
-    let mut meta: Meta = read_json(&dir.meta()).unwrap_or_default();
+fn update_meta(store: &dyn JournalStore, source: Source, parsed: &Parsed) -> std::io::Result<()> {
+    let mut meta = Meta::of(store).unwrap_or_default();
     if meta.title.typed.is_empty() {
         let first = parsed
             .first_message()
@@ -486,7 +493,7 @@ fn write_meta(dir: &SessionDir, source: Source, parsed: &Parsed) -> std::io::Res
         .insert("imported".to_owned(), format!("from {}", source.label()));
     let (_, last) = parsed.span();
     meta.updated = meta.updated.max(last);
-    write_json(&dir.meta(), &meta)
+    write_meta(store, &meta)
 }
 
 /// One conversation to commit: the agent, its source key and its steps.
@@ -497,13 +504,17 @@ struct Job {
     steps: Vec<Step>,
 }
 
-/// Writes `parsed` into the session at `dir` through the kernel: an app of
+/// Writes `parsed` into the session in `store` through the kernel: an app of
 /// the agent core and the journal on its store restores what is there,
 /// then commits each conversation's new steps, a subagent's to an agent
 /// spawned by the main one, and writes the logs. The messages added.
-fn write_session(dir: &SessionDir, source: Source, parsed: &Parsed) -> Result<usize, String> {
+fn write_session(
+    store: Arc<dyn JournalStore>,
+    source: Source,
+    parsed: &Parsed,
+) -> Result<usize, String> {
     let mut app = App::new();
-    app.insert_resource(SessionStore::new(JsonlDirStore::new(dir.path())))
+    app.insert_resource(SessionStore(store))
         .add_plugins((AgentPlugin, JournalPlugin))
         .register_type::<ImportedFrom>();
     let single = |schedule: &mut Schedule| {

@@ -84,6 +84,7 @@ fn recall_finds_the_past_fix_and_never_the_current_session() {
     let broken = home.session(&"3000-3".parse().unwrap_or_else(|_| SessionId::generate()));
     std::fs::create_dir_all(broken.path()).ok();
     std::fs::write(broken.path().join("agent-x.jsonl"), "not json\n").ok();
+    broken.mark_saved().ok();
 
     let outputs = run_session(
         &home,
