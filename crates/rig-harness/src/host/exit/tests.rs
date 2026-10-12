@@ -138,7 +138,10 @@ fn a_refused_exit_still_exits() {
         AgentPass,
         (|mut exits: Query<&mut Decision, (With<ExitRequest>, Undecided, PluginEffects)>| {
             for mut decision in &mut exits {
-                decision.decide(Outcome::refused("not now"));
+                decision.decide(
+                    rig_core::effect::Decider::plugin("test"),
+                    Outcome::refused("not now"),
+                );
             }
         })
         .in_set(Stage::Gate),

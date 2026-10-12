@@ -16,7 +16,8 @@
 //! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
 //! in their order, before it starts, wherever it was spawned. A gate
 //! answers in the effect's [`Decision`], where the first decision wins; a
-//! reviewer edits the [`Outcome`] in place, and the record keeps both. Bevy
+//! reviewer edits the [`Outcome`] in place, and the record keeps both and
+//! who decided. Bevy
 //! sees both writes, so two unordered systems writing them are reported in
 //! debug builds. Any entity [`HoldOf`] an effect
 //! keeps it where it is, and holds add up. A system that fails in Prepare,
@@ -33,7 +34,7 @@
 //! fn no_deploys(mut effects: Query<(&EffectRequest, &mut Decision), (Undecided, PluginEffects)>) {
 //!     for (request, mut decision) in &mut effects {
 //!         if request.kind.name() == "deploy" {
-//!             decision.decide(Outcome::refused("no deploys today"));
+//!             decision.decide(Decider::plugin("no-deploys"), Outcome::refused("no deploys today"));
 //!         }
 //!     }
 //! }
@@ -64,7 +65,7 @@ use bevy_time::{Real, Time, Virtual};
 use rig_cassette::journal::now_ms;
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
-    self, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
+    self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{Origin, Recorder, Reply, cancelled};
@@ -220,6 +221,8 @@ pub struct Effect {
     answered: Option<Disposition>,
     /// The first answer, which a reviewer may edit.
     raw: Option<Result<effect::Outcome, ErrorReport>>,
+    /// Who decided the answer, when the kernel applied a decision.
+    decided_by: Option<Decider>,
 }
 
 impl Default for Effect {
@@ -238,6 +241,7 @@ impl Effect {
             purpose: None,
             answered: None,
             raw: None,
+            decided_by: None,
         }
     }
 
@@ -363,26 +367,34 @@ impl From<Result<effect::Outcome, ErrorReport>> for Outcome {
 /// owner of an open effect decides whenever its work is done, through
 /// `Query<&mut Decision>`, so Bevy sees two unordered deciders. The kernel
 /// applies the decision as the effect's [`Outcome`] when the pass reaches
-/// Start, unless the effect was answered meanwhile; it stays decided
-/// afterwards. Until then the effect is still [`Undecided`] for the gates
+/// Start, unless the effect was answered meanwhile, and its record names
+/// who decided (`EffectRecord::decided_by`); it stays decided afterwards.
+/// An effect no one decided, such as a call every gate let run, records
+/// no decider. Until then the effect is still [`Undecided`] for the gates
 /// after the one that decided: a gate that holds or asks checks
 /// [`is_decided`](Self::is_decided) first.
 #[derive(Component, Debug, Default)]
-pub struct Decision(Option<Outcome>);
+pub struct Decision(Option<(Outcome, Decider)>);
 
 impl Decision {
-    /// Decides `outcome` unless a decision was made; whether this one won.
-    pub fn decide(&mut self, outcome: impl Into<Outcome>) -> bool {
+    /// Decides `outcome` for `by`, such as `Decider::plugin("protected-paths")`,
+    /// unless a decision was made; whether this one won.
+    pub fn decide(&mut self, by: Decider, outcome: impl Into<Outcome>) -> bool {
         if self.0.is_some() {
             return false;
         }
-        self.0 = Some(outcome.into());
+        self.0 = Some((outcome.into(), by));
         true
     }
 
     /// The decision, if one was made.
     pub fn get(&self) -> Option<&Outcome> {
-        self.0.as_ref()
+        self.0.as_ref().map(|(outcome, _)| outcome)
+    }
+
+    /// Who made the decision, if one was made.
+    pub fn by(&self) -> Option<&Decider> {
+        self.0.as_ref().map(|(_, by)| by)
     }
 
     /// Whether a decision was made.
@@ -873,19 +885,20 @@ fn answered(mut world: DeferredWorld, context: HookContext) {
 /// effects were spawned, unless it was answered meanwhile. The decision
 /// stays, so it still reads as decided.
 fn apply_decisions(
-    decided: Query<
-        (Entity, &Effect, &Decision),
+    mut decided: Query<
+        (Entity, &mut Effect, &Decision),
         (Changed<Decision>, Without<Outcome>, Without<Settled>),
     >,
     mut commands: Commands,
 ) {
     let mut decided: Vec<_> = decided
-        .iter()
-        .filter_map(|(entity, effect, decision)| Some((effect.id(), entity, decision.get()?)))
+        .iter_mut()
+        .filter_map(|(entity, effect, decision)| Some((entity, effect, decision.0.as_ref()?)))
         .collect();
-    decided.sort_unstable_by_key(|(id, ..)| *id);
-    for (_, effect, outcome) in decided {
-        commands.entity(effect).try_insert(outcome.clone());
+    decided.sort_unstable_by_key(|(_, effect, _)| effect.id());
+    for (entity, mut effect, (outcome, by)) in decided {
+        effect.decided_by = Some(by.clone());
+        commands.entity(entity).try_insert(outcome.clone());
     }
 }
 
@@ -1269,6 +1282,7 @@ fn assemble(
     };
     record.reviewed = reviewed;
     record.disposition = disposition;
+    record.decided_by.clone_from(&effect.decided_by);
     record.turn = world
         .get::<CallOf>(entity)
         .and_then(|call| world.get::<Turn>(call.0))

@@ -187,7 +187,7 @@ pub(crate) fn read_input(
                     };
                     if let Some(chosen) = pick::choice_key(*key, choosing, &shown) {
                         let entity = choosing.entity;
-                        commands.trigger(Pick { entity, chosen });
+                        commands.trigger(Pick::person(entity, chosen));
                         // The next one takes the keys that follow.
                         view.queue.retain(|&queued| queued != entity);
                         view.choosing = pick::first(&view.queue, &choices);

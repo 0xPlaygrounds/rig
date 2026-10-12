@@ -202,7 +202,7 @@ pub fn answer_open(world: &mut World, title: &str, answer: &Answer) -> bool {
         world.query_filtered::<(&Ask, &mut Decision), (Without<Outcome>, Without<Settled>)>();
     open.iter_mut(world)
         .find(|(ask, decision)| ask.title == title && !decision.is_decided())
-        .is_some_and(|(_, mut decision)| decision.decide(answer.outcome()))
+        .is_some_and(|(_, mut decision)| decision.decide(Decider::Person, answer.outcome()))
 }
 
 /// Runs one frame of `app` `by` later on Bevy's clock, which timers and
@@ -324,7 +324,7 @@ fn answer_asks(
             continue;
         }
         if let Some(answer) = answers.script.pop_front() {
-            decision.decide(answer.outcome());
+            decision.decide(Decider::Person, answer.outcome());
         }
     }
 }

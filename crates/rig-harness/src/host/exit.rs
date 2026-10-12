@@ -16,7 +16,7 @@ use bevy_app::OnAppExitSystems;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use rig::harness_protocol::{RELOAD_EXIT_CODE, SessionId};
-use rig_core::effect::EffectKind;
+use rig_core::effect::{Decider, EffectKind};
 use rig_ecs::agent::Notice;
 use rig_ecs::calls::Wake;
 use rig_ecs::stage::{Decision, EffectRequest, Outcome, Settled, Started};
@@ -151,7 +151,7 @@ fn name_switch(world: &World, target: Option<&SessionId>) -> Result<(), String> 
 /// Answers an exit effect once it starts: nothing held it back.
 fn answer_started(started: On<Add<Started>>, mut exits: Query<&mut Decision, With<ExitRequest>>) {
     if let Ok(mut decision) = exits.get_mut(started.entity) {
-        decision.decide(Outcome::custom("exited"));
+        decision.decide(Decider::plugin("rig-harness"), Outcome::custom("exited"));
     }
 }
 

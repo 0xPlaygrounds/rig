@@ -67,7 +67,7 @@ impl Agents<'_, '_> {
     /// Decides the open tool call `call` with `outcome`.
     pub(super) fn answer(&mut self, call: Entity, outcome: impl Into<Outcome>) {
         if let Ok(mut decision) = self.calls.get_mut(call) {
-            decision.decide(outcome);
+            decision.decide(Decider::plugin("rig-subagents"), outcome);
         }
     }
 

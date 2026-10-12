@@ -131,7 +131,7 @@ despawned or loses its `HoldOf`. Holds add up: releasing yours never
 releases another plugin's, and "allow" means doing nothing. A hold says
 why with its `Name`, such as `waiting for lease on src/a.rs`, which the
 fronts show on the held call. The first decision wins: a gate decides
-through the effect's `Decision` (`decision.decide(Outcome::refused(..))`),
+through the effect's `Decision` (`decision.decide(Decider::plugin(NAME), Outcome::refused(..))`),
 so a later gate can never overturn a refusal; the kernel applies it as the
 `Outcome` when the pass reaches Start. A reviewer edits the `Outcome` in
 place (`Query<&mut Outcome, Unreviewed>`), once (a marker), since Review
@@ -192,7 +192,7 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCall
     for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
-            decision.decide(Outcome::refused("write only under src/"));
+            decision.decide(Decider::plugin("src-only"), Outcome::refused("write only under src/"));
         }
     }
 }
@@ -534,8 +534,8 @@ may run a command line and show a `detail` that is kept whole while the
 label is shortened to fit (a session's age), and whether typed text
 answers it too (`free_text`). Inserting a new `Picker` replaces what it
 shows, and despawning it closes it. Any front shows pickers its own way
-and answers one, or an open `Ask`, by triggering `Pick { entity, chosen
-}`: on a picker, the harness runs the chosen item's command, if any, for
+and answers one, or an open `Ask`, by triggering `Pick::person(entity,
+chosen)`: on a picker, the harness runs the chosen item's command, if any, for
 the picker's agent or else the agent the user looks at (`Shown`), triggers
 `Picked` on it (`Chosen::Item(index)`, `Chosen::Text` for typed text,
 `None` when closed) and despawns it; on an `Ask`, it decides the answer.
@@ -574,7 +574,7 @@ fn ask(
             continue;
         }
         if !answerers.can_answer(Some(agent)) {
-            decision.decide(Outcome::refused("nobody can approve a commit"));
+            decision.decide(Decider::plugin("approve-commits"), Outcome::refused("nobody can approve a commit"));
             continue;
         }
         let ask = Ask::yes_no("Commit?").body(command.to_owned());
@@ -593,7 +593,7 @@ fn answered(
         if Answer::of(outcome).is_some_and(|answer| answer.is("yes")) {
             commands.entity(call).insert(Approved);
         } else if let Ok(mut decision) = calls.get_mut(call) {
-            decision.decide(Outcome::refused("the user said no"));
+            decision.decide(Decider::plugin("approve-commits"), Outcome::refused("the user said no"));
         }
         commands.entity(ask).remove::<HoldOf>();
     }
@@ -672,7 +672,7 @@ label, content }` (`Added<Admitted>`). It then starts no turn of its own,
 needs no hold, and is taken back by clearing that state. To have the agent
 act on it at once, `Deliver` it instead. A message the agent accepted but
 was not given yet, such as a `Note` to a busy agent, is taken back by
-deciding it (`decision.decide(Outcome::custom( "withdrawn"))`): it leaves
+deciding it (`decision.decide(by, Outcome::custom("withdrawn"))`): it leaves
 the inbox and never reaches the conversation. A busy agent is given its
 notes when its turn ends, so after that a later note says what changed.
 
@@ -760,7 +760,7 @@ fn keep_asides(
 ) {
     for (typed, &ForAgent(agent), mut decision) in &mut typed {
         if typed.origin.kind == OriginKind::User && typed.text.starts_with('#') {
-            decision.decide(Outcome::custom("aside"));
+            decision.decide(Decider::plugin("asides"), Outcome::custom("aside"));
             notices.write(Notice::info(agent, "Noted; not sent."));
         }
     }
@@ -1092,7 +1092,7 @@ fn end_with(
             let choice = vec![AssistantContent::Text(Text::new(text.clone()))];
             let made = Made::new("plugin", "submit", "submit");
             let reply = CompletionResponse::new(choice, Usage::default(), made, serde_json::Value::Null);
-            decision.decide(Outcome(Ok(effect::Outcome::Completion(reply))));
+            decision.decide(Decider::plugin("end-with"), Outcome(Ok(effect::Outcome::Completion(reply))));
         }
     }
 }
@@ -1194,7 +1194,7 @@ fn track(
 ) {
     for (deploy, Deploy(steps), mut decision) in &mut deploys {
         if steps.last().is_some_and(|step| step == "live") {
-            decision.decide(Outcome::custom("deployed"));
+            decision.decide(Decider::plugin("deploys"), Outcome::custom("deployed"));
         } else {
             let text = format!("stopped after: {}", steps.join(", "));
             commands.entity(deploy).insert(IfStopped(Outcome::custom(text)));
@@ -1848,7 +1848,7 @@ fn refuse_over_budget(
     }
     for mut decision in &mut calls {
         let why = format!("The session spent its ${CAP:.2} budget.");
-        decision.decide(Outcome::refused(why));
+        decision.decide(Decider::plugin("budget"), Outcome::refused(why));
     }
 }
 
@@ -1989,7 +1989,7 @@ fn src_only(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCall
     for (request, mut decision) in &mut calls {
         let path = request.call.function.arguments["path"].as_str().unwrap_or_default();
         if request.call.function.name.as_str() == "write" && !path.starts_with("src/") {
-            decision.decide(Outcome::refused("write only under src/"));
+            decision.decide(Decider::plugin("src-only"), Outcome::refused("write only under src/"));
         }
     }
 }
@@ -2003,7 +2003,7 @@ struct WriteArgs {
 /// A `write` that only says it wrote.
 fn wrote(called: On<ToolCalled<WriteArgs>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success(format!("wrote {}", called.args.path).into()));
+        call.decide(Decider::plugin("write"), ToolResult::success(format!("wrote {}", called.args.path).into()));
     }
 }
 
@@ -2110,7 +2110,8 @@ fn answer_yes(
     mut commands: Commands,
 ) {
     for entity in asks.iter().chain(&pickers) {
-        commands.trigger(Pick { entity, chosen: Some(Chosen::Item(0)) });
+        let by = Decider::plugin("json-front");
+        commands.trigger(Pick { entity, chosen: Some(Chosen::Item(0)), by });
     }
 }
 ```

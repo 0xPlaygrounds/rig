@@ -43,7 +43,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use rig_cassette::journal::OriginKind;
-use rig_core::effect::{EffectKind, Outcome as EffectOutcome};
+use rig_core::effect::{Decider, EffectKind, Outcome as EffectOutcome};
 use rig_ecs::inbox::Incoming;
 use rig_ecs::stage::{
     AgentPass, Decision, Effect, EffectRequest, ForAgent, IncomingMessages, Outcome, PluginEffects,
@@ -232,8 +232,9 @@ fn answer_with_text(
         let Some(Ok((.., mut decision))) = open.map(|ask| asks.get_mut(ask)) else {
             continue;
         };
-        decision.decide(Answer::Text(incoming.text.clone()).outcome());
-        taken.decide(Outcome::custom("answer"));
+        let answer = Answer::Text(incoming.text.clone()).outcome();
+        decision.decide(Decider::Person, answer);
+        taken.decide(Decider::plugin("rig-harness"), Outcome::custom("answer"));
     }
 }
 

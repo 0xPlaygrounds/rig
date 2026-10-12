@@ -184,7 +184,10 @@ fn on_inspect(
     let method = called.args.method.trim();
     let mut fail = |why: String| {
         if let Ok(mut call) = calls.get_mut(called.call) {
-            call.decide(ToolResult::failed(ToolExecutionError::refused(why)));
+            call.decide(
+                Decider::plugin("rig-inspect"),
+                ToolResult::failed(ToolExecutionError::refused(why)),
+            );
         }
     };
     if !allowed(method) {

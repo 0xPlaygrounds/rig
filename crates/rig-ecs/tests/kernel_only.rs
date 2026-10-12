@@ -535,7 +535,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
         |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
             for (typed, mut decision) in &mut typed {
                 if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
-                    decision.decide(Outcome::custom("shell"));
+                    decision.decide(Decider::plugin("test"), Outcome::custom("shell"));
                 }
             }
         };

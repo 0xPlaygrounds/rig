@@ -136,7 +136,7 @@ fn answer(
                 Outcome::refused(why)
             }
         };
-        decision.decide(outcome);
+        decision.decide(Decider::plugin("rig-print"), outcome);
     }
 }
 

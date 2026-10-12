@@ -80,6 +80,7 @@ pub mod prelude {
         Entry, Halt, MessageId, Origin, OriginKind, RequestId, STOPPED, SavedAgent, SavedSession,
         fork_session, now_ms, read_session, write_session,
     };
+    pub use rig_core::effect::Decider;
     pub use rig_core::error::retry::Verdict;
     pub use rig_core::message::{self, AssistantContent, AssistantMessage, ToolCall, UserContent};
     pub use rig_core::streaming::{Part, PartKind, StreamEvent};

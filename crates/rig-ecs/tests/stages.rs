@@ -307,7 +307,7 @@ fn the_first_decision_wins() {
         (
             |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
                 for mut decision in &mut effects {
-                    decision.decide(Outcome::refused("not now"));
+                    decision.decide(Decider::plugin("refuser"), Outcome::refused("not now"));
                 }
             },
             // Ordered after the refusal, this one decides too: it loses,
@@ -315,7 +315,8 @@ fn the_first_decision_wins() {
             |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>,
              mut seen: ResMut<Seen>| {
                 for mut decision in &mut effects {
-                    let won = decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+                    let allowed = rig_core::tool::ToolResult::skipped("allowed");
+                    let won = decision.decide(Decider::plugin("allower"), allowed);
                     seen.0.push(format!("won: {won}"));
                 }
             },
@@ -342,6 +343,38 @@ fn the_first_decision_wins() {
     );
     assert!(record.reviewed.is_none(), "{record:?}");
     assert!(record.started_ms.is_none());
+    assert_eq!(record.decided_by, Some(Decider::plugin("refuser")));
+}
+
+#[test]
+fn an_effect_answered_before_its_decision_was_applied_names_no_decider() {
+    let mut app = app();
+    let refuse = |mut effects: Query<&mut Decision, (Undecided, PluginEffects)>| {
+        for mut decision in &mut effects {
+            decision.decide(Decider::plugin("refuser"), Outcome::refused("not now"));
+        }
+    };
+    // Answers `answered` itself, after the refusal and before Start
+    // applies it.
+    let answer = |effects: Query<(Entity, &EffectRequest), (Undecided, PluginEffects)>,
+                  mut commands: Commands| {
+        for (entity, request) in &effects {
+            if request.kind.name() == "answered" {
+                commands.entity(entity).insert(Outcome::custom("answered"));
+            }
+        }
+    };
+    app.add_systems(AgentPass, (refuse, answer).chain().in_set(Stage::Gate));
+    app.world_mut().spawn(open("refused"));
+    app.world_mut().spawn(open("answered"));
+    app.update();
+    let records = records(&app);
+    let decider = |kind: &str| {
+        let record = records.iter().find(|record| record.kind.name() == kind);
+        record.map(|record| record.decided_by.clone())
+    };
+    assert_eq!(decider("refused"), Some(Some(Decider::plugin("refuser"))));
+    assert_eq!(decider("answered"), Some(None), "{records:?}");
 }
 
 /// What the gate in [`after_the_gates_an_answer_sees_their_decisions_and_holds`]
@@ -372,7 +405,7 @@ fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
                     } else if decision.is_decided() {
                         "decided"
                     } else {
-                        decision.decide(Outcome::custom("cached"));
+                        decision.decide(Decider::plugin("test"), Outcome::custom("cached"));
                         "cached"
                     };
                     let what = format!("{name}: {what}");
@@ -387,7 +420,7 @@ fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
                 for (effect, way, mut decision) in &mut effects {
                     match way {
                         Way::Refuse => {
-                            decision.decide(Outcome::refused("no"));
+                            decision.decide(Decider::plugin("test"), Outcome::refused("no"));
                         }
                         Way::Hold => {
                             commands.spawn(HoldOf(effect));
@@ -466,7 +499,7 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
             let Ok((mut decision, started)) = calls.get_mut(called.call) else {
                 return;
             };
-            decision.decide(Outcome::custom("done"));
+            decision.decide(Decider::plugin("test"), Outcome::custom("done"));
             told.0.push(Told {
                 tool: called.entity,
                 call: called.call,
@@ -551,21 +584,24 @@ fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
 /// A gate that refuses every tool call.
 fn refuse_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
     for mut decision in &mut calls {
-        decision.decide(Outcome::refused("no"));
+        decision.decide(Decider::plugin("test"), Outcome::refused("no"));
     }
 }
 
 /// Another gate that allows every tool call.
 fn allow_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
     for mut decision in &mut calls {
-        decision.decide(rig_core::tool::ToolResult::skipped("allowed"));
+        decision.decide(
+            Decider::plugin("test"),
+            rig_core::tool::ToolResult::skipped("allowed"),
+        );
     }
 }
 
 /// A gate that takes every message over.
 fn take_messages(mut messages: Query<&mut Decision, (Undecided, IncomingMessages)>) {
     for mut decision in &mut messages {
-        decision.decide(Outcome::custom("taken"));
+        decision.decide(Decider::plugin("test"), Outcome::custom("taken"));
     }
 }
 
@@ -636,7 +672,7 @@ fn an_effect_decided_as_its_hold_goes_never_starts() {
         AgentPass,
         (|mut asked: Query<&mut Decision, (Undecided, With<Asked>)>| {
             for mut decision in &mut asked {
-                decision.decide(Outcome::custom("no"));
+                decision.decide(Decider::plugin("test"), Outcome::custom("no"));
             }
         })
         .in_set(Stage::Gate),
@@ -650,7 +686,10 @@ fn an_effect_decided_as_its_hold_goes_never_starts() {
                 return;
             };
             if let Ok(mut decision) = decisions.get_mut(asked.call) {
-                decision.decide(Outcome::refused("the user said no"));
+                decision.decide(
+                    Decider::plugin("test"),
+                    Outcome::refused("the user said no"),
+                );
             }
             commands.entity(asked.hold).despawn();
         },
@@ -954,7 +993,7 @@ fn every_way_an_effect_ends_is_recorded() {
     let answer = rig_core::tool::ToolResult::skipped("answered");
     let world = app.world_mut();
     if let Some(mut decision) = world.get_mut::<Decision>(running) {
-        decision.decide(answer);
+        decision.decide(Decider::plugin("test"), answer);
     }
     // Replaced while held: it never starts.
     let successor = world.spawn((open("successor"), Supersedes(replaced))).id();
@@ -1178,7 +1217,7 @@ fn gate(
                 gated.hold = Some(commands.spawn(HoldOf(call)).id());
             }
             "refused" => {
-                decision.decide(Outcome::refused("not this one"));
+                decision.decide(Decider::plugin("test"), Outcome::refused("not this one"));
             }
             _ => {}
         }
@@ -1615,7 +1654,7 @@ fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
     let refuse = |mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>| {
         for mut decision in &mut calls {
-            decision.decide(Outcome::refused("not now"));
+            decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
         }
     };
     app.init_resource::<Ended>()
@@ -1954,7 +1993,7 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
 fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
     for (typed, mut decision) in &mut typed {
         if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
-            decision.decide(Outcome::custom("ran in a shell"));
+            decision.decide(Decider::plugin("test"), Outcome::custom("ran in a shell"));
         }
     }
 }
@@ -2068,7 +2107,7 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
     };
     assert!(run_until(&mut app, accepted));
     if let Some(mut decision) = app.world_mut().get_mut::<Decision>(taken_back) {
-        decision.decide(Outcome::custom("withdrawn"));
+        decision.decide(Decider::plugin("test"), Outcome::custom("withdrawn"));
     }
     app.update();
     if let Some((_, hold)) = app.world().resource::<Judging>().0 {

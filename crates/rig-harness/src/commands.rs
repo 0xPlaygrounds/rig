@@ -23,6 +23,7 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemId;
 use bevy_log::warn;
 use bevy_reflect::prelude::*;
+use rig_core::effect::Decider;
 use rig_ecs::agent::{Notice, NoticeLevel};
 use rig_ecs::inbox::{DeliveryMode, Incoming, Recalled};
 use rig_ecs::stage::{
@@ -100,7 +101,7 @@ fn run_typed(
         .collect();
     lines.sort_unstable_by_key(|(id, ..)| *id);
     for (_, line, mode, agent, mut decision) in lines {
-        if decision.decide(Outcome::custom("command")) {
+        if decision.decide(Decider::plugin("rig-harness"), Outcome::custom("command")) {
             commands.trigger(RunCommand {
                 mode,
                 ..RunCommand::new(agent, line)

@@ -54,14 +54,8 @@ fn a_pick_runs_the_items_command_for_the_agent_shown_and_closes_the_picker() {
         .item("large", "note large");
     let picker = world.spawn(size).id();
     let closed = world.spawn(Picker::new("Other").item("x", "note x")).id();
-    world.trigger(Pick {
-        entity: picker,
-        chosen: Some(Chosen::Item(1)),
-    });
-    world.trigger(Pick {
-        entity: closed,
-        chosen: None,
-    });
+    world.trigger(Pick::person(picker, Some(Chosen::Item(1))));
+    world.trigger(Pick::person(closed, None));
     app.update();
     let world = app.world();
     assert!(world.get_entity(picker).is_err() && world.get_entity(closed).is_err());
@@ -79,18 +73,9 @@ fn a_pick_answers_a_question() {
         .id();
     let choice = world.spawn((Ask::yes_no("Run?"), ForAgent(agent))).id();
     let closed = world.spawn((Ask::yes_no("Again?"), ForAgent(agent))).id();
-    world.trigger(Pick {
-        entity: text,
-        chosen: Some(Chosen::Text("because".to_owned())),
-    });
-    world.trigger(Pick {
-        entity: choice,
-        chosen: Some(Chosen::Item(1)),
-    });
-    world.trigger(Pick {
-        entity: closed,
-        chosen: None,
-    });
+    world.trigger(Pick::person(text, Some(Chosen::Text("because".to_owned()))));
+    world.trigger(Pick::person(choice, Some(Chosen::Item(1))));
+    world.trigger(Pick::person(closed, None));
     app.update();
     let world = app.world();
     let answer = |ask: Entity| world.get::<Outcome>(ask).map(Answer::of);

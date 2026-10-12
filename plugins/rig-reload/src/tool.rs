@@ -76,7 +76,7 @@ fn on_reload_tool(
         ))),
     };
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(output);
+        call.decide(Decider::plugin("rig-reload"), output);
     }
 }
 
