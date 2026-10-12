@@ -216,3 +216,32 @@ fn a_directory_store_keeps_named_files_beside_its_logs() {
     assert_eq!(kind, Err(NotFound));
     std::fs::remove_dir_all(dir).ok();
 }
+
+/// An effect log written to a store's file reads back, and a writer opened
+/// on it later continues after its records.
+#[cfg(feature = "jsonl")]
+#[test]
+fn an_effect_log_is_kept_in_a_store_file() {
+    use super::EFFECT_LOG;
+    use crate::effect_log::{EffectLog, jsonl};
+
+    let fixture = include_str!("../../fixtures/effects/anthropic_completion_smoke.effects.json");
+    let log: EffectLog = serde_json::from_str(fixture).expect("a fixture");
+    let store = std::sync::Arc::new(MemoryStore::default());
+    let mut writer = jsonl::Writer::on(store.clone(), EFFECT_LOG);
+    writer.append(&log).expect("appended");
+    let bytes = store.read_file(EFFECT_LOG).expect("written");
+    let read = jsonl::read_from(&bytes[..]).expect("read back");
+    let ids = |log: &EffectLog| {
+        log.records
+            .iter()
+            .map(|record| record.id)
+            .collect::<Vec<_>>()
+    };
+    assert!(!log.records.is_empty());
+    assert_eq!(ids(&read), ids(&log));
+    let last = jsonl::Writer::on(store, EFFECT_LOG)
+        .last_id()
+        .expect("read");
+    assert_eq!(last, ids(&log).into_iter().max());
+}
