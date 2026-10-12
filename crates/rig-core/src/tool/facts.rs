@@ -161,6 +161,10 @@ pub struct FileChange {
     /// The change as a unified diff, when the tool made one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub diff: Option<String>,
+    /// The hash of the bytes the file held before the change, when the
+    /// tool or a checkpoint around it knows them; `None` for a created file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub before: Option<ContentHash>,
     /// The hash of the bytes the tool left in the file, when it knows them;
     /// `None` for a deleted file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -176,6 +180,7 @@ impl FileChange {
             added: lines,
             removed: 0,
             diff: None,
+            before: None,
             after: None,
         }
     }
@@ -188,6 +193,7 @@ impl FileChange {
             added,
             removed,
             diff: None,
+            before: None,
             after: None,
         }
     }
@@ -200,6 +206,7 @@ impl FileChange {
             added: 0,
             removed: lines,
             diff: None,
+            before: None,
             after: None,
         }
     }
@@ -208,6 +215,13 @@ impl FileChange {
     #[must_use]
     pub fn with_diff(mut self, diff: impl Into<String>) -> Self {
         self.diff = Some(diff.into());
+        self
+    }
+
+    /// This change, made to the content `before` names.
+    #[must_use]
+    pub fn with_before(mut self, before: ContentHash) -> Self {
+        self.before = Some(before);
         self
     }
 

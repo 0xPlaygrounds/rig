@@ -9,6 +9,7 @@ fn published_facts_read_back_with_a_stable_shape() {
         FileChange::created("new.rs", 4),
         FileChange::modified("lib.rs", 2, 1)
             .with_diff("@@ -1 +1,2 @@\n-a\n+b\n+c\n")
+            .with_before(ContentHash("beef".to_owned()))
             .with_after(ContentHash("c0ffee".to_owned())),
         FileChange::deleted("old.rs", 9),
     ]);
@@ -47,7 +48,7 @@ fn published_facts_read_back_with_a_stable_shape() {
             "files_changed": [
                 {"path": "new.rs", "kind": "created", "added": 4, "removed": 0},
                 {"path": "lib.rs", "kind": "modified", "added": 2, "removed": 1,
-                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "after": "c0ffee"},
+                 "diff": "@@ -1 +1,2 @@\n-a\n+b\n+c\n", "before": "beef", "after": "c0ffee"},
                 {"path": "old.rs", "kind": "deleted", "added": 0, "removed": 9},
             ],
         }))
