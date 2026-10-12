@@ -137,7 +137,10 @@ fn gate(
             continue;
         };
         if !answerers.can_answer(Some(agent)) {
-            decision.decide(Outcome::refused(format!("`{command}` {HEADLESS}")));
+            decision.decide(
+                Decider::plugin("confirm-destructive"),
+                Outcome::refused(format!("`{command}` {HEADLESS}")),
+            );
             continue;
         }
         let ask = Ask::new(format!("Allow `{command}`?"))
@@ -174,7 +177,10 @@ fn answered(
                 }
                 _ => format!("{DENIED}."),
             };
-            decision.decide(Outcome::refused(why));
+            decision.decide(
+                Decider::plugin("confirm-destructive"),
+                Outcome::refused(why),
+            );
         }
         commands.entity(ask).remove::<HoldOf>();
     }

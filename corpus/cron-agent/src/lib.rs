@@ -380,7 +380,7 @@ fn on_schedule(
         Err(why) => ToolResult::failed(ToolExecutionError::other(why)),
     };
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(result);
+        call.decide(Decider::plugin("cron-agent"), result);
     }
 }
 

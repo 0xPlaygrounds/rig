@@ -6,12 +6,12 @@
 //! kernel builds in Admit, Prepare systems then edit, and Start fits to the
 //! model and sends. The kernel's own request is kept as the call's
 //! [`Built`] when the `ModelRequest` is inserted, before any Prepare
-//! system ran; the request as sent is copied to the agent's
+//! system ran, its system prompt rendered in front; the request as sent is copied to the agent's
 //! [`LastRequest`] when the call is `Started`, with the model it went to
 //! after every adapter ([`SentTo`]), the prompt sections that applied and
 //! the plugin that spawned each ([`ProvidedBy`]). Each
 //! part of the system prompt is rendered as the kernel renders it
-//! ([`system_prompt`], [`tool_rules`]) and found in the prompt sent.
+//! (rig-core's `SystemPrompt::text`) and found in the prompt sent.
 //!
 //! `/why [full] [agent]` (or `/context --last`) then shows the request's
 //! estimated tokens, a bar of the context window by part, the system
@@ -23,8 +23,9 @@
 use std::fmt::Write as _;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{CompletionRequest, ToolDefinition, tokens_label};
-use rig_harness::rig_ecs::prompt::{system_prompt, tool_rules};
+use rig_harness::rig_core::completion::{
+    self, CompletionRequest, Section, ToolDefinition, tokens_label,
+};
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 
 use message::Message;
@@ -102,8 +103,31 @@ pub struct SectionNote {
 impl SectionNote {
     /// The section as the kernel writes it in a system prompt.
     fn block(&self) -> String {
-        system_prompt("", "", [&self.section])
+        tagged(&self.section.tag, &self.section.text)
     }
+}
+
+/// `text` between `<tag>` and `</tag>`, as the kernel writes a section in a
+/// system prompt; empty when `text` is blank.
+fn tagged(tag: &str, text: &str) -> String {
+    let prompt = completion::SystemPrompt {
+        role: String::new(),
+        sections: vec![Section::new(tag, text)],
+    };
+    prompt.text()
+}
+
+/// The `tool_rules` section of tools with `rules`, as the kernel writes
+/// it: a line per rule, a rule two tools share once; empty without rules.
+fn tool_rules<'a>(rules: impl IntoIterator<Item = &'a ToolRules>) -> String {
+    let mut lines: Vec<String> = Vec::new();
+    for rule in rules.into_iter().flat_map(|rules| rules.0.iter()) {
+        let line = format!("- {}", rule.trim());
+        if !rule.trim().is_empty() && !lines.contains(&line) {
+            lines.push(line);
+        }
+    }
+    tagged("tool_rules", &lines.join("\n"))
 }
 
 /// Keeps the request of each turn's call as it is first put on the call.
@@ -113,7 +137,11 @@ fn keep_built(
     mut commands: Commands,
 ) {
     if let Ok(call) = calls.get(inserted.entity) {
-        let built = Built(call.request.clone());
+        let request = call.request.clone();
+        let built = Built(match &call.prompt {
+            Some(prompt) => request.with_system(prompt),
+            None => request,
+        });
         commands.entity(inserted.entity).try_insert_if_new(built);
     }
 }
@@ -159,7 +187,7 @@ fn keep_sent(
         window: sent_to.spec.context_window,
         sent: call.request.clone(),
         built: built.map(|built| built.0.clone()),
-        role: system_prompt(&prompt.0, "", []),
+        role: prompt.0.trim().to_owned(),
         rules: tool_rules(rules),
         sections,
         summaries: summaries(conversation),
@@ -206,7 +234,11 @@ fn alias(
         else {
             continue;
         };
-        if (rest.is_empty() || rest.starts_with(' ')) && decision.decide(Outcome::custom("command"))
+        if (rest.is_empty() || rest.starts_with(' '))
+            && decision.decide(
+                Decider::plugin("context-inspector"),
+                Outcome::custom("command"),
+            )
         {
             let mode = typed.mode;
             commands.trigger(RunCommand {

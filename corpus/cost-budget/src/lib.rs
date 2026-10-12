@@ -121,7 +121,7 @@ fn refuse_when_spent(
             "Stopped: budget of ${limit:.2} reached (${spent:.2} spent). Raise it with /budget, \
              then /retry."
         );
-        decision.decide(Outcome::refused(why));
+        decision.decide(Decider::plugin("cost-budget"), Outcome::refused(why));
     }
 }
 
