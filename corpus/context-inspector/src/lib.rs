@@ -7,9 +7,9 @@
 //! systems then edit it, and Start renders the prompt in front, fits the
 //! request to the model and sends it. The kernel's own request is kept as
 //! the call's [`Built`] when the `ModelRequest` is inserted, before any
-//! Prepare system ran. The prompt's parts after every Prepare phase are
-//! kept as the call's [`Parts`], with the tool rules Start will fill in
-//! ([`ModelStarts::sent`]). When the call is `Started`, the request as sent
+//! Prepare system ran. The prompt in parts as Start will send it, after
+//! Prepare, is kept as the call's [`Parts`] ([`ModelStarts::prompt`]).
+//! When the call is `Started`, the request as sent
 //! goes to the agent's [`LastRequest`] with the model it went to after
 //! every adapter ([`SentTo`]) and, for each prompt section, the plugin that
 //! spawned it ([`ProvidedBy`]).
@@ -28,16 +28,13 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{
     self, CompletionRequest, Section, ToolDefinition, tokens_label,
 };
+use rig_harness::rig_ecs::prompt::TOOL_RULES;
 use rig_memory::{HeuristicTokenCounter, TokenCounter};
 
 use message::Message;
 
 /// The width of the token bar, in characters.
 const BAR: u64 = 40;
-
-/// The tag of the section Start fills with the rules of the tools a
-/// request carries.
-const TOOL_RULES: &str = "tool_rules";
 
 /// Adds `/why`, `/context --last`, and what they read.
 #[derive(Default)]
@@ -46,8 +43,7 @@ pub struct ContextInspectorPlugin;
 /// The plugin's stage systems.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ContextInspectorSystems {
-    /// After every Prepare phase: a turn's prompt in parts, as Start will
-    /// send it.
+    /// After Prepare: a turn's prompt in parts, as Start will send it.
     Parts,
     /// `/context --last` taken over as `/why`, before the harness runs the
     /// line as `/context`.
@@ -89,14 +85,10 @@ impl Plugin for ContextInspectorPlugin {
 #[derive(Component, Clone)]
 pub struct Built(pub ModelRequest);
 
-/// On a turn's model call, after Prepare: its system prompt in parts.
+/// On a turn's model call, after Prepare: its system prompt in parts as
+/// Start sends it, its `tool_rules` filled for the tools carried.
 #[derive(Component, Clone, Debug)]
-pub struct Parts {
-    /// The prompt as Prepare left it; Start fills its `tool_rules`.
-    pub prompt: completion::SystemPrompt,
-    /// The `tool_rules` block Start sends, rendered by the kernel.
-    pub rules: String,
-}
+pub struct Parts(pub completion::SystemPrompt);
 
 /// An agent's last turn request, as it was sent.
 #[derive(Component, Clone)]
@@ -152,32 +144,17 @@ fn keep_built(
     }
 }
 
-/// After every Prepare phase, keeps each admitted turn call's prompt in
-/// parts, with the tool rules Start will send: what the kernel renders for
-/// a request that carries only this one's tools, on its model.
+/// After Prepare, keeps each admitted turn call's prompt in parts as Start
+/// will send it.
 fn keep_parts(
     calls: Query<(Entity, &ModelRequest, &Adapters, &ForAgent), (Added<Admitted>, With<TurnCall>)>,
     starts: ModelStarts,
     mut commands: Commands,
 ) {
     for (call, model, adapters, &ForAgent(agent)) in &calls {
-        let Some(prompt) = model.prompt.clone() else {
-            continue;
-        };
-        let rules_only = ModelRequest {
-            request: CompletionRequest::from(Vec::new()).tools(model.request.tools.clone()),
-            connection: model.connection.clone(),
-            prompt: Some(completion::SystemPrompt {
-                role: String::new(),
-                sections: vec![Section::new(TOOL_RULES, "")],
-            }),
-        };
-        let sent = starts.sent(&rules_only, Some(adapters), Some(agent));
-        let rules = match sent.map(|(_, sent)| sent.chat_history.into_iter().next()) {
-            Ok(Some(Message::System { content })) => content,
-            _ => String::new(),
-        };
-        commands.entity(call).try_insert(Parts { prompt, rules });
+        if let Some(prompt) = starts.prompt(model, Some(adapters), Some(agent)) {
+            commands.entity(call).try_insert(Parts(prompt));
+        }
     }
 }
 
@@ -214,6 +191,7 @@ fn keep_sent(
             spawned.tag == section.tag && of.is_none_or(|of| of.0 == agent)
         });
         let (name, from) = match spawned {
+            _ if section.tag == TOOL_RULES => (None, "of the tools offered".to_owned()),
             None => (None, "added before sending".to_owned()),
             Some((spawned, of, name, by)) => {
                 let plugin = by.and_then(|by| names.get(by.0).ok()).map(short);
@@ -235,19 +213,8 @@ fn keep_sent(
             from,
         })
     };
-    let notes = parts.map_or_else(Vec::new, |parts| {
-        let sections = parts.prompt.sections.iter();
-        sections
-            .filter_map(|section| match section.tag.as_str() {
-                TOOL_RULES => (!parts.rules.is_empty()).then(|| SectionNote {
-                    tag: TOOL_RULES.to_owned(),
-                    name: None,
-                    tokens: tokens(&parts.rules),
-                    from: "of the tools offered".to_owned(),
-                }),
-                _ => note(section),
-            })
-            .collect()
+    let notes = parts.map_or_else(Vec::new, |Parts(prompt)| {
+        prompt.sections.iter().filter_map(note).collect()
     });
     let last = LastRequest {
         model: sent_to.spec.reference(),
@@ -523,8 +490,8 @@ fn report(
     ));
 
     if let Some(Built(built)) = &last.built {
-        if let (Some(built), Some(sent)) = (&built.prompt, &last.parts) {
-            changes.extend(prompt_changes(built, &sent.prompt));
+        if let (Some(built), Some(Parts(sent))) = (&built.prompt, &last.parts) {
+            changes.extend(prompt_changes(built, sent));
         }
         changes.extend(tool_changes(&built.request.tools, tools));
         changes.extend(message_changes(split(&built.request).1, messages));
@@ -573,7 +540,7 @@ fn report(
 /// The parts of the system prompt sent, in order: the role, then each
 /// section with where it came from.
 fn prompt_lines(last: &LastRequest) -> Vec<String> {
-    let role = last.parts.as_ref().map(|parts| parts.prompt.role.trim());
+    let role = last.parts.as_ref().map(|Parts(prompt)| prompt.role.trim());
     let role = role
         .filter(|role| !role.is_empty())
         .map(|role| format!("  the role: ~{}", size(role)));
