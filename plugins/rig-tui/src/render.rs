@@ -40,7 +40,7 @@ use rig_ecs::agent::{ActiveTurn, AgentId, Calls, Conversation, Partial};
 use rig_ecs::inbox::{DeliveryMode, Incoming};
 use rig_ecs::stage::{Effect, ForAgent, Holds, Outcome, Started};
 use rig_ecs::tools::ToolRequest;
-use rig_harness::prelude::ToolProgress;
+use rig_harness::prelude::{CallOutput, ToolProgress};
 use rig_harness::primary::Shown;
 use rig_harness::transcript::{TranscriptEntries, TranscriptEntry};
 
@@ -253,6 +253,12 @@ pub(crate) struct CallStates<'w, 's> {
         ),
     >,
     names: Query<'w, 's, &'static Name>,
+    outputs: Query<
+        'w,
+        's,
+        (&'static ToolRequest, &'static CallOutput),
+        (With<Started>, Without<Outcome>),
+    >,
 }
 
 impl CallStates<'_, '_> {
@@ -281,6 +287,19 @@ impl CallStates<'_, '_> {
                 (request.call.id.clone(), state)
             })
             .collect()
+    }
+
+    /// The output so far of each running call of `calls` whose tool
+    /// reported some, by its id.
+    pub(crate) fn outputs(
+        &self,
+        calls: impl IntoIterator<Item = Entity>,
+    ) -> BTreeMap<CallId, String> {
+        let found = calls
+            .into_iter()
+            .filter_map(|call| self.outputs.get(call).ok());
+        let outputs = found.map(|(request, output)| (request.call.id.clone(), output.text()));
+        outputs.filter(|(_, text)| !text.is_empty()).collect()
     }
 
     /// A hold's name, which says why it holds.
@@ -312,6 +331,8 @@ pub(crate) struct Sources<'a> {
     pub(crate) entry_renderers: &'a EntryRenderers<'a>,
     /// Where the running turn's calls stand.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
+    /// The output so far of its running calls that report it.
+    pub(crate) outputs: &'a BTreeMap<CallId, String>,
     /// What settled calls published and how long they ran.
     pub(crate) facts: &'a CallFacts,
     /// The reply streaming in, if any.
@@ -355,6 +376,7 @@ pub(crate) fn lay_out_transcript(
         renderers: sources.renderers,
         entries: sources.entry_renderers,
         calls: sources.calls,
+        outputs: sources.outputs,
         inside: HashMap::new(),
         expanded: &view.expanded,
         facts: sources.facts,
@@ -574,6 +596,7 @@ pub(crate) fn render(
         })
         .unwrap_or_default();
     let partial = partial.map(|(_, partial)| partial);
+    let call_outputs = call_states.outputs(calls.into_iter().flat_map(Calls::iter));
     let call_states = call_states.of(calls.into_iter().flat_map(Calls::iter));
     let shown_entries: Vec<(Entity, &TranscriptEntry)> = shown_agent
         .and_then(|agent| agent_entries.get(agent).ok())
@@ -652,6 +675,7 @@ pub(crate) fn render(
                 renderers: &by_tool,
                 entry_renderers: &by_origin,
                 calls: &call_states,
+                outputs: &call_outputs,
                 facts: &facts,
                 partial,
                 streaming: &streamed,

@@ -57,6 +57,13 @@ pub struct ToolCallView<'a> {
     /// How long it ran, once it settled in this run; not kept with the
     /// session.
     pub took: Option<Duration>,
+    /// The output so far of a running call whose tool reports it as it
+    /// runs ([`CallOutput`]), such as a command's: cut as tool output is
+    /// cut, its last lines after a line that counts the earlier ones.
+    /// `None` once the call answered, and before it printed anything.
+    ///
+    /// [`CallOutput`]: rig_harness::prelude::CallOutput
+    pub output: Option<&'a str>,
 }
 
 /// Where a tool call stands. A call of an earlier turn, or one whose
@@ -84,7 +91,7 @@ pub(crate) const UNNAMED_HOLD: &str = "unnamed hold";
 
 impl<'a> ToolCallView<'a> {
     /// `call`, answered by `result` if it was, standing as `state`,
-    /// collapsed, with no facts known.
+    /// collapsed, with no facts or output known.
     pub fn new(call: &'a ToolCall, result: Option<&'a ToolResult>, state: CallState) -> Self {
         Self {
             call,
@@ -93,6 +100,7 @@ impl<'a> ToolCallView<'a> {
             expanded: false,
             facts: None,
             took: None,
+            output: None,
         }
     }
 

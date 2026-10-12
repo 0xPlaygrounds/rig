@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use bevy_ecs::prelude::*;
@@ -26,7 +27,10 @@ use super::{
 };
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
-use crate::{AppToolRenderersExt, CallState, Highlight, ScrollTo, TranscriptItem, TranscriptView};
+use crate::{
+    AppToolRenderersExt, CallState, Highlight, RenderToolCall, ScrollTo, ToolCallView,
+    TranscriptItem, TranscriptView,
+};
 
 const WIDTH: u16 = 80;
 
@@ -89,18 +93,21 @@ fn following_again_drops_the_held_row() {
 }
 
 /// The rows `transcript` draws of `conversation`'s first message with the
-/// calls standing as `calls` say.
+/// calls standing as `calls` say, their output so far `outputs`, drawn by
+/// `renderers`.
 fn drawn(
     transcript: &mut Transcript,
     conversation: &Conversation,
-    calls: &BTreeMap<CallId, CallState>,
+    (calls, outputs): (&BTreeMap<CallId, CallState>, &BTreeMap<CallId, String>),
+    renderers: &Renderers<'_>,
 ) -> String {
-    let (renderers, entries) = (Renderers::default(), EntryRenderers::default());
+    let entries = EntryRenderers::default();
     let (expanded, facts) = (HashSet::new(), CallFacts::default());
     let look = Look {
-        renderers: &renderers,
+        renderers,
         entries: &entries,
         calls,
+        outputs,
         inside: HashMap::new(),
         expanded: &expanded,
         facts: &facts,
@@ -113,19 +120,25 @@ fn drawn(
     rows.join("\n")
 }
 
+/// A conversation of one reply that calls `call`.
+fn calling(call: &ToolCall) -> Option<Conversation> {
+    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
+    let conversation = serde_json::from_value::<Conversation>(json!({
+        "messages": [Message::Assistant(reply)],
+        "origins": [],
+    }));
+    conversation.ok()
+}
+
 #[test]
 fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let Ok(name) = ToolName::new("edit") else {
         return;
     };
     let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "path": "src/a.rs" })));
-    let reply = AssistantMessage::new(vec![AssistantContent::ToolCall(call.clone())]);
-    let conversation = serde_json::from_value::<Conversation>(json!({
-        "messages": [Message::Assistant(reply)],
-        "origins": [],
-    }));
-    assert!(conversation.is_ok());
-    let Ok(conversation) = conversation else {
+    let conversation = calling(&call);
+    assert!(conversation.is_some());
+    let Some(conversation) = conversation else {
         return;
     };
     let mut world = World::new();
@@ -140,13 +153,14 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let names = vec![lease.to_owned()];
     assert_eq!(held.get(&call.id), Some(&CallState::Held(names)));
     let mut transcript = Transcript::default();
-    let shown = drawn(&mut transcript, &conversation, &held);
+    let none = (BTreeMap::new(), Renderers::default());
+    let shown = drawn(&mut transcript, &conversation, (&held, &none.0), &none.1);
     assert!(shown.contains(&format!("held: {lease}")), "{shown}");
 
     world.despawn(hold);
     let waiting = states(&mut world);
     assert_eq!(waiting.get(&call.id), Some(&CallState::Waiting));
-    let shown = drawn(&mut transcript, &conversation, &waiting);
+    let shown = drawn(&mut transcript, &conversation, (&waiting, &none.0), &none.1);
     assert!(!shown.contains("held:"), "{shown}");
 
     let started = Started {
@@ -157,13 +171,53 @@ fn a_call_is_drawn_again_as_its_holds_go_and_its_progress_moves() {
     let running = states(&mut world);
     let line = Some("12 of 40 files".to_owned());
     assert_eq!(running.get(&call.id), Some(&CallState::Running(line)));
-    let shown = drawn(&mut transcript, &conversation, &running);
+    let shown = drawn(&mut transcript, &conversation, (&running, &none.0), &none.1);
     assert!(shown.contains("⎿ 12 of 40 files"), "{shown}");
     world
         .entity_mut(effect)
         .insert(ToolProgress("13 of 40 files".to_owned()));
-    let shown = drawn(&mut transcript, &conversation, &states(&mut world));
+    let states = states(&mut world);
+    let shown = drawn(&mut transcript, &conversation, (&states, &none.0), &none.1);
     assert!(shown.contains("⎿ 13 of 40 files"), "{shown}");
+}
+
+#[test]
+fn a_running_calls_renderer_gets_all_its_output_so_far() {
+    let Ok(name) = ToolName::new("shell") else {
+        return;
+    };
+    let call = ToolCall::from_wire("c1", ToolFunction::new(name, json!({ "command": "make" })));
+    let conversation = calling(&call);
+    assert!(conversation.is_some());
+    let Some(conversation) = conversation else {
+        return;
+    };
+    let look: Arc<RenderToolCall> = Arc::new(|call: &ToolCallView<'_>| {
+        let output = call.output.unwrap_or("no output").lines();
+        output.map(|line| Line::from(format!("> {line}"))).collect()
+    });
+    let renderers: Renderers<'_> = HashMap::from([("shell", &look)]);
+    let calls = BTreeMap::from([(call.id.clone(), CallState::Running(None))]);
+    let mut transcript = Transcript::default();
+    let mut outputs = BTreeMap::new();
+    for line in ["cc a.c", "cc b.c", "ld app"] {
+        let text = outputs.entry(call.id.clone()).or_insert_with(String::new);
+        text.push_str(&format!("{line}\n"));
+        let shown = drawn(
+            &mut transcript,
+            &conversation,
+            (&calls, &outputs),
+            &renderers,
+        );
+        assert!(shown.ends_with(&format!("> {line}")), "{shown}");
+    }
+    let shown = drawn(
+        &mut transcript,
+        &conversation,
+        (&calls, &outputs),
+        &renderers,
+    );
+    assert_eq!(shown, "> cc a.c\n> cc b.c\n> ld app");
 }
 
 /// Adds `message` to `agent`'s conversation, as a commit does.

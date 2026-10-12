@@ -150,6 +150,8 @@ pub(crate) struct Look<'a> {
     pub(crate) entries: &'a EntryRenderers<'a>,
     /// The state of each call of the running turn.
     pub(crate) calls: &'a BTreeMap<CallId, CallState>,
+    /// The output so far of each of its running calls that reports it.
+    pub(crate) outputs: &'a BTreeMap<CallId, String>,
     /// The notices and entries drawn inside a message, by its index, each
     /// with the content item it goes before.
     pub(crate) inside: HashMap<usize, Vec<(usize, Inside<'a>)>>,
@@ -206,7 +208,7 @@ impl Look<'_> {
 
     /// Hashes what message `index` (with `id`) looks like besides its
     /// messages: its notices, whether it is expanded, and its calls' states,
-    /// expansion and running times.
+    /// output so far, expansion and running times.
     fn hash_message(
         &self,
         (index, id): (usize, Option<rig_ecs::prelude::MessageId>),
@@ -220,6 +222,7 @@ impl Look<'_> {
             for item in assistant.content.iter() {
                 if let AssistantContent::ToolCall(call) = item {
                     self.calls.get(&call.id).hash(hasher);
+                    self.outputs.get(&call.id).hash(hasher);
                     let expanded = TranscriptItem::Call(call.id.clone());
                     self.expanded.contains(&expanded).hash(hasher);
                     self.facts.of(&call.id).1.hash(hasher);
@@ -239,6 +242,7 @@ impl Look<'_> {
             self.hash_inside(*index, &mut hasher);
         }
         self.calls.hash(&mut hasher);
+        self.outputs.hash(&mut hasher);
         // Sets in no order: a sum of each one's hash.
         let unordered = |item: &dyn Fn(&mut DefaultHasher)| {
             let mut hasher = DefaultHasher::new();
@@ -767,6 +771,7 @@ fn message_lines(
                             expanded: look.expanded.contains(&item),
                             facts,
                             took,
+                            output: look.outputs.get(&call.id).map(String::as_str),
                         };
                         let start = lines.len();
                         lines.extend(call_lines(&view, look.renderers));

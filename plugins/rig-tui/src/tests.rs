@@ -126,11 +126,13 @@ pub(crate) fn drawn_rows(
                 .filter_map(|entry| Some((entry, entries.get(entry).ok()?)))
                 .collect();
             let (calls, facts) = (Default::default(), CallFacts::default());
+            let outputs = Default::default();
             let sources = Sources {
                 view: &transcript_view,
                 renderers: &renderers,
                 entry_renderers: &entry_renderers,
                 calls: &calls,
+                outputs: &outputs,
                 facts: &facts,
                 partial: None,
                 streaming: &streaming,
