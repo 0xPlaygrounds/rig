@@ -1,6 +1,7 @@
 //! Facts a tool call publishes about what it did, beside the text the model
 //! reads: the files it read ([`FilesRead`]), the files it changed
-//! ([`FilesChanged`]) and how a process it ran ended ([`ExitStatus`]). A
+//! ([`FilesChanged`]), how a process it ran ended ([`ExitStatus`]) and
+//! whether its output was cut to fit ([`OutputCut`]). A
 //! file's [`ContentHash`] says which content the tool saw or left, so a
 //! host can tell whether a file changed since without reading it again.
 //! They are [`ContextValue`]s a tool publishes with
@@ -243,6 +244,53 @@ pub enum ChangeKind {
     Modified,
     /// It existed and is gone.
     Deleted,
+}
+
+/// A tool call's output was cut to fit: the text the model reads keeps
+/// one end of it, and says so in a line of its own on the side it cut,
+/// before what it keeps when it kept the end and after it when it kept the
+/// start. A front draws that line whole, and leaves it out of what it
+/// counts as output, by this fact rather than by the line's wording.
+///
+/// ```
+/// use rig_core::tool::{KeptEnd, OutputCut};
+///
+/// let cut = OutputCut { kept: KeptEnd::End, kept_lines: 2000, total_lines: 5120, spill: None };
+/// assert_eq!(cut.cut_lines(), 3120);
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OutputCut {
+    /// Which end of the output the text keeps.
+    pub kept: KeptEnd,
+    /// How many lines of the output the text keeps, not counting the line
+    /// that says it was cut.
+    pub kept_lines: usize,
+    /// How many lines the whole output had.
+    pub total_lines: usize,
+    /// The file that holds all of the output, when the tool kept it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spill: Option<String>,
+}
+
+impl ContextValue for OutputCut {
+    const KEY: &'static str = "output_cut";
+}
+
+impl OutputCut {
+    /// How many lines of the output the text leaves out.
+    pub fn cut_lines(&self) -> usize {
+        self.total_lines.saturating_sub(self.kept_lines)
+    }
+}
+
+/// Which end of a cut output a tool kept ([`OutputCut::kept`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KeptEnd {
+    /// Its first lines, such as a long file read from the top.
+    Start,
+    /// Its last lines, such as the end of a command's output.
+    End,
 }
 
 /// How a process a tool call ran ended.
