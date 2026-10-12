@@ -1,7 +1,7 @@
 use std::fs;
 use std::path::Path;
 
-use rig_coding_tools::{EditTool, WriteTool};
+use rig_coding_tools::{DeleteTool, EditTool, WriteTool};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
 use rig_harness_test_support::{
@@ -63,14 +63,71 @@ const GUARDED: &str = "*** Begin Patch
 +key
 *** End Patch";
 
-/// Another plugin's rule on `write`: never `secret.txt`.
-fn no_secrets(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>) {
-    for (request, mut decision) in &mut calls {
-        let path = request.call.function.arguments.get("path");
-        let path = path.and_then(serde_json::Value::as_str).unwrap_or_default();
-        if request.call.function.name.as_str() == "write" && path.ends_with("secret.txt") {
+/// Applies, but `slow.txt`'s write waits a frame for an approval.
+const SLOW: &str = "*** Begin Patch
+*** Add File: slow.txt
++slow
+*** Update File: c.txt
+@@
+-sea
++SEA
+*** End Patch";
+
+/// Whether a call writes a file named `name`, by its footprint.
+fn writes(footprint: &Footprint, name: &str) -> bool {
+    let Touches::Writes(Scope::Paths(paths)) = &footprint.0 else {
+        return false;
+    };
+    paths.iter().any(|path| path.ends_with(name))
+}
+
+/// Another plugin's rule on any file tool: never `secret.txt`.
+fn no_secrets(mut calls: Query<(&Footprint, &mut Decision), (Undecided, ToolCalls)>) {
+    for (footprint, mut decision) in &mut calls {
+        if writes(footprint, "secret.txt") {
             decision.decide(Decider::plugin("test"), Outcome::refused("no secrets"));
         }
+    }
+}
+
+/// On the hold of an approval of `slow.txt`'s write.
+#[derive(Component)]
+struct Approval;
+
+/// On a call asked about.
+#[derive(Component)]
+struct Asked;
+
+/// Another plugin's approval of `slow.txt`: held until the next frame.
+fn ask_for_slow(
+    calls: Query<(Entity, &Footprint, &Decision), (Undecided, ToolCalls, Without<Asked>)>,
+    mut commands: Commands,
+) {
+    for (call, footprint, decision) in &calls {
+        if !decision.is_decided() && writes(footprint, "slow.txt") {
+            commands.entity(call).insert(Asked);
+            commands.spawn((Approval, HoldOf(call)));
+        }
+    }
+}
+
+/// Whether `c.txt`'s write had started when `slow.txt`'s was approved.
+#[derive(Resource, Default)]
+struct AtApproval(Option<bool>);
+
+/// Approves `slow.txt`'s write, noting whether `c.txt`'s started first.
+fn approve(
+    approvals: Query<Entity, With<Approval>>,
+    calls: Query<(&Footprint, Has<Started>), ToolCalls>,
+    mut seen: ResMut<AtApproval>,
+    mut commands: Commands,
+) {
+    for approval in &approvals {
+        let started = calls
+            .iter()
+            .any(|(footprint, started)| started && writes(footprint, "c.txt"));
+        seen.0 = Some(started);
+        commands.entity(approval).despawn();
     }
 }
 
@@ -83,11 +140,13 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     fs::write(dir.join("a.txt"), "one\ntwo\nthree\n").ok();
     fs::write(dir.join("old.txt"), "gone\n").ok();
     fs::write(dir.join("b.txt"), "bee\n").ok();
+    fs::write(dir.join("c.txt"), "sea\n").ok();
 
     let gpt = MockCompletionModel::from_stream_turns([
         calls("p1", APPLY_PATCH, json!({ "input": PATCH })),
         calls("p2", APPLY_PATCH, json!({ "input": BROKEN })),
         calls("p3", APPLY_PATCH, json!({ "input": GUARDED })),
+        calls("p4", APPLY_PATCH, json!({ "input": SLOW })),
         reply("Done."),
     ]);
     let claude = MockCompletionModel::from_stream_turns([reply("Hello.")]);
@@ -101,9 +160,15 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
         JournalPlugin,
         EditTool,
         WriteTool,
+        DeleteTool,
         ApplyPatchPlugin,
     ))
-    .add_systems(AgentPass, no_secrets.in_set(Stage::Gate))
+    .add_systems(
+        AgentPass,
+        (no_secrets, ask_for_slow).chain().in_set(Stage::Gate),
+    )
+    .add_systems(Update, approve.before(AgentLoop))
+    .init_resource::<AtApproval>()
     .init_resource::<ToolOutputs>()
     .add_observer(log_tool_outputs)
     .init_resource::<Ended>()
@@ -148,6 +213,18 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     assert!(guarded.contains("no secrets"), "{guarded}");
     assert_eq!(text(&dir, "a.txt").as_deref(), Some("one\nTWO\nthree\n"));
     assert_eq!(text(&dir, "secret.txt"), None);
+
+    let slow = outputs.get("p4").cloned().unwrap_or_default();
+    assert!(
+        slow.contains("A slow.txt") && slow.contains("M c.txt"),
+        "{slow}"
+    );
+    assert_eq!(
+        app.world().resource::<AtApproval>().0,
+        Some(false),
+        "c.txt's write waits for slow.txt's approval"
+    );
+    assert_eq!(text(&dir, "c.txt").as_deref(), Some("SEA\n"));
 
     let world = app.world_mut();
     let model = "test/claude-test".to_owned();

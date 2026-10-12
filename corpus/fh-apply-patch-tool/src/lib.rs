@@ -7,17 +7,19 @@
 //! [`PatchModels`] is offered `apply_patch` and not `edit` or `write`, any
 //! other the opposite, so switching model switches the tools from the next
 //! request on. A call of `apply_patch` is checked whole first, against the
-//! files under its agent's `WorkDir` (else the project root), which no path
-//! may leave: a hunk whose context is not found, a file to update or delete
-//! that is missing, or a file to add that exists, and nothing changes. A
-//! patch that applies is carried out as one `write` call per file it adds,
-//! changes or moves, so every other plugin's rule on `write` (approvals,
-//! protected paths, formatting) applies to each file; if any of them is
-//! refused or fails, the files written are put back, and the deletes run
-//! only once every write succeeded.
+//! app's workspace, its paths placed as the file tools place theirs: a
+//! hunk whose context is not found, a file to update or delete that is
+//! missing, or a file to add that exists, and nothing changes. A patch
+//! that applies is carried out as one `write` call per file it adds,
+//! changes or moves to, and one `delete` call per file it deletes or moves
+//! from, so every other plugin's rule on those (approvals, protected paths,
+//! formatting) applies to each file. They are gated as a group, in
+//! [`GateSystems::After`]: they start together once every one is past its
+//! gates, or none does. Add rig-coding-tools' `DeleteTool` beside it for
+//! patches that delete or move files.
 
 use rig_core::effect::EffectId;
-use rig_core::message::{ToolFunction, ToolName};
+use rig_core::message::{CallId, LocalCallId, ToolFunction, ToolName};
 use rig_core::tool::ToolOutput;
 use rig_harness::prelude::*;
 use schemars::JsonSchema;
@@ -25,7 +27,7 @@ use serde::Deserialize;
 
 mod patch;
 
-use patch::{FileWrite, Plan, check};
+use patch::{Plan, check};
 
 /// The tool's name.
 pub const APPLY_PATCH: &str = "apply_patch";
@@ -62,11 +64,17 @@ impl PatchModels {
     }
 }
 
-/// The plugin's Prepare system, which edits the tools of each turn's
-/// request, for other plugins that edit them or route the request to
-/// order against.
+/// The plugin's stage systems, for other plugins to order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct ApplyPatchSystems;
+pub enum ApplyPatchSystems {
+    /// Edits the tools of each turn's request, by the model it goes to, in
+    /// [`PrepareSystems::Edit`]: order a router that picks the model before
+    /// it.
+    Offer,
+    /// Holds, releases or refuses a patch's calls together, in
+    /// [`GateSystems::After`].
+    Group,
+}
 
 /// Adds `apply_patch` and offers it, or `edit` and `write`, by model.
 #[derive(Default)]
@@ -83,8 +91,21 @@ impl Plugin for ApplyPatchPlugin {
             app.insert_resource::<PatchModels>(models);
         }
         app.init_resource::<ProjectRoot>()
-            .configure_sets(AgentPass, ApplyPatchSystems.in_set(PrepareSystems::Edit))
-            .add_systems(AgentPass, offer_by_model.in_set(ApplyPatchSystems))
+            .init_resource::<ProjectWorkspace>()
+            .configure_sets(
+                AgentPass,
+                (
+                    ApplyPatchSystems::Offer.in_set(PrepareSystems::Edit),
+                    ApplyPatchSystems::Group.in_set(GateSystems::After),
+                ),
+            )
+            .add_systems(
+                AgentPass,
+                (
+                    offer_by_model.in_set(ApplyPatchSystems::Offer),
+                    gate_together.in_set(ApplyPatchSystems::Group),
+                ),
+            )
             .add_open_tool(
                 APPLY_PATCH,
                 DESCRIPTION,
@@ -150,6 +171,9 @@ fn offer_by_model(
     }
 }
 
+/// Who decides for this plugin.
+const NAME: &str = "fh-apply-patch-tool";
+
 /// On the entity that checks a patch off the main thread: the call it is
 /// for.
 #[derive(Component)]
@@ -157,22 +181,33 @@ struct Checking {
     call: Entity,
     agent: Entity,
     effect: EffectId,
-    id: String,
 }
 
 /// What checking a patch found: the plan, or why it does not apply.
 type Checked = Result<Plan, String>;
 
-/// On an `apply_patch` call carried out: the plan and what each of its
-/// `write` calls answered, by index.
+/// On an `apply_patch` call carried out: its member calls, one `write` per
+/// file written and one `delete` per file deleted, gated together, and
+/// what each answered.
 #[derive(Component)]
 struct Patching {
-    plan: Plan,
-    parts: Vec<Option<ToolResult>>,
+    summary: Vec<String>,
+    /// Each member's call and what it does, as `write a.txt`.
+    members: Vec<(Entity, String)>,
+    /// This plugin's hold on each member, while the others are at their
+    /// gates.
+    holds: Vec<Option<Entity>>,
+    /// Whether every member is past its gates: released together, or
+    /// refused together.
+    gated: bool,
+    /// Whether a gate refused a member, so none ran.
+    refused: bool,
+    /// The members refused here, as another was refused.
+    withheld: Vec<bool>,
+    results: Vec<Option<ToolResult>>,
 }
 
-/// On a `write` call made for the `apply_patch` call `call`: the plan's
-/// write `index`.
+/// On a member call of the `apply_patch` call `call`: its `index`.
 #[derive(Component, Clone, Copy)]
 struct PatchPart {
     call: Entity,
@@ -180,187 +215,241 @@ struct PatchPart {
 }
 
 /// Checks each patch the model sends, off the main thread, in its agent's
-/// directory.
+/// place in the workspace: its `WorkDir`, which no path may leave, else the
+/// project root, as the file tools place their paths.
 fn start_patch(
     called: On<ToolCalled<PatchArgs>>,
     dirs: Query<&WorkDir>,
-    root: Res<ProjectRoot>,
+    (root, workspace): (Res<ProjectRoot>, Res<ProjectWorkspace>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    let base = dirs
-        .get(called.agent)
-        .map_or_else(|_| root.0.clone(), |WorkDir(dir)| dir.clone());
-    let input = called.args.input.clone();
+    let dir = dirs.get(called.agent).ok();
+    let (base, confine) = dir.map_or_else(|| (root.0.clone(), false), |dir| (dir.0.clone(), true));
+    let (input, workspace) = (called.args.input.clone(), workspace.0.clone());
     let checking = Checking {
         call: called.call,
         agent: called.agent,
         effect: called.effect,
-        id: called.tool_call.id.to_string(),
     };
     let work = async move {
-        blocking(move || Ok(check(&input, &base)))
+        blocking(move || Ok(check(&input, workspace.as_ref(), &base, confine)))
             .await
             .unwrap_or_else(|error| Err(error.to_string()))
     };
     commands.spawn((checking, Running::spawn(pool(), &wake, work)));
 }
 
-/// Fails a patch that does not apply, finishes one that only deletes,
-/// and runs each write of any other as a `write` call of its own.
+/// Fails a patch that does not apply, and spawns a member call per file of
+/// one that does, for the gates to judge each as its own.
 fn checked(
     done: On<Insert<Done<Checked>>>,
     mut checks: Query<(&Checking, &mut Done<Checked>)>,
     turns: Query<&CallOf>,
+    tools: Query<&ToolDef>,
+    access: Query<&ToolAccess>,
     mut calls: Query<&mut Decision, ToolCalls>,
-    wake: Res<Wake>,
     mut commands: Commands,
 ) {
     let Ok((checking, mut result)) = checks.get_mut(done.entity) else {
         return;
     };
     let result = std::mem::replace(&mut result.0, Err(String::new()));
-    let call = checking.call;
+    let (call, agent) = (checking.call, checking.agent);
     commands.entity(done.entity).despawn();
-    let plan = match result {
+    let Ok(mut decision) = calls.get_mut(call) else {
+        return;
+    };
+    // Start refuses a call of a tool that is not there or the agent may not
+    // use, after the gates: such a member would fail alone.
+    let usable = |name: &str| {
+        tools.iter().any(|ToolDef(tool)| tool.name.as_str() == name)
+            && access.get(agent).is_ok_and(|access| access.allows(name))
+    };
+    let plan = result.and_then(|plan| {
+        let needs = [
+            ("write", !plan.writes.is_empty()),
+            ("delete", !plan.deletes.is_empty()),
+        ];
+        match needs
+            .iter()
+            .find(|&&(tool, needed)| needed && !usable(tool))
+        {
+            Some((tool, _)) => Err(format!(
+                "The patch was not applied; no file changed. It needs the `{tool}` tool, \
+                 which this agent does not have."
+            )),
+            None => Ok(plan),
+        }
+    });
+    let plan = match plan {
         Ok(plan) => plan,
         Err(why) => {
-            if let Ok(mut decision) = calls.get_mut(call) {
-                decision.decide(
-                    Decider::plugin("fh-apply-patch-tool"),
-                    ToolResult::failed(ToolExecutionError::invalid_args(why)),
-                );
-            }
+            let error = ToolExecutionError::invalid_args(why);
+            decision.decide(Decider::plugin(NAME), ToolResult::failed(error));
             return;
         }
     };
-    if plan.writes.is_empty() {
-        finish(&mut commands, call, plan, Vec::new(), &wake);
-        return;
-    }
+    let writes = plan.writes.into_iter().map(|(path, content)| {
+        let args = serde_json::json!({ "path": path, "content": content });
+        (format!("write {path}"), "write", args)
+    });
+    let deletes = plan.deletes.into_iter().map(|path| {
+        let args = serde_json::json!({ "path": path });
+        (format!("delete {path}"), "delete", args)
+    });
     let turn = turns.get(call).ok().map(|&CallOf(turn)| turn);
-    let Ok(write) = ToolName::new("write") else {
-        return;
-    };
-    for (index, FileWrite { path, after, .. }) in plan.writes.iter().enumerate() {
-        let args = serde_json::json!({ "path": path.to_string_lossy(), "content": after });
-        let request = ToolRequest {
-            call: ToolCall::from_wire(
-                format!("{}-{index}", checking.id),
-                ToolFunction::new(write.clone(), args),
-            ),
+    let mut members = Vec::new();
+    for (index, (label, tool, args)) in writes.chain(deletes).enumerate() {
+        let Ok(name) = ToolName::new(tool) else {
+            continue;
         };
-        let mut part = commands.spawn((
+        let id = CallId::Local(LocalCallId::new());
+        let request = ToolRequest {
+            call: ToolCall::new(id, ToolFunction::new(name, args)),
+        };
+        let mut member = commands.spawn((
             request,
             Effect::child_of(Some(checking.effect)),
-            ForAgent(checking.agent),
+            ForAgent(agent),
             PatchPart { call, index },
         ));
         if let Some(turn) = turn {
-            part.insert(CallOf(turn));
+            member.insert(CallOf(turn));
         }
+        members.push((member.id(), label));
     }
-    let parts = vec![None; plan.writes.len()];
-    commands.entity(call).insert(Patching { plan, parts });
+    if members.is_empty() {
+        let summary = ToolOutput::text("The patch changes no file.");
+        decision.decide(Decider::plugin(NAME), ToolResult::success(summary));
+        return;
+    }
+    commands.entity(call).insert(Patching {
+        summary: plan.summary,
+        holds: vec![None; members.len()],
+        withheld: vec![false; members.len()],
+        results: vec![None; members.len()],
+        members,
+        gated: false,
+        refused: false,
+    });
 }
 
-/// Keeps what each `write` of a patch answered, and finishes the patch
-/// once all did.
+/// After every gate, keeps a patch's members together: while any is held
+/// or waits, holds the others about to start; once a gate refused one,
+/// refuses the rest; once all are past their gates, releases them, so they
+/// start in one pass.
+fn gate_together(
+    mut patches: Query<&mut Patching>,
+    mut members: Query<(&mut Decision, Option<&Holds>, Has<Waiting>), ToolCalls>,
+    mut commands: Commands,
+) {
+    for mut patching in &mut patches {
+        if patching.gated {
+            continue;
+        }
+        let patching = &mut *patching;
+        let mut refused = false;
+        let mut past = true;
+        for ((member, _), ours) in patching.members.iter().zip(&patching.holds) {
+            let Ok((decision, holds, waiting)) = members.get(*member) else {
+                continue;
+            };
+            refused |= decision.get().is_some_and(|outcome| outcome.0.is_err());
+            let held = holds.is_some_and(|holds| holds.iter().any(|hold| Some(hold) != *ours));
+            past &= !held && !waiting;
+        }
+        if refused {
+            patching.refused = true;
+            let each = patching.members.iter().zip(&mut patching.withheld);
+            for ((member, label), withheld) in each {
+                if let Ok((mut decision, ..)) = members.get_mut(*member) {
+                    let why = format!("{label}: not run, as another file of the patch was refused");
+                    *withheld = decision.decide(Decider::plugin(NAME), Outcome::refused(why));
+                }
+            }
+        }
+        if refused || past {
+            patching.gated = true;
+            for hold in patching.holds.iter_mut().filter_map(Option::take) {
+                commands.entity(hold).despawn();
+            }
+            continue;
+        }
+        // Only a member about to start: one held by another plugin keeps
+        // only that hold, so its release moves the loop on.
+        for ((member, _), ours) in patching.members.iter().zip(&mut patching.holds) {
+            let free = members
+                .get(*member)
+                .is_ok_and(|(decision, holds, waiting)| {
+                    holds.is_none() && !waiting && !decision.is_decided()
+                });
+            if free {
+                let why = Name::new("waiting for the other files of the patch");
+                *ours = Some(commands.spawn((HoldOf(*member), why)).id());
+            }
+        }
+    }
+}
+
+/// Keeps what each member of a patch answered, and answers the patch once
+/// all did.
 fn part_settled(
     settled: On<Add<Settled>>,
     parts: Query<(&PatchPart, &Outcome), Without<SupersededBy>>,
-    mut patches: Query<&mut Patching>,
-    wake: Res<Wake>,
+    mut patches: Query<(&mut Patching, &mut Decision), ToolCalls>,
     mut commands: Commands,
 ) {
     let Ok((&PatchPart { call, index }, outcome)) = parts.get(settled.entity) else {
         return;
     };
-    let Ok(mut patching) = patches.get_mut(call) else {
+    let Ok((mut patching, mut decision)) = patches.get_mut(call) else {
         return;
     };
-    if let Some(slot) = patching.parts.get_mut(index) {
+    if let Some(slot) = patching.results.get_mut(index) {
         *slot = Some(outcome.tool_result());
     }
-    if patching.parts.iter().all(Option::is_some) {
-        let parts = patching.parts.drain(..).flatten().collect();
-        let plan = std::mem::replace(
-            &mut patching.plan,
-            Plan {
-                writes: Vec::new(),
-                deletes: Vec::new(),
-                summary: Vec::new(),
-            },
-        );
+    if patching.results.iter().all(Option::is_some) {
         commands.entity(call).remove::<Patching>();
-        finish(&mut commands, call, plan, parts, &wake);
+        decision.decide(Decider::plugin(NAME), answer(&patching));
     }
 }
 
-/// Answers the `apply_patch` call `call`, off the main thread: once every
-/// write in `parts` succeeded, deletes what the plan deletes and lists
-/// each file; else puts back each file written and says why.
-fn finish(commands: &mut Commands, call: Entity, plan: Plan, parts: Vec<ToolResult>, wake: &Wake) {
-    let work = async move {
-        blocking(move || Ok(complete(plan, &parts)))
-            .await
-            .unwrap_or_else(ToolResult::failed)
-    };
-    commands
-        .entity(call)
-        .insert(Running::answering(pool(), wake, work));
-}
-
-/// The result of a patch whose writes answered `parts`.
-fn complete(plan: Plan, parts: &[ToolResult]) -> ToolResult {
-    let failed: Vec<String> = plan
-        .writes
+/// The answer of a patch whose members all answered: each file with its
+/// counts, and what a member said beyond its first line (another plugin's
+/// note, such as a formatter's); else what failed.
+fn answer(patching: &Patching) -> ToolResult {
+    let answered = patching
+        .members
         .iter()
-        .zip(parts)
-        .filter(|(_, result)| !result.is_success())
-        .map(|(write, result)| format!("- {}: {}", write.path.display(), result.output().render()))
-        .collect();
-    let deleted: Result<(), String> = if failed.is_empty() {
-        plan.deletes.iter().try_for_each(|path| {
-            std::fs::remove_file(path).map_err(|error| format!("- {}: {error}", path.display()))
-        })
-    } else {
-        Ok(())
-    };
-    if failed.is_empty()
-        && let Ok(()) = deleted
-    {
-        let mut text = plan.summary.join("\n");
-        for (write, result) in plan.writes.iter().zip(parts) {
-            let output = result.output().render();
-            if let Some((_, notes)) = output.split_once('\n') {
-                text.push_str(&format!("\n\n{}:{notes}", write.path.display()));
+        .zip(patching.results.iter().flatten());
+    let mut failed = answered
+        .clone()
+        .zip(&patching.withheld)
+        .filter(|((_, result), _)| !result.is_success())
+        .peekable();
+    if failed.peek().is_none() {
+        let mut text = patching.summary.join("\n");
+        for ((_, label), result) in answered {
+            if let Some((_, notes)) = result.output().render().split_once('\n') {
+                text.push_str(&format!("\n\n{label}:{notes}"));
             }
         }
         return ToolResult::success(ToolOutput::text(text));
     }
-    let written = plan.writes.iter().zip(parts);
-    let put_back = written
-        .filter(|(_, result)| result.is_success())
-        .map(|(write, _)| restore(write));
-    let not_restored: Vec<String> = put_back.filter_map(Result::err).collect();
-    let mut text = "The patch was not applied; the files it wrote were put back.".to_owned();
-    for line in failed.into_iter().chain(deleted.err()).chain(not_restored) {
-        text.push_str(&format!("\n\n{line}"));
+    let mut text = if patching.refused {
+        "The patch was not applied; no file changed.".to_owned()
+    } else {
+        "The patch was applied only in part: every other file changed.".to_owned()
+    };
+    for (((_, label), result), _) in failed.filter(|(_, withheld)| !**withheld) {
+        let output = result.output().render();
+        text.push_str(&format!("\n\n- {label}: {output}"));
     }
     ToolResult::failed(ToolExecutionError::other(text))
 }
 
-/// Puts `write`'s file back as it was before the patch.
-fn restore(write: &FileWrite) -> Result<(), String> {
-    let restored = match &write.before {
-        Some(before) => rig_tools::fs::write_atomic(&write.path, before.as_bytes()),
-        None => std::fs::remove_file(&write.path),
-    };
-    restored.map_err(|error| format!("- {} could not be put back: {error}", write.path.display()))
-}
-
-/// The pool a patch is checked and finished on.
+/// The pool a patch is checked on.
 fn pool() -> &'static bevy_tasks::TaskPool {
     bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default)
 }
