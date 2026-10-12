@@ -222,6 +222,11 @@ struct Environment;
 #[derive(Component)]
 struct Reading;
 
+/// On a [`Reading`] asked for again while it ran: what it reads may be
+/// out of date, so it reads again when it lands.
+#[derive(Component)]
+struct Stale;
+
 /// What [`Reading`] read.
 #[derive(Component)]
 struct Read(Result<Instructions, ToolExecutionError>);
@@ -300,13 +305,14 @@ fn refresh_on_turn(_: On<Add<TurnOf>>, mut commands: Commands) {
 
 /// Re-reads the context ([`RefreshProjectContext`]): the environments at
 /// once, and the instruction files at once in this machine's workspace,
-/// else off the main thread, unless a read runs.
+/// else off the main thread; a read that runs then reads again when it
+/// lands ([`Stale`]).
 fn refresh(
     _: On<RefreshProjectContext>,
     mut projects: Query<(&mut PromptSection, &mut Project), Without<Environment>>,
     mut environments: Query<(&SectionOf, &mut PromptSection), With<Environment>>,
     agents: Query<Option<&WorkDir>, With<Agent>>,
-    reading: Query<(), With<Reading>>,
+    reading: Query<Entity, With<Reading>>,
     (home, root, workspace, wake): (
         Res<RigHome>,
         Res<ProjectRoot>,
@@ -332,18 +338,29 @@ fn refresh(
         }
         return;
     }
-    if !reading.is_empty() {
+    if let Some(reading) = reading.iter().next() {
+        commands.entity(reading).insert(Stale);
         return;
     }
+    commands.spawn((
+        Name::new("project instructions"),
+        Reading,
+        read_files(&home, &root, &workspace, &wake),
+    ));
+}
+
+/// Reads the instruction files off the main thread, ending as a [`Read`].
+fn read_files(
+    home: &RigHome,
+    root: &ProjectRoot,
+    workspace: &ProjectWorkspace,
+    wake: &Wake,
+) -> Running {
     let (home, root) = (home.0.root().to_path_buf(), root.0.clone());
     let workspace: Arc<dyn Workspace> = workspace.0.clone();
     let read = blocking(move || Ok(discover(&home, &root, &*workspace)));
     let pool = IoTaskPool::get_or_init(TaskPool::default);
-    commands.spawn((
-        Name::new("project instructions"),
-        Reading,
-        Running::spawn_into::<Read, _>(pool, &wake, read),
-    ));
+    Running::spawn_into::<Read, _>(pool, wake, read)
 }
 
 /// Holds each model call built from an agent while the instruction files
@@ -364,19 +381,34 @@ fn wait_for_instructions(
 
 /// Puts the instruction files read off the main thread in the project
 /// section and in the requests of the calls that waited for them, then
-/// releases those calls.
+/// releases those calls; a [`Stale`] read reads again, the calls still
+/// waiting.
 fn read_off_thread(
     done: On<Insert<Read>>,
-    reads: Query<(&Read, Option<&Children>)>,
+    reads: Query<(&Read, Option<&Children>, Has<Stale>)>,
     holds: Query<&HoldOf>,
     mut projects: Query<(&mut PromptSection, &mut Project)>,
     mut requests: Query<&mut ModelRequest>,
+    (home, root, workspace, wake): (
+        Res<RigHome>,
+        Res<ProjectRoot>,
+        Res<ProjectWorkspace>,
+        Res<Wake>,
+    ),
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    let Ok((Read(read), held)) = reads.get(done.entity) else {
+    let Ok((Read(read), held, stale)) = reads.get(done.entity) else {
         return;
     };
+    if stale {
+        let again = read_files(&home, &root, &workspace, &wake);
+        commands
+            .entity(done.entity)
+            .remove::<(Read, Stale)>()
+            .insert(again);
+        return;
+    }
     match read {
         Ok(read) => {
             for (mut section, mut project) in &mut projects {

@@ -1,7 +1,9 @@
 use std::ffi::{OsStr, OsString};
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::mpsc::{Receiver, Sender, channel};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
@@ -16,7 +18,7 @@ use rig_harness::services::WorkDir;
 
 use super::{
     ContextEntry, DEFAULT_SYSTEM_PROMPT, PROJECT, ProjectContextPlugin, ProjectRoot,
-    ProjectWorkspace, RefreshProjectContext, RigHome, default_prompt,
+    ProjectWorkspace, Reading, RefreshProjectContext, RigHome, default_prompt,
 };
 
 #[test]
@@ -105,9 +107,12 @@ fn each_agent_is_told_its_own_working_directory() {
 }
 
 /// The project section's text.
-fn project_text(world: &mut World) -> String {
-    let mut sections = world.query::<&PromptSection>();
-    let project = sections.iter(world).find(|section| section.tag == PROJECT);
+fn project_text(world: &World) -> String {
+    let mut sections = world.try_query::<&PromptSection>();
+    let mut sections = sections
+        .iter_mut()
+        .flat_map(|sections| sections.iter(world));
+    let project = sections.find(|section| section.tag == PROJECT);
     project
         .map(|section| section.text.clone())
         .unwrap_or_default()
@@ -139,12 +144,36 @@ fn a_refresh_puts_an_edited_agents_md_in_the_prompt() {
 
 /// A workspace that is not this machine: it has one file,
 /// `/remote/AGENTS.md`, and runs nothing.
-#[derive(Debug)]
-struct Remote;
+#[derive(Debug, Default)]
+struct Remote {
+    /// `AGENTS.md`'s text.
+    text: Mutex<String>,
+    /// When set, the next read says it read, then waits to be released.
+    gate: Mutex<Option<(Sender<()>, Receiver<()>)>>,
+}
 
 impl Remote {
     const RULES: &str = "/remote/AGENTS.md";
-    const TEXT: &[u8] = b"Run the remote's tests.";
+
+    /// A workspace whose `AGENTS.md` says `text`.
+    fn saying(text: &str) -> Self {
+        let remote = Self::default();
+        remote.set(text);
+        remote
+    }
+
+    /// Makes `AGENTS.md` say `text`.
+    fn set(&self, text: &str) {
+        if let Ok(mut current) = self.text.lock() {
+            *current = text.to_owned();
+        }
+    }
+
+    /// `AGENTS.md`'s bytes.
+    fn bytes(&self) -> Vec<u8> {
+        let text = self.text.lock().map(|text| text.clone());
+        text.unwrap_or_default().into_bytes()
+    }
 }
 
 impl Workspace for Remote {
@@ -155,7 +184,7 @@ impl Workspace for Remote {
     fn stat(&self, path: &Path) -> io::Result<Stat> {
         if path == Path::new(Self::RULES) {
             return Ok(Stat::File {
-                size: Self::TEXT.len() as u64,
+                size: self.bytes().len() as u64,
                 read_only: false,
             });
         }
@@ -166,10 +195,14 @@ impl Workspace for Remote {
         if path != Path::new(Self::RULES) {
             return Err(io::ErrorKind::NotFound.into());
         }
-        Ok(Contents {
-            bytes: Self::TEXT.to_vec(),
-            size: Self::TEXT.len() as u64,
-        })
+        let bytes = self.bytes();
+        let gate = self.gate.lock().ok().and_then(|mut gate| gate.take());
+        if let Some((read, release)) = gate {
+            read.send(()).ok();
+            release.recv().ok();
+        }
+        let size = bytes.len() as u64;
+        Ok(Contents { bytes, size })
     }
 
     fn write(&self, _: &Path, _: &[u8]) -> io::Result<()> {
@@ -213,7 +246,9 @@ fn in_another_workspace_the_first_request_waits_for_its_instruction_files() {
         .with_file_name("no-home");
     app.insert_resource(RigHome(Home::at(home)))
         .insert_resource(ProjectRoot("/remote".into()))
-        .insert_resource(ProjectWorkspace(Arc::new(Remote)))
+        .insert_resource(ProjectWorkspace(Arc::new(Remote::saying(
+            "Run the remote's tests.",
+        ))))
         .add_plugins((AgentPlugin, JournalPlugin, ProjectContextPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended);
@@ -237,4 +272,38 @@ fn in_another_workspace_the_first_request_waits_for_its_instruction_files() {
     let prompt = sent.first().cloned().unwrap_or_default();
     assert!(prompt.contains("Run the remote's tests."), "{prompt}");
     assert!(prompt.contains("Host: ssh://dev@box"), "{prompt}");
+}
+
+#[test]
+fn a_refresh_asked_for_during_a_remote_read_is_read() {
+    let (mut app, wakes) = app_on(&MemoryStore::default());
+    let remote = Arc::new(Remote::saying("Use tabs."));
+    let (read, was_read) = channel();
+    let (release, released) = channel();
+    if let Ok(mut gate) = remote.gate.lock() {
+        *gate = Some((read, released));
+    }
+    let home = std::env::current_exe()
+        .unwrap_or_default()
+        .with_file_name("no-home");
+    app.insert_resource(RigHome(Home::at(home)))
+        .insert_resource(ProjectRoot("/remote".into()))
+        .insert_resource(ProjectWorkspace(remote.clone()))
+        .add_plugins((AgentPlugin, ProjectContextPlugin));
+    app.finish();
+    let world = app.world_mut();
+    world.trigger(RefreshProjectContext);
+    world.flush();
+    was_read.recv_timeout(Duration::from_secs(10)).ok();
+    remote.set("Use spaces.");
+    world.trigger(RefreshProjectContext);
+    world.flush();
+    release.send(()).ok();
+    run_until(&mut app, &wakes, |world| {
+        let mut reading = world.try_query::<&Reading>();
+        let reading = reading.iter_mut().flat_map(|reading| reading.iter(world));
+        reading.count() == 0 && !project_text(world).is_empty()
+    });
+    let text = project_text(app.world());
+    assert!(text.contains("Use spaces."), "{text}");
 }
