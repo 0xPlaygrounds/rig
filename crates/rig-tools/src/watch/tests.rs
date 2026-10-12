@@ -1,0 +1,73 @@
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::mpsc::Receiver;
+use std::time::Duration;
+
+use futures::StreamExt as _;
+
+use super::Watch;
+use crate::workspace::tests::Memory;
+use crate::workspace::{Local, Workspace};
+
+/// The batches `watch` sends, on a channel to wait on with a timeout.
+fn batches(watch: Watch) -> Receiver<Vec<PathBuf>> {
+    let (sender, batches) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let mut watch = watch;
+        while let Some(batch) = futures::executor::block_on(watch.next()) {
+            if sender.send(batch).is_err() {
+                return;
+            }
+        }
+    });
+    batches
+}
+
+/// The paths of the batches that come within `wait`.
+fn seen(batches: &Receiver<Vec<PathBuf>>, wait: Duration) -> Vec<PathBuf> {
+    let mut seen = Vec::new();
+    while let Ok(batch) = batches.recv_timeout(wait) {
+        seen.extend(batch);
+    }
+    seen
+}
+
+/// A watch of this machine hears of a created file, and not of one that
+/// `files` would leave out: under `target/`, hidden, or matched by an
+/// ignore file.
+#[test]
+fn a_local_watch_reports_what_files_would_list() {
+    let root = std::env::temp_dir().join(format!("rig-tools-watch-{}", std::process::id()));
+    std::fs::remove_dir_all(&root).ok();
+    std::fs::create_dir_all(root.join("target")).ok();
+    std::fs::write(root.join(".ignore"), "*.log\n").ok();
+    let root = std::fs::canonicalize(&root).unwrap_or(root);
+    let watch = Arc::new(Local).watch(&root, true, false);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let batches = batches(watch);
+    for name in ["target/built.o", ".env", "noise.log", "src.rs"] {
+        std::fs::write(root.join(name), "x").ok();
+    }
+    let seen = seen(&batches, Duration::from_secs(2));
+    assert_eq!(seen, [root.join("src.rs")]);
+    std::fs::remove_dir_all(root).ok();
+}
+
+/// The default watch looks again every second, and sees an edit that keeps
+/// the size even when the workspace cannot tell a file's change time.
+#[test]
+fn the_default_watch_sees_a_same_size_edit() {
+    let memory = Arc::new(Memory::default());
+    let note = Path::new("/project/note.txt");
+    memory.write(note, b"one").ok();
+    let watch = memory.clone().watch(Path::new("/project"), true, false);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let batches = batches(watch);
+    memory.write(note, b"two").ok();
+    assert_eq!(
+        batches.recv_timeout(Duration::from_secs(5)).ok(),
+        Some(vec![note.to_path_buf()])
+    );
+}

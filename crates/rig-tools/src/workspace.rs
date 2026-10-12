@@ -8,6 +8,7 @@ use std::fmt;
 use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read as _};
 use std::path::{Component, Path, PathBuf};
+use std::sync::Arc;
 use std::time::SystemTime;
 
 use ignore::WalkBuilder;
@@ -17,6 +18,7 @@ use rig_core::tool::ToolExecutionError;
 use crate::MAX_FILE_BYTES;
 use crate::fs::{io_error, write_atomic};
 use crate::process::{Launcher, Process, Spawn};
+pub use crate::watch::Watch;
 
 /// The disk and the commands the tools act on: this machine's ([`Local`]),
 /// or another, such as one reached over SSH. Paths are the workspace's own:
@@ -85,6 +87,23 @@ pub trait Workspace: Send + Sync + fmt::Debug + 'static {
         args: &[OsString],
         how: Spawn,
     ) -> io::Result<Process>;
+
+    /// Watches `root`, a file or a directory (with `recursive`, every
+    /// directory under it too), from now on: a batch of the paths created,
+    /// changed or removed each time something changed, the files
+    /// [`files`](Self::files) would list, or every file with `all`.
+    /// Dropping the [`Watch`] stops it. To miss nothing, list the files
+    /// once after the watch has started.
+    ///
+    /// By default it looks at what [`files`](Self::files) lists every
+    /// second, on a thread of its own, comparing each file's size and
+    /// change time (its hash when [`stat`](Self::stat) cannot tell the
+    /// time); `all` adds nothing then, as `files` lists what it lists.
+    /// [`Local`] hears of changes from the system instead.
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
+        let _ = all;
+        crate::watch::poll(self, root, recursive)
+    }
 }
 
 /// What [`Workspace::read`] read.
@@ -317,14 +336,22 @@ impl Workspace for Local {
             None => launcher.spawn(program, args, how),
         }
     }
+
+    /// The system's file events under `root`, filtered as
+    /// [`files`](Workspace::files) lists unless `all`, gathered into a
+    /// batch until no event came for 50 ms. A `root` that does not exist
+    /// yet is looked at every second, as the default does.
+    fn watch(self: Arc<Self>, root: &Path, recursive: bool, all: bool) -> io::Result<Watch> {
+        crate::watch::notified(root, recursive, all)
+    }
 }
 
 /// Whether `path` is hidden: its name starts with a `.`, such as `.env` or
 /// `.github/`.
-fn is_hidden(path: &Path) -> bool {
+pub(crate) fn is_hidden(path: &Path) -> bool {
     path.file_name()
         .is_some_and(|name| name.as_encoded_bytes().starts_with(b"."))
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

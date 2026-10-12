@@ -57,6 +57,7 @@ mod read;
 mod search;
 mod shell;
 mod spill;
+mod watch;
 pub mod workspace;
 mod write;
 

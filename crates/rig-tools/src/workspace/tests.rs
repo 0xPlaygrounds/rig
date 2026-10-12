@@ -16,10 +16,10 @@ use crate::{
 /// Files held in memory, by absolute path: a workspace that is not this
 /// machine's disk.
 #[derive(Debug, Default)]
-struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
+pub(crate) struct Memory(Mutex<BTreeMap<PathBuf, Vec<u8>>>);
 
 impl Memory {
-    fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
+    pub(crate) fn files(&self) -> std::sync::MutexGuard<'_, BTreeMap<PathBuf, Vec<u8>>> {
         self.0.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }

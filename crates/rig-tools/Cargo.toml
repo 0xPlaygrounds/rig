@@ -20,6 +20,8 @@ base64 = { workspace = true }
 futures = { workspace = true }
 # `search` walks the tree as git ignores it.
 ignore = { workspace = true }
+# `Local::watch` hears of changes from the system instead of polling.
+notify = { workspace = true }
 regex = { workspace = true }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
 # Each tool's parameters, derived from its arguments type.
