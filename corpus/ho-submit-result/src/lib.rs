@@ -1,14 +1,14 @@
 //! Plugin corpus (held-out): H07: Structured result tool that ends the turn
 //! (spec `H07-submit-result.md`).
 //!
-//! `--schema=FILE` (or `/schema FILE`) offers the top-level agent the
+//! `--schema FILE` (or `/schema FILE`) offers the top-level agent the
 //! `submit_result` tool, whose parameters are the JSON schema in `FILE`; a
 //! schema whose root is no object refuses the start. A valid call is the
 //! run's result ([`SubmitResult`]): once the other calls of its reply
 //! settled, a Gate system answers the turn's next model call with the JSON
 //! itself, so nothing more is sent and the turn ends answered with it, which
-//! `--print` prints alone, on one line. Invalid arguments get the schema's
-//! complaints as the tool's result, and the third invalid call fails the run
+//! `--print` prints alone, on one line. The stack refuses arguments that do
+//! not fit the schema with its complaints, and the third such call fails the run
 //! (exit code 2). A turn that ends in text gets one reminder; the second
 //! such end fails the run (exit code 3). In the terminal view the answer is
 //! a JSON block and the tool goes after one success, unless `--schema-keep`.
@@ -19,7 +19,6 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionResponse, Usage};
 use rig_harness::rig_core::effect;
 use rig_harness::rig_core::message::{AssistantContent, Origin as Made, Text};
-use rig_harness::rig_core::tool::ToolErrorKind;
 use serde_json::Value;
 
 /// The tool's name.
@@ -144,7 +143,7 @@ struct SubmitTool {
     interactive: bool,
 }
 
-/// `--schema`'s file; none when it came without `=FILE`.
+/// `--schema`'s file; none when it came without one.
 #[derive(Resource)]
 struct StartupSchema(Option<String>);
 
@@ -199,8 +198,7 @@ fn load_startup_schema(
 ) {
     let schema = match &file.0 {
         Some(path) => read_schema(root.as_deref().map(|root| root.0.as_path()), path),
-        // The launcher reads a plugin option's value only after `=`.
-        None => Err("give the file as --schema=FILE".to_owned()),
+        None => Err("needs a file: --schema FILE".to_owned()),
     };
     match schema {
         Ok(schema) => offer(&mut commands, tool.entity, schema),
@@ -238,12 +236,13 @@ fn schema(
     }
 }
 
-/// Answers a `submit_result` call: accepted when its arguments fit the
-/// tool's schema, else the schema's complaints. Only a top-level agent
-/// submits the run's result.
+/// Answers a `submit_result` call, whose arguments the stack already
+/// checked against the tool's schema (a call that does not fit is refused
+/// with the schema's complaints before it gets here): accepted, unless a
+/// spawned agent made it, as only a top-level agent submits the run's
+/// result.
 fn submit(
     called: On<ToolCalled<Value>>,
-    tools: Query<&ToolDef>,
     spawned: Query<(), With<SpawnedBy>>,
     mut calls: Query<&mut Decision, ToolCalls>,
 ) {
@@ -252,19 +251,7 @@ fn submit(
             "Only the main agent submits the result.",
         ))
     } else {
-        let mut errors = Vec::new();
-        if let Ok(def) = tools.get(called.entity) {
-            violations(&def.0.parameters, &called.args, "$", &mut errors);
-        }
-        if errors.is_empty() {
-            ToolResult::success("Result accepted; the turn ends.".into())
-        } else {
-            let why = format!(
-                "The result does not fit the schema:\n- {}\nFix it and call {TOOL} again.",
-                errors.join("\n- ")
-            );
-            ToolResult::failed(ToolExecutionError::new(ToolErrorKind::InvalidArgs, why))
-        }
+        ToolResult::success("Result accepted; the turn ends.".into())
     };
     if let Ok(mut decision) = calls.get_mut(called.call) {
         decision.decide(Decider::plugin("ho-submit-result"), result);
@@ -377,133 +364,6 @@ fn end_with_result(
             Decider::plugin("ho-submit-result"),
             Outcome(Ok(effect::Outcome::Completion(reply))),
         );
-    }
-}
-
-/// Collects what in `value`, at the path `at`, does not fit `schema`. The
-/// keywords read: `type`, `enum`, `const`, `properties`, `required`,
-/// `additionalProperties`, `items`, `minItems`, `maxItems`, `minLength`,
-/// `maxLength`, `minimum`, `maximum`, `exclusiveMinimum`,
-/// `exclusiveMaximum`, `allOf`, `anyOf` and `oneOf`; others are ignored.
-fn violations(schema: &Value, value: &Value, at: &str, errors: &mut Vec<String>) {
-    let Some(schema) = schema.as_object() else {
-        return;
-    };
-    let types: Vec<&str> = match schema.get("type") {
-        Some(Value::String(name)) => vec![name.as_str()],
-        Some(Value::Array(names)) => names.iter().filter_map(Value::as_str).collect(),
-        _ => Vec::new(),
-    };
-    if !types.is_empty() && !types.iter().any(|name| is_type(value, name)) {
-        errors.push(format!(
-            "{at}: expected {}, got {value}",
-            types.join(" or ")
-        ));
-        return;
-    }
-    if let Some(options) = schema.get("enum").and_then(Value::as_array)
-        && !options.contains(value)
-    {
-        let options = Value::Array(options.clone());
-        errors.push(format!("{at}: {value} is not one of {options}"));
-    }
-    if let Some(expected) = schema.get("const")
-        && expected != value
-    {
-        errors.push(format!("{at}: must be {expected}"));
-    }
-    let number = |key: &str| schema.get(key).and_then(Value::as_f64);
-    let count = |key: &str| schema.get(key).and_then(Value::as_u64);
-    let mut out_of = |what: &str, len: usize, min: &str, max: &str| {
-        let len = len as u64;
-        if count(min).is_some_and(|min| len < min) || count(max).is_some_and(|max| len > max) {
-            let (min, max) = (count(min), count(max));
-            errors.push(format!("{at}: {len} {what}, not within {min:?}..={max:?}"));
-        }
-    };
-    match value {
-        Value::Object(fields) => {
-            let required = schema.get("required").and_then(Value::as_array);
-            for name in required.into_iter().flatten().filter_map(Value::as_str) {
-                if !fields.contains_key(name) {
-                    errors.push(format!("{at}: `{name}` is required"));
-                }
-            }
-            let properties = schema.get("properties").and_then(Value::as_object);
-            for (name, field) in fields {
-                let path = format!("{at}.{name}");
-                match (
-                    properties.and_then(|properties| properties.get(name)),
-                    schema.get("additionalProperties"),
-                ) {
-                    (Some(field_schema), _) | (None, Some(field_schema @ Value::Object(_))) => {
-                        violations(field_schema, field, &path, errors);
-                    }
-                    (None, Some(Value::Bool(false))) => {
-                        errors.push(format!("{path}: no such property"));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        Value::Array(items) => {
-            out_of("items", items.len(), "minItems", "maxItems");
-            if let Some(item_schema) = schema.get("items") {
-                for (index, item) in items.iter().enumerate() {
-                    violations(item_schema, item, &format!("{at}[{index}]"), errors);
-                }
-            }
-        }
-        Value::String(text) => out_of("characters", text.chars().count(), "minLength", "maxLength"),
-        Value::Number(n) => {
-            let n = n.as_f64().unwrap_or_default();
-            let low = number("minimum").is_some_and(|min| n < min)
-                || number("exclusiveMinimum").is_some_and(|min| n <= min);
-            let high = number("maximum").is_some_and(|max| n > max)
-                || number("exclusiveMaximum").is_some_and(|max| n >= max);
-            if low || high {
-                errors.push(format!("{at}: {n} is out of range"));
-            }
-        }
-        _ => {}
-    }
-    let fits = |sub: &Value| {
-        let mut found = Vec::new();
-        violations(sub, value, at, &mut found);
-        found
-    };
-    let subs = |key: &str| {
-        schema
-            .get(key)
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-    };
-    for sub in subs("allOf") {
-        errors.extend(fits(sub));
-    }
-    if schema.contains_key("anyOf") && !subs("anyOf").any(|sub| fits(sub).is_empty()) {
-        errors.push(format!("{at}: fits none of anyOf"));
-    }
-    let one = subs("oneOf").filter(|sub| fits(sub).is_empty()).count();
-    if schema.contains_key("oneOf") && one != 1 {
-        errors.push(format!("{at}: fits {one} of oneOf, not exactly one"));
-    }
-}
-
-/// Whether `value` is of the JSON Schema type `name`.
-fn is_type(value: &Value, name: &str) -> bool {
-    match name {
-        "object" => value.is_object(),
-        "array" => value.is_array(),
-        "string" => value.is_string(),
-        "number" => value.is_number(),
-        "integer" => {
-            value.is_i64() || value.is_u64() || value.as_f64().is_some_and(|n| n.fract() == 0.0)
-        }
-        "boolean" => value.is_boolean(),
-        "null" => value.is_null(),
-        _ => true,
     }
 }
 

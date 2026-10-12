@@ -171,6 +171,30 @@ fn two_text_answers_get_one_reminder_then_fail_the_run() {
 }
 
 #[test]
+fn three_refused_results_fail_the_run() {
+    let dir = project("invalid");
+    assert!(dir.is_some(), "a scratch project");
+    let Some(dir) = dir else { return };
+    let empty = || calls("c", TOOL, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([
+        empty(),
+        empty(),
+        empty(),
+        reply("never asked for"),
+    ]);
+    let app = run(&dir, &model);
+    assert!(app.is_some(), "the app starts");
+    let Some(app) = app else { return };
+
+    assert_eq!(model.request_count(), 3, "no request after the third");
+    assert_eq!(
+        app.world().get_resource::<ExitReason>(),
+        Some(&ExitReason::Failed(INVALID_EXIT))
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(SubmitResultPlugin);
 }
