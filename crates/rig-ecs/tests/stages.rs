@@ -3067,3 +3067,112 @@ fn a_turns_calls_are_recorded_with_its_index() {
         Some(None)
     );
 }
+
+/// Spawns a call of `tool`, with no arguments, for the app's agent.
+fn spawn_call(world: &mut World, tool: &str, id: &str) -> Entity {
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    ToolName::new(tool).map_or(Entity::PLACEHOLDER, |name| {
+        let call = ToolCall::from_wire(id, ToolFunction::new(name, serde_json::json!({})));
+        world.spawn((ToolRequest { call }, ForAgent(agent))).id()
+    })
+}
+
+/// A tool call of a group that starts all together or not at all.
+#[derive(Component)]
+struct Member;
+
+/// A coordinator after the gates: once a member of the group is answered
+/// with an error, or refused, it refuses the members still unanswered.
+fn coordinate(
+    mut members: Query<(Option<&Outcome>, &mut Decision), (With<Member>, Without<Started>)>,
+) {
+    let refused = members.iter().any(|(outcome, decision)| {
+        outcome
+            .or(decision.get())
+            .is_some_and(|outcome| outcome.0.is_err())
+    });
+    if !refused {
+        return;
+    }
+    for (outcome, mut decision) in &mut members {
+        if outcome.is_none() {
+            decision.decide(
+                Decider::plugin("group"),
+                Outcome::refused("a member was refused"),
+            );
+        }
+    }
+}
+
+#[test]
+fn a_coordinator_after_the_gates_sees_a_call_the_kernel_refuses() {
+    let mut app = app();
+    app.add_tool(Look)
+        .add_systems(AgentPass, coordinate.in_set(GateSystems::After));
+    let world = app.world_mut();
+    let look = spawn_call(world, "look", "look");
+    let nope = spawn_call(world, "nope", "nope");
+    world.entity_mut(look).insert(Member);
+    world.entity_mut(nope).insert(Member);
+    let done = |world: &mut World| {
+        world.get::<Settled>(look).is_some() && world.get::<Settled>(nope).is_some()
+    };
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // Neither member started: the call of a tool that does not exist was
+    // answered before the gates, so the coordinator refused the other.
+    assert!(!has::<Started>(&app, look) && !has::<Started>(&app, nope));
+    let records = records(&app);
+    let outcome = |name: &str| {
+        let record = records.iter().find(
+            |record| matches!(&record.kind, EffectKind::ToolCall { name: called, .. } if called == name),
+        );
+        record.and_then(|record| record.outcome.as_ref().err().map(|report| report.kind))
+    };
+    assert_eq!(outcome("look"), Some(ErrorKind::Denied), "{records:?}");
+    assert_eq!(
+        outcome("nope"),
+        Some(ErrorKind::Tool(ToolErrorKind::NotFound)),
+        "{records:?}"
+    );
+}
+
+/// An answer after the gates that stands in for running every tool call,
+/// such as a cached result.
+fn stand_in(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
+    for mut decision in &mut calls {
+        decision.decide(Decider::plugin("cache"), ToolResult::skipped("cached"));
+    }
+}
+
+#[test]
+fn a_call_the_agent_may_not_make_is_refused_not_answered_in_its_place() {
+    let mut app = app();
+    app.add_tool(Look)
+        .add_systems(AgentPass, stand_in.in_set(GateSystems::After));
+    let world = app.world_mut();
+    let call = spawn_call(world, "look", "look");
+    let agent = world.get::<ForAgent>(call).map(|of| of.0);
+    if let Some(agent) = agent {
+        world.entity_mut(agent).insert(ToolAccess::Only(Vec::new()));
+    }
+    let done = |world: &mut World| world.get::<Settled>(call).is_some();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let outcome = app.world().get::<Outcome>(call).map(|outcome| &outcome.0);
+    assert!(
+        matches!(outcome, Some(Err(report)) if report.kind == ErrorKind::Denied && report.refusal),
+        "{outcome:?}"
+    );
+    let records = records(&app);
+    let record = records
+        .iter()
+        .find(|record| matches!(record.kind, EffectKind::ToolCall { .. }));
+    assert!(
+        record.is_some_and(|record| record.decided_by.is_none()
+            && record.disposition == Disposition::AnsweredBeforeStart),
+        "{records:?}"
+    );
+}

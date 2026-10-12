@@ -80,6 +80,7 @@ use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
 use super::journal::{SessionLog, millis};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
+    refuse_calls,
 };
 use super::turn::{
     Adapters, ModelRequest, ModelStarts, SentTo, StreamDelta, TurnCall, back_off, build_requests,
@@ -123,7 +124,8 @@ pub enum Stage {
     /// the [`PrepareSystems`] phases.
     Prepare,
     /// Plugins hold ([`HoldOf`]) or decide ([`Decision`]) what is about to
-    /// start ([`Undecided`]).
+    /// start ([`Undecided`]), once the kernel answered the tool calls it
+    /// refuses ([`ToolRequest`]).
     Gate,
     /// The kernel applies the decisions made since the last pass as
     /// [`Outcome`]s, then starts what is admitted, unheld and unanswered: it
@@ -656,6 +658,10 @@ pub(crate) fn build(app: &mut App) {
                 )
                     .chain()
                     .in_set(Enter(Stage::Gate)),
+                refuse_calls
+                    .after(GateSystems::FromRecord)
+                    .before(Stage::Gate)
+                    .run_if(moved_since_quiet),
                 apply_decisions.in_set(Enter(Stage::Start)),
                 (accept, carry_on_accepted, start)
                     .chain()
@@ -1026,26 +1032,23 @@ fn start(
                 }),
                 _,
             ) => (handler.clone(), kind.clone()),
-            (_, Some(ToolRequest { call })) => {
-                let agent = agent.filter(|_| caller.is_some());
-                match tools.start(call, item.handler, agent) {
-                    ToolStart::Run(handler, kind) => (handler, kind),
-                    ToolStart::Open(open, tool) => {
-                        commands.queue(move |world: &mut World| {
-                            if let Err(report) = open(world, tool, entity, Started { at })
-                                && let Ok(mut call) = world.get_entity_mut(entity)
-                            {
-                                call.insert_if_new(Outcome(Err(report)));
-                            }
-                        });
-                        continue;
-                    }
-                    ToolStart::Refused(report) => {
-                        started.try_insert_if_new(Outcome(Err(report)));
-                        continue;
-                    }
+            (_, Some(ToolRequest { call })) => match tools.start(call, item.handler, agent) {
+                ToolStart::Run(handler, kind) => (handler, kind),
+                ToolStart::Open(open, tool) => {
+                    commands.queue(move |world: &mut World| {
+                        if let Err(report) = open(world, tool, entity, Started { at })
+                            && let Ok(mut call) = world.get_entity_mut(entity)
+                        {
+                            call.insert_if_new(Outcome(Err(report)));
+                        }
+                    });
+                    continue;
                 }
-            }
+                ToolStart::Refused(report) => {
+                    started.try_insert_if_new(Outcome(Err(report)));
+                    continue;
+                }
+            },
             _ => {
                 started.try_insert(Started { at });
                 continue;

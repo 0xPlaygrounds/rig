@@ -8,7 +8,7 @@
 //! and starts it in [`Stage::Start`](super::stage::Stage::Start). An ordinary
 //! tool's handler answers it; an open tool's call triggers [`ToolCalled`]
 //! and stays open until any system decides it
-//! ([`Decision`](super::stage::Decision)).
+//! ([`Decision`]).
 //!
 //! ```ignore
 //! // `Wait { signal: String }` derives `Deserialize` and `JsonSchema`.
@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
 use super::prompt::ToolRules;
-use super::stage::{Admitted, Effect, ForAgent, Settled, Started};
+use super::stage::{Admitted, Decision, Effect, ForAgent, Outcome, Settled, Started, SupersededBy};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -112,13 +112,14 @@ fn open<A: DeserializeOwned + Send + Sync + 'static>(
 /// Admitted, it gets its tool's [`CallHandler`] unless it has its own;
 /// Prepare may change the call or the handler, and Gate sees the
 /// [`Footprint`] of the call as Prepare left it.
-/// Start refuses a call of a tool that is not registered or that the agent
-/// may not use, or whose arguments its tool does not declare, then runs
-/// its handler, or opens it for an open tool. Its [`Outcome`] is its
-/// result.
+/// After the answers from a record and before every gate, the kernel
+/// answers a call of a tool that is not registered or that the agent may
+/// not use, or whose arguments its tool does not declare, with its
+/// refusal, unless the call was decided: no gate sees it, and an answer
+/// after the gates cannot stand in for it. Start runs its handler, or
+/// opens it for an open tool. Its [`Outcome`] is its result.
 ///
 /// [`CallOf`]: super::agent::CallOf
-/// [`Outcome`]: super::stage::Outcome
 #[derive(Component, Clone, Debug)]
 #[require(Effect)]
 pub struct ToolRequest {
@@ -135,7 +136,7 @@ pub struct CallHandler(pub Handler);
 /// A call of an open tool started, its arguments parsed into `A`: triggered
 /// on the tool's entity, so the observer [`AppToolsExt::add_open_tool`]
 /// registered handles it. The call stays open until its
-/// [`Decision`](super::stage::Decision) is decided, such as with
+/// [`Decision`] is decided, such as with
 /// `Outcome::from(ToolResult::success("Done.".into()))`; despawning it, as
 /// an [`Interrupt`](super::agent::Interrupt) does, cancels it.
 #[derive(EntityEvent, Clone)]
@@ -241,7 +242,7 @@ pub trait AppToolsExt {
     /// `A` ([`args_schema`]): each call whose arguments parse into `A`
     /// triggers [`ToolCalled<A>`] on the tool's entity, where `observer`
     /// watches, and ends when the call's
-    /// [`Decision`](super::stage::Decision) is decided, at once or much
+    /// [`Decision`] is decided, at once or much
     /// later; any other is refused.
     /// Its calls are recorded like any other.
     fn add_open_tool<A, M>(
@@ -446,53 +447,90 @@ pub(crate) enum ToolStart {
 #[derive(SystemParam)]
 pub(crate) struct ToolStarts<'w, 's> {
     tools: Query<'w, 's, (Entity, &'static ToolDef, &'static Serves)>,
-    access: Query<'w, 's, &'static ToolAccess>,
+    agents: Query<'w, 's, Option<&'static ToolAccess>, With<AgentId>>,
 }
 
 impl ToolStarts<'_, '_> {
-    /// How `call`, with `handler`, starts for `agent`:
-    /// refused when no tool of its name is registered, the agent may not
+    /// The tool that runs `call` for `agent`, or why the kernel refuses
+    /// it: no agent, no tool of its name is registered, the agent may not
     /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
-    /// parameters; else run through `handler`, or opened for an open tool.
+    /// parameters.
+    fn tool(
+        &self,
+        call: &ToolCall,
+        agent: Option<Entity>,
+    ) -> Result<(Entity, &Serves), ErrorReport> {
+        let name = call.function.name.as_str();
+        let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+        let Some(access) = agent.and_then(|agent| self.agents.get(agent).ok()) else {
+            let why = "a tool call needs an agent".to_owned();
+            return Err(refused(ToolErrorKind::NotFound, why));
+        };
+        let missing = format!("no tool named `{name}` is available");
+        let Some((tool, def, serves)) = self
+            .tools
+            .iter()
+            .find(|(_, def, _)| def.0.name.as_str() == name)
+        else {
+            return Err(refused(ToolErrorKind::NotFound, missing));
+        };
+        if !access.is_some_and(|access| access.allows(name)) {
+            // A refusal, recorded as one; the model reads what it reads for
+            // a tool that does not exist.
+            return Err(ErrorReport::new(ErrorKind::Denied, missing).refused());
+        }
+        if let Some(why) = arguments_refusal(&def.0.parameters, call) {
+            return Err(refused(ToolErrorKind::InvalidArgs, why));
+        }
+        Ok((tool, serves))
+    }
+
+    /// How `call`, with `handler`, starts for `agent`: run through
+    /// `handler`, or opened for an open tool; refused as
+    /// [`refuse_calls`] refuses it, should it have changed since.
     pub(crate) fn start(
         &self,
         call: &ToolCall,
         handler: Option<&CallHandler>,
         agent: Option<Entity>,
     ) -> ToolStart {
-        let name = call.function.name.as_str();
-        let refused = |kind, why| ToolStart::Refused(ErrorReport::new(ErrorKind::Tool(kind), why));
-        let Some(agent) = agent else {
-            return refused(
-                ToolErrorKind::NotFound,
-                "a tool call needs an agent".to_owned(),
-            );
-        };
-        let allowed = self
-            .access
-            .get(agent)
-            .is_ok_and(|access| access.allows(name));
-        let tool = self
-            .tools
-            .iter()
-            .find(|(_, def, _)| def.0.name.as_str() == name);
-        let missing = format!("no tool named `{name}` is available");
-        let Some((tool, def, serves)) = tool else {
-            return refused(ToolErrorKind::NotFound, missing);
-        };
-        if !allowed {
-            // A refusal, recorded as one; the model reads what it reads for
-            // a tool that does not exist.
-            return ToolStart::Refused(ErrorReport::new(ErrorKind::Denied, missing).refused());
-        }
-        if let Some(why) = arguments_refusal(&def.0.parameters, call) {
-            return refused(ToolErrorKind::InvalidArgs, why);
-        }
-        match (handler, serves) {
-            (Some(CallHandler(handler)), _) | (None, Serves::Handler(handler)) => {
+        match (self.tool(call, agent), handler) {
+            (Err(report), _) => ToolStart::Refused(report),
+            (Ok(_), Some(CallHandler(handler))) | (Ok((_, Serves::Handler(handler))), None) => {
                 ToolStart::Run(handler.clone(), EffectKind::from(call))
             }
-            (None, Serves::Open(open)) => ToolStart::Open(*open, tool),
+            (Ok((tool, Serves::Open(open))), None) => ToolStart::Open(*open, tool),
+        }
+    }
+}
+
+/// Answers each admitted tool call that has not started, held or not,
+/// that the kernel refuses ([`ToolStarts`]), unless it is decided: after
+/// the answers from a record and before every gate, so no gate sees it,
+/// and one after the gates reads its [`Outcome`]. Run on every pass, so
+/// what changed since, such as the agent's [`ToolAccess`], counts.
+pub(crate) fn refuse_calls(
+    calls: Query<
+        (Entity, &ToolRequest, &Decision, Option<&ForAgent>),
+        (
+            With<Admitted>,
+            Without<Started>,
+            Without<Outcome>,
+            Without<Settled>,
+            Without<SupersededBy>,
+        ),
+    >,
+    tools: ToolStarts,
+    mut commands: Commands,
+) {
+    for (entity, ToolRequest { call }, decision, agent) in &calls {
+        if decision.is_decided() {
+            continue;
+        }
+        if let Err(report) = tools.tool(call, agent.map(|agent| agent.0)) {
+            commands
+                .entity(entity)
+                .try_insert_if_new(Outcome(Err(report)));
         }
     }
 }
