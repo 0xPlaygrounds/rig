@@ -17,7 +17,7 @@ use serde::Deserialize;
 
 use crate::process::{KillOnDrop, Launcher, OutputLine, Process, Spawn};
 use crate::workspace::{Local, Workspace};
-use crate::{Cut, Spill, blocking};
+use crate::{Cut, Live, Spill, blocking};
 
 const DEFAULT_TIMEOUT: u64 = 120;
 const MAX_TIMEOUT: u64 = 600;
@@ -33,13 +33,17 @@ const OUTPUT_LIMIT: u64 = 10 * 1024 * 1024;
 
 /// Runs a command with `sh -c` in its own session and process group, in its
 /// [`Workspace`], as its [`Launcher`] starts processes. Publishes how the
-/// command ended ([`ExitStatus`]) beside its output.
+/// command ended ([`ExitStatus`]) beside its output, and reports the output
+/// as it comes to its [`Live`], if it has one.
 #[derive(Clone, Debug)]
 pub struct Shell {
     /// Where the command runs.
     pub workspace: Arc<dyn Workspace>,
     /// How the command is started: a wrapper, a directory, its variables.
     pub launcher: Launcher,
+    /// Where each piece of output is reported as it comes, before the
+    /// command ends.
+    pub live: Option<Live>,
     /// Where output that is cut is kept whole, named in the cut output.
     pub spill: Option<Spill>,
     /// How much of the output the result keeps; `None` keeps all of it, up
@@ -53,12 +57,13 @@ pub struct Shell {
 }
 
 impl Default for Shell {
-    /// Started on this machine as this process starts it, nothing spilled,
-    /// output cut as [`Cut::default`] cuts it.
+    /// Started on this machine as this process starts it, nothing spilled
+    /// or reported live, output cut as [`Cut::default`] cuts it.
     fn default() -> Self {
         Self {
             workspace: Arc::new(Local),
             launcher: Launcher::default(),
+            live: None,
             spill: None,
             cut: Some(Cut::default()),
             confine: false,
@@ -215,6 +220,7 @@ impl Shell {
         let mut tail = Tail {
             spill: self.spill.clone(),
             cut: self.cut,
+            live: self.live.clone(),
             ..Tail::default()
         };
         let deadline = Instant::now() + timeout;
@@ -304,11 +310,17 @@ struct Tail {
     spill: Option<Spill>,
     /// The file it goes to, from the first cut on, and its path.
     spilled: Option<(PathBuf, File)>,
+    /// Where each piece is reported as it comes.
+    live: Option<Live>,
 }
 
 impl Tail {
-    /// Appends `piece`, keeping only the last bytes the cut keeps.
+    /// Appends `piece`, keeping only the last bytes the cut keeps, and
+    /// reports it live.
     fn push(&mut self, piece: &str) {
+        if let Some(live) = &self.live {
+            live.line(piece);
+        }
         let chunk = piece.as_bytes();
         self.written += chunk.len() as u64;
         if let Some((_, file)) = &mut self.spilled

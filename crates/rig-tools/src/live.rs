@@ -1,0 +1,44 @@
+//! [`Live`]: where a running tool reports its output as it comes, for a
+//! host that shows it before the call ends or keeps it in case the call is
+//! stopped.
+
+use std::fmt;
+use std::sync::Arc;
+
+/// Where a running tool reports output as it comes, such as
+/// [`Shell`](crate::Shell)'s lines. Cloning shares the sink.
+///
+/// ```
+/// use std::sync::{Arc, Mutex};
+/// use rig_tools::Live;
+///
+/// let seen = Arc::new(Mutex::new(String::new()));
+/// let live = Live::new({
+///     let seen = seen.clone();
+///     move |text| seen.lock().map(|mut seen| seen.push_str(text)).unwrap_or_default()
+/// });
+/// live.line("building\n");
+/// assert_eq!(seen.lock().map(|seen| seen.clone()).ok().as_deref(), Some("building\n"));
+/// ```
+#[derive(Clone)]
+pub struct Live(Arc<dyn Fn(&str) + Send + Sync>);
+
+impl Live {
+    /// A sink that hands each piece of output to `report`, on the thread the
+    /// tool runs on: keep `report` quick.
+    pub fn new(report: impl Fn(&str) + Send + Sync + 'static) -> Self {
+        Self(Arc::new(report))
+    }
+
+    /// Reports `text`, the next piece of output: a line with its `\n`, or
+    /// the end of the output without one.
+    pub fn line(&self, text: &str) {
+        (self.0)(text);
+    }
+}
+
+impl fmt::Debug for Live {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Live")
+    }
+}

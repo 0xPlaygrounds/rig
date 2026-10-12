@@ -16,7 +16,8 @@
 //! and change ([`footprint`](rig_core::tool::Tool::footprint)): `read` and
 //! `search` read the path they name, `write`, `edit`, `delete` and `move`
 //! write theirs, and `shell` may change anything, so a host runs calls on
-//! different files side by side. Their arguments are plain data with public fields, to build
+//! different files side by side. `shell` reports its output as it comes to
+//! a [`Live`]. Their arguments are plain data with public fields, to build
 //! or read a call's.
 //!
 //! Also the pieces they are made of, for tools of your own:
@@ -47,6 +48,7 @@ pub mod context;
 mod delete;
 pub mod edit;
 pub mod fs;
+mod live;
 mod move_file;
 pub mod process;
 mod read;
@@ -59,6 +61,7 @@ mod write;
 pub use blocking::blocking;
 pub use delete::{Delete, DeleteArgs};
 pub use edit::{Edit, EditArgs, Replacement};
+pub use live::Live;
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, numbered};
 pub use search::{Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render};

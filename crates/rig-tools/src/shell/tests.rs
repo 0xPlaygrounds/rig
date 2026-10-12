@@ -106,6 +106,44 @@ fn cut_output_is_read_back_by_its_handle() {
     std::fs::remove_dir_all(dir).ok();
 }
 
+/// Each piece of output reaches the shell's `Live` while the command still
+/// runs: here the command waits for a file the sink makes on its first line.
+#[cfg(unix)]
+#[test]
+fn live_output_arrives_before_the_command_ends() {
+    use std::sync::{Arc, Mutex, PoisonError};
+
+    use crate::Live;
+
+    let flag = std::env::temp_dir().join(format!("rig-tools-live-{}", std::process::id()));
+    std::fs::remove_file(&flag).ok();
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let live = Live::new({
+        let (seen, flag) = (seen.clone(), flag.clone());
+        move |text| {
+            std::fs::write(&flag, "").ok();
+            seen.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(text.to_owned());
+        }
+    });
+    let shell = Shell {
+        live: Some(live),
+        ..Shell::default()
+    };
+    let command = format!(
+        "echo one; while [ ! -e '{}' ]; do sleep 0.05; done; echo two",
+        flag.display()
+    );
+    let ran = futures::executor::block_on(shell.run(ShellArgs::new(command).timeout_secs(5)));
+    assert_eq!(ran.map(|ran| ran.status).ok(), Some(ExitStatus::Exited(0)));
+    assert_eq!(
+        *seen.lock().unwrap_or_else(PoisonError::into_inner),
+        ["one\n", "two\n"]
+    );
+    std::fs::remove_file(flag).ok();
+}
+
 /// The command starts through the shell's workspace, in the directory the
 /// call names below the launcher's.
 #[cfg(unix)]
