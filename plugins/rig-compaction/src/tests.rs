@@ -546,3 +546,43 @@ fn the_request_is_measured_after_the_default_prompt_went_in() {
         "a summary, then the request: {sent:?}"
     );
 }
+
+/// The requests a turn near a 40k window makes when its compacted request
+/// still overflows, with `per_turn` summaries a turn, and its answer.
+fn overflow_after_a_summary(per_turn: u32) -> (Vec<String>, Option<String>) {
+    let (mut app, wakes) = start(&MemoryStore::default());
+    app.world_mut().resource_mut::<Compaction>().0.per_turn = per_turn;
+    let model = MockCompletionModel::from_stream_turns([
+        reply("## Goal\nThe first summary."),
+        too_long(),
+        reply("## Goal\nThe second summary."),
+        reply("done"),
+    ]);
+    let Some(agent) = agent(&mut app, &model, 40_000, long_conversation(6)) else {
+        return (Vec::new(), None);
+    };
+    ask(&mut app, &wakes, agent);
+    (sent(&model), answer(&app))
+}
+
+#[test]
+fn a_turn_asks_for_at_most_per_turn_summaries() {
+    let summaries = |sent: &[String]| {
+        let summary = |request: &&String| request.contains("You summarize a conversation");
+        sent.iter().filter(summary).count()
+    };
+    // By default a second summary rescues the turn.
+    let (sent, answer) = overflow_after_a_summary(2);
+    assert_eq!(
+        (summaries(&sent), answer.as_deref()),
+        (2, Some("done")),
+        "{sent:?}"
+    );
+    // With one a turn, the overflow after the first ends the turn.
+    let (sent, answer) = overflow_after_a_summary(1);
+    assert_eq!(
+        (summaries(&sent), sent.len(), answer),
+        (1, 2, None),
+        "{sent:?}"
+    );
+}

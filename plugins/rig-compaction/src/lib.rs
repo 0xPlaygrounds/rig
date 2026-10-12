@@ -32,9 +32,6 @@ use rig_memory::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Compactions a turn may make, asked for or not.
-pub const MAX_COMPACTIONS: u32 = 2;
-
 /// Compacts agents' conversations near their model's window, after an
 /// overflow, and on `/compact`, by the [`Compaction`] policy.
 #[derive(Default)]
@@ -72,7 +69,10 @@ impl Plugin for CompactionPlugin {
 /// How agents are compacted: rig-memory's default policy, tracking the
 /// files the built-in file tools read and changed. A plugin whose tool
 /// reads or changes files tracks its argument the same way, by adding a
-/// [`TrackArgument`] to `tracked` (from `finish` or a startup system).
+/// [`TrackArgument`] to `tracked` (from `finish` or a startup system). A
+/// plugin chooses where a compaction cuts with the policy's `cut` (a
+/// [`Cut`](rig_memory::Cut)), given the messages [`unsummarized`] returns,
+/// and how many summaries a turn may ask for with `per_turn`.
 #[derive(Resource, Clone, Debug)]
 pub struct Compaction(pub CompactionPolicy);
 
@@ -111,7 +111,9 @@ pub struct Compact {
 }
 
 /// The agent's summary so far and the files it tracks, which the next
-/// compaction builds on. Saved with the session.
+/// compaction builds on. Saved with the session. A compaction inserts it
+/// after it spliced the summary into the conversation, so an
+/// `On<Insert<Summarized>>` observer sees the conversation with it.
 #[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
@@ -124,7 +126,7 @@ pub struct Summarized(pub SummaryState);
 pub struct Compactions {
     /// Whether an overflow cleared tool outputs.
     pub cleared: bool,
-    /// Summaries asked for, at most [`MAX_COMPACTIONS`].
+    /// Summaries asked for, at most the policy's `per_turn`.
     pub summaries: u32,
 }
 
@@ -169,10 +171,13 @@ struct Compacting {
     connection: Option<&'static Connection>,
 }
 
-/// The messages of `conversation` without the summary it holds, which the
+/// What a summary does not cover yet: the messages of `conversation`
+/// without the summary content it holds (by [`summary_origin`]), which the
 /// next summary builds on from [`Summarized`] instead of reading it again,
-/// and how many of the first messages held nothing else.
-fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
+/// and how many of the first messages held nothing else. These are the
+/// messages and the `from` the policy's cut is given; an index into them
+/// is an index into the conversation.
+pub fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
     let summary = summary_origin();
     let mut from = 0;
     let mut messages = conversation.messages().to_vec();
@@ -404,7 +409,7 @@ fn compact_near_the_window(
         let Ok((mut compacting, mut last)) = agents.get_mut(agent) else {
             continue;
         };
-        if compactions.summaries >= MAX_COMPACTIONS {
+        if compactions.summaries >= policy.0.per_turn {
             continue;
         }
         let Some(spec) = routed(&model, adapters, compacting.connection) else {
@@ -480,7 +485,7 @@ fn recover_from_overflow(
                 continue;
             }
         }
-        if compactions.summaries >= MAX_COMPACTIONS {
+        if compactions.summaries >= policy.per_turn {
             continue;
         }
         let reason = (policy, CompactReason::Overflow);
