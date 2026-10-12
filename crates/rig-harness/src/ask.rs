@@ -15,7 +15,14 @@
 //! the agent, else it applies its own policy for a run nobody answers,
 //! such as refusing. While a question that takes text is open, the next
 //! line the user sends the agent is its answer, not a message to the
-//! model.
+//! model, unless the question is [`inline`](Ask::inline).
+//!
+//! A question may propose an answer for the user to edit
+//! ([`Ask::initial`]), take an answer of several lines
+//! ([`Ask::multiline`]), and be shown beside the work rather than in front
+//! of it ([`Ask::inline`]): the user keeps typing to the agent and answers
+//! it when they choose. A front that knows none of these shows it as an
+//! ordinary question.
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -67,6 +74,17 @@ pub struct Ask {
     pub choices: Vec<Choice>,
     /// Whether a line of text answers it too.
     pub free_text: bool,
+    /// The text a typed answer starts from, for the user to edit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub initial: Option<String>,
+    /// Whether a typed answer may span lines.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multiline: bool,
+    /// Whether a front shows it beside the work, leaving the keys to the
+    /// input, rather than in front of it. The user's next line to the
+    /// agent is then a message, not its answer.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub inline: bool,
 }
 
 /// One answer an [`Ask`] offers.
@@ -86,6 +104,9 @@ impl Ask {
             body: String::new(),
             choices: Vec::new(),
             free_text: false,
+            initial: None,
+            multiline: false,
+            inline: false,
         }
     }
 
@@ -114,6 +135,28 @@ impl Ask {
         self.free_text = true;
         self
     }
+
+    /// The same question, answered by text that starts from `text`, which
+    /// the user edits.
+    pub fn initial(mut self, text: impl Into<String>) -> Self {
+        self.initial = Some(text.into());
+        self.free_text = true;
+        self
+    }
+
+    /// The same question, answered by text that may span lines.
+    pub fn multiline(mut self) -> Self {
+        self.multiline = true;
+        self.free_text = true;
+        self
+    }
+
+    /// The same question, shown beside the work: the user keeps the input
+    /// and answers it when they choose.
+    pub fn inline(mut self) -> Self {
+        self.inline = true;
+        self
+    }
 }
 
 /// How an [`Ask`] was answered.
@@ -122,7 +165,7 @@ impl Ask {
 pub enum Answer {
     /// One of its choices, by id.
     Choice(String),
-    /// A line of text.
+    /// The text the user gave.
     Text(String),
 }
 
@@ -209,7 +252,8 @@ fn request(mut world: DeferredWorld, context: HookContext) {
 }
 
 /// The user's next line to an agent with a question open that takes text
-/// answers the oldest such question, and goes no further.
+/// answers the oldest such question that is not inline, and goes no
+/// further.
 fn answer_with_text(
     mut typed: Query<(&Incoming, &ForAgent, &mut Decision), (Undecided, IncomingMessages)>,
     mut asks: Query<
@@ -225,7 +269,7 @@ fn answer_with_text(
         let open = asks
             .iter()
             .filter(|(_, question, to, _, decision)| {
-                question.free_text && to.0 == agent && !decision.is_decided()
+                question.free_text && !question.inline && to.0 == agent && !decision.is_decided()
             })
             .min_by_key(|(_, _, _, effect, _)| effect.id())
             .map(|(ask, ..)| ask);

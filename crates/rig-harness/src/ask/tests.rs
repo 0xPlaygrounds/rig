@@ -78,6 +78,10 @@ fn a_question_is_an_open_effect_recorded_with_its_answer() {
 #[test]
 fn the_users_next_line_answers_a_question_that_takes_text() {
     let (mut app, agent) = app();
+    // One beside the work, though older, leaves the user's lines to the
+    // agent.
+    let inline = Ask::new("Note it?").initial("cache").inline();
+    let beside = app.world_mut().spawn((inline, ForAgent(agent))).id();
     let question = app
         .world_mut()
         .spawn((Ask::new("Why deny it?").free_text(), ForAgent(agent)))
@@ -96,6 +100,7 @@ fn the_users_next_line_answers_a_question_that_takes_text() {
         outcome.and_then(Answer::of),
         Some(Answer::Text("it deletes the cache".to_owned()))
     );
+    assert!(app.world().get::<Outcome>(beside).is_none());
     // The answer never reached the model's conversation, and no turn started.
     let conversation = app.world().get::<Conversation>(agent);
     assert!(conversation.is_some_and(|conversation| conversation.messages().is_empty()));
