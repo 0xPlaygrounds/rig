@@ -7,7 +7,7 @@ use rig_core::completion::{AssistantContent, Message};
 use rig_core::message::{CallId, ToolCall, ToolFunction, ToolName, ToolResult, UserContent};
 use rig_core::streaming::parse_partial_arguments;
 use rig_core::test_utils::MockCompletionModel;
-use rig_core::tool::{ExitStatus, ToolContext, ToolResultContext};
+use rig_core::tool::ToolResultContext;
 use rig_harness::rig_ecs::journal::JournalPlugin;
 use rig_harness_test_support::{
     Ended, app_on, calls, connect, first_agent, log_ended, reply, run_until, scratch_home,
@@ -71,6 +71,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let model = MockCompletionModel::from_stream_turns([
         calls("e1", "edit", json!({ "path": "a.rs", "edits": edits })),
         calls("s1", "shell", json!({ "command": "exit 3" })),
+        calls("s2", "shell", json!({ "command": "seq 100000" })),
         reply("done"),
     ]);
     let connection = connect(&model);
@@ -129,7 +130,7 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
         })
         .collect();
     let facts = world.remove_resource::<Facts>().unwrap_or_default();
-    assert_eq!(facts.0.len(), 2, "both calls published what they did");
+    assert_eq!(facts.0.len(), 3, "every call published what they did");
     let mut screen = Vec::new();
     for message in &messages {
         let Message::Assistant(assistant) = message else {
@@ -176,36 +177,29 @@ fn edits_read_as_diffs_and_commands_as_command_lines() {
     let other = drawn(world, &ToolCallView::new(&other, None, CallState::Done));
     assert!(other.concat().contains(r#"other {"x":1}"#));
 
-    // A command that printed 100k lines: its last lines and what was cut.
-    let Some(big) = call(
-        "shell",
-        parse_partial_arguments(r#"{"command": "seq 100000"}"#),
-    ) else {
+    // The command that printed 100k lines: the tool's note of what it
+    // cut, how many lines are hidden, the last lines, how it ended.
+    let end = screen.iter().position(|line| line.contains("⎿ exit 0 · "));
+    let seq = end.and_then(|end| screen.get(end.saturating_sub(7)..end));
+    let seq: Vec<&str> = seq.unwrap_or_default().iter().map(|l| l.trim()).collect();
+    assert!(
+        matches!(
+            seq.as_slice(),
+            [note, more, "99996", "99997", "99998", "99999", "100000"]
+                if note.contains("earlier lines cut") && more.ends_with("more lines (Ctrl+O to expand)")
+        ),
+        "{screen:#?}"
+    );
+
+    // While a command runs, its output so far.
+    let Some(running) = call("shell", parse_partial_arguments(r#"{"command": "make"}"#)) else {
         return;
     };
-    let numbers: Vec<String> = (1..=100_000).map(|n| n.to_string()).collect();
-    let output = format!("{}\n[exit code 0]", numbers.join("\n"));
-    let result = big.answer(&rig_core::tool::ToolResult::success(output.into()));
-    let mut context = ToolContext::new();
-    assert!(context.insert_result(ExitStatus::Exited(0)).is_ok());
-    let published = context.result_context();
-    let mut view = ToolCallView::new(&big, Some(&result), CallState::Done);
-    view.facts = Some(&published);
-    view.took = Some(Duration::from_millis(4200));
-    let lines = drawn(world, &view);
-    let shown: Vec<&str> = lines.iter().map(|line| line.trim()).collect();
-    assert!(
-        shown.ends_with(&[
-            "… 99995 more lines (Ctrl+O to expand)",
-            "99996",
-            "99997",
-            "99998",
-            "99999",
-            "100000",
-            "⎿ exit 0 · 4.2s"
-        ]),
-        "{shown:?}"
-    );
+    let mut view = ToolCallView::new(&running, None, CallState::Running(Some("c".into())));
+    view.output = Some("a\nb\nc\n");
+    let shown = drawn(world, &view);
+    let shown: Vec<&str> = shown.iter().map(|line| line.trim()).collect();
+    assert!(shown.ends_with(&["a", "b", "c"]), "{shown:?}");
     std::fs::remove_dir_all(&dir).ok();
 }
 

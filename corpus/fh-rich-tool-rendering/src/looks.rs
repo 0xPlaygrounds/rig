@@ -1,9 +1,9 @@
 //! The looks of the built-in tools' calls, each a function of the call as
 //! the terminal view gives it ([`ToolCallView`]).
 
-use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
-use rig_tools::SearchHits;
+use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead, LinesShown};
 use rig_tools::fs::file_change;
+use rig_tools::{SearchHits, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{RESULT_LINES, ToolCallView, excerpt};
@@ -117,39 +117,39 @@ fn change(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines
 }
 
-/// `shell`: `$ command`; while it runs, the output as it comes; then the
-/// end of its output, its exit code and how long it ran, red when it
-/// failed.
+/// `shell`: `$ command`; while it runs, its output so far; then the end
+/// of its output, its exit code and how long it ran, red when it failed.
 fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let command = view.argument("command").unwrap_or_default();
     let mut command_lines = command.lines();
     let first = command_lines.next().unwrap_or_default();
     let mut lines = vec![view.header(format!("$ {first}"), "")];
     lines.extend(command_lines.map(|line| Line::from(format!("  {line}")).bold()));
+    let text = view.result_text();
+    let Some(text) = text.as_deref().filter(|_| !view.failed()) else {
+        match view.output {
+            Some(output) => lines.extend(printed(output, view, Style::new().dim())),
+            None => lines.extend(view.result_lines(RESULT_LINES)),
+        }
+        return lines;
+    };
+    let (output, said) = split_status(text);
     let status = view
         .facts
         .and_then(|facts| facts.get::<ExitStatus>().ok().flatten());
-    let (Some(text), Some(status)) = (view.result_text(), status) else {
-        // Running, or answered in an earlier run: as the view draws it.
-        lines.extend(view.tail_lines(view.limit(SHELL_TAIL)));
+    let failed = status.is_some_and(|status| !status.success());
+    let style = if failed {
+        Style::new().red()
+    } else {
+        Style::new().dim()
+    };
+    lines.extend(printed(output, view, style));
+    // Answered in an earlier run, the call has no facts: the tool's own
+    // line says how it ended.
+    let Some(status) = status else {
+        lines.extend(said.map(|said| Line::from(format!("  ⎿ {said}")).dim()));
         return lines;
     };
-    // The shell tool ends its output with a line saying how it ended,
-    // which `status` says as data.
-    let mut output: Vec<&str> = text.lines().collect();
-    output.pop();
-    let shown = view.limit(SHELL_TAIL);
-    let hidden = output.len().saturating_sub(shown);
-    lines.extend(more(hidden, view));
-    let style = if status.success() {
-        Style::new().dim()
-    } else {
-        Style::new().red()
-    };
-    let tail = output.iter().skip(hidden);
-    lines.extend(
-        tail.map(|line| Line::styled(format!("    {}", line.replace('\t', "    ")), style)),
-    );
     let said = match status {
         ExitStatus::Exited(code) => format!("exit {code}"),
         ExitStatus::Signaled => "killed by a signal".to_owned(),
@@ -161,16 +161,37 @@ fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         .map(|took| format!(" · {:.1}s", took.as_secs_f64()))
         .unwrap_or_default();
     let summary = Line::from(format!("  ⎿ {said}{took}"));
-    lines.push(if status.success() {
-        summary.green()
-    } else {
+    lines.push(if failed {
         summary.red()
+    } else {
+        summary.green()
     });
     lines
 }
 
-/// `read`: one line with the path and the lines read; the content when
-/// expanded.
+/// What a command printed: collapsed, its first line, a count of the
+/// lines hidden and its last [`SHELL_TAIL`] lines. When the tool cut the
+/// output, its first line is the tool's note saying how much and which
+/// file has all of it.
+fn printed(output: &str, view: &ToolCallView<'_>, style: Style) -> Vec<Line<'static>> {
+    let output: Vec<&str> = output.lines().collect();
+    let tail = view.limit(SHELL_TAIL);
+    let hidden = output.len().saturating_sub(tail.saturating_add(1));
+    let line = |line: &&str| Line::styled(format!("    {}", line.replace('\t', "    ")), style);
+    if hidden == 0 {
+        return output.iter().map(line).collect();
+    }
+    let first = output.first().map(line);
+    let last = output.iter().skip(hidden.saturating_add(1)).map(line);
+    first
+        .into_iter()
+        .chain(more(hidden, view))
+        .chain(last)
+        .collect()
+}
+
+/// `read`: one line with the path and the lines it showed; the content
+/// when expanded.
 fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let Some(text) = view.result_text().filter(|_| !view.failed()) else {
@@ -178,23 +199,12 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         lines.extend(view.result_lines(RESULT_LINES));
         return lines;
     };
-    // `read` shows a numbered line per line read, then `[…]` notes.
-    let count = text.lines().filter(|line| !line.starts_with('[')).count();
-    let first = view
-        .call
-        .function
-        .arguments
-        .get("offset")
-        .and_then(Value::as_u64)
-        .and_then(|first| usize::try_from(first).ok())
-        .unwrap_or(1);
-    let range = match count.checked_sub(1) {
-        None => "(empty)".to_owned(),
-        Some(rest) => format!(
-            "(lines {first}–{}, {count} lines)",
-            first.saturating_add(rest)
-        ),
-    };
+    // Answered in an earlier run, the call has no facts: no range.
+    let read = view
+        .facts
+        .and_then(|facts| facts.get::<FilesRead>().ok().flatten());
+    let shown = read.and_then(|read| read.0.first().and_then(|file| file.lines));
+    let range = shown.map(range).unwrap_or_default();
     let mut lines = vec![view.header(format!("read {path}"), range)];
     if view.expanded {
         let lang = Lang::of(&path);
@@ -205,6 +215,18 @@ fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         }));
     }
     lines
+}
+
+/// The lines a read showed: `(12 lines)` for a whole file, else
+/// `(lines 3–4 of 12)`.
+fn range(shown: LinesShown) -> String {
+    let last = shown.first.saturating_add(shown.count).saturating_sub(1);
+    match (shown.whole(), shown.count) {
+        (true, 1) => "(1 line)".to_owned(),
+        (true, total) => format!("({total} lines)"),
+        (false, 0) => format!("(no lines of {})", shown.total),
+        (false, _) => format!("(lines {}–{last} of {})", shown.first, shown.total),
+    }
 }
 
 /// `search`: how many matches, then the first few.
