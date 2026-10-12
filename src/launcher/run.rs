@@ -18,8 +18,8 @@
 //! in, which the agent answers as `--print` does, or a plugin's command
 //! that does not take the terminal) is not restarted on the reload code,
 //! nor run again on the previous build when its new build is rolled back;
-//! its exit code and output pass through. Before an interactive start, the
-//! launcher asks for each secret the build's plugins want that the
+//! its exit code and output pass through. Before each start with stdin on
+//! a terminal, whatever the front, the launcher asks for each secret the build's plugins want that the
 //! environment does not hold ([`ask_secret`]); only the agent's process
 //! gets the answers.
 
@@ -150,14 +150,17 @@ fn launch(
     mut build_failure: Option<String>,
 ) -> Result<ExitCode> {
     let launcher = std::env::current_exe()?;
-    // The secrets asked for, for every restart.
+    // The secrets asked for, for every restart: asked whenever someone is
+    // at the terminal, whatever the front, so a command typed there can be
+    // asked too; a piped run passes only what its environment has.
+    let ask = std::io::stdin().is_terminal();
     let mut answers: BTreeMap<String, String> = BTreeMap::new();
     loop {
         let session = claimed.id.clone();
         let trial = home.trial_for(&session);
         let directory = home.session(&session);
         let ready = run.ready();
-        if !headless {
+        if ask {
             for secret in report(home, &session).secrets {
                 let variable = secret_variable(&secret.name);
                 if std::env::var_os(&variable).is_some() || answers.contains_key(&variable) {

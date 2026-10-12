@@ -4,12 +4,12 @@
 //! A plugin asks for one in `build` with `app.add_secret(..)`
 //! ([`AppCliExt`](crate::host::cli::AppCliExt)) and reads it from
 //! [`Secrets`], there from `build` on. The launcher learns what the build
-//! asks for when it describes it ([`describe`](crate::describe)) and, on
-//! an interactive start, asks the user for each one the environment does
-//! not hold, once per launcher, whatever the restarts. A secret reaches
-//! the agent's process alone, as the variable
+//! asks for when it describes it ([`describe`](crate::describe)) and,
+//! when stdin is a terminal, whatever the front, asks the user for each
+//! one the environment does not hold, once per launcher, whatever the
+//! restarts. A secret reaches the agent's process alone, as the variable
 //! [`rig::harness_protocol::secret_variable`] of its name
-//! (`RIG_SECRET_CRYPT`); a headless run gets only what the environment
+//! (`RIG_SECRET_CRYPT`); a piped run gets only what the environment
 //! has. A secret not given is `None`, and the plugin decides what then.
 //!
 //! No process rig starts gets a secret: not cargo or any other launcher
