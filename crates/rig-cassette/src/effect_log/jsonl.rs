@@ -60,8 +60,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
-use serde::{Deserialize, Serialize};
 use rig_memory::Files;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::{EffectLog, LogHeader};
@@ -87,10 +87,7 @@ pub struct Writer {
 /// Where a [`Writer`] appends.
 enum Target {
     Path(PathBuf),
-    Store {
-        store: Arc<dyn Files>,
-        name: String,
-    },
+    Store { store: Arc<dyn Files>, name: String },
 }
 
 impl std::fmt::Debug for Target {
