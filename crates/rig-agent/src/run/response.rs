@@ -7,7 +7,6 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
-use rig_core::conversation::pairing::{PairingError, repair, validate};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
 use serde::{Deserialize, Serialize};
@@ -91,20 +90,11 @@ pub struct PromptResponse {
     pub completion_calls: Vec<CompletionCall>,
     /// The run's transcript: the prompt, every accepted assistant turn, every
     /// committed tool result and the corrective feedback of any retried turn,
-    /// excluding the input history the run started from. This is what a
-    /// configured conversation memory is asked to persist; whether that
-    /// append was acknowledged is [`memory_append`](Self::memory_append).
-    /// Empty only for a response built without a run behind it.
+    /// excluding the input history the run started from: what a caller keeping
+    /// the conversation appends to it. Empty only for a response built without
+    /// a run behind it.
     #[serde(default)]
     pub messages: Vec<Message>,
-    /// How the run's conversation-memory append settled, when the run had a
-    /// memory backend and conversation to append to; `None` when memory was
-    /// not configured for the run, bypassed by explicit history, disabled, or
-    /// the run was resumed (the driver that persisted it owns the append).
-    /// Set by the driver after the append dispatch resolved, so the
-    /// protocol's own `Done` response never carries it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_append: Option<MemoryAppend>,
     /// Structured assistant content for the final turn: its text,
     /// reasoning, images, and other parts. In output-tool mode the model's
     /// prose and tool calls are replaced by one text part holding the
@@ -116,39 +106,6 @@ pub struct PromptResponse {
     /// than provider-facing response content.
     #[serde(skip)]
     output_tool_calls: usize,
-}
-
-/// Outcome of the memory append, independent of the accepted run answer.
-/// Acknowledgement provides only the backend's durability guarantee; failure
-/// does not prove no write occurred. Dropping an in-flight append yields no
-/// response, and this outcome does not guarantee exactly-once persistence.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-pub enum MemoryAppend {
-    /// The backend acknowledged the append of [`PromptResponse::messages`].
-    Acknowledged,
-    /// The append dispatch failed or was refused, as reported after outcome hooks.
-    /// Persistence may still have occurred. The effect log retains the handler's
-    /// original answer rather than any hook replacement.
-    Failed {
-        /// Why the append failed.
-        report: rig_core::error::ErrorReport,
-    },
-}
-
-impl MemoryAppend {
-    /// Whether the backend acknowledged the append.
-    pub fn is_acknowledged(&self) -> bool {
-        matches!(self, Self::Acknowledged)
-    }
-
-    /// The failure report, when the append failed.
-    pub fn failure(&self) -> Option<&rig_core::error::ErrorReport> {
-        match self {
-            Self::Acknowledged => None,
-            Self::Failed { report } => Some(report),
-        }
-    }
 }
 
 impl std::fmt::Display for PromptResponse {
@@ -171,7 +128,6 @@ impl PromptResponse {
             usage,
             completion_calls: Vec::new(),
             messages: Vec::new(),
-            memory_append: None,
             output_tool_calls: 0,
         }
     }
@@ -190,13 +146,6 @@ impl PromptResponse {
     /// Attach completion call details to this response.
     pub fn with_completion_calls(mut self, completion_calls: Vec<CompletionCall>) -> Self {
         self.completion_calls = completion_calls;
-        self
-    }
-
-    /// Record how the run's conversation-memory append settled; the driver
-    /// sets this once the append dispatch resolved.
-    pub fn with_memory_append(mut self, memory_append: Option<MemoryAppend>) -> Self {
-        self.memory_append = memory_append;
         self
     }
 
@@ -225,12 +174,6 @@ impl PromptResponse {
     /// The run's transcript (see the [field](Self::messages)).
     pub fn messages(&self) -> &[Message] {
         &self.messages
-    }
-
-    /// How the run's conversation-memory append settled, when the run had
-    /// one (see the [field](Self::memory_append)).
-    pub fn memory_append(&self) -> Option<&MemoryAppend> {
-        self.memory_append.as_ref()
     }
 
     /// The structured assistant content for the final turn (see the
@@ -283,8 +226,6 @@ pub(crate) fn finalize_output_tool_choice(
 
 use thiserror::Error;
 
-use rig_core::memory::MemoryError;
-
 /// Why an agent run failed, whether it was awaited or streamed.
 ///
 /// Variants that wrap another error display it unchanged and forward its
@@ -301,10 +242,6 @@ pub enum PromptError {
     #[error(transparent)]
     Report(#[from] rig_core::error::ErrorReport),
 
-    /// Conversation memory failed to load or persist history.
-    #[error(transparent)]
-    Memory(#[from] MemoryError),
-
     /// The run exhausted its total model-call budget.
     #[error("reached the max turns limit of {max_turns}")]
     MaxTurns {
@@ -319,8 +256,9 @@ pub enum PromptError {
     /// The run was cancelled.
     #[error("the run was cancelled: {reason}")]
     Cancelled {
-        /// The run's history at cancellation, every tool call answered.
-        chat_history: CanonicalHistory,
+        /// The run's history at cancellation, every tool call answered
+        /// (closed by [`repair`](rig_core::conversation::pairing::repair)).
+        chat_history: Vec<Message>,
         /// Human-readable cancellation reason.
         reason: String,
     },
@@ -413,78 +351,12 @@ forward_provider_response_helpers!(PromptError, Provider, "completion error", re
 
 impl PromptError {
     /// Build a [`PromptError::Cancelled`]. A driver gets the history from
-    /// [`AgentRun::cancel_error`](super::AgentRun::cancel_error) or
-    /// [`CanonicalHistory::validate`].
-    pub fn cancelled(chat_history: CanonicalHistory, reason: impl Into<String>) -> Self {
+    /// [`AgentRun::cancel_error`](super::AgentRun::cancel_error), or closes
+    /// its own with [`repair`](rig_core::conversation::pairing::repair).
+    pub fn cancelled(chat_history: Vec<Message>, reason: impl Into<String>) -> Self {
         Self::Cancelled {
             chat_history,
             reason: reason.into(),
         }
-    }
-}
-
-/// A history in which every assistant tool call is answered by the next
-/// message, as [`validate`] defines it. Only [`close`](Self::close)
-/// and [`validate`](Self::validate) build one, so every value round-trips
-/// through serde, whose deserializing validates.
-///
-/// ```compile_fail,E0423
-/// use rig_agent::run::response::CanonicalHistory;
-/// let history = CanonicalHistory(Vec::new());
-/// ```
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(try_from = "Vec<Message>", into = "Vec<Message>")]
-pub struct CanonicalHistory(Vec<Message>);
-
-impl CanonicalHistory {
-    /// Accept `messages` when they form a canonical transcript.
-    pub fn validate(messages: Vec<Message>) -> Result<Self, PairingError> {
-        validate(&messages)?;
-        Ok(Self(messages))
-    }
-
-    /// Close `messages` with [`repair`]: every open call is answered with
-    /// [`NO_RESULT_PROVIDED`](rig_core::conversation::pairing::NO_RESULT_PROVIDED), so
-    /// any history a run holds becomes one.
-    pub fn close(messages: Vec<Message>) -> Self {
-        let messages = repair(messages).messages;
-        debug_assert_eq!(validate(&messages), Ok(()));
-        Self(messages)
-    }
-
-    /// The messages, in order.
-    pub fn into_vec(self) -> Vec<Message> {
-        self.0
-    }
-}
-
-impl TryFrom<Vec<Message>> for CanonicalHistory {
-    type Error = PairingError;
-
-    fn try_from(messages: Vec<Message>) -> Result<Self, Self::Error> {
-        Self::validate(messages)
-    }
-}
-
-impl From<CanonicalHistory> for Vec<Message> {
-    fn from(history: CanonicalHistory) -> Self {
-        history.0
-    }
-}
-
-impl std::ops::Deref for CanonicalHistory {
-    type Target = [Message];
-
-    fn deref(&self) -> &[Message] {
-        &self.0
-    }
-}
-
-impl IntoIterator for CanonicalHistory {
-    type Item = Message;
-    type IntoIter = std::vec::IntoIter<Message>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
     }
 }

@@ -314,7 +314,7 @@ fn model_turn_retry_rejects_tool_calls_without_advancing_to_execution() {
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
-    assert_eq!(chat_history.into_vec(), vec![Message::user("add things")]);
+    assert_eq!(chat_history, vec![Message::user("add things")]);
     assert!(run.next_step().is_err(), "failed run cannot execute tools");
 }
 
@@ -1486,34 +1486,24 @@ fn a_provider_error_retry_still_pins_and_intercepts_the_output_tool() {
     assert_eq!(response.output(), r#"{"x":1}"#);
 }
 
+/// Every older envelope is refused by name rather than resumed with its
+/// fields dropped: format 3 kept in-flight flags beside the state, format 4
+/// was the last before the memory path went.
 #[test]
-fn a_format_2_run_is_refused_by_name() {
+fn an_older_format_run_is_refused_by_name() {
     let run = AgentRun::new("go");
-    let mut value = serde_json::to_value(&run).expect("serialize");
-    value["format"] = json!(2);
-    let error = serde_json::from_value::<AgentRun>(value).expect_err("format 2 is refused");
-    assert!(
-        error
-            .to_string()
-            .contains("the run is format 2, this rig reads format 4"),
-        "{error}"
-    );
-}
-
-#[test]
-fn a_format_3_run_is_refused_by_name() {
-    // Format 3 kept in-flight flags beside the state; a format-3 envelope is
-    // refused rather than resumed with them dropped.
-    let run = AgentRun::new("go");
-    let mut value = serde_json::to_value(&run).expect("serialize");
-    value["format"] = json!(3);
-    let error = serde_json::from_value::<AgentRun>(value).expect_err("format 3 is refused");
-    assert!(
-        error
-            .to_string()
-            .contains("the run is format 3, this rig reads format 4"),
-        "{error}"
-    );
+    for format in 2..RUN_FORMAT {
+        let mut value = serde_json::to_value(&run).expect("serialize");
+        value["format"] = json!(format);
+        let error =
+            serde_json::from_value::<AgentRun>(value).expect_err("an old format is refused");
+        assert!(
+            error.to_string().contains(&format!(
+                "the run is format {format}, this rig reads format {RUN_FORMAT}"
+            )),
+            "{error}"
+        );
+    }
 }
 
 /// Transcript well-formedness has one meaning: whatever a run commits to
@@ -1590,7 +1580,7 @@ fn a_history_cancelled_while_tools_run_can_be_resumed() {
     let PromptError::Cancelled { chat_history, .. } = run.cancel_error("reload") else {
         panic!("cancel_error returns Cancelled");
     };
-    assert_resumable(chat_history.into_vec());
+    assert_resumable(chat_history);
 }
 
 /// The guard for the one pairing rule: at every step of these drives, the
@@ -1604,7 +1594,7 @@ fn every_step_of_a_run_leaves_a_canonical_full_history() {
     }
     fn check_error(error: PromptError) {
         let history = match error {
-            PromptError::Cancelled { chat_history, .. } => chat_history.into_vec(),
+            PromptError::Cancelled { chat_history, .. } => chat_history,
             PromptError::MaxTurns { chat_history, .. } => chat_history,
             error => panic!("expected an error carrying history, got {error:?}"),
         };
@@ -1945,22 +1935,6 @@ fn cancel_mid_batch_keeps_the_answered_results_and_aborts_the_rest() {
     assert_eq!(call_ids(&expect_call_tools(&mut run)), ["call_2"]);
 }
 
-#[test]
-fn canonical_history_round_trips_and_deserializing_validates() {
-    let mut run = drive_to_two_pending_calls();
-    let history = run.canonical_history();
-    let json = serde_json::to_value(&history).expect("history serializes");
-    let back: CanonicalHistory = serde_json::from_value(json).expect("canonical history loads");
-    assert_eq!(back, history);
-    assert_eq!(back.into_iter().collect::<Vec<_>>(), history.into_vec());
-
-    let open = run.messages().to_vec();
-    assert!(CanonicalHistory::validate(open.clone()).is_err());
-    let json = serde_json::to_value(&open).expect("history serializes");
-    serde_json::from_value::<CanonicalHistory>(json).expect_err("an open tool call is refused");
-    answer_calls(&mut run, "2").expect("the batch is still answerable");
-}
-
 /// A malformed-call limit fails the run before its turn enters history, so
 /// a later cancellation's history is canonical.
 #[test]
@@ -1977,7 +1951,7 @@ fn a_failed_malformed_limit_leaves_a_canonical_cancel_history() {
     let PromptError::Cancelled { chat_history, .. } = run.cancel_error("after failure") else {
         panic!("cancel_error builds a Cancelled error");
     };
-    assert_eq!(chat_history.into_vec(), vec![Message::user("go")]);
+    assert_eq!(chat_history, vec![Message::user("go")]);
 }
 
 /// A failed turn's calls stay in history for display and, owing no result,
@@ -2001,13 +1975,13 @@ fn a_failed_turn_leaves_a_canonical_cancel_history() {
         panic!("a protocol violation cancels, got {error:?}");
     };
     assert_eq!(validate(&chat_history), Ok(()), "{chat_history:?}");
-    assert_eq!(chat_history.into_vec(), run.full_history());
+    assert_eq!(chat_history, run.full_history());
 }
 
-/// Every history the crate builds round-trips through serde, even from an
-/// unchecked input history with an open call.
+/// The closed history answers even an open call of an unchecked input
+/// history.
 #[test]
-fn a_canonical_history_from_an_unchecked_input_history_round_trips() {
+fn a_canonical_history_closes_an_unchecked_input_history() {
     let open = vec![
         Message::user("q"),
         Message::Assistant(rig_core::message::AssistantMessage::new(vec![tool_call(
@@ -2017,10 +1991,7 @@ fn a_canonical_history_from_an_unchecked_input_history_round_trips() {
     let run = AgentRun::new("hi").with_history(open);
     let history = run.canonical_history();
     assert_eq!(validate(&history), Ok(()), "{history:?}");
-    let json = serde_json::to_value(&history).expect("serialize");
-    let restored: CanonicalHistory = serde_json::from_value(json).expect("deserialize");
-    assert_eq!(restored, history);
-    let Message::User { content } = &history[2] else {
+    let Some(Message::User { content }) = history.get(2) else {
         panic!("the open call is answered before the prompt: {history:?}");
     };
     assert_eq!(content.len(), 2, "{content:?}");

@@ -11,7 +11,7 @@
     )
 )]
 //! Rig's classic agent runtime: builders, serializable run state, hooks, tools,
-//! memory orchestration, and typed extraction.
+//! and typed extraction.
 //!
 //! Portable contracts are available through [`core`]; recording accepts
 //! [`rig_core::serve::Recorder`], with concrete replay adapters in `rig-cassette`.

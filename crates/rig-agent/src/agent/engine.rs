@@ -11,7 +11,6 @@ use std::sync::{
 use futures::{Stream, StreamExt, stream};
 use tracing::{Instrument, span::Id};
 
-use crate::bus::MemoryHandle;
 use rig_core::error::ProviderError;
 use rig_core::{
     completion::ModelRef,
@@ -37,7 +36,7 @@ use super::{
         streamed::{StreamedResolution, StreamedTurnAssembler, StreamedTurnEvent},
     },
     run::{
-        response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
+        response::{CompletionCall, PromptResponse, finalize_output_tool_choice},
         transcript::choice_text,
     },
     runner::AgentRunner,
@@ -142,7 +141,7 @@ pub(crate) fn store_error_usage(runner: &AgentRunner, run: &AgentRun) {
     }
 }
 
-/// Drive run steps, hooks, request preparation, and memory append using `source`.
+/// Drive run steps, hooks and request preparation using `source`.
 /// Yields stream items and a terminal response, or settles and yields an error.
 /// Only engine-owned agent spans receive run-level telemetry.
 pub(crate) fn drive_agent<S>(
@@ -151,7 +150,6 @@ pub(crate) fn drive_agent<S>(
     mut run: AgentRun,
     agent_span: tracing::Span,
     created_agent_span: bool,
-    memory_handle: Option<(MemoryHandle, rig_core::id::ConversationId)>,
     hook_ctx: HookContext,
 ) -> impl Stream<Item = Result<DriveItem, PromptError>>
 where
@@ -417,16 +415,6 @@ where
                         "Agent run finished"
                     );
                     source.record_run_level_telemetry(&agent_span, &response, created_agent_span);
-                    // Append failure does not discard the answer; expose acknowledgement
-                    // separately without assuming a failed append wrote nothing.
-                    let memory_append = append_run_messages(
-                        &runner,
-                        &hook_ctx,
-                        memory_handle.as_ref(),
-                        &response.messages,
-                    )
-                    .await;
-                    let response = response.with_memory_append(memory_append);
                     if runner.config.hooks.observes(StepEventKind::RunSettled) {
                         runner
                             .config
@@ -1110,8 +1098,7 @@ impl TurnSource for StreamingTurnSource {
         Some(Surfaced::Final(
             PromptResponse::from_content(final_choice, response.usage)
                 .with_completion_calls(response.completion_calls.clone())
-                .with_messages(response.messages.clone())
-                .with_memory_append(response.memory_append.clone()),
+                .with_messages(response.messages.clone()),
         ))
     }
 }
@@ -1243,53 +1230,10 @@ pub(crate) async fn resolve_completion_call(
     }
 }
 
-/// Append a finished run's messages to conversation memory, logging and
-/// proceeding on failure. Shared `Done`-arm behavior for both drivers. The
-/// append is a `Memory` dispatch at the boundary: observe-only for hooks
-/// unless one opts into `MemoryDispatch`. Returns how the append settled
-/// for the response, `None` when the run has no memory to append to.
-pub(crate) async fn append_run_messages(
-    runner: &AgentRunner,
-    ctx: &HookContext,
-    memory_handle: Option<&(MemoryHandle, rig_core::id::ConversationId)>,
-    messages: &[Message],
-) -> Option<MemoryAppend> {
-    // Clone into an owned vec only when there is a backend to append to, so the
-    // common no-memory path pays nothing.
-    let (memory, id) = memory_handle?;
-    let appended = dispatch_effect(
-        runner,
-        ctx,
-        memory.key(),
-        EffectKind::Memory {
-            op: rig_core::effect::MemoryOp::Append {
-                conversation: id.clone(),
-                messages: messages.to_vec(),
-            },
-        },
-    )
-    .await
-    .and_then(|outcome| match outcome {
-        Outcome::Memory(rig_core::effect::MemoryOutcome::Appended) => Ok(()),
-        other => Err(wrong_outcome("appended memory", &other)),
-    });
-    Some(match appended {
-        Ok(()) => MemoryAppend::Acknowledged,
-        Err(report) => {
-            tracing::warn!(
-                error = %report,
-                conversation_id = %id,
-                "conversation memory append failed; surfacing final response anyway"
-            );
-            MemoryAppend::Failed { report }
-        }
-    })
-}
-
 /// Dispatch any effect through the agent's bus at the dispatch boundary:
 /// `on_dispatch` before (a same-family patch or a denial), the bus, then
-/// `on_outcome` after (a replacement). The engine's memory and retrieval
-/// effects go through here; completions and tool calls have their own
+/// `on_outcome` after (a replacement). The engine's retrieval effects go
+/// through here; completions and tool calls have their own
 /// entry points because their denials have run-level meaning.
 pub(crate) async fn dispatch_effect(
     runner: &AgentRunner,

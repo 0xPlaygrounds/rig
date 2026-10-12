@@ -1,6 +1,6 @@
 use crate::agent::ResponseIdentity;
 use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
-use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
+use crate::run::response::{CompletionCall, PromptResponse};
 use crate::{
     agent::{
         AgentBuilder,
@@ -14,8 +14,8 @@ use crate::{
         StructuredOutputError, Usage,
     },
     test_utils::{
-        AppendFailingMemory, CountingMemory, FailingMemory, MockAddTool, MockCompletionModel,
-        MockContextProbeTool, MockSubtractTool, MockTurn, SessionId,
+        MockAddTool, MockCompletionModel, MockContextProbeTool, MockSubtractTool, MockTurn,
+        SessionId,
     },
     tool::ToolContext,
 };
@@ -813,123 +813,6 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     let requests = model.requests();
     assert_eq!(requests.len(), 2);
     validate_follow_up_tool_history(&requests[1]);
-}
-
-// ----- Conversation memory integration tests -----
-
-use rig_core::memory::ConversationMemory;
-
-#[tokio::test]
-async fn append_persists_only_newly_committed_messages() {
-    // With pre-loaded history, a run must append only the new turn's
-    // messages, never re-append the loaded history (which would duplicate
-    // it). Pre-load directly through `inner()` so it does not count as an
-    // append by the run.
-    let memory = CountingMemory::default();
-    memory
-        .inner()
-        .append(
-            &"t1".into(),
-            vec![Message::user("old-q"), Message::assistant("old-a")],
-        )
-        .await
-        .unwrap();
-
-    let model = MockCompletionModel::text("new-a");
-    let agent = AgentBuilder::new(model).memory(memory.clone()).build();
-
-    let _ = agent
-        .prompt("new-q")
-        .conversation("t1")
-        .await
-        .expect("prompt should succeed");
-
-    assert_eq!(memory.append_count(), 1, "one append for the run");
-
-    let stored = memory.load(&"t1".into()).await.unwrap();
-    // preloaded [old-q, old-a] + new [new-q, new-a]; re-appending the loaded
-    // history would instead make this 6.
-    assert_eq!(
-        stored.len(),
-        4,
-        "only the new turn is appended, loaded history is not duplicated: {stored:?}"
-    );
-    assert!(
-        matches!(
-            stored.first(),
-            Some(Message::User { content })
-                if matches!(content.first(), Some(UserContent::Text(t)) if t.text == "old-q")
-        ),
-        "loaded history is preserved once at the front: {stored:?}"
-    );
-}
-
-#[tokio::test]
-async fn without_memory_disables_for_request() {
-    let memory = CountingMemory::default();
-    let model = MockCompletionModel::text("ack");
-    let agent = AgentBuilder::new(model)
-        .memory(memory.clone())
-        .conversation("t1")
-        .build();
-
-    let response = agent
-        .prompt("hello")
-        .without_memory()
-        .await
-        .expect("prompt should succeed");
-
-    assert_eq!(memory.load_count(), 0);
-    assert_eq!(memory.append_count(), 0);
-    assert_eq!(response.memory_append, None);
-}
-
-#[tokio::test]
-async fn memory_load_error_surfaces_as_prompt_error() {
-    let model = MockCompletionModel::text("ack");
-    let agent = AgentBuilder::new(model)
-        .memory(FailingMemory::default())
-        .build();
-    let result = agent.prompt("hello").conversation("t1").await;
-
-    match result {
-        Err(PromptError::Memory(err)) => {
-            let msg = err.to_string();
-            assert!(msg.contains("load boom"), "got: {msg}");
-        }
-        other => panic!("expected PromptError::Memory, got {other:?}"),
-    }
-}
-
-/// A refused append does not fail the run: the answer stands, and the
-/// response says the transcript was not persisted — a caller can tell the
-/// two endings apart without a hook or the effect log.
-#[tokio::test]
-async fn memory_append_error_does_not_drop_response() {
-    let model = MockCompletionModel::text("ack");
-    let agent = AgentBuilder::new(model)
-        .memory(AppendFailingMemory::default())
-        .build();
-    let response = agent
-        .prompt("hello")
-        .conversation("t1")
-        .await
-        .expect("append failure must not block successful completion");
-
-    assert_eq!(response.output(), "ack");
-    assert_eq!(
-        response.messages.len(),
-        2,
-        "the transcript the run tried to persist"
-    );
-    let report = response
-        .memory_append
-        .as_ref()
-        .and_then(MemoryAppend::failure)
-        .expect("the refused append is reported on the response");
-    assert_eq!(report.kind, rig_core::error::ErrorKind::MemoryBackend);
-    assert!(report.message.contains("append boom"), "{report:?}");
-    assert!(!response.memory_append.as_ref().unwrap().is_acknowledged());
 }
 
 /// The identity fields are skipped when `None` (rig#2265), so a record

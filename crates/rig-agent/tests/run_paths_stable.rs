@@ -36,7 +36,6 @@ use rig_agent::run::{
     patch::RequestPatch as _PatchDirect,
     prepare::{PreparedRequest, prepare_request},
     spec::RunSpec as _SpecDirect,
-    transcript::build_full_history as _Full,
 };
 use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::tool::feedback::{

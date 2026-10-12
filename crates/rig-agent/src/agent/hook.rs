@@ -258,14 +258,6 @@ impl HookContext {
         self.bus()?.handle(key).map(RunHandle::scoped)
     }
 
-    /// [`index`](Self::index) for conversation memory.
-    pub fn memory<'ctx>(
-        &'ctx self,
-        key: &rig_core::effect::HandlerKey,
-    ) -> Result<RunHandle<'ctx, rig_core::effect::family::Memory>, ErrorReport> {
-        self.bus()?.handle(key).map(RunHandle::scoped)
-    }
-
     /// Stable run identifier.
     pub fn run_id(&self) -> RunId {
         self.run_id

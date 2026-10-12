@@ -1,7 +1,7 @@
 //! Serializable, sans-I/O state machine for model turns, tool recovery, and history.
 //!
 //! Drivers act on [`AgentRunStep`] and supply responses or tool results before
-//! advancing. A run owns no models, tools, memory backends, or hooks; drivers
+//! advancing. A run owns no models, tools, or hooks; drivers
 //! provide those services and lifecycle policy.
 //!
 //! ```
@@ -18,7 +18,7 @@ pub mod patch;
 pub mod prepare;
 pub mod spec;
 pub use spec::UnhandledInvalidToolCall;
-pub mod transcript;
+pub(crate) mod transcript;
 
 mod batch;
 use batch::{ToolBatch, ToolSlot};
@@ -53,7 +53,7 @@ pub mod streamed;
 pub use policy::{
     InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest, TurnPolicy,
 };
-pub use response::{CanonicalHistory, CompletionCall, MemoryAppend, PromptError, PromptResponse};
+pub use response::{CompletionCall, PromptError, PromptResponse};
 use rig_core::completion::message::turn_failure;
 use rig_core::json_utils;
 use rig_core::structured_output;
@@ -352,7 +352,7 @@ pub struct AgentRun {
 }
 
 /// The [`AgentRun`] envelope format this crate writes and reads.
-pub const RUN_FORMAT: u32 = 4;
+pub const RUN_FORMAT: u32 = 5;
 
 /// Deserialize the envelope's `format`, refusing any other than
 /// [`RUN_FORMAT`] by name so a run persisted by another rig is never loaded
@@ -776,11 +776,11 @@ impl AgentRun {
     }
 
     /// [`Self::full_history`] closed for cancellation by
-    /// [`CanonicalHistory::close`]: mid tool batch, the results so far
-    /// follow it with the rest closed, and every call still unanswered in
-    /// the unchecked input history is closed as well.
-    pub fn canonical_history(&self) -> CanonicalHistory {
-        CanonicalHistory::close(self.full_history())
+    /// [`repair`](rig_core::conversation::pairing::repair): mid tool batch,
+    /// the results so far follow it with the rest closed, and every call
+    /// still unanswered in the unchecked input history is closed as well.
+    pub fn canonical_history(&self) -> Vec<Message> {
+        rig_core::conversation::pairing::repair(self.full_history()).messages
     }
 
     /// Build the cancellation error a driver should return when one of its
@@ -1751,7 +1751,7 @@ impl AgentRun {
 impl AgentRun {
     /// [`with_history`](AgentRun::with_history), rejecting a history that is
     /// not a canonical transcript. Use this when the history comes from
-    /// outside the protocol (a memory backend, a resumed run from another
+    /// outside the protocol (a store of its own, a resumed run from another
     /// process); `with_history` stays unchecked for callers that built the
     /// history themselves.
     pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, PairingError> {

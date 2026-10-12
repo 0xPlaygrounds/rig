@@ -93,7 +93,7 @@ is checked but cross-version state compatibility is not guaranteed. Serialized
 state includes conversation content and every recorded provider response body,
 so its sensitivity and size grow with the run. Hosts must apply their persistence
 and redaction policy before storing it. Constructing a run directly does not
-execute an agent's configured hooks, tools, retrieval, or memory.
+execute an agent's configured hooks, tools, or retrieval.
 
 Everything an agent loop *is* sits beside it in `rig_agent::run` — the
 `RunSpec` it is configured by, `prepare_request` (the pure `(RunSpec,

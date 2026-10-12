@@ -1,4 +1,4 @@
-//! Typed bus handles and dispatch results for completion, tools, memory,
+//! Typed bus handles and dispatch results for completion, tools,
 //! retrieval, embeddings, reranking, and custom effects.
 //!
 //! Handles are thread-safe on every target but are not serializable. Persist keys
@@ -26,13 +26,10 @@ use rig_core::{
     completion::{CompletionRequest, ProviderCapabilities},
     effect::{
         CustomEffect, EffectId, EffectKind, EmbedInputs, EmbedModality, EmbedOutputs, Family,
-        FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome, RetrieveQuery,
-        RetrievedDocuments, family,
+        FamilyDescriptor, HandlerDescriptor, HandlerKey, RetrieveQuery, RetrievedDocuments, family,
     },
     embeddings::{Embedding, EmbeddingResponse},
     error::{ErrorKind, ErrorReport},
-    id::ConversationId,
-    message::Message,
     operation::RerankRequest,
     streaming::CompletionStream,
     tool::ToolContext,
@@ -59,8 +56,6 @@ pub struct Handle<F: Family> {
 pub type ModelHandle = Handle<family::Completion>;
 /// A tool: `call`.
 pub type ToolHandle = Handle<family::Tool>;
-/// A conversation-memory backend: `load`, `append`, `clear`.
-pub type MemoryHandle = Handle<family::Memory>;
 /// A vector-store index: `top_n`, `top_n_ids`.
 pub type IndexHandle = Handle<family::Retrieve>;
 /// An embedding model; the modality is on the descriptor, not the type.
@@ -460,54 +455,6 @@ impl ToolHandle {
     }
 }
 
-impl MemoryHandle {
-    /// Load a conversation's history.
-    pub fn load(&self, conversation: ConversationId) -> Typed<family::Memory, Vec<Message>> {
-        Typed::narrow(
-            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Load { conversation })),
-            |answer| match answer {
-                MemoryOutcome::Loaded { messages } => Ok(messages),
-                MemoryOutcome::Appended | MemoryOutcome::Cleared => {
-                    Err(wrong_shape("loaded messages", family::Memory::FAMILY))
-                }
-            },
-        )
-    }
-
-    /// Append messages to a conversation.
-    pub fn append(
-        &self,
-        conversation: ConversationId,
-        messages: Vec<Message>,
-    ) -> Typed<family::Memory, ()> {
-        Typed::narrow(
-            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Append {
-                conversation,
-                messages,
-            })),
-            |answer| match answer {
-                MemoryOutcome::Appended => Ok(()),
-                MemoryOutcome::Loaded { .. } | MemoryOutcome::Cleared => {
-                    Err(wrong_shape("an append", family::Memory::FAMILY))
-                }
-            },
-        )
-    }
-
-    /// Clear a conversation.
-    pub fn clear(&self, conversation: ConversationId) -> Typed<family::Memory, ()> {
-        Typed::narrow(
-            self.dispatch_wrapped(family::Memory::wrap(MemoryOp::Clear { conversation })),
-            |answer| match answer {
-                MemoryOutcome::Cleared => Ok(()),
-                MemoryOutcome::Loaded { .. } | MemoryOutcome::Appended => {
-                    Err(wrong_shape("a clear", family::Memory::FAMILY))
-                }
-            },
-        )
-    }
-}
-
 /// Deserialize scored documents on this side of the bus: the wire carries
 /// JSON, the type parameter never crosses it.
 fn deserialize_scored<T: DeserializeOwned>(
@@ -709,7 +656,6 @@ const _: () = {
     const fn assert_view<T: Clone + Send + Sync + 'static>() {}
     assert_view::<ModelHandle>();
     assert_view::<ToolHandle>();
-    assert_view::<MemoryHandle>();
     assert_view::<IndexHandle>();
     assert_view::<EmbedHandle>();
     const fn assert_unpin<T: Unpin>() {}

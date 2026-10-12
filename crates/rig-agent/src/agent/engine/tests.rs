@@ -4829,7 +4829,7 @@ async fn model_turn_retry_rejects_tool_turn_before_tool_hooks_or_execution() {
     };
     assert!(reason.contains("tool-bearing model turns"));
     assert!(reason.contains("tool-call hooks"));
-    assert_eq!(chat_history.into_vec(), vec![Message::user("add")]);
+    assert_eq!(chat_history, vec![Message::user("add")]);
     assert_eq!(recorder.count(StepEventKind::ToolDispatch), 0);
     assert_eq!(executions.load(SeqCst), 0);
 }
