@@ -164,7 +164,8 @@ impl Book {
                 agent: agent.to_owned(),
                 parent: parent.map(str::to_owned),
             };
-            if let Err(failure) = enqueue(&mut log, self.next_n, Record::Header(header)) {
+            let header = Record::Header(header);
+            if let Err(failure) = enqueue(&mut log, self.next_n, now_ms(), header) {
                 self.failure = Some(failure.to_string());
                 return None;
             }
@@ -174,12 +175,12 @@ impl Book {
         self.agents.get_mut(agent)
     }
 
-    /// Queues `record` for `agent`; its `seq`, or `None` when nothing is
-    /// logged.
-    fn record(&mut self, agent: &str, record: Record<'_>) -> Option<u64> {
+    /// Queues `record` for `agent`, written at `t`; its `seq`, or `None`
+    /// when nothing is logged.
+    fn record(&mut self, agent: &str, t: u64, record: Record<'_>) -> Option<u64> {
         self.agent(agent, None)?;
         let n = self.next_n;
-        let queued = enqueue(self.agents.get_mut(agent)?, n, record);
+        let queued = enqueue(self.agents.get_mut(agent)?, n, t, record);
         match queued {
             Ok(seq) => {
                 self.next_n += 1;
@@ -193,11 +194,13 @@ impl Book {
     }
 
     /// Queues the record `make` builds of `messages`, their images stored
-    /// as blobs in `store`, for `agent`, which starts its log.
+    /// as blobs in `store`, for `agent`, which starts its log, written at
+    /// `t`.
     fn messages<'m>(
         &mut self,
         store: &dyn JournalStore,
         agent: &str,
+        t: u64,
         messages: impl IntoIterator<Item = &'m Message>,
         make: impl FnOnce(Vec<Cow<'m, Message>>) -> Record<'m>,
     ) {
@@ -210,7 +213,7 @@ impl Book {
             .collect();
         match stored {
             Ok(stored) => {
-                if self.record(agent, make(stored)).is_some()
+                if self.record(agent, t, make(stored)).is_some()
                     && let Some(log) = self.agents.get_mut(agent)
                 {
                     log.started = true;
@@ -218,6 +221,33 @@ impl Book {
             }
             Err(failure) => self.failure = Some(format!("storing an image failed: {failure}")),
         }
+    }
+
+    /// Queues the splice of messages `from..to` of the conversation of
+    /// `agent` with `with`, their images stored as blobs in `store`,
+    /// written at `t`.
+    fn splice(
+        &mut self,
+        store: &dyn JournalStore,
+        agent: &str,
+        t: u64,
+        from: usize,
+        to: usize,
+        with: &[Entry],
+    ) {
+        let messages = with.iter().map(|entry| &entry.message);
+        self.messages(store, agent, t, messages, |stored| {
+            let with = stored.into_iter().zip(with);
+            let with = with.map(|(message, entry)| Entry {
+                message: message.into_owned(),
+                ..entry.clone()
+            });
+            Record::Splice {
+                from,
+                to,
+                with: with.collect(),
+            }
+        });
     }
 
     /// Queues the saved component `component` of the log `agent` when its
@@ -236,7 +266,7 @@ impl Book {
             component: component.to_owned(),
             value: value.clone(),
         };
-        if self.record(agent, record).is_some()
+        if self.record(agent, now_ms(), record).is_some()
             && let Some(log) = self.agents.get_mut(agent)
         {
             log.started |= starts;
@@ -277,16 +307,11 @@ impl Book {
     }
 }
 
-/// Queues `record` as the next line of `log`, the session's record `n`;
-/// its `seq`.
-fn enqueue(log: &mut AgentLog, n: u64, record: Record<'_>) -> serde_json::Result<u64> {
+/// Queues `record` as the next line of `log`, the session's record `n`,
+/// written at `t`; its `seq`.
+fn enqueue(log: &mut AgentLog, n: u64, t: u64, record: Record<'_>) -> serde_json::Result<u64> {
     let seq = log.next_seq;
-    let line = Line {
-        seq,
-        n,
-        t: now_ms(),
-        record,
-    };
+    let line = Line { seq, n, t, record };
     serde_json::to_writer(&mut log.pending, &line)?;
     log.pending.push(b'\n');
     log.next_seq += 1;
@@ -351,51 +376,35 @@ impl Writer {
     /// Logs `message`, added to the conversation of `agent`, its images
     /// stored as blobs, with where it came from.
     pub fn message(&self, agent: &str, message: &Message, origin: Option<&Origin>) {
-        self.messages(agent, [message], |mut stored| Record::Message {
-            message: stored.pop().unwrap_or(Cow::Borrowed(message)),
-            origin: origin.cloned(),
-        });
+        let mut book = self.book();
+        if let Some(store) = book.store.clone() {
+            book.messages(&*store, agent, now_ms(), [message], |mut stored| {
+                Record::Message {
+                    message: stored.pop().unwrap_or(Cow::Borrowed(message)),
+                    origin: origin.cloned(),
+                }
+            });
+        }
     }
 
     /// Logs the splice of messages `from..to` of the conversation of
     /// `agent` with `with` ([`Conversation::splice`]).
     pub fn splice(&self, agent: &str, from: usize, to: usize, with: &[Entry]) {
-        let messages = with.iter().map(|entry| &entry.message);
-        self.messages(agent, messages, |stored| {
-            let with = stored.into_iter().zip(with);
-            let with = with.map(|(message, entry)| Entry {
-                message: message.into_owned(),
-                ..entry.clone()
-            });
-            Record::Splice {
-                from,
-                to,
-                with: with.collect(),
-            }
-        });
-    }
-
-    fn messages<'m>(
-        &self,
-        agent: &str,
-        messages: impl IntoIterator<Item = &'m Message>,
-        make: impl FnOnce(Vec<Cow<'m, Message>>) -> Record<'m>,
-    ) {
         let mut book = self.book();
         if let Some(store) = book.store.clone() {
-            book.messages(&*store, agent, messages, make);
+            book.splice(&*store, agent, now_ms(), from, to, with);
         }
     }
 
     /// Logs that the user's last message in the conversation of `agent` was
     /// left unanswered for `reason`, or, with `None`, asked for again.
     pub fn halt(&self, agent: &str, reason: Option<Halt>) {
-        self.book().record(agent, Record::Halt { reason });
+        self.book().record(agent, now_ms(), Record::Halt { reason });
     }
 
     /// Logs that `agent` is gone for good.
     pub fn retire(&self, agent: &str) {
-        self.book().record(agent, Record::Retired);
+        self.book().record(agent, now_ms(), Record::Retired);
     }
 
     /// Logs the saved component `component` in the log `agent`, an agent's
@@ -442,8 +451,8 @@ struct Folded {
     started_ms: u64,
     /// The conversation.
     conversation: Conversation,
-    /// The session's `n` of the record that made each message.
-    made: HashMap<MessageId, u64>,
+    /// The record that made each message.
+    made: HashMap<MessageId, Stamp>,
     /// The newest value of each saved component, by type path.
     components: HashMap<String, Value>,
     /// The `seq` after the last line's.
@@ -526,7 +535,11 @@ fn fold(log: &LogLines) -> Result<Folded, String> {
             }
             Record::Header(_) | Record::Component { .. } | Record::Retired => {}
         }
-        let made = (first_new..conversation.next_id()).map(|id| (MessageId(id), line.n));
+        let stamp = Stamp {
+            n: line.n,
+            t: line.t,
+        };
+        let made = (first_new..conversation.next_id()).map(|id| (MessageId(id), stamp));
         folded.made.extend(made);
     }
     // Only the newest record of each saved component is read, wherever it
@@ -647,6 +660,21 @@ pub struct SavedAgent {
     /// Whether it was retired: a restore skips it, and the agents it
     /// spawned.
     pub retired: bool,
+    /// When each message of the conversation was logged, by its index.
+    /// [`read_session`] reads one for every message; [`write_session`]
+    /// writes a message it adds at its stamp's time, or now without one.
+    pub stamps: Vec<Stamp>,
+}
+
+/// Where a message was logged: the session's record that made it, and
+/// when. A message a splice edited keeps its first record.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Stamp {
+    /// The record's place among every record of the session, in the order
+    /// they were made; [`write_session`] numbers the records it writes.
+    pub n: u64,
+    /// When it was written, in milliseconds since the Unix epoch.
+    pub t: u64,
 }
 
 /// A session as its logs left it, read by [`read_session`] and written by
@@ -677,13 +705,18 @@ fn session_of(logs: Logs) -> SavedSession {
             session.resources = folded.components.into_iter().collect();
             continue;
         }
+        let conversation = folded.conversation;
+        let stamp = |at| conversation.id(at).and_then(|id| folded.made.get(&id));
+        let stamps = (0..conversation.messages().len()).map(|at| stamp(at).copied());
+        let stamps = stamps.map(Option::unwrap_or_default).collect();
         session.agents.push(SavedAgent {
             id: folded.header.agent,
             parent: folded.header.parent,
             started_ms: folded.started_ms,
-            conversation: folded.conversation,
+            conversation,
             saved: folded.components.into_iter().collect(),
             retired: folded.retired,
+            stamps,
         });
     }
     session
@@ -709,7 +742,8 @@ pub fn read_session(store: &dyn JournalStore) -> io::Result<SavedSession> {
 /// and each log gets only the records that bring it to what `session`
 /// says, so an agent's messages are appended when its log holds the first
 /// of them. Each agent's conversation, saved values, and whether it was
-/// retired are written, and the session's saved values; message ids are
+/// retired are written, and the session's saved values; each message added
+/// is logged at the time its [`Stamp`] gives, or now; message ids are
 /// the conversation's when it was built from the store's, such as by
 /// adding to one [`read_session`] read, and new otherwise. An agent's
 /// parent comes from the log when it has one. Agents and logs that
@@ -753,33 +787,29 @@ pub fn write_session(store: &dyn JournalStore, session: &SavedSession) -> io::Re
         let same = (0..len).take_while(|&at| item(old, at) == item(new, at));
         let same = same.count();
         let mut halted = old.halted();
-        if same < len || same < new.messages().len() {
-            let with: Vec<Entry> = (same..new.messages().len())
-                .filter_map(|at| new.entry(at))
-                .collect();
-            let messages = with.iter().map(|entry| &entry.message);
-            book.messages(store, &saved.id, messages, |stored| Record::Splice {
-                from: same,
-                to: len,
-                with: stored
-                    .into_iter()
-                    .zip(&with)
-                    .map(|(message, entry)| Entry {
-                        message: message.into_owned(),
-                        ..entry.clone()
-                    })
-                    .collect(),
-            });
+        let new_len = new.messages().len();
+        // What differs is removed, then each message added with a record of
+        // its own, so each is logged at its own time.
+        if same < len && same == new_len {
+            book.splice(store, &saved.id, now_ms(), same, len, &[]);
+        }
+        for at in same..new_len {
+            let t = saved.stamps.get(at).map_or_else(now_ms, |stamp| stamp.t);
+            let to = if at == same { len } else { at };
+            let with: Vec<Entry> = new.entry(at).into_iter().collect();
+            book.splice(store, &saved.id, t, at, to, &with);
+        }
+        if same < len || same < new_len {
             halted = None;
         }
         if halted != new.halted() {
             let reason = new.halted();
-            book.record(&saved.id, Record::Halt { reason });
+            book.record(&saved.id, now_ms(), Record::Halt { reason });
         }
         let known = log.map(|log| &log.components);
         write_values(&mut book, &saved.id, known, &saved.saved);
         if saved.retired && !log.is_some_and(|log| log.retired) {
-            book.record(&saved.id, Record::Retired);
+            book.record(&saved.id, now_ms(), Record::Retired);
         }
         if let Some(log) = book.agents.get_mut(&saved.id) {
             log.started = true;
@@ -822,8 +852,8 @@ fn write_values(
 /// session as it was then. A message keeps its id when a splice edits it,
 /// so that is the message's first record. Without `before`, all of it. An
 /// agent with no message, such as one spawned later, is left out. A torn
-/// tail is never copied, and the effect log, which is not the store's, is
-/// not copied.
+/// tail is never copied, nor are the store's named files, such as the
+/// effect log.
 ///
 /// # Errors
 ///
@@ -839,7 +869,7 @@ pub fn fork_session(
     };
     let log = LogLines::read(from, agent)?;
     let folded = fold(&log).map_err(|why| io::Error::new(io::ErrorKind::InvalidData, why))?;
-    let Some(&at) = folded.made.get(&message) else {
+    let Some(at) = folded.made.get(&message).map(|stamp| stamp.n) else {
         let why = format!("agent {agent} made no message {}", message.0);
         return Err(io::Error::new(io::ErrorKind::InvalidInput, why));
     };

@@ -35,7 +35,8 @@ pub use conversation::{
 #[cfg(feature = "jsonl")]
 pub use jsonl::{EFFECT_LOG, JsonlDirStore};
 pub use session::{
-    SESSION, SavedAgent, SavedSession, Writer, fork_session, now_ms, read_session, write_session,
+    SESSION, SavedAgent, SavedSession, Stamp, Writer, fork_session, now_ms, read_session,
+    write_session,
 };
 
 use std::borrow::Cow;

@@ -4,7 +4,10 @@ use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use serde_json::json;
 
-use super::{SESSION, SavedAgent, SavedSession, Writer, fork_session, read_session, write_session};
+use super::{
+    SESSION, SavedAgent, SavedSession, Stamp, Writer, fork_session, now_ms, read_session,
+    write_session,
+};
 use crate::journal::{
     Entry, Halt, JournalStore, LogLines, MemoryStore, MessageId, Origin, RequestId, STOPPED,
 };
@@ -31,7 +34,10 @@ const MAIN: &str = "cd9a3280-91f0-4fb4-aa5c-c1c3629a0f32";
 
 fn text(content: &[&str]) -> Message {
     Message::User {
-        content: content.iter().map(|text| UserContent::text(*text)).collect(),
+        content: content
+            .iter()
+            .map(|text| UserContent::text(*text))
+            .collect(),
     }
 }
 
@@ -153,11 +159,12 @@ fn a_fork_keeps_what_other_agents_logged_before_its_cut_in_the_same_millisecond(
     assert!(nowhere.is_err());
 }
 
-/// `session` as read back, without when its logs were started.
+/// `session` as read back, without when its logs and messages were made.
 fn read_back(store: &MemoryStore) -> SavedSession {
     let mut session = read_session(store).unwrap();
     for agent in &mut session.agents {
         agent.started_ms = 0;
+        agent.stamps.clear();
     }
     session
 }
@@ -203,7 +210,11 @@ fn a_session_is_written_from_data_then_appended_to() {
     main.saved.insert("model".to_owned(), json!("claude"));
     let first = main.conversation.id(0);
     write_session(&store, &session).unwrap();
-    assert_eq!(lines("main"), before + 2, "one splice and one saved value");
+    assert_eq!(
+        lines("main"),
+        before + 3,
+        "a record per message and a saved value"
+    );
     let read = read_back(&store);
     assert_eq!(read, session);
     let main = read.agents.first().unwrap();
@@ -221,4 +232,46 @@ fn a_session_is_written_from_data_then_appended_to() {
     assert!(main.retired);
     assert_eq!(main.conversation.messages().len(), 1);
     assert_eq!(main.conversation.entry(0), edited.entry(0));
+}
+
+/// Messages written with stamps are logged at their times, and one added
+/// without is logged now; each is read back with the record that made it.
+#[test]
+fn messages_are_written_at_their_stamps_and_read_back_with_them() {
+    let mut agent = SavedAgent {
+        id: "imported".to_owned(),
+        stamps: vec![Stamp { n: 0, t: 1_000 }, Stamp { n: 0, t: 2_000 }],
+        ..SavedAgent::default()
+    };
+    agent
+        .conversation
+        .append(Message::user("Fix the parser"), None);
+    agent
+        .conversation
+        .append(Message::assistant("Fixed."), None);
+    let session = SavedSession {
+        agents: vec![agent],
+        ..SavedSession::default()
+    };
+    let store = MemoryStore::default();
+    write_session(&store, &session).unwrap();
+    let mut read = read_session(&store).unwrap();
+    let stamps = |session: &SavedSession| session.agents.first().unwrap().stamps.clone();
+    let times: Vec<u64> = stamps(&read).iter().map(|stamp| stamp.t).collect();
+    assert_eq!(times, [1_000, 2_000]);
+
+    let agent = read.agents.first_mut().unwrap();
+    agent.conversation.append(Message::user("Thanks"), None);
+    let now = now_ms();
+    write_session(&store, &read).unwrap();
+    let stamps = stamps(&read_session(&store).unwrap());
+    assert_eq!(
+        stamps.get(..2),
+        read.agents.first().unwrap().stamps.get(..2)
+    );
+    let [first, second, third] = *stamps.as_slice() else {
+        panic!("three stamps, got {stamps:?}");
+    };
+    assert!(first.n < second.n && second.n < third.n);
+    assert!(third.t >= now);
 }
