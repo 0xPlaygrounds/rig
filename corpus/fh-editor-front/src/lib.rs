@@ -6,8 +6,8 @@
 //! connected editor sees the transcript as it streams, the questions and
 //! pickers, and answers them.
 //!
-//! Open buffers win. A `read` of a file an editor has open is answered in
-//! Gate from the buffer. An `edit` or `write` of an open file is held by an
+//! Open buffers win. A `read` of a file an editor has open is answered,
+//! once every gate had its say, from the buffer. An `edit` or `write` of an open file is held by an
 //! open `editor_review` effect: the editors get its hunks, the first
 //! editor that answers applies the hunks it accepted to its buffer, and
 //! the others are told the review is closed. The call's result says
@@ -31,7 +31,7 @@ use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
-use rig_tools::fs::resolve;
+use rig_tools::fs::{place, resolve};
 use rig_tools::{Edit, EditArgs, Read, ReadArgs, Write, WriteArgs};
 use serde::{Deserialize, Serialize};
 use similar::{DiffTag, TextDiff};
@@ -53,7 +53,9 @@ impl Plugin for EditorFrontPlugin {
             .init_resource::<AutoAccept>()
             .init_resource::<Buffers>()
             .init_resource::<Inbox>()
-            .configure_sets(AgentPass, EditorSystems.in_set(Stage::Gate))
+            .init_resource::<ProjectRoot>()
+            .init_resource::<Shown>()
+            .configure_sets(AgentPass, EditorSystems.in_set(GateSystems::After))
             .add_systems(
                 AgentPass,
                 (from_buffers, review_edits).chain().in_set(EditorSystems),
@@ -84,8 +86,9 @@ impl Plugin for EditorFrontPlugin {
     }
 }
 
-/// The Gate systems that answer `read` from open buffers and hold `edit`
-/// and `write` of open files for review, for others to order against.
+/// The systems that answer `read` from open buffers and hold `edit` and
+/// `write` of open files for review, in [`GateSystems::After`] so they
+/// never answer or hold a call a gate refused.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EditorSystems;
 
@@ -95,7 +98,8 @@ pub struct EditorSystems;
 #[reflect(Resource, Saved)]
 pub struct AutoAccept(pub bool);
 
-/// The files the editors have open, by resolved path: the buffer's text,
+/// The files the editors have open, by path resolved from the
+/// [`ProjectRoot`]: the buffer's text,
 /// unsaved changes included, and the editor that sent it.
 #[derive(Resource, Default, Debug)]
 pub struct Buffers(pub HashMap<PathBuf, Buffer>);
@@ -548,6 +552,7 @@ fn receive(
     mut reviews: Query<(&EditReview, &mut Decision), (PluginEffects, Without<Outcome>)>,
     mut calls: Query<&mut Decision, ToolCalls>,
     waits: Query<(Entity, &DiagnosticsWait)>,
+    (root, mut shown): (Res<ProjectRoot>, ResMut<Shown>),
     mut commands: Commands,
 ) {
     for (from, line) in std::mem::take(&mut inbox.0) {
@@ -576,10 +581,10 @@ fn receive(
         match message {
             FromEditor::Buffer { path, text } => {
                 let buffer = Buffer { text, client: from };
-                buffers.0.insert(resolve(None, &path), buffer);
+                buffers.0.insert(resolve(Some(&root.0), &path), buffer);
             }
             FromEditor::Close { path } => {
-                buffers.0.remove(&resolve(None, &path));
+                buffers.0.remove(&resolve(Some(&root.0), &path));
             }
             FromEditor::Send { text, selection } => {
                 let Some(agent) = agent else { continue };
@@ -610,7 +615,10 @@ fn receive(
             FromEditor::Agent { id } => {
                 let found = agents.iter().find(|(_, agent)| agent.0 == id);
                 match (found, clients.get_mut(from)) {
-                    (Some((agent, _)), Ok((mut client, _))) => client.agent = Some(agent),
+                    (Some((agent, _)), Ok((mut client, _))) => {
+                        client.agent = Some(agent);
+                        shown.0 = Some(agent);
+                    }
                     _ => reply(&ToEditor::Error {
                         text: format!("no agent {id}"),
                     }),
@@ -626,6 +634,10 @@ fn receive(
                     continue;
                 };
                 let chosen = choice.map(Chosen::Item).or(text.map(Chosen::Text));
+                // A picker's command runs for the shown agent: this window's.
+                if agent.is_some() {
+                    shown.0 = agent;
+                }
                 commands.trigger(Pick::person(entity, chosen));
             }
             FromEditor::Review { id, accept } => {
@@ -814,10 +826,9 @@ pub fn apply_hunks(before: &str, hunks: &[Hunk], accepted: impl Fn(usize) -> boo
     out
 }
 
-/// The one path a call's footprint names.
-/// The one path a call's footprint names, unless it is outside the
-/// agent's [`WorkDir`], which the file tools refuse: the tool's own
-/// refusal then stands, as its handler runs.
+/// The one path a call's footprint names, unless the file tools refuse it
+/// as outside the agent's [`WorkDir`] ([`place`]): the tool's own refusal
+/// then stands, as its handler runs.
 fn one_path<'a>(touches: &'a Touches, dir: Option<&WorkDir>) -> Option<&'a Path> {
     let path = match touches {
         Touches::Reads(Scope::Paths(paths)) | Touches::Writes(Scope::Paths(paths)) => {
@@ -828,12 +839,12 @@ fn one_path<'a>(touches: &'a Touches, dir: Option<&WorkDir>) -> Option<&'a Path>
         }
         _ => return None,
     };
-    let inside = dir.is_none_or(|dir| path.starts_with(resolve(None, &dir.0.to_string_lossy())));
-    inside.then_some(path.as_path())
+    let placed = dir.is_none_or(|dir| place(Some(&dir.0), true, &path.to_string_lossy()).is_ok());
+    placed.then_some(path.as_path())
 }
 
-/// Answers each `read` of an open file from its buffer, unsaved changes
-/// included, as `read` shows a file.
+/// Answers each `read` of an open file that no gate decided from its
+/// buffer, unsaved changes included, as `read` shows a file.
 fn from_buffers(
     mut calls: Query<(&ToolRequest, &ForAgent, &Footprint, &mut Decision), (Undecided, ToolCalls)>,
     dirs: Query<&WorkDir>,
