@@ -31,7 +31,6 @@ use bevy_ecs::system::SystemParam;
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::AppExit;
 use rig_harness::prelude::*;
-use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_harness::rig_ecs::StopTurns;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -332,7 +331,7 @@ fn item(message: &message::Message) -> Value {
                 .collect();
             json!({
                 "role": "assistant",
-                "text": assistant_text_from_choice(&reply.content),
+                "text": reply.text(),
                 "tools": calls,
             })
         }

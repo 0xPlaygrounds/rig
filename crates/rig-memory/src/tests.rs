@@ -1,8 +1,8 @@
 use super::*;
+use rig_core::conversation::pairing::validate;
 use rig_core::message::{
     AssistantContent, CallId, ToolCall, ToolFunction, ToolResult, ToolResultContent, UserContent,
 };
-use rig_core::transcript::validate_canonical;
 use std::sync::Mutex;
 
 fn user(text: &str) -> Message {
@@ -93,7 +93,7 @@ fn window_policies(limit: usize) -> [Box<dyn MemoryPolicy>; 2] {
 
 fn assert_window_partition(policy: &dyn MemoryPolicy, history: &[Message], demoted_len: usize) {
     let (kept, demoted) = policy.apply_with_demoted(history.to_vec()).unwrap();
-    assert_eq!(validate_canonical(&kept), Ok(()));
+    assert_eq!(validate(&kept), Ok(()));
     assert_eq!(kept, history[demoted_len..]);
     assert_eq!(demoted, history[..demoted_len]);
     assert_eq!(policy.apply(history.to_vec()).unwrap(), kept);
@@ -103,7 +103,7 @@ fn assert_window_partition(policy: &dyn MemoryPolicy, history: &[Message], demot
 fn assert_mixed_content_cleanup(policy: &dyn MemoryPolicy) {
     let mut history = mixed_tool_exchange();
     history.extend([tool_call_msg(), tool_result_msg(), assistant("done")]);
-    assert_eq!(validate_canonical(&history), Ok(()));
+    assert_eq!(validate(&history), Ok(()));
     // The first call is truncated; the later complete exchange must survive.
     assert_window_partition(policy, &history, 2);
 }
@@ -125,7 +125,7 @@ fn window_policies_demote_orphan_results_after_system_messages() {
     let mut history = mixed_tool_exchange();
     history.insert(1, Message::system("context between call and results"));
     history.extend([Message::system("keep this context"), assistant("done")]);
-    assert_eq!(validate_canonical(&history), Ok(()));
+    assert_eq!(validate(&history), Ok(()));
     for policy in window_policies(4) {
         assert_window_partition(policy.as_ref(), &history, 3);
     }
@@ -249,7 +249,7 @@ async fn demoting_windows_deliver_mixed_orphan_prefix_once_in_order() {
         let id: ConversationId = "mixed-results".into();
         let mut history = mixed_tool_exchange();
         history.push(assistant("done"));
-        assert_eq!(validate_canonical(&history), Ok(()));
+        assert_eq!(validate(&history), Ok(()));
         mem.append(&id, history.clone()).await.unwrap();
         for _ in 0..2 {
             assert_eq!(mem.load(&id).await.unwrap(), history[2..]);

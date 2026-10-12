@@ -1242,7 +1242,7 @@ fn show_critique(
         return;
     };
     if helpers.get(agent).is_ok_and(|helper| helper.0 == "critic")
-        && let Some(answer) = final_answer(message)
+        && let Some(answer) = message.final_answer()
     {
         notices.write(Notice::info(None, format!("Critic: {answer}")));
     }

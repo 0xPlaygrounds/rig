@@ -44,8 +44,8 @@ use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
+use rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_core::message::ToolCall;
-use rig_core::transcript::{close_pending_with, pending_calls};
 use serde::de::DeserializeSeed;
 use serde_json::Value;
 

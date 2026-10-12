@@ -101,8 +101,8 @@ capabilities, history, tools, patch) → PreparedRequest` step, so every driver
 sends the same bytes), the output policy, the per-turn `RequestPatch`, the
 run's response and error types, the invalid-call decisions, the streamed-turn
 assembler and the loop-side transcript helpers — all sans-IO and serializable.
-rig-core keeps only the message-model invariants (`validate_canonical`, the
-tool-result constructors). A host that drives runs itself (an ECS schedule, a
+rig-core keeps only the message-model invariants (`conversation::pairing`, the
+`tool::feedback` constructors). A host that drives runs itself (an ECS schedule, a
 job system) depends on this crate with default features off: that graph
 carries no async runtime, transport or MCP client (a dependency guard pins it),
 and `tests/fixtures/agent_run_stepper` is that host in miniature.

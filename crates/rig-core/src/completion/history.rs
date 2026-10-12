@@ -71,8 +71,6 @@ use crate::message::{
 };
 use crate::wasm_compat::WasmCompatSync;
 
-pub use crate::transcript::NO_RESULT_PROVIDED;
-
 /// What replaces a user image for a model without image input.
 pub const USER_IMAGE_OMITTED: &str = "(image omitted: model does not support images)";
 
@@ -460,8 +458,8 @@ fn set_pointer(item: &mut serde_json::Value, pointer: &str, value: serde_json::V
 ///   and without tools calls and results become text.
 /// - Opaque items marked not to replay are always dropped, and so is a turn
 ///   that ended in an error or was aborted, with the results answering it.
-/// - Calls and results pair by [`crate::transcript::pair`]: an unanswered
-///   call gets a [`NO_RESULT_PROVIDED`] result and an orphan result is dropped.
+/// - Calls and results pair by [`crate::conversation::pairing::pair`]: an unanswered
+///   call gets a [`NO_RESULT_PROVIDED`](crate::conversation::pairing::NO_RESULT_PROVIDED) result and an orphan result is dropped.
 /// - Adjacent user messages become one. A turn left empty is dropped, and so
 ///   is a user message left empty. A message that was empty to begin with is
 ///   kept, for the request boundary to reject.
@@ -642,11 +640,11 @@ pub(crate) fn adapt_for(
     // Calls and results pair first, so an orphan result goes whether or not
     // the request declares tools; only then does a request without tools
     // get them as text, with no result made up for an unanswered call.
-    let pairing = crate::transcript::Pairing {
+    let pairing = crate::conversation::pairing::Pairing {
         stored,
         answers: accepts.tools,
     };
-    let shaped = merge_users(crate::transcript::pair(shaped, pairing).messages);
+    let shaped = merge_users(crate::conversation::pairing::pair(shaped, pairing).messages);
     let shaped = if accepts.tools {
         shaped
     } else {

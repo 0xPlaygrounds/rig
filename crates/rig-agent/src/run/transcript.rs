@@ -8,10 +8,7 @@
 //! ```
 
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, Message};
-pub use rig_core::transcript::{
-    TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER, TranscriptError, assistant_text_from_choice,
-    is_empty_assistant_turn, tool_result_message, tool_result_output, validate_canonical,
-};
+use rig_core::tool::feedback::invalid_call_feedback;
 
 /// Combine input history with new messages for building completion requests.
 pub fn build_history_for_request(
@@ -38,11 +35,7 @@ pub fn invalid_tool_retry_user_message(
     invalid_tool_call_id: &CallId,
     feedback: &str,
 ) -> Option<Message> {
-    let content = rig_core::transcript::invalid_call_feedback(
-        assistant_content,
-        invalid_tool_call_id,
-        feedback,
-    );
+    let content = invalid_call_feedback(assistant_content, invalid_tool_call_id, feedback);
     (!content.is_empty()).then_some(Message::User { content })
 }
 
@@ -56,10 +49,20 @@ pub fn assistant_message(head: AssistantMessage, choice: Vec<AssistantContent>) 
 }
 
 /// The assistant message for a generated turn, or `None` for an empty turn
-/// ([`is_empty_assistant_turn`]), which must not enter provider history.
+/// ([`AssistantMessage::is_empty_turn`]), which must not enter provider history.
 pub fn assistant_turn(head: AssistantMessage, choice: Vec<AssistantContent>) -> Option<Message> {
-    if is_empty_assistant_turn(&choice) {
-        return None;
-    }
-    assistant_message(head, choice)
+    let turn = head.with_content(choice);
+    (!turn.is_empty_turn()).then_some(Message::Assistant(turn))
+}
+
+/// The text parts of a choice, concatenated, as [`AssistantMessage::text`]
+/// reads a turn.
+pub(crate) fn choice_text(choice: &[AssistantContent]) -> String {
+    choice
+        .iter()
+        .filter_map(|part| match part {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
 }

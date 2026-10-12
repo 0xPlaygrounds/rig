@@ -674,9 +674,9 @@ fn turn_settled(
         seat.running = false;
     }
     let result = match outcome {
-        TurnOutcome::Answered(message) => {
-            final_answer(message).ok_or_else(|| "it gave no answer".to_owned())
-        }
+        TurnOutcome::Answered(message) => message
+            .final_answer()
+            .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(why.clone()),
         TurnOutcome::Stopped(why) => Err(why.clone().unwrap_or_else(|| "stopped".to_owned())),
     };

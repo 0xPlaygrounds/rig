@@ -172,7 +172,7 @@ fn a_configured_gateway_model_answers_with_its_headers_and_survives_a_restart() 
         !world.resource::<Ended>().0.is_empty()
     });
     let answer = match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         other => Some(format!("{other:?}")),
     };
     assert_eq!(answer.as_deref(), Some("hi"));

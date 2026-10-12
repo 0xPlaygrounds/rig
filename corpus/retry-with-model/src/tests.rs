@@ -49,7 +49,8 @@ fn start(store: &MemoryStore, models: Models) -> (App, Receiver<()>, Entity) {
 fn last_answer(world: &World, agent: Entity) -> String {
     let conversation = world.get::<Conversation>(agent);
     let last = conversation.and_then(|conversation| conversation.messages().last());
-    last.and_then(final_answer).unwrap_or_default()
+    last.and_then(|message| message.final_answer())
+        .unwrap_or_default()
 }
 
 /// How many user messages the conversation holds.

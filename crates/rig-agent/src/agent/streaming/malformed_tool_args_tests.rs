@@ -775,7 +775,7 @@ async fn drive_mixed(
                 matches!(item, UserContent::ToolResult(result)
                     if !result.content.iter().any(|part| matches!(part,
                         rig_core::message::ToolResultContent::Text(text)
-                            if text.text == rig_core::transcript::NO_RESULT_PROVIDED)))
+                            if text.text == rig_core::conversation::pairing::NO_RESULT_PROVIDED)))
             })
             .count()
     };

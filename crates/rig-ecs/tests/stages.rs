@@ -59,7 +59,6 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_core::tool::{
     ContextValue, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
 };
-use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
 use rig_ecs::turn::RETRY;
@@ -1661,7 +1660,7 @@ fn a_call_that_gave_up_is_superseded_on_another_model_and_the_turn_goes_on() {
     let done = run_until(&mut app, |world| !world.resource::<Ended>().0.is_empty());
     assert!(done, "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("ok"), "{:?}", ended(&app));
@@ -1828,7 +1827,7 @@ fn a_side_call_is_built_from_its_agent_and_leaves_the_conversation_alone() {
              calls: Query<&Outcome, With<BuildFrom>>,
              mut answers: ResMut<SideAnswers>| {
                 let reply = calls.get(settled.entity).ok().and_then(Outcome::completion);
-                let text = reply.and_then(|reply| final_answer(&reply.message()?));
+                let text = reply.and_then(|reply| reply.message()?.final_answer());
                 answers.0.extend(text);
             },
         );
@@ -1909,7 +1908,7 @@ fn a_reviewer_carries_a_turn_on_with_a_queued_nudge() {
     assert!(run_until(&mut app, ended_once), "{:?}", notices(&app));
     // One turn: the nudge carried it on instead of ending it.
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
@@ -2038,7 +2037,7 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
     let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended_once));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("third"), "{:?}", ended(&app));
@@ -2118,7 +2117,7 @@ fn a_message_taken_over_in_gate_is_never_delivered_and_one_accepted_carries_the_
     let ended_once = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, ended_once));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("second"), "{:?}", ended(&app));
@@ -2218,7 +2217,7 @@ fn a_length_cutoff_is_a_proposal_that_a_new_turn_call_carries_on() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("done"), "{:?}", ended(&app));
@@ -2333,7 +2332,7 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     assert!(world.get::<Settled>(turn).is_some());
     assert!(world.get::<Started>(check).is_none());
     let said = conversation(&app, agent);
-    let kept = said.last().and_then(final_answer);
+    let kept = said.last().and_then(|message| message.final_answer());
     assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
     // A late release starts nothing.
     for _ in 0..3 {
@@ -2394,7 +2393,7 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
     assert!(
         !said
             .iter()
-            .filter_map(final_answer)
+            .filter_map(|message| message.final_answer())
             .any(|text| text.contains("The answer is")),
         "{said:?}"
     );
@@ -2643,7 +2642,12 @@ fn every_streamed_event_reaches_a_late_reader_in_order() {
         assert!(stamp.last >= stamp.first, "{stamp:?}");
     }
     let said = conversation(&app, agent);
-    assert_eq!(said.last().and_then(final_answer).as_deref(), Some("Hello"));
+    assert_eq!(
+        said.last()
+            .and_then(|message| message.final_answer())
+            .as_deref(),
+        Some("Hello")
+    );
 }
 
 #[test]
@@ -2795,7 +2799,7 @@ fn an_adapter_applies_to_the_model_a_call_is_finally_routed_to() {
     let done = |world: &mut World| !world.resource::<Ended>().0.is_empty();
     assert!(run_until(&mut app, done), "{:?}", notices(&app));
     let answer = match ended(&app).as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("adapted"), "{:?}", ended(&app));

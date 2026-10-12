@@ -433,7 +433,9 @@ fn finished(
     {
         let answer: Outcome = match outcome {
             TurnOutcome::Answered(message) => {
-                let text = final_answer(message).unwrap_or_else(|| "(no answer)".to_owned());
+                let text = message
+                    .final_answer()
+                    .unwrap_or_else(|| "(no answer)".to_owned());
                 ToolResult::success(format!("`{name}` reports:\n{text}").into()).into()
             }
             TurnOutcome::Failed(why) => Outcome::refused(format!("`{name}` failed: {why}")),

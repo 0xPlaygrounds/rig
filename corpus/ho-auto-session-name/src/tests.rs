@@ -70,7 +70,10 @@ fn the_first_exchange_names_the_session_outside_the_conversation() {
         .unwrap_or_default();
     assert_eq!(messages.len(), 2, "{messages:?}");
     assert_eq!(
-        messages.last().and_then(final_answer).as_deref(),
+        messages
+            .last()
+            .and_then(|message| message.final_answer())
+            .as_deref(),
         Some("Done.")
     );
 }

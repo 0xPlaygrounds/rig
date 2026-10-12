@@ -22,7 +22,6 @@ use rig_core::operation::Completion;
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::transcript::final_answer;
 use rig_ecs::effects::{Effects, Handler};
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
@@ -212,7 +211,7 @@ fn a_turn_ends_answered_after_one_tool_round() {
     let ended = &app.world().resource::<Ended>().0;
     assert_eq!(ended.len(), 1, "{ended:?}");
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");
@@ -348,7 +347,7 @@ fn a_failed_call_is_sent_again_once_its_backoff_passed_on_the_clock() {
     run_until(&mut app, &wakes, a_turn_ended);
     let ended = &app.world().resource::<Ended>().0;
     let answer = match ended.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("5"), "{ended:?}");

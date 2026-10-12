@@ -35,6 +35,7 @@ pub mod audio_generation;
 pub mod catalog;
 pub mod client;
 pub mod completion;
+pub mod conversation;
 pub mod driver;
 pub mod effect;
 pub mod embeddings;
@@ -67,7 +68,6 @@ pub mod structured_output;
 #[cfg_attr(docsrs, doc(cfg(feature = "test-utils")))]
 pub mod test_utils;
 pub mod tool;
-pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
 pub use rig_http::wasm_compat;

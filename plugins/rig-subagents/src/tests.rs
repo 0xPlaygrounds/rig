@@ -602,7 +602,7 @@ fn a_helper_for_one_job_retires_after_its_turn_and_is_not_restored() {
                 && helpers.contains(agent)
             {
                 let answer = match outcome {
-                    TurnOutcome::Answered(message) => final_answer(message),
+                    TurnOutcome::Answered(message) => message.final_answer(),
                     _ => None,
                 };
                 answers.0.push(answer);

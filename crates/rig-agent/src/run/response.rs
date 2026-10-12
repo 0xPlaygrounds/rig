@@ -7,11 +7,9 @@
 //! ```
 
 use rig_core::completion::{FinishReason, ResponseIdentity, Usage};
+use rig_core::conversation::pairing::{PairingError, repair, validate};
 use rig_core::error::ProviderError;
 use rig_core::message::{AssistantContent, Message};
-use rig_core::transcript::{
-    TranscriptError, assistant_text_from_choice, repair, validate_canonical,
-};
 use serde::{Deserialize, Serialize};
 
 /// One completion call of a run: what was asked and what came back.
@@ -216,7 +214,7 @@ impl PromptResponse {
     /// The concatenated text parts of [`content`](Self::content). In
     /// output-tool mode this is the serialized structured output.
     pub fn output(&self) -> String {
-        assistant_text_from_choice(&self.content)
+        super::transcript::choice_text(&self.content)
     }
 
     /// Aggregated token usage across the whole run.
@@ -426,7 +424,7 @@ impl PromptError {
 }
 
 /// A history in which every assistant tool call is answered by the next
-/// message, as [`validate_canonical`] defines it. Only [`close`](Self::close)
+/// message, as [`validate`] defines it. Only [`close`](Self::close)
 /// and [`validate`](Self::validate) build one, so every value round-trips
 /// through serde, whose deserializing validates.
 ///
@@ -440,17 +438,17 @@ pub struct CanonicalHistory(Vec<Message>);
 
 impl CanonicalHistory {
     /// Accept `messages` when they form a canonical transcript.
-    pub fn validate(messages: Vec<Message>) -> Result<Self, TranscriptError> {
-        validate_canonical(&messages)?;
+    pub fn validate(messages: Vec<Message>) -> Result<Self, PairingError> {
+        validate(&messages)?;
         Ok(Self(messages))
     }
 
     /// Close `messages` with [`repair`]: every open call is answered with
-    /// [`NO_RESULT_PROVIDED`](rig_core::transcript::NO_RESULT_PROVIDED), so
+    /// [`NO_RESULT_PROVIDED`](rig_core::conversation::pairing::NO_RESULT_PROVIDED), so
     /// any history a run holds becomes one.
     pub fn close(messages: Vec<Message>) -> Self {
         let messages = repair(messages).messages;
-        debug_assert_eq!(validate_canonical(&messages), Ok(()));
+        debug_assert_eq!(validate(&messages), Ok(()));
         Self(messages)
     }
 
@@ -461,7 +459,7 @@ impl CanonicalHistory {
 }
 
 impl TryFrom<Vec<Message>> for CanonicalHistory {
-    type Error = TranscriptError;
+    type Error = PairingError;
 
     fn try_from(messages: Vec<Message>) -> Result<Self, Self::Error> {
         Self::validate(messages)

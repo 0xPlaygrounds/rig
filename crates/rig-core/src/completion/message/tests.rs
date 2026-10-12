@@ -372,3 +372,26 @@ mod image_media_type_sniff {
         assert_eq!(extensions, ["heic", "heif", "svg"]);
     }
 }
+
+#[test]
+fn a_final_answer_is_a_text_reply_without_calls() {
+    use super::{AssistantContent, AssistantMessage, ToolName};
+    let text = AssistantContent::text;
+    let call = AssistantContent::tool_call(
+        "c1",
+        ToolName::new("add").expect("tool name"),
+        serde_json::json!({}),
+    );
+    for (content, answer) in [
+        (
+            vec![AssistantContent::reasoning("hm"), text(" A"), text("B ")],
+            Some("A\n\nB"),
+        ),
+        (vec![text("A"), call], None),
+        (vec![text("  ")], None),
+    ] {
+        let reply = Message::Assistant(AssistantMessage::new(content));
+        assert_eq!(reply.final_answer().as_deref(), answer);
+    }
+    assert_eq!(Message::user("A").final_answer(), None);
+}

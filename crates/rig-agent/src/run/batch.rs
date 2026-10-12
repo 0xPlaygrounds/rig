@@ -71,13 +71,13 @@ impl ToolBatch {
     }
 
     /// The results so far in call order, every unanswered call closed by
-    /// [`close_pending`](rig_core::transcript::close_pending).
+    /// [`close_pending`](rig_core::conversation::pairing::close_pending).
     pub(super) fn interrupt(&self) -> Message {
         let open = self.slots.iter().filter_map(|slot| match slot {
             ToolSlot::Execute(tool_call) | ToolSlot::Malformed(tool_call) => Some(tool_call),
             ToolSlot::Answered(_) => None,
         });
-        let mut closed = match rig_core::transcript::close_pending(open) {
+        let mut closed = match rig_core::conversation::pairing::close_pending(open) {
             Message::User { content } => content.into_iter(),
             _ => Vec::new().into_iter(),
         };

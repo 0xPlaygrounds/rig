@@ -1600,11 +1600,7 @@ fn a_history_cancelled_while_tools_run_can_be_resumed() {
 fn every_step_of_a_run_leaves_a_canonical_full_history() {
     fn check(run: &AgentRun) {
         let history = run.full_history();
-        assert_eq!(
-            validate_canonical(&history),
-            Ok(()),
-            "history: {history:#?}"
-        );
+        assert_eq!(validate(&history), Ok(()), "history: {history:#?}");
     }
     fn check_error(error: PromptError) {
         let history = match error {
@@ -1612,11 +1608,7 @@ fn every_step_of_a_run_leaves_a_canonical_full_history() {
             PromptError::MaxTurns { chat_history, .. } => chat_history,
             error => panic!("expected an error carrying history, got {error:?}"),
         };
-        assert_eq!(
-            validate_canonical(&history),
-            Ok(()),
-            "history: {history:#?}"
-        );
+        assert_eq!(validate(&history), Ok(()), "history: {history:#?}");
     }
     let to_tools = |calls: Vec<AssistantContent>| {
         let mut run = AgentRun::new("add things").max_turns(2);
@@ -1726,10 +1718,10 @@ fn full_history_closes_pending_calls_as_replay_does() {
     assert_eq!(history[..2], run.messages()[..]);
     assert_eq!(
         history[2],
-        rig_core::transcript::close_pending(calls.iter().map(pending))
+        rig_core::conversation::pairing::close_pending(calls.iter().map(pending))
     );
     assert_eq!(
-        rig_core::transcript::repair(run.messages().to_vec()).messages,
+        rig_core::conversation::pairing::repair(run.messages().to_vec()).messages,
         history
     );
 }
@@ -1818,7 +1810,7 @@ fn cancel_mid_tool_batch_yields_canonical_history() {
         panic!("cancel_error must build a Cancelled error");
     };
     assert_eq!(
-        rig_core::transcript::validate_canonical(&chat_history),
+        rig_core::conversation::pairing::validate(&chat_history),
         Ok(()),
         "cancelled mid-batch history must be canonical: {chat_history:?}"
     );
@@ -1878,7 +1870,7 @@ fn a_run_persisted_mid_batch_resumes_with_only_the_unanswered_calls() {
             content: vec![tool_result("call_1", "2"), tool_result("call_2", "3")]
         }
     );
-    assert_eq!(validate_canonical(&restored.full_history()), Ok(()));
+    assert_eq!(validate(&restored.full_history()), Ok(()));
 }
 
 #[test]
@@ -1939,7 +1931,7 @@ fn cancel_mid_batch_keeps_the_answered_results_and_aborts_the_rest() {
     let PromptError::Cancelled { chat_history, .. } = run.cancel_error("interrupted") else {
         panic!("cancel_error must build a Cancelled error");
     };
-    assert_eq!(validate_canonical(&chat_history), Ok(()));
+    assert_eq!(validate(&chat_history), Ok(()));
     let Some(Message::User { content }) = chat_history.last() else {
         panic!("the batch must be closed: {chat_history:?}");
     };
@@ -2008,11 +2000,7 @@ fn a_failed_turn_leaves_a_canonical_cancel_history() {
     let PromptError::Cancelled { chat_history, .. } = error else {
         panic!("a protocol violation cancels, got {error:?}");
     };
-    assert_eq!(
-        validate_canonical(&chat_history),
-        Ok(()),
-        "{chat_history:?}"
-    );
+    assert_eq!(validate(&chat_history), Ok(()), "{chat_history:?}");
     assert_eq!(chat_history.into_vec(), run.full_history());
 }
 
@@ -2028,7 +2016,7 @@ fn a_canonical_history_from_an_unchecked_input_history_round_trips() {
     ];
     let run = AgentRun::new("hi").with_history(open);
     let history = run.canonical_history();
-    assert_eq!(validate_canonical(&history), Ok(()), "{history:?}");
+    assert_eq!(validate(&history), Ok(()), "{history:?}");
     let json = serde_json::to_value(&history).expect("serialize");
     let restored: CanonicalHistory = serde_json::from_value(json).expect("deserialize");
     assert_eq!(restored, history);

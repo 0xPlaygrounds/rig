@@ -253,7 +253,8 @@ fn step_on_turn_end(
     let step = match agents.awaited(agent).first().filter(|_| !restarted) {
         Some(&owing) => Lifecycle::WaitingOn(owing),
         None => Lifecycle::Finished(match outcome {
-            TurnOutcome::Answered(message) => final_answer(message)
+            TurnOutcome::Answered(message) => message
+                .final_answer()
                 .unwrap_or_else(|| failed("Failed: the subagent ended without a final message.")),
             TurnOutcome::Failed(why) => failed(&format!("Failed: {why}")),
             TurnOutcome::Stopped(None) => failed("Interrupted: the subagent was stopped first."),

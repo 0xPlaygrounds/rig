@@ -1,5 +1,5 @@
 use super::*;
-use crate::message::{StopReason, ToolCall, ToolFunction, ToolResult};
+use crate::message::{StopReason, ToolCall, ToolFunction, ToolResult, ToolResultContent};
 
 fn tool_call(id: &str) -> ToolCall {
     ToolCall {
@@ -33,23 +33,23 @@ fn assistant(content: Vec<AssistantContent>) -> Message {
 fn id(id: &str) -> CallId {
     CallId::from_wire(id)
 }
-fn unanswered(index: usize, call: &str) -> TranscriptError {
-    TranscriptError::UnansweredToolCall {
+fn unanswered(index: usize, call: &str) -> PairingError {
+    PairingError::UnansweredToolCall {
         index,
         call_id: id(call),
     }
 }
-fn orphan(index: usize, call: &str) -> TranscriptError {
-    TranscriptError::OrphanToolResult {
+fn orphan(index: usize, call: &str) -> PairingError {
+    PairingError::OrphanToolResult {
         index,
         call_id: id(call),
     }
 }
-/// What `validate_canonical` says agrees with what `pair` repaired.
-fn repairs(history: &[Message]) -> Vec<TranscriptError> {
+/// What `validate` says agrees with what `pair` repaired.
+fn repairs(history: &[Message]) -> Vec<PairingError> {
     let repairs = repair(history.to_vec()).repairs;
     assert_eq!(
-        validate_canonical(history),
+        validate(history),
         repairs.first().cloned().map_or(Ok(()), Err)
     );
     repairs
@@ -59,8 +59,8 @@ fn repairs(history: &[Message]) -> Vec<TranscriptError> {
 fn unanswered_and_orphan_results_are_rejected() {
     let unanswered_call = vec![assistant(vec![call("c1")]), Message::user("no result")];
     assert!(matches!(
-        validate_canonical(&unanswered_call),
-        Err(TranscriptError::UnansweredToolCall { .. })
+        validate(&unanswered_call),
+        Err(PairingError::UnansweredToolCall { .. })
     ));
     assert_eq!(repairs(&unanswered_call), vec![unanswered(0, "c1")]);
     let orphan_result = vec![
@@ -70,20 +70,20 @@ fn unanswered_and_orphan_results_are_rejected() {
         },
     ];
     assert!(matches!(
-        validate_canonical(&orphan_result),
-        Err(TranscriptError::OrphanToolResult { .. })
+        validate(&orphan_result),
+        Err(PairingError::OrphanToolResult { .. })
     ));
     assert_eq!(repairs(&orphan_result), vec![orphan(1, "ghost")]);
     let trailing = vec![assistant(vec![call("c1")])];
     assert!(matches!(
-        validate_canonical(&trailing),
-        Err(TranscriptError::UnansweredToolCall { .. })
+        validate(&trailing),
+        Err(PairingError::UnansweredToolCall { .. })
     ));
     assert_eq!(repairs(&trailing), vec![unanswered(0, "c1")]);
     let consecutive = vec![Message::assistant("a"), Message::assistant("b")];
     assert_eq!(
         repairs(&consecutive),
-        vec![TranscriptError::ConsecutiveAssistant { index: 1 }]
+        vec![PairingError::ConsecutiveAssistant { index: 1 }]
     );
 }
 
@@ -224,22 +224,6 @@ fn close_pending_answers_each_occurrence_in_call_order() {
 }
 
 #[test]
-fn a_final_answer_is_a_text_reply_without_calls() {
-    let text = AssistantContent::text;
-    for (content, answer) in [
-        (
-            vec![AssistantContent::reasoning("hm"), text(" A"), text("B ")],
-            Some("A\n\nB"),
-        ),
-        (vec![text("A"), call("c1")], None),
-        (vec![text("  ")], None),
-    ] {
-        assert_eq!(final_answer(&assistant(content)).as_deref(), answer);
-    }
-    assert_eq!(final_answer(&Message::user("A")), None);
-}
-
-#[test]
 fn repair_closes_any_history_into_a_canonical_one() {
     let broken = vec![
         Message::user("q"),
@@ -255,7 +239,7 @@ fn repair_closes_any_history_into_a_canonical_one() {
         Message::system("s"),
     ];
     let closed = repair(broken).messages;
-    assert_eq!(validate_canonical(&closed), Ok(()), "{closed:?}");
+    assert_eq!(validate(&closed), Ok(()), "{closed:?}");
     assert_eq!(repair(closed.clone()).messages, closed);
     let Message::User { content } = &closed[2] else {
         panic!("results follow the turn: {closed:?}");
@@ -319,69 +303,19 @@ fn pending_calls_are_the_last_turns_unanswered_calls() {
 }
 
 #[test]
-fn arguments_the_schema_does_not_declare_are_refused() {
-    let schema = serde_json::json!({"properties": {"a": {}, "b": {}}});
-    let mut extra = tool_call("c1");
-    extra.function = ToolFunction::new(
-        crate::message::ToolName::new("add").expect("tool name"),
-        serde_json::json!({"a": 1, "c": 2}),
-    );
-    assert_eq!(
-        arguments_refusal(&schema, &extra).as_deref(),
-        Some(
-            "`add` has no argument `c`. Its arguments are: `a`, `b`. Call it again with only those."
-        )
-    );
-    assert_eq!(arguments_refusal(&schema, &tool_call("c2")), None);
-}
-
-#[test]
-fn ill_typed_arguments_are_refused() {
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {"path": {"type": "string"}, "limit": {"type": "integer"}},
-        "required": ["path"],
-    });
-    let mut ill_typed = tool_call("c1");
-    ill_typed.function = ToolFunction::new(
-        crate::message::ToolName::new("read").expect("tool name"),
-        serde_json::json!({"limit": "ten"}),
-    );
-    assert_eq!(
-        arguments_refusal(&schema, &ill_typed).as_deref(),
-        Some(
-            "`read`'s arguments do not fit its schema: /limit: expected an integer, got a \
-             string; /path: missing. Call it again with arguments that fit."
-        )
-    );
-}
-
-#[test]
-fn a_refusal_names_five_problems_and_counts_the_rest() {
-    let schema = serde_json::json!({
-        "type": "object",
-        "properties": {},
-        "required": ["a", "b", "c", "d", "e", "f", "g"],
-    });
-    assert_eq!(
-        arguments_refusal(&schema, &tool_call("c1")).as_deref(),
-        Some(
-            "`add`'s arguments do not fit its schema: /a: missing; /b: missing; /c: missing; \
-             /d: missing; /e: missing; and 2 more. Call it again with arguments that fit."
-        )
-    );
-}
-
-#[test]
-fn arguments_that_are_not_an_object_are_refused_before_the_schema() {
-    let mut call = tool_call("c1");
-    call.function = ToolFunction::parse(
-        crate::message::ToolName::new("add").expect("tool name"),
-        "[1, 2]",
-    );
-    let schema = serde_json::json!({"properties": {}, "required": ["a"]});
-    assert_eq!(
-        arguments_refusal(&schema, &call),
-        Some(invalid_arguments_feedback("add", "[1, 2]"))
-    );
+fn a_window_starts_past_results_whose_calls_it_cuts_off() {
+    let history = vec![
+        assistant(vec![call("c1")]),
+        results(&["c1"]),
+        Message::user("next"),
+        results(&["c0"]),
+        assistant(vec![call("c2")]),
+        results(&["c2"]),
+    ];
+    assert_eq!(safe_start(&history, 0), 0);
+    assert_eq!(safe_start(&history, 1), 4);
+    assert_eq!(safe_start(&history, 2), 4);
+    assert_eq!(safe_start(&history, 4), 4);
+    assert_eq!(safe_start(&history, 5), 6);
+    assert_eq!(safe_start(&history, 9), 6);
 }

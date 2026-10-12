@@ -38,7 +38,6 @@ use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use rig_core::completion::Message;
-use rig_core::transcript::final_answer;
 use rig_ecs::prelude::*;
 
 use crate::host::exit::{Exit, ExitReason, ExitRequest};
@@ -238,7 +237,10 @@ fn drive(
             if !agents.idle() {
                 return;
             }
-            let answer = run.answer.as_ref().and_then(final_answer);
+            let answer = run
+                .answer
+                .as_ref()
+                .and_then(|message| message.final_answer());
             let exit = match (run.refused, run.failed && answer.is_none()) {
                 (true, _) => ExitReason::Failed(2),
                 (false, false) => ExitReason::Quit,

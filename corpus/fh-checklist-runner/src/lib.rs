@@ -754,7 +754,7 @@ fn on_item_end(
     let state = match (failure, outcome) {
         (Some(why), _) => ItemState::Failed(why.clone()),
         (None, TurnOutcome::Answered(message)) => {
-            let answer = final_answer(message).unwrap_or_default();
+            let answer = message.final_answer().unwrap_or_default();
             let line = first_line(&answer);
             ItemState::Done(if line.is_empty() {
                 "done".to_owned()

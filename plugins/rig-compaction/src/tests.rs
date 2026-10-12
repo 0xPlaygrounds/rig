@@ -7,7 +7,6 @@ use rig_core::ProviderResponseError;
 use rig_core::completion::Message;
 use rig_core::message::{AssistantContent, AssistantMessage, CallId, ToolName, UserContent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::transcript::final_answer;
 use rig_harness::commands::RunCommand;
 
 use super::*;
@@ -93,7 +92,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity) {
 /// The answer the one turn of `app` ended with.
 fn answer(app: &App) -> Option<String> {
     match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         _ => None,
     }
 }

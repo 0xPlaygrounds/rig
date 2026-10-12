@@ -469,7 +469,7 @@ fn clean_up(
         return;
     };
     if printing.is_some()
-        && let Some(answer) = final_answer(answer)
+        && let Some(answer) = answer.final_answer()
     {
         println!("{answer}");
     }

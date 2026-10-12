@@ -63,7 +63,7 @@ fn state(app: &mut App) -> (Vec<String>, Option<u32>) {
                     _ => None,
                 })
                 .collect(),
-            message => final_answer(message).unwrap_or_default(),
+            message => message.final_answer().unwrap_or_default(),
         })
         .collect();
     (texts, Some(turns.0))

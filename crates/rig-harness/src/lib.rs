@@ -149,7 +149,6 @@ pub mod prelude {
         HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
     };
     pub use rig_cassette::journal::JournalStore;
-    pub use rig_core::transcript::final_answer;
     pub use rig_tools::{Spill, blocking};
 }
 

@@ -105,7 +105,7 @@ impl Alternative {
             .messages
             .iter()
             .rev()
-            .find_map(|entry| final_answer(&entry.message));
+            .find_map(|entry| entry.message.final_answer());
         let line = text
             .unwrap_or_default()
             .split_whitespace()

@@ -527,7 +527,7 @@ fn finish(
     }
     let (state, outcome) = match outcome {
         TurnOutcome::Answered(message) => {
-            let answer = final_answer(message).unwrap_or_default();
+            let answer = message.final_answer().unwrap_or_default();
             (TaskState::Done, answer)
         }
         TurnOutcome::Failed(why) => (TaskState::Failed, why.clone()),

@@ -406,7 +406,7 @@ fn post_answer(
     };
     *working.bypass_change_detection() = Working::default();
     let text = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
+        TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("The turn failed: {why}"),
         TurnOutcome::Stopped(why) => format!(
             "Stopped{}.",

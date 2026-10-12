@@ -84,8 +84,12 @@ fn command(
         return;
     };
     uses.0 += 1;
-    // `final_answer` is the text of a final answer, `None` for other messages.
-    let answer = conversation.messages().iter().rev().find_map(final_answer);
+    // `Message::final_answer` is the text of a final answer, `None` for other messages.
+    let answer = conversation
+        .messages()
+        .iter()
+        .rev()
+        .find_map(|message| message.final_answer());
     let text = match answer {
         Some(answer) => format!(
             "The last answer has {} words (use {}).",

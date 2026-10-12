@@ -111,6 +111,24 @@ impl AssistantMessage {
             _ => None,
         })
     }
+
+    /// The text parts, concatenated.
+    pub fn text(&self) -> String {
+        self.content
+            .iter()
+            .filter_map(|part| match part {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether this generated turn is empty: every part is blank
+    /// ([`AssistantContent::is_blank`], the rule replay drops parts by). An
+    /// empty turn must not enter history.
+    pub fn is_empty_turn(&self) -> bool {
+        self.content.iter().all(AssistantContent::is_blank)
+    }
 }
 
 /// Whether no block of the choice is an answer
@@ -937,6 +955,33 @@ pub enum ImageDetail {
 }
 
 impl Message {
+    /// The text of a final answer: the text parts of the model's message,
+    /// joined by blank lines and trimmed. `None` when this is not the
+    /// model's message, still asks for tool calls, or has no text.
+    ///
+    /// ```
+    /// use rig_core::message::Message;
+    ///
+    /// assert_eq!(Message::assistant(" Done. ").final_answer().as_deref(), Some("Done."));
+    /// assert_eq!(Message::user("Done.").final_answer(), None);
+    /// ```
+    pub fn final_answer(&self) -> Option<String> {
+        let Message::Assistant(reply) = self else {
+            return None;
+        };
+        let mut parts = Vec::new();
+        for item in reply.content.iter() {
+            match item {
+                AssistantContent::Text(text) => parts.push(text.text.as_str()),
+                AssistantContent::ToolCall(_) => return None,
+                _ => {}
+            }
+        }
+        let text = parts.join("\n\n");
+        let text = text.trim();
+        (!text.is_empty()).then(|| text.to_owned())
+    }
+
     /// Clones the first text block of a user message, or returns `None`.
     pub fn rag_text(&self) -> Option<String> {
         match self {

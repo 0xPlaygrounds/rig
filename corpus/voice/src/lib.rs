@@ -39,7 +39,6 @@ use bevy_log::warn;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::{AppKeyBindingsExt, KeyBinding, KeyPress, KeyPressed, Keys, TerminalEvent, TuiInput};
 use serde::Deserialize;
@@ -455,7 +454,7 @@ fn on_turn_ended(
     if !settings.speak || backends.speaker.is_none() || subagents.contains(agent) {
         return;
     }
-    let Some(answer) = final_answer(message) else {
+    let Some(answer) = message.final_answer() else {
         return;
     };
     let fallback = condense(&answer);
@@ -491,11 +490,7 @@ fn on_condensed(
     };
     let summary = outcome
         .and_then(Outcome::completion)
-        .map(|response| {
-            assistant_text_from_choice(&response.choice)
-                .trim()
-                .to_owned()
-        })
+        .map(|response| response.text().trim().to_owned())
         .filter(|text| !text.is_empty());
     if settings.speak {
         say(&backends, summary.as_deref().unwrap_or(fallback));

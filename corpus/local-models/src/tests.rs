@@ -266,7 +266,7 @@ fn observe(stub: &mut Stub) -> Result<Seen, String> {
 
     say(&mut app, &wakes, agent, "hello", 1);
     let answer = match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
+        [TurnOutcome::Answered(message)] => message.final_answer(),
         other => return Err(format!("the turn ended as {other:?}")),
     };
     let window = app

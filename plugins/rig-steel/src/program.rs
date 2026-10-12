@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 
 use futures::channel::oneshot;
 use futures::future::Shared;
-use rig_core::transcript::final_answer;
 use rig_ecs::agent::{AgentId, TurnOutcome};
 use rig_ecs::prelude::{Origin, RequestId};
 use serde_json::{Map, Value};
@@ -364,7 +363,7 @@ impl Host {
         let request = RequestId(string(request, "the request id")?);
         match self.wait(self.harness.reply(request))?? {
             TurnOutcome::Answered(message) => Ok(SteelVal::StringV(
-                final_answer(&message).unwrap_or_default().into(),
+                message.final_answer().unwrap_or_default().into(),
             )),
             TurnOutcome::Failed(why) => Err(format!("the agent's turn failed: {why}")),
             TurnOutcome::Stopped(None) => {

@@ -464,9 +464,9 @@ fn on_worker_end(
         return;
     };
     let result = match outcome {
-        TurnOutcome::Answered(message) => {
-            final_answer(message).ok_or_else(|| "ended without a final message".to_owned())
-        }
+        TurnOutcome::Answered(message) => message
+            .final_answer()
+            .ok_or_else(|| "ended without a final message".to_owned()),
         TurnOutcome::Failed(why) => Err(short(why)),
         TurnOutcome::Stopped(None) => Err("stopped".to_owned()),
         TurnOutcome::Stopped(Some(why)) => Err(format!("stopped: {why}")),

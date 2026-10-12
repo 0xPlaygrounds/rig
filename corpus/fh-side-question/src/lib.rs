@@ -28,7 +28,7 @@
 //! ```
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::transcript::{close_pending_with, pending_calls};
+use rig_harness::rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_subagents::{SpawnSubagent, SpawnedAgent};
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers};
 use rig_tui::ratatui::layout::Constraint;
@@ -370,7 +370,7 @@ fn answered(
         return;
     };
     let answer = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
+        TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => format!("(failed: {why})"),
         TurnOutcome::Stopped(_) => "(stopped)".to_owned(),
     };

@@ -38,7 +38,7 @@ use super::{
     },
     run::{
         response::{CompletionCall, MemoryAppend, PromptResponse, finalize_output_tool_choice},
-        transcript::{assistant_text_from_choice, is_empty_assistant_turn},
+        transcript::choice_text,
     },
     runner::AgentRunner,
     telemetry::{build_chat_span, new_execute_tool_span},
@@ -472,7 +472,7 @@ where
 ///   already-started ones are drained, and the deterministic lowest call-index
 ///   error is returned. A termination's history is
 ///   [`AgentRun::canonical_history`]: the settled results, every other call
-///   closed by `transcript::close_pending`.
+///   closed by `pairing::close_pending`.
 /// - Only if the whole batch settles successfully does the run commit the
 ///   results to history, in call order, with any results answered before
 ///   (a preresolved invalid-recovery result, or one a host already fed).
@@ -683,7 +683,7 @@ impl StreamingTurnSource {
         record_content: bool,
     ) {
         if self.created_agent_span && self.record_telemetry_content {
-            agent_span.record("gen_ai.completion", assistant_text_from_choice(choice));
+            agent_span.record("gen_ai.completion", choice_text(choice));
         }
         rig_core::telemetry::record_model_output(chat_span, choice, record_content);
     }
@@ -1098,7 +1098,7 @@ impl TurnSource for StreamingTurnSource {
         // surface the run's structured output as the final content.
         let final_choice = finalize_output_tool_choice(&self.last_final_choice, &response.output())
             .unwrap_or_else(|| {
-                if is_empty_assistant_turn(&self.last_final_choice) {
+                if self.last_final_choice.iter().all(AssistantContent::is_blank) {
                     tracing::warn!(
                         agent_name = self.agent_name.as_str(),
                         response_id = ?self.last_response_id,

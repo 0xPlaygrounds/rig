@@ -37,8 +37,11 @@ use serde::{Deserialize, Serialize};
 use rig_core::completion::{CompletionResponse, FinishReason, ToolDefinition};
 use rig_core::error::ProviderError;
 
+use rig_core::conversation::pairing::{PairingError, validate};
 use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, ToolName, UserContent};
-use rig_core::transcript::tool_result_output;
+use rig_core::tool::feedback::{
+    invalid_arguments_feedback, not_executed, tool_result_message, tool_result_output,
+};
 
 use calls::AnswerKind;
 
@@ -55,9 +58,8 @@ use rig_core::completion::message::turn_failure;
 use rig_core::json_utils;
 use rig_core::structured_output;
 use transcript::{
-    TranscriptError, assistant_message, assistant_text_from_choice, assistant_turn,
-    build_full_history, build_history_for_request, invalid_tool_retry_user_message,
-    is_empty_assistant_turn, tool_result_message, validate_canonical,
+    assistant_message, assistant_turn, build_full_history, build_history_for_request, choice_text,
+    invalid_tool_retry_user_message,
 };
 
 pub use streamed::{
@@ -739,7 +741,7 @@ impl AgentRun {
     /// The full conversation: input history followed by [`Self::messages`],
     /// with a tool batch the host has not finished answering closed: its
     /// results so far, then the other calls closed by
-    /// [`close_pending`](rig_core::transcript::close_pending) (a pre-resolved
+    /// [`close_pending`](rig_core::conversation::pairing::close_pending) (a pre-resolved
     /// result stands), so it resumes as a canonical transcript.
     pub fn full_history(&self) -> Vec<Message> {
         let mut history = build_full_history(self.chat_history.as_deref(), self.history.to_vec());
@@ -924,10 +926,7 @@ impl AgentRun {
                     if let Some(raw) = &tool_call.function.invalid_arguments {
                         if self.can_reprompt_for_output() {
                             self.history.commit(assistant_message(head, items.clone()));
-                            let feedback = rig_core::transcript::invalid_arguments_feedback(
-                                &output_tool_name,
-                                raw,
-                            );
+                            let feedback = invalid_arguments_feedback(&output_tool_name, raw);
                             if let Some(user_message) =
                                 invalid_tool_retry_user_message(&items, &tool_call_id, &feedback)
                             {
@@ -1007,11 +1006,11 @@ impl AgentRun {
                     // Accept schema-compatible JSON text without requiring a tool call;
                     // other nonempty answers may consume an output retry.
                     if let Some(output_tool_name) = policy.output_tool()
-                        && !is_empty_assistant_turn(&items)
+                        && !items.iter().all(AssistantContent::is_blank)
                         && self.can_reprompt_for_output()
                         && !structured_output::text_satisfies_schema(
                             self.output_schema.as_ref(),
-                            &assistant_text_from_choice(&items),
+                            &choice_text(&items),
                         )
                     {
                         self.history.commit([Message::user(
@@ -1502,7 +1501,7 @@ impl AgentRun {
                 if let AssistantContent::ToolCall(tool_call) = item {
                     skipped
                         .entry(index)
-                        .or_insert_with(|| rig_core::transcript::not_executed(tool_call));
+                        .or_insert_with(|| not_executed(tool_call));
                 }
             }
         }
@@ -1755,8 +1754,8 @@ impl AgentRun {
     /// outside the protocol (a memory backend, a resumed run from another
     /// process); `with_history` stays unchecked for callers that built the
     /// history themselves.
-    pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, TranscriptError> {
-        validate_canonical(&history)?;
+    pub fn with_validated_history(self, history: Vec<Message>) -> Result<Self, PairingError> {
+        validate(&history)?;
         Ok(self.with_history(history))
     }
 }
@@ -1792,7 +1791,7 @@ fn malformed_answer(
         .as_deref()
         .unwrap_or_default();
     let feedback = match action {
-        None => rig_core::transcript::invalid_arguments_feedback(name.as_str(), raw),
+        None => invalid_arguments_feedback(name.as_str(), raw),
         Some(InvalidToolCallAction::Retry { feedback }) => feedback,
         Some(InvalidToolCallAction::Skip { reason }) => {
             let skipped = rig_core::tool::ToolResult::skipped(reason);

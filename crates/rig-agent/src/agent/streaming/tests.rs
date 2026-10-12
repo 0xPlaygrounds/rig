@@ -11,7 +11,6 @@ use crate::agent::hook::{AgentHook, HookContext};
 use crate::agent::run::{AgentRun, AgentRunStep};
 use crate::agent::runner::prompt_tests::PatchChoiceThenSkip;
 use crate::completion::{CompletionRequest, FinishReason, PromptError, ToolDefinition, Usage};
-use crate::run::transcript::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use crate::streaming::{Item, StreamEvent};
 use crate::test_utils::{
     CapturedSpan, FailingMemory, MockAddTool, MockCompletionModel, MockContextProbeTool,
@@ -22,6 +21,7 @@ use futures::{StreamExt, TryStreamExt};
 use rig_core::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig_core::operation::Finish;
 use rig_core::providers::anthropic;
+use rig_core::tool::feedback::TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER;
 use serde::Deserialize;
 use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};

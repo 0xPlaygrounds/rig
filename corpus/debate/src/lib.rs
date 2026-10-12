@@ -430,7 +430,7 @@ fn step(
         return;
     };
     let answer = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).ok_or("it gave no answer"),
+        TurnOutcome::Answered(message) => message.final_answer().ok_or("it gave no answer"),
         TurnOutcome::Failed(why) => Err(why.as_str()),
         TurnOutcome::Stopped(_) => Err("it was stopped"),
     };

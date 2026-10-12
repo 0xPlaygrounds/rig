@@ -29,8 +29,8 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use rig_cassette::journal::{Conversation, Stamp};
+use rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_core::message::{Message, Origin as MadeBy};
-use rig_core::transcript::{close_pending_with, pending_calls};
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_sessions::{Meta, SessionTitle, title_of, write_meta};

@@ -1342,7 +1342,7 @@ pub fn h08_pairing<F: HistoryFixture>(fixture: &F) {
         assert!(
             results.iter().any(|result| result.is_error
                 && result.content.first().and_then(ToolResultContent::as_text)
-                    == Some(rig_core::completion::history::NO_RESULT_PROVIDED)),
+                    == Some(rig_core::conversation::pairing::NO_RESULT_PROVIDED)),
             "the unanswered call gets an error result: {results:?}"
         );
     } else {

@@ -52,7 +52,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option
         .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
     run_until(app, wakes, |world| ended(world) > before);
     match app.world().resource::<Ended>().0.last() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     }
 }

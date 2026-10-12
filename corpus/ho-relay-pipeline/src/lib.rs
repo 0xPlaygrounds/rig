@@ -501,9 +501,9 @@ fn step(
         return;
     };
     let answer = match outcome {
-        TurnOutcome::Answered(message) => {
-            final_answer(message).ok_or_else(|| "it gave no answer".to_owned())
-        }
+        TurnOutcome::Answered(message) => message
+            .final_answer()
+            .ok_or_else(|| "it gave no answer".to_owned()),
         TurnOutcome::Failed(why) => Err(format!("failed: {why}")),
         TurnOutcome::Stopped(why) => Err(format!(
             "stopped {}",

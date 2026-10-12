@@ -1,7 +1,6 @@
 use crate::agent::ResponseIdentity;
 use crate::agent::typed::{TypedPromptResponse, deserialize_structured_output};
 use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
-use crate::run::transcript::is_empty_assistant_turn;
 use crate::{
     agent::{
         AgentBuilder,
@@ -259,6 +258,9 @@ fn prompt_response_output_tool_marker_is_never_serialized() {
 
 #[test]
 fn empty_turn_classification_survives_a_serde_round_trip() {
+    let is_empty_turn = |choice: &[AssistantContent]| {
+        rig_core::message::AssistantMessage::new(choice.to_vec()).is_empty_turn()
+    };
     // A suspended run restored from JSON must classify its empty-text
     // turn exactly like the live run did, whatever spelling of "no
     // extras" the JSON carries, and an *annotated* empty block must
@@ -268,13 +270,13 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
     // `empty_params_canonicalize_to_none_in_both_serde_directions` —
     // this test asserts classification only.
     let live = vec![AssistantContent::text("")];
-    assert!(is_empty_assistant_turn(&live));
+    assert!(is_empty_turn(&live));
 
     let round: Vec<AssistantContent> =
         serde_json::from_str(&serde_json::to_string(&live).expect("serialize"))
             .expect("deserialize");
     assert!(
-        is_empty_assistant_turn(&round),
+        is_empty_turn(&round),
         "restored turn must classify like the live one: {round:?}"
     );
 
@@ -285,16 +287,16 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
             {"type": "text", "text": "", "additional_params": empty_spelling}
         ]))
         .expect("deserialize migrated");
-        assert!(is_empty_assistant_turn(&migrated));
+        assert!(is_empty_turn(&migrated));
     }
 
     // Text with no provider item is empty, live and restored alike.
     let canonical_absent = vec![AssistantContent::Text(rig_core::message::Text::new(""))];
-    assert!(is_empty_assistant_turn(&canonical_absent));
+    assert!(is_empty_turn(&canonical_absent));
     let restored: Vec<AssistantContent> =
         serde_json::from_value(serde_json::to_value(&canonical_absent).expect("serialize"))
             .expect("deserialize");
-    assert!(is_empty_assistant_turn(&restored));
+    assert!(is_empty_turn(&restored));
 
     // An empty block holding a current provider item carries data; one whose
     // item no longer matches it (an edit) replays as nothing, so it is empty.
@@ -304,14 +306,14 @@ fn empty_turn_classification_survives_a_serde_round_trip() {
         serde_json::from_value(serde_json::to_value(&annotated).expect("serialize"))
             .expect("deserialize annotated");
     assert!(
-        !is_empty_assistant_turn(&restored),
+        !is_empty_turn(&restored),
         "an annotated empty block carries data: {restored:?}"
     );
     let stale: Vec<AssistantContent> = serde_json::from_value(serde_json::json!([
         {"type": "text", "text": "", "native": {"item": {"signature": "sig"}, "fingerprint": "0000000000000000"}}
     ]))
     .expect("deserialize stale");
-    assert!(is_empty_assistant_turn(&stale), "{stale:?}");
+    assert!(is_empty_turn(&stale), "{stale:?}");
 }
 
 #[test]

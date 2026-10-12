@@ -477,7 +477,7 @@ fn reviewer_answered(
     };
     let model = short_model(model);
     let answer = match outcome {
-        TurnOutcome::Answered(message) => final_answer(message).unwrap_or_default(),
+        TurnOutcome::Answered(message) => message.final_answer().unwrap_or_default(),
         TurnOutcome::Failed(why) => {
             notices.write(Notice::error(agent, format!("The review failed: {why}")));
             finish(

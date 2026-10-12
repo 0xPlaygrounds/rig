@@ -15,7 +15,6 @@
 //! `/supervise off` retires it.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::transcript::assistant_text_from_choice;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -414,7 +413,7 @@ fn digest(goal: &str, messages: &[message::Message], from: usize) -> String {
     }
     let last = messages.iter().rev().find_map(|message| match message {
         message::Message::Assistant(reply) => {
-            let text = assistant_text_from_choice(&reply.content);
+            let text = reply.text();
             (!text.trim().is_empty()).then(|| clip(&text, TEXT))
         }
         message::Message::User { .. } | message::Message::System { .. } => None,

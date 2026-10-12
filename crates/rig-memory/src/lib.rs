@@ -41,6 +41,7 @@ pub use compaction::{
     ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Cut, Summarizer, SummaryError,
     SummaryLimits, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
 };
+use rig_core::conversation::pairing::safe_start;
 use rig_core::message::UserContent;
 use rig_core::wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync};
 
@@ -191,35 +192,14 @@ impl MemoryPolicy for SlidingWindowMemory {
     }
 }
 
-/// Split `messages` at `keep_from` into `(window, demoted)`.
-///
-/// Results before the first retained assistant have lost their calls. Scan
-/// all content blocks, including past system messages (which canonical
-/// validation allows between calls and results). Demote the entire prefix
-/// through those results to preserve the delivery-watermark contract without
-/// modifying messages or repairing unrelated history later in the window.
-fn split_window(messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<Message>) {
-    let mut iter = messages.into_iter();
-    let mut demoted: Vec<Message> = (&mut iter).take(keep_from).collect();
-    let mut window: Vec<Message> = iter.collect();
-
-    let mut orphan_prefix_len = 0;
-    for (index, message) in window.iter().enumerate() {
-        match message {
-            Message::Assistant(_) => break,
-            Message::User { content }
-                if content
-                    .iter()
-                    .any(|item| matches!(item, UserContent::ToolResult(_))) =>
-            {
-                orphan_prefix_len = index + 1;
-            }
-            _ => {}
-        }
-    }
-    demoted.extend(window.drain(..orphan_prefix_len));
-
-    (window, demoted)
+/// Split `messages` at `keep_from`, moved forward by [`safe_start`] past
+/// results whose calls are cut off, into `(window, demoted)`. Demoting whole
+/// messages keeps the delivery-watermark contract without modifying messages
+/// or repairing unrelated history later in the window.
+fn split_window(mut messages: Vec<Message>, keep_from: usize) -> (Vec<Message>, Vec<Message>) {
+    let keep_from = safe_start(&messages, keep_from);
+    let window = messages.split_off(keep_from);
+    (window, messages)
 }
 
 /// Counts the tokens contributed by a single [`Message`].

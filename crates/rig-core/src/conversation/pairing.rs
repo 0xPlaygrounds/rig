@@ -1,23 +1,21 @@
-//! Conversation validation and repair, assistant-turn classification, and
-//! constructors for real or synthetic tool results.
+//! The rules pairing a conversation's tool calls with their results:
+//! validation and repair of a message list, the calls a cut-short
+//! conversation still owes, and where a window of it may start.
 //!
 //! ```
-//! use rig_core::{message::Message, transcript::validate_canonical};
+//! use rig_core::{conversation::pairing, message::Message};
 //!
-//! validate_canonical(&[Message::user("Hello"), Message::assistant("Hi")])?;
-//! # Ok::<(), rig_core::transcript::TranscriptError>(())
+//! pairing::validate(&[Message::user("Hello"), Message::assistant("Hi")])?;
+//! # Ok::<(), pairing::PairingError>(())
 //! ```
 
-use crate::message::{
-    self, AssistantContent, AssistantMessage, CallId, Message, ToolCall, ToolName,
-    ToolResultContent, UserContent,
-};
-use crate::tool::ToolResult;
+use crate::message::{AssistantContent, AssistantMessage, CallId, Message, ToolCall, UserContent};
+use crate::tool::feedback::tool_result_message;
 
-/// Why a history is not a canonical transcript, or what [`pair`] repaired.
-/// See [`validate_canonical`].
+/// Why a history is not a canonical conversation, or what [`pair`] repaired.
+/// See [`validate`].
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum TranscriptError {
+pub enum PairingError {
     /// Two assistant messages in a row (index of the second).
     #[error("consecutive assistant messages at index {index}")]
     ConsecutiveAssistant {
@@ -53,7 +51,7 @@ pub enum TranscriptError {
 /// error or was aborted owes no results. A turn's results may be split over
 /// adjacent user messages or around system messages, which reset the
 /// consecutive-assistant check but keep calls waiting.
-pub fn validate_canonical(messages: &[Message]) -> Result<(), TranscriptError> {
+pub fn validate(messages: &[Message]) -> Result<(), PairingError> {
     repair(messages.to_vec())
         .repairs
         .into_iter()
@@ -91,11 +89,11 @@ pub struct Paired {
     /// The paired history.
     pub messages: Vec<Message>,
     /// What was repaired, in order, by input index; empty for a canonical one.
-    pub repairs: Vec<TranscriptError>,
+    pub repairs: Vec<PairingError>,
 }
 
-/// `messages` read as a canonical transcript and repaired into one
-/// [`validate_canonical`] accepts, losing no turn: the lenient load of a
+/// `messages` read as a canonical conversation and repaired into one
+/// [`validate`] accepts, losing no turn: the lenient load of a
 /// history from outside the protocol, such as a memory backend, and the
 /// close of a run's history at cancellation. Beyond [`pair`], an assistant
 /// turn left directly after another is merged into it; `repairs` reports
@@ -158,7 +156,7 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
             Step::Turn(index, turn) => {
                 if walk.after_assistant && turn.is_some() {
                     walk.repairs
-                        .push(TranscriptError::ConsecutiveAssistant { index });
+                        .push(PairingError::ConsecutiveAssistant { index });
                 }
                 walk.close();
                 stored = None;
@@ -207,7 +205,7 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
                     if answers {
                         content.push(UserContent::ToolResult(result));
                     } else {
-                        walk.repairs.push(TranscriptError::OrphanToolResult {
+                        walk.repairs.push(PairingError::OrphanToolResult {
                             index,
                             call_id: result.call,
                         });
@@ -348,7 +346,7 @@ fn steps(history: Vec<Option<Message>>) -> Vec<Step> {
 struct Walk {
     answers: bool,
     shaped: Vec<Message>,
-    repairs: Vec<TranscriptError>,
+    repairs: Vec<PairingError>,
     /// Every occurrence of the last turn's calls still waiting, in call
     /// order, and the turn's index.
     waiting: Vec<ToolCall>,
@@ -373,19 +371,17 @@ impl Walk {
         let mut content = std::mem::take(&mut self.pending);
         let merge = std::mem::take(&mut self.pending_gap);
         let waiting = std::mem::take(&mut self.waiting);
-        let missing =
-            if self.answers {
-                let index = self.waiting_at;
-                self.repairs.extend(waiting.iter().map(|call| {
-                    TranscriptError::UnansweredToolCall {
-                        index,
-                        call_id: call.id.clone(),
-                    }
+        let missing = if self.answers {
+            let index = self.waiting_at;
+            self.repairs
+                .extend(waiting.iter().map(|call| PairingError::UnansweredToolCall {
+                    index,
+                    call_id: call.id.clone(),
                 }));
-                unanswered(&waiting, NO_RESULT_PROVIDED)
-            } else {
-                Vec::new()
-            };
+            unanswered(&waiting, NO_RESULT_PROVIDED)
+        } else {
+            Vec::new()
+        };
         let at = content
             .iter()
             .position(|part| !matches!(part, UserContent::ToolResult(_)))
@@ -416,173 +412,6 @@ impl Walk {
             self.shaped.push(Message::User { content: text });
         }
     }
-}
-
-/// Shape a tool's result as the tool result the model reads, without
-/// reparsing text. Anything but a success is an error result.
-pub fn tool_result_output(call: CallId, name: ToolName, result: &ToolResult) -> UserContent {
-    UserContent::ToolResult(message::ToolResult {
-        call,
-        name,
-        content: result.output().clone().into_content(),
-        is_error: !result.is_success(),
-    })
-}
-
-/// Constructs the error result of a call that never ran, its text verbatim,
-/// such as recovery feedback or a skip reason. JSON-shaped text is not
-/// reinterpreted as structured or multimodal output.
-pub fn tool_result_message(call: CallId, name: ToolName, message: String) -> UserContent {
-    UserContent::ToolResult(message::ToolResult {
-        call,
-        name,
-        content: vec![ToolResultContent::text(message)],
-        is_error: true,
-    })
-}
-
-/// What the model reads when its call to `tool` sent `raw`, arguments that
-/// are not a JSON object: the tool never ran, and the model calls it again.
-pub fn invalid_arguments_feedback(tool: &str, raw: &str) -> String {
-    format!(
-        "The arguments for tool `{tool}` are not a JSON object: {raw}. \
-         Call the tool again with a JSON object as its arguments."
-    )
-}
-
-/// The result every other call of a turn gets when one call was retried or
-/// skipped: none of the turn's calls ran.
-pub const TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER: &str =
-    "Tool not executed because another tool call in the same assistant turn was invalid.";
-
-/// The tool results answering a turn with an invalid call, in call order:
-/// `feedback` for the call `invalid`, [`TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER`]
-/// for every other call. Empty when `content` has no tool calls.
-pub fn invalid_call_feedback(
-    content: &[AssistantContent],
-    invalid: &CallId,
-    feedback: &str,
-) -> Vec<UserContent> {
-    content
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::ToolCall(call) if &call.id == invalid => Some(tool_result_message(
-                call.id.clone(),
-                call.function.name.clone(),
-                feedback.to_owned(),
-            )),
-            AssistantContent::ToolCall(call) => Some(not_executed(call)),
-            _ => None,
-        })
-        .collect()
-}
-
-/// The result of a call the run did not execute because a call beside it
-/// was invalid.
-pub fn not_executed(call: &ToolCall) -> UserContent {
-    tool_result_message(
-        call.id.clone(),
-        call.function.name.clone(),
-        TOOL_NOT_EXECUTED_DUE_TO_INVALID_PEER.to_owned(),
-    )
-}
-
-/// Whether a generated assistant turn is empty: every part is blank
-/// ([`AssistantContent::is_blank`], the rule replay drops parts by). An
-/// empty turn must not enter history.
-pub fn is_empty_assistant_turn(content: &[AssistantContent]) -> bool {
-    content.iter().all(AssistantContent::is_blank)
-}
-
-/// The text of a final answer: the text parts of the model's message,
-/// joined by blank lines and trimmed. `None` when `message` is not the
-/// model's, still asks for tool calls, or has no text.
-///
-/// ```
-/// use rig_core::{message::Message, transcript::final_answer};
-///
-/// assert_eq!(final_answer(&Message::assistant(" Done. ")).as_deref(), Some("Done."));
-/// assert_eq!(final_answer(&Message::user("Done.")), None);
-/// ```
-pub fn final_answer(message: &Message) -> Option<String> {
-    let Message::Assistant(reply) = message else {
-        return None;
-    };
-    let mut parts = Vec::new();
-    for item in reply.content.iter() {
-        match item {
-            AssistantContent::Text(text) => parts.push(text.text.as_str()),
-            AssistantContent::ToolCall(_) => return None,
-            _ => {}
-        }
-    }
-    let text = parts.join("\n\n");
-    let text = text.trim();
-    (!text.is_empty()).then(|| text.to_owned())
-}
-
-/// The text parts of an assistant turn, concatenated.
-pub fn assistant_text_from_choice(content: &[AssistantContent]) -> String {
-    content
-        .iter()
-        .filter_map(|part| match part {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
-/// Why `call`'s arguments do not fit a tool whose JSON schema is
-/// `parameters`, for the model to read as the call's error: they are not a
-/// JSON object ([`invalid_arguments_feedback`]), name an argument the
-/// schema does not declare, or do not [`validate`](crate::tool::validate)
-/// against it (up to five of the problems are named). `None` when they fit
-/// as far as the validator checks; the tool checks the rest.
-pub fn arguments_refusal(parameters: &serde_json::Value, call: &ToolCall) -> Option<String> {
-    let name = call.function.name.as_str();
-    if let Some(raw) = &call.function.invalid_arguments {
-        return Some(invalid_arguments_feedback(name, raw));
-    }
-    let declared = parameters
-        .get("properties")
-        .and_then(serde_json::Value::as_object);
-    fn quoted<'a>(names: impl Iterator<Item = &'a String>) -> String {
-        names
-            .map(|arg| format!("`{arg}`"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-    let unknown = quoted(
-        call.function
-            .arguments
-            .keys()
-            .filter(|arg| !declared.is_some_and(|declared| declared.contains_key(arg.as_str()))),
-    );
-    if !unknown.is_empty() {
-        let known = declared
-            .map(|declared| quoted(declared.keys()))
-            .filter(|known| !known.is_empty())
-            .unwrap_or_else(|| "none".to_owned());
-        return Some(format!(
-            "`{name}` has no argument {unknown}. Its arguments are: {known}. Call it again with \
-             only those."
-        ));
-    }
-    const SHOWN: usize = 5;
-    let arguments = serde_json::Value::Object(call.function.arguments.clone());
-    let problems = crate::tool::validate::validate(parameters, &arguments).err()?;
-    let mut named: Vec<String> = problems
-        .iter()
-        .take(SHOWN)
-        .map(ToString::to_string)
-        .collect();
-    if let Some(more) = problems.len().checked_sub(SHOWN).filter(|more| *more > 0) {
-        named.push(format!("and {more} more"));
-    }
-    Some(format!(
-        "`{name}`'s arguments do not fit its schema: {}. Call it again with arguments that fit.",
-        named.join("; ")
-    ))
 }
 
 /// The tool calls of the last assistant message in `messages` that no
@@ -618,5 +447,27 @@ pub fn pending_calls(messages: &[Message]) -> Vec<ToolCall> {
         .collect()
 }
 
+/// The first index at or after `at` a request may start `messages` from:
+/// past every tool result before the first assistant turn from `at`, since
+/// its call is cut off, with any text or system message among them. Paired
+/// results later on are left alone. `at` past the end is the end.
+pub fn safe_start(messages: &[Message], at: usize) -> usize {
+    let mut start = at.min(messages.len());
+    for (index, message) in messages.iter().enumerate().skip(at) {
+        match message {
+            Message::Assistant(_) => break,
+            Message::User { content }
+                if content
+                    .iter()
+                    .any(|item| matches!(item, UserContent::ToolResult(_))) =>
+            {
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    start
+}
+
 #[cfg(test)]
-mod validator_tests;
+mod tests;

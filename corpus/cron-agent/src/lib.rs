@@ -463,7 +463,9 @@ fn report(
     let job = name(run.job);
     match outcome {
         TurnOutcome::Answered(message) => {
-            let answer = final_answer(message).unwrap_or_else(|| "(no answer)".to_owned());
+            let answer = message
+                .final_answer()
+                .unwrap_or_else(|| "(no answer)".to_owned());
             notices.write(Notice::info(owner, format!("{job}: {answer}")));
             let origin = Origin::agent(from.clone(), None).titled(job);
             let note = Deliver::new(owner, answer, DeliveryMode::Note);

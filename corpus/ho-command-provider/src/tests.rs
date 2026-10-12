@@ -72,7 +72,7 @@ fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str) -> Option
 
 fn answer(ended: Option<TurnOutcome>) -> String {
     match ended {
-        Some(TurnOutcome::Answered(message)) => final_answer(&message).unwrap_or_default(),
+        Some(TurnOutcome::Answered(message)) => message.final_answer().unwrap_or_default(),
         other => format!("{other:?}"),
     }
 }

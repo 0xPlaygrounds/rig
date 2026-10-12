@@ -2264,7 +2264,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
         panic!("a hook stop cancels the run, got {err:?}");
     };
     assert_eq!(
-        rig_core::transcript::validate_canonical(&chat_history),
+        rig_core::conversation::pairing::validate(&chat_history),
         Ok(())
     );
     let Some(Message::User { content }) = chat_history.last() else {
@@ -2288,7 +2288,7 @@ async fn a_stop_mid_batch_cancels_with_the_settled_result_and_the_rest_closed() 
         Message::User {
             content: content[1..].to_vec()
         },
-        rig_core::transcript::close_pending([&tc2]),
+        rig_core::conversation::pairing::close_pending([&tc2]),
         "the stopped call is closed as transcript closes it"
     );
 }
@@ -5984,8 +5984,11 @@ async fn resume_of_a_part_answered_batch_runs_only_the_unanswered_call() {
     };
     let host =
         rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("from the host"));
-    let host_result =
-        rig_core::transcript::tool_result_output(first.id().clone(), first.name().clone(), &host);
+    let host_result = rig_core::tool::feedback::tool_result_output(
+        first.id().clone(),
+        first.name().clone(),
+        &host,
+    );
     run.answer(first.answer(host))
         .expect("the host answers tc1");
 

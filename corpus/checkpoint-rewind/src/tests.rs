@@ -143,7 +143,10 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     assert!(!repo(&home).join("notes.md").exists());
     let conversation = app.world().get::<Conversation>(agent);
     let last = conversation.and_then(|conversation| conversation.messages().last());
-    assert_eq!(last.and_then(final_answer).as_deref(), Some("made a"));
+    assert_eq!(
+        last.and_then(|message| message.final_answer()).as_deref(),
+        Some("made a")
+    );
     let recalled = &app.world().resource::<Collected<Recalled>>().0;
     let texts: Vec<&str> = recalled
         .iter()
@@ -168,7 +171,10 @@ fn rewind_restores_files_and_conversation_without_touching_the_branch() {
     let mut agents = world.query::<(&Conversation, &Checkpoints)>();
     let restored = agents.iter(world).next();
     let last = restored.and_then(|(conversation, _)| conversation.messages().last());
-    assert_eq!(last.and_then(final_answer).as_deref(), Some("made a"));
+    assert_eq!(
+        last.and_then(|message| message.final_answer()).as_deref(),
+        Some("made a")
+    );
     let turns = restored.map(|(_, kept)| kept.list.iter().map(|kept| kept.turn).collect());
     assert_eq!(turns, Some(vec![0, 1]));
 

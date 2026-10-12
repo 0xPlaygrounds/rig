@@ -254,7 +254,7 @@ fn settled(
     } else if let Some(ended) = ended {
         let fields = match ended {
             TurnOutcome::Answered(message) => {
-                json!({ "outcome": "answered", "text": final_answer(message) })
+                json!({ "outcome": "answered", "text": message.final_answer() })
             }
             TurnOutcome::Failed(why) => json!({ "outcome": "failed", "error": why }),
             TurnOutcome::Stopped(why) => json!({ "outcome": "stopped", "error": why }),

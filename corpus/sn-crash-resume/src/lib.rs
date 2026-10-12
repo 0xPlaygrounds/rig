@@ -27,8 +27,8 @@ use std::collections::HashMap;
 
 use rig_cassette::journal::LogLines;
 use rig_harness::prelude::*;
+use rig_harness::rig_core::conversation::pairing::pending_calls;
 use rig_harness::rig_core::message::{Message as Chat, ToolResult as Answered};
-use rig_harness::rig_core::transcript::pending_calls;
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_tui::TuiInput;
 use serde::{Deserialize, Serialize};

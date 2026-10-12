@@ -996,7 +996,7 @@ fn turn_end(
         let mut payload = runner.payload(Event::TurnEnd, agents.get(agent).ok());
         payload.insert(
             "answer".into(),
-            final_answer(message).unwrap_or_default().into(),
+            message.final_answer().unwrap_or_default().into(),
         );
         hooks.spawn(
             &mut commands,

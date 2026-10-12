@@ -141,7 +141,7 @@ fn a_rate_limited_and_a_refused_key_fail_over_to_the_spare() {
     until_ended(&mut app, &wakes, 1);
     let ended = &app.world().resource::<Ended>().0;
     let answer = match ended.first() {
-        Some(TurnOutcome::Answered(message)) => final_answer(message),
+        Some(TurnOutcome::Answered(message)) => message.final_answer(),
         _ => None,
     };
     assert_eq!(answer.as_deref(), Some("From the spare."), "{ended:?}");

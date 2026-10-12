@@ -13,6 +13,7 @@ pub mod builtin;
 pub mod context;
 pub mod contextual;
 mod facts;
+pub mod feedback;
 mod footprint;
 pub mod managed;
 mod output;

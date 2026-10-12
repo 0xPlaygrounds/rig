@@ -172,7 +172,7 @@ fn capture(
     let Ok((TurnOutcome::Answered(answer), &ForAgent(agent))) = turns.get(settled.entity) else {
         return;
     };
-    let Some(plan) = final_answer(answer).filter(|_| planning.contains(agent)) else {
+    let Some(plan) = answer.final_answer().filter(|_| planning.contains(agent)) else {
         return;
     };
     let path = root.0.join(PLAN_FILE);

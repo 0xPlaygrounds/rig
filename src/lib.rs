@@ -78,7 +78,7 @@ pub use rig_cassette as cassette;
 /// step/turn types, the run's spec, request preparation, output policy and
 /// per-turn patch, its response and error types, the invalid-call decision
 /// data, the streamed-turn assembler and the loop-side transcript helpers.
-/// rig-core keeps only the message-model invariants (`rig::core::transcript`).
+/// rig-core keeps only the message-model invariants (`rig::core::conversation::pairing`).
 #[cfg(feature = "agent")]
 #[cfg_attr(docsrs, doc(cfg(feature = "agent")))]
 pub mod run {
