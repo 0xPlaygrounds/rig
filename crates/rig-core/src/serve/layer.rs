@@ -127,6 +127,10 @@ impl<I: Intercept> Serve for Layer<I> {
         self.inner.footprint(kind)
     }
 
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        self.inner.check(kind)
+    }
+
     async fn serve(&self, kind: EffectKind, mut dispatch: Dispatch) -> Reply {
         let id = dispatch.id();
         let name = self.intercept.name();

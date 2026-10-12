@@ -41,6 +41,10 @@ where
         descriptor
     }
 
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        self.inner.check(kind)
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let events = match self.inner.handle(kind, dispatch.unobserved()).await {
             Reply::Stream(events) => events,

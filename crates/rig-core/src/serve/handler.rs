@@ -15,6 +15,7 @@ use std::{
 use futures::{StreamExt, channel::oneshot};
 
 use crate::{
+    completion::UnsupportedOption,
     effect::{EffectId, EffectKind, HandlerDescriptor, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{Item, Relayed, StreamEvent, StreamEvents},
@@ -93,6 +94,15 @@ pub trait Serve: WasmCompatSend + WasmCompatSync {
         let _ = kind;
         None
     }
+
+    /// The options of `kind` this handler would leave out when it serves
+    /// it, with nothing sent: for a model's handler, what its wire or model
+    /// cannot honour ([`DynModel::check`](crate::driver::DynModel::check)).
+    /// Empty when it leaves nothing out or cannot say, as by default.
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        let _ = kind;
+        Vec::new()
+    }
 }
 
 /// Object-safe handler interface implemented for every [`Serve`].
@@ -100,6 +110,7 @@ pub(crate) trait Handler: WasmCompatSend + WasmCompatSync {
     fn descriptor(&self) -> HandlerDescriptor;
     fn handle(&self, kind: EffectKind, dispatch: Dispatch) -> HandlerFuture<'_>;
     fn footprint(&self, kind: &EffectKind) -> Option<Touches>;
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption>;
 }
 
 // A type that is not a `Serve` should be told to implement `Serve`, never
@@ -124,6 +135,10 @@ impl<T: Serve> Handler for T {
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         Serve::footprint(self, kind)
     }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        Serve::check(self, kind)
+    }
 }
 
 /// A shared handler is a handler: `Arc<H>` forwards, so one handler can be
@@ -141,6 +156,10 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         (**self).footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        (**self).check(kind)
     }
 }
 
@@ -237,6 +256,11 @@ impl ErasedHandler {
         self.0.footprint(kind)
     }
 
+    /// The options of `kind` this handler would leave out ([`Serve::check`]).
+    pub fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
+    }
+
     /// Whether two erased handlers are the same allocation.
     pub fn ptr_eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -287,6 +311,10 @@ impl Serve for ErasedHandler {
 
     fn footprint(&self, kind: &EffectKind) -> Option<Touches> {
         self.0.footprint(kind)
+    }
+
+    fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
+        self.0.check(kind)
     }
 }
 

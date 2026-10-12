@@ -135,6 +135,19 @@ impl Serve for ModelAdapter<Completion> {
         }
     }
 
+    /// What the model's wire or the model leaves out of a completion's
+    /// request ([`DynModel::check`]); nothing for a request that cannot be
+    /// built at all, which sending reports, or for another family.
+    fn check(&self, kind: &EffectKind) -> Vec<crate::completion::UnsupportedOption> {
+        let EffectKind::Completion { request, .. } = kind else {
+            return Vec::new();
+        };
+        match self.model.check(request) {
+            Err(crate::completion::CheckError::Unsupported(refused)) => refused,
+            Ok(()) | Err(crate::completion::CheckError::Invalid(_)) => Vec::new(),
+        }
+    }
+
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
         let model = &self.model;
         let sending = self.sending(

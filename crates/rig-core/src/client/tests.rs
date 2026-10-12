@@ -168,3 +168,41 @@ async fn chatgpt_sign_in_sets_the_token_and_account() {
         "http://localhost:1/backend-api/codex"
     );
 }
+
+/// The ChatGPT sign-in model says what its model leaves out without
+/// signing in: a check is a dry run, so no credential is fetched and
+/// nothing is sent.
+#[test]
+fn a_signed_in_model_checks_without_a_credential() {
+    use crate::providers::chatgpt;
+    use crate::serve::{ErasedHandler, Serve as _};
+    let authenticator = chatgpt::auth::Authenticator::new(
+        chatgpt::auth::AuthSource::OAuth,
+        Some(std::path::PathBuf::from("/nonexistent/rig/auth.json")),
+        chatgpt::auth::DeviceCodeHandler::default(),
+        false,
+    );
+    let spec = crate::catalog::Catalog::builtin()
+        .resolve("chatgpt/gpt-5.3-codex-spark")
+        .expect("in the catalog")
+        .spec
+        .clone();
+    let http = crate::test_utils::RecordingHttpClient::new("{}");
+    let model = chatgpt::SignedInModel::new(
+        spec,
+        authenticator,
+        crate::http_client::DynHttpClient::new(http.clone()),
+    )
+    .expect("connects");
+    let kind = crate::effect::EffectKind::Completion {
+        request: crate::completion::CompletionRequest::new("hi").top_p(0.9),
+        stream: true,
+    };
+    let left_out: Vec<String> = ErasedHandler::new(model)
+        .check(&kind)
+        .iter()
+        .map(|refusal| refusal.option.to_string())
+        .collect();
+    assert_eq!(left_out, ["top_p"]);
+    assert!(http.requests().is_empty(), "a check sends nothing");
+}
