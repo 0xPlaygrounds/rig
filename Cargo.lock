@@ -4675,9 +4675,7 @@ name = "corpus-fh-correction-learner"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "bevy_tasks",
- "futures",
  "rig-basics",
  "rig-cassette",
  "rig-core",
@@ -4686,8 +4684,6 @@ dependencies = [
  "rig-harness-test-support",
  "rig-telemetry",
  "rig-tools",
- "rig-tui",
- "schemars 1.2.1",
  "serde",
  "serde_json",
 ]

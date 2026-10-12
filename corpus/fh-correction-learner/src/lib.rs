@@ -9,37 +9,36 @@
 //! no turn's: the agent's turns never wait for it, and its usage counts
 //! under the purpose `correction-learner`.
 //!
-//! A new rule is a [`Proposal`], an open effect recorded in the session's
-//! effect log with how it was answered. Where someone sits at a front, it
-//! waits, shown under the transcript with the `tui` feature, until it is
-//! saved (`/rules save`, Alt+S), saved as edited (`/rules save <text>`;
-//! Alt+E puts that line in the input), dismissed (`/rules dismiss`, Alt+X)
-//! or replaced by a newer one. In a run nobody answers, it is only logged.
-//! Saving appends the rule under `## Learned rules` in the project's
-//! instruction file and re-reads the project's prompt section, so every
+//! A new rule is a [`Proposal`]: where someone sits at a front, an inline
+//! [`Ask`] beside the work, which waits until it is answered Save, Dismiss,
+//! or with an edited rule, or until a newer proposal replaces it; in a run
+//! nobody answers, an effect recorded as logged and nothing more. Saving
+//! appends the rule under `## Learned rules` in the project's instruction
+//! file and has rig-basics re-read it ([`RefreshProjectContext`]), so every
 //! agent's next request has it. Dismissed rules are kept in the project's
 //! `.rig/dismissed-rules.txt` and never proposed again. `/rules` lists the
-//! learned rules, and `/rules rm N` removes one.
+//! learned rules, and `/rules rm N` removes one. Every file is read and
+//! written through the project's workspace, off the main thread when it is
+//! not this machine.
 
-use std::fs;
-use std::io;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use bevy_tasks::{IoTaskPool, TaskPool};
+use rig_basics::RefreshProjectContext;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
 use rig_harness::rig_core::effect::EffectKind;
 use rig_harness::rig_core::message::Message;
-use rig_tools::context::{Instructions, instruction_file};
+use rig_tools::context::FILE_NAMES;
+use rig_tools::workspace::{Stat, Workspace};
 use serde::Deserialize;
-
-#[cfg(feature = "tui")]
-mod tui;
 
 #[cfg(test)]
 mod tests;
 
-/// The settings' table, the classifier calls' purpose and the proposals'
-/// effect kind.
+/// The settings' table, the classifier calls' purpose and the logged
+/// proposals' effect kind.
 pub const NAME: &str = "correction-learner";
 
 /// The heading the learned rules are listed under.
@@ -50,9 +49,6 @@ pub const RULE_CHARS: usize = 200;
 
 /// How much of each reply text and tool call the classifier reads.
 const SHORT: usize = 300;
-
-/// The tag of rig-basics' prompt section of the instruction files.
-const PROJECT_SECTION: &str = "project_instructions";
 
 /// What the classifier is told.
 const PREAMBLE: &str = "You watch a user working with a coding agent. Given the agent's \
@@ -70,18 +66,20 @@ pub struct CorrectionLearnerPlugin;
 impl Plugin for CorrectionLearnerPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
-            .init_resource::<RigHome>()
+            .init_resource::<ProjectWorkspace>()
             .add_setting::<CorrectionLearnerConfig>(NAME)
             .add_observer(classify)
-            .add_observer(propose)
+            .add_observer(ask_classifier)
             .add_observer(follow_successor::<Classifying>)
+            .add_observer(check)
+            .add_observer(propose)
+            .add_observer(answered)
+            .add_observer(said)
             .add_command(
                 "rules",
-                "Learned project rules: /rules, /rules rm N, /rules save [text], /rules dismiss",
+                "Learned project rules: /rules lists them, /rules rm N removes one",
                 rules,
             );
-        #[cfg(feature = "tui")]
-        tui::add(app);
     }
 }
 
@@ -104,8 +102,8 @@ pub struct Classifying {
     pub turn: u64,
 }
 
-/// On an open proposal effect a front shows: the rule, and the agent and
-/// turn it came from. It settles saved, dismissed or replaced.
+/// On a proposal: the rule, and the agent and turn it came from. Shown, it
+/// is an inline [`Ask`]; in a run nobody answers, a logged effect.
 #[derive(Component, Clone, Debug)]
 pub struct Proposal {
     /// The rule.
@@ -116,80 +114,171 @@ pub struct Proposal {
     pub turn: u64,
 }
 
+/// What a piece of file work ends as: its result, or why it failed.
+type Worked<T> = Done<Result<T, String>>;
+
+/// The rules learned and dismissed, as read.
+#[derive(Clone, Debug, Default)]
+struct Known {
+    learned: Vec<String>,
+    dismissed: Vec<String>,
+}
+
+impl Known {
+    /// Whether `rule` is among them, ignoring case and punctuation.
+    fn has(&self, rule: &str) -> bool {
+        let rule = normalized(rule);
+        (self.learned.iter().chain(&self.dismissed)).any(|known| normalized(known) == rule)
+    }
+}
+
+/// On file work that reads the rules to ask the classifier with: what it
+/// asks about.
+#[derive(Component)]
+struct Reading {
+    classifying: Classifying,
+    previous: String,
+    message: String,
+}
+
+/// On file work that reads the rules to check a classifier's rule against.
+#[derive(Component)]
+struct Checking(Proposal);
+
+/// On file work whose result is said to `agent`; with `refresh`, rig-basics
+/// re-reads the instruction files after it.
+#[derive(Component)]
+struct Saying {
+    agent: Entity,
+    refresh: bool,
+}
+
 /// The project's instruction file and the plugin's file of dismissed
-/// rules.
+/// rules, in the project's workspace.
 struct Files {
-    instructions: PathBuf,
-    dismissed: PathBuf,
+    workspace: Arc<dyn Workspace>,
+    root: PathBuf,
 }
 
 impl Files {
-    /// The project's: its `AGENTS.md`, or the `CLAUDE.md` it has instead.
-    fn of(root: &Path) -> Self {
+    fn of(workspace: &ProjectWorkspace, root: &ProjectRoot) -> Self {
         Self {
-            instructions: instruction_file(root).unwrap_or_else(|| root.join("AGENTS.md")),
-            dismissed: root.join(".rig").join("dismissed-rules.txt"),
+            workspace: workspace.0.clone(),
+            root: root.0.clone(),
         }
     }
 
-    /// The rules under [`HEADING`].
-    fn learned(&self) -> Vec<String> {
-        learned(&fs::read_to_string(&self.instructions).unwrap_or_default())
+    /// The project's `AGENTS.md`, or the `CLAUDE.md` it has instead.
+    fn instructions(&self) -> PathBuf {
+        let found = FILE_NAMES
+            .iter()
+            .map(|name| self.root.join(name))
+            .find(|path| matches!(self.workspace.stat(path), Ok(Stat::File { .. })));
+        found.unwrap_or_else(|| self.root.join("AGENTS.md"))
     }
 
-    /// The rules dismissed, one per line.
-    fn dismissed(&self) -> Vec<String> {
-        let text = fs::read_to_string(&self.dismissed).unwrap_or_default();
-        text.lines().map(str::to_owned).collect()
+    fn dismissed_file(&self) -> PathBuf {
+        self.root.join(".rig").join("dismissed-rules.txt")
+    }
+
+    /// The text of `path`, empty when it does not exist.
+    fn text(&self, path: &Path) -> Result<String, String> {
+        match self.workspace.stat(path) {
+            Ok(Stat::Missing) => Ok(String::new()),
+            _ => (self.workspace.read_text(path)).map_err(|why| why.to_string()),
+        }
+    }
+
+    fn write(&self, path: &Path, text: &str) -> Result<(), String> {
+        let wrote = self.workspace.write(path, text.as_bytes());
+        wrote.map_err(|why| format!("cannot write {}: {why}", path.display()))
+    }
+
+    fn known(&self) -> Known {
+        let instructions = self.text(&self.instructions()).unwrap_or_default();
+        let dismissed = self.text(&self.dismissed_file()).unwrap_or_default();
+        Known {
+            learned: learned(&instructions),
+            dismissed: dismissed.lines().map(str::to_owned).collect(),
+        }
     }
 
     /// Appends `rule` under [`HEADING`], made with the file if missing.
-    fn save(&self, rule: &str) -> io::Result<()> {
-        let text = fs::read_to_string(&self.instructions).unwrap_or_default();
-        fs::write(&self.instructions, with_rule(&text, rule))
-    }
-
-    /// Removes learned rule `number`, counted from 1; whether there was one.
-    fn remove(&self, number: usize) -> io::Result<Option<String>> {
-        let text = fs::read_to_string(&self.instructions)?;
-        let Some((kept, removed)) = without_rule(&text, number) else {
-            return Ok(None);
-        };
-        fs::write(&self.instructions, kept)?;
-        Ok(Some(removed))
+    fn save(&self, rule: &str) -> Result<String, String> {
+        let path = self.instructions();
+        self.write(&path, &with_rule(&self.text(&path)?, rule))?;
+        Ok(format!("Saved to {}: {rule}", path.display()))
     }
 
     /// Remembers `rule` as dismissed.
-    fn dismiss(&self, rule: &str) -> io::Result<()> {
-        if let Some(dir) = self.dismissed.parent() {
-            fs::create_dir_all(dir)?;
-        }
-        let mut lines = self.dismissed();
-        lines.push(rule.to_owned());
-        fs::write(&self.dismissed, lines.join("\n") + "\n")
+    fn dismiss(&self, rule: &str) -> Result<String, String> {
+        let path = self.dismissed_file();
+        let mut text = self.text(&path)?;
+        text.push_str(rule);
+        text.push('\n');
+        self.write(&path, &text)?;
+        Ok(format!("Dismissed: {rule}"))
     }
 
-    /// Whether `rule` is learned or dismissed already, ignoring case and
-    /// punctuation.
-    fn knows(&self, rule: &str) -> bool {
-        let rule = normalized(rule);
-        self.learned()
+    /// The learned rules, numbered.
+    fn list(&self) -> Result<String, String> {
+        let path = self.instructions();
+        let learned = learned(&self.text(&path)?);
+        let lines = learned
             .iter()
-            .chain(&self.dismissed())
-            .any(|known| normalized(known) == rule)
+            .enumerate()
+            .map(|(at, rule)| format!("{}. {rule}", at + 1));
+        Ok(match learned.is_empty() {
+            true => format!("No learned rules in {}.", path.display()),
+            false => format!(
+                "Learned rules in {}:\n{}",
+                path.display(),
+                lines.collect::<Vec<_>>().join("\n")
+            ),
+        })
+    }
+
+    /// Removes learned rule `number`, counted from 1.
+    fn remove(&self, number: usize) -> Result<String, String> {
+        let path = self.instructions();
+        let Some((kept, removed)) = without_rule(&self.text(&path)?, number) else {
+            return Err(format!("There is no learned rule {number}."));
+        };
+        self.write(&path, &kept)?;
+        Ok(format!(
+            "Removed rule {number} from {}: {removed}",
+            path.display()
+        ))
+    }
+
+    /// Runs `job` on the files: at once on this machine, else off the main
+    /// thread. It ends as a [`Worked`] on `entity`.
+    fn work<T: Send + Sync + 'static>(
+        self,
+        mut entity: EntityCommands,
+        wake: &Wake,
+        job: impl FnOnce(&Self) -> Result<T, String> + Send + 'static,
+    ) {
+        if self.workspace.host().is_none() {
+            entity.insert(Done(job(&self)));
+            return;
+        }
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        let run = blocking(move || Ok(job(&self)));
+        let run = async move { run.await.unwrap_or_else(|why| Err(why.to_string())) };
+        entity.insert(Running::spawn(pool, wake, run));
     }
 }
 
-/// Asks the classifier about each message the user typed that went into a
-/// turn of an agent that answered before.
+/// Reads the known rules for each message the user typed that went into
+/// a turn of an agent that answered before, to ask the classifier.
 fn classify(
     delivered: On<Add<DeliveredIn>>,
     messages: Query<(&Incoming, &ForAgent, &DeliveredIn)>,
     turns: Query<&Turn>,
     conversations: Query<&Conversation>,
-    (config, models, root): (Res<CorrectionLearnerConfig>, Res<Models>, Res<ProjectRoot>),
+    (workspace, root, wake): (Res<ProjectWorkspace>, Res<ProjectRoot>, Res<Wake>),
     mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
 ) {
     let Ok((message, &ForAgent(agent), &DeliveredIn(turn))) = messages.get(delivered.entity) else {
         return;
@@ -203,22 +292,45 @@ fn classify(
     let Some(previous) = previous_reply(conversation) else {
         return;
     };
-    let files = Files::of(&root.0);
-    let listed = |rules: Vec<String>| match rules.is_empty() {
+    let reading = Reading {
+        classifying: Classifying {
+            agent,
+            turn: turn.index,
+        },
+        previous,
+        message: message.text.trim().to_owned(),
+    };
+    Files::of(&workspace, &root).work(commands.spawn(reading), &wake, |files| Ok(files.known()));
+}
+
+/// Asks the classifier, once the known rules are read.
+fn ask_classifier(
+    read: On<Insert<Worked<Known>>>,
+    readings: Query<(&Reading, &Worked<Known>)>,
+    (config, models): (Res<CorrectionLearnerConfig>, Res<Models>),
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((reading, Done(known))) = readings.get(read.entity) else {
+        return;
+    };
+    commands.entity(read.entity).despawn();
+    let known = known.clone().unwrap_or_default();
+    let listed = |rules: &[String]| match rules.is_empty() {
         true => "(none)".to_owned(),
-        false => rules
-            .iter()
-            .map(|rule| format!("- {rule}"))
+        false => (rules.iter().map(|rule| format!("- {rule}")))
             .collect::<Vec<_>>()
             .join("\n"),
     };
     let prompt = format!(
-        "Learned rules:\n{}\n\nDismissed rules:\n{}\n\nThe agent's previous reply:\n{previous}\n\n\
+        "Learned rules:\n{}\n\nDismissed rules:\n{}\n\nThe agent's previous reply:\n{}\n\n\
          The user's message:\n{}",
-        listed(files.learned()),
-        listed(files.dismissed()),
-        message.text.trim(),
+        listed(&known.learned),
+        listed(&known.dismissed),
+        reading.previous,
+        reading.message,
     );
+    let agent = reading.classifying.agent;
     let mut request =
         ModelRequest::new(CompletionRequest::new(Message::user(prompt)).preamble(PREAMBLE));
     if let Some(reference) = config.model.as_deref() {
@@ -234,10 +346,7 @@ fn classify(
     }
     commands.spawn((
         Name::new("correction check"),
-        Classifying {
-            agent,
-            turn: turn.index,
-        },
+        reading.classifying,
         request,
         Effect::default().with_purpose(NAME),
         ForAgent(agent),
@@ -273,14 +382,12 @@ fn previous_reply(conversation: &Conversation) -> Option<String> {
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
-/// Turns each classifier answer that is a new rule into a proposal: shown
-/// in place of the one waiting, or, when nobody can answer, only logged.
-fn propose(
+/// Reads the known rules again for each rule a classifier answered, to
+/// check it is new.
+fn check(
     settled: On<Add<Settled>>,
     calls: Query<(&Outcome, &Classifying)>,
-    mut waiting: Query<(&Proposal, &mut Decision), Without<Outcome>>,
-    answerers: Answerers,
-    root: Res<ProjectRoot>,
+    (workspace, root, wake): (Res<ProjectWorkspace>, Res<ProjectRoot>, Res<Wake>),
     mut commands: Commands,
 ) {
     let Ok((outcome, &Classifying { agent, turn })) = calls.get(settled.entity) else {
@@ -289,37 +396,159 @@ fn propose(
     let Some(rule) = outcome.completion().and_then(|reply| rule(&reply.text())) else {
         return;
     };
-    let shown = waiting
-        .iter()
-        .any(|(shown, _)| normalized(&shown.rule) == normalized(&rule));
-    if shown || Files::of(&root.0).knows(&rule) {
+    let checking = Checking(Proposal { rule, agent, turn });
+    Files::of(&workspace, &root).work(commands.spawn(checking), &wake, |files| Ok(files.known()));
+}
+
+/// Proposes a classifier's rule that is neither known nor proposed
+/// already: inline beside the work, in place of the one waiting, or, when
+/// nobody can answer, only logged.
+fn propose(
+    read: On<Insert<Worked<Known>>>,
+    checks: Query<(&Checking, &Worked<Known>)>,
+    mut waiting: Query<(&Proposal, &mut Decision), (With<Ask>, Without<Outcome>)>,
+    answerers: Answerers,
+    mut commands: Commands,
+) {
+    let Ok((Checking(proposal), Done(known))) = checks.get(read.entity) else {
+        return;
+    };
+    commands.entity(read.entity).despawn();
+    let rule = &proposal.rule;
+    let shown = (waiting.iter()).any(|(shown, _)| normalized(&shown.rule) == normalized(rule));
+    if shown || known.as_ref().is_ok_and(|known| known.has(rule)) {
         return;
     }
-    let kind = EffectKind::Custom {
-        kind: NAME.into(),
-        payload: serde_json::json!({ "rule": rule, "turn": turn }),
-    };
-    let request = EffectRequest {
-        kind,
-        handler: None,
-    };
-    if !answerers.can_answer(Some(agent)) {
+    let by = Decider::plugin("fh-correction-learner");
+    if !answerers.can_answer(Some(proposal.agent)) {
+        let kind = EffectKind::Custom {
+            kind: NAME.into(),
+            payload: serde_json::json!({ "rule": rule, "turn": proposal.turn }),
+        };
         let mut logged = Decision::default();
-        logged.decide(
-            Decider::plugin("fh-correction-learner"),
-            Outcome::custom("logged"),
-        );
+        logged.decide(by, Outcome::custom("logged"));
+        let request = EffectRequest {
+            kind,
+            handler: None,
+        };
         commands.spawn((Name::new("rule proposal"), request, logged));
         return;
     }
     for (_, mut decision) in &mut waiting {
-        decision.decide(
-            Decider::plugin("fh-correction-learner"),
-            Outcome::custom("replaced"),
-        );
+        decision.decide(by.clone(), Outcome::refused("a newer rule replaced it"));
     }
-    let proposal = Proposal { rule, agent, turn };
-    commands.spawn((Name::new("rule proposal"), request, proposal));
+    let ask = Ask::new("Remember for this project?")
+        .body(rule.clone())
+        .choice("save", "Save")
+        .choice("dismiss", "Dismiss")
+        .initial(rule.clone())
+        .inline();
+    commands.spawn((ask, proposal.clone(), ForAgent(proposal.agent)));
+}
+
+/// Saves or dismisses a proposal as the user answered it: Save, Dismiss,
+/// or an edited rule to save. Closed or replaced, it is left.
+fn answered(
+    added: On<Add<Outcome>>,
+    proposals: Query<(&Proposal, &Outcome), With<Ask>>,
+    (workspace, root, wake): (Res<ProjectWorkspace>, Res<ProjectRoot>, Res<Wake>),
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((proposal, outcome)) = proposals.get(added.entity) else {
+        return;
+    };
+    let (agent, rule) = (proposal.agent, proposal.rule.clone());
+    let files = Files::of(&workspace, &root);
+    let saying = |refresh| Saying { agent, refresh };
+    match Answer::of(outcome) {
+        Some(Answer::Choice(choice)) if choice == "save" => {
+            files.work(commands.spawn(saying(true)), &wake, move |files| {
+                files.save(&rule)
+            });
+        }
+        Some(Answer::Choice(choice)) if choice == "dismiss" => {
+            files.work(commands.spawn(saying(false)), &wake, move |files| {
+                files.dismiss(&rule)
+            });
+        }
+        Some(Answer::Text(text)) => {
+            let rule = text.split_whitespace().collect::<Vec<_>>().join(" ");
+            if rule.is_empty() || rule.chars().count() > RULE_CHARS {
+                let why = format!("A rule takes 1 to {RULE_CHARS} characters; not saved.");
+                notices.write(Notice::error(agent, why));
+                return;
+            }
+            files.work(commands.spawn(saying(true)), &wake, move |files| {
+                files.save(&rule)
+            });
+        }
+        _ => {}
+    }
+}
+
+/// Says how file work went and, after a change to the instruction file,
+/// has rig-basics re-read it.
+fn said(
+    done: On<Insert<Worked<String>>>,
+    works: Query<(&Saying, &Worked<String>)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((saying, Done(result))) = works.get(done.entity) else {
+        return;
+    };
+    commands.entity(done.entity).despawn();
+    match result {
+        Ok(text) => {
+            if saying.refresh {
+                commands.trigger(RefreshProjectContext);
+            }
+            notices.write(Notice::info(saying.agent, text.clone()));
+        }
+        Err(why) => {
+            notices.write(Notice::error(saying.agent, why.clone()));
+        }
+    }
+}
+
+/// `/rules`: lists the learned rules; `/rules rm N` removes one.
+fn rules(
+    In(args): In<CommandArgs>,
+    (workspace, root, wake): (Res<ProjectWorkspace>, Res<ProjectRoot>, Res<Wake>),
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let files = Files::of(&workspace, &root);
+    let agent = args.agent;
+    let (verb, rest) = args.args.split_once(' ').unwrap_or((&args.args, ""));
+    match (verb, rest.trim().parse::<usize>()) {
+        ("", _) => {
+            let saying = Saying {
+                agent,
+                refresh: false,
+            };
+            files.work(commands.spawn(saying), &wake, Files::list);
+        }
+        ("rm", Ok(number)) => {
+            let saying = Saying {
+                agent,
+                refresh: true,
+            };
+            files.work(commands.spawn(saying), &wake, move |files| {
+                files.remove(number)
+            });
+        }
+        ("rm", Err(_)) => {
+            notices.write(Notice::error(
+                agent,
+                "/rules rm needs the number /rules lists.",
+            ));
+        }
+        _ => {
+            notices.write(Notice::error(agent, "/rules takes nothing, or rm N."));
+        }
+    }
 }
 
 /// The rule a classifier answered: its first line, without list marks or
@@ -345,11 +574,6 @@ fn normalized(rule: &str) -> String {
     kept.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// Whether `line` starts a section.
-fn is_heading(line: &str) -> bool {
-    line.starts_with('#')
-}
-
 /// The lines of the [`HEADING`] section of `text`: from the heading to the
 /// next heading.
 fn section(lines: &[&str]) -> Option<std::ops::Range<usize>> {
@@ -358,7 +582,7 @@ fn section(lines: &[&str]) -> Option<std::ops::Range<usize>> {
     let end = lines
         .iter()
         .skip(after)
-        .position(|line| is_heading(line))
+        .position(|line| line.starts_with('#'))
         .map_or(lines.len(), |at| after + at);
     Some(heading..end)
 }
@@ -424,115 +648,4 @@ fn without_rule(text: &str, number: usize) -> Option<(String, String)> {
     let removed = line.trim_start_matches("- ").trim().to_owned();
     lines.remove(at);
     Some((lines.join("\n") + "\n", removed))
-}
-
-/// Sets rig-basics' prompt section of the instruction files from them
-/// now, so the running agents' next requests have what changed.
-fn reread(world: &mut World) {
-    let home = RigHome::of(world);
-    let Some(root) = world
-        .get_resource::<ProjectRoot>()
-        .map(|root| root.0.clone())
-    else {
-        return;
-    };
-    let text = Instructions::discover(
-        [home.root().to_path_buf()],
-        &root,
-        &rig_tools::workspace::Local,
-    )
-    .prompt_text();
-    let mut sections = world.query_filtered::<&mut PromptSection, Without<SectionOf>>();
-    for mut section in sections.iter_mut(world) {
-        if section.tag == PROJECT_SECTION && section.text != text {
-            section.text.clone_from(&text);
-        }
-    }
-}
-
-/// `/rules`: lists the learned rules; `/rules rm N` removes one,
-/// `/rules save [text]` saves the proposal (as `text`, when given) and
-/// `/rules dismiss` dismisses it.
-fn rules(
-    In(args): In<CommandArgs>,
-    mut waiting: Query<(&Proposal, &mut Decision), Without<Outcome>>,
-    root: Res<ProjectRoot>,
-    mut commands: Commands,
-    mut notices: MessageWriter<Notice>,
-) {
-    let files = Files::of(&root.0);
-    let (verb, rest) = args.args.split_once(' ').unwrap_or((&args.args, ""));
-    let rest = rest.trim();
-    let mut open = waiting
-        .iter_mut()
-        .find(|(_, decision)| !decision.is_decided());
-    let path = files.instructions.display();
-    let said = match verb {
-        "" => {
-            let learned = files.learned();
-            let lines = learned
-                .iter()
-                .enumerate()
-                .map(|(at, rule)| format!("{}. {rule}", at + 1));
-            match learned.is_empty() {
-                true => Ok(format!("No learned rules in {path}.")),
-                false => Ok(format!(
-                    "Learned rules in {path}:\n{}",
-                    lines.collect::<Vec<_>>().join("\n")
-                )),
-            }
-        }
-        "rm" => match rest.parse::<usize>() {
-            Ok(number) => match files.remove(number) {
-                Ok(Some(rule)) => Ok(format!("Removed rule {number} from {path}: {rule}")),
-                Ok(None) => Err(format!("There is no learned rule {number}.")),
-                Err(why) => Err(format!("Cannot change {path}: {why}")),
-            },
-            Err(_) => Err("/rules rm needs the number /rules lists.".to_owned()),
-        },
-        "save" => {
-            let proposed = open.as_ref().map(|(proposal, _)| proposal.rule.clone());
-            let typed = (!rest.is_empty()).then(|| rest.to_owned());
-            match typed.or(proposed) {
-                None => Err("No rule is proposed; /rules save <text> saves one.".to_owned()),
-                Some(rule) if rule.chars().count() > RULE_CHARS => {
-                    Err(format!("A rule takes at most {RULE_CHARS} characters."))
-                }
-                Some(rule) => match files.save(&rule) {
-                    Ok(()) => {
-                        if let Some((_, decision)) = &mut open {
-                            decision.decide(
-                                Decider::Person,
-                                Outcome::custom(serde_json::json!({ "saved": rule })),
-                            );
-                        }
-                        Ok(format!("Saved to {path}: {rule}"))
-                    }
-                    Err(why) => Err(format!("Cannot write {path}: {why}")),
-                },
-            }
-        }
-        "dismiss" => match &mut open {
-            Some((proposal, decision)) => match files.dismiss(&proposal.rule) {
-                Ok(()) => {
-                    decision.decide(Decider::Person, Outcome::custom("dismissed"));
-                    Ok(format!("Dismissed: {}", proposal.rule))
-                }
-                Err(why) => Err(format!("Cannot remember the dismissal: {why}")),
-            },
-            None => Err("No rule is proposed.".to_owned()),
-        },
-        _ => Err("/rules takes nothing, rm N, save [text] or dismiss.".to_owned()),
-    };
-    match said {
-        Ok(text) => {
-            if matches!(verb, "rm" | "save") {
-                commands.queue(reread);
-            }
-            notices.write(Notice::info(args.agent, text));
-        }
-        Err(text) => {
-            notices.write(Notice::error(args.agent, text));
-        }
-    }
 }
