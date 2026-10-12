@@ -8,9 +8,10 @@
 //! and its whole output, plugins' transcript entries, the notices the view
 //! shows, and the reply streaming in, which is searched again as it grows.
 //!
-//! The matches are lit in the transcript ([`TranscriptView::highlights`])
-//! and the view scrolls to the match shown ([`ScrollTo`]), expanding the
-//! item it is in. Enter takes it; `n` (or Enter again) and `N` (or
+//! The matches are lit in the transcript ([`TranscriptView::highlights`],
+//! matching case as the search does) and the view scrolls to the row the
+//! view lights for the match shown ([`ScrollTo`] with [`ItemRow::Lit`]),
+//! expanding the item it is in. Enter takes it; `n` (or Enter again) and `N` (or
 //! Shift+Enter) move, wrapping around, and the bar counts (`3/17`). Tab
 //! searches every agent, naming the agent of the match and showing it. Esc
 //! closes the bar and unlights the matches; unless a match was taken, it
@@ -32,9 +33,6 @@ use rig_tui::{
     TuiPlugin, TuiSystems,
 };
 
-/// Rows the view keeps above a match it scrolls to.
-const MARGIN: usize = 3;
-
 /// Whose transcript is searched.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Scope {
@@ -45,17 +43,6 @@ pub enum Scope {
     All,
 }
 
-/// Where a block is drawn, as far as the view can be scrolled to it.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Place {
-    /// In this item: a message, a tool call with its output, or an entry.
-    Item(TranscriptItem),
-    /// The reply streaming in, at the bottom.
-    Streaming,
-    /// A notice, which the view has no item for.
-    Notice,
-}
-
 /// One searchable text of a transcript.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Block {
@@ -63,8 +50,9 @@ pub struct Block {
     pub agent: Entity,
     /// That agent's name.
     pub agent_name: String,
-    /// Where it is drawn.
-    pub place: Place,
+    /// The item it is drawn in, or `None` for the reply streaming in, at
+    /// the bottom.
+    pub item: Option<TranscriptItem>,
     /// Its text.
     pub text: String,
 }
@@ -80,10 +68,11 @@ pub struct Hit {
     pub range: Range<usize>,
 }
 
-/// The query as a regular expression, or `None` for an empty one: `re:`
-/// starts a regular expression, anything else is matched as typed; case
-/// is ignored unless the query has a capital letter.
-pub fn compile(query: &str) -> Result<Option<Regex>, regex::Error> {
+/// The query as a regular expression, and whether it matches case, or
+/// `None` for an empty one: `re:` starts a regular expression, anything
+/// else is matched as typed; case is ignored unless the query has a
+/// capital letter.
+pub fn compile(query: &str) -> Result<Option<(Regex, bool)>, regex::Error> {
     let (pattern, literal) = match query.strip_prefix("re:") {
         Some(pattern) => (pattern.to_owned(), false),
         None => (regex::escape(query), true),
@@ -102,7 +91,7 @@ pub fn compile(query: &str) -> Result<Option<Regex>, regex::Error> {
     RegexBuilder::new(&pattern)
         .case_insensitive(!capital)
         .build()
-        .map(Some)
+        .map(|regex| Some((regex, capital)))
 }
 
 /// Every non-empty match of `regex` in `blocks`, in order, line by line.
@@ -189,6 +178,7 @@ pub struct TranscriptSearch {
     /// Whose transcript is searched.
     pub scope: Scope,
     regex: Option<Regex>,
+    match_case: bool,
     error: bool,
     blocks: Vec<Block>,
     hits: Vec<Hit>,
@@ -210,7 +200,7 @@ pub struct TranscriptSearch {
 }
 
 /// What tells a match apart across searches.
-type MatchKey = (Entity, Place, usize, usize);
+type MatchKey = (Entity, Option<TranscriptItem>, usize, usize);
 
 impl TranscriptSearch {
     fn new(back: Option<(Entity, Option<(TranscriptItem, usize)>)>) -> Self {
@@ -218,6 +208,7 @@ impl TranscriptSearch {
             query: String::new(),
             scope: Scope::Shown,
             regex: None,
+            match_case: false,
             error: false,
             blocks: Vec::new(),
             hits: Vec::new(),
@@ -256,7 +247,7 @@ impl TranscriptSearch {
     fn key(&self, at: Option<usize>) -> Option<MatchKey> {
         let hit = self.hits.get(at?)?;
         let block = self.blocks.get(hit.block)?;
-        Some((block.agent, block.place.clone(), hit.line, hit.range.start))
+        Some((block.agent, block.item.clone(), hit.line, hit.range.start))
     }
 
     /// Searches `blocks` again with the query, keeping the match shown
@@ -267,7 +258,9 @@ impl TranscriptSearch {
             self.dirty = false;
             let compiled = compile(&self.query);
             self.error = compiled.is_err();
-            self.regex = compiled.ok().flatten();
+            let compiled = compiled.ok().flatten();
+            self.match_case = compiled.as_ref().is_some_and(|(_, case)| *case);
+            self.regex = compiled.map(|(regex, _)| regex);
         }
         self.blocks = blocks;
         self.hits = self
@@ -302,6 +295,15 @@ impl TranscriptSearch {
         self.current = usize::try_from(next).ok();
     }
 
+    /// Which of the lit matches of its item match `at` is, counted as the
+    /// view counts them: the item's matches before it.
+    fn nth_in_item(&self, at: usize) -> usize {
+        let item_of = |hit: &Hit| self.blocks.get(hit.block).map(|b| (b.agent, &b.item));
+        let item = self.hits.get(at).and_then(item_of);
+        let before = self.hits.get(..at).unwrap_or_default();
+        before.iter().filter(|hit| item_of(hit) == item).count()
+    }
+
     /// Each text the matches are, once, lit in the transcript.
     fn highlights(&self) -> Vec<Highlight> {
         let lines: Vec<Vec<&str>> = self
@@ -313,7 +315,10 @@ impl TranscriptSearch {
             .hits
             .iter()
             .filter_map(|hit| lines.get(hit.block)?.get(hit.line)?.get(hit.range.clone()))
-            .map(str::to_lowercase)
+            .map(|text| match self.match_case {
+                true => text.to_owned(),
+                false => text.to_lowercase(),
+            })
             .collect();
         let style = Style::new().black().on_yellow();
         texts
@@ -321,7 +326,7 @@ impl TranscriptSearch {
             .map(|text| Highlight {
                 text,
                 style,
-                ..Highlight::default()
+                match_case: self.match_case,
             })
             .collect()
     }
@@ -407,7 +412,8 @@ impl Transcripts<'_, '_> {
 
     /// The blocks of the agent shown, or of every agent: its texts, the
     /// notices about it (those about every agent in the agent shown's),
-    /// then the reply streaming in.
+    /// then the reply streaming in. Where a notice is drawn among the
+    /// texts is the view's own, so its matches come after them.
     fn blocks(&self, scope: Scope, view: &TranscriptView) -> Vec<Block> {
         let mut agents: Vec<_> = self
             .agents
@@ -417,10 +423,10 @@ impl Transcripts<'_, '_> {
         agents.sort_by_key(|(agent, ..)| *agent);
         let mut blocks = Vec::new();
         for (agent, name, id, conversation, turn, entries) in agents {
-            let block = |place, text: &str| Block {
+            let block = |item, text: &str| Block {
                 agent,
                 agent_name: name.as_str().to_owned(),
-                place,
+                item,
                 text: text.to_owned(),
             };
             let entries: Vec<_> = entries
@@ -429,14 +435,16 @@ impl Transcripts<'_, '_> {
                 .filter_map(|entity| Some((entity, self.entries.get(entity).ok()?)))
                 .collect();
             for (item, text) in texts_of(conversation, &entries) {
-                blocks.push(block(Place::Item(item), &text));
+                blocks.push(block(Some(item), &text));
             }
-            let about = |notice: &&rig_tui::ShownNotice| match &notice.agent {
+            let about = |notice: &rig_tui::ShownNotice| match &notice.agent {
                 Some(about) => about == id,
                 None => self.shown.0 == Some(agent),
             };
-            for notice in view.notices().iter().filter(about) {
-                blocks.push(block(Place::Notice, &notice.text));
+            for (at, notice) in view.notices().iter().enumerate() {
+                if about(notice) {
+                    blocks.push(block(Some(TranscriptItem::Notice(at)), &notice.text));
+                }
             }
             let streaming = turn
                 .and_then(|turn| self.calls.get(turn.turn()).ok())
@@ -446,7 +454,7 @@ impl Transcripts<'_, '_> {
                 .flat_map(|partial| [&partial.reasoning, &partial.text])
             {
                 if !text.is_empty() {
-                    blocks.push(block(Place::Streaming, text));
+                    blocks.push(block(None, text));
                 }
             }
         }
@@ -548,14 +556,16 @@ fn type_in_bar(
     }
 }
 
-/// Lights the matches in the transcript and, when the match shown moved,
-/// scrolls there, expanding its item in place of the one expanded before.
+/// Lights the matches in the transcript, ahead of other plugins'
+/// highlights, and, when the match shown moved, scrolls to the row the
+/// view lights for it, expanding its item in place of the one expanded
+/// before.
 fn show(search: &mut TranscriptSearch, view: &mut ResMut<TranscriptView>, commands: &mut Commands) {
     let lit = search.highlights();
     if lit != search.lit {
         view.highlights
             .retain(|highlight| !search.lit.contains(highlight));
-        view.highlights.extend(lit.iter().cloned());
+        view.highlights.splice(0..0, lit.iter().cloned());
         search.lit = lit;
     }
     let key = search.key(search.current);
@@ -563,30 +573,18 @@ fn show(search: &mut TranscriptSearch, view: &mut ResMut<TranscriptView>, comman
         return;
     }
     search.went = key;
-    let Some((block, hit)) = search.current() else {
+    let (Some(at), Some((block, _))) = (search.current, search.current()) else {
         return;
     };
-    let (agent, place, line) = (block.agent, block.place.clone(), hit.line);
+    let (agent, item) = (block.agent, block.item.clone());
     if let Some(item) = search.expanded.take() {
         view.expanded.remove(&item);
     }
-    let item = match place {
-        Place::Item(item) => {
-            if view.expanded.insert(item.clone()) {
-                search.expanded = Some(item.clone());
-            }
-            Some(item)
-        }
-        Place::Streaming => None,
-        // The view has no item for a notice: it stays where it is.
-        Place::Notice => return,
-    };
-    let line = line.saturating_sub(MARGIN);
-    commands.trigger(ScrollTo {
-        agent,
-        item,
-        row: ItemRow::Top(line),
-    });
+    search.expanded = item
+        .clone()
+        .filter(|item| view.expanded.insert(item.clone()));
+    let row = ItemRow::Lit(search.nth_in_item(at));
+    commands.trigger(ScrollTo { agent, item, row });
 }
 
 /// Closes the bar and unlights the matches; with no match taken, also
@@ -609,12 +607,9 @@ fn close(
         view.expanded.remove(&item);
     }
     if let Some((agent, top)) = search.back.take() {
-        let (item, line) = top.map_or((None, 0), |(item, line)| (Some(item), line));
-        commands.trigger(ScrollTo {
-            agent,
-            item,
-            row: ItemRow::Top(line),
-        });
+        let (item, row) = top.map_or((None, 0), |(item, row)| (Some(item), row));
+        let row = ItemRow::Top(row);
+        commands.trigger(ScrollTo { agent, item, row });
     }
 }
 

@@ -37,14 +37,10 @@ fn shell(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisi
 
 /// The scrolls asked for, in order.
 #[derive(Resource, Default)]
-struct Scrolls(Vec<(Option<TranscriptItem>, usize)>);
+struct Scrolls(Vec<(Option<TranscriptItem>, ItemRow)>);
 
 fn note_scroll(scroll: On<ScrollTo>, mut scrolls: ResMut<Scrolls>) {
-    let line = match scroll.row {
-        rig_tui::ItemRow::Top(line) => line,
-        _ => usize::MAX,
-    };
-    scrolls.0.push((scroll.item.clone(), line));
+    scrolls.0.push((scroll.item.clone(), scroll.row));
 }
 
 /// Ctrl+F, then `keys` in one frame.
@@ -134,14 +130,14 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let call = TranscriptItem::Call(CallId::from_wire("c1"));
     let view = app.world().resource::<TranscriptView>();
     assert!(view.expanded.contains(&call));
-    let lit: Vec<&str> = view
+    let lit: Vec<(&str, bool)> = view
         .highlights
         .iter()
-        .map(|lit| lit.text.as_str())
+        .map(|lit| (lit.text.as_str(), lit.match_case))
         .collect();
-    assert_eq!(lit, ["e0425"]);
+    assert_eq!(lit, [("e0425", false)]);
     let scrolls = &app.world().resource::<Scrolls>().0;
-    assert_eq!(scrolls.as_slice(), [(Some(call.clone()), 2)]);
+    assert_eq!(scrolls.as_slice(), [(Some(call.clone()), ItemRow::Lit(0))]);
 
     // Esc after Enter: the view stays at the match, unlit.
     press(&mut app, [KeyCode::Esc]);
@@ -153,6 +149,13 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         .resource_mut::<TranscriptView>()
         .expanded
         .clear();
+
+    // A capital letter makes the search, and what it lights, match case.
+    search(&mut app, agent, typed("E0425"));
+    assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
+    let lit = app.world().resource::<TranscriptView>().highlights.clone();
+    assert!(lit.iter().all(|lit| lit.text == "E0425" && lit.match_case));
+    press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
     // texts of the session.
@@ -179,6 +182,6 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     let view = app.world().resource::<TranscriptView>();
     assert!(view.highlights.is_empty() && view.expanded.is_empty());
     let last = app.world().resource::<Scrolls>().0.last().cloned();
-    assert_eq!(last, Some((None, 0)));
+    assert_eq!(last, Some((None, ItemRow::Top(0))));
     assert_eq!(app.world().resource::<Shown>().0, Some(agent));
 }
