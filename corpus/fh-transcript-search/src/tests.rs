@@ -137,7 +137,9 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         .collect();
     assert_eq!(lit, [("e0425", false)]);
     let scrolls = &app.world().resource::<Scrolls>().0;
-    assert_eq!(scrolls.as_slice(), [(Some(call.clone()), ItemRow::Lit(0))]);
+    // No frame drew it (no terminal here): the view reveals the call,
+    // which a frame then draws whole, and the search scrolls to its row.
+    assert_eq!(scrolls.as_slice(), [(Some(call.clone()), ItemRow::Reveal)]);
 
     // Esc after Enter: the view stays at the match, unlit.
     press(&mut app, [KeyCode::Esc]);
