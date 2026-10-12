@@ -49,14 +49,16 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::Message;
+use rig_core::message::{Message, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
 use rig_core::serve::{Dispatch, ErasedHandler, Reply, Serve};
 use rig_core::streaming::{Item, Part, Relayed, StreamEvent};
 use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
-use rig_core::tool::{ContextValue, ExitStatus, ToolContext, ToolOutput, ToolResult};
+use rig_core::tool::{
+    ContextValue, ExitStatus, ToolContext, ToolErrorKind, ToolOutput, ToolResult,
+};
 use rig_core::transcript::final_answer;
 use rig_ecs::effects::Handler;
 use rig_ecs::prelude::*;
@@ -425,6 +427,124 @@ fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
     assert!(
         outcome(held).is_none() && !has::<Started>(&app, held),
         "still held"
+    );
+}
+
+/// The open tool `wait`'s arguments.
+#[derive(Deserialize, schemars::JsonSchema)]
+struct Wait {
+    signal: String,
+}
+
+/// What `wait`'s observer was told of a call, and whether it had started.
+#[derive(Debug, PartialEq)]
+struct Told {
+    tool: Entity,
+    call: Entity,
+    agent: Entity,
+    caller: AgentId,
+    effect: rig_core::effect::EffectId,
+    parent: Option<rig_core::effect::EffectId>,
+    id: String,
+    signal: String,
+    started: bool,
+}
+
+#[derive(Resource, Default)]
+struct ToldOf(Vec<Told>);
+
+#[test]
+fn an_open_tool_starts_a_call_only_once_its_arguments_parse() {
+    let mut app = app();
+    app.init_resource::<ToldOf>().add_open_tool(
+        "wait",
+        "Waits for a signal.",
+        ToolOptions::default(),
+        |called: On<ToolCalled<Wait>>,
+         mut calls: Query<(&mut Decision, Has<Started>)>,
+         mut told: ResMut<ToldOf>| {
+            let Ok((mut decision, started)) = calls.get_mut(called.call) else {
+                return;
+            };
+            decision.decide(Outcome::custom("done"));
+            told.0.push(Told {
+                tool: called.entity,
+                call: called.call,
+                agent: called.agent,
+                caller: called.caller.clone(),
+                effect: called.effect,
+                parent: called.parent,
+                id: called.tool_call.id.to_string(),
+                signal: called.args.signal.clone(),
+                started,
+            });
+        },
+    );
+    let world = app.world_mut();
+    let agent = world
+        .query_filtered::<Entity, With<Agent>>()
+        .iter(world)
+        .next()
+        .unwrap_or(Entity::PLACEHOLDER);
+    let tool = world
+        .query::<(Entity, &ToolDef)>()
+        .iter(world)
+        .find(|(_, def)| def.0.name.as_str() == "wait")
+        .map(|(tool, _)| tool);
+    let caller = world.get::<AgentId>(agent).cloned();
+    let parent = rig_core::effect::EffectId::from_raw(7);
+    let mut call = |id: &str, arguments| {
+        let name = ToolName::new("wait").ok()?;
+        let call = ToolCall::from_wire(id, ToolFunction::new(name, arguments));
+        let spawned = (
+            ToolRequest { call },
+            ForAgent(agent),
+            Effect::child_of(Some(parent)),
+        );
+        Some(world.spawn(spawned).id())
+    };
+    let (Some(good), Some(bad)) = (
+        call("good", serde_json::json!({ "signal": "go" })),
+        call("bad", serde_json::json!({ "signal": 5 })),
+    ) else {
+        return;
+    };
+    let done = |world: &mut World| {
+        world.get::<Settled>(good).is_some() && world.get::<Settled>(bad).is_some()
+    };
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    // The call that fits started, then told its tool every field.
+    let effect = app.world().get::<Effect>(good).map(Effect::id);
+    let told = &app.world().resource::<ToldOf>().0;
+    let (Some(effect), Some(tool), Some(caller)) = (effect, tool, caller) else {
+        return;
+    };
+    let good_told = Told {
+        tool,
+        call: good,
+        agent,
+        caller,
+        effect,
+        parent: Some(parent),
+        id: "good".to_owned(),
+        signal: "go".to_owned(),
+        started: true,
+    };
+    assert_eq!(told.as_slice(), [good_told]);
+    // The call that does not fit was refused before it started.
+    assert!(!has::<Started>(&app, bad), "never started");
+    let records = records(&app);
+    let refused = records
+        .iter()
+        .find(|record| matches!(&record.kind, EffectKind::ToolCall { .. }) && record.id != effect);
+    assert!(
+        refused.is_some_and(|record| {
+            record.disposition == Disposition::AnsweredBeforeStart
+                && record.started_ms.is_none()
+                && matches!(&record.outcome, Err(report)
+                    if report.kind == ErrorKind::Tool(ToolErrorKind::InvalidArgs))
+        }),
+        "{records:?}"
     );
 }
 

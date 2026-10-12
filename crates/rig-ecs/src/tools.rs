@@ -38,7 +38,7 @@ use serde::{Deserialize, Serialize};
 use super::agent::{AgentId, ToolAccess};
 use super::effects::Handler;
 use super::prompt::ToolRules;
-use super::stage::{Admitted, Effect, Settled, Started};
+use super::stage::{Admitted, Effect, ForAgent, Settled, Started};
 
 /// What the model is told about a tool. A call naming an argument its
 /// parameters do not declare is refused before the tool runs.
@@ -53,50 +53,58 @@ pub struct ToolDef(pub ToolDefinition);
 pub(crate) enum Serves {
     /// An ordinary tool: its effect handler runs each call.
     Handler(Handler),
-    /// An open tool: parses a call's arguments into its arguments type.
-    Open(fn(&ToolCall) -> Result<Opened, String>),
+    /// An open tool: starts its calls ([`Open`]).
+    Open(Open),
 }
 
-/// Triggers [`ToolCalled`] for an open call, its arguments parsed.
-pub(crate) type Opened = Box<dyn FnOnce(&mut World, Opening) + Send>;
+/// Starts the call `call` of the open tool `tool`, read from the call's
+/// own components: its arguments parsed into the tool's arguments type, it
+/// is [`Started`] and its [`ToolCalled`] triggered. Why it cannot start,
+/// such as arguments that do not fit, and it is not started.
+pub(crate) type Open = fn(&mut World, Entity, Entity, Started) -> Result<(), ErrorReport>;
 
-/// An open call as its [`ToolCalled`] names it, but its arguments.
-pub(crate) struct Opening {
+/// [`Open`] for the arguments type `A`. A call gone, or no tool call any
+/// more, is left alone.
+fn open<A: DeserializeOwned + Send + Sync + 'static>(
+    world: &mut World,
     tool: Entity,
     call: Entity,
-    agent: Entity,
-    caller: AgentId,
-    effect: EffectId,
-    parent: Option<EffectId>,
-    tool_call: ToolCall,
-}
-
-/// Parses `call`'s arguments into `A`, or says why they do not fit.
-fn open<A: DeserializeOwned + Send + Sync + 'static>(call: &ToolCall) -> Result<Opened, String> {
-    let args = A::deserialize(&call.function.arguments).map_err(|error| {
-        format!("The arguments do not fit: {error}. Nothing ran; fix the call and send it again.")
+    started: Started,
+) -> Result<(), ErrorReport> {
+    let refused = |kind, why| ErrorReport::new(ErrorKind::Tool(kind), why);
+    let Ok(entity) = world.get_entity(call) else {
+        return Ok(());
+    };
+    let (Some(ToolRequest { call: tool_call }), Some(effect)) =
+        (entity.get::<ToolRequest>(), entity.get::<Effect>())
+    else {
+        return Ok(());
+    };
+    let agent = entity.get::<ForAgent>().map(|agent| agent.0);
+    let caller = agent.and_then(|agent| world.get::<AgentId>(agent));
+    let (Some(agent), Some(caller)) = (agent, caller) else {
+        let why = "a tool call needs an agent".to_owned();
+        return Err(refused(ToolErrorKind::NotFound, why));
+    };
+    let args = A::deserialize(&tool_call.function.arguments).map_err(|error| {
+        let why = format!(
+            "The arguments do not fit: {error}. Nothing ran; fix the call and send it again."
+        );
+        refused(ToolErrorKind::InvalidArgs, why)
     })?;
-    Ok(Box::new(move |world, opening: Opening| {
-        let Opening {
-            tool,
-            call,
-            agent,
-            caller,
-            effect,
-            parent,
-            tool_call,
-        } = opening;
-        world.trigger(ToolCalled {
-            entity: tool,
-            call,
-            agent,
-            caller,
-            effect,
-            parent,
-            tool_call,
-            args,
-        });
-    }))
+    let called = ToolCalled {
+        entity: tool,
+        call,
+        agent,
+        caller: caller.clone(),
+        effect: effect.id(),
+        parent: effect.parent,
+        tool_call: tool_call.clone(),
+        args,
+    };
+    world.entity_mut(call).insert(started);
+    world.trigger(called);
+    Ok(())
 }
 
 /// A tool call: an effect entity, as the model's reply or a plugin spawns
@@ -427,9 +435,8 @@ pub(crate) fn compute_footprints(
 pub(crate) enum ToolStart {
     /// The kernel runs `kind` through the handler.
     Run(Handler, EffectKind),
-    /// The open call is started: this triggers its [`ToolCalled`] with the
-    /// call's entity, effect, parent and call.
-    Open(Box<dyn FnOnce(&mut World, Entity, EffectId, Option<EffectId>, ToolCall) + Send>),
+    /// The open call is started by its tool, the entity.
+    Open(Open, Entity),
     /// Refused before it started.
     Refused(ErrorReport),
 }
@@ -443,7 +450,7 @@ pub(crate) struct ToolStarts<'w, 's> {
 }
 
 impl ToolStarts<'_, '_> {
-    /// How `call`, with `handler`, starts for `agent` (its entity and id):
+    /// How `call`, with `handler`, starts for `agent`:
     /// refused when no tool of its name is registered, the agent may not
     /// use it (a refusal, `Denied`), or its arguments do not fit the tool's
     /// parameters; else run through `handler`, or opened for an open tool.
@@ -451,11 +458,11 @@ impl ToolStarts<'_, '_> {
         &self,
         call: &ToolCall,
         handler: Option<&CallHandler>,
-        agent: Option<(Entity, &AgentId)>,
+        agent: Option<Entity>,
     ) -> ToolStart {
         let name = call.function.name.as_str();
         let refused = |kind, why| ToolStart::Refused(ErrorReport::new(ErrorKind::Tool(kind), why));
-        let Some((agent, caller)) = agent else {
+        let Some(agent) = agent else {
             return refused(
                 ToolErrorKind::NotFound,
                 "a tool call needs an agent".to_owned(),
@@ -485,24 +492,7 @@ impl ToolStarts<'_, '_> {
             (Some(CallHandler(handler)), _) | (None, Serves::Handler(handler)) => {
                 ToolStart::Run(handler.clone(), EffectKind::from(call))
             }
-            (None, Serves::Open(open)) => match open(call) {
-                Ok(opened) => {
-                    let caller = caller.clone();
-                    ToolStart::Open(Box::new(move |world, call, effect, parent, tool_call| {
-                        let opening = Opening {
-                            tool,
-                            call,
-                            agent,
-                            caller,
-                            effect,
-                            parent,
-                            tool_call,
-                        };
-                        opened(world, opening);
-                    }))
-                }
-                Err(why) => refused(ToolErrorKind::InvalidArgs, why),
-            },
+            (None, Serves::Open(open)) => ToolStart::Open(*open, tool),
         }
     }
 }
