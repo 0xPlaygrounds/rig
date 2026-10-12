@@ -85,6 +85,8 @@ pub enum TranscriptItem {
     Call(CallId),
     /// A plugin's [`TranscriptEntry`](rig_harness::transcript::TranscriptEntry).
     Entry(Entity),
+    /// A notice, by its index in [`TranscriptView::notices`].
+    Notice(usize),
 }
 
 /// The terminal view's transcript, as plugins read and steer it. A change

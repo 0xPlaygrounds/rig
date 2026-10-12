@@ -359,18 +359,18 @@ pub(crate) fn lay_out_transcript(
     let mut parts = Vec::new();
     let view = sources.view;
     let Some(shown) = shown else {
-        let mut extra = Vec::new();
-        let notices = view.notices().iter();
-        for notice in notices.filter(|notice| notice.is_for_every_agent()) {
-            notice_lines(notice, &mut extra);
+        let (mut extra, mut marks) = (Vec::new(), Marks::new());
+        let notices = view.notices().iter().enumerate();
+        for notice in notices.filter(|(_, notice)| notice.is_for_every_agent()) {
+            notice_lines(notice, &mut extra, &mut marks);
         }
-        parts.push(Part::Rows(wrap_all(&extra, wrap_width), None));
+        parts.push(Part::rows(&extra, &marks, wrap_width));
         return parts;
     };
     let (conversation, count) = (shown.conversation, shown.conversation.messages().len());
     // Entries and notices before the first message, after each message,
     // and notices inside one.
-    let mut after: Vec<Vec<&ShownNotice>> = vec![Vec::new(); count + 1];
+    let mut after: Vec<Vec<(usize, &ShownNotice)>> = vec![Vec::new(); count + 1];
     let mut entries_after: Vec<Vec<(Entity, &TranscriptEntry)>> = vec![Vec::new(); count + 1];
     let mut look = Look {
         renderers: sources.renderers,
@@ -381,19 +381,19 @@ pub(crate) fn lay_out_transcript(
         expanded: &view.expanded,
         facts: sources.facts,
     };
-    for notice in view.notices() {
+    for (at, notice) in view.notices().iter().enumerate() {
         let before = match notice.slot(shown.id, conversation) {
             None => continue,
             Some(Slot::Top) => 0,
             Some(Slot::After(index)) => index + 1,
             Some(Slot::Inside(index, item)) => {
                 let inside = look.inside.entry(index).or_default();
-                inside.push((item, Inside::Notice(notice)));
+                inside.push((item, Inside::Notice(at, notice)));
                 continue;
             }
         };
-        if let Some(at) = after.get_mut(before) {
-            at.push(notice);
+        if let Some(after) = after.get_mut(before) {
+            after.push((at, notice));
         }
     }
     for &(entity, entry) in sources.entries {
@@ -424,11 +424,12 @@ pub(crate) fn lay_out_transcript(
             };
             let mut lines = vec![Line::default()];
             lines.extend(entry_lines(&entry, sources.entry_renderers));
-            parts.push(Part::Rows(wrap_all(&lines, wrap_width), Some(item)));
+            let marks = [(item, 0..lines.len())];
+            parts.push(Part::rows(&lines, &marks, wrap_width));
         }
-        let mut extra = Vec::new();
+        let (mut extra, mut marks) = (Vec::new(), Marks::new());
         for notice in notices {
-            notice_lines(notice, &mut extra);
+            notice_lines(notice, &mut extra, &mut marks);
         }
         if index == count {
             if let Some(partial) = sources.partial {
@@ -443,11 +444,11 @@ pub(crate) fn lay_out_transcript(
                 extra.extend(call_lines(&view, sources.renderers));
             }
             inbox_lines(shown.inbox, &mut extra);
-            parts.push(Part::Rows(wrap_all(&extra, wrap_width), None));
+            parts.push(Part::rows(&extra, &marks, wrap_width));
             break;
         }
         if !extra.is_empty() {
-            parts.push(Part::Rows(wrap_all(&extra, wrap_width), None));
+            parts.push(Part::rows(&extra, &marks, wrap_width));
         }
         parts.push(Part::Message(index));
     }

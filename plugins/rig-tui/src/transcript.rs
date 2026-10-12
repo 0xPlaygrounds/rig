@@ -164,8 +164,8 @@ pub(crate) struct Look<'a> {
 /// What is drawn inside a message, before one of its items.
 #[derive(Clone, Copy)]
 pub(crate) enum Inside<'a> {
-    /// A notice written there.
-    Notice(&'a ShownNotice),
+    /// A notice written there, and its index in the notices shown.
+    Notice(usize, &'a ShownNotice),
     /// An entry whose message was taken out, after the start of what
     /// stands for it.
     Entry(Entity, &'a TranscriptEntry),
@@ -182,7 +182,8 @@ impl Look<'_> {
         for (item, inside) in self.inside(index) {
             item.hash(hasher);
             match inside {
-                Inside::Notice(notice) => {
+                Inside::Notice(at, notice) => {
+                    at.hash(hasher);
                     level_code(notice.level).hash(hasher);
                     notice.text.hash(hasher);
                 }
@@ -292,10 +293,22 @@ pub(crate) struct Transcript {
 
 /// A part of the transcript, in order: a message's cached rows, or rows
 /// made for this frame (notices, an entry, the reply streaming in), with
-/// the item they are, if any.
+/// where the items among them are.
 pub(crate) enum Part {
     Message(usize),
-    Rows(Vec<Line<'static>>, Option<TranscriptItem>),
+    Rows(Vec<Line<'static>>, Marks),
+}
+
+impl Part {
+    /// `lines`, with the items `marks` says are in them, wrapped to `width`.
+    pub(crate) fn rows(
+        lines: &[Line<'static>],
+        marks: &[(TranscriptItem, Range<usize>)],
+        width: usize,
+    ) -> Self {
+        let (rows, marks) = wrap_marked(lines, marks, width);
+        Self::Rows(rows, marks)
+    }
 }
 
 /// The rows of the transcript on screen, and where it is.
@@ -401,8 +414,7 @@ impl Transcript {
                 .get(*index)
                 .map(|cached| cached.marks.clone())
                 .unwrap_or_default(),
-            Part::Rows(rows, Some(item)) => vec![(item.clone(), 0..rows.len())],
-            Part::Rows(_, None) => Vec::new(),
+            Part::Rows(_, marks) => marks.clone(),
         }
     }
 
@@ -697,7 +709,7 @@ fn message_lines(
     let inside_before = |item: usize, lines: &mut Vec<Line<'static>>, marks: &mut Marks| {
         for (_, inside) in inside.iter().filter(|(before, _)| *before == item) {
             match inside {
-                Inside::Notice(notice) => notice_lines(notice, lines),
+                Inside::Notice(at, notice) => notice_lines((*at, notice), lines, marks),
                 Inside::Entry(entity, entry) => {
                     let item = TranscriptItem::Entry(*entity);
                     let view = EntryView {
@@ -846,14 +858,21 @@ fn delivered_lines(
     entry_lines(&view, look.entries)
 }
 
-/// A notice's lines, coloured by its level.
-pub(crate) fn notice_lines(notice: &ShownNotice, lines: &mut Vec<Line<'static>>) {
+/// The lines of the notice `at` in the notices shown, coloured by its
+/// level, marked as that item.
+pub(crate) fn notice_lines(
+    (at, notice): (usize, &ShownNotice),
+    lines: &mut Vec<Line<'static>>,
+    marks: &mut Marks,
+) {
     let style = match notice.level {
         NoticeLevel::Info => Style::new().fg(Color::Magenta),
         NoticeLevel::Warn => Style::new().fg(Color::Yellow),
         NoticeLevel::Error => Style::new().fg(Color::Red),
     };
+    let start = lines.len();
     lines.extend(plain_lines(&notice.text, style));
+    marks.push((TranscriptItem::Notice(at), start..lines.len()));
 }
 
 /// `text`'s lines in one style.

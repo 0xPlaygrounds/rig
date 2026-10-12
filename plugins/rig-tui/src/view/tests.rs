@@ -97,3 +97,43 @@ fn what_was_typed_and_not_sent_is_kept_across_a_reload() {
     assert!(app.world_mut().run_system_once(load_draft).is_ok());
     assert!(app.world().resource::<TuiInput>().is_empty());
 }
+
+#[test]
+fn a_notice_is_an_item_a_plugin_scrolls_to() {
+    let (mut app, agent) = view_app();
+    let say = |app: &mut App, text: String| {
+        let commit = move |mut commit: rig_ecs::journal::Commit,
+                           mut conversations: Query<&mut Conversation>| {
+            if let Ok(mut conversation) = conversations.get_mut(agent) {
+                commit.message(
+                    agent,
+                    &mut conversation,
+                    rig_core::completion::Message::user(text.clone()),
+                );
+            }
+        };
+        assert!(app.world_mut().run_system_once(commit).is_ok());
+        app.update();
+    };
+    for index in 0..10 {
+        say(&mut app, format!("question {index}"));
+    }
+    app.world_mut()
+        .write_message(Notice::warn(agent, "Rate limited."));
+    app.update();
+    for index in 10..30 {
+        say(&mut app, format!("question {index}"));
+    }
+    let notices = app.world().resource::<TranscriptView>().notices().len();
+    assert_eq!(notices, 1);
+    let item = TranscriptItem::Notice(0);
+    app.world_mut().trigger(ScrollTo {
+        agent,
+        item: Some(item.clone()),
+        line: 0,
+    });
+    let lines = crate::tests::on_screen(&mut app, agent, 5);
+    assert_eq!(lines.first().map(String::as_str), Some("Rate limited."));
+    let top = app.world().resource::<TranscriptView>().top().cloned();
+    assert_eq!(top, Some((item, 0)));
+}
