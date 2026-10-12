@@ -4988,9 +4988,6 @@ name = "corpus-fh-structured-compaction"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
- "bevy_tasks",
- "futures",
  "rig-cassette",
  "rig-compaction",
  "rig-core",
@@ -4999,11 +4996,10 @@ dependencies = [
  "rig-harness-test-support",
  "rig-memory",
  "rig-telemetry",
- "rig-tools",
+ "rig-tui",
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "toml",
 ]
 
 [[package]]
