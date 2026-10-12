@@ -1,22 +1,23 @@
-//! Demonstrates Rig-managed conversation memory with streaming.
+//! Demonstrates keeping a conversation across streamed prompts.
 //!
-//! The agent loads prior history before each prompt and appends the new turn
-//! after the streaming response completes, identified by a `conversation_id`.
+//! The caller owns the history: each run starts from it, and the messages the
+//! final response carries (the prompt first) are appended to it afterwards.
+//! Saving it between processes is `rig-memory`'s job.
 //!
 //! Requires `OPENAI_API_KEY`.
 
 use anyhow::{Result, anyhow};
 use futures::StreamExt;
-use rig::agent::{MultiTurnStreamItem, StreamingResult};
-use rig::memory::InMemoryConversationMemory;
+use rig::agent::{MultiTurnStreamItem, PromptResponse, StreamingResult};
+use rig::completion::Message;
 use rig::prelude::*;
 use rig::providers::openai::{self, OpenAI};
 
-async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
+async fn collect_final(mut stream: StreamingResult) -> Result<PromptResponse> {
     let mut final_response = None;
     while let Some(item) = stream.next().await {
         if let MultiTurnStreamItem::FinalResponse(response) = item? {
-            final_response = Some(response.output().to_owned());
+            final_response = Some(response);
         }
     }
     final_response.ok_or_else(|| anyhow!("stream finished without a final response"))
@@ -24,26 +25,19 @@ async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let memory = InMemoryConversationMemory::new();
-
     let agent = AgentBuilder::new(OpenAI::from_env()?.completion(openai::GPT_4O))
         .preamble("You are a helpful assistant with persistent memory.")
-        .memory(memory)
         .build();
 
-    let mut first = agent
-        .prompt("My name is Alice.")
-        .conversation("user-123")
-        .stream();
-    let reply1 = collect_final(&mut first).await?;
-    println!("turn 1: {reply1}");
-
-    let mut second = agent
-        .prompt("What's my name?")
-        .conversation("user-123")
-        .stream();
-    let reply2 = collect_final(&mut second).await?;
-    println!("turn 2: {reply2}");
+    let mut history: Vec<Message> = Vec::new();
+    for (turn, prompt) in ["My name is Alice.", "What's my name?"]
+        .into_iter()
+        .enumerate()
+    {
+        let reply = collect_final(agent.prompt(prompt).history(history.clone()).stream()).await?;
+        println!("turn {}: {}", turn + 1, reply.output());
+        history.extend(reply.messages);
+    }
 
     Ok(())
 }
