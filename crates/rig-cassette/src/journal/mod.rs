@@ -109,6 +109,15 @@ pub trait JournalStore: Send + Sync + 'static {
 
     /// Removes the file `name`; removing one that is not there succeeds.
     fn remove_file(&self, name: &str) -> io::Result<()>;
+
+    /// The names of the session's files, as [`Self::write_file`] takes
+    /// them, in no particular order, such as to copy a session into
+    /// another store. A store that cannot list them answers
+    /// [`io::ErrorKind::Unsupported`], the default; a store that wraps
+    /// another forwards it.
+    fn files(&self) -> io::Result<Vec<String>> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
 }
 
 /// Refuses `name` as a [`JournalStore`] file name unless it is relative and
@@ -411,6 +420,10 @@ impl JournalStore for MemoryStore {
         check_file_name(name)?;
         self.memory().files.remove(name);
         Ok(())
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        Ok(self.memory().files.keys().cloned().collect())
     }
 }
 

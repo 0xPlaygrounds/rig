@@ -365,14 +365,32 @@ impl RunDir {
 }
 
 /// A session's directory. The agent keeps the session's files there
-/// through its store, which a plugin may replace, so only the files the
-/// launcher reads are named here: the plain marker of a session an agent
+/// through its store, which a plugin may replace, so only the plain files
+/// kept beside the store are named here ([`Self::PLAIN_FILES`]): the
+/// markers of a session an agent started in ([`Self::started`]) and
 /// logged to ([`Self::is_saved`]), the text log, the lock of the launcher
 /// running it, its working directory and the session to switch to.
 #[derive(Clone, Debug)]
 pub struct SessionDir(PathBuf);
 
 impl SessionDir {
+    /// The top-level names in a session's directory that are plain files
+    /// beside its store, which hold no conversation: the files named
+    /// below, and the directories of output cut short (`spill`) and pasted
+    /// images (`images`) the agent keeps there by default. A store over
+    /// the directory leaves them out, and a copy of a session into another
+    /// store copies them as they are, if at all.
+    pub const PLAIN_FILES: [&str; 8] = [
+        "launcher.lock",
+        "directory",
+        "switch",
+        "started",
+        "saved",
+        "agent.log",
+        "spill",
+        "images",
+    ];
+
     /// The session kept in the directory `path`, such as one a command
     /// names, rather than one of a [`Home`]'s.
     pub fn at(path: impl Into<PathBuf>) -> Self {
@@ -408,6 +426,12 @@ impl SessionDir {
     /// The plain, empty marker of a saved session.
     fn saved(&self) -> PathBuf {
         self.0.join("saved")
+    }
+
+    /// The plain, empty marker of a session an agent started in: its
+    /// first app ran a whole frame. A fork does not copy it.
+    pub fn started(&self) -> PathBuf {
+        self.0.join("started")
     }
 
     /// The agent's text log, unless a plugin keeps it elsewhere or not at

@@ -152,6 +152,7 @@ fn a_store_without_listing_or_removal_says_it_is_unsupported() {
         result.is_err_and(|error| error.kind() == std::io::ErrorKind::Unsupported)
     };
     assert!(unsupported(Bare.blobs().map(drop)));
+    assert!(unsupported(Bare.files().map(drop)));
     assert!(unsupported(Bare.remove("a")));
     assert!(unsupported(fork(&Bare, &MemoryStore::default(), |_, _| {
         None
@@ -215,6 +216,36 @@ fn a_directory_store_keeps_named_files_beside_its_logs() {
     let kind = store.read_file("meta.json").map_err(|error| error.kind());
     assert_eq!(kind, Err(NotFound));
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// A directory store lists its named files, not its logs, its blobs,
+/// a file being written or the plain files the directory keeps beside it,
+/// which it refuses to write.
+#[cfg(feature = "jsonl")]
+#[test]
+fn a_directory_store_lists_its_files_and_not_its_layout() {
+    use super::JsonlDirStore;
+
+    let dir = std::env::temp_dir().join(format!("rig-cassette-list-{}", std::process::id()));
+    std::fs::remove_dir_all(&dir).ok();
+    let store = JsonlDirStore::new(&dir).with_plain(&["saved", "spill"]);
+    assert_eq!(store.files().expect("none yet"), Vec::<String>::new());
+    store.write_file("meta.json", b"{}").expect("written");
+    store
+        .append_file("tui/notices.jsonl", b"x")
+        .expect("appended");
+    store.append("a1", b"{}\n").expect("appended");
+    store.put_blob("x.png", b"png").expect("stored");
+    std::fs::write(dir.join("saved"), b"").expect("a plain marker");
+    std::fs::create_dir_all(dir.join("spill")).expect("a plain directory");
+    std::fs::write(dir.join("spill/out.txt"), b"").expect("a plain file");
+    std::fs::write(dir.join("tui/half.json.tmp"), b"").expect("a file being written");
+    let mut files = store.files().expect("listed");
+    files.sort();
+    let refused = store.write_file("saved", b"").is_err();
+    std::fs::remove_dir_all(dir).ok();
+    assert_eq!(files, ["meta.json", "tui/notices.jsonl"]);
+    assert!(refused);
 }
 
 /// An effect log written to a store's file reads back, and a writer opened

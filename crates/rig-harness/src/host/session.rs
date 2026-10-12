@@ -102,7 +102,10 @@ impl SessionStores {
 
 impl Default for SessionStores {
     fn default() -> Self {
-        Self::new(|dir| Ok(Arc::new(JsonlDirStore::new(dir.path()))))
+        Self::new(|dir| {
+            let store = JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES);
+            Ok(Arc::new(store))
+        })
     }
 }
 
@@ -169,6 +172,10 @@ impl JournalStore for Marking {
     fn remove_file(&self, name: &str) -> io::Result<()> {
         self.inner.remove_file(name)
     }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.inner.files()
+    }
 }
 
 /// Where rig keeps plain files of the session, which are named by path
@@ -232,10 +239,6 @@ fn session_paths(world: &mut World) -> SessionPaths {
 #[derive(Resource, Clone, Copy, Debug)]
 pub struct FirstStart;
 
-/// The marker file of a session an app started in, beside its logs. A
-/// fork does not copy it.
-const STARTED: &str = "started";
-
 /// Inserts the [`SessionPaths`] from the environment, unless the log took
 /// them already, the default [`SessionStores`] and [`Scratch`], opens the
 /// [`SessionStore`] once every plugin is built, routes panics to the log,
@@ -251,7 +254,7 @@ impl Plugin for SessionPlugin {
         if !app.world().contains_resource::<Scratch>() {
             app.insert_resource(Scratch(Some(paths.path().to_owned())));
         }
-        if !paths.path().join(STARTED).exists() {
+        if !paths.started().exists() {
             app.insert_resource(FirstStart).add_systems(
                 Last,
                 mark_started.run_if(run_once).before(discard_sessionless),
@@ -305,7 +308,7 @@ impl Plugin for SessionPlugin {
 
 /// Marks the session started at the end of its first app's first frame.
 fn mark_started(paths: Res<SessionPaths>) {
-    if let Err(failure) = fs::write(paths.path().join(STARTED), b"") {
+    if let Err(failure) = fs::write(paths.started(), b"") {
         error!("could not mark the session started: {failure}");
     }
 }

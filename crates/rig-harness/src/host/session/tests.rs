@@ -3,7 +3,7 @@ use std::fs::File;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionId};
+use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_cassette::journal::{JournalStore, JsonlDirStore};
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
@@ -311,11 +311,18 @@ fn a_session_opened_by_the_stores_is_saved_by_its_first_log_and_stays_saved() {
     app.update();
     drop(app);
     assert!(session.is_saved());
-    let read = SessionStores::default()
-        .open(&session)
-        .ok()
-        .and_then(|store| store.agents().ok());
+    let store = SessionStores::default().open(&session).ok();
+    let read = store.as_ref().and_then(|store| store.agents().ok());
     assert!(read.is_some_and(|agents| !agents.is_empty()));
+    // The plain markers beside the store are none of its files.
+    let files = store.and_then(|store| store.files().ok());
+    let plain = |files: &Vec<String>| {
+        files
+            .iter()
+            .any(|file| SessionDir::PLAIN_FILES.contains(&file.as_str()))
+    };
+    assert!(session.started().exists());
+    assert!(files.is_some_and(|files| !plain(&files)));
     std::fs::remove_dir_all(home.root()).ok();
 }
 
