@@ -283,6 +283,39 @@ impl Shell {
     }
 }
 
+/// How each line [`Shell`] ends a command's output with begins, one per
+/// way the command can end, as `Shell::finish` writes them.
+const STATUS_STARTS: [&str; 4] = [
+    "[exit code ",
+    "[killed by a signal]",
+    "[timed out after ",
+    "[killed after printing more than ",
+];
+
+/// Splits a `shell` call's output ([`ShellRun::output`]) into what the
+/// command printed, each line with its `\n`, and the line after it saying
+/// how the command ended; `text` whole and `None` when it does not end in
+/// such a line. A command's own output never ends the text, so a line it
+/// printed that reads like one is kept as printed.
+///
+/// ```
+/// use rig_tools::split_status;
+///
+/// assert_eq!(split_status("built\n[exit code 0]"), ("built\n", Some("[exit code 0]")));
+/// assert_eq!(split_status("no status\n"), ("no status\n", None));
+/// ```
+pub fn split_status(text: &str) -> (&str, Option<&str>) {
+    let start = text.rfind('\n').map_or(0, |newline| newline + 1);
+    match text.split_at_checked(start) {
+        Some((printed, last))
+            if last.ends_with(']') && STATUS_STARTS.iter().any(|at| last.starts_with(at)) =>
+        {
+            (printed, Some(last))
+        }
+        _ => (text, None),
+    }
+}
+
 /// How the wait for the command ended.
 enum End {
     /// It exited.

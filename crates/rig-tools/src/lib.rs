@@ -65,7 +65,7 @@ pub use live::Live;
 pub use move_file::{Move, MoveArgs};
 pub use read::{Read, ReadArgs, numbered};
 pub use search::{Found, Hit, MAX_MATCHES, Search, SearchArgs, SearchHits, find, render};
-pub use shell::{Shell, ShellArgs, ShellRun};
+pub use shell::{Shell, ShellArgs, ShellRun, split_status};
 pub use spill::Spill;
 pub use write::{Write, WriteArgs};
 

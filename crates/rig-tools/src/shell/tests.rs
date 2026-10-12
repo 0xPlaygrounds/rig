@@ -1,6 +1,6 @@
 use rig_core::tool::{ExitStatus, Tool, ToolContext};
 
-use super::{Shell, ShellArgs};
+use super::{Shell, ShellArgs, split_status};
 use crate::process::Launcher;
 
 fn shell(command: &str, spill: Option<crate::Spill>) -> String {
@@ -216,4 +216,18 @@ fn the_command_starts_through_the_workspace_in_the_calls_directory() {
         [Some(dir.join("sub"))]
     );
     std::fs::remove_dir_all(dir).ok();
+}
+
+/// The status line splits off a run's output, also after a line the
+/// command printed that reads like one.
+#[cfg(unix)]
+#[test]
+fn the_status_line_splits_off_what_the_command_printed() {
+    let output = shell("echo one; echo '[exit code 0]'; exit 4", None);
+    assert_eq!(
+        split_status(&output),
+        ("one\n[exit code 0]\n", Some("[exit code 4]"))
+    );
+    let output = shell("kill -9 $$", None);
+    assert_eq!(split_status(&output), ("", Some("[killed by a signal]")));
 }
