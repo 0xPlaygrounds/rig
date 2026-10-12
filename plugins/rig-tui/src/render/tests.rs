@@ -204,10 +204,15 @@ fn a_highlight_may_match_case_and_the_one_placed_first_wins() {
         text: text.to_owned(),
         style,
         match_case,
+        spans: Vec::new(),
     };
     // The texts lit in `style`.
     let lit = |highlights: &[Highlight], style: Style| -> Vec<String> {
-        let lit = light(std::slice::from_ref(&line), &[None], highlights);
+        let lights = crate::render::Lights {
+            highlights,
+            ..Default::default()
+        };
+        let lit = light(std::slice::from_ref(&line), &[None], 0, &lights);
         let spans = lit.iter().flat_map(|row| row.spans.iter());
         let spans = spans.filter(|span| span.style.bg == style.bg);
         spans.map(|span| span.content.to_string()).collect()

@@ -101,7 +101,8 @@ pub enum TranscriptItem {
 ///
 /// /// Lights a search's matches and shows the first in the message `hit`.
 /// fn show_match(agent: Entity, hit: MessageId, mut view: ResMut<TranscriptView>, mut commands: Commands) {
-///     let flaky = Highlight { text: "flaky".into(), style: Style::new().on_yellow(), match_case: false };
+///     let style = Style::new().on_yellow();
+///     let flaky = Highlight { text: "flaky".into(), style, ..Highlight::default() };
 ///     view.highlights = vec![flaky];
 ///     commands.trigger(ScrollTo { agent, item: Some(TranscriptItem::Message(hit)), row: ItemRow::Lit(0) });
 /// }
@@ -112,7 +113,7 @@ pub struct TranscriptView {
     pub expanded: HashSet<TranscriptItem>,
     /// The item the user selected, drawn marked; Ctrl+O expands it.
     pub selected: Option<TranscriptItem>,
-    /// Text lit wherever the transcript draws it, such as a search's
+    /// Text lit where the transcript draws it, such as a search's
     /// matches; text a wrap splits across two rows is lit on both.
     pub highlights: Vec<Highlight>,
     /// The item and the row of it at the top while the view is scrolled
@@ -126,10 +127,11 @@ pub struct TranscriptView {
     notices_file: Option<Kept>,
 }
 
-/// Text to light in the transcript. Where matches of two highlights
-/// overlap, the one placed first in [`TranscriptView::highlights`] lights
-/// them and the other's match there is not lit, so a highlight placed
-/// first, in a style of its own, sets its text apart from the rest's.
+/// Text to light in the transcript: wherever its `text` is drawn, or
+/// only its `spans`. Where matches of two highlights overlap, the one
+/// placed first in [`TranscriptView::highlights`] lights them and the
+/// other's match there is not lit, so a highlight placed first, in a style
+/// of its own, sets its text apart from the rest's.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Highlight {
     /// The text.
@@ -139,6 +141,25 @@ pub struct Highlight {
     /// Whether its case must match too; else it is matched without regard
     /// to case.
     pub match_case: bool,
+    /// The matches a plugin found itself, such as a regular expression's,
+    /// each lit and counted as a match of `text` is; with any, `text` is
+    /// not sought. A span the transcript does not draw is not lit.
+    pub spans: Vec<LineSpan>,
+}
+
+/// A match a plugin found in a line of the transcript, as
+/// [`DrawnTranscript::lines`] gives them, to light with a [`Highlight`].
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
+pub struct LineSpan {
+    /// The item whose lines `line` counts, from its first; `None` counts
+    /// the whole transcript's, for rows of no item.
+    pub item: Option<TranscriptItem>,
+    /// The line, by its index in the item's
+    /// ([`DrawnTranscript::item`]'s [`lines`](DrawnTranscript::lines)).
+    pub line: usize,
+    /// Its bytes in the line's text; a match a wrap split is lit on each
+    /// of its rows and counted in the row it starts in.
+    pub bytes: Range<usize>,
 }
 
 /// Scrolls the terminal view to `agent`'s transcript, showing that agent

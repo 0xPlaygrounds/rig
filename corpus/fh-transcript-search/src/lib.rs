@@ -289,6 +289,7 @@ impl TranscriptSearch {
                 text,
                 style,
                 match_case: self.match_case,
+                spans: Vec::new(),
             })
             .collect()
     }

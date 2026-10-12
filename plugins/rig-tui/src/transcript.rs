@@ -23,7 +23,7 @@ use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
 use super::markdown;
-use super::render::{light, lit};
+use super::render::{Lights, light, lit};
 use super::renderers::{
     CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
     result_style, result_text,
@@ -493,13 +493,14 @@ impl Transcript {
     ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
         let marks = self.marks_of(parts);
+        let lights = self.lights(parts, &marks, highlights);
         scroll.find(&marks);
         let (mut top, mut below) = scroll.place(&counts, height, width);
         if let Some((item, to)) = scroll.jump.take() {
             let rows = marks.iter().find(|(marked, _)| *marked == item);
             let row = rows.map(|(_, rows)| {
                 let lit = match to {
-                    ItemRow::Lit(n) => self.lit_row(parts, rows, highlights, n),
+                    ItemRow::Lit(n) => self.lit_row(parts, rows, &lights, n),
                     ItemRow::Top(_) | ItemRow::Reveal => None,
                 };
                 lit.unwrap_or(rows.start)
@@ -516,7 +517,7 @@ impl Transcript {
             if end > top && start < top + height {
                 let from = top.saturating_sub(start);
                 let to = (top + height - start).min(*count);
-                shown.extend(self.lit_rows(part, from..to, highlights));
+                shown.extend(self.lit_rows(part, start, from..to, &lights));
             }
             start = end;
             if start >= top + height {
@@ -548,11 +549,10 @@ impl Transcript {
         highlights: &[Highlight],
         on_screen: Range<usize>,
     ) -> DrawnTranscript {
-        let lighting = highlights
-            .iter()
-            .any(|highlight| !highlight.text.is_empty());
-        let counts = if lighting {
-            lit(self.joined(parts), highlights)
+        let items = self.marks_of(parts);
+        let lights = self.lights(parts, &items, highlights);
+        let counts = if lights.any() {
+            lit(self.joined(parts), 0, &lights)
         } else {
             Vec::new()
         };
@@ -563,22 +563,62 @@ impl Transcript {
             lit: counts.next().unwrap_or_default(),
         });
         let cut = parts.iter().flat_map(|part| self.cut(part)).cloned();
-        let items = self.marks_of(parts);
         DrawnTranscript::new(agent, rows.collect(), items, cut.collect(), on_screen)
     }
 
-    /// The row among `rows` of `parts` with match `n` of `highlights`.
+    /// `highlights`, with where in `parts`, whose items `marks` says, their
+    /// spans are.
+    fn lights<'a>(&self, parts: &[Part], marks: &Marks, highlights: &'a [Highlight]) -> Lights<'a> {
+        let mut lights = Lights {
+            highlights,
+            placed: HashMap::new(),
+        };
+        if highlights
+            .iter()
+            .all(|highlight| highlight.spans.is_empty())
+        {
+            return lights;
+        }
+        let starts: Vec<usize> = self
+            .joined(parts)
+            .enumerate()
+            .filter(|(_, (_, joint))| joint.is_none())
+            .map(|(row, _)| row)
+            .collect();
+        let items: HashMap<&TranscriptItem, &Range<usize>> =
+            marks.iter().map(|(item, rows)| (item, rows)).collect();
+        for (index, highlight) in highlights.iter().enumerate() {
+            for span in &highlight.spans {
+                let rows = match &span.item {
+                    Some(item) => items.get(item).map(|rows| (*rows).clone()),
+                    None => Some(0..usize::MAX),
+                };
+                let Some(rows) = rows else { continue };
+                let first = starts.partition_point(|&start| start < rows.start);
+                let line = starts
+                    .get(first.saturating_add(span.line))
+                    .filter(|row| rows.contains(row));
+                if let Some(&row) = line {
+                    let placed = lights.placed.entry((index, row)).or_default();
+                    placed.push(span.bytes.clone());
+                }
+            }
+        }
+        lights
+    }
+
+    /// The row among `rows` of `parts` with match `n` of `lights`.
     fn lit_row(
         &self,
         parts: &[Part],
         rows: &Range<usize>,
-        highlights: &[Highlight],
+        lights: &Lights<'_>,
         n: usize,
     ) -> Option<usize> {
         // An item's rows are whole lines, so its matches are all in them.
         let drawn = self.joined(parts).skip(rows.start).take(rows.len());
         let mut before = 0;
-        for (at, row) in rows.clone().zip(lit(drawn, highlights)) {
+        for (at, row) in rows.clone().zip(lit(drawn, rows.start, lights)) {
             before += row.matches.iter().sum::<usize>();
             if before > n {
                 return Some(at);
@@ -597,19 +637,20 @@ impl Transcript {
         rows.map(|(row, continues)| (row, continues.as_ref()))
     }
 
-    /// Rows `range` of `part`, with the matches of `highlights` lit; each
-    /// is sought in the whole line it is in, even where the line goes on
-    /// past `range`.
+    /// Rows `range` of `part`, which starts at row `start` of the
+    /// transcript, with the matches of `lights` lit; each is sought in the
+    /// whole line it is in, even where the line goes on past `range`.
     fn lit_rows(
         &self,
         part: &Part,
+        start: usize,
         range: Range<usize>,
-        highlights: &[Highlight],
+        lights: &Lights<'_>,
     ) -> Vec<Line<'static>> {
         let Some(wrapped) = self.wrapped(part) else {
             return Vec::new();
         };
-        if highlights.iter().all(|highlight| highlight.text.is_empty()) {
+        if !lights.any() {
             return wrapped.rows.get(range).unwrap_or_default().to_vec();
         }
         let continues = |row: usize| wrapped.continues.get(row).is_some_and(Option::is_some);
@@ -623,7 +664,7 @@ impl Transcript {
         }
         let rows = wrapped.rows.get(first..end).unwrap_or_default();
         let joints = wrapped.continues.get(first..end).unwrap_or_default();
-        let lit = light(rows, joints, highlights);
+        let lit = light(rows, joints, start + first, lights);
         let shown = lit.into_iter().skip(range.start - first);
         shown.take(range.len()).collect()
     }

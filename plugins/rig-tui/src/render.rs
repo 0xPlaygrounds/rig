@@ -2,6 +2,7 @@
 //! completion list, and the picker or question shown.
 
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
@@ -629,16 +630,36 @@ pub(crate) fn decorate(
         .collect()
 }
 
-/// `rows`, each continuing the one before it as `continues` says, with
-/// each match of `highlights` in its style. A match is sought in each
-/// line the rows wrap, so one a wrap splits lights on both rows.
+/// The highlights to light, and where the spans of those with any are:
+/// by the highlight's index and the first row of their line in the
+/// transcript.
+#[derive(Default)]
+pub(crate) struct Lights<'a> {
+    pub(crate) highlights: &'a [Highlight],
+    pub(crate) placed: HashMap<(usize, usize), Vec<Range<usize>>>,
+}
+
+impl Lights<'_> {
+    /// Whether any of them lights anything.
+    pub(crate) fn any(&self) -> bool {
+        let lights =
+            |highlight: &Highlight| !highlight.text.is_empty() || !highlight.spans.is_empty();
+        self.highlights.iter().any(lights)
+    }
+}
+
+/// `rows`, the first being row `first` of the transcript, each continuing
+/// the one before it as `continues` says, with each match of `lights` in
+/// its style. A match is sought in each line the rows wrap, so one a wrap
+/// splits lights on both rows.
 pub(crate) fn light(
     rows: &[Line<'static>],
     continues: &[Option<Continuation>],
-    highlights: &[Highlight],
+    first: usize,
+    lights: &Lights<'_>,
 ) -> Vec<Line<'static>> {
     let joints = continues.iter().map(Option::as_ref);
-    let lit_rows = lit(rows.iter().zip(joints), highlights);
+    let lit_rows = lit(rows.iter().zip(joints), first, lights);
     rows.iter()
         .zip(lit_rows)
         .map(|(line, row)| {
@@ -677,21 +698,25 @@ struct Slot {
     lit: bool,
 }
 
-/// `rows`, each with how it continues the row before it, with the matches
-/// of `highlights` lit. A match is sought in the line the rows wrap, so it
-/// may span rows; it counts in the row it starts in. A match over a
-/// character an earlier highlight lit is no match.
+/// `rows`, the first being row `first` of the transcript, each with how it
+/// continues the row before it, with the matches of `lights` lit. A match
+/// is sought in the line the rows wrap, so it may span rows; it counts in
+/// the row it starts in. A match over a character an earlier match lit is
+/// no match.
 pub(crate) fn lit<'a, 'line: 'a>(
     rows: impl IntoIterator<Item = (&'a Line<'line>, Option<&'a Continuation>)>,
-    highlights: &[Highlight],
+    first: usize,
+    lights: &Lights<'_>,
 ) -> Vec<LitRow> {
     let mut lit = Vec::new();
-    // The line being gathered.
+    // The line being gathered, and its first row in the transcript.
     let mut line = Vec::new();
+    let mut start = first;
     for (row, joint) in rows {
         if joint.is_none() {
-            light_line(&mut lit, &mut line, highlights);
+            light_line(&mut lit, &mut line, start, lights);
             line.clear();
+            start = first + lit.len();
         }
         let at = lit.len();
         let cells: Vec<(char, Style, bool)> = row
@@ -716,17 +741,26 @@ pub(crate) fn lit<'a, 'line: 'a>(
         }));
         lit.push(LitRow {
             cells,
-            matches: vec![0; highlights.len()],
+            matches: vec![0; lights.highlights.len()],
         });
     }
-    light_line(&mut lit, &mut line, highlights);
+    light_line(&mut lit, &mut line, start, lights);
     lit
 }
 
-/// Lights the matches of `highlights` in `line`, in the `rows` it is
-/// drawn in.
-fn light_line(rows: &mut [LitRow], line: &mut [Slot], highlights: &[Highlight]) {
-    for (index, highlight) in highlights.iter().enumerate() {
+/// Lights the matches of `lights` in `line`, which starts at row `start`
+/// of the transcript, in the `rows` it is drawn in.
+fn light_line(rows: &mut [LitRow], line: &mut [Slot], start: usize, lights: &Lights<'_>) {
+    for (index, highlight) in lights.highlights.iter().enumerate() {
+        if !highlight.spans.is_empty() {
+            let spans = lights.placed.get(&(index, start));
+            for bytes in spans.into_iter().flatten() {
+                if let Some(window) = slots_of(line, bytes) {
+                    light_match(rows, line, window, (index, highlight.style));
+                }
+            }
+            continue;
+        }
         let needle: Vec<char> = highlight.text.chars().collect();
         let same = |a: char, b: char| {
             if highlight.match_case {
@@ -737,34 +771,69 @@ fn light_line(rows: &mut [LitRow], line: &mut [Slot], highlights: &[Highlight]) 
         };
         let mut at = 0;
         while !needle.is_empty() && at + needle.len() <= line.len() {
-            let window = line.get_mut(at..at + needle.len()).unwrap_or_default();
-            let free = window.iter().all(|slot| !slot.lit);
-            if free
-                && window
-                    .iter()
-                    .zip(&needle)
-                    .all(|(slot, n)| same(slot.character, *n))
-            {
-                let start = window.first().map(|slot| slot.row);
-                let count = start.and_then(|row| rows.get_mut(row)?.matches.get_mut(index));
-                if let Some(count) = count {
-                    *count += 1;
-                }
-                for slot in window {
-                    slot.lit = true;
-                    let row = rows.get_mut(slot.row);
-                    let cell = slot.at.and_then(|at| row?.cells.get_mut(at));
-                    if let Some((_, style, lit)) = cell {
-                        *style = style.patch(highlight.style);
-                        *lit = true;
-                    }
-                }
+            let window = at..at + needle.len();
+            let text = line.get(window.clone()).unwrap_or_default();
+            let found = text
+                .iter()
+                .zip(&needle)
+                .all(|(slot, n)| same(slot.character, *n));
+            if found && light_match(rows, line, window, (index, highlight.style)) {
                 at += needle.len();
             } else {
                 at += 1;
             }
         }
     }
+}
+
+/// The characters of `line` that `bytes` of its text are; `None` for none,
+/// or for bytes that cut a character or reach past the line.
+fn slots_of(line: &[Slot], bytes: &Range<usize>) -> Option<Range<usize>> {
+    let mut at = 0;
+    let (mut from, mut to) = (None, None);
+    for (index, slot) in line.iter().enumerate() {
+        if at == bytes.start {
+            from = Some(index);
+        }
+        if at == bytes.end {
+            to = Some(index);
+        }
+        at += slot.character.len_utf8();
+    }
+    if at == bytes.end {
+        to = Some(line.len());
+    }
+    Some(from?..to?).filter(|window| !window.is_empty())
+}
+
+/// Lights the characters `window` of `line` as a match of highlight
+/// `index` in `style`, counted in the row it starts in, unless an earlier
+/// match lit one of them; says whether it did.
+fn light_match(
+    rows: &mut [LitRow],
+    line: &mut [Slot],
+    window: Range<usize>,
+    (index, style): (usize, Style),
+) -> bool {
+    let window = line.get_mut(window).unwrap_or_default();
+    if window.iter().any(|slot| slot.lit) {
+        return false;
+    }
+    let start = window.first().map(|slot| slot.row);
+    let count = start.and_then(|row| rows.get_mut(row)?.matches.get_mut(index));
+    if let Some(count) = count {
+        *count += 1;
+    }
+    for slot in window {
+        slot.lit = true;
+        let row = rows.get_mut(slot.row);
+        let cell = slot.at.and_then(|at| row?.cells.get_mut(at));
+        if let Some((_, style_there, lit)) = cell {
+            *style_there = style_there.patch(style);
+            *lit = true;
+        }
+    }
+    true
 }
 
 /// The hint under the input box.

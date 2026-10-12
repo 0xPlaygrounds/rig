@@ -29,7 +29,8 @@ use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
     AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
-    RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout, TranscriptView,
+    LineSpan, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout,
+    TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -442,6 +443,7 @@ fn a_match_a_wrap_splits_is_lit_and_counted() {
         text: "cannot find".to_owned(),
         style: lit,
         match_case: false,
+        spans: Vec::new(),
     }];
     let rows = drawn_rows(&mut app, agent, 10, Vec::new());
     let texts: Vec<String> = rows.iter().map(ToString::to_string).collect();
@@ -458,6 +460,76 @@ fn a_match_a_wrap_splits_is_lit_and_counted() {
     let drawn = app.world().resource::<DrawnTranscript>().clone();
     let question = message_id(&app, agent, 0).map(TranscriptItem::Message);
     assert_eq!(question.map(|item| drawn.lit_in(&item)), Some(1));
+}
+
+#[test]
+fn a_plugins_own_spans_are_lit_and_counted_and_no_other_text() {
+    let (mut app, agent) = view_app();
+    app.init_resource::<DrawnTranscript>();
+    // Words that fill the 80 columns so "cannot find" wraps after "cannot".
+    let filler = "word ".repeat(14);
+    let asked = format!("{filler}cannot find foo foobar foo");
+    say(&mut app, agent, Message::user(asked));
+    for index in 0..20 {
+        say(
+            &mut app,
+            agent,
+            Message::assistant(format!("answer {index}")),
+        );
+    }
+    let Some(item) = message_id(&app, agent, 0).map(TranscriptItem::Message) else {
+        return;
+    };
+    // A search of its own, as a regular expression's `cannot find|\bfoo\b`:
+    // the foo in foobar is no match.
+    let laid = laid_out(&mut app, agent, Expanded::AsShown);
+    let lines = laid.and_then(|laid| laid.item(&item)).unwrap_or_default();
+    let mut spans = Vec::new();
+    for (line, drawn) in lines.lines().enumerate() {
+        let text = drawn.text.as_str();
+        let words = text
+            .match_indices("cannot find")
+            .chain(text.match_indices("foo"));
+        let whole = words.filter(|(at, found)| {
+            let after = text.get(at + found.len()..).unwrap_or_default();
+            !after.starts_with(char::is_alphanumeric)
+        });
+        spans.extend(whole.map(|(at, found)| LineSpan {
+            item: Some(item.clone()),
+            line,
+            bytes: at..at + found.len(),
+        }));
+    }
+    assert_eq!(spans.len(), 3, "{lines:#?}");
+    let lit = Style::new().on_yellow();
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        style: lit,
+        spans,
+        ..Highlight::default()
+    }];
+    let mut lit_after = |row: ItemRow| {
+        let item = Some(item.clone());
+        app.world_mut().trigger(ScrollTo { agent, item, row });
+        let rows = drawn_rows(&mut app, agent, 10, Vec::new());
+        let spans = rows.iter().flat_map(|row| row.spans.iter());
+        let lit = spans.filter(|span| span.style.bg == lit.bg);
+        let lit: Vec<String> = lit.map(|span| span.content.to_string()).collect();
+        let top = rows.first().map(ToString::to_string).unwrap_or_default();
+        (top, lit)
+    };
+    // The second and third matches start in the row after the wrap.
+    let (top, shown) = lit_after(ItemRow::Lit(1));
+    assert!(top.trim_start().starts_with("find foo foobar"), "{top}");
+    assert_eq!(shown, ["find", "foo", "foo"]);
+    let (top, shown) = lit_after(ItemRow::Lit(0));
+    assert!(top.ends_with("cannot"), "{top}");
+    assert_eq!(shown, ["cannot", "find", "foo", "foo"]);
+    let drawn = app.world().resource::<DrawnTranscript>().clone();
+    assert_eq!(drawn.lit_in(&item), 3);
+    let rows = drawn.rows_of(&item).unwrap_or_default();
+    let rows = drawn.rows().get(rows).unwrap_or_default();
+    let counted: Vec<usize> = rows.iter().map(DrawnRow::lit_total).collect();
+    assert!(counted.ends_with(&[1, 2]), "{rows:#?}");
 }
 
 /// `agent`'s transcript as [`TranscriptLayout`] lays it out at 80
@@ -563,6 +635,7 @@ fn a_highlight_lights_a_renderers_text_and_draws_again() {
         text: "TEST".to_owned(),
         style: lit,
         match_case: false,
+        spans: Vec::new(),
     }];
     assert!(redraw(&mut app));
     let rows = drawn_rows(&mut app, agent, 100, Vec::new());
