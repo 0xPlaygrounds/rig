@@ -2,10 +2,13 @@
 //! a word after a command one of the candidates plugins contribute for
 //! its argument ([`ArgCompletion`]), and `@` completes a path of the
 //! project. Paths come from a walk of the
-//! working directory that honours `.gitignore`, done on a thread of its own
-//! and kept for a while. An item matches when it contains the query,
+//! [`ProjectRoot`] in the app's [`ProjectWorkspace`] that honours
+//! `.gitignore`, done on a thread of its own, whatever the workspace, and
+//! kept for a while. An item matches when it contains the query,
 //! ignoring case; the earlier the match, the higher it ranks.
 
+use std::collections::HashSet;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -18,6 +21,9 @@ use super::editor::TuiInput;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
 use rig_harness::commands::SlashCommand;
+use rig_harness::services::ProjectRoot;
+use rig_harness::workspace::ProjectWorkspace;
+use rig_tools::workspace::{Local, Workspace};
 
 /// Items a completion lists.
 const SHOWN: usize = 50;
@@ -164,8 +170,9 @@ pub(crate) struct FileIndex {
 }
 
 impl FileIndex {
-    /// Starts a walk unless one runs or the last one is fresh.
-    fn refresh(&mut self, wake: &Wake) {
+    /// Starts a walk of `root` in `workspace` unless one runs or the last
+    /// one is fresh.
+    fn refresh(&mut self, wake: &Wake, (workspace, root): (Arc<dyn Workspace>, PathBuf)) {
         if self.walking.is_some() || self.walked.is_some_and(|walked| walked.elapsed() < FRESH) {
             return;
         }
@@ -174,7 +181,7 @@ impl FileIndex {
         let started = std::thread::Builder::new()
             .name("rig-harness-paths".to_owned())
             .spawn(move || {
-                sender.send(walk()).ok();
+                sender.send(walk(&*workspace, &root)).ok();
                 wake.wake();
             });
         match started {
@@ -195,21 +202,32 @@ impl FileIndex {
     }
 }
 
-/// The working directory's files and directories, relative, directories
-/// ending in `/`, skipping what `.gitignore` and hidden names leave out.
-fn walk() -> Vec<String> {
+/// The files under `root` in `workspace` and the directories that hold
+/// them, relative to it, directories ending in `/`, skipping what
+/// `.gitignore` and hidden names leave out.
+fn walk(workspace: &dyn Workspace, root: &Path) -> Vec<String> {
+    let files = match workspace.files(root, None) {
+        Ok(files) => files,
+        Err(failure) => {
+            warn!("could not list the project's files: {failure}");
+            return Vec::new();
+        }
+    };
+    let text = |path: &Path| path.to_string_lossy().replace('\\', "/");
     let mut paths = Vec::new();
-    for entry in ignore::WalkBuilder::new(".").build().flatten() {
-        if entry.depth() == 0 {
+    let mut directories = HashSet::new();
+    for file in &files {
+        let Ok(relative) = file.strip_prefix(root) else {
             continue;
+        };
+        let mut above: Vec<&Path> = relative.ancestors().skip(1).collect();
+        above.retain(|directory| !directory.as_os_str().is_empty());
+        for directory in above.into_iter().rev() {
+            if directories.insert(directory) {
+                paths.push(format!("{}/", text(directory)));
+            }
         }
-        let path = entry.path();
-        let path = path.strip_prefix(".").unwrap_or(path);
-        let mut text = path.to_string_lossy().replace('\\', "/");
-        if entry.file_type().is_some_and(|kind| kind.is_dir()) {
-            text.push('/');
-        }
-        paths.push(text);
+        paths.push(text(relative));
         if paths.len() >= MOST_PATHS {
             break;
         }
@@ -249,6 +267,23 @@ fn token(text: &str, cursor: usize) -> Option<(Kind, usize, &str, &str)> {
 pub(crate) struct Sources<'w, 's> {
     commands: Query<'w, 's, (&'static Name, &'static SlashCommand)>,
     arguments: Query<'w, 's, &'static ArgCompletion>,
+    workspace: Option<Res<'w, ProjectWorkspace>>,
+    root: Option<Res<'w, ProjectRoot>>,
+}
+
+impl Sources<'_, '_> {
+    /// Where `@` paths are: the app's workspace, else this machine, and the
+    /// project's root, else the working directory.
+    fn project(&self) -> (Arc<dyn Workspace>, PathBuf) {
+        let workspace = self.workspace.as_ref();
+        let workspace =
+            workspace.map_or_else(|| Arc::new(Local) as Arc<dyn Workspace>, |it| it.0.clone());
+        let root = self.root.as_ref();
+        (
+            workspace,
+            root.map_or_else(|| PathBuf::from("."), |root| root.0.clone()),
+        )
+    }
 }
 
 /// Opens, updates or closes the completion after the input or the paths
@@ -272,7 +307,7 @@ pub(crate) fn update(
     }
     view.dismissed = None;
     if kind == Kind::Path {
-        index.refresh(wake);
+        index.refresh(wake, sources.project());
     }
     let complete = index.walking.is_none();
     if let Some(open) = &view.completion
