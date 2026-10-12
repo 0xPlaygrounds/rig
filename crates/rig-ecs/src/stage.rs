@@ -425,8 +425,10 @@ pub struct Published(pub ToolResultContext);
 
 /// Keeps the effect it names where it is: not started, or not settled. Any
 /// entity can be a hold; despawn it, or remove this, to release it. Holds
-/// add up: releasing one never releases another's.
+/// add up: releasing one never releases another's, and every release wakes
+/// the loop.
 #[derive(Component, Reflect, Debug)]
+#[component(on_remove = moved::<HoldOf>)]
 #[reflect(Component)]
 #[relationship(relationship_target = Holds)]
 pub struct HoldOf(pub Entity);
@@ -434,7 +436,6 @@ pub struct HoldOf(pub Entity);
 /// The holds on an effect, removed with the last one. Despawning the
 /// effect despawns its holds.
 #[derive(Component, Reflect, Debug)]
-#[component(on_remove = moved::<Holds>)]
 #[reflect(Component)]
 #[relationship_target(relationship = HoldOf, linked_spawn)]
 pub struct Holds(Vec<Entity>);

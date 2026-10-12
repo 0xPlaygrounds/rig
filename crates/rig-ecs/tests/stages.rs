@@ -3176,3 +3176,36 @@ fn a_call_the_agent_may_not_make_is_refused_not_answered_in_its_place() {
         "{records:?}"
     );
 }
+
+/// A hold a coordinator keeps until every other hold on its effect is gone.
+#[derive(Component)]
+struct Mine;
+
+/// Releases each of its holds once it is the last one on its effect.
+fn release_when_alone(
+    mine: Query<(Entity, &HoldOf), With<Mine>>,
+    holds: Query<&Holds>,
+    mut commands: Commands,
+) {
+    for (hold, of) in &mine {
+        if holds.get(of.0).is_ok_and(|holds| holds.len() == 1) {
+            commands.entity(hold).despawn();
+        }
+    }
+}
+
+#[test]
+fn releasing_one_of_two_holds_wakes_the_loop() {
+    let mut app = app();
+    app.add_systems(AgentPass, release_when_alone.in_set(GateSystems::After));
+    let world = app.world_mut();
+    let effect = world.spawn(open("job")).id();
+    world.spawn((HoldOf(effect), Mine));
+    let other = world.spawn(HoldOf(effect)).id();
+    app.update();
+    assert!(!has::<Started>(&app, effect));
+    app.world_mut().despawn(other);
+    app.update();
+    app.update();
+    assert!(has::<Started>(&app, effect), "the coordinator let go");
+}
