@@ -120,18 +120,20 @@ impl Plugin for LauncherPlugin {
     }
 }
 
-/// Why this run cannot go on.
+/// Marks a run refused, until it exits.
 #[derive(Resource)]
-struct Refused(String);
+struct Refused;
 
-/// Refuses this run, once the app is built: says `why` and exits with
-/// code 2 at the end of the first frame. The first refusal is the one
-/// said.
+/// Refuses this run, once the app is built: says `why` on stderr now,
+/// before any front takes the terminal, and exits with code 2 at the end
+/// of the first frame. Only the first refusal is said.
 pub(crate) fn refuse(app: &mut App, why: String) {
     if app.world().contains_resource::<Refused>() {
         return;
     }
-    app.insert_resource(Refused(why)).add_systems(
+    let stop = if why.ends_with('.') { "" } else { "." };
+    eprintln!("rig: {why}{stop}");
+    app.insert_resource(Refused).add_systems(
         Last,
         exit_refused
             .after(signal_ready)
@@ -139,10 +141,9 @@ pub(crate) fn refuse(app: &mut App, why: String) {
     );
 }
 
-/// Says why the run cannot go on, and asks to exit once the launcher knows
-/// that the build started: it is not rolled back.
-fn exit_refused(refused: Res<Refused>, mut commands: Commands) {
-    eprintln!("rig: {}.", refused.0);
+/// Exits a refused run once the launcher knows that the build started: it
+/// is not rolled back.
+fn exit_refused(mut commands: Commands) {
     commands.remove_resource::<Refused>();
     commands.trigger(Exit(ExitReason::Failed(2)));
 }
