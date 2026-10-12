@@ -326,3 +326,23 @@ fn a_restart_interrupts_the_running_task_and_runs_the_pending_ones() {
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(TaskQueuePlugin);
 }
+
+/// An idle queue is left alone, so its panel and status do not redraw the
+/// terminal on every update.
+#[test]
+fn an_idle_queue_is_not_marked_changed_each_update() {
+    let store = MemoryStore::default();
+    let unused = MockCompletionModel::from_stream_turns([reply("unused")]);
+    let (tasks, main) = (unused.clone(), unused);
+    let (mut app, _wakes, _) = session(&store, &tasks, &main);
+    let changed = |app: &App| {
+        let ticks = app.world().get_resource_change_ticks::<TaskQueue>();
+        ticks.map(|ticks| ticks.changed)
+    };
+    let before = changed(&app);
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(before.is_some());
+    assert_eq!(changed(&app), before);
+}

@@ -426,11 +426,13 @@ fn start_next(
             .count()
     };
     while running(&queue) < settings.concurrency.max(1) {
+        // Found before the queue is borrowed mutably, so an idle queue is
+        // not marked changed, which would rerun this and redraw each update.
         let next = queue
             .tasks
-            .iter_mut()
-            .find(|task| task.state == TaskState::Pending);
-        let Some(task) = next else {
+            .iter()
+            .position(|task| task.state == TaskState::Pending);
+        let Some(task) = next.and_then(|next| queue.tasks.get_mut(next)) else {
             break;
         };
         task.state = TaskState::Running;
