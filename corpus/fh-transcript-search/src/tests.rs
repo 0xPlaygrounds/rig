@@ -1,3 +1,4 @@
+use bevy_ecs::system::RunSystemOnce;
 use rig_core::message::CallId;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::harness_protocol::SessionId;
@@ -74,6 +75,16 @@ fn typed(text: &str) -> Vec<KeyCode> {
     text.chars().map(KeyCode::Char).collect()
 }
 
+/// `agent`'s transcript as the view lays it out with its items
+/// `expanded`, one line a row.
+fn laid_out(app: &mut App, agent: Entity, expanded: Expanded) -> DrawnTranscript {
+    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, u16::MAX, expanded)
+    };
+    let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
+    laid_out.unwrap_or_default()
+}
+
 fn counter(app: &mut App) -> Option<String> {
     let world = app.world_mut();
     let mut bars = world.query::<&TranscriptSearch>();
@@ -121,13 +132,34 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert_eq!(app.world().resource::<Ended>().0.len(), 3);
     app.world_mut().resource_mut::<Shown>().0 = Some(agent);
 
-    // Lower case finds the code in turn 2's cut `shell` output: the view
-    // goes there, expands the call and lights the match; Enter takes it.
+    // Turn 2's `shell` output is drawn cut, without the error.
+    let call = TranscriptItem::Call(CallId::from_wire("c1"));
+    let shown = laid_out(&mut app, agent, Expanded::AsShown);
+    assert!(shown.is_cut(&call));
+    let cut = shown.item(&call).unwrap_or_default();
+    assert!(cut.rows().iter().all(|row| !row.text.contains("E0425")));
+    let whole = laid_out(&mut app, agent, Expanded::All);
+    let rows = whole.rows_of(&call).unwrap_or_default();
+    let before: Vec<&str> = whole
+        .rows()
+        .iter()
+        .take(rows.start)
+        .map(|row| row.text.as_str())
+        .collect();
+    assert!(before.iter().any(|row| row.contains("Run cargo build.")));
+    assert!(before.iter().all(|row| !row.contains(LAST_ASK)));
+    let row = whole.item(&call).and_then(|call| {
+        call.rows()
+            .iter()
+            .position(|row| row.text.contains("E0425"))
+    });
+
+    // Lower case finds it: the view expands the call, lights the match
+    // and scrolls to its row; Enter takes it.
     let mut keys = typed("e0425");
     keys.push(KeyCode::Enter);
     search(&mut app, agent, keys);
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
-    let call = TranscriptItem::Call(CallId::from_wire("c1"));
     let view = app.world().resource::<TranscriptView>();
     assert!(view.expanded.contains(&call));
     let lit: Vec<(&str, bool)> = view
@@ -137,9 +169,12 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         .collect();
     assert_eq!(lit, [("e0425", false)]);
     let scrolls = &app.world().resource::<Scrolls>().0;
-    // No frame drew it (no terminal here): the view reveals the call,
-    // which a frame then draws whole, and the search scrolls to its row.
-    assert_eq!(scrolls.as_slice(), [(Some(call.clone()), ItemRow::Reveal)]);
+    let at = row.map(|row| (Some(call.clone()), ItemRow::Top(row)));
+    assert_eq!(scrolls.first(), at.as_ref());
+    assert_eq!(scrolls.len(), 1);
+    let drawn = laid_out(&mut app, agent, Expanded::AsShown);
+    assert!(!drawn.is_cut(&call));
+    assert_eq!(drawn.lit_in(&call), 1);
 
     // Esc after Enter: the view stays at the match, unlit.
     press(&mut app, [KeyCode::Esc]);
@@ -160,21 +195,14 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
-    // texts of the session.
+    // rendered transcript, every item whole.
     search(&mut app, agent, typed(r"re:fn \w+\("));
+    let whole = laid_out(&mut app, agent, Expanded::All);
     let reference = Regex::new(r"fn \w+\(").map_or(0, |regex| {
-        [
-            asks.join("\n"),
-            FIRST_REPLY.to_owned(),
-            BUILD_OUTPUT.to_owned(),
-            LAST_REPLY.to_owned(),
-        ]
-        .iter()
-        .flat_map(|text| text.lines())
-        .map(|line| regex.find_iter(line).count())
-        .sum()
+        let rows = whole.rows().iter();
+        rows.map(|row| regex.find_iter(&row.text).count()).sum()
     });
-    assert_eq!(reference, 5);
+    assert_eq!(reference, 5, "{whole:#?}");
     let counted = format!("{reference}/{reference}");
     assert_eq!(counter(&mut app), Some(counted));
 
