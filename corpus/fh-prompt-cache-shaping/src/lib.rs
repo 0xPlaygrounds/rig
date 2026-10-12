@@ -30,9 +30,10 @@ mod markers;
 use std::collections::VecDeque;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{CachePoint, Message, ToolDefinition, Usage};
+use rig_harness::rig_core::completion::{
+    CachePoint, Message, Section, SystemPrompt, ToolDefinition, Usage,
+};
 use rig_harness::rig_core::effect;
-use rig_harness::rig_ecs::prompt::system_prompt;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
 
 pub use markers::{PlaceMarkers, place_markers};
@@ -189,13 +190,8 @@ fn shape(
         let mut moved = Vec::new();
         let mut kept = Vec::new();
         for (section, volatile) in own {
-            let block = system_prompt("", "", [section]);
-            if volatile
-                && call
-                    .system_prompt_mut()
-                    .is_some_and(|prompt| take_block(prompt, &block))
-            {
-                moved.push(block);
+            if volatile && let Some(taken) = call.prompt.as_mut().and_then(|p| take(p, section)) {
+                moved.push(taken);
                 continue;
             }
             if volatile && !history.unmovable.contains(&section.tag) {
@@ -210,7 +206,9 @@ fn shape(
             kept.push((section.tag.clone(), section.text.trim().to_owned()));
         }
 
-        let request = &mut call.request;
+        let ModelRequest {
+            request, prompt, ..
+        } = &mut *call;
         let lead = usize::from(matches!(
             request.chat_history.first(),
             Some(Message::System { .. })
@@ -218,7 +216,10 @@ fn shape(
         let now = Prefix {
             tools: request.tools.clone(),
             sections: kept,
-            system: request.system_instructions().unwrap_or_default().to_owned(),
+            system: prompt.as_ref().map_or_else(
+                || request.system_instructions().unwrap_or_default().to_owned(),
+                SystemPrompt::text,
+            ),
             messages: request.chat_history.iter().skip(lead).cloned().collect(),
         };
         history.requests += 1;
@@ -241,26 +242,24 @@ fn shape(
             }
         }
         if !moved.is_empty() {
-            request.chat_history.push(Message::user(moved.join("\n\n")));
+            let moved = SystemPrompt {
+                role: String::new(),
+                sections: moved,
+            };
+            request.chat_history.push(Message::user(moved.text()));
         }
         history.prefix = Some(now);
     }
 }
 
-/// Takes `block` out of `prompt`, with the blank line before it; whether
-/// it was there.
-fn take_block(prompt: &mut String, block: &str) -> bool {
-    let separated = format!("\n\n{block}");
-    if let Some(at) = prompt.find(&separated) {
-        prompt.replace_range(at..at + separated.len(), "");
-        true
-    } else if prompt.starts_with(block) {
-        prompt.replace_range(..block.len(), "");
-        *prompt = prompt.trim_start().to_owned();
-        true
-    } else {
-        false
-    }
+/// Takes `section` out of `prompt` when it is there as written: none
+/// when another plugin rewrote or removed it.
+fn take(prompt: &mut SystemPrompt, section: &PromptSection) -> Option<Section> {
+    let at = prompt
+        .sections
+        .iter()
+        .position(|part| part.tag == section.tag && part.text.trim() == section.text.trim())?;
+    Some(prompt.sections.remove(at))
 }
 
 /// The first part of `now`'s prefix that differs from `was`'s, in the
