@@ -12,12 +12,15 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
+# The per-session nonce of the fences.
+fastrand = { workspace = true }
+# Untrusted tool names and paths.
+glob = { workspace = true }
+# Instruction-like text.
+regex = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
@@ -26,3 +29,6 @@ rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+# The real `read`, `shell` and `write` tools, and `task`.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }

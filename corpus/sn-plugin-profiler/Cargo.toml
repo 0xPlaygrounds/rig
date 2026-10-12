@@ -8,21 +8,22 @@ description = "Plugin corpus (stack-next fresh held-out): SN-21: 21. Which plugi
 [lints]
 workspace = true
 
+[features]
+default = ["tui"]
+# Timing the terminal view's key bindings, for stalls while handling a key.
+tui = ["dep:rig-tui"]
+
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
+rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+schemars = { workspace = true }

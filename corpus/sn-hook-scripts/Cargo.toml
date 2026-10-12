@@ -11,13 +11,15 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
+# The matcher's glob and argument regex, and the trusted files' digests.
+glob = { workspace = true }
+regex = { workspace = true }
+sha2 = { workspace = true }
+# `hooks.toml`; already in Cargo.lock (1.x), as rig-harness reads its settings.
+toml = "1"
 rig-harness = { path = "../../crates/rig-harness" }
 rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
@@ -26,3 +28,4 @@ rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }

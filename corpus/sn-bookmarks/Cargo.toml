@@ -12,17 +12,16 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
+# The session format: a bookmark's message id, and the saved history read
+# back from a copy of the session as it was before a condensing.
+rig-cassette = { workspace = true, features = ["reflect"] }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
+# The marker's look, and scrolling to and selecting a bookmarked message.
+rig-tui = { path = "../../plugins/rig-tui" }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }

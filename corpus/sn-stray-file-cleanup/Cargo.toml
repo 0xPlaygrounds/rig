@@ -11,17 +11,17 @@ workspace = true
 [dependencies]
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
-futures = { workspace = true }
+glob = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+rig-print = { path = "../../plugins/rig-print" }
 rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 
 [dev-dependencies]
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }

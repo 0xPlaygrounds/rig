@@ -12,17 +12,21 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
-rig-core = { workspace = true }
+# Path globs with gitignore's rules: a glob without `/` matches a name anywhere.
+ignore = { workspace = true }
+# `Summarized`: an agent's conversation was condensed.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# The rule files' front matter.
+serde_yaml = { workspace = true }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
+rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+serde_json = { workspace = true }

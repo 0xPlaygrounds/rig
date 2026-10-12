@@ -16,6 +16,8 @@ bevy_tasks = { workspace = true }
 futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+# The summary's origin, to say a full send was for a condensed conversation.
+rig-compaction = { path = "../../plugins/rig-compaction", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -26,3 +28,4 @@ rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents" }

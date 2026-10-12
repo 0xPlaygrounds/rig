@@ -13,9 +13,11 @@ workspace = true
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
+chrono = { workspace = true }
 futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

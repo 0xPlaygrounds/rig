@@ -12,17 +12,17 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
-bevy_tasks = { workspace = true }
-futures = { workspace = true }
+# `ContextUse` and `tokens_label`.
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
-serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true }
+# The status line item.
+rig-tui = { path = "../../plugins/rig-tui" }
 
 [dev-dependencies]
 rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
-rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
+rig-subagents = { path = "../../plugins/rig-subagents", default-features = false }
+# The default meter, whose context item the gauge takes over.
+rig-telemetry = { path = "../../plugins/rig-telemetry" }
+serde_json = { workspace = true }
