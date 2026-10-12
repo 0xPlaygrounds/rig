@@ -71,6 +71,7 @@ pub mod services;
 pub mod settings;
 pub mod successor;
 pub mod watch;
+pub mod workspace;
 
 pub use describe::run;
 pub use load::{PluginEntity, PluginSource, ProvidedBy, Provides, load};
@@ -135,12 +136,13 @@ pub mod prelude {
     };
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
-    pub use crate::progress::ToolProgress;
+    pub use crate::progress::{CallOutput, ToolProgress};
     pub use crate::secrets::{Secret, Secrets};
     pub use crate::services::{Processes, ProjectRoot, RigHome, TokioRuntime, WorkDir};
     pub use crate::settings::{AppSettingsExt, Settings};
     pub use crate::successor::{follow_successor, resend};
     pub use crate::watch::{FileChanges, FileWatch};
+    pub use crate::workspace::ProjectWorkspace;
     pub use crate::{
         HeadlessPlugins, PluginEntity, PluginSource, ProvidedBy, Provides, RigHarnessPlugins,
     };
@@ -174,6 +176,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
             .add(pick::PickPlugin)
+            .add(progress::ProgressPlugin)
     }
 }
 
