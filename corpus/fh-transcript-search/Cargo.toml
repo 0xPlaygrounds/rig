@@ -9,9 +9,8 @@ description = "Plugin corpus (fresh held-out): FH-20: 20. Transcript search"
 workspace = true
 
 [dependencies]
-# Named by the Bevy derives.
+# The search's system parameters.
 bevy_ecs = { workspace = true }
-bevy_reflect = { workspace = true }
 # A query that starts with `re:`.
 regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }

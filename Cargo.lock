@@ -5023,7 +5023,6 @@ name = "corpus-fh-transcript-search"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "regex",
  "rig-core",
  "rig-harness",
