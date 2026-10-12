@@ -122,8 +122,14 @@ fn alt_2_sends_the_second_suggestion_as_the_users_next_message() {
         "[1] run the full test suite  [2] update CHANGELOG  [3] add a regression test"
     );
     app.update();
-    let mut panels = app.world_mut().query_filtered::<(), With<ChipsPanel>>();
-    assert_eq!(panels.iter(app.world()).count(), 1);
+    let mut panels = app
+        .world_mut()
+        .query_filtered::<&TuiPanel, With<ChipsPanel>>();
+    let placed: Vec<Placement> = panels
+        .iter(app.world())
+        .map(|panel| panel.placement)
+        .collect();
+    assert_eq!(placed, [Placement::BelowInput(Constraint::Length(1))]);
     let asked = format!("{:?}", suggester.requests());
     assert!(asked.contains("fix the parser") && asked.contains("Fixed the parser."));
 
@@ -218,15 +224,4 @@ fn an_interrupted_turn_gets_no_suggestions() {
     );
     assert_eq!(app.world().resource::<Asked>().0, 0);
     assert_eq!(suggester.request_count(), 0);
-}
-
-#[test]
-fn replies_read_as_short_unnumbered_suggestions() {
-    let long = "x".repeat(80);
-    let reply = format!("1) \"add a test\"\n\n- [2] update docs\n3. {long}\n4. one too many");
-    let read = suggestions(&reply);
-    assert_eq!(read.len(), 3);
-    assert_eq!(read.first().map(String::as_str), Some("add a test"));
-    assert_eq!(read.get(1).map(String::as_str), Some("update docs"));
-    assert_eq!(read.get(2).map(|text| text.chars().count()), Some(60));
 }

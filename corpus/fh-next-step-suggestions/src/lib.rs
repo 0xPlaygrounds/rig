@@ -5,7 +5,7 @@
 //! call of the plugin's own (on `[suggest] model`, else the agent's model)
 //! reads the last message the user typed and the final reply, and answers
 //! up to three next prompts. The terminal view shows them as numbered chips
-//! in a one-row panel above the status line; `Alt+1..3` sends one to the
+//! in a one-row panel under the input; `Alt+1..3` sends one to the
 //! agent as the user's message and `Alt+0` hides them. Any message the user
 //! sends, and any new turn, takes them away and cancels a call still
 //! running. A failed or stopped turn, a subagent, and a run without the
@@ -286,7 +286,7 @@ fn place_panel(
         .and_then(|agent| agents.get(agent).ok());
     match (suggested, panels.iter().next()) {
         (Some(_), None) => {
-            let panel = TuiPanel::new(Placement::Bottom(Constraint::Length(1)));
+            let panel = TuiPanel::new(Placement::BelowInput(Constraint::Length(1)));
             commands.spawn((ChipsPanel, panel));
         }
         (Some(suggested), Some(_)) if suggested.is_changed() => {
