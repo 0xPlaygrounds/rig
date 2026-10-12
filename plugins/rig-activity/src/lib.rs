@@ -76,7 +76,7 @@ pub enum Status {
     /// as `compacting`.
     Busy(String),
     /// A question for the user about the agent waits for its answer; the
-    /// [`Ask`]'s title.
+    /// [`Ask`]'s title. An inline one shows only while no turn runs.
     Asking(String),
     /// Waiting `seconds` before retry `attempt` of a failed model call.
     Retrying {
@@ -209,8 +209,11 @@ fn update_activity(
 ) {
     for (mut activity, turn, work) in &mut agents {
         let work: Vec<Entity> = work.map(|work| work.iter().collect()).unwrap_or_default();
-        let asking = work.iter().find_map(|effect| asks.get(*effect).ok());
-        let asking = asking.map(|ask| Status::Asking(ask.title.clone()));
+        // An inline question leaves a running turn its status: the turn
+        // does not wait for it.
+        let asks = work.iter().filter_map(|effect| asks.get(*effect).ok());
+        let mut asks = asks.filter(|ask| turn.is_none() || !ask.inline);
+        let asking = asks.next().map(|ask| Status::Asking(ask.title.clone()));
         let Some(turn) = turn else {
             let named = work.iter().find_map(|effect| others.get(*effect).ok());
             let status = asking
