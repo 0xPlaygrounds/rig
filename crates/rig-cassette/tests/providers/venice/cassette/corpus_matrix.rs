@@ -42,8 +42,10 @@ crate::matrix::golden_matrix! {
 
 crate::matrix::golden_matrix! {
     wrapper: with_venice_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
+    // Recorded as the memory matrix's serial cell; the memory carried no
+    // request bytes, so the recording serves the cell without it.
     #[tokio::test]
-    memory_serial_two_tools: ("corpus_matrix/memory_serial_two_tools", cells::MEMORY_SERIAL_TWO_TOOLS, "venice_memory_serial_two_tools");
+    serving_serial_two_tools_at_zero: ("corpus_matrix/memory_serial_two_tools", cells::SERVING_SERIAL_TWO_TOOLS_AT_ZERO, "venice_memory_serial_two_tools");
     #[tokio::test]
     output_tool_choice_specific_output: ("corpus_matrix/output_tool_choice_specific_output", cells::OUTPUT_TOOL_CHOICE_SPECIFIC_OUTPUT, "venice_output_tool_choice_specific_output");
     #[tokio::test]

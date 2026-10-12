@@ -5,18 +5,16 @@
 //! first tool turn's results, serializes the `AgentRun`, and the bus
 //! engine resumes it on the same replay bus to the golden's ending. #2450
 //! resumed four plain tool programs; every matrix since added programs
-//! the resume path had never seen. This matrix resumes eighteen existing
-//! goldens across hooks, memory, a committed output tool, a route,
+//! the resume path had never seen. This matrix resumes sixteen existing
+//! goldens across hooks, a committed output tool, a route,
 //! `Ignore`, the delta wire and retrieval, recording nothing new: the
 //! golden is the oracle, the interpretation is the row.
 //!
-//! What a resumed run does and does not do (`runner.rs`, `run` and
-//! `stream`: "a resumed run loads nothing and saves nothing"): it fires
-//! no `on_run_start` (the run already started), loads no history (it
-//! carries its own), appends nothing to memory — so the driver that
-//! resumed it appends, as the head loaded — and it fires the turn, tool,
-//! outcome and settled hooks of its own. The builder that resumes it
-//! registers its own memory, route and context handlers, so the replay
+//! What a resumed run does and does not do: it fires no `on_run_start`
+//! (the run already started), takes no history (it carries its own), and
+//! it fires the turn, tool, outcome and settled hooks of its own. The
+//! builder that resumes it registers its own route and context handlers,
+//! so the replay
 //! re-registers them from the golden's tail; the tool server's replayers
 //! are the head's and continue.
 //!
@@ -25,15 +23,14 @@
 //! | axis | values recorded |
 //! |---|---|
 //! | hooks | none · observe-only · a dispatch patch · an outcome replace · two hooks · a run-start dispatch · a stop after the resume point · a per-call custom note |
-//! | memory | none · loaded by the head, appended by the driver |
 //! | output mode | `Auto` · `Tool` committed on turn 1 · `Prompted` |
 //! | route | none · selected after the resume point |
 //! | invalid call | none · ignored before the resume point |
 //! | head medium | unary · streamed with events |
 //! | wire | anthropic · mock delta wire · gemini (retrieval) |
 //!
-//! Full cross-product: 8 × 2 × 3 × 2 × 2 × 2 × 3 = 1152. Interpreted: the
-//! 18 rows below. Pruned: a route selected before the resume point (the
+//! Full cross-product: 8 × 3 × 2 × 2 × 2 × 3 = 576. Interpreted: the
+//! 16 rows below. Pruned: a route selected before the resume point (the
 //! head selects it; the tail's model is then the route's — no golden
 //! has it, and recording one is Matrix M's first-turn route); a run
 //! serialized twice (the resumed engine exposes no second suspension);
@@ -46,7 +43,7 @@
 //!
 //! | golden | what the resume carries |
 //! |---|---|
-//! | `anthropic_hooks_observe_everything` | an observe-only hook and memory: the head loads, the tail observes, the driver appends |
+//! | `anthropic_hooks_observe_everything` | an observe-only hook: the tail observes |
 //! | `anthropic_hooks_patch_tool_args` | the head patched the call; the tail answers |
 //! | `anthropic_hooks_patch_tool_args_streamed` | the same, the head assembled from a stream |
 //! | `anthropic_hooks_replace_tool_result` | the head replaced the result the tail reads |
@@ -55,8 +52,6 @@
 //! | `anthropic_endings_answer_turn_stop` | the stop fires in the tail: `Cancelled` from the resumed engine |
 //! | `anthropic_host_custom_at_outcome` | the head's per-call note; the tail dispatches none |
 //! | `anthropic_host_custom_at_outcome_streamed` | the same, streamed head |
-//! | `anthropic_serving_serial_memory_tools` | memory under serial serving |
-//! | `anthropic_memory_serial_two_tools` | memory, a streamed head with two calls |
 //! | `anthropic_output_tool_with_real_tool` | the output tool committed on turn 1; the tail finalizes on it |
 //! | `anthropic_output_prompted_with_real_tool` | the prompted schema; the tail's answer is the JSON text |
 //! | `anthropic_serving_model_route` | the route selected on the tail's turn |
@@ -95,13 +90,6 @@ use corpus::{Ending, Hook, Output, Program, ROUTE, STOP_AT_ANSWER, Unhandled};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
-const TWO_TOOL_STREAM_PREAMBLE: &str = "\
-You are a precise assistant. When tools are available, you must use them instead of guessing. \
-Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. \
-Never call the same tool twice once you already have its result.";
-const TWO_TOOL_STREAM_PROMPT: &str = "\
-Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. \
-After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.";
 const SUM_EVENT_PROMPT: &str = "Use the add tool to add 17 and 25, then return a concise event object for a Rust meetup in Seattle whose summary states the sum.";
 const EVENT_SCHEMA: &str = r#"{"type":"object","properties":{"title":{"type":"string"},"category":{"type":"string"},"summary":{"type":"string"}},"required":["title","category","summary"]}"#;
 const MOCK_PREAMBLE: &str = "Use the add tool.";
@@ -131,7 +119,6 @@ const MOCK: Program = Program {
 
 const OBSERVE_EVERYTHING: Program = Program {
     fixture: "anthropic_hooks_observe_everything",
-    conversation: Some("golden-conversation"),
     hooks: &[Hook::ObserveEverything],
     ..TOOLS
 };
@@ -176,20 +163,6 @@ const CUSTOM_AT_OUTCOME_STREAMED: Program = Program {
     fixture: "anthropic_host_custom_at_outcome_streamed",
     hooks: &[Hook::NoteAtOutcome],
     streamed: true,
-    ..TOOLS
-};
-const SERIAL_MEMORY_TOOLS: Program = Program {
-    fixture: "anthropic_serving_serial_memory_tools",
-    conversation: Some("golden-conversation"),
-    ..TOOLS
-};
-const MEMORY_SERIAL_TWO_TOOLS: Program = Program {
-    fixture: "anthropic_memory_serial_two_tools",
-    preamble: Some(TWO_TOOL_STREAM_PREAMBLE),
-    prompt: TWO_TOOL_STREAM_PROMPT,
-    max_turns: Some(8),
-    streamed: true,
-    conversation: Some("golden-conversation"),
     ..TOOLS
 };
 const OUTPUT_TOOL_WITH_REAL_TOOL: Program = Program {
@@ -262,8 +235,6 @@ resumed! {
     answer_turn_stop: ANSWER_TURN_STOP,
     custom_at_outcome: CUSTOM_AT_OUTCOME,
     custom_at_outcome_streamed: CUSTOM_AT_OUTCOME_STREAMED,
-    serial_memory_tools: SERIAL_MEMORY_TOOLS,
-    memory_serial_two_tools: MEMORY_SERIAL_TWO_TOOLS,
     output_tool_with_real_tool: OUTPUT_TOOL_WITH_REAL_TOOL,
     output_prompted_with_real_tool: OUTPUT_PROMPTED_WITH_REAL_TOOL,
     model_route: MODEL_ROUTE,

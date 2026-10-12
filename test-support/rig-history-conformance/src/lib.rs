@@ -244,11 +244,6 @@ pub const TESTS: &[(&str, &str, &str)] = &[
         "#1179",
     ),
     (
-        "crates/rig-agent/src/agent/runner/entry_tests.rs",
-        "resume_appends_its_messages_without_loading",
-        "#2244",
-    ),
-    (
         "crates/rig-bedrock/src/streaming/tests.rs",
         "a_stream_rebuilds_the_unary_converse_output",
         "#2311",

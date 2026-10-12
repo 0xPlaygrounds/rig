@@ -12,7 +12,6 @@ mod cassette {
     mod corpus_layers;
     mod corpus_matrix_checkpoint;
     mod corpus_matrix_long_loop;
-    mod corpus_memory;
     mod corpus_oracle;
     mod corpus_outcome;
     mod corpus_output;
@@ -23,6 +22,7 @@ mod cassette {
     mod effect_corpus;
     mod empty_stop_sequence_matrix;
     mod history_survival_matrix;
+    mod kept_history;
     mod lifecycle_matrix;
     mod long_run_features;
     mod long_run_workloads;
