@@ -12,7 +12,7 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, PoisonError},
 };
 
-use rig_core::serve::{Origin, RecordBuffer, Recorder};
+use rig_core::serve::{DispatchContext, RecordBuffer, Recorder};
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
@@ -202,7 +202,7 @@ impl Recorder for EffectLogRecorder {
         }
     }
 
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: DispatchContext) {
         let mut header = self.lock_header();
         header
             .signature

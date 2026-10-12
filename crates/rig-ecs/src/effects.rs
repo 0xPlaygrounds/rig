@@ -22,7 +22,7 @@ use rig_core::effect::Outcome;
 use rig_core::effect::{EffectId, EffectKind};
 use rig_core::error::ErrorReport;
 use rig_core::serve::{
-    Dispatch, ErasedHandler, Origin, RecordBuffer, Recorder, Reply, catch_panics,
+    Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder, Reply, catch_panics,
 };
 use rig_core::tool::{PublishedContext, ToolResultContext};
 
@@ -67,7 +67,7 @@ impl Effects {
     pub(crate) fn run<F>(
         &self,
         id: EffectId,
-        origin: Origin,
+        origin: DispatchContext,
         handler: ErasedHandler,
         kind: EffectKind,
         consume: impl FnOnce(Reply) -> F + Send + 'static,

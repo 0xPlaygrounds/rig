@@ -68,7 +68,7 @@ use rig_core::effect::{
     self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
 };
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::serve::{Origin, Recorder, Reply, cancelled};
+use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
 use web_time::SystemTime;
 
@@ -1000,7 +1000,7 @@ fn start(
         let agent = item.agent.map(|agent| agent.0);
         let caller = agent.and_then(|agent| agents.get(agent).ok());
         let scope = caller.map(|id| id.0.as_str()).unwrap_or_default();
-        let origin = Origin {
+        let origin = DispatchContext {
             parent: effect.parent,
             scope: caller.map(|id| Arc::from(id.0.as_str())),
             purpose: effect.purpose.clone(),

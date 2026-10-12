@@ -1034,7 +1034,7 @@ impl rig_core::serve::Recorder for Counting {
         id: rig_core::effect::EffectId,
         key: HandlerKey,
         kind: EffectKind,
-        origin: rig_core::serve::Origin,
+        origin: rig_core::serve::DispatchContext,
     ) {
         self.begun.fetch_add(1, Ordering::SeqCst);
         if let Some(sink) = &self.observation_sink {

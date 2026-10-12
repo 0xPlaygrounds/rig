@@ -65,7 +65,7 @@ impl Serve for Streamer {
 #[test]
 fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
     let buffer = RecordBuffer::new();
-    let origin = Origin {
+    let origin = DispatchContext {
         parent: Some(EffectId::from_raw(9)),
         scope: Some(Arc::from("agent-1")),
         purpose: Some("summary".into()),
@@ -113,8 +113,18 @@ fn records_keep_dispatch_order_and_origin_whatever_order_they_resolve_in() {
 fn discard_drops_patch_replaces_and_tool_output_lands_before_the_outcome() {
     let buffer = RecordBuffer::new();
     let (patched, dropped) = (EffectId::from_raw(1), EffectId::from_raw(2));
-    buffer.begin(patched, tool_key("a"), tool("a"), Origin::default());
-    buffer.begin(dropped, tool_key("b"), tool("b"), Origin::default());
+    buffer.begin(
+        patched,
+        tool_key("a"),
+        tool("a"),
+        DispatchContext::default(),
+    );
+    buffer.begin(
+        dropped,
+        tool_key("b"),
+        tool("b"),
+        DispatchContext::default(),
+    );
     buffer.discard(dropped);
     assert!(!buffer.contains(dropped) && buffer.contains(patched));
     assert_eq!(buffer.remove(dropped), None, "already gone");
@@ -127,7 +137,12 @@ fn discard_drops_patch_replaces_and_tool_output_lands_before_the_outcome() {
     assert_eq!(json(&record.kind), json(&tool("c")));
     assert_eq!(record.tool_output, Some(ToolResultContext::default()));
 
-    buffer.begin(dropped, tool_key("b"), tool("b"), Origin::default());
+    buffer.begin(
+        dropped,
+        tool_key("b"),
+        tool("b"),
+        DispatchContext::default(),
+    );
     assert_eq!(buffer.remove(dropped), Some(tool_key("b")));
 }
 
@@ -144,7 +159,7 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
     };
     let handler = ErasedHandler::new(Streamer);
     let key = handler.descriptor().key;
-    buffer.begin(id, key, kind.clone(), Origin::default());
+    buffer.begin(id, key, kind.clone(), DispatchContext::default());
     let recorded = Arc::new(buffer.clone());
     let dispatch = Dispatch::new(id, true).recorded_by(recorded);
     let outcome = block_on(async { handler.handle(kind, dispatch).await.into_outcome().await });
@@ -170,7 +185,7 @@ fn a_recorded_stream_keeps_its_items_and_a_timed_buffer_stamps_its_ends() {
 fn a_unary_dispatch_keeps_no_items() {
     let buffer = RecordBuffer::new().keeping_stream_events();
     let id = EffectId::from_raw(1);
-    buffer.begin(id, tool_key("t"), tool("t"), Origin::default());
+    buffer.begin(id, tool_key("t"), tool("t"), DispatchContext::default());
     let origin = crate::message::Origin::new("test", "test", "test");
     buffer.origin(id, &origin);
     buffer.handlers(Vec::new());
@@ -188,7 +203,7 @@ fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
     let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
     let begin = |raw| {
         let id = EffectId::from_raw(raw);
-        let origin = Origin::default();
+        let origin = DispatchContext::default();
         OpenRecord::begin(Some(recorder.clone()), id, tool_key("t"), tool("t"), origin)
     };
     let mut settled = begin(1);
@@ -201,7 +216,7 @@ fn an_open_record_settles_once_and_a_dropped_one_is_cancelled() {
         EffectId::from_raw(3),
         tool_key("t"),
         tool("t"),
-        Origin::default(),
+        DispatchContext::default(),
     );
     assert_eq!(unrecorded.id(), EffectId::from_raw(3));
     drop(unrecorded);
@@ -232,7 +247,7 @@ fn explode() {
 fn a_panic_is_an_internal_error_recorded_as_the_outcome() {
     let buffer = RecordBuffer::new();
     let id = EffectId::from_raw(1);
-    buffer.begin(id, tool_key("t"), tool("t"), Origin::default());
+    buffer.begin(id, tool_key("t"), tool("t"), DispatchContext::default());
     let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
     let error = block_on(catch_panics(Some(recorder), id, boom())).expect_err("panicked");
     assert_eq!(error.kind, crate::error::ErrorKind::Internal);

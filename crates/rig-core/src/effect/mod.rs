@@ -1024,7 +1024,7 @@ pub struct EffectRecord {
     #[serde(default, skip_serializing_if = "Option::is_none", with = "opt_arc_str")]
     pub scope: Option<std::sync::Arc<str>>,
     /// What the dispatcher made the effect for, such as `"turn"` or
-    /// `"summary"`, from its [`Origin`](crate::serve::Origin). `None` when
+    /// `"summary"`, from its [`DispatchContext`](crate::serve::DispatchContext). `None` when
     /// it named no purpose.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub purpose: Option<std::borrow::Cow<'static, str>>,

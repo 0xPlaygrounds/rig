@@ -3,13 +3,13 @@
 //!
 //! ```
 //! use rig_core::effect::{EffectId, EffectKind, Outcome, tool_key};
-//! use rig_core::serve::{Origin, RecordBuffer, Recorder};
+//! use rig_core::serve::{DispatchContext, RecordBuffer, Recorder};
 //! use rig_core::tool::ToolResult;
 //!
 //! let buffer = RecordBuffer::new();
 //! let id = EffectId::from_raw(1);
 //! let kind = EffectKind::ToolCall { name: "add".into(), args: "{}".into() };
-//! buffer.begin(id, tool_key("add"), kind, Origin::default());
+//! buffer.begin(id, tool_key("add"), kind, DispatchContext::default());
 //! assert_eq!(buffer.in_flight(), 1);
 //! buffer.resolve(id, Ok(Outcome::ToolResult { result: ToolResult::skipped("no") }));
 //! let record = buffer.take(id).ok_or("resolved")?;
@@ -19,7 +19,7 @@
 
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use super::{Origin, Recorder};
+use super::{DispatchContext, Recorder};
 use crate::{
     effect::{
         Disposition, EffectId, EffectKind, EffectRecord, HandlerDescriptor, HandlerKey, Outcome,
@@ -54,7 +54,7 @@ struct Slot {
     id: EffectId,
     key: HandlerKey,
     kind: EffectKind,
-    origin: Origin,
+    origin: DispatchContext,
     outcome: Option<Result<Outcome, ErrorReport>>,
     events: Option<Vec<Item<StreamEvent>>>,
     stream_origin: Option<crate::message::Origin>,
@@ -222,7 +222,7 @@ impl std::fmt::Debug for RecordBuffer {
 impl Recorder for RecordBuffer {
     fn handlers(&self, _handlers: Vec<HandlerDescriptor>) {}
 
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin) {
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: DispatchContext) {
         let events = (self.keep_events && kind.streams()).then(Vec::new);
         let started_ms = self.now();
         self.slots().push(Slot {

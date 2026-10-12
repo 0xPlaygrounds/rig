@@ -5,7 +5,7 @@ use crate::{
     effect::{EffectId, FamilyDescriptor, HandlerKey},
     message::AssistantContent,
     operation::Finish,
-    serve::{Origin, RecordBuffer, Recorder},
+    serve::{DispatchContext, RecordBuffer, Recorder},
     streaming::{Item, StreamEvent},
     tool::PublishedContext,
 };
@@ -113,7 +113,7 @@ async fn a_rewrite_reaches_the_events_the_answer_and_the_record() {
         id,
         HandlerKey::from("streamer"),
         completion(true),
-        Origin::default(),
+        DispatchContext::default(),
     );
     let published = PublishedContext::new();
     let dispatch = Dispatch::new(id, true)

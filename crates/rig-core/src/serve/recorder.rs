@@ -1,9 +1,9 @@
 //! Runtime-independent recording of handler dispatches and consumer delivery.
 //!
 //! ```
-//! use rig_core::serve::Origin;
+//! use rig_core::serve::DispatchContext;
 //!
-//! let origin = Origin::default();
+//! let origin = DispatchContext::default();
 //! assert!(origin.parent.is_none());
 //! ```
 
@@ -19,7 +19,7 @@ use crate::{
 /// Recorded parent dispatch, stable program scope identifier and purpose,
 /// without live runtime handles.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
-pub struct Origin {
+pub struct DispatchContext {
     /// The dispatch this one was made from, if a handler made it.
     pub parent: Option<EffectId>,
     /// The scope of the program that made it, if its dispatcher was scoped.
@@ -61,7 +61,7 @@ pub trait Recorder: WasmCompatSend + WasmCompatSync + 'static {
     fn handlers(&self, handlers: Vec<HandlerDescriptor>);
     /// A dispatch begins: its id, the key it was routed to, the effect, and
     /// where it came from (its parent and scope).
-    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: Origin);
+    fn begin(&self, id: EffectId, key: HandlerKey, kind: EffectKind, origin: DispatchContext);
     /// Removes a begun dispatch decided by a layer before handler execution.
     /// Replay reruns layer decisions rather than recording them as handler outcomes.
     fn discard(&self, id: EffectId);
@@ -147,10 +147,10 @@ impl super::Observe for RecordingObserver {
 /// ```
 /// use std::sync::Arc;
 /// use rig_core::effect::{EffectId, EffectKind, tool_key};
-/// use rig_core::serve::{OpenRecord, Origin, Recorder};
+/// use rig_core::serve::{OpenRecord, DispatchContext, Recorder};
 /// # fn demo(recorder: Arc<dyn Recorder + Send + Sync>) {
 /// let kind = EffectKind::ToolCall { name: "ask".into(), args: "{}".into() };
-/// let mut open = OpenRecord::begin(Some(recorder), EffectId::from_raw(1), tool_key("ask"), kind, Origin::default());
+/// let mut open = OpenRecord::begin(Some(recorder), EffectId::from_raw(1), tool_key("ask"), kind, DispatchContext::default());
 /// open.settle(Err(rig_core::serve::cancelled()));
 /// # }
 /// ```
@@ -167,7 +167,7 @@ impl OpenRecord {
         id: EffectId,
         key: HandlerKey,
         kind: EffectKind,
-        origin: Origin,
+        origin: DispatchContext,
     ) -> Self {
         if let Some(recorder) = &recorder {
             recorder.begin(id, key, kind, origin);

@@ -122,7 +122,7 @@ fn replay_registers_all_scope_requirements_and_rejects_conflicts() {
 fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches() {
     use rig_core::{
         effect::{Delivery, DeliveryKind},
-        serve::{Origin, Recorder},
+        serve::{DispatchContext, Recorder},
     };
     let recorder = EffectLogRecorder::new();
     recorder.begin_delivery_tracking();
@@ -134,7 +134,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
             request: request(),
             stream: true,
         },
-        Origin::default(),
+        DispatchContext::default(),
     );
     recorder.delivery(Delivery {
         batch: 1,
@@ -150,7 +150,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
                 kind: "test".into(),
                 payload: serde_json::Value::Null,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         recorder.delivery(Delivery {
             batch: n + 2,
@@ -186,7 +186,7 @@ fn taking_resolved_records_releases_delivery_history_but_keeps_in_flight_batches
 fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
     use rig_core::{
         effect::{Delivery, DeliveryKind},
-        serve::{Origin, Recorder},
+        serve::{DispatchContext, Recorder},
     };
     let recorder = EffectLogRecorder::new();
     recorder.begin_delivery_tracking();
@@ -199,7 +199,7 @@ fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
                 kind: "test".into(),
                 payload: serde_json::Value::Null,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         let delivery = Delivery {
             batch: n,
@@ -217,7 +217,7 @@ fn discarded_records_do_not_retain_earlier_or_later_delivery_history() {
 
 #[test]
 fn stream_error_metadata_is_validated_and_released_with_its_records() {
-    use rig_core::serve::{Origin, Recorder};
+    use rig_core::serve::{DispatchContext, Recorder};
     let recorder = EffectLogRecorder::keeping_stream_events();
     for discarded in [false, true] {
         let id = EffectId::from_raw(u64::from(discarded));
@@ -228,7 +228,7 @@ fn stream_error_metadata_is_validated_and_released_with_its_records() {
                 request: request(),
                 stream: true,
             },
-            Origin::default(),
+            DispatchContext::default(),
         );
         let error = ErrorReport::new(ErrorKind::Response, "error item");
         recorder.stream_error(id, &error);
@@ -371,13 +371,13 @@ fn the_recorder_finds_the_newest_slot_first() {
         id,
         HandlerKey::from("k"),
         kind(),
-        rig_core::serve::Origin::default(),
+        rig_core::serve::DispatchContext::default(),
     );
     recorder.begin(
         id,
         HandlerKey::from("k"),
         kind(),
-        rig_core::serve::Origin::default(),
+        rig_core::serve::DispatchContext::default(),
     );
     recorder.resolve(
         id,
@@ -637,7 +637,7 @@ fn program_identity_is_per_scope_and_absent_by_default() {
 
 #[tokio::test]
 async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earlier() {
-    use rig_core::serve::{Dispatch, Origin, Recorder, Serve};
+    use rig_core::serve::{Dispatch, DispatchContext, Recorder, Serve};
     let recorder = EffectLogRecorder::new();
     let key = HandlerKey::from("ordered");
     let kind = |label: &str| EffectKind::Custom {
@@ -647,7 +647,7 @@ async fn positional_replay_preserves_recorded_order_when_ids_were_reserved_earli
     // Dispatch futures reserve A=1, B=2, but the executor serves B first.
     for (id, label) in [(2, "B"), (1, "A")] {
         let id = EffectId::from_raw(id);
-        recorder.begin(id, key.clone(), kind(label), Origin::default());
+        recorder.begin(id, key.clone(), kind(label), DispatchContext::default());
         recorder.resolve(
             id,
             Ok(Outcome::Custom {
@@ -862,10 +862,10 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
 /// records what it was for; an untimed one, as goldens use, keeps no times.
 #[test]
 fn a_timed_recorder_stamps_its_records_and_an_untimed_one_does_not() {
-    use rig_core::serve::{Origin, Recorder};
-    let origin = Origin {
+    use rig_core::serve::{DispatchContext, Recorder};
+    let origin = DispatchContext {
         purpose: Some("summary".into()),
-        ..Origin::default()
+        ..DispatchContext::default()
     };
     for (recorder, timed) in [
         (EffectLogRecorder::new().timed(), true),
