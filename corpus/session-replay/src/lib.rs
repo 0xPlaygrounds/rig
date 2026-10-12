@@ -559,7 +559,7 @@ impl Plugin for SessionReplayPlugin {
             AgentPass,
             (
                 ReplaySystems::Prepare.in_set(PrepareSystems::Edit),
-                ReplaySystems::Gate.in_set(AnswerFromRecord),
+                ReplaySystems::Gate.in_set(GateSystems::FromRecord),
                 ReplaySystems::Review.in_set(Stage::Review),
             ),
         );

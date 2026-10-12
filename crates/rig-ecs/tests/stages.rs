@@ -342,6 +342,92 @@ fn the_first_decision_wins() {
     assert!(record.started_ms.is_none());
 }
 
+/// What the gate in [`after_the_gates_an_answer_sees_their_decisions_and_holds`]
+/// does to an effect.
+#[derive(Component)]
+enum Way {
+    Refuse,
+    Hold,
+    Pass,
+}
+
+#[test]
+fn after_the_gates_an_answer_sees_their_decisions_and_holds() {
+    let mut app = app();
+    app.add_systems(
+        AgentPass,
+        (
+            // A stand-in answer, added before the gate but run after it:
+            // it answers only what no gate refused or held.
+            (|mut effects: Query<
+                (&Name, &mut Decision, Has<Holds>),
+                (PluginEffects, Without<Outcome>, Without<Settled>),
+            >,
+              mut seen: ResMut<Seen>| {
+                for (name, mut decision, held) in &mut effects {
+                    let what = if held {
+                        "held"
+                    } else if decision.is_decided() {
+                        "decided"
+                    } else {
+                        decision.decide(Outcome::custom("cached"));
+                        "cached"
+                    };
+                    let what = format!("{name}: {what}");
+                    if !seen.0.contains(&what) {
+                        seen.0.push(what);
+                    }
+                }
+            })
+            .in_set(GateSystems::After),
+            (|mut effects: Query<(Entity, &Way, &mut Decision), (Undecided, PluginEffects)>,
+              mut commands: Commands| {
+                for (effect, way, mut decision) in &mut effects {
+                    match way {
+                        Way::Refuse => {
+                            decision.decide(Outcome::refused("no"));
+                        }
+                        Way::Hold => {
+                            commands.spawn(HoldOf(effect));
+                        }
+                        Way::Pass => {}
+                    }
+                }
+            })
+            .in_set(Stage::Gate),
+        ),
+    );
+    let world = app.world_mut();
+    let refused = world
+        .spawn((open("job"), Name::new("refused"), Way::Refuse))
+        .id();
+    let held = world
+        .spawn((open("job"), Name::new("held"), Way::Hold))
+        .id();
+    let passed = world
+        .spawn((open("job"), Name::new("passed"), Way::Pass))
+        .id();
+    app.update();
+    let mut seen = seen(&app);
+    seen.sort();
+    assert_eq!(seen, ["held: held", "passed: cached", "refused: decided"]);
+    let outcome = |effect| app.world().get::<Outcome>(effect).map(|outcome| &outcome.0);
+    assert!(
+        matches!(outcome(refused), Some(Err(report)) if report.kind == ErrorKind::Denied),
+        "the gate's refusal stands"
+    );
+    assert!(
+        matches!(outcome(passed), Some(Ok(_))),
+        "answered in its place"
+    );
+    assert!(has::<Settled>(&app, refused) && has::<Settled>(&app, passed));
+    assert!(!has::<Started>(&app, refused) && !has::<Started>(&app, passed));
+    assert!(
+        outcome(held).is_none() && !has::<Started>(&app, held),
+        "still held"
+    );
+}
+
 /// A gate that refuses every tool call.
 fn refuse_calls(mut calls: Query<&mut Decision, (Undecided, ToolCalls)>) {
     for mut decision in &mut calls {

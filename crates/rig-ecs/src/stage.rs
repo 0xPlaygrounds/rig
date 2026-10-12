@@ -10,8 +10,9 @@
 //! data. It orders its Prepare and Review systems by what they do, in a
 //! phase of the stage ([`PrepareSystems`], [`ReviewSystems`]), and against
 //! one other plugin with `.before` and `.after` that plugin's sets; an
-//! answer from a record of an earlier run goes before every gate
-//! ([`AnswerFromRecord`]). Every
+//! answer from a record of an earlier run goes before every gate, and an
+//! answer that stands in for running the effect after them
+//! ([`GateSystems`]). Every
 //! effect is [`Admitted`] first, so every Prepare and Gate system sees it,
 //! in their order, before it starts, wherever it was spawned. A gate
 //! answers in the effect's [`Decision`], where the first decision wins; a
@@ -177,15 +178,25 @@ pub enum ReviewSystems {
     Act,
 }
 
-/// Where a plugin decides effects from a record of an earlier run of them,
-/// such as a session replay: as [`Stage::Gate`] opens, before every Gate
-/// system, so each gate after it sees the effect decided. The record holds
-/// what every gate decided in that run; a gate deciding again would judge
-/// today's settings and files instead. An answer that stands in for
-/// running the effect now, such as a cached result or a dry run, is no
-/// record: it is a Gate system after the gates that refuse.
+/// The positions around [`Stage::Gate`], in this order: `FromRecord`,
+/// every gate (`in_set(Stage::Gate)`), then `After`. A system that fails in
+/// either closes Gate for the pass, as a gate does.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct AnswerFromRecord;
+pub enum GateSystems {
+    /// Decides effects from a record of an earlier run of them, such as a
+    /// session replay, before every gate, so each gate sees the effect
+    /// decided. The record holds what every gate decided in that run; a
+    /// gate deciding again would judge today's settings and files instead.
+    FromRecord,
+    /// After every gate had its say: an answer that stands in for running
+    /// the effect (a cached result, a dry run, an editor's buffer), which
+    /// must not answer what a gate refused, and a coordinator that reads
+    /// its group's decisions and holds to refuse or hold the rest. A
+    /// decision made in Gate is applied at Start, so here a decided effect
+    /// still matches [`Undecided`]: read its [`Decision`]. A held effect
+    /// does not match it, so a coordinator queries its group without it.
+    After,
+}
 
 /// The kernel's systems that open a stage, before any of its own.
 #[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -568,8 +579,9 @@ pub(crate) fn build(app: &mut App) {
                 Enter(Stage::Prepare),
                 Stage::Prepare,
                 Enter(Stage::Gate),
-                AnswerFromRecord,
+                GateSystems::FromRecord,
                 Stage::Gate,
+                GateSystems::After,
                 Enter(Stage::Start),
                 Stage::Start,
             )
@@ -598,8 +610,9 @@ pub(crate) fn build(app: &mut App) {
                 Stage::Commit,
                 Stage::Admit,
                 Stage::Prepare,
-                AnswerFromRecord,
+                GateSystems::FromRecord,
                 Stage::Gate,
+                GateSystems::After,
                 Stage::Start,
             )
                 .distributive_run_if(moved_since_quiet),

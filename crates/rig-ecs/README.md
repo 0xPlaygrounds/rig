@@ -34,7 +34,8 @@ What it holds, by module:
   Prepare, in the phase of what it does (`PrepareSystems`: Input, Compose,
   Edit, Fit), holds (`HoldOf`) or decides it (`Decision`, the first decision
   wins) in Gate, where an answer from a record of an earlier run, such as a
-  session replay's, goes first (`AnswerFromRecord`), and reads or edits the `Outcome` in place in Review
+  session replay's, goes first and an answer standing in for running it
+  goes after every gate (`GateSystems`: FromRecord, After), and reads or edits the `Outcome` in place in Review
   (`ReviewSystems`: Edit, then Act), so Bevy reports two unordered
   deciders or reviewers. Kind filters
   (`ToolCalls`, `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell
