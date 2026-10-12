@@ -207,6 +207,63 @@ fn a_busy_agent_gets_its_note_with_its_next_call_unless_a_pass_overtakes_it() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Holds the first turn's proposed end, as a slow reviewer would, until
+/// the test despawns the hold.
+#[derive(Resource, Default)]
+struct SlowReview(Vec<Entity>);
+
+fn hold_ends(
+    proposed: Query<(Entity, &Turn), (With<TurnOf>, Added<TurnOutcome>)>,
+    mut slow: ResMut<SlowReview>,
+    mut commands: Commands,
+) {
+    for (turn, _) in proposed.iter().filter(|(_, turn)| turn.index == 0) {
+        slow.0.push(commands.spawn(HoldOf(turn)).id());
+    }
+}
+
+#[test]
+fn a_note_left_when_a_busy_agents_turn_ends_is_still_withdrawn_by_a_pass() {
+    let dir = project("corpus-ho-background-verify-turn-end");
+    assert!(dir.is_some(), "a scratch project");
+    let Some(dir) = dir else { return };
+    let model = MockCompletionModel::from_stream_turns([
+        write("1", &dir, "bad"),
+        reply("Done."),
+        reply("Next."),
+    ]);
+    let (mut app, wakes, agent) = app(&dir, &model);
+    app.init_resource::<SlowReview>()
+        .add_systems(AgentPass, hold_ends.in_set(Stage::Review));
+
+    // The failure reaches the agent while its turn's end is held, after
+    // its last model call.
+    say(&mut app, agent, "Break a.rs.");
+    run_until(&mut app, &wakes, checked(&dir, 1, CheckStatus::Failed(1)));
+    run_until(&mut app, &wakes, |world| {
+        !world.resource::<Verify>().waiting.is_empty()
+    });
+    let holds = std::mem::take(&mut app.world_mut().resource_mut::<SlowReview>().0);
+    for hold in holds {
+        app.world_mut().despawn(hold);
+    }
+    run_until(&mut app, &wakes, ended(1));
+
+    // The turn ended without sending it, so a pass still takes it back.
+    std::fs::write(dir.join("a.rs"), "good").ok();
+    say(&mut app, agent, "/verify now");
+    run_until(&mut app, &wakes, checked(&dir, 2, CheckStatus::Passed));
+    say(&mut app, agent, "next");
+    run_until(&mut app, &wakes, ended(2));
+    let next = request(&model, 2);
+    assert!(
+        !next.contains("E1") && !next.contains("passes again"),
+        "a withdrawn failure, and no pass after it: {next}"
+    );
+    assert_eq!(model.request_count(), 3, "no note starts a turn");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 #[test]
 fn stages_are_ordered_with_the_defaults() {
     rig_defaults_test_support::assert_stages_ordered(BackgroundVerifyPlugin);

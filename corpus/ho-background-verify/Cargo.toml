@@ -23,8 +23,6 @@ glob = { workspace = true }
 # `AttachSystems`, which the note added to a message goes after.
 rig-coding-tools = { path = "../../plugins/rig-coding-tools", default-features = false }
 rig-harness = { path = "../../crates/rig-harness" }
-# `Shell`, which runs the check's command as `Processes` say.
-rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
