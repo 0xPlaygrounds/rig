@@ -53,7 +53,10 @@ impl Default for RigHome {
 
 /// The directory the session works in: where it was first started, which
 /// the launcher starts a resumed session in again. Paths the user and the
-/// model name are relative to it.
+/// model name are relative to it in the agent, whose working directory the
+/// launcher sets to it: a file tool without a [`WorkDir`] resolves from the
+/// process's working directory, so a test that moves the root gives its
+/// agents a `WorkDir`.
 #[derive(Resource, Clone, Debug, PartialEq, Eq)]
 pub struct ProjectRoot(pub PathBuf);
 
