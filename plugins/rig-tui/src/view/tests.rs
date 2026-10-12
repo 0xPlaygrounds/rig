@@ -169,22 +169,27 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     assert_eq!(top, Some((item, 0)));
 }
 
-#[test]
-fn rows_a_line_wrapped_into_rejoin_into_it() {
+/// A transcript of notes of `said`, laid out at 12 columns.
+fn laid_out_narrow(said: &[&str]) -> Option<DrawnTranscript> {
     let (mut app, agent) = view_app();
-    let said = [
-        "alpha beta  gamma delta epsilon zeta",
-        "abcdefghijklmnopqrstuvwxyz",
-    ];
     for text in said {
-        let note = Deliver::new(agent, text, DeliveryMode::Note);
+        let note = Deliver::new(agent, *text, DeliveryMode::Note);
         app.world_mut().trigger(note);
         app.update();
     }
     let lay_out = move |layout: crate::TranscriptLayout, view: Res<TranscriptView>| {
         layout.lay_out(&view, agent, 12, crate::Expanded::AsShown)
     };
-    let laid_out = app.world_mut().run_system_once(lay_out).ok().flatten();
+    app.world_mut().run_system_once(lay_out).ok().flatten()
+}
+
+#[test]
+fn rows_a_line_wrapped_into_rejoin_into_it() {
+    let said = [
+        "alpha beta  gamma delta epsilon zeta",
+        "abcdefghijklmnopqrstuvwxyz",
+    ];
+    let laid_out = laid_out_narrow(&said);
     assert!(laid_out.is_some());
     let Some(drawn) = laid_out else { return };
     let rows: Vec<&str> = drawn.rows().iter().map(|row| row.text.as_str()).collect();
@@ -192,22 +197,51 @@ fn rows_a_line_wrapped_into_rejoin_into_it() {
         !rows.iter().any(|row| row.contains("gamma delta")),
         "{rows:#?}"
     );
-    let lines: Vec<(Range<usize>, String)> = drawn.lines().collect();
+    let lines: Vec<DrawnLine> = drawn.lines().collect();
     for text in said {
-        let line = lines.iter().find(|(_, line)| line.ends_with(text));
+        let line = lines.iter().find(|line| line.text.ends_with(text));
         assert!(line.is_some(), "{text} not rejoined: {lines:#?}");
-        let Some((at, line)) = line else { return };
-        assert_eq!(line, &format!("› {text}"));
-        assert!(at.len() > 1, "{rows:#?}");
-        let continued = drawn.rows().get(at.clone()).unwrap_or_default();
+        let Some(line) = line else { return };
+        assert_eq!(line.text, format!("› {text}"));
+        assert!(line.rows.len() > 1, "{rows:#?}");
+        let continued = drawn.rows().get(line.rows.clone()).unwrap_or_default();
         let continues = continued.iter().map(|row| row.continues.is_some());
         assert!(
             continues.skip(1).all(|continues| continues),
             "{continued:#?}"
         );
     }
-    let total: usize = lines.iter().map(|(rows, _)| rows.len()).sum();
+    let total: usize = lines.iter().map(|line| line.rows.len()).sum();
     assert_eq!(total, drawn.rows().len());
+}
+
+#[test]
+fn a_line_says_where_each_of_its_rows_starts_in_it() {
+    let laid_out = laid_out_narrow(&["alpha beta  gamma delta epsilon zeta"]);
+    assert!(laid_out.is_some());
+    let Some(drawn) = laid_out else { return };
+    let line = drawn.lines().find(|line| line.text.contains("gamma"));
+    assert!(line.is_some(), "{drawn:#?}");
+    let Some(line) = line else { return };
+    assert_eq!(line.starts.len(), line.rows.len());
+    for (row, start) in line.rows.clone().zip(&line.starts) {
+        let drawn_row = drawn.rows().get(row).map(|row| row.text.trim_start());
+        let from = line.text.get(*start..).unwrap_or_default();
+        assert!(
+            drawn_row.is_some_and(|text| from.starts_with(text)),
+            "{row}: {line:#?}"
+        );
+        assert_eq!(line.row_at(*start), row);
+    }
+    let gamma = line.text.find("gamma").unwrap_or_default();
+    let row = drawn.rows().get(line.row_at(gamma));
+    assert!(
+        row.is_some_and(|row| row.text.contains("gamma")),
+        "{line:#?}"
+    );
+    // The blanks a wrap dropped end the row before.
+    let blank = line.text.find("  ").unwrap_or_default();
+    assert_eq!(line.row_at(blank + 1), line.row_at(blank));
 }
 
 #[test]

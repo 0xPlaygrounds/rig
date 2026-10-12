@@ -228,6 +228,26 @@ pub struct DrawnRow {
     pub lit: Vec<usize>,
 }
 
+/// A line of a [`DrawnTranscript`] as it was before the view wrapped it.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct DrawnLine {
+    /// Its rows in the transcript.
+    pub rows: Range<usize>,
+    /// Its text: its rows rejoined, as each one's [`Continuation`] says.
+    pub text: String,
+    /// Where each of its rows starts in `text`, by byte; the blanks a wrap
+    /// dropped end the row before.
+    pub starts: Vec<usize>,
+}
+
+impl DrawnLine {
+    /// The row of the transcript byte `at` of its text is drawn in.
+    pub fn row_at(&self, at: usize) -> usize {
+        let before = self.starts.partition_point(|&start| start <= at);
+        self.rows.start + before.saturating_sub(1)
+    }
+}
+
 /// How a [`DrawnRow`] continues the row before it, the view having
 /// wrapped one line into both: the line is the row before, then `gap`,
 /// then this row's text past its `indent`.
@@ -278,25 +298,34 @@ impl DrawnTranscript {
     }
 
     /// Its lines as they were before the view wrapped them, top to
-    /// bottom: each one's rows, and its text, those rows rejoined. Text a
-    /// wrap split across two rows is whole here, for a search or a copy.
-    pub fn lines(&self) -> impl Iterator<Item = (Range<usize>, String)> + '_ {
+    /// bottom, each with its rows. Text a wrap split across two rows is
+    /// whole here, for a search or a copy.
+    pub fn lines(&self) -> impl Iterator<Item = DrawnLine> + '_ {
         let mut start = 0;
         let lines = self.rows.chunk_by(|_, next| next.continues.is_some());
         lines.map(move |rows| {
             let mut text = String::new();
+            let mut starts = Vec::with_capacity(rows.len());
             for row in rows {
                 match &row.continues {
                     Some(joint) => {
                         text.push_str(&joint.gap);
+                        starts.push(text.len());
                         text.push_str(row.text.get(joint.indent..).unwrap_or(&row.text));
                     }
-                    None => text.push_str(&row.text),
+                    None => {
+                        starts.push(text.len());
+                        text.push_str(&row.text);
+                    }
                 }
             }
             let line = start..start + rows.len();
             start = line.end;
-            (line, text)
+            DrawnLine {
+                rows: line,
+                text,
+                starts,
+            }
         })
     }
 

@@ -29,9 +29,10 @@ use rig_tui::ratatui::layout::Constraint;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
-    AppKeyBindingsExt, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow, KeyBinding,
-    KeyFocus, KeyPress, KeyPressed, PanelCanvas, Placement, RequestRedraw, ScrollTo, TerminalEvent,
-    TranscriptItem, TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin, TuiSystems,
+    AppKeyBindingsExt, DrawnLine, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
+    KeyBinding, KeyFocus, KeyPress, KeyPressed, PanelCanvas, Placement, RequestRedraw, ScrollTo,
+    TerminalEvent, TranscriptItem, TranscriptLayout, TranscriptView, TuiPanel, TuiPlugin,
+    TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -102,7 +103,7 @@ pub fn compile(query: &str) -> Result<Option<(Regex, bool)>, regex::Error> {
 pub fn find(regex: &Regex, agent: Entity, laid_out: &DrawnTranscript) -> Vec<Hit> {
     let mut counted: HashMap<Option<TranscriptItem>, usize> = HashMap::new();
     let mut hits = Vec::new();
-    for (rows, text) in laid_out.lines() {
+    for DrawnLine { rows, text, .. } in laid_out.lines() {
         let starts = row_starts(laid_out.rows().get(rows.clone()).unwrap_or_default());
         for found in regex.find_iter(&text).filter(|found| !found.is_empty()) {
             let past = starts.iter().filter(|&&start| start <= found.start());
