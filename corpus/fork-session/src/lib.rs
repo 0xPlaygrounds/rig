@@ -10,8 +10,11 @@
 //! family. Files on disk are never branched, except
 //! that `/branch --files` (with the `checkpoints` feature and spec 31's
 //! plugin) puts them back as that plugin's checkpoint before the message
-//! kept them.
+//! kept them, through its `Rewind` request, before switching.
 
+#[cfg(feature = "checkpoints")]
+use corpus_checkpoint_rewind::{Rewind, RewindScope, Rewound};
+use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
 use rig_sessions::{NameSession, ResumeLabel, SessionTitle, SessionsPlugin, list};
 use rig_tools::shorten;
@@ -49,6 +52,8 @@ impl Plugin for ForkSessionPlugin {
             .add_command("tree", "Show this session's forks and branches", tree)
             .add_systems(Startup, arrive)
             .add_systems(Update, forked);
+        #[cfg(feature = "checkpoints")]
+        app.add_observer(rewound);
     }
 }
 
@@ -59,8 +64,8 @@ struct Asked {
     agent: Entity,
     /// The name `/fork` gave it.
     name: Option<String>,
-    /// The command that puts the files back, for `/branch --files`.
-    files: Option<String>,
+    /// The message to put the files back to before, for `/branch --files`.
+    files: Option<MessageId>,
 }
 
 /// The messages the user typed in `conversation`, as [`ForkedFrom::text`]
@@ -176,7 +181,7 @@ fn branch(
                     notices.write(Notice::error(agent, why));
                     return;
                 }
-                Some(Ok(line)) => Some(line),
+                Some(Ok(message)) => Some(message),
                 None => None,
             };
             let asker = commands
@@ -200,25 +205,68 @@ type Snapshots<'w, 's> = Query<'w, 's, &'static corpus_checkpoint_rewind::Checkp
 #[cfg(not(feature = "checkpoints"))]
 type Snapshots<'w, 's> = ();
 
-/// The command of spec 31's plugin that puts the files back as they were
-/// before `message`.
+/// `message`, when spec 31's plugin kept the files before it.
 #[cfg(feature = "checkpoints")]
 fn restore_files(
     snapshots: &Snapshots<'_, '_>,
     agent: Entity,
     message: MessageId,
-) -> Result<String, String> {
+) -> Result<MessageId, String> {
     snapshots
         .get(agent)
         .ok()
         .and_then(|kept| kept.list.iter().find(|kept| kept.message == message))
-        .map(|checkpoint| format!("rewind --files-only {}", checkpoint.turn))
+        .map(|checkpoint| checkpoint.message)
         .ok_or_else(|| "No checkpoint of the files before that message.".to_owned())
 }
 
 #[cfg(not(feature = "checkpoints"))]
-fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<String, String> {
+fn restore_files(_: &Snapshots<'_, '_>, _: Entity, _: MessageId) -> Result<MessageId, String> {
     Err("/branch --files needs spec 31's checkpoints.".to_owned())
+}
+
+/// On a [`Rewind`] of the files: the session to switch to once it ended.
+#[cfg(feature = "checkpoints")]
+#[derive(Component)]
+struct Switching(SessionId);
+
+/// Puts the files back as they were before `message`, then switches to
+/// `to`.
+#[cfg(feature = "checkpoints")]
+fn switch_after_files(commands: &mut Commands, agent: Entity, message: MessageId, to: SessionId) {
+    let scope = RewindScope::FilesOnly;
+    commands.spawn((
+        Rewind {
+            agent,
+            message,
+            scope,
+        },
+        Switching(to),
+    ));
+}
+
+#[cfg(not(feature = "checkpoints"))]
+fn switch_after_files(commands: &mut Commands, _: Entity, _: MessageId, to: SessionId) {
+    commands.trigger(Exit(ExitReason::Switch(Some(to))));
+}
+
+/// Switches once the files are back, or once the user kept theirs or
+/// the rewind was refused (spec 31's plugin told them which).
+#[cfg(feature = "checkpoints")]
+fn rewound(
+    ended: On<Add<Rewound>>,
+    rewinds: Query<(&Rewind, &Rewound, &Switching)>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((rewind, outcome, Switching(to))) = rewinds.get(ended.entity) else {
+        return;
+    };
+    if *outcome != Rewound::Done {
+        notices.write(Notice::info(rewind.agent, FILES));
+    }
+    commands.trigger(Exit(ExitReason::Switch(Some(to.clone()))));
+    commands.entity(ended.entity).despawn();
 }
 
 /// Names each fork this plugin asked for, then switches to it.
@@ -242,12 +290,18 @@ fn forked(
                 name,
             });
         }
-        if let Some(line) = asked.files.take() {
-            commands.trigger(RunCommand::new(asked.agent, line));
+        let to = fork.to.clone();
+        if let Some(message) = asked.files.take() {
+            let made = format!("Made session {to}; putting the files back first.");
+            notices.write(Notice::info(asked.agent, made));
+            switch_after_files(&mut commands, asked.agent, message, to);
+        } else {
+            notices.write(Notice::info(
+                asked.agent,
+                format!("Made session {to}. {FILES}"),
+            ));
+            commands.trigger(Exit(ExitReason::Switch(Some(to))));
         }
-        let made = format!("Made session {}. {FILES}", fork.to);
-        notices.write(Notice::info(asked.agent, made));
-        commands.trigger(Exit(ExitReason::Switch(Some(fork.to.clone()))));
     }
 }
 
