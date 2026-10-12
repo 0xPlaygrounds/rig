@@ -305,12 +305,18 @@ fn propose(
     };
     if !answerers.can_answer(Some(agent)) {
         let mut logged = Decision::default();
-        logged.decide(Outcome::custom("logged"));
+        logged.decide(
+            Decider::plugin("fh-correction-learner"),
+            Outcome::custom("logged"),
+        );
         commands.spawn((Name::new("rule proposal"), request, logged));
         return;
     }
     for (_, mut decision) in &mut waiting {
-        decision.decide(Outcome::custom("replaced"));
+        decision.decide(
+            Decider::plugin("fh-correction-learner"),
+            Outcome::custom("replaced"),
+        );
     }
     let proposal = Proposal { rule, agent, turn };
     commands.spawn((Name::new("rule proposal"), request, proposal));
@@ -495,7 +501,10 @@ fn rules(
                 Some(rule) => match files.save(&rule) {
                     Ok(()) => {
                         if let Some((_, decision)) = &mut open {
-                            decision.decide(Outcome::custom(serde_json::json!({ "saved": rule })));
+                            decision.decide(
+                                Decider::Person,
+                                Outcome::custom(serde_json::json!({ "saved": rule })),
+                            );
                         }
                         Ok(format!("Saved to {path}: {rule}"))
                     }
@@ -506,7 +515,7 @@ fn rules(
         "dismiss" => match &mut open {
             Some((proposal, decision)) => match files.dismiss(&proposal.rule) {
                 Ok(()) => {
-                    decision.decide(Outcome::custom("dismissed"));
+                    decision.decide(Decider::Person, Outcome::custom("dismissed"));
                     Ok(format!("Dismissed: {}", proposal.rule))
                 }
                 Err(why) => Err(format!("Cannot remember the dismissal: {why}")),

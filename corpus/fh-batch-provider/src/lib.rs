@@ -325,7 +325,10 @@ fn take_over(
         }
         let Some(api) = endpoints.0.get(vendor) else {
             let why = format!("no batch endpoint is set up for `{vendor}`");
-            decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))));
+            decision.decide(
+                Decider::plugin("fh-batch-provider"),
+                Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))),
+            );
             continue;
         };
         if !*warned && invoked.as_deref().is_some_and(Invoked::interactive) {
@@ -493,7 +496,10 @@ fn submitted(
             }
             Err(why) => {
                 let why = format!("the batch was not accepted: {why}");
-                decision.decide(Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))));
+                decision.decide(
+                    Decider::plugin("fh-batch-provider"),
+                    Outcome(Err(ErrorReport::new(ErrorKind::Provider, why))),
+                );
                 release(call, &holds, &mut commands);
             }
         }
@@ -606,7 +612,7 @@ fn polled(
             ItemState::Errored(why) => failed(why.clone()),
             ItemState::Cancelled => failed("the batch request was cancelled".to_owned()),
         };
-        decision.decide(outcome);
+        decision.decide(Decider::plugin("fh-batch-provider"), outcome);
         release(call, &holds, &mut commands);
     }
     let waiting = calls.iter().any(|(_, batched, decision, _)| {

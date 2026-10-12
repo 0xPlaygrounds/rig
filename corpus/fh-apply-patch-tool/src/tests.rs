@@ -69,7 +69,7 @@ fn no_secrets(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCa
         let path = request.call.function.arguments.get("path");
         let path = path.and_then(serde_json::Value::as_str).unwrap_or_default();
         if request.call.function.name.as_str() == "write" && path.ends_with("secret.txt") {
-            decision.decide(Outcome::refused("no secrets"));
+            decision.decide(Decider::plugin("test"), Outcome::refused("no secrets"));
         }
     }
 }

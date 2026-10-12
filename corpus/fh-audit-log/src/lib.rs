@@ -266,10 +266,13 @@ fn guard(
             continue;
         }
         if let Err(why) = context.log.writable() {
-            decision.decide(Outcome::refused(format!(
-                "The audit log cannot be written ({why}), so nothing that changes files or \
+            decision.decide(
+                Decider::plugin("fh-audit-log"),
+                Outcome::refused(format!(
+                    "The audit log cannot be written ({why}), so nothing that changes files or \
                  reaches outside may run."
-            )));
+                )),
+            );
             continue;
         }
         let paths = match footprint.map(|footprint| &footprint.0) {

@@ -50,7 +50,7 @@ fn hold_classifier(
 /// `shell`, answered without running anything.
 fn ran(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("done".into()));
+        call.decide(Decider::plugin("test"), ToolResult::success("done".into()));
     }
 }
 

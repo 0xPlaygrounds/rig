@@ -226,7 +226,10 @@ fn checked(
         Ok(plan) => plan,
         Err(why) => {
             if let Ok(mut decision) = calls.get_mut(call) {
-                decision.decide(ToolResult::failed(ToolExecutionError::invalid_args(why)));
+                decision.decide(
+                    Decider::plugin("fh-apply-patch-tool"),
+                    ToolResult::failed(ToolExecutionError::invalid_args(why)),
+                );
             }
             return;
         }

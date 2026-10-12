@@ -126,7 +126,10 @@ fn log_costs(
 /// A `read` that answers with the file's made-up text.
 fn read(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
-        call.decide(ToolResult::success("contents of a.txt".into()));
+        call.decide(
+            Decider::plugin("test"),
+            ToolResult::success("contents of a.txt".into()),
+        );
     }
 }
 

@@ -816,9 +816,10 @@ fn on_fail_item(
         return;
     };
     let Ok(mut item) = agents.get_mut(called.agent) else {
-        call.decide(Outcome::refused(
-            "fail_item is for the agents of a plan's items",
-        ));
+        call.decide(
+            Decider::plugin("fh-checklist-runner"),
+            Outcome::refused("fail_item is for the agents of a plan's items"),
+        );
         return;
     };
     item.failure = Some(first_line(&called.args.reason)).filter(|why| !why.is_empty());
@@ -828,7 +829,10 @@ fn on_fail_item(
         "Item {} is marked failed. End your turn now.",
         item.index + 1
     );
-    call.decide(ToolResult::success(said.into()));
+    call.decide(
+        Decider::plugin("fh-checklist-runner"),
+        ToolResult::success(said.into()),
+    );
 }
 
 /// `fail_item` is offered only to the agents of plan items: every other

@@ -21,7 +21,7 @@ fn no_rm(mut calls: Query<(&ToolRequest, &mut Decision), (Undecided, ToolCalls)>
             .and_then(serde_json::Value::as_str)
             .unwrap_or_default();
         if command.contains("rm -rf") {
-            decision.decide(Outcome::refused("no rm -rf"));
+            decision.decide(Decider::plugin("test"), Outcome::refused("no rm -rf"));
         }
     }
 }
