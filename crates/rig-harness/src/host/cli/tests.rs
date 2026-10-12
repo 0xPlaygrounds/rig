@@ -66,3 +66,22 @@ fn a_terminal_no_front_takes_and_two_fronts_given_are_refused() {
     let mut headless = App::new();
     assert_eq!(refusal(&mut headless), None);
 }
+
+#[test]
+fn a_front_with_a_command_or_option_takes_only_the_runs_that_name_it() {
+    let mut app = App::new();
+    app.insert_resource(Invoked::default())
+        .add_front(
+            Front::new("stats")
+                .headless()
+                .on_command("stats", "", "Count"),
+        )
+        .add_front(
+            Front::new("web")
+                .headless()
+                .on_flag("web", "Serve a web page"),
+        )
+        .add_front(Front::new("print").headless());
+    assert!(app.runs_front("print"));
+    assert_eq!(refusal(&mut app), None);
+}

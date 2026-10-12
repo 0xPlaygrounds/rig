@@ -20,7 +20,7 @@
 //! has its flag, or a top-level command of its own, `rig <name> …`, whose
 //! arguments it reads with [`Invoked::command`]. One front takes each run:
 //! the one whose command or flag was given, else the first offered (in
-//! `plugins.toml` order) for the kind of run.
+//! `plugins.toml` order) for the kind of run, among those with neither.
 //! Each front asks `app.runs_front(name)` in its `finish`, once every
 //! plugin offered what it has, and sets itself up only then. An
 //! interactive run that no front takes says so and exits. A front whose
@@ -130,6 +130,9 @@ pub struct Front {
     /// and exit code through and never restarts it.
     pub terminal: bool,
     /// Whether it takes a run without one (`--print`, stdin piped in).
+    /// This and [`terminal`](Self::terminal) only pick the front of a run
+    /// that names no command or option: a front with either takes only
+    /// the runs that name it.
     pub headless: bool,
     /// The option that gives it the run, whatever the terminal.
     pub flag: Option<Flag>,
@@ -320,6 +323,7 @@ fn front_of(fronts: &[Front], invoked: &Invoked) -> Result<Option<Front>, String
             )),
             None => Ok(fronts
                 .iter()
+                .filter(|front| front.command.is_none() && front.flag.is_none())
                 .find(|front| {
                     if interactive {
                         front.terminal
