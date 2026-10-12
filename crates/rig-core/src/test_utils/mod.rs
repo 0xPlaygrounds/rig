@@ -53,34 +53,10 @@ pub(crate) fn json_body(request: &http::Request<crate::wire::Body>) -> serde_jso
     serde_json::from_slice(bytes).expect("the request body is JSON")
 }
 
-/// Decode one reply of `wire` to `request` from frames already in hand,
-/// folded as `mode` folds it: the one decoder and fold a live call runs.
+/// [`decode_reply`](crate::wire::decode_reply), with the reply's whole
+/// document as a transport reports it (`Null` for none).
 #[cfg(test)]
-pub(crate) fn decode_reply<W: crate::wire::Wire>(
-    wire: &W,
-    request: &crate::wire::Request<W>,
-    mode: crate::wire::Mode,
-    frames: impl IntoIterator<Item = W::Frame>,
-    raw: serde_json::Value,
-) -> Result<crate::wire::Response<W>, crate::error::ProviderError> {
-    let shared = std::sync::Mutex::new(crate::wire::Shared::new(fold_for(request, wire, mode)));
-    let fed = crate::driver::feed(
-        &mut wire.decoder(),
-        Some(wire.reassembler()),
-        &shared,
-        frames,
-    );
-    crate::driver::settle(
-        shared,
-        fed,
-        crate::wire::Reply {
-            provider: wire.describe().name.to_owned(),
-            raw,
-            provider_request_id: None,
-        },
-    )
-    .outcome
-}
+pub(crate) use crate::driver::decode_reply;
 
 /// The fold a call to `wire` in `mode` opens for `request`, for tests that
 /// drive a decoder by hand.
