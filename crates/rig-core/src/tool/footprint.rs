@@ -40,10 +40,16 @@ pub enum Touches {
 /// is under it), or anything at all. A guard compares paths as they are,
 /// so a host makes a footprint [`normalized`](Touches::normalized) before
 /// any guard sees it; the rig kernel does so for every tool call.
+///
+/// Normalizing folds `.` and `..` by the text alone and follows no link,
+/// so a tool declares canonical paths: the files it will open once links
+/// are resolved, as rig-tools' file tools do through their workspace's
+/// `canonical`. A guard that must not be fooled by a link a tool did not
+/// resolve canonicalizes the paths it compares itself.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {
-    /// These files and directories.
+    /// These files and directories, canonical and absolute.
     Paths(Vec<PathBuf>),
     /// Anything at all.
     Anything,
