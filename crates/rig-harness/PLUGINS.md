@@ -98,10 +98,10 @@ nothing moves, so an effect goes as far as it can in the frame:
 `app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`, ordered by its
 stage's phase and against other plugins' public sets
 ([ordering](#ordering-against-other-plugins)). Every effect is admitted
-before it starts, wherever it was spawned, so every Prepare and Gate
-system sees it. Prepare sees an effect once; Gate each pass it is ready to
-start, so again after each hold is released; Review an outcome each pass
-until it settles.
+before it starts, wherever it was spawned, so every Prepare system sees
+it. Prepare sees an effect once; Gate each pass it is ready to start, so
+again after each hold is released; Review an outcome each pass until it
+settles.
 
 **An observer is for reactions that need no order**: counting, a status
 item, a span, the plugin's own entities (`On<Add<Started>>`,
@@ -109,21 +109,17 @@ item, a span, the plugin's own entities (`On<Add<Started>>`,
 no fixed order, so an observer never edits stage data another plugin
 edits; it may decide an effect, since the first decision wins.
 
-**The conflict rule.** A hold is any entity `HoldOf(effect)`: it keeps the
-effect from starting, or its outcome from settling, until the hold is
-despawned or loses its `HoldOf`. Holds add up: releasing yours never
-releases another plugin's. A hold says why with its `Name`, such as
-`waiting for lease on src/a.rs`, which the fronts show. The first
-decision wins: a gate decides through the effect's `Decision`, naming who
-decided (`decision.decide(Decider::plugin(NAME), Outcome::refused(..))`,
-or `Decider::Person` for what the user chose through a front), so a later
-gate can never overturn a refusal; the kernel applies it as the `Outcome`
-at Start, and the record keeps who decided (`decided_by`). Allowing is
-doing nothing, and records no decider. A reviewer edits the `Outcome` in
-place (`Query<&mut Outcome, Unreviewed>`), once (a marker), since Review
-sees it each pass; the record keeps both the first and the reviewed
-outcome. Plugins never insert `Outcome` themselves, so Bevy sees every
-decision and edit.
+**The conflict rule.** A hold is any entity `HoldOf(effect)`, saying why
+with its `Name` (`waiting for lease on src/a.rs`), which the fronts show.
+The first decision wins: a gate decides through the effect's `Decision`,
+naming who decided (`decision.decide(Decider::plugin(NAME),
+Outcome::refused(..))`, or `Decider::Person` for what the user chose
+through a front), so a later gate can never overturn a refusal; the
+kernel applies it as the `Outcome` at Start, and the record keeps
+`decided_by`. Allowing is doing nothing. A reviewer edits the `Outcome`
+in place (`Query<&mut Outcome, Unreviewed>`), once (a marker), since
+Review sees it each pass; the record keeps both outcomes. Plugins never
+insert `Outcome` themselves, so Bevy sees every decision and edit.
 
 **Deciding once.** A gate that only reads (a path rule) decides afresh
 each time it sees a call. One whose decision asks someone or has side
@@ -252,7 +248,7 @@ The sets of Gate systems that edit shared data:
 | Set | Crate | What it does | Order against it |
 |---|---|---|---|
 | `GateSystems::FromRecord` | `rig_ecs` | as Gate opens, before every Gate system: decides effects from a record of an earlier run (a session replay), which holds each gate's decision then | nothing; a cached or dry-run answer is no record and goes in `After` |
-| `GateSystems::After` | `rig_ecs` | after every Gate system: answers that stand in for running an effect (a cached result, a dry run, an editor's buffer), and group coordinators that read their group's decisions and refuse or hold the rest; a gate's decision is applied at Start, so read `Decision` | nothing; every gate goes before it |
+| `GateSystems::After` | `rig_ecs` | after every Gate system: answers that stand in for running an effect (a cached result, a dry run, an editor's buffer), and [group coordinators](#gating-and-reviewing-tool-calls); a gate's decision is applied at Start, so read `Decision` | nothing; every gate goes before it |
 | `CommandSystems` | `rig_harness` | takes over a user's line that starts with `/` and runs it | `.before` it to take a line over first |
 | `AskSystems` | `rig_harness` | answers the oldest open question that takes text with the user's next line, after `CommandSystems` | `.after` it to answer questions in Gate, so a line the user typed wins |
 | `PrintSystems` | `rig_print` | answers a `--print` run's questions from `--answer`, after `AskSystems` | `.before` it to answer a question first |
@@ -314,10 +310,7 @@ annotations do (`Reads(Anything)` for one that says it only reads,
 of its own. `args_schema` derives the parameters from the arguments type,
 whose field doc comments describe them. Before a call runs, its arguments
 are checked against them (rig-core's `tool::validate`): a call that does
-not fit is refused with where and why, which the model reads. A local
-`$ref` (`#/$defs/…`, draft-07's `#/definitions/…`) is followed; a remote
-or unresolvable one accepts the value there, and `pattern` and `format`
-are not checked.
+not fit is refused with where and why, which the model reads.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -386,10 +379,11 @@ first one of a tool stays. It gets the call, its result once there is one,
 where the call stands (`state`: `Streaming` while the model still writes
 the arguments, parsed so far; `Waiting`; `Held` with the holds' names;
 `Running` with its `ToolProgress` line; `Done`), whether it is `expanded`,
-and, while this run knows them, what it published (`facts`) and how long
-it ran (`took`); `header`, `result_lines` and `default_lines` draw them. A
-crate that should also build without `rig-tui` puts it behind a default
-cargo feature, as `rig-coding-tools` does with `tui = ["dep:rig-tui"]`.
+a running call's `output` so far, and, while this run knows them, what it
+published (`facts`) and how long it ran (`took`); `header`, `result_lines`
+and `default_lines` draw them. A crate that should also build without
+`rig-tui` puts it behind a default cargo feature, as `rig-coding-tools`
+does with `tui = ["dep:rig-tui"]`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -411,17 +405,20 @@ the `CallHandler` that will run it, on the call's entity. A Prepare system
 edits them as the call is admitted: the arguments, or the handler, wrapped
 with `ErasedHandler::layered` (to give it a secret the model never sees,
 say) or replaced in `PrepareSystems::Edit` to run that one call another
-way, such as in a sandbox (below). As Gate opens, the kernel gives each
-call the `Footprint` of the call as Prepare left it, and a call that
-conflicts with an earlier one of its reply is `Waiting` until that one
-settles. A Gate system decides a call about to run with
-`Outcome::refused(why)`, which the model reads as the tool's refusal, or
-any `Outcome` (a cached result), or holds it; a Review system edits each
-result in place before it is committed. What a tool published beside its
-text, such as rig-tools' `FilesRead`, `FilesChanged` (each file with the
-hash of the bytes read or written) or `ExitStatus`, is the call's
-`Published`. A call of a tool the agent's `ToolAccess` leaves out is
-refused at Start: the model reads it as a tool it lacks.
+way, such as in a sandbox (below). Each time Gate opens, the kernel gives
+each call the `Footprint` of the call as it stands, so a held call whose
+`ToolRequest` was edited is gated again (Prepare does not run again for
+it), and a call that conflicts with an earlier one of its reply is
+`Waiting` until that one settles. Before every gate, the kernel answers a
+call that cannot run: of a missing tool, of one the agent's `ToolAccess`
+leaves out, or with arguments that do not fit; no gate sees it, and
+`After` reads its `Outcome`. A Gate system decides a call about to run
+with `Outcome::refused(why)`, which the model reads as the tool's refusal,
+or any `Outcome` (a cached result), or holds it; a Review system edits
+each result in place before it is committed. What a tool published beside
+its text, such as rig-tools' `FilesRead` (each file with the hash of the
+bytes read and, for `read`, the `LinesShown`), `FilesChanged` or
+`ExitStatus`, is the call's `Published`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -467,11 +464,13 @@ not its tool's name, so one rule covers `edit`, `write`, rig-coding-tools'
 **After every gate.** `GateSystems::After` runs once every gate had its
 say in the pass. An answer that stands in for running a call (a cached
 result, a dry run) goes there and reads `Decision`, so it never answers a
-call a gate refused. So does a group of calls that runs all or none, such
-as a patch's edits and deletes: the plugin spawns a child call per member,
-each held by a hold of its own from the start, and in `After`, once every
-member is past its gates (decided, or held by nothing but that hold),
-refuses the rest if one was refused, else despawns its holds together.
+call a gate refused (one the kernel refused already has its `Outcome`). So
+does a group of calls that runs all or none, such as a patch's edits and
+deletes. The plugin spawns a child call per member, unheld: no gate sees a
+call held from its spawn. In `After` it queries them without `Undecided`:
+while any member is held by another or `Waiting`, it holds the free ones
+with holds of its own; once none is, it refuses them all if one was
+refused or answered with an error, else releases its holds.
 
 ## A held call holds back the later calls of its reply
 
@@ -522,12 +521,10 @@ dismisses, unless a plugin's global binding has those keys.
 A choice from a list is a `Picker` entity: a title, a body, items that
 each may run a command line and show a `detail`, and whether typed text
 answers it (`free_text`). Inserting a new `Picker` replaces what it shows,
-and despawning it closes it. A front answers a picker, or an open `Ask`,
-by triggering `Pick::person(entity, chosen)` (a plugin answering for
-itself names itself in `Pick.by`): on a picker, the harness runs the
-chosen item's command, if any, triggers `Picked` on it (`Chosen::Item`,
-`Chosen::Text`, or `None` when closed) and despawns it; on an `Ask`, it
-decides the answer as `by`.
+and despawning it closes it. A front answers it, or an open `Ask`, by
+triggering `Pick::person(entity, chosen)`; a picker then runs the chosen
+item's command and gets `Picked` (`Chosen::Item`, `Chosen::Text`, or
+`None` when closed).
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -619,11 +616,8 @@ fn remind(In(args): In<CommandArgs>, mut commands: Commands, mut notices: Messag
         notices.write(Notice::error(args.agent, "/remind needs a text"));
         return;
     }
-    // A message in the agent's conversation: `Steer` goes with the running
-    // turn's next model call, `Queue` once that turn would end, together
-    // with everything else queued; an idle agent starts a turn. A `Note`
-    // needs no answer and starts no turn: it goes with the next call
-    // built after it is accepted (at Start, after Admit built that pass's).
+    // `Queue`: once the running turn would end, or now for an idle agent
+    // (`DeliveryMode` has the others).
     let reminder = Deliver::new(args.agent, format!("Reminder: {}", args.args), DeliveryMode::Queue);
     commands.trigger(reminder.with_origin(Origin::plugin("remind")));
 }
@@ -780,11 +774,11 @@ option that model cannot take is left out, plugin edits stay).
   `connection.spec`.
 - **What a call is sent as.** `ModelStarts::sent` gives a call's
   connection and request exactly as Start will send them, such as to
-  measure it in `PrepareSystems::Fit`. From `Start` on, a model call has
-  `SentTo(connection)`, every adapter applied, and its
-  `ModelRequest.request` is the request as sent. A fact a `map_stream`
-  closure inserts in the call's `PublishedContext` is on the call as
-  `Published` once it is answered, and recorded with it.
+  measure it in `PrepareSystems::Fit`, and `prompt` its system prompt in
+  parts. From `Start` on, a model call has `SentTo(connection)`, every
+  adapter applied, and its `ModelRequest.request` is the request as sent.
+  A fact a `map_stream` closure inserts in the call's `PublishedContext`
+  is on the call as `Published` once it is answered, and recorded with it.
 - **Caching.** A provider that caches prompts by marker, such as
   Anthropic, marks the prefixes a request names in `cache_points`
   (`CachePoint::Tools`, `System`, `Messages(n)`); others ignore them. A
@@ -951,17 +945,20 @@ fn fall_back(
 
 # What a model streams
 
-Every model call streams, a turn's and a plugin's own alike. Each event
-is a `StreamDelta { effect, agent, event }` message carrying rig-core's
+Every model call streams, a turn's and a plugin's own alike. Each event is
+a `StreamDelta { effect, agent, event }` message carrying rig-core's
 `StreamEvent`: a part's `Start` (a tool call's name), its `Text`,
-`Reasoning` or `Arguments` fragments, and its `End` (a finished tool
-call with its id); the event's `part` tells parallel tool calls apart.
-It is written in `Arrive` in the order it came, after the call's adapters
+`Reasoning` or `Arguments` fragments, and its `End` (a finished tool call
+with its id); the event's `part` tells parallel tool calls apart. It is
+written in `Arrive` in the order it came, after the call's adapters
 rewrote it; Bevy keeps a message two frames, so a reader in `PostUpdate`
 gets the last events of a reply that settled in the same frame. A turn's
 call also adds its text and reasoning up in its `Partial`, gone once the
 reply is in the conversation. From its stream's first item, the call has a
-`Streamed { first, last, items }` beside its `Started { at }`.
+`Streamed { first, last, items }` beside its `Started { at }`. A delta
+moves no stage, so a reader that spawns effects from it, such as a tool
+call started before the reply ends, runs in `Update` `.before(AgentLoop)`
+or calls `Wake::wake` once it spawned, else they wait for another wake.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1472,23 +1469,25 @@ restart brings back neither it nor the agents it spawned.
 
 **Compaction** splices its summary, one user item of origin
 `rig_compaction::summary_origin()`, in place of the messages it
-summarized. Where it cuts is the policy's in rig-compaction's
-`Compaction` resource, rig-memory's `CompactionPolicy`: `cut` is
-`Cut::Budget` (keep the newest messages the budget allows) or a plugin's
-rule, `Cut::With`, and `per_turn` caps the summaries a turn asks for.
+summarized. Where it cuts is the policy's in rig-compaction's `Compaction`
+resource, rig-memory's `CompactionPolicy`: `cut` is `Cut::Budget` (keep
+the newest messages the budget allows) or a plugin's rule, `Cut::With`,
+and `per_turn` caps the summaries a turn asks for.
 `rig_compaction::unsummarized(&conversation)` is what the next summary
-covers, and `On<Insert<Summarized>>` sees the conversation with a new one.
+covers, `plan(..)` plans one summary call under a policy of the plugin's,
+and `On<Insert<Summarized>>` sees the conversation with a new one.
 
-**The session format** is rig-cassette's `journal`, which reads and
-writes sessions without an app. `read_session(store)` reads one: each
-agent's conversation and saved values, and each message's `Stamp`, its
-record number and when it was logged. `write_session(store, &session)`
-writes one from data, appending only what differs, each new message at
-its stamp's time. An importer takes a session with `home.new_session()`,
-opens its store with `SessionStores::open`, writes it, and lists it in
-`/resume` with rig-sessions' `write_meta(store, ..)`.
-`fork_session(from, to, before)` copies a session as it was when a
-message was made, `before` being its agent's id and the message's id.
+**The session format** is rig-cassette's `journal`, which reads and writes
+sessions without an app. `read_session(store)` reads one: each agent's
+conversation and saved values, and each message's `Stamp`, its record
+number and when it was logged. `write_session(store, &session)` writes one
+from data, appending only what differs, each new message at its stamp's
+time. An importer takes a session with `home.new_session()`, opens its
+store with `SessionStores::open`, writes it, and lists it in `/resume`
+with rig-sessions' `write_meta(store, ..)` (`title_of` makes a title as
+`/resume` does). `fork_session(from, to, before)` copies a session as it
+was when a message was made, `before` being its agent's id and the
+message's id.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1507,10 +1506,6 @@ fn undo(
     if let Some(at) = (0..len).rev().find(|&at| typed(&conversation, at).is_some()) {
         commit.splice(args.agent, &mut conversation, at.., []);
     }
-}
-
-fn build(app: &mut App) {
-    app.add_command("undo", "Take the last exchange back", undo);
 }
 ```
 
@@ -1561,24 +1556,31 @@ fn still_working(turns: Query<&TurnOf>, mut notices: MessageWriter<Notice>) {
 `WorkDir`, such as its own worktree, works there instead, and so does an
 agent it spawns: the coding tools resolve its paths from it and refuse one
 outside it (what a command does once started is not confined), its
-commands start there, and its prompt names it. Both are paths in the
-app's workspace, `ProjectWorkspace`: this machine's (rig-tools' `Local`)
-unless a plugin puts another in while the app is built, such as one
-reached over SSH (a rig-tools `Workspace`), with the `ProjectRoot` there.
-Every file tool, the shell, `@path` attachments, the instruction files and
-`@` completion go through it, and other plugins learn it is remote from
-`workspace.0.host()`. `RigHome` is the `RIG_HOME` layout
-(`home.0.session(..)`, `home.0.auth(..)`), and `TokioRuntime` rig's tokio
-runtime. A plugin that should also run without the harness's plugins
-inits the ones it reads (`app.init_resource::<ProjectRoot>()`).
+commands start there, and its prompt names it. Both are paths in the app's
+workspace, `ProjectWorkspace`: this machine's (rig-tools' `Local`) unless
+a plugin puts another in, such as one reached over SSH (a rig-tools
+`Workspace`), with the `ProjectRoot` there. It may be swapped while the
+app runs (a reconnect), so read it on each use. Every file tool, the
+shell, `@path` attachments, the instruction files and `@` completion go
+through it (rig-tools' `context::instruction_file_in`,
+`attach::is_path_reference` and `attach::read_image` are their rules), and
+other plugins learn it is remote from `workspace.0.host()`. A workspace
+learns how a call's command ended in Review, from its `Published`
+`ExitStatus` (`rig_tools::split_status` parts shell's output from its
+status line). `RigHome` is the `RIG_HOME` layout (`home.0.session(..)`,
+`home.0.auth(..)`), and `TokioRuntime` rig's tokio runtime. A plugin that
+should also run without the harness's plugins inits the ones it reads
+(`app.init_resource::<ProjectRoot>()`).
 
 **The main-thread rule.** A workspace call may wait on the network. Tools
 call it inside `blocking`; a system calls it inline only while `host()` is
 `None`, else as `Running::spawn` work, holding what waits for it, as
-`read_todo` below reads.
-A plugin's own file tool resolves paths as the coding tools do with
-`workspace.place(base, confine, path)`, and `edit::apply(path, text,
-edits)` is what `edit` makes of a text.
+`read_todo` below reads. Work a turn waits for, such as a snapshot as it
+starts, holds the turn's first `TurnCall` (admitted in Prepare) until it
+lands, as rig-basics' instruction refresh does. A plugin's own file tool
+resolves paths as the coding tools do with `workspace.place(base, confine,
+path)`, and `edit::apply(path, text, edits)` is what `edit` makes of a
+text.
 
 **Child processes.** `Processes` is how every child process starts, a
 rig-tools `Launcher` (a wrapper command, a directory, environment): the
@@ -1587,11 +1589,11 @@ shell tool reads it for each command, so a sandbox plugin that sets it
 with `processes.launcher().command(program)`, or starts one whose output
 it reads as it comes with `.spawn(program, args, Spawn { stdin,
 merge_stderr })`: the `Process` hands its output over line by line
-(`lines()`), ends with SIGTERM then SIGKILL on `stop(grace)`, and is
-killed with its process group when dropped (`rig_tools::process`). Every
-launcher it hands out drops the session's
-[secrets](#sessions-their-store-secrets-and-exiting): a bare
-`std::process::Command` passes them on, so start processes with
+(`lines()`) or all at its end (`output(timeout)`, inside `blocking`), ends
+with SIGTERM then SIGKILL on `stop(grace)`, and is killed with its process
+group when dropped (`rig_tools::process`). Every launcher it hands out
+drops the session's [secrets](#sessions-their-store-secrets-and-exiting):
+a bare `std::process::Command` passes them on, so start processes with
 `Processes`, and one that runs in the project through the workspace
 (`workspace.0.spawn(&launcher, ..)`).
 
@@ -1647,11 +1649,6 @@ fn read_todo(
     commands.spawn((Todo, Running::spawn(pool, &wake, async move { read.await.unwrap_or_default() })));
 }
 
-/// Runs every child process under `nice`.
-fn be_nice(processes: Res<Processes>) {
-    processes.set(processes.launcher().wrapped(["nice", "-n", "10"]));
-}
-
 /// The lines a chat bridge receives, here a fixed list.
 #[derive(Component)]
 struct Received;
@@ -1681,24 +1678,26 @@ fn show(
 through its store, a rig-cassette `JournalStore` (`SessionStore`): each
 agent's log and blobs, the effect log, `/resume`'s listing, a fork's
 parent, the terminal view's notices and draft, and a plugin's own files,
-under a directory of its own (`store.0.write_file("<plugin>/<name>", ..)`).
-The harness opens it from `SessionStores` once every plugin is built; a
-plugin that keeps sessions elsewhere or sealed puts its own
+under a directory of its own (`store.0.write_file("<plugin>/<name>",
+..)`). The harness opens it from `SessionStores` once every plugin is
+built; a plugin that keeps sessions elsewhere or sealed puts its own
 `SessionStores::new(|dir| ..)` in while the app is built, and forks,
 imports and `/resume` open their stores through it too. What is named by
 path stays plain, under `Scratch`: tool output cut short, pasted images
-and the text log; `Scratch(None)` keeps none.
+and the text log; `Scratch(None)` keeps none. A copy to another store
+lists its files with `files()`, which a wrapping store forwards, and a
+command that rewrites a session skips one that `runs_elsewhere()`.
 
 **Secrets.** A secret a plugin needs before the session is restored, such
 as a store's passphrase, is asked for in `build` with
-`app.add_secret(Secret::new(name, help))` and read from `Secrets`. An
-interactive launcher asks for each one its environment
-(`RIG_SECRET_<NAME>`) lacks, once, and passes it to the agent's process
-alone: no process rig starts gets it, not builds, the shell, anything
-started through `Processes` or the terminal view's editor. That keeps it
-from tools, the model's commands, build scripts and helper programs; not
-from the same user reading the process's environment, nor from plugin
-code, which is trusted.
+`app.add_secret(Secret::new(name, help))` and read from `Secrets`. A
+launcher run at a terminal, a command's too, asks for each one its
+environment (`RIG_SECRET_<NAME>`) lacks, once, and passes it to the
+agent's process alone: no process rig starts gets it, not builds, the
+shell, anything started through `Processes` or the terminal view's editor.
+That keeps it from tools, the model's commands, build scripts and helper
+programs; not from the same user reading the process's environment, nor
+from plugin code, which is trusted.
 
 **Exiting.** A plugin that ends the run triggers `Exit(reason)`:
 `ExitReason::Quit`, `Reload` (restart on the staged build),
@@ -1879,16 +1878,19 @@ fn show_budget(
 
 # Turning off or replacing what another plugin added
 
-Tools, slash commands, renderers, key bindings, options, fronts and
-prompt sections are entities. Bevy's `Disabled` on one turns it off, and
-its name is free for a replacement (a second one of a taken name is
-refused). Do it in `Plugin::finish`, which runs once every plugin's
-`build` did. What a plugin spawns in `build`, `finish` and `cleanup` is
-marked `ProvidedBy` it; what it spawns later it marks itself, with its
-entity from `Res<PluginEntity<MyPlugin>>`. Changing how another plugin's
-tool runs is rarely a replacement: a Prepare or Gate system on its calls
-does it, a Review system changes its results, and a default tool may have
-a switch of its own, such as `rig_coding_tools::ShellOutput`.
+Tools, slash commands, renderers, key bindings, options, fronts and prompt
+sections are entities. Bevy's `Disabled` on one turns it off, and its name
+is free for a replacement (a second one of a taken name is refused). Do it
+in `Plugin::finish`, which runs once every plugin's `build` did. What a
+plugin spawns in `build`, `finish` and `cleanup` is marked `ProvidedBy`
+it; what it spawns later it marks itself, with its entity from
+`Res<PluginEntity<MyPlugin>>`. Changing how another plugin's tool runs is
+rarely a replacement: a Prepare or Gate system on its calls does it, a
+Review system changes its results, and a default tool may have a switch of
+its own, such as `rig_coding_tools::ShellOutput`. A plugin's stage systems
+in a public set are turned off with a run condition, such as
+`app.configure_sets(AgentPass, AttachSystems.run_if(|| false))` in
+`finish` for rig-coding-tools' `@path` attachments.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1937,10 +1939,9 @@ parts: an app on a scratch session directory or a store in memory
 (`run_until`, `advance`, `pass_wall_clock`), what happened (`collect`,
 `log_ended`, `log_tool_outputs`), and answering questions (`AnswerAsks`,
 `answer_open`). A plugin with stage systems has one more test,
-`rig_defaults_test_support::assert_stages_ordered(MyPlugin)`: it builds
-the harness with the default plugins and the plugin, runs no frame, and
-fails, naming the systems, where two stage systems write the same data
-unordered ([ordering](#ordering-against-other-plugins)).
+`rig_defaults_test_support::assert_stages_ordered(MyPlugin)`, which fails
+where it and the default plugins write the same data
+[unordered](#ordering-against-other-plugins).
 
 ```rust,no_run
 use rig_core::test_utils::MockCompletionModel;
@@ -2005,24 +2006,20 @@ fn a_write_outside_src_is_refused() {
 
 # Fronts, options and commands
 
-A front shows the agents to someone and takes what they type: the terminal
-view (`rig-tui`), `--print` (`rig-print`), a window, a web server, a chat
-bot, a command of a plugin's own. It offers itself in `build` with
-`app.add_front(..)`, saying which runs it takes (`on_terminal()`,
-`headless()`, `on_flag(name, help)` for a run given its option,
-`on_command(..)` for [`rig <name>`](#commands-of-your-own)); one front
-takes each run, the one whose command or option was given, else the first
-offered for the kind of run, and it alone owns stdin and stdout. It asks
-`app.runs_front(name)` in `finish` and sets itself up only then. It sends
-what the user types as `Deliver` from `Origin::user()`, shows `Notice`s
-(only an `Error` fails a `--print` run or refuses a command), each
-agent's `Conversation` (or each change as `Committed`), its reply as it
-streams ([`StreamDelta`](#what-a-model-streams)) and its
-[transcript entries](#the-transcript-entries-looks-and-scrolling), and
-sets `Shown` to the agent the user looks at. If it can show questions, it
-spawns an `Answerer` and answers them with [`Pick`](#asking-the-user-questions-and-pickers).
-A front nobody sits at drives its run with `app.run_headless(prompt)`,
-which ends once no turn runs and nothing is held.
+A front, such as the terminal view, `--print`, a window or a chat bot,
+offers itself with `app.add_front(..)`; one front takes each run (as
+`Front` says) and alone owns stdin and stdout, and it sets itself up in
+`finish` only if `app.runs_front(name)`. It sends what the user types as
+`Deliver` from `Origin::user()`, shows `Notice`s (only an `Error` fails a
+`--print` run or refuses a command), each agent's `Conversation` (or each
+`Committed` change), its reply as it streams
+([`StreamDelta`](#what-a-model-streams)) and its [transcript
+entries](#the-transcript-entries-looks-and-scrolling), and sets `Shown` to
+the agent the user looks at. If it can show questions, it spawns an
+`Answerer` and answers them with
+[`Pick`](#asking-the-user-questions-and-pickers). A front nobody sits at
+drives its run with `app.run_headless(prompt)`, which ends once no turn
+runs and nothing is held.
 
 A plugin's own options are declared with `app.add_flag(Flag::new(name,
 help))`, `.value("N")` for one that takes a value: `rig --name`, and
@@ -2038,22 +2035,20 @@ puts after it for the model by the constant `STOPPED`.
 
 ## Commands of your own
 
-A command is a front of its own:
-`Front::new("stats").headless().on_command("stats", "[--all]", "Count the
-saved sessions")` takes every run of `rig stats …`, and the words after
-the name are `Invoked::command()`. A command whose front is not
-`on_terminal()` runs headless: the launcher passes stdin, stdout, stderr
-and the exit code through (`ExitReason::Failed(n)` exits with `n`) and
-never restarts it. `sessionless()` leaves no session behind.
+A command is a front of its own: `Front::new("stats").on_command("stats",
+"[--all]", "Count the saved sessions")` takes every run of `rig stats …`,
+and the words after the name are `Invoked::command()`. A command whose
+front is not `on_terminal()` runs headless: the launcher passes stdin,
+stdout, stderr and the exit code through (`ExitReason::Failed(n)` exits
+with `n`) and never restarts it; `headless()` is only for runs that name
+no command or option. `sessionless()` leaves no session behind.
 
 The launcher learns a build's commands, options and secrets by asking the
 built agent: `rig_harness::run(app)`, which the generated `main.rs` ends
-with, builds the app, writes what its plugins declared, and runs no
-frame. So `build` only declares, and work goes in `finish` or systems.
-Two plugins with one command, or a command named `build`, `plugin` or
-`help`, fail the build, naming both. `rig help` lists what the last build
-declared, `rig help stats` one command's usage; an unknown command is
-refused, after a build, with the list.
+with, builds the app, writes what its plugins declared, and runs no frame.
+So `build` only declares, and work goes in `finish` or systems. `rig help`
+lists what the last build declared, `rig help stats` one command's usage;
+an unknown command is refused, after a build, with the list.
 
 ```rust,no_run
 use rig_harness::harness_protocol::SessionId;
@@ -2065,7 +2060,7 @@ pub struct StatsPlugin;
 
 impl Plugin for StatsPlugin {
     fn build(&self, app: &mut App) {
-        let stats = Front::new("stats").headless().sessionless();
+        let stats = Front::new("stats").sessionless();
         app.add_front(stats.on_command("stats", "", "Count the saved sessions"));
     }
 
@@ -2100,18 +2095,20 @@ session, so it comes back on `/resume`, `/reload` and in a fork, unless
 The terminal view draws entries, and what the conversation holds from a
 plugin's origin (such as rig-compaction's summary), with the look
 `add_entry_renderer(origin, ..)` gives that origin. Its `TranscriptView`
-is what plugins read and set: the items `expanded` and `selected`
-(Alt+Up and Alt+Down select, Ctrl+O expands), the `highlights` lit
-wherever their text is drawn, and where it is scrolled (`top()`).
-`ScrollTo { agent, item, line }` scrolls to a `TranscriptItem` (a
-`Message`, a tool `Call` or an `Entry`); `item: None` follows the newest
-output.
+is what plugins read and set: the items `expanded` and `selected` (Alt+Up
+and Alt+Down select, Ctrl+O expands), the `highlights` lit wherever their
+text is drawn (`match_case` or not; where two overlap, the first placed
+wins), and where it is scrolled (`top()`). `ScrollTo { agent, item, row }`
+scrolls to a `TranscriptItem` (a `Message`, a tool `Call`, an `Entry` or a
+`Notice` by its index in `notices()`): to a row of it (`ItemRow::Top(n)`),
+its first (`Reveal`) or the row of its `n`th lit match (`Lit(n)`); `item:
+None` follows the newest output.
 
 ```rust,no_run
 use rig_harness::prelude::*;
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
-use rig_tui::{AppToolRenderersExt, Highlight, ScrollTo, TranscriptItem, TranscriptView};
+use rig_tui::{AppToolRenderersExt, Highlight, ItemRow, ScrollTo, TranscriptItem, TranscriptView};
 
 fn build(app: &mut App) {
     app.add_command("mark", "Mark the newest message: /mark why", mark)
@@ -2135,7 +2132,8 @@ fn mark(In(args): In<CommandArgs>, agents: Query<&Conversation>, mut commands: C
     commands.spawn((TranscriptEntry::new("mark", after, "marked", args.args), EntryOf(args.agent)));
 }
 
-/// `/find text`: lights it, and scrolls to the last message the user typed it in.
+/// `/find text`: lights it, and scrolls to it in the last message the user
+/// typed it in.
 fn find(
     In(args): In<CommandArgs>,
     agents: Query<&Conversation>,
@@ -2149,9 +2147,10 @@ fn find(
     let hit = (0..conversation.messages().len()).rev().find(typed_it);
     if let Some(id) = hit.and_then(|at| conversation.id(at)) {
         let item = Some(TranscriptItem::Message(id));
-        commands.trigger(ScrollTo { agent: args.agent, item, line: 0 });
+        commands.trigger(ScrollTo { agent: args.agent, item, row: ItemRow::Lit(0) });
     }
-    view.highlights = vec![Highlight { text: args.args, style: Style::new().on_yellow() }];
+    let style = Style::new().on_yellow();
+    view.highlights = vec![Highlight { text: args.args, style, match_case: true }];
 }
 ```
 
