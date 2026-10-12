@@ -31,6 +31,7 @@ use super::keys::KeyBinding;
 use super::panel::TuiScreen;
 use super::view::TuiView;
 use rig_ecs::calls::Wake;
+use rig_harness::harness_protocol::secret_variables;
 use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
 
 /// Runs a program with the terminal, such as `$EDITOR` on a draft: the
@@ -42,7 +43,8 @@ use rig_harness::prelude::{Exit, ExitReason, SessionPaths};
 /// it is spawned.
 ///
 /// Ctrl+C in a program that leaves the terminal as it is (not an editor,
-/// which takes the keys itself) also stops the agent.
+/// which takes the keys itself) also stops the agent. The program gets
+/// none of the session's secrets.
 #[derive(Component, Debug)]
 pub struct RunInTerminal(pub Command);
 
@@ -335,8 +337,11 @@ pub(crate) fn run_in_terminal(world: &mut World) {
 }
 
 /// Runs `command` until it exits, its output on `screen` when the view
-/// sends its own output elsewhere.
+/// sends its own output elsewhere, without the session's secrets.
 fn run_with(command: &mut Command, screen: Option<&File>) -> Result<ExitStatus, String> {
+    for secret in secret_variables() {
+        command.env_remove(secret);
+    }
     if let Some(screen) = screen {
         let output = screen.try_clone().map_err(|failure| failure.to_string())?;
         let errors = screen.try_clone().map_err(|failure| failure.to_string())?;
