@@ -130,7 +130,7 @@ fn a_notice_is_an_item_a_plugin_scrolls_to() {
     app.world_mut().trigger(ScrollTo {
         agent,
         item: Some(item.clone()),
-        line: 0,
+        row: ItemRow::Top(0),
     });
     let lines = crate::tests::on_screen(&mut app, agent, 5);
     assert_eq!(lines.first().map(String::as_str), Some("Rate limited."));

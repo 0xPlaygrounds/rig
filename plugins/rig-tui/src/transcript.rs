@@ -23,11 +23,12 @@ use rig_core::streaming::{PartKind, StreamEvent, parse_partial_arguments};
 use rig_core::tool::ToolResultContext;
 
 use super::markdown;
+use super::render::lit;
 use super::renderers::{
     CallState, EntryView, RESULT_LINES, RenderEntry, RenderToolCall, ToolCallView, excerpt,
     result_style, result_text,
 };
-use super::view::{ShownNotice, TranscriptItem};
+use super::view::{Highlight, ItemRow, ShownNotice, TranscriptItem};
 use super::wrap::wrap;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
 use rig_ecs::prelude::{Origin, OriginKind, STOPPED};
@@ -420,11 +421,13 @@ impl Transcript {
 
     /// The rows of `parts` that fit `height` rows at `width`, where
     /// `scroll` places them, what is below them, and where the items are.
+    /// A jump to an item's match counts the matches of `highlights`.
     pub(crate) fn visible(
         &self,
         parts: &[Part],
         (width, height): (u16, usize),
         scroll: &mut Scroll,
+        highlights: &[Highlight],
     ) -> Visible {
         let counts: Vec<usize> = parts.iter().map(|part| self.rows(part).len()).collect();
         let mut marks = Marks::new();
@@ -436,11 +439,17 @@ impl Transcript {
         }
         scroll.find(&marks);
         let (mut top, mut below) = scroll.place(&counts, height, width);
-        if let Some(Jump::Reveal(item)) = scroll.jump.take() {
+        if let Some((item, to)) = scroll.jump.take() {
             let rows = marks.iter().find(|(marked, _)| *marked == item);
-            let hidden = rows.filter(|(_, rows)| !(top..top + height).contains(&rows.start));
-            if let Some((_, rows)) = hidden {
-                scroll.at = Some(rows.start);
+            let row = rows.map(|(_, rows)| {
+                let lit = match to {
+                    ItemRow::Lit(n) => self.lit_row(parts, rows, highlights, n),
+                    ItemRow::Top(_) | ItemRow::Reveal => None,
+                };
+                lit.unwrap_or(rows.start)
+            });
+            if let Some(row) = row.filter(|row| !(top..top + height).contains(row)) {
+                scroll.at = Some(row);
                 (top, below) = scroll.place(&counts, height, width);
             }
         }
@@ -478,6 +487,25 @@ impl Transcript {
             top: at_top.flatten(),
         }
     }
+
+    /// The row among `rows` of `parts` with match `n` of `highlights`.
+    fn lit_row(
+        &self,
+        parts: &[Part],
+        rows: &Range<usize>,
+        highlights: &[Highlight],
+        n: usize,
+    ) -> Option<usize> {
+        let drawn = parts.iter().flat_map(|part| self.rows(part));
+        let mut before = 0;
+        for (at, row) in rows.clone().zip(drawn.skip(rows.start)) {
+            before += lit(row, highlights).1;
+            if before > n {
+                return Some(at);
+            }
+        }
+        None
+    }
 }
 
 /// `lines` wrapped to `width`, and `marks` of lines moved to the rows
@@ -511,18 +539,10 @@ pub(crate) struct Scroll {
     held: Option<Held>,
     /// Rows the keys moved the view since the last frame, up positive.
     moved: isize,
-    /// An item to go to at the next frame.
-    jump: Option<Jump>,
+    /// An item to go to at the next frame, and which row of it.
+    jump: Option<(TranscriptItem, ItemRow)>,
     /// The row to put at the top at the next frame, where a jump found it.
     at: Option<usize>,
-}
-
-/// An item to scroll to.
-enum Jump {
-    /// Put row `.1` of the item at the top.
-    To(TranscriptItem, usize),
-    /// Bring the item on screen, at the top when it is not.
-    Reveal(TranscriptItem),
 }
 
 /// The top row of a view scrolled up.
@@ -572,22 +592,16 @@ impl Scroll {
         *self = Self::default();
     }
 
-    /// Puts row `line` of `item` at the top at the next frame, as far as
-    /// the transcript reaches.
-    pub(crate) fn to(&mut self, item: TranscriptItem, line: usize) {
-        self.jump = Some(Jump::To(item, line));
+    /// Shows `row` of `item` at the next frame.
+    pub(crate) fn to(&mut self, item: TranscriptItem, row: ItemRow) {
+        self.jump = Some((item, row));
     }
 
-    /// Brings `item` on screen at the next frame.
-    pub(crate) fn reveal(&mut self, item: TranscriptItem) {
-        self.jump = Some(Jump::Reveal(item));
-    }
-
-    /// Finds the row a jump to an item goes to among `marks`: the item's
-    /// first row and the row asked for, within the item. An item not
-    /// there leaves the view where it is.
+    /// Finds the row a jump to put a row of an item at the top goes to
+    /// among `marks`: the item's first row and the row asked for, within
+    /// the item. An item not there leaves the view where it is.
     fn find(&mut self, marks: &[(TranscriptItem, Range<usize>)]) {
-        if let Some(Jump::To(item, line)) = &self.jump {
+        if let Some((item, ItemRow::Top(line))) = &self.jump {
             let found = marks.iter().find(|(marked, _)| marked == item);
             self.at = found.map(|(_, rows)| {
                 let last = rows.end.saturating_sub(1).max(rows.start);

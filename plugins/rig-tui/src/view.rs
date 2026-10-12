@@ -95,13 +95,13 @@ pub enum TranscriptItem {
 /// ```no_run
 /// use rig_harness::prelude::*;
 /// use rig_tui::ratatui::style::{Style, Stylize};
-/// use rig_tui::{Highlight, ScrollTo, TranscriptItem, TranscriptView};
+/// use rig_tui::{Highlight, ItemRow, ScrollTo, TranscriptItem, TranscriptView};
 ///
-/// /// Lights a search's matches and shows the message of the first.
+/// /// Lights a search's matches and shows the first in the message `hit`.
 /// fn show_match(agent: Entity, hit: MessageId, mut view: ResMut<TranscriptView>, mut commands: Commands) {
 ///     let flaky = Highlight { text: "flaky".into(), style: Style::new().on_yellow(), match_case: false };
 ///     view.highlights = vec![flaky];
-///     commands.trigger(ScrollTo { agent, item: Some(TranscriptItem::Message(hit)), line: 0 });
+///     commands.trigger(ScrollTo { agent, item: Some(TranscriptItem::Message(hit)), row: ItemRow::Lit(0) });
 /// }
 /// ```
 #[derive(Resource, Default)]
@@ -138,17 +138,33 @@ pub struct Highlight {
 }
 
 /// Scrolls the terminal view to `agent`'s transcript, showing that agent
-/// if another is shown, so that row `line` of `item` is at the top, as far
-/// as the transcript reaches; `item: None` follows the newest output again.
-/// [`TranscriptView::top`] reads where it is.
+/// if another is shown, so that `row` of `item` is shown; `item: None`
+/// follows the newest output again. An item not drawn leaves the view
+/// where it is. [`TranscriptView::top`] reads where it is.
 #[derive(Event, Clone, Debug)]
 pub struct ScrollTo {
     /// The agent.
     pub agent: Entity,
     /// The item to show, or `None` for the newest output.
     pub item: Option<TranscriptItem>,
-    /// The row of the item to put at the top.
-    pub line: usize,
+    /// Which row of the item to show, and where.
+    pub row: ItemRow,
+}
+
+/// A row of a [`TranscriptItem`] to scroll to, counted in the rows the
+/// view draws, which the view works out, wrapping included.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ItemRow {
+    /// This row of the item, put at the top as far as the transcript
+    /// reaches, as [`TranscriptView::top`] reads it back.
+    Top(usize),
+    /// The item's first row, put at the top when it is not on screen.
+    Reveal,
+    /// The row of the item's match `n` (from 0) of the
+    /// [`TranscriptView::highlights`], counted top to bottom in the rows
+    /// drawn, put at the top when it is not on screen. With fewer matches
+    /// drawn, the item is revealed.
+    Lit(usize),
 }
 
 /// A notice placed in a transcript.
@@ -418,7 +434,7 @@ pub(crate) fn on_scroll_to(
         view.completion = None;
     }
     match &scroll.item {
-        Some(item) => view.scroll.to(item.clone(), scroll.line),
+        Some(item) => view.scroll.to(item.clone(), scroll.row),
         None => view.scroll.follow(),
     }
 }

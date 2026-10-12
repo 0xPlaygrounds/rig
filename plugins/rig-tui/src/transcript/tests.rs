@@ -28,7 +28,7 @@ use super::{
 use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
-    AppToolRenderersExt, CallState, Highlight, RenderToolCall, ScrollTo, ToolCallView,
+    AppToolRenderersExt, CallState, Highlight, ItemRow, RenderToolCall, ScrollTo, ToolCallView,
     TranscriptItem, TranscriptView,
 };
 
@@ -115,7 +115,7 @@ fn drawn(
     // The conversation is the same each time.
     transcript.update(Entity::PLACEHOLDER, conversation, false, &look, WIDTH);
     let parts = [Part::Message(0)];
-    let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default());
+    let visible = transcript.visible(&parts, (WIDTH, 10), &mut Scroll::default(), &[]);
     let rows: Vec<String> = visible.rows.iter().map(ToString::to_string).collect();
     rows.join("\n")
 }
@@ -325,7 +325,7 @@ fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
     app.world_mut().trigger(ScrollTo {
         agent,
         item: Some(item.clone()),
-        line: 1,
+        row: ItemRow::Top(1),
     });
     let lines = on_screen(&mut app, agent, 10);
     // The answer's first row is blank; its second, the text.
@@ -336,11 +336,44 @@ fn scroll_to_puts_an_item_at_the_top_and_top_reads_it_back() {
     app.world_mut().trigger(ScrollTo {
         agent,
         item: None,
-        line: 0,
+        row: ItemRow::Top(0),
     });
     let lines = on_screen(&mut app, agent, 10);
     assert_eq!(lines.last().map(String::as_str), Some("answer 29"));
     assert_eq!(app.world().resource::<TranscriptView>().top(), None);
+}
+
+#[test]
+fn scroll_to_finds_the_row_a_highlight_lights() {
+    let (mut app, agent) = view_app();
+    for index in 0..30 {
+        say(&mut app, agent, Message::user(format!("question {index}")));
+        let answer = match index {
+            10 => "answer 10\n\nalpha flaky\n\nbeta\n\ngamma flaky".to_owned(),
+            _ => format!("answer {index}"),
+        };
+        say(&mut app, agent, Message::assistant(answer));
+    }
+    let Some(hit) = message_id(&app, agent, 21) else {
+        return;
+    };
+    app.world_mut().resource_mut::<TranscriptView>().highlights = vec![Highlight {
+        text: "FLAKY".to_owned(),
+        ..Highlight::default()
+    }];
+    let mut top_after = |row: ItemRow| {
+        let item = Some(TranscriptItem::Message(hit));
+        app.world_mut().trigger(ScrollTo { agent, item, row });
+        let lines = on_screen(&mut app, agent, 10);
+        lines.first().cloned().unwrap_or_default()
+    };
+    assert_eq!(top_after(ItemRow::Lit(1)), "gamma flaky");
+    assert_eq!(top_after(ItemRow::Lit(0)), "alpha flaky");
+    // A match on screen stays where it is.
+    assert_eq!(top_after(ItemRow::Lit(1)), "alpha flaky");
+    // Past the last match, the item's first row: the blank one above it.
+    assert_eq!(top_after(ItemRow::Lit(2)), "");
+    assert_eq!(top_after(ItemRow::Top(1)), "answer 10");
 }
 
 #[test]

@@ -23,7 +23,7 @@ use super::history::{PromptHistory, Sent};
 use super::keys::{self, Found, InputAction, KeyBinding, KeyFocus, KeyPress, KeyPressed, KeyScope};
 use super::panel::{TuiPanel, TuiScreen};
 use super::pick::{self, Choices};
-use super::view::{TranscriptItem, TranscriptView, TuiView};
+use super::view::{ItemRow, TranscriptItem, TranscriptView, TuiView};
 use rig_ecs::agent::{ActiveTurn, Interrupt, Notice};
 use rig_ecs::calls::Wake;
 use rig_ecs::inbox::{Deliver, DeliveryMode};
@@ -480,7 +480,7 @@ fn select(up: bool, view: &mut TuiView, transcript: &mut TranscriptView) {
     };
     transcript.selected = next.and_then(|next| view.items.get(next)).cloned();
     if let Some(item) = &transcript.selected {
-        view.scroll.reveal(item.clone());
+        view.scroll.to(item.clone(), ItemRow::Reveal);
     }
 }
 

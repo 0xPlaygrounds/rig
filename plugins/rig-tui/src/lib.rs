@@ -13,8 +13,8 @@
 //! delivered texts with [`AppToolRenderersExt::add_entry_renderer`]. The
 //! [`TranscriptView`] says, and lets a plugin set, what is expanded and
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
-//! [`ScrollTo`] scrolls to an item, and [`TranscriptView::top`] reads
-//! where the view is.
+//! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
+//! and [`TranscriptView::top`] reads where the view is.
 //!
 //! It is the front ([`FRONT`]) of a run where someone sits at the
 //! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
@@ -89,7 +89,7 @@ pub use renderers::{
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
-pub use view::{Focus, Highlight, ScrollTo, ShownNotice, TranscriptItem, TranscriptView};
+pub use view::{Focus, Highlight, ItemRow, ScrollTo, ShownNotice, TranscriptItem, TranscriptView};
 
 /// The terminal view's name as a front.
 pub const FRONT: &str = "tui";

@@ -140,11 +140,9 @@ pub(crate) fn drawn_rows(
             };
             let mut rows = Transcript::default();
             let parts = lay_out_transcript(&mut rows, &sources, Some(&shown), 80);
-            let visible = rows.visible(&parts, (80, height), &mut view.scroll);
-            let selected = (
-                transcript_view.selected.as_ref(),
-                transcript_view.highlights.as_slice(),
-            );
+            let highlights = transcript_view.highlights.as_slice();
+            let visible = rows.visible(&parts, (80, height), &mut view.scroll, highlights);
+            let selected = (transcript_view.selected.as_ref(), highlights);
             let lines = decorate(visible.rows, visible.first, &visible.marks, selected);
             view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
             transcript_view.set_top(visible.top);

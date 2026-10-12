@@ -502,7 +502,7 @@ fn light(line: Line<'static>, highlights: &[Highlight]) -> Line<'static> {
 /// The characters of `line`, each with its style once `highlights` are
 /// lit and whether one lit it, and how many matches lit them. A match
 /// over a character an earlier highlight lit is no match.
-fn lit(line: &Line<'_>, highlights: &[Highlight]) -> (Vec<(char, Style, bool)>, usize) {
+pub(crate) fn lit(line: &Line<'_>, highlights: &[Highlight]) -> (Vec<(char, Style, bool)>, usize) {
     let mut cells: Vec<(char, Style, bool)> = line
         .spans
         .iter()
@@ -704,6 +704,7 @@ pub(crate) fn render(
                 &parts,
                 (transcript_area.width, usize::from(transcript_area.height)),
                 &mut view.scroll,
+                &transcript_view.highlights,
             );
             let rows = decorate(
                 visible.rows,
