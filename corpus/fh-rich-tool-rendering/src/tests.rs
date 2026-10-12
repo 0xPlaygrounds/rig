@@ -24,6 +24,9 @@ fn drawn(
         call,
         result,
         state: CallState::Done,
+        expanded: false,
+        facts: None,
+        took: None,
     };
     // A query skips a disabled renderer, as the view's does.
     let mut renderers = world.query::<&ToolRenderer>();
