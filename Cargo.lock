@@ -4600,6 +4600,481 @@ dependencies = [
 ]
 
 [[package]]
+name = "corpus-fh-apply-patch-tool"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-audit-log"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-batch-provider"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-checklist-runner"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-correction-learner"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-dirty-tree-guard"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-early-tool-start"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-editor-front"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-encrypted-sessions"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-import-sessions"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-lsp-tools"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-mentions-and-images"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-next-step-suggestions"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-open-pr"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-prompt-cache-shaping"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-remote-workspace"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-rich-tool-rendering"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-safety-judge"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-side-question"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-standing-team"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-step-mode"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-structured-compaction"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-thinking-keywords"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-transcript-search"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "corpus-fh-turn-timeline"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "bevy_reflect",
+ "bevy_tasks",
+ "futures",
+ "rig-cassette",
+ "rig-core",
+ "rig-defaults-test-support",
+ "rig-harness",
+ "rig-harness-test-support",
+ "rig-tools",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "corpus-files-panel"
 version = "0.0.0"
 dependencies = [
