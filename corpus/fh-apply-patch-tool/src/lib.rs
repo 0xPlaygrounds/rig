@@ -246,8 +246,6 @@ fn checked(
     done: On<Insert<Done<Checked>>>,
     mut checks: Query<(&Checking, &mut Done<Checked>)>,
     turns: Query<&CallOf>,
-    tools: Query<&ToolDef>,
-    access: Query<&ToolAccess>,
     mut calls: Query<&mut Decision, ToolCalls>,
     mut commands: Commands,
 ) {
@@ -260,29 +258,7 @@ fn checked(
     let Ok(mut decision) = calls.get_mut(call) else {
         return;
     };
-    // Start refuses a call of a tool that is not there or the agent may not
-    // use, after the gates: such a member would fail alone.
-    let usable = |name: &str| {
-        tools.iter().any(|ToolDef(tool)| tool.name.as_str() == name)
-            && access.get(agent).is_ok_and(|access| access.allows(name))
-    };
-    let plan = result.and_then(|plan| {
-        let needs = [
-            ("write", !plan.writes.is_empty()),
-            ("delete", !plan.deletes.is_empty()),
-        ];
-        match needs
-            .iter()
-            .find(|&&(tool, needed)| needed && !usable(tool))
-        {
-            Some((tool, _)) => Err(format!(
-                "The patch was not applied; no file changed. It needs the `{tool}` tool, \
-                 which this agent does not have."
-            )),
-            None => Ok(plan),
-        }
-    });
-    let plan = match plan {
+    let plan = match result {
         Ok(plan) => plan,
         Err(why) => {
             let error = ToolExecutionError::invalid_args(why);
@@ -336,12 +312,20 @@ fn checked(
 }
 
 /// After every gate, keeps a patch's members together: while any is held
-/// or waits, holds the others about to start; once a gate refused one,
-/// refuses the rest; once all are past their gates, releases them, so they
-/// start in one pass.
+/// or waits, holds the others about to start; once a gate or the kernel
+/// refused one, refuses the rest; once all are past their gates, releases
+/// them, so they start in one pass.
 fn gate_together(
     mut patches: Query<&mut Patching>,
-    mut members: Query<(&mut Decision, Option<&Holds>, Has<Waiting>), ToolCalls>,
+    mut members: Query<
+        (
+            &mut Decision,
+            Option<&Outcome>,
+            Option<&Holds>,
+            Has<Waiting>,
+        ),
+        ToolCalls,
+    >,
     mut commands: Commands,
 ) {
     for mut patching in &mut patches {
@@ -352,10 +336,11 @@ fn gate_together(
         let mut refused = false;
         let mut past = true;
         for ((member, _), ours) in patching.members.iter().zip(&patching.holds) {
-            let Ok((decision, holds, waiting)) = members.get(*member) else {
+            let Ok((decision, outcome, holds, waiting)) = members.get(*member) else {
                 continue;
             };
-            refused |= decision.get().is_some_and(|outcome| outcome.0.is_err());
+            let failed = |outcome: &Outcome| outcome.0.is_err();
+            refused |= decision.get().is_some_and(failed) || outcome.is_some_and(failed);
             let held = holds.is_some_and(|holds| holds.iter().any(|hold| Some(hold) != *ours));
             past &= !held && !waiting;
         }
@@ -363,7 +348,7 @@ fn gate_together(
             patching.refused = true;
             let each = patching.members.iter().zip(&mut patching.withheld);
             for ((member, label), withheld) in each {
-                if let Ok((mut decision, ..)) = members.get_mut(*member) {
+                if let Ok((mut decision, None, ..)) = members.get_mut(*member) {
                     let why = format!("{label}: not run, as another file of the patch was refused");
                     *withheld = decision.decide(Decider::plugin(NAME), Outcome::refused(why));
                 }
@@ -381,8 +366,8 @@ fn gate_together(
         for ((member, _), ours) in patching.members.iter().zip(&mut patching.holds) {
             let free = members
                 .get(*member)
-                .is_ok_and(|(decision, holds, waiting)| {
-                    holds.is_none() && !waiting && !decision.is_decided()
+                .is_ok_and(|(decision, outcome, holds, waiting)| {
+                    outcome.is_none() && holds.is_none() && !waiting && !decision.is_decided()
                 });
             if free {
                 let why = Name::new("waiting for the other files of the patch");

@@ -73,6 +73,13 @@ const SLOW: &str = "*** Begin Patch
 +SEA
 *** End Patch";
 
+/// Adds a file and deletes another, from an agent that may not `delete`.
+const FORBIDDEN: &str = "*** Begin Patch
+*** Add File: d.txt
++dee
+*** Delete File: b.txt
+*** End Patch";
+
 /// Whether a call writes a file named `name`, by its footprint.
 fn writes(footprint: &Footprint, name: &str) -> bool {
     let Touches::Writes(Scope::Paths(paths)) = &footprint.0 else {
@@ -147,6 +154,8 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
         calls("p2", APPLY_PATCH, json!({ "input": BROKEN })),
         calls("p3", APPLY_PATCH, json!({ "input": GUARDED })),
         calls("p4", APPLY_PATCH, json!({ "input": SLOW })),
+        reply("Done."),
+        calls("p5", APPLY_PATCH, json!({ "input": FORBIDDEN })),
         reply("Done."),
     ]);
     let claude = MockCompletionModel::from_stream_turns([reply("Hello.")]);
@@ -240,6 +249,29 @@ fn a_patch_model_gets_apply_patch_and_patches_apply_whole_or_not_at_all() {
     assert!(after.iter().any(|name| name == "edit"), "{after:?}");
     assert!(after.iter().any(|name| name == "write"), "{after:?}");
     assert!(!after.iter().any(|name| name == APPLY_PATCH), "{after:?}");
+
+    // The kernel refuses the `delete` this agent may not make before the
+    // gates, so the patch's `write` is refused with it.
+    let world = app.world_mut();
+    let tools = [APPLY_PATCH, "edit", "write"].map(str::to_owned);
+    world
+        .entity_mut(agent)
+        .insert(ToolAccess::Only(tools.into()));
+    let model = "test/gpt-5-test".to_owned();
+    world.trigger(SetModel {
+        entity: agent,
+        model,
+    });
+    world.trigger(Deliver::new(agent, "Patch again.", DeliveryMode::Steer));
+    run_until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() > 2
+    });
+    let outputs = &app.world().resource::<ToolOutputs>().0;
+    let forbidden = outputs.get("p5").cloned().unwrap_or_default();
+    assert!(forbidden.contains("not applied"), "{forbidden}");
+    assert!(forbidden.contains("delete b.txt"), "{forbidden}");
+    assert_eq!(text(&dir, "d.txt"), None);
+    assert_eq!(text(&dir, "b.txt").as_deref(), Some("bee\n"));
 }
 
 #[test]
