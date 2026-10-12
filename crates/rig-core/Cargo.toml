@@ -64,6 +64,9 @@ rig-http = { path = "../rig-http", version = "0.44.0" }
 # under the `reqwest` feature. Its TLS stack is chosen by `rustls` (default)
 # or `native-tls` below.
 rig-reqwest = { path = "../rig-reqwest", version = "0.44.0", optional = true, default-features = false }
+# The `bevy` feature: a `Conversation` is a Bevy component, reflected.
+bevy_ecs = { workspace = true, optional = true }
+bevy_reflect = { workspace = true, optional = true }
 
 # The bundled websocket backend is native-only: on wasm the `tungstenite`
 # feature degrades to the websocket contract alone.
@@ -124,6 +127,9 @@ tungstenite = ["websocket", "dep:rig-tungstenite"]
 # TLS for the bundled transports. Enable exactly one; `rustls` is the default.
 rustls = ["rig-reqwest?/rustls", "rig-tungstenite?/rustls"]
 native-tls = ["rig-reqwest?/native-tls", "rig-tungstenite?/native-tls"]
+# `conversation::Conversation` as a Bevy `Component` (reflected opaque), and
+# `MessageId`, `AsideId` and `Author` as `Reflect`, for the rig harness.
+bevy = ["dep:bevy_ecs", "dep:bevy_reflect"]
 
 [[test]]
 name = "reqwest_no_ca_store"
