@@ -1,26 +1,35 @@
 //! The built-in tools of [`rig_tools`], one plugin each, with their rules
 //! on when to pick them: `read` and `search` run beside each other, `edit`,
-//! `write` and `shell` alone. A call of an agent with a [`WorkDir`] works
-//! there: its paths resolve from it, a path outside it is refused, and a
-//! command starts in it ([`PrepareSystems::Compose`]). With the `tui` feature
-//! (on by default), each plugin also adds how the terminal view draws its
-//! tool's calls. [`AttachPlugin`] sends the files the user names as
-//! `@path` with the message.
+//! `write` and `shell` alone; `delete` and `move` ([`DeleteTool`],
+//! [`MoveTool`]) are there to add, gated as writes. Every call works in the
+//! app's [`ProjectWorkspace`], from its agent's [`WorkDir`], else from the
+//! [`ProjectRoot`]: its paths resolve from there, a command starts there,
+//! and with a `WorkDir` a path outside it is refused
+//! ([`PrepareSystems::Compose`]). A `shell` call reports its output as it
+//! comes ([`CallOutput`]). With the `tui` feature (on by default), each
+//! plugin also adds how the terminal view draws its tool's calls.
+//! [`AttachPlugin`] sends the files the user names as `@path` with the
+//! message.
 
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, PoisonError, RwLock};
 
+use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::{
-    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, ForAgent, Incoming,
-    IntoScheduleConfigs, MessageWriter, Notice, OriginKind, Plugin, PrepareSystems, Processes,
-    Query, Res, Resource, SessionPaths, Tool, ToolCalls, ToolOptions, ToolRequest, WorkDir,
+    Added, Admitted, AgentPass, App, AppToolsExt, Attachment, CallHandler, CallOutput, Commands,
+    Component, Entity, ForAgent, HoldOf, Incoming, Insert, IntoScheduleConfigs, MessageWriter,
+    Name, Notice, On, OriginKind, Plugin, PrepareSystems, Processes, ProjectRoot, ProjectWorkspace,
+    Query, Res, Resource, Running, SessionPaths, SystemSet, Tool, ToolCalls, ToolOptions,
+    ToolRequest, Wake, WorkDir, blocking,
 };
 use rig_harness::rig_core::completion::ToolAnnotations;
 use rig_harness::rig_core::serve::ErasedHandler;
 use rig_harness::rig_core::serve::adapters::ToolAdapter;
-use rig_harness::rig_core::tool::ToolContext;
+use rig_harness::rig_core::tool::{ToolContext, ToolExecutionError};
 use rig_harness::rig_ecs::effects::Handler;
-use rig_tools::{Cut, Edit, Read, Search, Shell, Write};
+use rig_tools::attach::{Attached, attachments};
+use rig_tools::workspace::Workspace;
+use rig_tools::{Cut, Delete, Edit, Live, Move, Read, Search, Shell, Write};
 #[cfg(feature = "tui")]
 use rig_tui::AppToolRenderersExt;
 
@@ -29,8 +38,8 @@ mod looks;
 
 /// Options with `rules`; what each call touches, so calls on different
 /// files run side by side, the tool says: `read` and `search` read the
-/// path they name, `edit` and `write` write it, `shell` may change
-/// anything.
+/// path they name, `edit`, `write`, `delete` and `move` write theirs,
+/// `shell` may change anything.
 fn options(rules: &'static [&'static str]) -> ToolOptions<'static> {
     ToolOptions {
         rules,
@@ -45,10 +54,10 @@ pub struct ReadTool;
 impl Plugin for ReadTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Read::default(), options(Read::RULES));
-        work_in_dir(app, |base| Read {
-            base: Some(base),
-            confine: true,
-            ..Read::default()
+        per_call(app, false, |place| Read {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Read::NAME, looks::read);
@@ -62,10 +71,10 @@ pub struct SearchTool;
 impl Plugin for SearchTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Search::default(), options(Search::RULES));
-        work_in_dir(app, |base| Search {
-            base: Some(base),
-            confine: true,
-            ..Search::default()
+        per_call(app, false, |place| Search {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Search::NAME, looks::search);
@@ -79,10 +88,10 @@ pub struct EditTool;
 impl Plugin for EditTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Edit::default(), options(Edit::RULES));
-        work_in_dir(app, |base| Edit {
-            base: Some(base),
-            confine: true,
-            ..Edit::default()
+        per_call(app, false, |place| Edit {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Edit::NAME, looks::edit);
@@ -96,21 +105,61 @@ pub struct WriteTool;
 impl Plugin for WriteTool {
     fn build(&self, app: &mut App) {
         app.add_tool_with(Write::default(), options(Write::RULES));
-        work_in_dir(app, |base| Write {
-            base: Some(base),
-            confine: true,
-            ..Write::default()
+        per_call(app, false, |place| Write {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
         });
         #[cfg(feature = "tui")]
         app.add_tool_renderer(Write::NAME, looks::write);
     }
 }
 
+/// The `delete` tool: removes a file, gated as a write of it. Not in the
+/// default plugins; add it where the model may delete files.
+#[derive(Default)]
+pub struct DeleteTool;
+
+impl Plugin for DeleteTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_with(Delete::default(), options(Delete::RULES));
+        per_call(app, false, |place| Delete {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        });
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Delete::NAME, looks::delete);
+    }
+}
+
+/// The `move` tool: moves or renames a file, gated as a write of both
+/// paths. Not in the default plugins; add it where the model may move
+/// files.
+#[derive(Default)]
+pub struct MoveTool;
+
+impl Plugin for MoveTool {
+    fn build(&self, app: &mut App) {
+        app.add_tool_with(Move::default(), options(Move::RULES));
+        per_call(app, false, |place| Move {
+            workspace: place.workspace,
+            base: Some(place.base),
+            confine: place.confine,
+        });
+        #[cfg(feature = "tui")]
+        app.add_tool_renderer(Move::NAME, looks::moved);
+    }
+}
+
 /// The `shell` tool. Each call starts its process as the app's
 /// [`Processes`] say when it runs, so a sandbox plugin's policy applies,
-/// and cuts its output as the app's [`ShellOutput`] says then; output it
-/// cuts is kept whole in the session's [`spill`](SessionPaths::spill)
-/// directory.
+/// in its agent's [`WorkDir`], else in the [`ProjectRoot`] unless the
+/// `Processes` name a directory; it cuts its output as the app's
+/// [`ShellOutput`] says then, and output it cuts is kept whole in the
+/// session's [`spill`](SessionPaths::spill) directory. What it prints
+/// becomes the call's [`ToolProgress`](rig_harness::prelude::ToolProgress)
+/// as it comes, and its answer if it is stopped ([`CallOutput`]).
 #[derive(Default)]
 pub struct ShellTool;
 
@@ -132,10 +181,16 @@ impl Plugin for ShellTool {
             output,
             dir: None,
         };
-        let in_dir = shell.clone();
-        work_in_dir(app, move |dir| SharedShell {
-            dir: Some(dir),
-            ..in_dir.clone()
+        let per = shell.clone();
+        per_call(app, true, move |place| SharedShell {
+            shell: Shell {
+                workspace: place.workspace,
+                live: place.live,
+                confine: place.confine,
+                ..per.shell.clone()
+            },
+            dir: Some(place.base),
+            ..per.clone()
         });
         app.add_tool_with(shell, options(Shell::RULES));
         #[cfg(feature = "tui")]
@@ -170,9 +225,9 @@ impl Default for ShellOutput {
     }
 }
 
-/// [`Shell`], starting each command as [`Processes`] say at the time, in
-/// `dir` when set, where a `cwd` outside it is refused, and cutting its
-/// output as [`ShellOutput`] says.
+/// [`Shell`], starting each command as [`Processes`] say at the time: in
+/// `dir` when its shell is confined there or the `Processes` name no
+/// directory, and cutting its output as [`ShellOutput`] says.
 #[derive(Clone)]
 struct SharedShell {
     shell: Shell,
@@ -204,61 +259,101 @@ impl Tool for SharedShell {
         context: &mut ToolContext,
         args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        let launcher = self.processes.launcher();
+        let mut launcher = self.processes.launcher();
+        if let Some(dir) = &self.dir
+            && (self.shell.confine || launcher.cwd.is_none())
+        {
+            launcher = launcher.in_dir(dir);
+        }
         let shell = Shell {
-            launcher: match &self.dir {
-                Some(dir) => launcher.in_dir(dir),
-                None => launcher,
-            },
+            launcher,
             cut: self.output.cut(),
-            confine: self.dir.is_some(),
             ..self.shell.clone()
         };
         shell.call(context, args).await
     }
 }
 
-/// How each of these tools works in a directory, by tool name.
-#[derive(Resource, Default)]
-struct InDir(Vec<(&'static str, Box<dyn Fn(&Path) -> Handler + Send + Sync>)>);
+/// Where a call of these tools works: the app's workspace, its agent's
+/// [`WorkDir`] or else the [`ProjectRoot`] as its base, confined to the
+/// base when it is a `WorkDir`, and, for a tool that reports its output as
+/// it runs, where it reports it.
+struct Place {
+    workspace: Arc<dyn Workspace>,
+    base: PathBuf,
+    confine: bool,
+    live: Option<Live>,
+}
 
-/// Lets `T`'s calls work in their agent's [`WorkDir`], as `make` builds
-/// the tool for a directory.
-fn work_in_dir<T: Tool + 'static>(
+/// How a call of one of these tools is built for its [`Place`].
+struct Made {
+    name: &'static str,
+    /// Whether its calls report their output as they run.
+    live: bool,
+    make: Box<dyn Fn(Place) -> Handler + Send + Sync>,
+}
+
+/// These tools, by name.
+#[derive(Resource, Default)]
+struct PerCall(Vec<Made>);
+
+/// Builds each call of `T` for its [`Place`], as `make` says, with a
+/// [`Live`] for its output when `live`.
+fn per_call<T: Tool + 'static>(
     app: &mut App,
-    make: impl Fn(PathBuf) -> T + Send + Sync + 'static,
+    live: bool,
+    make: impl Fn(Place) -> T + Send + Sync + 'static,
 ) {
-    if !app.world().contains_resource::<InDir>() {
-        app.init_resource::<InDir>()
-            .add_systems(AgentPass, give_work_dirs.in_set(PrepareSystems::Compose));
+    if !app.world().contains_resource::<PerCall>() {
+        app.init_resource::<PerCall>()
+            .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
+            .add_systems(AgentPass, give_place.in_set(PrepareSystems::Compose));
     }
-    let handler = move |dir: &Path| {
-        Handler(ErasedHandler::new(ToolAdapter::new(make(
-            dir.to_path_buf(),
-        ))))
-    };
-    if let Some(mut tools) = app.world_mut().get_resource_mut::<InDir>() {
-        tools.0.push((T::NAME, Box::new(handler)));
+    let make = move |place: Place| Handler(ErasedHandler::new(ToolAdapter::new(make(place))));
+    if let Some(mut tools) = app.world_mut().get_resource_mut::<PerCall>() {
+        tools.0.push(Made {
+            name: T::NAME,
+            live,
+            make: Box::new(make),
+        });
     }
 }
 
-/// Gives each call of these tools admitted this pass whose agent has a
-/// [`WorkDir`] the handler of its tool working there, in
+/// Gives each call of these tools admitted this pass the handler of its
+/// tool built for its [`Place`], and a shell call its [`CallOutput`], in
 /// [`PrepareSystems::Compose`], so a plugin that wraps or replaces a call's
 /// [`CallHandler`] in [`PrepareSystems::Edit`] gets that one.
-fn give_work_dirs(
-    mut calls: Query<(&ToolRequest, &ForAgent, &mut CallHandler), (ToolCalls, Added<Admitted>)>,
+fn give_place(
+    mut calls: Query<
+        (Entity, &ToolRequest, &ForAgent, &mut CallHandler),
+        (ToolCalls, Added<Admitted>),
+    >,
     dirs: Query<&WorkDir>,
-    tools: Res<InDir>,
+    tools: Res<PerCall>,
+    workspace: Res<ProjectWorkspace>,
+    root: Res<ProjectRoot>,
+    wake: Res<Wake>,
+    mut commands: Commands,
 ) {
-    for (request, &ForAgent(agent), mut handler) in &mut calls {
-        let Ok(WorkDir(dir)) = dirs.get(agent) else {
+    for (call, request, &ForAgent(agent), mut handler) in &mut calls {
+        let name = request.call.function.name.as_str();
+        let Some(made) = tools.0.iter().find(|made| made.name == name) else {
             continue;
         };
-        let name = request.call.function.name.as_str();
-        if let Some((_, make)) = tools.0.iter().find(|(tool, _)| *tool == name) {
-            *handler = CallHandler(make(dir));
-        }
+        let dir = dirs.get(agent).ok();
+        let live = made.live.then(|| {
+            let (output, live) = CallOutput::new(&wake);
+            commands.entity(call).insert(output);
+            live
+        });
+        let place = Place {
+            workspace: workspace.0.clone(),
+            base: dir.map_or_else(|| root.0.clone(), |dir| dir.0.clone()),
+            confine: dir.is_some(),
+            live,
+        };
+        *handler = CallHandler((made.make)(place));
     }
 }
 
@@ -267,39 +362,118 @@ fn give_work_dirs(
 /// ([`rig_tools::attach`]): an image as an image, which the core sends
 /// only to a model that reads images, telling the user otherwise; any
 /// other file as its text, numbered and capped the way `read` shows it.
+/// Paths resolve from the agent's [`WorkDir`], else the [`ProjectRoot`],
+/// in the app's [`ProjectWorkspace`]; a path with no file there is warned
+/// about. It runs in [`AttachSystems`].
 #[derive(Default)]
 pub struct AttachPlugin;
 
+/// Where [`AttachPlugin`] reads the files a user's message names into its
+/// attachments, in [`PrepareSystems::Compose`]: a plugin that rewrites the
+/// text goes before, in `Input`; one that reads or edits the attachments
+/// goes `.after(AttachSystems)`. In a workspace that is not this machine,
+/// the files are read off the main thread under a hold on the message, so
+/// they come later than this set.
+#[derive(SystemSet, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AttachSystems;
+
 impl Plugin for AttachPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(AgentPass, attach.in_set(PrepareSystems::Compose));
+        app.init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
+            .configure_sets(AgentPass, AttachSystems.in_set(PrepareSystems::Compose))
+            .add_systems(AgentPass, attach.in_set(AttachSystems))
+            .add_observer(attach_read);
+    }
+}
+
+/// The files a message names, read off the main thread, on the hold that
+/// keeps the message ([`HoldOf`]) until they are attached.
+#[derive(Component)]
+struct ReadFiles(Result<Attached, ToolExecutionError>);
+
+impl From<Result<Attached, ToolExecutionError>> for ReadFiles {
+    fn from(read: Result<Attached, ToolExecutionError>) -> Self {
+        Self(read)
     }
 }
 
 /// Reads the files each user's message names into its attachments as it
-/// comes in, in [`PrepareSystems::Compose`], with a notice about each that
-/// could not be: a plugin that rewrites the text goes before, in `Input`,
-/// one that edits the text or attachments after, in `Edit`.
+/// comes in, with a notice about each that could not be, and a warning
+/// about each that is not there: inline in this machine's workspace, else
+/// as work off the main thread that holds the message.
 fn attach(
-    mut typed: Query<(&mut Incoming, &ForAgent), Added<Admitted>>,
+    mut typed: Query<(Entity, &mut Incoming, &ForAgent), Added<Admitted>>,
+    dirs: Query<&WorkDir>,
+    workspace: Res<ProjectWorkspace>,
+    root: Res<ProjectRoot>,
+    wake: Res<Wake>,
     mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
 ) {
-    for (mut typed, &ForAgent(agent)) in &mut typed {
+    for (message, mut typed, &ForAgent(agent)) in &mut typed {
         if typed.origin.kind != OriginKind::User || typed.command().is_some() {
             continue;
         }
-        let here = std::env::current_dir().unwrap_or_default();
-        let attached =
-            rig_tools::attach::attachments(&typed.text, &here, &rig_tools::workspace::Local);
-        for note in attached.notes {
-            notices.write(Notice::info(agent, note));
+        let base = dirs.get(agent).map_or(&root.0, |dir| &dir.0).clone();
+        if workspace.0.host().is_none() {
+            let attached = attachments(&typed.text, &base, &*workspace.0);
+            add_attached(&mut typed, agent, attached, &mut notices);
+            continue;
         }
-        let attachments = attached
-            .files
-            .into_iter()
-            .map(|(label, content)| Attachment { label, content });
-        typed.attachments.extend(attachments);
+        let (text, workspace) = (typed.text.clone(), workspace.0.clone());
+        let read = blocking(move || Ok(attachments(&text, &base, &*workspace)));
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
+        commands.spawn((
+            Name::new("attachments"),
+            HoldOf(message),
+            Running::spawn_into::<ReadFiles, _>(pool, &wake, read),
+        ));
     }
+}
+
+/// Attaches the files read off the main thread to the message they were
+/// read for, and releases it.
+fn attach_read(
+    read: On<Insert<ReadFiles>>,
+    holds: Query<(&HoldOf, &ReadFiles)>,
+    mut messages: Query<(&mut Incoming, &ForAgent)>,
+    mut notices: MessageWriter<Notice>,
+    mut commands: Commands,
+) {
+    let Ok((&HoldOf(message), ReadFiles(attached))) = holds.get(read.entity) else {
+        return;
+    };
+    if let Ok((mut typed, &ForAgent(agent))) = messages.get_mut(message) {
+        match attached {
+            Ok(attached) => add_attached(&mut typed, agent, attached.clone(), &mut notices),
+            Err(failure) => {
+                notices.write(Notice::warn(agent, format!("No files attached: {failure}")));
+            }
+        }
+    }
+    commands.entity(read.entity).despawn();
+}
+
+/// Puts `attached` before the message's text, with a notice about each
+/// file that could not be attached and a warning about each missing one.
+fn add_attached(
+    typed: &mut Incoming,
+    agent: Entity,
+    attached: Attached,
+    notices: &mut MessageWriter<Notice>,
+) {
+    for note in attached.notes {
+        notices.write(Notice::info(agent, note));
+    }
+    for missing in attached.missing {
+        notices.write(Notice::warn(agent, format!("@{missing}: no such file")));
+    }
+    let attachments = attached
+        .files
+        .into_iter()
+        .map(|(label, content)| Attachment { label, content });
+    typed.attachments.extend(attachments);
 }
 
 #[cfg(test)]

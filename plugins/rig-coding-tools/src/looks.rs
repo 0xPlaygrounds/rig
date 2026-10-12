@@ -1,7 +1,7 @@
 //! How the terminal view (rig-tui) draws the tools' calls: `read` and
 //! `search` summarize what they found, `edit` shows its change as a diff,
-//! `write` the start of the new file, and `shell` the command and the end
-//! of its output.
+//! `write` the start of the new file, `delete` and `move` the paths, and
+//! `shell` the command and the end of its output.
 
 use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::Line;
@@ -42,6 +42,25 @@ pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
         rows.extend(excerpt(content, RESULT_LINES, Style::new().dim()));
     }
     rows
+}
+
+pub(super) fn delete(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let path = view.argument("path").unwrap_or_default().to_owned();
+    let mut lines = vec![view.header(format!("delete {path}"), "")];
+    if view.failed() {
+        lines.extend(view.result_lines(RESULT_LINES));
+    }
+    lines
+}
+
+pub(super) fn moved(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
+    let from = view.argument("from").unwrap_or_default();
+    let to = view.argument("to").unwrap_or_default();
+    let mut lines = vec![view.header(format!("move {from} → {to}"), "")];
+    if view.failed() {
+        lines.extend(view.result_lines(RESULT_LINES));
+    }
+    lines
 }
 
 pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {

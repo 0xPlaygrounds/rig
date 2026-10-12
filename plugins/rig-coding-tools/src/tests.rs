@@ -1,12 +1,18 @@
+use std::ffi::{OsStr, OsString};
+use std::io;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use rig_harness::prelude::{Agent, AgentPlugin, App, Processes, TaskPoolPlugin, Tool, WorkDir};
+use rig_harness::prelude::*;
 use rig_harness::rig_core::serde_json::json;
 use rig_harness::rig_core::tool::ToolContext;
-use rig_harness_test_support::{ToolOutputs, log_tool_outputs, start_call};
+use rig_harness_test_support::{Collected, ToolOutputs, collect, log_tool_outputs, start_call};
+use rig_tools::process::{Launcher, Process, Spawn};
+use rig_tools::workspace::{Contents, Stat, Workspace};
 use rig_tools::{Shell, ShellArgs};
 
-use super::{ReadTool, SharedShell, ShellOutput, ShellTool};
+use super::{AttachPlugin, AttachSystems, ReadTool, SharedShell, ShellOutput, ShellTool};
 
 /// The shell tool on `processes`, cutting as `output` says.
 fn shell(processes: &Processes, output: &ShellOutput) -> SharedShell {
@@ -56,6 +62,177 @@ fn an_agent_with_a_work_dir_reads_and_runs_commands_there() {
     let canonical = dir.canonicalize().unwrap_or_default();
     assert!(pwd.contains(&*canonical.to_string_lossy()), "{pwd}");
     std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A workspace that is not this machine's disk: it has one file,
+/// `/served/note.txt`, and runs nothing.
+#[derive(Debug)]
+struct Served;
+
+impl Served {
+    const NOTE: &str = "/served/note.txt";
+}
+
+impl Workspace for Served {
+    fn host(&self) -> Option<&str> {
+        Some("test://served")
+    }
+
+    fn stat(&self, path: &Path) -> io::Result<Stat> {
+        Ok(match path == Path::new(Self::NOTE) {
+            true => Stat::File {
+                size: 11,
+                read_only: false,
+            },
+            false => Stat::Missing,
+        })
+    }
+
+    fn read(&self, path: &Path, _: u64) -> io::Result<Contents> {
+        match path == Path::new(Self::NOTE) {
+            true => Ok(Contents {
+                bytes: b"served text".to_vec(),
+                size: 11,
+            }),
+            false => Err(io::ErrorKind::NotFound.into()),
+        }
+    }
+
+    fn write(&self, _: &Path, _: &[u8]) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn remove(&self, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn rename(&self, _: &Path, _: &Path) -> io::Result<()> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
+    fn canonical(&self, path: &Path) -> PathBuf {
+        path.to_path_buf()
+    }
+
+    fn files(&self, _: &Path, _: Option<&str>) -> io::Result<Vec<PathBuf>> {
+        Ok(Vec::new())
+    }
+
+    fn spawn(
+        &self,
+        _: &Launcher,
+        _: Option<&Path>,
+        _: &OsStr,
+        _: &[OsString],
+        _: Spawn,
+    ) -> io::Result<Process> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+}
+
+/// Runs frames of `app` until `done`, for at most ten seconds.
+fn run_until(app: &mut App, done: impl Fn(&World) -> bool) {
+    let started = Instant::now();
+    while !done(app.world()) && started.elapsed() < Duration::from_secs(10) {
+        app.update();
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn a_call_without_a_work_dir_reads_from_the_project_root_in_the_apps_workspace() {
+    let mut app = App::new();
+    app.insert_resource(ProjectWorkspace(Arc::new(Served)))
+        .insert_resource(ProjectRoot("/served".into()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, ReadTool))
+        .init_resource::<ToolOutputs>()
+        .add_observer(log_tool_outputs);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    start_call(world, agent, ("read", "r1"), json!({ "path": "note.txt" }));
+    let read = |world: &World| world.resource::<ToolOutputs>().0.get("r1").cloned();
+    run_until(&mut app, |world| read(world).is_some());
+    let read = read(app.world()).unwrap_or_default();
+    assert!(read.contains("served text"), "{read}");
+}
+
+/// The labels of the files attached to each message, as a plugin after
+/// [`AttachSystems`] sees them.
+#[derive(Resource, Default)]
+struct Labels(Vec<String>);
+
+fn read_labels(messages: Query<&Incoming, Added<Admitted>>, mut labels: ResMut<Labels>) {
+    let attached = messages.iter().flat_map(|message| &message.attachments);
+    labels
+        .0
+        .extend(attached.map(|attached| attached.label.clone()));
+}
+
+#[test]
+fn an_agent_attaches_from_its_work_dir_and_is_warned_of_a_missing_path() {
+    let exe = std::env::current_exe().unwrap_or_default();
+    let dir = exe.with_file_name(format!("attach-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok();
+    std::fs::write(dir.join("a.txt"), "attached text").ok();
+    let mut app = App::new();
+    app.add_plugins((TaskPoolPlugin::default(), AgentPlugin, AttachPlugin))
+        .init_resource::<Labels>()
+        .add_systems(
+            AgentPass,
+            read_labels
+                .in_set(PrepareSystems::Compose)
+                .after(AttachSystems),
+        );
+    collect::<Notice>(&mut app);
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn((Agent, WorkDir(dir.clone()))).id();
+    let text = "compare @a.txt with @gone/x.rs, @alice";
+    world.spawn((Incoming::new(text, DeliveryMode::Steer), ForAgent(agent)));
+    app.update();
+    assert_eq!(app.world().resource::<Labels>().0, ["a.txt"]);
+    let notices = &app.world().resource::<Collected<Notice>>().0;
+    let warned: Vec<&str> = notices
+        .iter()
+        .filter(|notice| notice.level == NoticeLevel::Warn)
+        .map(|notice| notice.text.as_str())
+        .collect();
+    assert_eq!(warned, ["@gone/x.rs: no such file"]);
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn in_another_workspace_a_message_waits_for_its_files() {
+    let mut app = App::new();
+    app.insert_resource(ProjectWorkspace(Arc::new(Served)))
+        .insert_resource(ProjectRoot("/served".into()))
+        .add_plugins((TaskPoolPlugin::default(), AgentPlugin, AttachPlugin));
+    app.finish();
+    app.update();
+    let world = app.world_mut();
+    let agent = world.spawn(Agent).id();
+    let message = world
+        .spawn((
+            Incoming::new("read @note.txt", DeliveryMode::Steer),
+            ForAgent(agent),
+        ))
+        .id();
+    app.update();
+    let held = app.world().get::<Holds>(message).is_some();
+    assert!(held, "the message waits for its files");
+    let said = |world: &World| {
+        let conversation = world.get::<Conversation>(agent);
+        format!("{conversation:?}")
+    };
+    run_until(&mut app, |world| said(world).contains("served text"));
+    assert!(
+        said(app.world()).contains("served text"),
+        "{}",
+        said(app.world())
+    );
 }
 
 /// What `shell` answers `command`.
