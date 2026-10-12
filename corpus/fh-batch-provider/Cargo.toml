@@ -17,13 +17,10 @@ tui = ["dep:rig-tui"]
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_tasks = { workspace = true }
-futures = { workspace = true }
 rig-core = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
 # The status line's `batch: queued 12m`.
 rig-tui = { path = "../../plugins/rig-tui", optional = true }
-rig-tools = { path = "../../crates/rig-tools" }
-schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
 

@@ -1,9 +1,12 @@
-use std::sync::Mutex;
+use std::future::{self, Future};
 use std::sync::mpsc::Receiver;
+use std::sync::{Arc, Mutex};
 
 use rig_cassette::journal::MemoryStore;
-use rig_core::completion::Usage;
-use rig_core::message::{AssistantContent, Origin as Made, ToolName};
+use rig_core::http_client::{
+    self, LazyBody, MultipartForm, Response, StatusCode, StreamingResponse,
+};
+use rig_core::wasm_compat::WasmCompatSend;
 use rig_harness::clock::ClockPlugin;
 use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
@@ -13,25 +16,32 @@ use rig_harness_test_support::{
 
 use super::*;
 
-/// What the fake batch endpoint was sent and what the test released.
+/// One item sent in a batch.
+#[derive(Clone, Debug)]
+struct Item {
+    batch: String,
+    custom_id: String,
+    params: String,
+}
+
+/// What the fake Message Batches API was sent, and what the test released.
 #[derive(Default)]
-struct Endpoint {
-    /// Each batch submitted, in order.
-    batches: Vec<Vec<BatchItem>>,
-    /// Each item's state once released, by custom id.
-    released: HashMap<String, ItemState>,
-    /// The batches polled, in order.
+struct Api {
+    items: Vec<Item>,
+    batches: usize,
+    /// Each item's result line, by batch and custom id.
+    released: HashMap<(String, String), Value>,
     polls: Vec<String>,
-    /// The items cancelled.
     cancelled: Vec<String>,
 }
 
-/// A batch endpoint that answers an item only once the test released it.
+/// An HTTP client serving the Message Batches API, which ends a batch only
+/// once the test released every item of it.
 #[derive(Clone, Default)]
-struct Fake(Arc<Mutex<Endpoint>>);
+struct Fake(Arc<Mutex<Api>>);
 
 impl Fake {
-    fn with<T>(&self, read: impl FnOnce(&mut Endpoint) -> T) -> T {
+    fn with<T>(&self, read: impl FnOnce(&mut Api) -> T) -> T {
         read(
             &mut self
                 .0
@@ -40,69 +50,127 @@ impl Fake {
         )
     }
 
-    fn release(&self, custom_id: &str, state: ItemState) {
-        self.with(|endpoint| endpoint.released.insert(custom_id.to_owned(), state));
-    }
-
-    /// The custom id of the item of `batch` sent for the agent `id`.
-    fn item_of(&self, batch: usize, id: &str) -> String {
-        self.with(|endpoint| {
-            endpoint
-                .batches
-                .get(batch)
-                .into_iter()
-                .flatten()
-                .find(|item| item.custom_id.starts_with(id))
-                .map(|item| item.custom_id.clone())
-                .unwrap_or_default()
+    /// Every item sent whose request holds `text`, in order.
+    fn sent(&self, text: &str) -> Vec<Item> {
+        self.with(|api| {
+            let items = api.items.iter().filter(|item| item.params.contains(text));
+            items.cloned().collect()
         })
     }
 
-    fn batches(&self) -> usize {
-        self.with(|endpoint| endpoint.batches.len())
+    fn items(&self) -> usize {
+        self.with(|api| api.items.len())
+    }
+
+    fn release(&self, item: &Item, result: Value) {
+        let key = (item.batch.clone(), item.custom_id.clone());
+        self.with(|api| api.released.insert(key, result));
+    }
+
+    fn answer(&self, method: &str, url: &str, body: &[u8]) -> Value {
+        self.with(|api| {
+            let batch = url.rsplit('/').next().unwrap_or_default().to_owned();
+            if url.ends_with("/v1/messages/batches") && method == "POST" {
+                api.batches += 1;
+                let id = format!("batch-{}", api.batches);
+                let body: Value = serde_json::from_slice(body).unwrap_or_default();
+                let requests = body.get("requests").and_then(Value::as_array);
+                for request in requests.into_iter().flatten() {
+                    let field = |name: &str| request.get(name).cloned().unwrap_or_default();
+                    api.items.push(Item {
+                        batch: id.clone(),
+                        custom_id: field("custom_id").as_str().unwrap_or_default().into(),
+                        params: field("params").to_string(),
+                    });
+                }
+                json!({"id": id, "processing_status": "in_progress", "results_url": null})
+            } else if url.ends_with("/cancel") {
+                let batch = url.trim_end_matches("/cancel").rsplit('/').next();
+                api.cancelled.extend(batch.map(str::to_owned));
+                json!({})
+            } else if url.starts_with("https://results/") {
+                let lines = api
+                    .items
+                    .iter()
+                    .filter(|item| item.batch == batch)
+                    .map(|item| {
+                        let key = (batch.clone(), item.custom_id.clone());
+                        let result = api.released.get(&key).cloned().unwrap_or_default();
+                        json!({"custom_id": item.custom_id, "result": result}).to_string()
+                    });
+                Value::String(lines.collect::<Vec<_>>().join("\n"))
+            } else {
+                api.polls.push(batch.clone());
+                let mut items = api.items.iter().filter(|item| item.batch == batch);
+                let ended = items.all(|item| {
+                    let key = (batch.clone(), item.custom_id.clone());
+                    api.released.contains_key(&key)
+                });
+                let (status, url) = match ended {
+                    true => ("ended", json!(format!("https://results/{batch}"))),
+                    false => ("in_progress", Value::Null),
+                };
+                json!({"id": batch, "processing_status": status, "results_url": url})
+            }
+        })
     }
 }
 
-impl BatchApi for Fake {
-    fn submit(&self, items: Vec<BatchItem>) -> BoxFuture<'static, Result<String, String>> {
-        let id = self.with(|endpoint| {
-            endpoint.batches.push(items);
-            format!("batch-{}", endpoint.batches.len())
-        });
-        Box::pin(async move { Ok(id) })
+impl HttpClientExt for Fake {
+    fn send<T, U>(
+        &self,
+        req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        let (parts, body) = req.into_parts();
+        let body: Bytes = body.into();
+        let answer = self.answer(parts.method.as_str(), &parts.uri.to_string(), &body);
+        let bytes = match answer {
+            Value::String(lines) => Bytes::from(lines),
+            other => Bytes::from(other.to_string()),
+        };
+        let body: LazyBody<U> = Box::pin(async move { Ok(U::from(bytes)) });
+        let response = Response::builder().status(StatusCode::OK).body(body);
+        future::ready(response.map_err(http_client::Error::Protocol))
     }
 
-    fn poll(&self, batch: String) -> BoxFuture<'static, Result<Vec<(String, ItemState)>, String>> {
-        let states = self.with(|endpoint| {
-            endpoint.polls.push(batch.clone());
-            let number: usize = batch.trim_start_matches("batch-").parse().unwrap_or(0);
-            let items = endpoint.batches.get(number.saturating_sub(1));
-            items
-                .into_iter()
-                .flatten()
-                .map(|item| {
-                    let state = endpoint.released.get(&item.custom_id).cloned();
-                    (item.custom_id.clone(), state.unwrap_or(ItemState::Pending))
-                })
-                .collect()
-        });
-        Box::pin(async move { Ok(states) })
+    fn send_multipart<U>(
+        &self,
+        _: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::NoHeaders))
     }
 
-    fn cancel(&self, _: String, custom_id: String) -> BoxFuture<'static, Result<(), String>> {
-        self.with(|endpoint| endpoint.cancelled.push(custom_id));
-        Box::pin(async { Ok(()) })
+    fn send_streaming<T>(
+        &self,
+        _: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        future::ready(Err(http_client::Error::NoHeaders))
     }
 }
 
-/// A reply of `content`, 1000 tokens in and 1000 out.
-fn reply_of(content: AssistantContent) -> ItemState {
-    let mut usage = Usage::new();
-    usage.input_tokens = Some(1_000);
-    usage.output_tokens = Some(1_000);
-    let made = Made::new("anthropic", "anthropic", "test");
-    let reply = CompletionResponse::new(vec![content], usage, made, serde_json::Value::Null);
-    ItemState::Succeeded(Box::new(reply))
+/// A successful result: an Anthropic message of `content`, 1000 tokens in
+/// and 1000 out.
+fn succeeded(content: Value, stop_reason: &str) -> Value {
+    let message = json!({
+        "id": "msg_1", "type": "message", "role": "assistant", "model": "test",
+        "content": [content], "stop_reason": stop_reason, "stop_sequence": null,
+        "usage": {"input_tokens": 1000, "output_tokens": 1000},
+    });
+    json!({"type": "succeeded", "message": message})
+}
+
+fn expired() -> Value {
+    json!({"type": "expired"})
 }
 
 /// The cost of each model call that settled with a reply.
@@ -124,7 +192,7 @@ fn log_costs(
 }
 
 /// A `read` that answers with the file's made-up text.
-fn read(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
+fn read(called: On<ToolCalled<Value>>, mut calls: Query<&mut Decision, ToolCalls>) {
     if let Ok(mut call) = calls.get_mut(called.call) {
         call.decide(
             Decider::plugin("test"),
@@ -133,22 +201,25 @@ fn read(called: On<ToolCalled<serde_json::Value>>, mut calls: Query<&mut Decisio
     }
 }
 
-/// The kernel and the plugin on `store`, with `fake` as the Anthropic
-/// batch endpoint and `anthropic/test` at $2 and $4 per million tokens,
-/// after the first frame restored the session.
+/// The kernel and the plugin on `store`, every HTTP request served by
+/// `fake`, and `anthropic/test` at $2 and $4 per million tokens, after the
+/// first frame restored the session.
 fn start(store: &MemoryStore, fake: &Fake) -> (App, Receiver<()>) {
     let (mut app, wakes) = app_on(store);
     let mut models = scripted_models([]);
     if let Ok(anthropic) = ProviderId::declare("anthropic") {
         let spec = ModelSpec::new(anthropic, "test")
             .with_tools(true)
+            .with_max_output_tokens(1024)
             .with_pricing(Pricing::new(2.0, 4.0));
         models.0.catalog_mut().insert(spec);
     }
-    let api: Arc<dyn BatchApi> = Arc::new(fake.clone());
-    let endpoints = BatchEndpoints(HashMap::from([("anthropic-batch".to_owned(), api)]));
+    let fake = fake.clone();
+    models
+        .0
+        .wrap_http(move |_| DynHttpClient::new(fake.clone()));
     app.insert_resource(models)
-        .insert_resource(endpoints)
+        .insert_resource(BatchAccount(AnthropicConfig::new("test-key")))
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
@@ -197,8 +268,8 @@ fn waiting(world: &World) -> usize {
         .map_or(0, |mut calls| calls.iter(world).count())
 }
 
-fn ended(world: &World) -> usize {
-    world.resource::<Ended>().0.len()
+fn ended(world: &World) -> String {
+    format!("{:?}", world.resource::<Ended>().0)
 }
 
 #[test]
@@ -210,49 +281,45 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
     app.update();
     let found = agents(&mut app);
     assert_eq!(found.len(), 2, "{found:?}");
-    let [(a, a_id), (b, b_id)] = found.as_slice() else {
+    let [(a, a_id), (b, _)] = found.as_slice() else {
         return;
     };
-    let (a, b) = (*a, *b);
-    let b_id = b_id.clone();
-    for agent in [a, b] {
+    let (a, a_id) = (*a, a_id.clone());
+    for (agent, text) in [(a, "Upgrade the deps."), (*b, "Fix the warnings.")] {
         let model = "anthropic-batch/test".to_owned();
         app.world_mut().trigger(SetModel {
             entity: agent,
             model,
         });
-        app.world_mut().trigger(Deliver::new(
-            agent,
-            "Upgrade the deps.",
-            DeliveryMode::Queue,
-        ));
+        let deliver = Deliver::new(agent, text, DeliveryMode::Queue);
+        app.world_mut().trigger(deliver);
     }
     run_until(&mut app, &wakes, |world| waiting(world) == 2);
-    assert_eq!(fake.batches(), 0, "nothing is sent within the window");
+    assert_eq!(fake.items(), 0, "nothing is sent within the window");
 
     // Both requests went within the window: one batch of two items.
-    until(&mut app, &wakes, |_| fake.batches() == 1);
-    let sizes = fake.with(|endpoint| endpoint.batches.iter().map(Vec::len).collect::<Vec<_>>());
-    assert_eq!(sizes, [2]);
-    let (item_a, item_b) = (fake.item_of(0, a_id), fake.item_of(0, &b_id));
-    assert!(!item_a.is_empty() && !item_b.is_empty());
-
-    // Item a asks for `read`: it runs here, and its result goes in a new
-    // batch.
-    let name = ToolName::new("read");
-    assert!(name.is_ok(), "a tool name");
-    let Ok(name) = name else {
+    until(&mut app, &wakes, |_| fake.items() == 2);
+    let (deps, warnings) = (
+        fake.sent("Upgrade the deps."),
+        fake.sent("Fix the warnings."),
+    );
+    assert_eq!((deps.len(), warnings.len()), (1, 1), "both requests sent");
+    let (Some(deps), Some(warnings)) = (deps.first(), warnings.first()) else {
         return;
     };
-    let args = serde_json::json!({});
-    let read_call = AssistantContent::tool_call("c1", name, args);
-    fake.release(&item_a, reply_of(read_call));
-    until(&mut app, &wakes, |world| {
-        world.resource::<ToolOutputs>().0.contains_key("c1")
-    });
-    until(&mut app, &wakes, |_| fake.batches() == 2);
-    let resent = fake.with(|endpoint| format!("{:?}", endpoint.batches.get(1)));
-    assert!(resent.contains("contents of a.txt"), "{resent}");
+    assert_eq!(fake.with(|api| api.batches), 1);
+    assert_eq!(deps.batch, warnings.batch);
+
+    // The batch ends: a's reply asks for `read`, which runs here, and its
+    // result goes in a new batch; b's item expired and is sent once more.
+    let call = json!({"type": "tool_use", "id": "c1", "name": "read", "input": {}});
+    fake.release(deps, succeeded(call, "tool_use"));
+    fake.release(warnings, expired());
+    until(&mut app, &wakes, |_| fake.items() == 4);
+    assert!(app.world().resource::<ToolOutputs>().0.contains_key("c1"));
+    let read_result = fake.sent("contents of a.txt");
+    let resent = fake.sent("Fix the warnings.");
+    assert_eq!((read_result.len(), resent.len()), (1, 2), "sent again once");
     // Half of 1000 tokens at $2 and 1000 at $4 per million.
     let costs = app.world().resource::<Costs>().0.clone();
     assert!(
@@ -260,63 +327,59 @@ fn batched_turns_group_run_tools_survive_a_restart_and_resend_an_expired_item_on
         "{costs:?}"
     );
 
-    // The harness stops while both items wait, and resumes.
+    // The harness stops while both items wait, and resumes: nothing is
+    // sent again, and their batches are polled.
     app.world_mut().trigger(Exit(ExitReason::Quit));
     app.update();
     app.update();
     drop(app);
-    let polls_before = fake.with(|endpoint| endpoint.polls.len());
+    let polls_before = fake.with(|api| api.polls.len());
     let (mut app, wakes) = start(&store, &fake);
     run_until(&mut app, &wakes, |world| waiting(world) == 2);
-    until(&mut app, &wakes, |_| {
-        fake.with(|endpoint| endpoint.polls.len()) >= polls_before + 2
-    });
-    assert_eq!(fake.batches(), 2, "nothing was sent again");
-    let polled = fake.with(|endpoint| endpoint.polls.get(polls_before..).map(<[String]>::to_vec));
-    assert!(
-        polled
-            .as_deref()
-            .is_some_and(|polled| polled.contains(&"batch-1".to_owned())),
-        "{polled:?}"
-    );
-
-    fake.release(&item_b, reply_of(AssistantContent::text("deps upgraded")));
-    until(&mut app, &wakes, |world| ended(world) == 1);
-    let answer = match app.world().resource::<Ended>().0.as_slice() {
-        [TurnOutcome::Answered(message)] => final_answer(message),
-        other => Some(format!("{other:?}")),
+    let (Some(read_result), Some(resent)) = (read_result.first(), resent.get(1)) else {
+        return;
     };
-    assert_eq!(answer.as_deref(), Some("deps upgraded"));
+    let polled =
+        |batch: &str| fake.with(|api| api.polls.iter().skip(polls_before).any(|b| b == batch));
+    until(&mut app, &wakes, |_| {
+        polled(&read_result.batch) && polled(&resent.batch)
+    });
+    assert!(polled(&read_result.batch) && polled(&resent.batch));
+    assert_eq!(fake.items(), 4, "nothing was sent again");
 
-    // Item a's second request expires: sent once more, then it fails.
-    let item_a2 = fake.item_of(1, a_id);
-    fake.release(&item_a2, ItemState::Expired);
-    until(&mut app, &wakes, |_| fake.batches() == 3);
-    assert_eq!(fake.item_of(2, a_id), item_a2, "the same request again");
-    until(&mut app, &wakes, |world| ended(world) == 2);
-    let outcome = format!("{:?}", app.world().resource::<Ended>().0.get(1));
-    assert!(outcome.contains("expired twice"), "{outcome}");
-    assert_eq!(fake.batches(), 3, "sent again only once");
+    // a's turn ends with its answer; b's item expires again and fails.
+    let answer = json!({"type": "text", "text": "deps upgraded"});
+    fake.release(read_result, succeeded(answer, "end_turn"));
+    fake.release(resent, expired());
+    until(&mut app, &wakes, |world| {
+        world.resource::<Ended>().0.len() == 2
+    });
+    let outcomes = ended(app.world());
+    assert!(outcomes.contains("deps upgraded"), "{outcomes}");
+    assert!(outcomes.contains("expired twice"), "{outcomes}");
+    assert_eq!(fake.items(), 4, "sent again only once");
 
-    // Interrupting a waiting turn cancels its item at the provider.
-    let restored = agents(&mut app);
-    let b = restored
-        .iter()
-        .find(|(_, id)| *id == b_id)
-        .map(|(agent, _)| *agent);
-    let b = b.unwrap_or(Entity::PLACEHOLDER);
-    app.world_mut()
-        .trigger(Deliver::new(b, "And the warnings.", DeliveryMode::Queue));
-    until(&mut app, &wakes, |_| fake.batches() == 4);
-    let item_b2 = fake.item_of(3, &b_id);
+    // Interrupting a waiting turn cancels its batch at the provider.
+    let a = agents(&mut app)
+        .into_iter()
+        .find(|(_, id)| *id == a_id)
+        .map_or(Entity::PLACEHOLDER, |(agent, _)| agent);
+    let deliver = Deliver::new(a, "And the warnings.", DeliveryMode::Queue);
+    app.world_mut().trigger(deliver);
+    until(&mut app, &wakes, |_| fake.items() == 5);
+    let last = fake.sent("And the warnings.");
     app.world_mut().trigger(Interrupt {
-        entity: b,
+        entity: a,
         reason: None,
     });
+    let batch = last
+        .first()
+        .map(|item| item.batch.clone())
+        .unwrap_or_default();
     run_until(&mut app, &wakes, |_| {
-        fake.with(|endpoint| endpoint.cancelled.contains(&item_b2))
+        fake.with(|api| api.cancelled.contains(&batch))
     });
-    assert!(fake.with(|endpoint| endpoint.cancelled == [item_b2.clone()]));
+    assert_eq!(fake.with(|api| api.cancelled.clone()), [batch]);
 }
 
 #[test]
