@@ -1264,8 +1264,11 @@ them to the session's effect log, a file of the session's store, in
 `Last`, in `WriteJournal`, and reads them back through its `EffectLog`
 resource: `read()` gives every record, and `read_matching(&filter)` those
 an `EffectFilter` keeps, by agent, kind name (`completion`, `tool_call`,
-`message`, `subagent` or a plugin's own) and turn. It holds what was
-written by the end of the last frame.
+`message`, `subagent` or a plugin's own) and turn, as
+`io::Result<Vec<rig_core::effect::EffectRecord>>` (a record's `kind`:
+`EffectKind::ToolCall { name, args }`, `Completion { request, .. }`, …).
+It holds what was written by the end of the last frame: to count as a run
+goes, keep [saved state](#saved-state-counting-every-tool-call).
 
 **Redacting.** A record holds what its effect really carried: tool output
 and the diffs of changed files, the request as the model got it. A plugin
@@ -1380,7 +1383,9 @@ impl Plugin for BudgetPlugin {
 
 # Saved state: counting every tool call
 
-An agent component that derives `Reflect` and says
+This is how to count what agents do, such as their tool calls; the
+[effect log](#the-effect-log-reading-redacting-replaying) looks back at a
+run. An agent component that derives `Reflect` and says
 `#[reflect(Component, Saved)]` is kept with the session (a generic type
 once registered, `app.register_type::<T>()`): each change is logged, and a
 restart, `/reload` or `/resume` brings the newest value back, inserted on
@@ -2046,9 +2051,9 @@ built agent: `rig_harness::run(app)`, which the generated `main.rs` ends
 with, builds the app, writes what its plugins declared, and runs no
 frame. So `build` only declares, and work goes in `finish` or systems.
 Two plugins with one command, or a command named `build`, `plugin` or
-`help`, fail the build, naming both. `rig help` lists the last build's
-commands and options, `rig help stats` one command's usage; an unknown
-command is refused, after a build, with the list.
+`help`, fail the build, naming both. `rig help` lists what the last build
+declared, `rig help stats` one command's usage; an unknown command is
+refused, after a build, with the list.
 
 ```rust,no_run
 use rig_harness::harness_protocol::SessionId;
@@ -2071,16 +2076,13 @@ impl Plugin for StatsPlugin {
     }
 }
 
-/// Prints the count, then exits; rig-sessions' `list` adds titles and cost.
+/// Prints the count, then exits.
 fn stats(home: Res<RigHome>, mut commands: Commands) {
-    let saved = std::fs::read_dir(home.0.sessions())
-        .into_iter()
-        .flatten()
-        .flatten()
-        .filter_map(|dir| dir.file_name().to_str()?.parse::<SessionId>().ok())
-        .filter(|id| home.0.session(id).is_saved())
-        .count();
-    println!("{saved} saved sessions");
+    let sessions = std::fs::read_dir(home.0.sessions()).into_iter().flatten().flatten();
+    let ids = sessions.filter_map(|dir| dir.file_name().to_str()?.parse::<SessionId>().ok());
+    // A session's cost in USD (`None` unpriced), with `stores: Res<SessionStores>`:
+    // `stores.open(&home.0.session(id)).ok().and_then(|s| rig_sessions::Meta::of(&*s)?.cost)`
+    println!("{} saved sessions", ids.filter(|id| home.0.session(id).is_saved()).count());
     commands.trigger(Exit(ExitReason::Quit));
 }
 ```
