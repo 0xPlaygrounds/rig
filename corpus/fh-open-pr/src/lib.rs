@@ -1,32 +1,37 @@
 //! FH-12: open a pull request from the session.
 //!
 //! `/pr` (`/pr draft`, `/pr --base <branch>`) turns the session's work into
-//! a pull request. The plugin keeps, with the session, the files its tool
-//! calls changed and the test commands its `shell` calls ran, with how
-//! they ended. `/pr` checks the repository, its remote and `gh`, then asks
-//! a writer model (`[open-pr] model`, else the agent's) for the title,
-//! commit message and description from the user's requests, the diff
-//! against the base and those tests, following the repository's PR
-//! template when it has one. A review question shows the branch, files,
-//! message, title and description, each editable through a follow-up
-//! question, with Publish, Commit only and Cancel. Nothing is committed or
-//! pushed before that answer. The steps then run off the main thread as an
-//! effect of the plugin's own (`open-pr`), each one shown as it starts; a
-//! failing step stops there and says how to go on. A pull request already
-//! open for the branch gets the new commits and, if the user agrees, the
-//! new description. The URL is kept with the session, in `/resume`'s line
-//! and shown again when the session is resumed.
+//! a pull request. The plugin keeps, with the session, the files each turn
+//! changed (what `git status` and the files' contents show changed between
+//! the turn's start and end, so the agent's shell edits count and the
+//! user's earlier edits do not) and every command a tool ran, with how it
+//! ended. `/pr` checks the repository, its remote and `gh` off the main
+//! thread, then asks a writer model (`[open-pr] model`, else the agent's)
+//! for the title, commit message and description from the user's requests,
+//! the diff against the base and those commands, following the
+//! repository's PR template when it has one. A review question shows the
+//! branch, files, message, title and description, each edited in place
+//! from its current text, with Publish, Commit only and Cancel. Nothing is
+//! committed or pushed before that answer. The steps then run off the main
+//! thread as an effect of the plugin's own (`open-pr`), each one shown as
+//! it starts; a failing step stops there and says how to go on. A pull
+//! request already open for the branch gets the new commits and, if the
+//! user agrees, the new description. The URL is kept with the session, in
+//! `/resume`'s line and shown again when the session is resumed.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use futures::channel::mpsc;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::{CompletionRequest, Message};
 use rig_harness::rig_core::effect::EffectKind;
-use rig_harness::rig_core::tool::{ExitStatus, FilesChanged};
+use rig_harness::rig_core::tool::{ContentHash, ExitStatus, content_hash};
 use rig_sessions::ResumeLabel;
-use rig_tools::process::Launcher;
+use rig_tools::process::{Launcher, OutputLine, Spawn};
+use rig_tools::workspace::Workspace;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -45,8 +50,8 @@ const PREAMBLE: &str = "You write pull requests for changes a coding agent made.
     with one JSON object with the string fields `title` (an imperative line of at most 72 \
     characters), `commit_message` (a subject line, a blank line, then a short body) and \
     `body` (Markdown). Unless a template is given, the body has the sections `## Summary`, \
-    `## Changes` and `## How it was tested`. That last section names only the test \
-    commands listed as run, each with whether it passed; when none are listed it says \
+    `## Changes` and `## How it was tested`. That last section names only those of the \
+    listed commands that ran tests, each with whether it passed; when none did it says \
     \"Not tested.\" Never claim a test that is not listed.";
 
 /// Where a repository keeps its pull request template.
@@ -67,9 +72,13 @@ impl Plugin for OpenPrPlugin {
     fn build(&self, app: &mut App) {
         app.add_setting::<OpenPrConfig>(NAME)
             .init_resource::<ProjectRoot>()
+            .init_resource::<ProjectWorkspace>()
             .init_resource::<Processes>()
             .insert_resource(SessionWork::default())
-            .add_observer(note_work)
+            .add_observer(snapshot)
+            .add_observer(note_changes)
+            .add_observer(note_run)
+            .add_observer(prepared)
             .add_observer(written)
             .add_observer(answered)
             .add_observer(start_job)
@@ -101,8 +110,6 @@ pub struct OpenPrConfig {
     /// The GitHub CLI, or a program that takes its `pr view`, `pr create`
     /// and `pr edit` arguments.
     pub gh: String,
-    /// A `shell` command with one of these words in it ran tests.
-    pub test_words: Vec<String>,
 }
 
 impl Default for OpenPrConfig {
@@ -110,38 +117,44 @@ impl Default for OpenPrConfig {
         Self {
             model: None,
             gh: "gh".to_owned(),
-            test_words: ["test", "spec", "pytest", "nextest"]
-                .map(str::to_owned)
-                .to_vec(),
         }
     }
 }
 
 /// What the session did that a pull request is written from: the files
-/// its tool calls changed (absolute paths), the test commands its `shell`
-/// calls ran, and the pull requests opened. Saved with the session.
+/// its turns changed (absolute paths), the commands its tools ran, and the
+/// pull requests opened. Saved with the session.
 #[derive(Resource, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
 #[reflect(opaque, Resource, Saved, Default, Serialize, Deserialize)]
 pub struct SessionWork {
-    /// Every file a tool call said it changed.
-    pub changed: BTreeSet<String>,
-    /// Every test command run, in order.
-    pub tests: Vec<TestRun>,
+    /// Every file a turn changed.
+    pub changed: BTreeSet<PathBuf>,
+    /// Every command a tool ran, in order.
+    pub runs: Vec<Run>,
     /// The pull requests opened or updated, oldest first.
     pub prs: Vec<String>,
 }
 
-/// A test command a `shell` call ran.
+/// A command a tool ran.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct TestRun {
+pub struct Run {
     /// The command line.
     pub command: String,
     /// Whether it exited with 0.
     pub passed: bool,
 }
 
+/// The uncommitted files of a repository, relative to its top, with their
+/// contents' hash (`None`: deleted).
+type Dirty = BTreeMap<String, Option<ContentHash>>;
+
+/// On an agent while its turn runs: its repository and what was dirty
+/// there when the turn started.
+#[derive(Component)]
+struct Before(PathBuf, Dirty);
+
 /// What `/pr` will do: where, on which branch, with what text.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug)]
 struct Plan {
     root: PathBuf,
     remote: String,
@@ -149,6 +162,8 @@ struct Plan {
     branch: String,
     /// Whether `branch` is made from where the repository stands.
     new_branch: bool,
+    /// The local branches, which a new one is named apart from.
+    taken: BTreeSet<String>,
     /// The session's files to commit, relative to `root`.
     files: Vec<String>,
     /// The other uncommitted files, left alone.
@@ -158,6 +173,26 @@ struct Plan {
     body: String,
     draft: bool,
     gh: String,
+}
+
+/// The project's processes: where they run and how they start.
+#[derive(Clone)]
+struct Runner(Arc<dyn Workspace>, Launcher);
+
+/// On `/pr`'s preparation: its agent, the user's requests and the
+/// commands run; once done, the plan without its text and what the writer
+/// reads of the repository, or what is missing.
+#[derive(Component)]
+struct Preparing(Entity, Vec<String>, Vec<Run>);
+
+/// The end of `/pr`'s preparation.
+#[derive(Component)]
+struct Prepared(Result<(Plan, String), String>);
+
+impl From<Result<(Plan, String), String>> for Prepared {
+    fn from(prepared: Result<(Plan, String), String>) -> Self {
+        Self(prepared)
+    }
 }
 
 /// What the writer answers.
@@ -180,7 +215,7 @@ struct Writing(Plan, Vec<String>);
 #[derive(Component)]
 struct Review(Plan);
 
-/// What a follow-up question edits.
+/// What an edit question edits.
 #[derive(Clone, Copy, Debug)]
 enum Field {
     Title,
@@ -234,53 +269,95 @@ enum Finish {
     Failed { error: String, hint: String },
 }
 
-/// Notes the files each tool call changed and each test command `shell`
-/// ran.
-fn note_work(
+/// The project's processes, as the resources say.
+fn runner(workspace: &ProjectWorkspace, processes: &Processes) -> Runner {
+    Runner(workspace.0.clone(), processes.launcher())
+}
+
+/// Records on its agent what is dirty in its repository as a turn starts.
+fn snapshot(
+    turn: On<Add<TurnOf>>,
+    turns: Query<&TurnOf>,
+    dirs: Query<&WorkDir>,
+    (project, workspace, processes): (Res<ProjectRoot>, Res<ProjectWorkspace>, Res<Processes>),
+    mut commands: Commands,
+) {
+    let Ok(&TurnOf(agent)) = turns.get(turn.entity) else {
+        return;
+    };
+    let dir = dirs.get(agent).map_or(&project.0, |WorkDir(dir)| dir);
+    let runner = runner(&workspace, &processes);
+    let before = runner
+        .git(dir, &["rev-parse", "--show-toplevel"])
+        .map(PathBuf::from)
+        .and_then(|root| Ok(Before(root.clone(), runner.dirty(&root)?)));
+    if let Ok(before) = before {
+        commands.entity(agent).insert(before);
+    }
+}
+
+/// Adds the files whose state an ended turn changed to the session's.
+fn note_changes(
+    settled: On<Add<Settled>>,
+    turns: Query<&ForAgent, With<Turn>>,
+    agents: Query<&Before>,
+    (workspace, processes): (Res<ProjectWorkspace>, Res<Processes>),
+    mut work: ResMut<SessionWork>,
+    mut commands: Commands,
+) {
+    let Ok(&ForAgent(agent)) = turns.get(settled.entity) else {
+        return;
+    };
+    let Ok(Before(root, before)) = agents.get(agent) else {
+        return;
+    };
+    commands.entity(agent).remove::<Before>();
+    let Ok(after) = runner(&workspace, &processes).dirty(root) else {
+        return;
+    };
+    let changed = before
+        .keys()
+        .chain(after.keys())
+        .filter(|path| before.get(*path) != after.get(*path))
+        .map(|path| root.join(path));
+    work.changed.extend(changed);
+}
+
+/// Notes each command a tool ran and how it ended.
+fn note_run(
     published: On<Add<Published>>,
     calls: Query<(&Published, &ToolRequest)>,
-    config: Res<OpenPrConfig>,
     mut work: ResMut<SessionWork>,
 ) {
     let Ok((Published(facts), request)) = calls.get(published.entity) else {
         return;
     };
-    if let Ok(Some(files)) = facts.get::<FilesChanged>() {
-        work.changed.extend(files.paths().map(str::to_owned));
-    }
-    let call = &request.call.function;
-    let command = call
-        .arguments
-        .get("command")
-        .and_then(|command| command.as_str());
-    if let (Ok(Some(status)), Some(command), "shell") =
-        (facts.get::<ExitStatus>(), command, call.name.as_str())
-        && config
-            .test_words
-            .iter()
-            .any(|word| command.contains(word.as_str()))
-    {
-        let passed = status.success();
-        work.tests.push(TestRun {
+    let command = request.call.function.arguments.get("command");
+    if let (Ok(Some(status)), Some(command)) = (
+        facts.get::<ExitStatus>(),
+        command.and_then(|command| command.as_str()),
+    ) {
+        work.runs.push(Run {
             command: command.to_owned(),
-            passed,
+            passed: status.success(),
         });
     }
 }
 
-/// `/pr [draft] [--base <branch>]`: checks what it needs and asks the
-/// writer for the text.
+/// `/pr [draft] [--base <branch>]`: checks what it needs off the main
+/// thread.
 fn pr(
     In(args): In<CommandArgs>,
     agents: Query<(&Conversation, Option<&WorkDir>, Has<ActiveTurn>)>,
-    (project, processes, config, work): (
+    (project, workspace, processes, config, work): (
         Res<ProjectRoot>,
+        Res<ProjectWorkspace>,
         Res<Processes>,
         Res<OpenPrConfig>,
         Res<SessionWork>,
     ),
-    models: Res<Models>,
     answerers: Answerers,
+    wake: Res<Wake>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -299,45 +376,29 @@ fn pr(
         ));
         return;
     }
-    let requests: Vec<String> = (0..conversation.messages().len())
-        .filter_map(|at| typed(conversation, at))
-        .collect();
-    let dir = dir.map_or(&project.0, |WorkDir(dir)| dir);
-    let launcher = processes.launcher();
-    let prepared = parse(&args.args)
-        .and_then(|(draft, base)| prepare(&launcher, dir, &config, &work, draft, base));
-    let (plan, diff) = match prepared {
-        Ok(prepared) => prepared,
+    let (draft, base) = match parse(&args.args) {
+        Ok(parsed) => parsed,
         Err(why) => {
             notices.write(Notice::error(agent, why));
             return;
         }
     };
-    let prompt = writer_prompt(&plan, &requests, &diff, &work.tests);
-    let schema = schemars::schema_for!(Written);
-    let request = CompletionRequest::new(Message::user(prompt))
-        .preamble(PREAMBLE)
-        .output_schema(schema);
-    let mut request = ModelRequest::new(request);
-    if let Some(reference) = config.model.as_deref() {
-        match models.connect(reference) {
-            Ok(connection) => request = request.on(connection),
-            Err(why) => {
-                notices.write(Notice::error(agent, format!("[open-pr] model: {why}")));
-                return;
-            }
-        }
-    }
-    notices.write(Notice::info(
-        agent,
-        "Writing the pull request's title and description…",
-    ));
+    let requests: Vec<String> = (0..conversation.messages().len())
+        .filter_map(|at| typed(conversation, at))
+        .collect();
+    let dir = dir.map_or(&project.0, |WorkDir(dir)| dir).clone();
+    let (runner, gh, changed) = (
+        runner(&workspace, &processes),
+        config.gh.clone(),
+        work.changed.clone(),
+    );
+    let prepare = blocking(move || Ok(runner.prepare(&dir, gh, &changed, draft, base)));
+    let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     commands.spawn((
-        Name::new("pull request text"),
-        request,
-        Effect::default().with_purpose(NAME),
-        ForAgent(agent),
-        Writing(plan, requests),
+        Preparing(agent, requests, work.runs.clone()),
+        Running::spawn_into::<Prepared, _>(pool, &wake, async move {
+            prepare.await.unwrap_or_else(|error| Err(error.to_string()))
+        }),
     ));
 }
 
@@ -358,122 +419,74 @@ fn parse(args: &str) -> Result<(bool, Option<String>), String> {
     Ok((draft, base))
 }
 
-/// The plan without its text, and the diff the writer reads, or what is
-/// missing.
-fn prepare(
-    launcher: &Launcher,
-    dir: &Path,
-    config: &OpenPrConfig,
-    work: &SessionWork,
-    draft: bool,
-    base: Option<String>,
-) -> Result<(Plan, String), String> {
-    let root = git(launcher, dir, &["rev-parse", "--show-toplevel"])
-        .map(PathBuf::from)
-        .map_err(|_| format!("/pr needs a git repository: {} is in none.", dir.display()))?;
-    let git = |args: &[&str]| git(launcher, &root, args);
-    let remotes = git(&["remote"]).unwrap_or_default();
-    let remote = remotes
-        .lines()
-        .find(|remote| *remote == "origin")
-        .or_else(|| remotes.lines().next())
-        .ok_or("/pr needs a remote to push to: this repository has none (git remote add origin <url>).")?
-        .to_owned();
-    run(launcher, &config.gh, &root, &["--version"]).map_err(|_| {
-        format!(
-            "/pr needs the GitHub CLI (`{}`), or an equivalent set as `[open-pr] gh`: it does not run.",
-            config.gh
-        )
-    })?;
-    let current = git(&["branch", "--show-current"]).unwrap_or_default();
-    let default = default_branch(&git, &remote);
-    let base = base.unwrap_or(default.clone());
-    let new_branch = current.is_empty() || current == default || current == base;
-    let status = status(launcher, &root)?;
-    let session: BTreeSet<String> = work
-        .changed
-        .iter()
-        .filter_map(|path| relative(&root, Path::new(path)))
-        .collect();
-    let (files, left_alone): (Vec<String>, Vec<String>) = status
-        .keys()
-        .cloned()
-        .partition(|path| session.contains(path));
-    let remote_base = format!("{remote}/{base}");
-    let base_ref = if git(&["rev-parse", "--verify", "-q", &remote_base]).is_ok() {
-        remote_base
-    } else {
-        base.clone()
+/// Asks the writer for the text of a prepared plan.
+fn prepared(
+    done: On<Add<Prepared>>,
+    preparations: Query<(&Preparing, &Prepared)>,
+    config: Res<OpenPrConfig>,
+    models: Res<Models>,
+    mut commands: Commands,
+    mut notices: MessageWriter<Notice>,
+) {
+    let Ok((Preparing(agent, requests, runs), Prepared(prepared))) = preparations.get(done.entity)
+    else {
+        return;
     };
-    let ahead: u64 = git(&["rev-list", "--count", &format!("{base_ref}..HEAD")])
-        .ok()
-        .and_then(|count| count.parse().ok())
-        .unwrap_or(0);
-    if files.is_empty() && ahead == 0 {
-        return Err(format!(
-            "Nothing for a pull request: no file this session changed is uncommitted, and nothing is committed ahead of {base}."
-        ));
+    let agent = *agent;
+    commands.entity(done.entity).despawn();
+    let (plan, context) = match prepared {
+        Ok(prepared) => prepared,
+        Err(why) => {
+            notices.write(Notice::error(agent, why.clone()));
+            return;
+        }
+    };
+    let prompt = writer_prompt(plan, requests, runs, context);
+    let request = CompletionRequest::new(Message::user(prompt))
+        .preamble(PREAMBLE)
+        .output_schema(schemars::schema_for!(Written));
+    let mut request = ModelRequest::new(request);
+    if let Some(reference) = config.model.as_deref() {
+        match models.connect(reference) {
+            Ok(connection) => request = request.on(connection),
+            Err(why) => {
+                notices.write(Notice::error(agent, format!("[open-pr] model: {why}")));
+                return;
+            }
+        }
     }
-    let mut diff = if ahead > 0 {
-        git(&["diff", "--no-color", &format!("{base_ref}...HEAD")]).unwrap_or_default()
-    } else {
-        String::new()
-    };
-    for file in &files {
-        let part = if status.get(file).is_some_and(|code| code == "??") {
-            let text = std::fs::read_to_string(root.join(file)).unwrap_or_default();
-            format!("\nnew file {file}:\n{text}")
-        } else {
-            git(&["diff", "--no-color", "HEAD", "--", file]).unwrap_or_default()
-        };
-        diff.push_str(&part);
-        diff.push('\n');
-    }
-    let diff = diff.chars().take(DIFF_CHARS).collect();
-    let plan = Plan {
-        root,
-        remote,
-        base,
-        branch: current,
-        new_branch,
-        files,
-        left_alone,
-        message: String::new(),
-        title: String::new(),
-        body: String::new(),
-        draft,
-        gh: config.gh.clone(),
-    };
-    Ok((plan, diff))
+    notices.write(Notice::info(
+        agent,
+        "Writing the pull request's title and description…",
+    ));
+    commands.spawn((
+        Name::new("pull request text"),
+        request,
+        Effect::default().with_purpose(NAME),
+        ForAgent(agent),
+        Writing(plan.clone(), requests.clone()),
+    ));
 }
 
 /// What the writer is given.
-fn writer_prompt(plan: &Plan, requests: &[String], diff: &str, tests: &[TestRun]) -> String {
-    let requests = requests
+fn writer_prompt(plan: &Plan, requests: &[String], runs: &[Run], context: &str) -> String {
+    let requests: Vec<String> = requests
         .iter()
         .map(|request| format!("- {request}"))
-        .collect::<Vec<_>>();
-    let tests = if tests.is_empty() {
-        "No test command ran in this session.".to_owned()
+        .collect();
+    let runs = if runs.is_empty() {
+        "No command ran in this session.".to_owned()
     } else {
-        let lines = tests.iter().map(|test| {
-            let how = if test.passed { "passed" } else { "failed" };
-            format!("- `{}`: {how}", test.command)
+        let lines = runs.iter().map(|run| {
+            let how = if run.passed { "passed" } else { "failed" };
+            format!("- `{}`: {how}", run.command)
         });
         lines.collect::<Vec<_>>().join("\n")
     };
-    let template = TEMPLATES
-        .iter()
-        .find_map(|path| std::fs::read_to_string(plan.root.join(path)).ok())
-        .map(|template| {
-            format!("\n\n# Template\nThe body follows this pull request template:\n{template}")
-        })
-        .unwrap_or_default();
     format!(
-        "# What the user asked for\n{}\n\n# Files committed\n{}\n\n# Tests run in the session\n{tests}\n\n# Diff against {}\n{diff}{template}",
+        "# What the user asked for\n{}\n\n# Files committed\n{}\n\n# Commands run in the session\n{runs}\n\n{context}",
         requests.join("\n"),
         plan.files.join("\n"),
-        plan.base
     )
 }
 
@@ -482,7 +495,6 @@ fn writer_prompt(plan: &Plan, requests: &[String], diff: &str, tests: &[TestRun]
 fn written(
     settled: On<Add<Settled>>,
     calls: Query<(&Writing, &Outcome, &ForAgent)>,
-    processes: Res<Processes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -490,15 +502,10 @@ fn written(
         return;
     };
     let mut plan = plan.clone();
-    let text = outcome
+    let written = outcome
         .completion()
-        .map(|response| response.text())
-        .unwrap_or_default();
-    let json = text
-        .find('{')
-        .zip(text.rfind('}'))
-        .and_then(|(from, to)| text.get(from..=to));
-    match json.and_then(|json| serde_json::from_str::<Written>(json).ok()) {
+        .and_then(|response| serde_json::from_str::<Written>(response.text().trim()).ok());
+    match written {
         Some(written) => {
             plan.title = written.title.trim().to_owned();
             plan.message = written.commit_message.trim().to_owned();
@@ -511,27 +518,23 @@ fn written(
             ));
             let title: String = requests
                 .first()
-                .map_or("Changes", |request| {
-                    request.lines().next().unwrap_or("Changes")
-                })
+                .and_then(|request| request.lines().next())
+                .unwrap_or("Changes")
                 .chars()
                 .take(72)
                 .collect();
             plan.message.clone_from(&title);
+            let files: Vec<String> = plan.files.iter().map(|file| format!("- {file}")).collect();
             plan.body = format!(
                 "## Summary\n{}\n\n## Changes\n{}\n\n## How it was tested\nNot tested.",
                 requests.join("\n"),
-                plan.files
-                    .iter()
-                    .map(|file| format!("- {file}"))
-                    .collect::<Vec<_>>()
-                    .join("\n")
+                files.join("\n")
             );
             plan.title = title;
         }
     }
     if plan.new_branch {
-        plan.branch = free_branch(&processes.launcher(), &plan.root, &plan.title);
+        plan.branch = free_branch(&plan.taken, &plan.title);
     }
     commands.spawn((review(&plan), ForAgent(agent), Review(plan)));
 }
@@ -542,11 +545,8 @@ fn review(plan: &Plan) -> Ask {
         if files.is_empty() {
             "  (none)".to_owned()
         } else {
-            files
-                .iter()
-                .map(|file| format!("  {file}"))
-                .collect::<Vec<_>>()
-                .join("\n")
+            let lines: Vec<String> = files.iter().map(|file| format!("  {file}")).collect();
+            lines.join("\n")
         }
     };
     let branch = if plan.new_branch {
@@ -575,6 +575,24 @@ fn review(plan: &Plan) -> Ask {
         .choice("branch", "Edit the branch")
         .choice("files", "Edit the files")
         .choice("cancel", "Cancel")
+}
+
+/// The question that edits `field` of `plan`, starting from its text.
+fn edit_question(plan: &Plan, field: Field) -> Ask {
+    match field {
+        Field::Title => Ask::new("The pull request's title").initial(&plan.title),
+        Field::Body => Ask::new("The pull request's description")
+            .initial(&plan.body)
+            .multiline(),
+        Field::Message => Ask::new("The commit message")
+            .initial(&plan.message)
+            .multiline(),
+        Field::Branch => Ask::new("The branch").initial(&plan.branch),
+        Field::Files => Ask::new("The files to commit, one a line")
+            .body(format!("Uncommitted too:\n{}", plan.left_alone.join("\n")))
+            .initial(plan.files.join("\n"))
+            .multiline(),
+    }
 }
 
 /// Acts on each answer to the plugin's questions.
@@ -607,52 +625,44 @@ fn answered(
             kind: NAME.into(),
             payload,
         };
-        let request = EffectRequest {
-            kind,
-            handler: None,
-        };
         commands.spawn((
             Name::new("pull request"),
-            request,
+            EffectRequest {
+                kind,
+                handler: None,
+            },
             ForAgent(agent),
             Job(plan.clone(), action),
         ));
     };
     if let Some(Review(plan)) = review_of {
-        let field = match answer {
-            Some(Answer::Choice(choice)) => match choice.as_str() {
-                "publish" => return job(plan, Action::Publish),
-                "commit" => return job(plan, Action::CommitOnly),
-                "title" => Field::Title,
-                "body" => Field::Body,
-                "message" => Field::Message,
-                "branch" => Field::Branch,
-                "files" => Field::Files,
-                _ => return cancelled(agent, &mut notices),
-            },
-            _ => return cancelled(agent, &mut notices),
+        let field = match answer.as_ref().and_then(|answer| match answer {
+            Answer::Choice(choice) => Some(choice.as_str()),
+            Answer::Text(_) => None,
+        }) {
+            Some("publish") => return job(plan, Action::Publish),
+            Some("commit") => return job(plan, Action::CommitOnly),
+            Some("title") => Field::Title,
+            Some("body") => Field::Body,
+            Some("message") => Field::Message,
+            Some("branch") => Field::Branch,
+            Some("files") => Field::Files,
+            _ => {
+                notices.write(Notice::info(
+                    agent,
+                    "Cancelled: nothing was committed or pushed.",
+                ));
+                return;
+            }
         };
-        let (title, now) = match field {
-            Field::Title => ("The title", plan.title.clone()),
-            Field::Body => ("The description", plan.body.clone()),
-            Field::Message => ("The commit message", plan.message.clone()),
-            Field::Branch => ("The branch", plan.branch.clone()),
-            Field::Files => (
-                "The files to commit, separated by spaces",
-                plan.files.join(" "),
-            ),
-        };
-        let ask = Ask::new(title)
-            .body(now)
-            .free_text()
-            .choice("keep", "Keep it");
+        let ask = edit_question(plan, field);
         commands.spawn((ask, ForAgent(agent), Editing(plan.clone(), field)));
     } else if let Some(Editing(plan, field)) = editing {
         let mut plan = plan.clone();
         if let Some(Answer::Text(text)) = answer {
             edit(&mut plan, *field, text.trim(), agent, &mut notices);
         }
-        commands.spawn((self::review(&plan), ForAgent(agent), Review(plan)));
+        commands.spawn((review(&plan), ForAgent(agent), Review(plan)));
     } else if let Some(UpdateBody(plan)) = update {
         if answer.is_some_and(|answer| answer.is("yes")) {
             job(plan, Action::UpdateBody);
@@ -665,15 +675,7 @@ fn answered(
     }
 }
 
-/// Says nothing was done.
-fn cancelled(agent: Entity, notices: &mut MessageWriter<Notice>) {
-    notices.write(Notice::info(
-        agent,
-        "Cancelled: nothing was committed or pushed.",
-    ));
-}
-
-/// Sets `field` of the plan to what the user typed.
+/// Sets `field` of the plan to the user's edited text.
 fn edit(
     plan: &mut Plan,
     field: Field,
@@ -698,7 +700,7 @@ fn edit(
                 .drain(..)
                 .chain(plan.left_alone.drain(..))
                 .collect();
-            for file in text.split([' ', ',']).filter(|file| !file.is_empty()) {
+            for file in text.lines().map(str::trim).filter(|file| !file.is_empty()) {
                 if dirty.remove(file) {
                     plan.files.push(file.to_owned());
                 } else {
@@ -717,7 +719,7 @@ fn edit(
 fn start_job(
     started: On<Add<Started>>,
     jobs: Query<&Job>,
-    processes: Res<Processes>,
+    (workspace, processes): (Res<ProjectWorkspace>, Res<Processes>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
@@ -725,16 +727,15 @@ fn start_job(
         return;
     };
     let (sender, steps) = mpsc::unbounded();
-    let (thread_job, launcher, failed) = (job.clone(), processes.launcher(), sender.clone());
+    let (thread_job, runner, failed) =
+        (job.clone(), runner(&workspace, &processes), sender.clone());
     let thread = std::thread::Builder::new()
         .name(NAME.to_owned())
         .spawn(move || {
             let say = |step| {
                 sender.unbounded_send(step).ok();
             };
-            let finish = steps_of(&thread_job, &launcher, &|doing: String| {
-                say(Step::Doing(doing))
-            });
+            let finish = runner.steps(&thread_job, &|doing: String| say(Step::Doing(doing)));
             say(Step::Done(finish));
         });
     if let Err(error) = thread {
@@ -751,119 +752,6 @@ fn start_job(
         Worker(started.entity, job.clone()),
         Running::stream(pool, &wake, steps),
     ));
-}
-
-/// The job's steps, run in order until one fails.
-fn steps_of(Job(plan, action): &Job, launcher: &Launcher, doing: &dyn Fn(String)) -> Finish {
-    let git = |args: &[&str]| git(launcher, &plan.root, args);
-    let gh = |args: &[&str]| run(launcher, &plan.gh, &plan.root, args);
-    let failed = |error: String, hint: String| Finish::Failed { error, hint };
-    let branch = plan.branch.as_str();
-    if *action == Action::UpdateBody {
-        doing(format!(
-            "Updating the description of the pull request for {branch}"
-        ));
-        return match gh(&["pr", "edit", branch, "--body", &plan.body]) {
-            Ok(_) => Finish::Updated {
-                url: open_pr(&gh, branch).map(|(url, _)| url).unwrap_or_default(),
-            },
-            Err(error) => failed(
-                error,
-                "The description is as it was; edit it on GitHub or run /pr again.".to_owned(),
-            ),
-        };
-    }
-    if plan.new_branch {
-        doing(format!("Creating branch {branch}"));
-        if let Err(error) = git(&["switch", "-c", branch]) {
-            return failed(
-                error,
-                "Nothing was changed. Fix it, then run /pr again.".to_owned(),
-            );
-        }
-    }
-    if !plan.files.is_empty() {
-        let paths: Vec<&str> = plan.files.iter().map(String::as_str).collect();
-        doing(format!("Staging {}", plan.files.join(", ")));
-        if let Err(error) = git(&[&["add", "-A", "--"], &paths[..]].concat()) {
-            return failed(
-                error,
-                format!("On branch {branch}, nothing is committed. Fix it, then run /pr again."),
-            );
-        }
-        doing("Committing".to_owned());
-        if let Err(error) =
-            git(&[&["commit", "-q", "-m", &plan.message, "--"], &paths[..]].concat())
-        {
-            let hint = format!(
-                "The files are staged on {branch}, not committed. Fix what stopped the commit (such as a hook), then run /pr again."
-            );
-            return failed(error, hint);
-        }
-    }
-    let commit = git(&["rev-parse", "--short", "HEAD"]).unwrap_or_default();
-    if *action == Action::CommitOnly {
-        return Finish::Committed { commit };
-    }
-    doing(format!("Pushing {branch} to {}", plan.remote));
-    if let Err(error) = git(&["push", "-q", "-u", &plan.remote, branch]) {
-        let hint = format!(
-            "Committed {commit} on {branch}, not pushed. Fix the push, then run /pr again."
-        );
-        return failed(error, hint);
-    }
-    doing("Looking for an open pull request".to_owned());
-    let open = open_pr(&gh, branch).map(|(url, body)| Finish::Existing { url, body });
-    if let Some(open) = open {
-        return open;
-    }
-    doing(format!("Opening the pull request into {}", plan.base));
-    let mut create = vec![
-        "pr",
-        "create",
-        "--base",
-        &plan.base,
-        "--head",
-        branch,
-        "--title",
-        &plan.title,
-        "--body",
-        &plan.body,
-    ];
-    if plan.draft {
-        create.push("--draft");
-    }
-    match gh(&create) {
-        Ok(out) => Finish::Opened {
-            url: out
-                .lines()
-                .rev()
-                .map(str::trim)
-                .find(|line| !line.is_empty())
-                .unwrap_or_default()
-                .to_owned(),
-        },
-        Err(error) => failed(
-            error,
-            format!("{branch} is pushed. Run /pr again, or `gh pr create`."),
-        ),
-    }
-}
-
-/// The URL and description of the pull request open for `branch`, if one is.
-fn open_pr(
-    gh: &dyn Fn(&[&str]) -> Result<String, String>,
-    branch: &str,
-) -> Option<(String, String)> {
-    let view = gh(&["pr", "view", branch, "--json", "url,body,state"]).ok()?;
-    let view: serde_json::Value = serde_json::from_str(&view).ok()?;
-    (view.get("state")?.as_str()? == "OPEN").then_some(())?;
-    let url = view.get("url")?.as_str()?.to_owned();
-    let body = view
-        .get("body")
-        .and_then(|body| body.as_str())
-        .unwrap_or_default();
-    Some((url, body.to_owned()))
 }
 
 /// Shows each step as it starts, and how the job ended; answers its effect.
@@ -902,44 +790,37 @@ fn progress(
             work.prs.push(url.to_owned());
         }
     };
-    match finish {
+    let text = match finish {
         Finish::Opened { url } => {
             keep(url);
-            notices.write(Notice::info(agent, format!("Opened {url}")));
+            format!("Opened {url}")
         }
         Finish::Updated { url } => {
             keep(url);
-            notices.write(Notice::info(
-                agent,
-                format!("Updated the description of {url}"),
-            ));
+            format!("Updated the description of {url}")
         }
-        Finish::Committed { commit } => {
-            let text = format!(
-                "Committed {commit} on {}; nothing was pushed. Run /pr again to publish.",
-                plan.branch
-            );
-            notices.write(Notice::info(agent, text));
-        }
+        Finish::Committed { commit } => format!(
+            "Committed {commit} on {}; nothing was pushed. Run /pr again to publish.",
+            plan.branch
+        ),
         Finish::Existing { url, body } => {
             keep(url);
-            notices.write(Notice::info(
-                agent,
-                format!("Pushed the new commits to {url}"),
-            ));
             if body.trim() != plan.body.trim() {
                 let ask =
                     Ask::yes_no("Update the pull request's description?").body(plan.body.clone());
                 commands.spawn((ask, ForAgent(agent), UpdateBody(plan.clone())));
             }
+            format!("Pushed the new commits to {url}")
         }
         Finish::Failed { error, hint } => {
             notices.write(Notice::error(
                 agent,
                 format!("/pr stopped: {error}\n{hint}"),
             ));
+            return;
         }
-    }
+    };
+    notices.write(Notice::info(agent, text));
 }
 
 /// Keeps the latest pull request in this session's `/resume` line.
@@ -962,29 +843,14 @@ fn remind(work: Res<SessionWork>, mut notices: MessageWriter<Notice>) {
     }
 }
 
-/// The branch the remote's `HEAD` names, else `main` or `master`.
-fn default_branch(git: &dyn Fn(&[&str]) -> Result<String, String>, remote: &str) -> String {
-    let head = format!("refs/remotes/{remote}/HEAD");
-    if let Ok(found) = git(&["symbolic-ref", "--short", &head])
-        && let Some(branch) = found.strip_prefix(&format!("{remote}/"))
-    {
-        return branch.to_owned();
-    }
-    ["main", "master"]
-        .into_iter()
-        .find(|branch| git(&["rev-parse", "--verify", "-q", branch]).is_ok())
-        .unwrap_or("main")
-        .to_owned()
-}
-
 /// `rig/<slug of the title>`, numbered when taken.
-fn free_branch(launcher: &Launcher, root: &Path, title: &str) -> String {
+fn free_branch(taken: &BTreeSet<String>, title: &str) -> String {
     let lower = title.to_lowercase();
-    let words = lower
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .filter(|word| !word.is_empty());
     let mut slug = String::new();
-    for word in words {
+    for word in lower
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+    {
         if slug.len() + word.len() > 40 {
             break;
         }
@@ -993,90 +859,317 @@ fn free_branch(launcher: &Launcher, root: &Path, title: &str) -> String {
         }
         slug.push_str(word);
     }
-    let slug = if slug.is_empty() {
-        "changes".to_owned()
-    } else {
-        slug
-    };
-    let taken = |branch: &str| {
-        git(
-            launcher,
-            root,
-            &[
-                "rev-parse",
-                "--verify",
-                "-q",
-                &format!("refs/heads/{branch}"),
-            ],
-        )
-        .is_ok()
-    };
+    if slug.is_empty() {
+        slug = "changes".to_owned();
+    }
     let first = format!("rig/{slug}");
     std::iter::once(first.clone())
         .chain((2..100).map(|n| format!("rig/{slug}-{n}")))
-        .find(|branch| !taken(branch))
+        .find(|branch| !taken.contains(branch))
         .unwrap_or(first)
 }
 
-/// The files `git status` shows, relative to the repository's top, with
-/// their two-letter status.
-fn status(launcher: &Launcher, root: &Path) -> Result<BTreeMap<String, String>, String> {
-    let out = run(
-        launcher,
-        "git",
-        root,
-        &["status", "--porcelain=v1", "-z", "--untracked-files=all"],
-    )?;
-    let mut files = BTreeMap::new();
-    let mut fields = out.split('\0').filter(|field| !field.is_empty());
-    while let Some(entry) = fields.next() {
-        let code = entry.get(..2).unwrap_or_default();
-        if let Some(path) = entry.get(3..) {
-            files.insert(path.to_owned(), code.to_owned());
+impl Runner {
+    /// Runs `program` in `dir` of the workspace: its output, or its error.
+    fn run(&self, program: &str, dir: &Path, args: &[&str]) -> Result<String, String> {
+        let Self(workspace, launcher) = self;
+        let args: Vec<OsString> = args.iter().map(OsString::from).collect();
+        let cannot = |error: std::io::Error| format!("cannot run {program}: {error}");
+        let mut process = workspace
+            .spawn(
+                launcher,
+                Some(dir),
+                program.as_ref(),
+                &args,
+                Spawn::default(),
+            )
+            .map_err(cannot)?;
+        let (mut out, mut err) = (String::new(), String::new());
+        for line in process.lines().iter() {
+            match line {
+                OutputLine::Out(text) => out.push_str(&text),
+                OutputLine::Err(text) => err.push_str(&text),
+            }
         }
-        // A rename or copy names the file it came from next.
-        if code.contains(['R', 'C']) {
-            fields.next();
+        // The output ended, so the process has or is about to.
+        let status = process.wait_for(Duration::from_secs(60)).map_err(cannot)?;
+        if status.is_some_and(|status| status.success()) {
+            Ok(out)
+        } else {
+            let first = args.first().map(|arg| arg.to_string_lossy());
+            Err(format!(
+                "{program} {}: {}",
+                first.unwrap_or_default(),
+                err.trim()
+            ))
         }
     }
-    Ok(files)
-}
 
-/// The absolute `path` relative to the repository's top `root`, if in it.
-fn relative(root: &Path, path: &Path) -> Option<String> {
-    let parent = path.parent()?.canonicalize().ok()?;
-    let root = root.canonicalize().ok()?;
-    let full = parent.join(path.file_name()?);
-    Some(
-        full.strip_prefix(root)
-            .ok()?
-            .to_string_lossy()
-            .replace('\\', "/"),
-    )
-}
-
-/// Runs git in `dir`: its trimmed output, or its error.
-fn git(launcher: &Launcher, dir: &Path, args: &[&str]) -> Result<String, String> {
-    run(launcher, "git", dir, args).map(|out| out.trim().to_owned())
-}
-
-/// Runs `program` in `dir` as every child process starts: its output, or
-/// its error.
-fn run(launcher: &Launcher, program: &str, dir: &Path, args: &[&str]) -> Result<String, String> {
-    let output = launcher
-        .command(program)
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .map_err(|error| format!("cannot run {program}: {error}"))?;
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-    } else {
-        let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!(
-            "{program} {}: {}",
-            args.first().copied().unwrap_or_default(),
-            error.trim()
-        ))
+    /// Runs git in `dir`: its trimmed output, or its error.
+    fn git(&self, dir: &Path, args: &[&str]) -> Result<String, String> {
+        self.run("git", dir, args).map(|out| out.trim().to_owned())
     }
+
+    /// The files `git status` shows in the repository at `root`, relative
+    /// to it, with their two-letter status.
+    fn status(&self, root: &Path) -> Result<BTreeMap<String, String>, String> {
+        let args = ["status", "--porcelain=v1", "-z", "--untracked-files=all"];
+        let out = self.run("git", root, &args)?;
+        let mut files = BTreeMap::new();
+        let mut fields = out.split('\0').filter(|field| !field.is_empty());
+        while let Some(entry) = fields.next() {
+            let code = entry.get(..2).unwrap_or_default();
+            if let Some(path) = entry.get(3..) {
+                files.insert(path.to_owned(), code.to_owned());
+            }
+            // A rename or copy names the file it came from next.
+            if code.contains(['R', 'C']) {
+                fields.next();
+            }
+        }
+        Ok(files)
+    }
+
+    /// The uncommitted files of the repository at `root` and their
+    /// contents' hash.
+    fn dirty(&self, root: &Path) -> Result<Dirty, String> {
+        let hash = |path: &String| {
+            let read = self.0.read(&root.join(path), u64::MAX).ok()?;
+            Some(content_hash(&read.bytes))
+        };
+        let files = self.status(root)?.into_keys();
+        Ok(files
+            .map(|path| {
+                let hash = hash(&path);
+                (path, hash)
+            })
+            .collect())
+    }
+
+    /// The plan without its text, and what the writer reads of the
+    /// repository (the diff and any template), or what is missing.
+    fn prepare(
+        &self,
+        dir: &Path,
+        gh: String,
+        changed: &BTreeSet<PathBuf>,
+        draft: bool,
+        base: Option<String>,
+    ) -> Result<(Plan, String), String> {
+        let root = self
+            .git(dir, &["rev-parse", "--show-toplevel"])
+            .map(PathBuf::from)
+            .map_err(|_| format!("/pr needs a git repository: {} is in none.", dir.display()))?;
+        let git = |args: &[&str]| self.git(&root, args);
+        let remotes = git(&["remote"]).unwrap_or_default();
+        let remote = remotes
+            .lines()
+            .find(|remote| *remote == "origin")
+            .or_else(|| remotes.lines().next())
+            .ok_or("/pr needs a remote to push to: this repository has none (git remote add origin <url>).")?
+            .to_owned();
+        self.run(&gh, &root, &["--version"]).map_err(|_| {
+            format!(
+                "/pr needs the GitHub CLI (`{gh}`), or an equivalent set as `[open-pr] gh`: it does not run."
+            )
+        })?;
+        let current = git(&["branch", "--show-current"]).unwrap_or_default();
+        let default = self.default_branch(&root, &remote);
+        let base = base.unwrap_or(default.clone());
+        let new_branch = current.is_empty() || current == default || current == base;
+        let status = self.status(&root)?;
+        let session: BTreeSet<&Path> = changed
+            .iter()
+            .filter_map(|path| path.strip_prefix(&root).ok())
+            .collect();
+        let (files, left_alone): (Vec<String>, Vec<String>) = status
+            .keys()
+            .cloned()
+            .partition(|path| session.contains(Path::new(path)));
+        let remote_base = format!("{remote}/{base}");
+        let base_ref = if git(&["rev-parse", "--verify", "-q", &remote_base]).is_ok() {
+            remote_base
+        } else {
+            base.clone()
+        };
+        let ahead: u64 = git(&["rev-list", "--count", &format!("{base_ref}..HEAD")])
+            .ok()
+            .and_then(|count| count.parse().ok())
+            .unwrap_or(0);
+        if files.is_empty() && ahead == 0 {
+            return Err(format!(
+                "Nothing for a pull request: no file this session changed is uncommitted, and nothing is committed ahead of {base}."
+            ));
+        }
+        let mut diff = if ahead > 0 {
+            git(&["diff", "--no-color", &format!("{base_ref}...HEAD")]).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        for file in &files {
+            let part = if status.get(file).is_some_and(|code| code == "??") {
+                let text = self.0.read_text(&root.join(file)).unwrap_or_default();
+                format!("\nnew file {file}:\n{text}")
+            } else {
+                git(&["diff", "--no-color", "HEAD", "--", file]).unwrap_or_default()
+            };
+            diff.push_str(&part);
+            diff.push('\n');
+        }
+        let diff: String = diff.chars().take(DIFF_CHARS).collect();
+        let template = TEMPLATES
+            .iter()
+            .find_map(|path| self.0.read_text(&root.join(path)).ok())
+            .map(|template| {
+                format!("\n\n# Template\nThe body follows this pull request template:\n{template}")
+            })
+            .unwrap_or_default();
+        let context = format!("# Diff against {base}\n{diff}{template}");
+        let taken = git(&["branch", "--format=%(refname:short)"]).unwrap_or_default();
+        let plan = Plan {
+            root,
+            remote,
+            base,
+            branch: current,
+            new_branch,
+            taken: taken.lines().map(str::to_owned).collect(),
+            files,
+            left_alone,
+            message: String::new(),
+            title: String::new(),
+            body: String::new(),
+            draft,
+            gh,
+        };
+        Ok((plan, context))
+    }
+
+    /// The branch the remote's `HEAD` names, else `main` or `master`.
+    fn default_branch(&self, root: &Path, remote: &str) -> String {
+        let head = format!("refs/remotes/{remote}/HEAD");
+        if let Ok(found) = self.git(root, &["symbolic-ref", "--short", &head])
+            && let Some(branch) = found.strip_prefix(&format!("{remote}/"))
+        {
+            return branch.to_owned();
+        }
+        ["main", "master"]
+            .into_iter()
+            .find(|branch| {
+                self.git(root, &["rev-parse", "--verify", "-q", branch])
+                    .is_ok()
+            })
+            .unwrap_or("main")
+            .to_owned()
+    }
+
+    /// A job's steps, run in order until one fails.
+    fn steps(&self, Job(plan, action): &Job, doing: &dyn Fn(String)) -> Finish {
+        let git = |args: &[&str]| self.git(&plan.root, args);
+        let gh = |args: &[&str]| self.run(&plan.gh, &plan.root, args);
+        let failed = |error: String, hint: String| Finish::Failed { error, hint };
+        let branch = plan.branch.as_str();
+        if *action == Action::UpdateBody {
+            doing(format!(
+                "Updating the description of the pull request for {branch}"
+            ));
+            return match gh(&["pr", "edit", branch, "--body", &plan.body]) {
+                Ok(_) => Finish::Updated {
+                    url: open_pr(&gh, branch).map(|(url, _)| url).unwrap_or_default(),
+                },
+                Err(error) => failed(
+                    error,
+                    "The description is as it was; edit it on GitHub or run /pr again.".to_owned(),
+                ),
+            };
+        }
+        if plan.new_branch {
+            doing(format!("Creating branch {branch}"));
+            if let Err(error) = git(&["switch", "-c", branch]) {
+                return failed(
+                    error,
+                    "Nothing was changed. Fix it, then run /pr again.".to_owned(),
+                );
+            }
+        }
+        if !plan.files.is_empty() {
+            let paths: Vec<&str> = plan.files.iter().map(String::as_str).collect();
+            doing(format!("Staging {}", plan.files.join(", ")));
+            if let Err(error) = git(&[&["add", "-A", "--"], &paths[..]].concat()) {
+                return failed(
+                    error,
+                    format!(
+                        "On branch {branch}, nothing is committed. Fix it, then run /pr again."
+                    ),
+                );
+            }
+            doing("Committing".to_owned());
+            if let Err(error) =
+                git(&[&["commit", "-q", "-m", &plan.message, "--"], &paths[..]].concat())
+            {
+                let hint = format!(
+                    "The files are staged on {branch}, not committed. Fix what stopped the commit (such as a hook), then run /pr again."
+                );
+                return failed(error, hint);
+            }
+        }
+        let commit = git(&["rev-parse", "--short", "HEAD"]).unwrap_or_default();
+        if *action == Action::CommitOnly {
+            return Finish::Committed { commit };
+        }
+        doing(format!("Pushing {branch} to {}", plan.remote));
+        if let Err(error) = git(&["push", "-q", "-u", &plan.remote, branch]) {
+            let hint = format!(
+                "Committed {commit} on {branch}, not pushed. Fix the push, then run /pr again."
+            );
+            return failed(error, hint);
+        }
+        doing("Looking for an open pull request".to_owned());
+        if let Some((url, body)) = open_pr(&gh, branch) {
+            return Finish::Existing { url, body };
+        }
+        doing(format!("Opening the pull request into {}", plan.base));
+        let mut create = vec![
+            "pr",
+            "create",
+            "--base",
+            &plan.base,
+            "--head",
+            branch,
+            "--title",
+            &plan.title,
+            "--body",
+            &plan.body,
+        ];
+        if plan.draft {
+            create.push("--draft");
+        }
+        match gh(&create) {
+            Ok(out) => Finish::Opened {
+                url: out
+                    .lines()
+                    .rev()
+                    .map(str::trim)
+                    .find(|line| !line.is_empty())
+                    .unwrap_or_default()
+                    .to_owned(),
+            },
+            Err(error) => failed(
+                error,
+                format!("{branch} is pushed. Run /pr again, or `gh pr create`."),
+            ),
+        }
+    }
+}
+
+/// The URL and description of the pull request open for `branch`, if one is.
+fn open_pr(
+    gh: &dyn Fn(&[&str]) -> Result<String, String>,
+    branch: &str,
+) -> Option<(String, String)> {
+    let view = gh(&["pr", "view", branch, "--json", "url,body,state"]).ok()?;
+    let view: serde_json::Value = serde_json::from_str(&view).ok()?;
+    (view.get("state")?.as_str()? == "OPEN").then_some(())?;
+    let url = view.get("url")?.as_str()?.to_owned();
+    let body = view.get("body").and_then(|body| body.as_str());
+    Some((url, body.unwrap_or_default().to_owned()))
 }

@@ -3,13 +3,14 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 
 use rig_cassette::journal::MemoryStore;
-use rig_coding_tools::{ShellTool, WriteTool};
+use rig_coding_tools::ShellTool;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::settings::Settings;
 use rig_harness_test_support::{
     AnswerAsks, Answers, Collected, Ended, app_on, calls, collect, first_agent, log_ended, reply,
     run_until, scripted_models,
 };
+use rig_tools::workspace::Local;
 
 use super::*;
 
@@ -42,13 +43,10 @@ fn fixture(name: &str) -> Option<PathBuf> {
     fs::remove_dir_all(&dir).ok();
     let work = dir.join("work");
     fs::create_dir_all(&work).ok()?;
-    let launcher = Launcher::default();
-    git(
-        &launcher,
-        &dir,
-        &["init", "-q", "--bare", "-b", "main", "remote.git"],
-    )
-    .ok()?;
+    let runner = local_runner();
+    runner
+        .git(&dir, &["init", "-q", "--bare", "-b", "main", "remote.git"])
+        .ok()?;
     fs::write(work.join("README"), "hello\n").ok()?;
     let remote = dir.join("remote.git").display().to_string();
     for args in [
@@ -62,7 +60,7 @@ fn fixture(name: &str) -> Option<PathBuf> {
         &["push", "-q", "-u", "origin", "main"],
         &["remote", "set-head", "origin", "main"],
     ] {
-        git(&launcher, &work, args).ok()?;
+        runner.git(&work, args).ok()?;
     }
     fs::write(work.join("b.txt"), "the user's own work\n").ok()?;
     let gh = dir.join("gh");
@@ -71,17 +69,21 @@ fn fixture(name: &str) -> Option<PathBuf> {
     Some(dir)
 }
 
-/// A session in `dir/work` where the agent writes `a.txt` and runs a test
-/// that passes, then `/pr` answered with `answers`, run until a notice
+/// The processes of this machine.
+fn local_runner() -> Runner {
+    Runner(Arc::new(Local), Launcher::default())
+}
+
+/// A session in `dir/work` where the agent writes `a.txt` with a shell
+/// command and runs a test that passes, then `/pr` answered with `answers`, run until a notice
 /// says `until`. Returns the writer's prompt and the notices.
 fn session(dir: &Path, answers: Vec<Answer>, until: &str) -> (String, Vec<String>) {
     let work = dir.join("work");
-    let a = work.join("a.txt").display().to_string();
     let agent_model = MockCompletionModel::from_stream_turns([
         calls(
             "1",
-            "write",
-            serde_json::json!({ "path": a, "content": "a\n" }),
+            "shell",
+            serde_json::json!({ "command": format!("cd {} && echo a > a.txt", work.display()) }),
         ),
         calls(
             "2",
@@ -110,7 +112,6 @@ fn session(dir: &Path, answers: Vec<Answer>, until: &str) -> (String, Vec<String
         .add_plugins((
             AgentPlugin,
             JournalPlugin,
-            WriteTool,
             ShellTool,
             AnswerAsks,
             OpenPrPlugin,
@@ -152,12 +153,14 @@ fn session(dir: &Path, answers: Vec<Answer>, until: &str) -> (String, Vec<String
 fn remote(dir: &Path, args: &[&str]) -> String {
     let remote = dir.join("remote.git").display().to_string();
     let args = [&["--git-dir", &remote][..], args].concat();
-    git(&Launcher::default(), dir, &args).unwrap_or_default()
+    local_runner().git(dir, &args).unwrap_or_default()
 }
 
 /// Runs git in the working repository of `dir`.
 fn local(dir: &Path, args: &[&str]) -> String {
-    git(&Launcher::default(), &dir.join("work"), args).unwrap_or_default()
+    local_runner()
+        .git(&dir.join("work"), args)
+        .unwrap_or_default()
 }
 
 #[test]
@@ -171,7 +174,10 @@ fn publish_commits_only_the_sessions_file_and_opens_the_edited_pr() {
         Answer::Choice("publish".to_owned()),
     ];
     let (prompt, notices) = session(&dir, answers, "Opened");
-    assert!(prompt.contains("test -f a.txt`: passed"), "{prompt}");
+    assert!(
+        prompt.contains("test -f a.txt`: passed"),
+        "{prompt} {notices:?}"
+    );
     assert!(
         !prompt.contains("the user's own work"),
         "b.txt is not the session's: {prompt}"
