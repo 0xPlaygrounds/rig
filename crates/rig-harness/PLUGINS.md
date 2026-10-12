@@ -114,14 +114,13 @@ nothing moves, so an effect goes as far as it can in the frame:
 
 **A hook is an ordinary system in a stage** that queries stage data:
 `app.add_systems(AgentPass, my_gate.in_set(Stage::Gate))`. There are no
-hook events. Order between plugins is the phase of the stage a system
-is in, and Bevy's `.before` and `.after` against the public sets other
-plugins put their stage systems in
-([ordering](#ordering-against-other-plugins)). Every effect is admitted
-before it starts, wherever and whenever it was spawned, so every Prepare
-and Gate system sees it, in their order. Prepare sees an effect once; Gate
-sees it each pass it is ready to start, so once, and again after each hold
-on it is released; Review sees an outcome each pass until it settles.
+hook events. A system orders itself by its stage's phase and against other
+plugins' public sets ([ordering](#ordering-against-other-plugins)). Every
+effect is admitted before it starts, wherever and whenever it was spawned,
+so every Prepare and Gate system sees it, in their order. Prepare sees an
+effect once; Gate sees it each pass it is ready to start, so once, and
+again after each hold on it is released; Review sees an outcome each pass
+until it settles.
 
 **An observer is for reactions that need no order**: counting, a status
 item, a span, the plugin's own entities (`On<Add<Started>>`,
@@ -136,13 +135,12 @@ releases another plugin's, and "allow" means doing nothing. A hold says
 why with its `Name`, such as `waiting for lease on src/a.rs`, which the
 fronts show on the held call. The first decision wins: a gate decides
 through the effect's `Decision` (`decision.decide(Outcome::refused(..))`),
-so a later gate can never overturn a refusal; the kernel applies it as
-the `Outcome` when the pass reaches Start. A reviewer edits the `Outcome`
-in place (`Query<&mut Outcome, Unreviewed>`), once (a marker), since
-Review sees it each pass; a reviewer ordered after it sees the edit, and
-the record keeps both the first and the reviewed outcome. Plugins never
-insert `Outcome` themselves, so Bevy sees every decision and edit and
-reports two plugins that may make them unordered
+so a later gate can never overturn a refusal; the kernel applies it as the
+`Outcome` when the pass reaches Start. A reviewer edits the `Outcome` in
+place (`Query<&mut Outcome, Unreviewed>`), once (a marker), since Review
+sees it each pass; a reviewer ordered after it sees the edit, and the
+record keeps both the first and the reviewed outcome. Plugins never insert
+`Outcome` themselves, so Bevy sees every decision and edit
 ([ordering](#ordering-against-other-plugins)).
 
 **Deciding once.** A gate that only reads (a path rule) decides afresh
@@ -271,10 +269,11 @@ So:
   `.before(MySystems)` or `.after(MySystems)`. A gate that holds or asks
   goes after the gates that decide the same kind of effect, so it sees
   their decisions.
-- **Two plugins of other authors never depend on each other only to
-  order themselves.** Where two meant to be used together edit the same
-  data in one phase, the later one depends on the earlier one's crate and
-  orders against its set.
+- **Two plugins of other authors never depend on each other only to order
+  themselves.** Where two meant to be used together edit the same data in
+  one phase, the later one depends on the earlier one's crate and orders
+  against its set, and its test checks both together,
+  `assert_stages_ordered((Mine, Theirs))`.
 
 The sets of Gate systems that edit shared data:
 
@@ -298,8 +297,7 @@ pub struct RedactPlugin;
 
 impl Plugin for RedactPlugin {
     fn build(&self, app: &mut App) {
-        // After the files a message names were attached and the default
-        // prompt went in, before compaction measures the request.
+        // After attachments and the default prompt, before compaction.
         app.configure_sets(AgentPass, RedactSystems.in_set(PrepareSystems::Edit))
             .add_systems(AgentPass, (redact_messages, redact_prompts).in_set(RedactSystems));
     }
@@ -429,29 +427,28 @@ fn build(app: &mut App) {
 
 # Gating and reviewing tool calls
 
-A tool call is an effect with a `ToolRequest` (the model's `ToolCall`)
-and the `CallHandler` that will run it, on the call's entity. A Prepare
-system edits them as the call is admitted: the arguments, or the
-handler, wrapped with `ErasedHandler::layered` so the call runs through it
-(to give it a secret the model never sees, say). Replacing a call's
-`CallHandler`, in `PrepareSystems::Edit`, runs that one call another
-way, such as one agent's `shell` calls in a sandbox (below), while
-`Processes` stays the way every other call starts. When Gate opens, the
-kernel gives each call the `Footprint` of the call as Prepare left it. A
-Gate system sees each call when it is about to run: a call that
-conflicts with an earlier one of the same reply
-(`Touches::conflicts_with`) is `Waiting` until that one settles, so a gate
-judges it with the earlier calls' effects done. It decides it with
-`Outcome::refused(why)`, which the model reads as the tool's refusal, or
-with any `Outcome` (a cached result), or holds it. A Review system reads
-or edits each result in place before it is committed, as
-[above](#how-a-plugin-steps-in-effects-and-stages). The reply's results go
-back in the order the model asked for them, refused ones included. What a
-tool published beside its text, such as rig-tools' `FilesRead` and
-`FilesChanged` (each file with the hash of the bytes read or written) or
-`ExitStatus`, is the call's `Published` component. A call of a tool the
-agent's `ToolAccess` leaves out is refused at Start (a `Denied` refusal
-in its record), and the model reads it as a tool it does not have.
+A tool call is an effect with a `ToolRequest` (the model's `ToolCall`) and
+the `CallHandler` that will run it, on the call's entity. A Prepare system
+edits them as the call is admitted: the arguments, or the handler, wrapped
+with `ErasedHandler::layered` so the call runs through it (to give it a
+secret the model never sees, say). Replacing a call's `CallHandler`, in
+`PrepareSystems::Edit`, runs that one call another way, such as one
+agent's `shell` calls in a sandbox (below), while `Processes` stays the
+way every other call starts. When Gate opens, the kernel gives each call
+the `Footprint` of the call as Prepare left it. A Gate system sees each
+call when it is about to run: a call that conflicts with an earlier one of
+the same reply (`Touches::conflicts_with`) is `Waiting` until that one
+settles, so a gate judges it with the earlier calls' effects done. It
+decides it with `Outcome::refused(why)`, which the model reads as the
+tool's refusal, or with any `Outcome` (a cached result), or holds it. A
+Review system edits each result in place before it is committed. The
+reply's results go back in the order the model asked for them, refused
+ones included. What a tool published beside its text, such as rig-tools'
+`FilesRead` and `FilesChanged` (each file with the hash of the bytes read
+or written) or `ExitStatus`, is the call's `Published` component. A call
+of a tool the agent's `ToolAccess` leaves out is refused at Start (a
+`Denied` refusal in its record), and the model reads it as a tool it does
+not have.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -513,10 +510,9 @@ A `search` without a path reads the working directory, and `shell` may
 change anything (`Writes(Anything)`), so every call after a held `shell`
 call waits, reads too. That is on purpose: the model wrote its calls in
 order, and a later call may depend on what an earlier one changes
-(`mkdir x` then `ls x`, `git stash` then `git checkout`), and only the
-tool knows what its calls touch. So a gate that cannot get an answer
-refuses at once rather than holding: a refused call settles, and the
-next ones run.
+(`mkdir x` then `ls x`), and only the tool knows what its calls touch. So
+a gate that cannot get an answer refuses at once rather than holding: a
+refused call settles, and the next ones run.
 
 # Asking the user: questions and pickers
 
@@ -540,13 +536,12 @@ may run a command line and show a `detail` that is kept whole while the
 label is shortened to fit (a session's age), and whether typed text
 answers it too (`free_text`). Inserting a new `Picker` replaces what it
 shows, and despawning it closes it. Any front shows pickers its own way
-and answers one, or an open `Ask`, by triggering `Pick { entity, chosen
-}`: on a picker, the harness runs the chosen item's command, if it has
-one, for the picker's agent or else the agent the user looks at (`Shown`),
-triggers `Picked` on it (`Chosen::Item(index)`, `Chosen::Text` for typed
-text, `None` when closed) and despawns it; on an `Ask`, it decides the
-answer. So a plugin that offers a picker works in every front, and a front
-that answers with `Pick` works with every plugin.
+and answers one, or an open `Ask`, by triggering
+`Pick { entity, chosen }`: on a picker, the harness runs the chosen item's
+command, if it has one, for the picker's agent or else the agent the user
+looks at (`Shown`), triggers `Picked` on it (`Chosen::Item(index)`,
+`Chosen::Text` for typed text, `None` when closed) and despawns it; on an
+`Ask`, it decides the answer.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -767,18 +762,17 @@ fn keep_asides(
 
 A model call is an effect entity with a `ModelRequest`: the rig-core
 `CompletionRequest` it sends (system prompt as its first message, the
-messages, the tools offered, the options) and the `connection` it goes
-to, else its agent's model (`Models::connect` makes one). A turn's own
-call is a `TurnCall`, whose request the kernel builds from its agent when
-it is admitted (an `On<Add<Admitted>>` observer runs before that, a
-Prepare system after); a call built from an agent outside its turns, such
-as a preview, is `BuildFrom(agent)`. A plugin changes a request in
-`Prepare`, which sees each call once (`Added<Admitted>`), in
-`PrepareSystems::Edit`, so it sees the whole prompt and compaction
-measures what is sent. Start
-then fits the request to the model it goes to (an option that model
-cannot take is left out, plugin edits stay) and makes the tool rules in
-the prompt follow the tools it carries. Changing the system prompt or the
+messages, the tools offered, the options) and the `connection` it goes to,
+else its agent's model (`Models::connect` makes one). A turn's own call is
+a `TurnCall`, whose request the kernel builds from its agent when it is
+admitted (an `On<Add<Admitted>>` observer runs before that, a Prepare
+system after); a call built from an agent outside its turns, such as a
+preview, is `BuildFrom(agent)`. A plugin changes a request in `Prepare`,
+which sees each call once (`Added<Admitted>`), in `PrepareSystems::Edit`,
+so it sees the whole prompt and compaction measures what is sent. Start
+then fits the request to the model it goes to (an option that model cannot
+take is left out, plugin edits stay) and makes the tool rules in the
+prompt follow the tools it carries. Changing the system prompt or the
 tools misses the provider's prompt cache.
 
 - **Routing** a call to another model is a Prepare edit of its
@@ -790,8 +784,7 @@ tools misses the provider's prompt cache.
   Prepare edit, in the order pushed, those placed `outermost()` last, then
   fits the request to the adapted spec: a router and an adapter never undo
   each other. An outermost adapter sees what every other one made of the
-  model, such as a replayer standing for the whole adapted model. An
-  adapter wraps `connection.handler` with rig-core's
+  model. An adapter wraps `connection.handler` with rig-core's
   `ErasedHandler::layered` (see each request and answer) or `map_stream`
   (rewrite each streamed item and the reply, recorded as rewritten), and
   says what the wrapped model takes on `connection.spec`.
@@ -1149,17 +1142,16 @@ running tool call also keeps a `ToolProgress` line on it, such as `12 of
 40 files`, drawn under the call and written to stderr by `--print`.
 
 **An owner follows its effect's successor.** Another plugin may take the
-effect over ([taking over and trying
-again](#how-a-plugin-steps-in-effects-and-stages)), such as a watchdog
-that sends a stalled call again with `commands.queue(resend(call))`: the
-effect then settles as superseded, with no outcome applied, and its
-`SupersededBy` names the successor. A plugin that waits for its own
-effect's outcome by a marker registers
+effect over ([taking over](#how-a-plugin-steps-in-effects-and-stages)),
+such as a watchdog that sends a stalled call again with
+`commands.queue(resend(call))`: the effect then settles as superseded,
+with no outcome applied, and its `SupersededBy` names the successor. A
+plugin that waits for its own effect's outcome by a marker registers
 `app.add_observer(follow_successor::<Marker>)`, which moves the marker,
 and the hold the effect keeps, to each successor; the kernel follows its
 own turn and tool calls. A model call a plugin makes is such an effect
-too: a rig-core model it calls directly is one the kernel, the effect
-log and the spending never see.
+too: a rig-core model it calls directly is one the kernel, the effect log
+and the spending never see.
 
 ```rust,no_run
 use rig_harness::prelude::*;
@@ -1318,8 +1310,7 @@ reads them back through its `EffectLog` resource, there when the session
 has a directory: `read()` gives every record, and `read_matching(&filter)`
 those an `EffectFilter` keeps, by agent, kind name (`completion`,
 `tool_call`, `message`, `subagent` or a plugin's own) and turn. It holds
-what was written by the end of the last frame. A message's record reads
-back with `MessageRecord::read(&record.kind)`.
+what was written by the end of the last frame.
 
 **Redacting.** A record holds what its effect really carried: tool output
 and the diffs of changed files, the request as the model got it. A plugin
@@ -1440,22 +1431,20 @@ impl Plugin for BudgetPlugin {
 # Saved state: counting every tool call
 
 An agent component that derives `Reflect` and says
-`#[reflect(Component, Saved)]` is kept with the session: each change is
-logged, and a restart, `/reload` or `/resume` brings the newest value
-back, inserted on the restored agent before `SessionRestored` exists, so
-an `On<Insert<T>>` observer can re-arm what it says. A resource that says
+`#[reflect(Component, Saved)]` is kept with the session (a generic type
+once registered, `app.register_type::<T>()`): each change is logged, and a
+restart, `/reload` or `/resume` brings the newest value back, inserted on
+the restored agent before `SessionRestored` exists, so an `On<Insert<T>>`
+observer can re-arm what it says. A resource that says
 `#[reflect(Resource, Saved)]` is kept the same way, for what belongs to
 the whole session; the plugin inserts it in `build`, and the saved value
-replaces it. A tool call is an entity with a `ToolRequest` and the
-agent it works for (`ForAgent`), so `On<Add<ToolRequest>>` sees every
-tool call as the model asks for it; a call a restart runs again is
-marked `Restored`, like all the work a restart carries on, and is gated
-again (holds and approvals are not saved). The calls
-made before the plugin was added are in the conversation, which a
-restored agent is spawned with: the observer that sees the plugin's
-component added counts them, and a saved count, if the session has one,
-replaces that right after. An assistant message is the tuple variant
-`Message::Assistant(AssistantMessage)`.
+replaces it. `On<Add<ToolRequest>>` sees every tool call as the model asks
+for it; one a restart runs again is `Restored`, like all the work a
+restart carries on, and is gated again (holds and approvals are not
+saved). Calls made before the plugin was added are in the conversation a
+restored agent is spawned with: the observer of the plugin's component
+counts them, and a saved count replaces that right after. An assistant
+message is the tuple variant `Message::Assistant(AssistantMessage)`.
 
 ```rust,no_run
 use std::collections::HashMap;
@@ -1510,8 +1499,6 @@ fn count(
     }
 }
 ```
-
-A generic type is saved only once registered (`app.register_type::<T>()`).
 
 # Changing history
 
@@ -1579,8 +1566,8 @@ entity with a `KeepAwake(Duration)` keeps it running at that pace while it
 lives. None needs a thread. Bevy's clock stops while the machine sleeps; a
 time of day is a `WakeAt(SystemTime)` on an entity, which gets `Due` in
 `First` once that time passed (the loop wakes for it), and is armed again
-by inserting a new `WakeAt`. A delayed command cannot be taken back, so
-a wait that may be put off or called off, such as a debounce, is a
+by inserting a new `WakeAt`. A delayed command cannot be taken back, so a
+wait that may be put off or called off, such as a debounce, is a
 `WakeAt::after(wait)` on an entity of the plugin's: inserting a new one
 puts it off, and removing it or despawning the entity calls it off (the
 exit hold in [sessions and exiting](#sessions-and-exiting) is one).
@@ -1946,8 +1933,7 @@ does not declare; the tool still parses its arguments its own way, so the
 plugin that added the property reads it, and takes it out if the tool
 would refuse it, from the call's `ToolRequest` in Prepare (`task` hands
 such arguments on instead). Edit lines of `ToolRules` you added, found by
-their text, and leave the others' alone: two plugins editing the same
-schema or rules must order their systems, as for any shared data.
+their text, and leave the others' alone.
 
 # Testing a plugin
 
@@ -2126,14 +2112,13 @@ fn answer_yes(
 
 The terminal view's row under the transcript shows the `StatusItems` of
 the agent shown and of its running turn, which every agent and turn has,
-and the app's `AppStatus`, all `rig_tui`'s. A plugin shows an item there in
-a system in `StatusSystems` that runs when what it shows changed:
+and the app's `AppStatus`, all `rig_tui`'s. A plugin shows an item there
+in a system in `StatusSystems` that runs when what it shows changed:
 `items.show(item)` puts the item at its place (its side and order) in
-place of the one there, and an empty item clears the place. A plugin that
-should also build without the terminal view puts this behind a default
-`tui` cargo feature, as the default plugins do, and one that writes
-`AppStatus` registers it with `app.init_resource::<AppStatus>()`, since the
-view may not be added. The
+place of the one there, and an empty item clears the place. It goes behind
+a default `tui` cargo feature, as a [renderer](#a-tool) does, and a plugin
+that writes `AppStatus` registers it with
+`app.init_resource::<AppStatus>()`, since the view may not be added. The
 default plugins' places, and how long each item stays when the line is too
 narrow (`keep`: the lowest goes first, `u8::MAX` never):
 
@@ -2194,9 +2179,8 @@ A `TuiPanel` entity takes a side of the transcript (`Top`, `Bottom`,
 `TuiSystems::Draw`, which runs only for a frame that is drawn. Frames are
 drawn when agents or panels change; a plugin whose own state changed
 writes a `RequestRedraw`. `TuiScreen` is the terminal's size and `Focused`
-marks the agent shown. These are `rig_tui`'s, so the crate depends on
-`rig-tui` and `rig-activity` beside `rig-harness`. They are there in any
-run, `--print` too, which draws no frame.
+marks the agent shown. The crate depends on `rig-tui` and `rig-activity`
+for these, there in any run, `--print` too, which draws no frame.
 
 ```rust,no_run
 use rig_activity::Activity;
@@ -2385,8 +2369,7 @@ depends on `bevy` at exactly the agent's version, with the features it
 draws with, such as `bevy = { version = "=0.20.0", default-features =
 false, features = ["ui"] }` for Bevy UI. A window beside the terminal view
 is no front; a window that is the front offers itself with `on_flag`
-(`--gui`). (This example is not built with the agent's docs, which have no
-window.)
+(`--gui`).
 
 ```rust,ignore
 use std::time::Duration;
