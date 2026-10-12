@@ -17,7 +17,8 @@
 //! [`ReviewSystems::Act`].
 
 use bevy_ecs::query::QueryData;
-use rig_core::completion::{Message, Usage, tokens_label};
+use rig_core::catalog::ModelSpec;
+use rig_core::completion::{CompletionRequest, Message, Usage, tokens_label};
 use rig_ecs::prelude::*;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::successor::follow_successor;
@@ -194,6 +195,38 @@ pub fn unsummarized(conversation: &Conversation) -> (Vec<Message>, usize) {
     (messages, from)
 }
 
+/// Plans one summary call of `conversation` with `policy`, for `reason`,
+/// written by the model `spec`, building on `summarized`: the
+/// [`Summarizing`] to spawn it with and its request. `None` when no message
+/// would be summarized that is not already; an error says why the policy
+/// cannot plan it. rig-compaction's own compactions are planned so with the
+/// [`Compaction`] policy; a plugin that summarizes with another, such as a
+/// fallback, replaces a summary call's [`Summarizing`] and
+/// [`ModelRequest`] with what this returns.
+pub fn plan(
+    conversation: &Conversation,
+    summarized: Option<&Summarized>,
+    policy: &CompactionPolicy,
+    reason: CompactReason,
+    spec: &ModelSpec,
+) -> Result<Option<(Summarizing, CompletionRequest)>, String> {
+    let (messages, from) = unsummarized(conversation);
+    let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
+        return Ok(None);
+    };
+    let until = conversation.id(upto).map_or(Until::All, Until::Before);
+    let none = SummaryState::default();
+    let state = summarized.map_or(&none, |summarized| &summarized.0);
+    let planned = policy.plan(state, &messages, from, upto, spec, &reason);
+    let (state, request) = planned.map_err(|why| why.to_string())?;
+    let summarizing = Summarizing {
+        reason,
+        until,
+        state,
+    };
+    Ok(Some((summarizing, request)))
+}
+
 /// Tells `agent` that, in `situation`, `cleared` was cleared, then `then`.
 fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str) -> Notice {
     let tokens = tokens_label(cleared.tokens as u64);
@@ -280,26 +313,16 @@ impl CompactingItem<'_, '_> {
         let Some(connection) = self.connection else {
             return Start::NoModel;
         };
-        let spec = &*connection.spec;
-        let (messages, from) = unsummarized(&self.conversation);
-        let Some(upto) = policy.cut(&messages, from, &reason, Some(spec)) else {
-            return Start::NothingNew;
-        };
-        let until = match self.conversation.id(upto) {
-            Some(kept) => Until::Before(kept),
-            None => Until::All,
-        };
-        let none = SummaryState::default();
-        let planned = policy.plan(
-            self.summarized.map_or(&none, |summarized| &summarized.0),
-            &messages,
-            from,
-            upto,
-            spec,
-            &reason,
+        let planned = plan(
+            &self.conversation,
+            self.summarized,
+            policy,
+            reason,
+            &connection.spec,
         );
-        let (state, request) = match planned {
-            Ok(planned) => planned,
+        let (summarizing, request) = match planned {
+            Ok(Some(planned)) => planned,
+            Ok(None) => return Start::NothingNew,
             Err(why) => {
                 notices.write(Notice::error(agent, format!("Cannot compact: {why}.")));
                 return Start::Refused;
@@ -307,11 +330,7 @@ impl CompactingItem<'_, '_> {
         };
         let summary = (
             Name::new("compacting"),
-            Summarizing {
-                reason,
-                until,
-                state,
-            },
+            summarizing,
             ModelRequest::new(request),
             Effect::default().with_purpose("compaction"),
             ForAgent(agent),
