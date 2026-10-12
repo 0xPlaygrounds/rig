@@ -210,6 +210,7 @@ fn expand(
             spill: None,
             confine: false,
             cut: None,
+            ..Shell::default()
         };
         let pool = IoTaskPool::get_or_init(TaskPool::default);
         for (slot, command) in shells {

@@ -275,6 +275,7 @@ fn run_check(
         spill: None,
         confine: false,
         cut: None,
+        ..Shell::default()
     };
     let args = ShellArgs::new(command.clone()).timeout_secs(TIMEOUT_SECS);
     let pool = IoTaskPool::get_or_init(TaskPool::default);
