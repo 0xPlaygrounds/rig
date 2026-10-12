@@ -39,11 +39,16 @@ fn echo(
         .insert(Notes(format!("noted {MARKER}")));
 }
 
-fn home(name: &str) -> Home {
-    let home = scratch_home(name);
+/// Encrypts every session of `home`, with a cheap KDF.
+fn enable(home: &Home) {
     fs::create_dir_all(home.root()).ok();
     let config = "enabled = true\nkdf_memory_kib = 64\nkdf_iterations = 1\n";
     fs::write(home.root().join("crypt.toml"), config).ok();
+}
+
+fn home(name: &str) -> Home {
+    let home = scratch_home(name);
+    enable(&home);
     home
 }
 
@@ -59,14 +64,7 @@ fn start(
         .map(|passphrase| (SECRET, passphrase))
         .into_iter()
         .collect();
-    // An interactive run with no terminal front: a headless one would
-    // take `rig crypt`'s front, the first headless front offered.
-    let invoked = Invoked {
-        terminal: true,
-        ..Invoked::default()
-    };
     app.insert_resource(secrets)
-        .insert_resource(invoked)
         .insert_resource(scripted_models([("test/model", model)]))
         .register_type::<Notes>()
         .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, EffectLogPlugin))
@@ -139,16 +137,24 @@ fn notices(app: &App) -> String {
         .collect()
 }
 
-/// Why the run has no key, if it has none.
-fn refusal(app: &App) -> String {
-    match app
-        .world()
-        .get_resource::<Unlocked>()
-        .map(|unlocked| &unlocked.0)
-    {
-        Some(Err(why)) => why.clone(),
-        _ => String::new(),
+/// Why the run's stores do not open `session`, if they do not.
+fn refusal(app: &App, home: &Home, session: &SessionId) -> String {
+    let stores = app.world().resource::<SessionStores>();
+    match stores.open(&home.session(session)) {
+        Err(why) => why.to_string(),
+        Ok(_) => String::new(),
     }
+}
+
+/// The conversation of the first agent restored, as text.
+fn restored(app: &mut App) -> String {
+    let world = app.world_mut();
+    let mut agents = world.query::<&Conversation>();
+    let text = agents
+        .iter(world)
+        .next()
+        .map(|conversation| format!("{:?}", conversation.messages()));
+    text.unwrap_or_default()
 }
 
 /// Whether the run was refused: no store, and an exit with code 2, which
@@ -196,28 +202,18 @@ fn a_sealed_session_resumes_with_its_key_only() {
 
     // Resumed with the key: the conversation and the plugin's state.
     let (mut app, _) = start(&home, &session, &model, key);
+    assert!(restored(&mut app).contains(MARKER), "{}", notices(&app));
     let world = app.world_mut();
-    let mut agents = world.query::<(&Conversation, &Notes)>();
-    let restored = agents.iter(world).next();
-    let text = restored.map(|(conversation, _)| format!("{:?}", conversation.messages()));
-    assert!(
-        text.unwrap_or_default().contains(MARKER),
-        "{}",
-        notices(&app)
-    );
-    let world = app.world_mut();
-    let notes = agents.iter(world).next().map(|(_, notes)| notes.0.clone());
+    let mut agents = world.query::<&Notes>();
+    let notes = agents.iter(world).next().map(|notes| notes.0.clone());
     assert_eq!(notes, Some(format!("noted {MARKER}")));
     drop(app);
 
     // A wrong passphrase: refused after the KDF, nothing written.
     let before: Vec<_> = logs.iter().map(fs::read).collect();
     let (app, _) = start(&home, &session, &model, Some("wrong horse"));
-    assert!(
-        refusal(&app).contains("wrong passphrase"),
-        "{}",
-        refusal(&app)
-    );
+    let why = refusal(&app, &home, &session);
+    assert!(why.contains("wrong passphrase"), "{why}");
     assert!(refused(&app));
     drop(app);
     assert_eq!(plain_secrets(dir.path()), Vec::<PathBuf>::new());
@@ -244,10 +240,49 @@ fn a_run_without_a_key_refuses_and_keeps_nothing() {
     let session = SessionId::generate();
     let model = MockCompletionModel::from_stream_turns([reply("noted")]);
     let (app, _) = start(&home, &session, &model, None);
-    assert!(refusal(&app).contains("no key"), "{}", refusal(&app));
+    let why = refusal(&app, &home, &session);
+    assert!(why.contains("no key"), "{why}");
     assert!(refused(&app));
     drop(app);
     let dir = home.session(&session);
     assert_eq!(agent_logs(dir.path()), Vec::<PathBuf>::new());
     assert_eq!(plain_secrets(dir.path()), Vec::<PathBuf>::new());
+}
+
+#[test]
+fn a_plain_session_is_refused_until_migrate_seals_it() {
+    let home = scratch_home("fh18-migrate");
+    let session = SessionId::generate();
+    let dir = home.session(&session);
+    let model = MockCompletionModel::from_stream_turns([reply("noted")]);
+    // Saved before encryption was on: plain.
+    let (mut app, wakes) = start(&home, &session, &model, None);
+    ask(&mut app, &wakes, &format!("Remember {MARKER}."));
+    drop(app);
+    assert!(!plain_secrets(dir.path()).is_empty());
+
+    // Now encrypted: the plain session is refused, not read as tampered
+    // nor written sealed over.
+    enable(&home);
+    let key = Some("correct horse");
+    let before: Vec<_> = files(dir.path()).iter().map(fs::read).collect();
+    let (app, _) = start(&home, &session, &model, key);
+    let why = refusal(&app, &home, &session);
+    assert!(why.contains("rig crypt migrate"), "{why}");
+    assert!(refused(&app));
+    drop(app);
+    let after: Vec<_> = files(dir.path()).iter().map(fs::read).collect();
+    assert_eq!(format!("{before:?}"), format!("{after:?}"));
+
+    // `rig crypt migrate` seals it in place; it resumes with the key.
+    let config = CryptConfig::read(&home).unwrap_or_default();
+    let crypt = unlock(&home, &config, key);
+    let done = crypt.and_then(|crypt| migrate(&home, Path::new(""), &crypt));
+    assert_eq!(
+        done.as_deref(),
+        Ok("Encrypted 1 sessions; 0 running elsewhere were left plain.")
+    );
+    assert_eq!(plain_secrets(dir.path()), Vec::<PathBuf>::new());
+    let (mut app, _) = start(&home, &session, &model, key);
+    assert!(restored(&mut app).contains(MARKER), "{}", notices(&app));
 }

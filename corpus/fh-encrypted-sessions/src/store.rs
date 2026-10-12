@@ -21,6 +21,10 @@ pub const TAMPERED: &str = "session file corrupted or tampered";
 /// What the key check file holds, sealed.
 const CHECK: &[u8] = b"rig-crypt-check-v1";
 
+/// What every sealed log and session file starts with, before its first
+/// frame: how a sealed session is told from a plain one.
+const MAGIC: &[u8] = b"rig-crypt-v1\n";
+
 fn tampered() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, TAMPERED)
 }
@@ -168,11 +172,14 @@ pub fn new_salt() -> io::Result<[u8; 16]> {
     Ok(salt)
 }
 
-/// The frames of sealed bytes: each a big-endian `u32` length, then that
-/// many sealed bytes.
+/// The frames of sealed bytes: after [`MAGIC`], each a big-endian `u32`
+/// length, then that many sealed bytes.
 fn frames(bytes: &[u8]) -> io::Result<Vec<&[u8]>> {
-    let mut rest = bytes;
     let mut frames = Vec::new();
+    if bytes.is_empty() {
+        return Ok(frames);
+    }
+    let mut rest = bytes.strip_prefix(MAGIC).ok_or_else(tampered)?;
     while !rest.is_empty() {
         let (len, after) = rest.split_at_checked(4).ok_or_else(tampered)?;
         let len = u32::from_be_bytes(len.try_into().map_err(|_| tampered())?);
@@ -236,11 +243,17 @@ impl CryptStore {
         self.counts.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// `plain` as the frame of `file` at `index`.
+    /// `plain` as the frame of `file` at `index`, the first after
+    /// [`MAGIC`].
     fn frame(&self, file: Framed<'_>, index: usize, plain: &[u8]) -> io::Result<Vec<u8>> {
         let sealed = self.crypt.seal(&file.context(index), plain)?;
         let len = u32::try_from(sealed.len()).map_err(io::Error::other)?;
-        let mut out = len.to_be_bytes().to_vec();
+        let mut out = if index == 0 {
+            MAGIC.to_vec()
+        } else {
+            Vec::new()
+        };
+        out.extend(len.to_be_bytes());
         out.extend(sealed);
         Ok(out)
     }
@@ -371,6 +384,41 @@ impl JournalStore for CryptStore {
     fn remove_file(&self, name: &str) -> io::Result<()> {
         self.counts().remove(&Framed::File(name).key());
         self.inner.remove_file(name)
+    }
+
+    fn files(&self) -> io::Result<Vec<String>> {
+        self.inner.files()
+    }
+}
+
+/// What a session's store holds: no log yet, plain logs, or logs a
+/// [`CryptStore`] sealed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sealing {
+    /// No agent wrote a log yet.
+    Empty,
+    /// Its logs are plain.
+    Plain,
+    /// Its logs are sealed.
+    Sealed,
+}
+
+impl Sealing {
+    /// What the session `store` keeps, as is (not through a
+    /// [`CryptStore`]), holds, by its first log that is not empty.
+    ///
+    /// # Errors
+    ///
+    /// When a log cannot be read.
+    pub fn of(store: &dyn JournalStore) -> io::Result<Self> {
+        for agent in store.agents()? {
+            let log = store.read(&agent)?;
+            if !log.is_empty() {
+                let sealed = log.starts_with(MAGIC);
+                return Ok(if sealed { Self::Sealed } else { Self::Plain });
+            }
+        }
+        Ok(Self::Empty)
     }
 }
 

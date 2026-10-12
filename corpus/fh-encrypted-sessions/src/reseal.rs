@@ -1,24 +1,82 @@
-//! `rig crypt migrate` and `rig crypt rekey`: each session is copied into
+//! `rig crypt list`, which needs no key, and `rig crypt migrate` and
+//! `rig crypt rekey`: each session is copied into
 //! a new directory through a store that seals under the key it should
 //! have, which then takes the session's place, and the old files are
 //! overwritten before they are removed.
 
 use std::ffi::OsString;
-use std::fs::{self, File, OpenOptions, TryLockError};
+use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::UNIX_EPOCH;
 
-use rig_cassette::journal::JsonlDirStore;
+use rig_cassette::journal::{JsonlDirStore, fork_session};
 use rig_harness::harness_protocol::{Home, SessionDir};
 use rig_harness::prelude::JournalStore;
 
-use crate::store::{Crypt, CryptStore, new_salt};
+use crate::store::{Crypt, CryptStore, Sealing, new_salt};
 use crate::{CryptConfig, key_dir};
 
-/// The plain files of a session directory the launcher reads, which hold
-/// no conversation: copied as they are.
-const MARKERS: [&str; 5] = ["launcher.lock", "directory", "switch", "started", "saved"];
+/// Each saved session of `home` but `current`: its id, whether it is
+/// sealed, the day it was last saved and its size on disk, read without
+/// the key.
+pub fn list(home: &Home, current: &Path) -> String {
+    let mut lines: Vec<(u64, String)> = sessions(home, current)
+        .iter()
+        .map(|dir| {
+            let paths = walk(dir.path()).unwrap_or_default();
+            let metadata: Vec<_> = paths
+                .iter()
+                .filter_map(|path| fs::metadata(path).ok())
+                .collect();
+            let size: u64 = metadata.iter().map(fs::Metadata::len).sum();
+            let saved = metadata
+                .iter()
+                .filter_map(|file| file.modified().ok()?.duration_since(UNIX_EPOCH).ok())
+                .map(|since| since.as_secs())
+                .max()
+                .unwrap_or_default();
+            let sealing = match Sealing::of(&plain(dir)) {
+                Ok(Sealing::Sealed) => "sealed",
+                Ok(_) => "plain",
+                Err(_) => "unreadable",
+            };
+            let id = dir
+                .id()
+                .map(|id| id.as_str().to_owned())
+                .unwrap_or_default();
+            let line = format!(
+                "{id}  {}  {:>9} KiB  {sealing}",
+                day(saved),
+                size.div_ceil(1024)
+            );
+            (saved, line)
+        })
+        .collect();
+    lines.sort_by_key(|(saved, _)| std::cmp::Reverse(*saved));
+    let lines: Vec<String> = lines.into_iter().map(|(_, line)| line).collect();
+    lines.join("\n")
+}
+
+/// The day `seconds` after the Unix epoch falls on, as `YYYY-MM-DD` in
+/// UTC (the civil calendar from a day count).
+fn day(seconds: u64) -> String {
+    let days = i64::try_from(seconds / 86_400).unwrap_or_default() + 719_468;
+    let era = days.div_euclid(146_097);
+    let of_era = days.rem_euclid(146_097);
+    let year_of_era = (of_era - of_era / 1460 + of_era / 36_524 - of_era / 146_096) / 365;
+    let of_year = of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let shifted = (5 * of_year + 2) / 153;
+    let day = of_year - (153 * shifted + 2) / 5 + 1;
+    let month = if shifted < 10 {
+        shifted + 3
+    } else {
+        shifted - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02}")
+}
 
 /// Encrypts every plain session of `home` but `current` that no launcher
 /// runs.
@@ -29,15 +87,16 @@ const MARKERS: [&str; 5] = ["launcher.lock", "directory", "switch", "started", "
 pub fn migrate(home: &Home, current: &Path, crypt: &Crypt) -> Result<String, String> {
     let (mut sealed, mut skipped) = (0, 0);
     for dir in sessions(home, current) {
-        let plain = Arc::new(JsonlDirStore::new(dir.path()));
-        if !is_plain(&*plain) {
+        let plain = plain(&dir);
+        if Sealing::of(&plain).map_err(|failure| failure.to_string())? != Sealing::Plain {
             continue;
         }
-        if runs_elsewhere(&dir) {
+        if dir.runs_elsewhere() {
             skipped += 1;
             continue;
         }
-        reseal(dir.path(), &*plain, crypt).map_err(|failure| failure.to_string())?;
+        reseal(&dir, &plain, crypt)
+            .map_err(|failure| format!("{}: {failure}", dir.path().display()))?;
         sealed += 1;
     }
     Ok(format!(
@@ -62,7 +121,7 @@ pub fn rekey(
         .filter(|passphrase| !passphrase.is_empty())
         .ok_or("set RIG_SECRET_CRYPT_NEW to the new passphrase first")?;
     let others = sessions(home, current);
-    if others.iter().any(runs_elsewhere) {
+    if others.iter().any(SessionDir::runs_elsewhere) {
         return Err("another rig runs a session; quit it first".to_owned());
     }
     let config = CryptConfig::read(home)?;
@@ -71,12 +130,12 @@ pub fn rekey(
         .map_err(|failure| failure.to_string())?;
     let mut count = 0;
     for dir in others {
-        let plain: Arc<dyn JournalStore> = Arc::new(JsonlDirStore::new(dir.path()));
-        if is_plain(&*plain) {
+        let plain = plain(&dir);
+        if Sealing::of(&plain).map_err(|failure| failure.to_string())? != Sealing::Sealed {
             continue;
         }
-        let old = CryptStore::new(plain, crypt.clone());
-        reseal(dir.path(), &old, &new)
+        let old = CryptStore::new(Arc::new(plain), crypt.clone());
+        reseal(&dir, &old, &new)
             .map_err(|failure| format!("{}: {failure}", dir.path().display()))?;
         count += 1;
     }
@@ -101,22 +160,9 @@ fn sessions(home: &Home, current: &Path) -> Vec<SessionDir> {
         .collect()
 }
 
-/// Whether the session in `store` is plain: its logs are JSON lines,
-/// where a sealed log starts with a frame's length.
-fn is_plain(store: &dyn JournalStore) -> bool {
-    let agents = store.agents().unwrap_or_default();
-    agents
-        .iter()
-        .filter_map(|agent| store.read(agent).ok())
-        .any(|log| log.first() == Some(&b'{'))
-}
-
-/// Whether a launcher holds `session`'s lock.
-fn runs_elsewhere(session: &SessionDir) -> bool {
-    File::options()
-        .write(true)
-        .open(session.launcher_lock())
-        .is_ok_and(|lock| matches!(lock.try_lock(), Err(TryLockError::WouldBlock)))
+/// The store `dir` keeps as it is, as the harness's default store does.
+fn plain(dir: &SessionDir) -> JsonlDirStore {
+    JsonlDirStore::new(dir.path()).with_plain(&SessionDir::PLAIN_FILES)
 }
 
 /// `dir` with `suffix` after its name.
@@ -127,53 +173,45 @@ fn beside(dir: &Path, suffix: &str) -> PathBuf {
 }
 
 /// Copies the session `from` keeps in `dir` into a new directory, sealed
-/// with `to`, puts it in the session's place, and shreds the old files.
-fn reseal(dir: &Path, from: &dyn JournalStore, to: &Crypt) -> io::Result<()> {
-    let staging = beside(dir, ".sealing");
-    if staging.exists() {
-        fs::remove_dir_all(&staging)?;
+/// with `to`, puts it in the session's place, and shreds the old files:
+/// its logs, blobs and files through the stores, and the plain files
+/// beside them as they are, but for the text log and the plain output
+/// and images an encrypted session keeps nowhere.
+fn reseal(dir: &SessionDir, from: &dyn JournalStore, to: &Crypt) -> io::Result<()> {
+    let staging = SessionDir::at(beside(dir.path(), ".sealing"));
+    if staging.path().exists() {
+        fs::remove_dir_all(staging.path())?;
     }
-    fs::create_dir_all(&staging)?;
-    let target = CryptStore::new(Arc::new(JsonlDirStore::new(&staging)), to.clone());
-    let agents = from.agents()?;
-    for agent in &agents {
-        target.append(agent, &from.read(agent)?)?;
+    fs::create_dir_all(staging.path())?;
+    let target = CryptStore::new(Arc::new(plain(&staging)), to.clone());
+    fork_session(from, &target, None)?;
+    for name in from.files()? {
+        target.write_file(&name, &from.read_file(&name)?)?;
     }
-    for blob in from.blobs()? {
-        target.put_blob(&blob, &from.blob(&blob)?)?;
-    }
-    for name in files(dir, Path::new(""))? {
-        let log = name
-            .strip_suffix(".jsonl")
-            .is_some_and(|agent| agents.iter().any(|known| known == agent));
-        if log || name.starts_with("blobs/") || name.ends_with(".tmp") {
-            continue;
-        }
-        if MARKERS.contains(&name.as_str()) {
-            fs::copy(dir.join(&name), staging.join(&name))?;
-        } else {
-            target.write_file(&name, &from.read_file(&name)?)?;
+    for name in SessionDir::PLAIN_FILES {
+        let file = dir.path().join(name);
+        if file.is_file() && file != dir.log() {
+            fs::copy(&file, staging.path().join(name))?;
         }
     }
-    let old = beside(dir, ".old");
-    fs::rename(dir, &old)?;
-    fs::rename(&staging, dir)?;
-    for name in files(&old, Path::new(""))? {
-        shred(&old.join(name))?;
+    let old = beside(dir.path(), ".old");
+    fs::rename(dir.path(), &old)?;
+    fs::rename(staging.path(), dir.path())?;
+    for file in walk(&old)? {
+        shred(&file)?;
     }
     fs::remove_dir_all(&old)
 }
 
-/// Every file under `dir`, by its `/`-separated name below `prefix`.
-fn files(dir: &Path, prefix: &Path) -> io::Result<Vec<String>> {
+/// Every file under `dir`.
+fn walk(dir: &Path) -> io::Result<Vec<PathBuf>> {
     let mut found = Vec::new();
-    for entry in fs::read_dir(dir.join(prefix))? {
+    for entry in fs::read_dir(dir)? {
         let entry = entry?;
-        let name = prefix.join(entry.file_name());
         if entry.file_type()?.is_dir() {
-            found.extend(files(dir, &name)?);
-        } else if let Some(name) = name.to_str() {
-            found.push(name.replace('\\', "/"));
+            found.extend(walk(&entry.path())?);
+        } else {
+            found.push(entry.path());
         }
     }
     Ok(found)
