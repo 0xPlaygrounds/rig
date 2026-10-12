@@ -65,10 +65,17 @@ fn a_fact_remembered_in_one_session_is_recalled_in_the_next_but_not_saved() {
     let (mut second, wakes, model) = session(&home, vec![reply("Like this.")]);
     ask(&mut second, &wakes, "how do I run the tests?");
     let requests = model.requests();
-    // The block is in the message the cache breakpoint ends before.
+    // The block is in the turn the cache point ends before.
     let carrying = requests.first().and_then(|request| {
-        let at = request.cache_breakpoint?;
-        serde_json::to_string(request.chat_history.get(at)?).ok()
+        let turns = request.cache_points.iter().find_map(|point| match point {
+            CachePoint::Messages(turns) => Some(*turns),
+            _ => None,
+        })?;
+        let mut conversation = request
+            .chat_history
+            .iter()
+            .filter(|message| !matches!(message, message::Message::System { .. }));
+        serde_json::to_string(conversation.nth(turns)?).ok()
     });
     assert!(
         carrying

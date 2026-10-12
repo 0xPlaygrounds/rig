@@ -9,8 +9,8 @@
 //! (`FileWatch`). The `remember` and `forget` tools change them; at the
 //! first model request of each turn, the memories that share the most
 //! words with the user's message, and every pinned one, are added to that
-//! message in each request of the turn, after the request's cache
-//! breakpoint, and never to the saved conversation. `/memory` lists them,
+//! message in each request of the turn, after a cache point of the
+//! request, and never to the saved conversation. `/memory` lists them,
 //! `/memory edit` opens the files in `$EDITOR` in the terminal view, and
 //! `/memory off` and `/memory on` stop and restart the recall for the
 //! session.
@@ -21,6 +21,7 @@ use std::io::Write as _;
 use std::path::{Path, PathBuf};
 
 use rig_harness::prelude::*;
+use rig_harness::rig_core::completion::CachePoint;
 use rig_harness::watch::WatchPlugin;
 use rig_tui::{FRONT, RunInTerminal, TerminalExit};
 use schemars::JsonSchema;
@@ -385,7 +386,7 @@ type NewTurnCalls<'w, 's> = Query<
 
 /// Recalls the memories for the user's message the turn answers at its
 /// first request, and adds them to that message in each of its requests,
-/// only in what is sent; the request's cache breakpoint ends before that
+/// only in what is sent; a cache point of the request ends before that
 /// message, so the block stays after the cached prefix.
 fn recall(
     mut calls: NewTurnCalls,
@@ -430,8 +431,16 @@ fn recall(
         if let Some(message::Message::User { content }) = request.chat_history.get_mut(at) {
             content.push(UserContent::text(recalled));
             // What comes before the message is the stable prefix to cache.
-            let kept = request.cache_breakpoint.map_or(at, |kept| kept.min(at));
-            request.cache_breakpoint = Some(kept);
+            let turns = request
+                .chat_history
+                .iter()
+                .take(at)
+                .filter(|message| !matches!(message, message::Message::System { .. }))
+                .count();
+            let point = CachePoint::Messages(turns);
+            if !request.cache_points.contains(&point) {
+                request.cache_points.push(point);
+            }
         }
     }
 }

@@ -223,29 +223,27 @@ fn base(
         takes_mid_conversation_system(&wire.facts, model),
     );
     let ids = WireIds::for_target(&history, wire, model);
-    // The turns the request's cache breakpoint covers; system messages are
-    // placed apart, so the turns are counted alone.
-    let prefix_turns = request.cache_breakpoint.map(|kept| {
-        request
-            .chat_history
-            .iter()
-            .take(kept)
-            .filter(|message| !matches!(message, Message::System { .. }))
-            .count()
-    });
     let mut messages: Vec<Value> = Vec::new();
-    // How many wire messages those turns became.
-    let mut prefix = prefix_turns.filter(|turns| *turns == 0);
-    let mut turns = 0;
+    // How many wire messages the first `n` turns became, at `n`. System
+    // messages are placed apart, so the turns are counted alone.
+    let mut after = vec![0];
     for message in &history {
         messages.extend(message_json(message, wire, &ids)?);
         if !matches!(message, Message::System { .. }) {
-            turns += 1;
-            if prefix.is_none() && prefix_turns == Some(turns) {
-                prefix = Some(messages.len());
-            }
+            after.push(messages.len());
         }
     }
+    let points = request
+        .cache_points
+        .iter()
+        .filter_map(|point| match point {
+            completion::CachePoint::Tools => Some(Spot::Tools),
+            completion::CachePoint::System => Some(Spot::System),
+            completion::CachePoint::Messages(turns) => after
+                .get(*turns)
+                .map(|wired| wired.checked_sub(1).map_or(Spot::System, Spot::Message)),
+        })
+        .collect();
     // MiniMax honours a cache through block markers the manual placement
     // writes.
     let placed = input.cache().is_some() && wire.provider.dialect.name == super::wire::MINIMAX.name;
@@ -254,7 +252,7 @@ fn base(
         Markers {
             placed,
             top: top.as_ref(),
-            prefix,
+            points,
         },
         &mut system,
         &mut messages,
@@ -685,25 +683,60 @@ struct Markers<'a> {
     placed: bool,
     /// The request's top-level marker, if any.
     top: Option<&'a Value>,
-    /// The wire messages the request's cache breakpoint covers, if it set
-    /// one: `0` for the system prompt alone.
-    prefix: Option<usize>,
+    /// Where the request's cache points land.
+    points: Vec<Spot>,
 }
 
-/// Place the request's cache breakpoints within Anthropic's budget of four,
+/// Where a cache point lands, in the order the request is sent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum Spot {
+    /// The final non-deferred tool.
+    Tools,
+    /// The last system block.
+    System,
+    /// The last markable block of the wire message at this index.
+    Message(usize),
+}
+
+/// The block a cache point at `spot` marks, if the request has one there.
+fn spot_block<'a>(
+    spot: Spot,
+    system: &'a mut [Value],
+    messages: &'a mut [Value],
+    tools: &'a mut [Value],
+) -> Option<&'a mut Map<String, Value>> {
+    let block = match spot {
+        Spot::Tools => tools
+            .iter_mut()
+            .rfind(|tool| tool.get("defer_loading") != Some(&Value::Bool(true))),
+        Spot::System => system.last_mut(),
+        Spot::Message(at) => messages
+            .get_mut(at)?
+            .get_mut("content")?
+            .as_array_mut()?
+            .iter_mut()
+            .rev()
+            .find(|block| takes_marker(block)),
+    };
+    block?.as_object_mut()
+}
+
+/// Place the request's cache markers within Anthropic's budget of four,
 /// one fewer with a top-level marker. Manual prompt caching, or a cache the
 /// mapping `placed`, marks the final non-deferred tool, the system prompt
 /// and the last block of the last user or system message; a static-prefix
-/// TTL alone marks only the first two. The request's cache breakpoint marks
-/// the end of the prefix it covers when a marker is left for it.
-/// Markers a tool already carries are kept and count toward the budget, and
-/// every one-hour marker must precede the five-minute ones.
+/// TTL alone marks only the first two. The request's cache points then
+/// take the markers left, ahead of manual caching's last-message marker:
+/// when too few are left, the points furthest into the request win, and a
+/// block already marked takes no second one. Markers a tool already
+/// carries are kept and count toward the budget, and every one-hour marker
+/// must precede the five-minute ones.
 fn apply_cache_control(
     wire: &Messages,
     Markers {
         placed,
         top,
-        prefix,
+        mut points,
     }: Markers<'_>,
     system: &mut [Value],
     messages: &mut [Value],
@@ -764,19 +797,18 @@ fn apply_cache_control(
             remaining -= 1;
         }
     }
-    if let Some(prefix) = prefix
-        && remaining > 0
-    {
-        let block = match prefix.checked_sub(1) {
-            Some(last) => messages
-                .get_mut(last)
-                .and_then(|message| message.get_mut("content")?.as_array_mut())
-                .and_then(|blocks| blocks.iter_mut().rev().find(|block| takes_marker(block))),
-            None => system.last_mut(),
-        };
-        if let Some(Value::Object(block)) = block
-            && !block.contains_key("cache_control")
+    points.sort_unstable();
+    points.dedup();
+    let mut open = Vec::new();
+    for spot in points {
+        if spot_block(spot, system, messages, tools)
+            .is_some_and(|block| !block.contains_key("cache_control"))
         {
+            open.push(spot);
+        }
+    }
+    for spot in open.iter().skip(open.len().saturating_sub(remaining)) {
+        if let Some(block) = spot_block(*spot, system, messages, tools) {
             block.insert("cache_control".into(), ephemeral(top_ttl.as_ref()));
             remaining -= 1;
         }

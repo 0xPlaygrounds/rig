@@ -13,7 +13,7 @@
 //!   because another plugin rewrote it, is reported, never dropped.
 //! - **Markers.** On Anthropic-style providers, a request after the first
 //!   marks the end of the previous request's messages (the request's
-//!   `cache_breakpoint`), and [`PlaceMarkers`], below every adapter on the
+//!   `cache_points`), and [`PlaceMarkers`], below every adapter on the
 //!   HTTP client, marks the end of the tools and of the system prompt,
 //!   within the provider's budget of four.
 //! - **Breaks.** Each agent keeps the prefix of its last request; where the
@@ -30,7 +30,7 @@ mod markers;
 use std::collections::VecDeque;
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::completion::{Message, ToolDefinition, Usage};
+use rig_harness::rig_core::completion::{CachePoint, Message, ToolDefinition, Usage};
 use rig_harness::rig_core::effect;
 use rig_harness::rig_ecs::prompt::system_prompt;
 use rig_tui::{Side, StatusItem, StatusItems, StatusSystems, Tone};
@@ -230,7 +230,7 @@ fn shape(
                 .take_while(|(was, is)| was == is)
                 .count();
             if common > 0 {
-                request.cache_breakpoint = Some(lead + common);
+                request.cache_points.push(CachePoint::Messages(common));
             }
             if let Some(cause) = first_change(previous, &now) {
                 let request = history.requests;
