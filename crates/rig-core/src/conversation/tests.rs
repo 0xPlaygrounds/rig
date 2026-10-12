@@ -139,10 +139,11 @@ fn a_fold_of_the_outbox_equals_the_live_value() {
     assert!(live.unsaved().is_empty());
 }
 
-/// A reset replaces the whole value, keeping ids rising, and survives its
-/// saved form; a saved state whose ids do not fit is refused.
+/// A reset replaces the whole value, next ids too, so a fold goes on as
+/// the live value does, and survives its saved form; a saved state whose
+/// ids do not fit is refused.
 #[test]
-fn a_reset_replaces_the_value_and_ids_keep_rising() {
+fn a_reset_replaces_the_value_and_the_fold_numbers_as_the_live_one() {
     let mut log = Conversation::from_messages([Message::user("a"), Message::user("b")]);
     log.push(Message::user("c"));
     let replacement = Conversation::from_messages([Message::user("other")]);
@@ -159,8 +160,9 @@ fn a_reset_replaces_the_value_and_ids_keep_rising() {
     log.apply(&reset).expect("a reset fits anything");
     assert_eq!(log, replacement);
     assert_eq!(log.revision(), before + 1);
+    let mut live = replacement;
     let next = log.push(Message::user("d"));
-    assert_eq!(next, MessageId(3), "ids never go back after a reset");
+    assert_eq!(next, live.push(Message::user("d")));
 
     let mut saved = serde_json::to_value(&log).expect("serializes");
     let back: Conversation = serde_json::from_value(saved.clone()).expect("reads");

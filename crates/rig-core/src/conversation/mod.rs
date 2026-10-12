@@ -84,9 +84,9 @@ pub struct Conversation {
     asides: Vec<(AsideId, Aside)>,
     #[serde(skip_serializing_if = "Option::is_none")]
     halted: Option<Halt>,
-    /// The id the next new entry gets; only rises.
+    /// The id the next new entry gets; only rises, but for a reset to another value.
     next_id: u64,
-    /// The id the next new aside gets; only rises.
+    /// The id the next new aside gets; only rises, but for a reset to another value.
     next_aside: u64,
     /// Changes applied, folded or made.
     #[serde(skip)]
@@ -805,15 +805,13 @@ impl Conversation {
                 let at = at.ok_or_else(|| mismatch(format!("no aside {}", id.0)))?;
                 self.asides.remove(at);
             }
+            // Exactly the new value, its next ids too: the live value goes
+            // on numbering from them, so a fold must as well.
             Change::Reset { state } => {
-                let unsaved = std::mem::take(&mut self.unsaved);
-                let (revision, next_id, next_aside) =
-                    (self.revision, self.next_id, self.next_aside);
+                let (unsaved, revision) = (std::mem::take(&mut self.unsaved), self.revision);
                 *self = state.view();
                 self.unsaved = unsaved;
                 self.revision = revision;
-                self.next_id = self.next_id.max(next_id);
-                self.next_aside = self.next_aside.max(next_aside);
             }
         }
         Ok(())
