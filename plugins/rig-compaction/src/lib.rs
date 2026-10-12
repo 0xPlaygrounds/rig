@@ -204,6 +204,27 @@ fn cleared_notice(agent: Entity, situation: &str, cleared: &Cleared, then: &str)
     )
 }
 
+/// Says that `older` messages of so many tokens were summarized, `kept`
+/// were kept unchanged, and the model now gets `left` tokens.
+fn compacted_text(
+    (older, older_tokens): (usize, u64),
+    (kept, kept_tokens): (usize, u64),
+    left: u64,
+) -> String {
+    let (kept, as_it_was) = match kept {
+        1 => ("the newest message".to_owned(), "as it was"),
+        count => (format!("the newest {count} messages"), "as they were"),
+    };
+    format!(
+        "Compacted {older} {} (about {} tokens) into a summary and kept {kept} (about {} tokens) \
+         {as_it_was}; the model now gets about {} tokens of conversation.",
+        if older == 1 { "message" } else { "messages" },
+        tokens_label(older_tokens),
+        tokens_label(kept_tokens),
+        tokens_label(left)
+    )
+}
+
 /// What [`CompactingItem::start`] did.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Start {
@@ -527,21 +548,8 @@ fn take_summary(
             let left = policy.0.estimate(conversation.messages());
             *last = LastUsage(Some(Usage::new().total_tokens(left)));
             commands.entity(agent).insert(Summarized(state));
-            notices.write(Notice::info(
-                agent,
-                format!(
-                    "Compacted {older} messages (about {} tokens) into a summary and kept {} \
-                     (about {} tokens) as it was; the model now gets about {} tokens of \
-                     conversation.",
-                    tokens_label(older_tokens),
-                    match kept {
-                        1 => "the newest message".to_owned(),
-                        kept => format!("the newest {kept} messages"),
-                    },
-                    tokens_label(kept_tokens),
-                    tokens_label(left)
-                ),
-            ));
+            let text = compacted_text((older, older_tokens), (kept, kept_tokens), left);
+            notices.write(Notice::info(agent, text));
         }
         Err(why) => {
             notices.write(Notice::error(agent, format!("Compaction failed: {why}.")));

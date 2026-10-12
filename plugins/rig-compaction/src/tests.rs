@@ -585,3 +585,18 @@ fn a_turn_asks_for_at_most_per_turn_summaries() {
         "{sent:?}"
     );
 }
+
+#[test]
+fn the_compaction_notice_says_it_or_they_by_how_many_messages_were_kept() {
+    let one = compacted_text((1, 100), (1, 38), 500);
+    assert!(
+        one.starts_with("Compacted 1 message (about 100 tokens)")
+            && one.contains("kept the newest message (about 38 tokens) as it was;"),
+        "{one}"
+    );
+    let two = compacted_text((42, 17_000), (2, 38), 500);
+    assert!(
+        two.contains("kept the newest 2 messages (about 38 tokens) as they were;"),
+        "{two}"
+    );
+}
