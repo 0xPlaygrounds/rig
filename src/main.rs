@@ -14,7 +14,7 @@ mod launcher;
 use std::process::ExitCode;
 
 use launcher::plugin::USAGE as PLUGIN_USAGE;
-use launcher::run::Start;
+use launcher::run::{Start, last_report};
 use rig::harness_protocol::{Described, Home, INVOCATION_USAGE};
 
 const USAGE: &str = "\
@@ -84,15 +84,6 @@ fn main() -> ExitCode {
         eprintln!("error: {failure}");
         ExitCode::FAILURE
     })
-}
-
-/// The report of the build that would run next, `good` else `staged`, as
-/// kept from its last build; `None` when it has none. It never builds.
-fn last_report(home: &Home) -> Option<Described> {
-    [home.good(), home.staged()]
-        .into_iter()
-        .find(|binary| binary.exists())
-        .and_then(|binary| launcher::build::kept_report(home, &binary))
 }
 
 /// The plugins' commands, options and secrets for `rig help`.

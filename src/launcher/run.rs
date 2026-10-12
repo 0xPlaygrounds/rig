@@ -129,6 +129,15 @@ fn report(home: &Home, session: &SessionId) -> Described {
     })
 }
 
+/// The report of the build a new session starts with, as kept from its
+/// last build; `None` when it has none. It never builds.
+pub fn last_report(home: &Home) -> Option<Described> {
+    [home.staged(), home.good()]
+        .into_iter()
+        .find(|binary| binary.exists())
+        .and_then(|binary| build::kept_report(home, &binary))
+}
+
 /// The build the launcher of `session` starts next, as [`pick`] picks it,
 /// without claiming it.
 fn next_build(home: &Home, session: &SessionId) -> Option<PathBuf> {

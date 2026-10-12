@@ -104,6 +104,29 @@ printf 'rig-describe 1\\ncommand\\tstats\\t-\\theadless\\tsession\\tCount\\n' > 
     );
 }
 
+/// A build that describes itself as adding the command `name`.
+#[cfg(unix)]
+fn describing(name: &str) -> String {
+    format!(
+        "[ -n \"$RIG_DESCRIBE\" ] || exit 0
+printf 'rig-describe 1\\ncommand\\t{name}\\t-\\theadless\\tsession\\tCount\\n' > \"$RIG_DESCRIBE\""
+    )
+}
+
+/// `rig help` lists what the build a new session starts with adds: the
+/// staged one, newer than the good one that ran before.
+#[cfg(unix)]
+#[test]
+fn help_reads_the_build_that_starts_next() {
+    let home = builds("help", &describing("new"), &describing("old"));
+    let kept = [home.staged(), home.good()].map(|binary| build::described(&home, &binary));
+    let report = last_report(&home);
+    fs::remove_dir_all(home.root()).ok();
+    assert!(kept.iter().all(Result::is_ok));
+    let report = report.unwrap_or_default();
+    assert!(report.command("new").is_some(), "{report:?}");
+}
+
 #[test]
 fn a_secret_is_read_byte_by_byte_and_ctrl_c_gives_none() {
     let read = |typed: &[u8]| read_secret(&mut &typed[..]).ok().flatten();
