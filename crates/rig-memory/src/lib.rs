@@ -38,7 +38,7 @@ use rig_core::id::ConversationId;
 mod compaction;
 
 pub use compaction::{
-    ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Summarizer, SummaryError,
+    ClearToolOutputs, Cleared, CompactReason, CompactionPolicy, Cut, Summarizer, SummaryError,
     SummaryLimits, SummaryPrompts, SummaryState, TrackArgument, TrackedSet,
 };
 use rig_core::message::UserContent;
