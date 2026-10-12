@@ -31,6 +31,9 @@ fn a_shell_is_driven_across_turns_and_dies_with_the_app() {
         MockStreamEvent::tool_call(id, "term_open", json!({ "command": command, "name": name }))
     };
     let shell = "PS1='$ ' sh";
+    // Calls wait on what the shell prints, not on a pause, which a loaded
+    // machine can stretch: here a prompt alone on its line.
+    let prompt_line = "(?m)^\\$ *$";
     let model = MockCompletionModel::from_stream_turns([
         // Turn 1.
         calls(
@@ -38,15 +41,28 @@ fn a_shell_is_driven_across_turns_and_dies_with_the_app() {
             "term_open",
             json!({ "command": shell, "name": "s" }),
         ),
-        send("set", "X=41<Enter>", json!({})),
+        send("set", "X=41<Enter>", json!({ "wait_for": prompt_line })),
         reply("set"),
         // Turn 2.
         send("echo", "echo $((X+1))<Enter>", json!({ "wait_for": "42" })),
         send("sleep", "sleep 100<Enter>", json!({ "timeout": 1 })),
-        send("stop", "<C-c>", json!({ "timeout": 2 })),
-        send("cr", "printf 'aaa\\rb\\n'<Enter>", json!({})),
+        send(
+            "stop",
+            "<C-c>",
+            json!({ "timeout": 2, "wait_for": prompt_line }),
+        ),
+        send(
+            "cr",
+            "printf 'aaa\\rb\\n'<Enter>",
+            json!({ "wait_for": "(?m)^baa" }),
+        ),
         calls("screen", "term_read", json!({ "name": "s" })),
-        send("exit", "exit 3<Enter>", json!({})),
+        // A pattern never printed: the call waits for the exit.
+        send(
+            "exit",
+            "exit 3<Enter>",
+            json!({ "wait_for": "never printed" }),
+        ),
         calls("exited", "term_read", json!({ "name": "s" })),
         vec![
             open("a", "a", shell),
@@ -91,7 +107,13 @@ fn a_shell_is_driven_across_turns_and_dies_with_the_app() {
     let output = |id: &str| outputs.get(id).cloned().unwrap_or_default();
     // A prompt alone on its line; the screen's lines lose trailing blanks.
     let prompt = |text: &str| text.lines().any(|line| line == "$");
-    assert!(prompt(&output("open")), "{}", output("open"));
+    // The first screen may still be blank: the shell can start slowly.
+    assert!(
+        output("open").starts_with("Opened terminal `s`"),
+        "{}",
+        output("open")
+    );
+    assert!(prompt(&output("set")), "{}", output("set"));
     assert!(output("echo").contains("42"), "{}", output("echo"));
     assert!(
         output("sleep").contains("still running"),
