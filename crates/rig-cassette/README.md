@@ -6,7 +6,7 @@ HTTP cassette engine, the committed fixture corpora, and their verification suit
 | part | path | published |
 |---|---|---|
 | effect logs and checkpoints | `src/effect_log/` | yes, always |
-| agent session journal stores and image blobs | `src/journal/` | yes, always |
+| agent session journals: the conversation model, the session log format, its stores and image blobs | `src/journal/` | yes, always |
 | classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
 | native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
@@ -25,8 +25,9 @@ rig-cassette = { version = "0.42.0", default-features = false }
 
 | features | public modules | additional normal dependencies |
 |---|---|---|
-| none | `effect_log`, `journal` | core contracts, futures, serialization, base64 and SHA-256 only |
+| none | `effect_log`, `journal` | core contracts, futures, serialization, base64, SHA-256 and `web-time` only |
 | `jsonl` | `effect_log`, `effect_log::jsonl` and `journal::JsonlDirStore` (JSON-lines files, native) | none |
+| `reflect` | the `journal` types a Bevy app keeps in its components, reflected | `bevy_reflect` |
 | `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
 | `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
 | `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
@@ -101,6 +102,24 @@ an explicit recorder and the agent extension trait. Move runtime replay imports
 to the cassette adapters; native cassette imports now start with
 `rig_cassette::http` and require `http` (or `bedrock`). No old package or API
 aliases remain.
+
+## Session journals
+
+`rig_cassette::journal` is an agent session's data and its on-disk format,
+for any host, Bevy or not: each agent's `Conversation` (messages with ids
+that survive splices and restores, and their origins), and the session log
+that keeps it, one append-only log per agent plus content-addressed image
+blobs. A `JournalStore` holds them, and the session's other files by a
+relative name (`write_file`, `append_file`, `read_file`, `remove_file`,
+names checked by `check_file_name`), so a sealed or remote store holds
+every file of a session. `MemoryStore` keeps a session in memory;
+`JsonlDirStore` (`jsonl`) keeps it as files in a directory. A `Writer` logs
+a running session; `read_session` reads one back as a `SavedSession`, with
+each message's `Stamp` (record number and time); `write_session` writes or
+appends one from data, each new message at its stamp's time; and
+`fork_session` copies one as of a message. `effect_log::jsonl::Writer::on`
+writes an effect log into a store's file, and `jsonl::read_from` reads
+one from bytes.
 
 ## The engine
 Enable `http` and import engine APIs from `rig_cassette::http`. This feature is
@@ -191,7 +210,8 @@ responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
 and scrubbing; its Smithy dependencies are absent otherwise.
 
 The engine retains credential scrubbing, strict request matching, and safety
-validation. Provider-issued values (ids, signatures, encrypted reasoning,
+validation; scrubbing also redacts every key shape `rig_core::redact` knows,
+in text, bodies and headers. Provider-issued values (ids, signatures, encrypted reasoning,
 cache keys, cursors, generated images) are recorded verbatim, and request
 matching compares recorded bytes as they are. Repository-specific source
 scans and fixture censuses remain with each caller. Rig's adapter in
