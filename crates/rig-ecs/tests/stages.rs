@@ -148,7 +148,7 @@ fn open(kind: &str) -> EffectRequest {
 #[derive(Resource, Default)]
 struct Seen(Vec<String>);
 
-/// Every [`Recorded`] and [`Notice`] so far.
+/// Every [`EffectRecorded`] and [`Notice`] so far.
 #[derive(Resource, Default)]
 struct Written {
     records: Vec<EffectRecord>,
@@ -165,7 +165,7 @@ fn app() -> App {
         .init_resource::<Written>()
         .add_systems(
             Last,
-            |mut records: MessageReader<Recorded>,
+            |mut records: MessageReader<EffectRecorded>,
              mut notices: MessageReader<Notice>,
              mut written: ResMut<Written>| {
                 let records = records.read().map(|recorded| recorded.0.clone());
@@ -1872,7 +1872,7 @@ fn nudge(
         if matches!(outcome, TurnOutcome::Answered(_)) && !*nudged {
             *nudged = true;
             let nudge = Deliver::new(agent, "And the tests?", DeliveryMode::Queue);
-            commands.trigger(nudge.with_origin(Origin::plugin("nudge")));
+            commands.trigger(nudge.with_author(Author::plugin("nudge")));
         }
     }
 }
@@ -2046,7 +2046,7 @@ fn a_hold_on_a_proposed_end_goes_when_the_turn_carries_on() {
 /// Takes over the user's messages that start with `!`, as a shell would.
 fn run_in_shell(mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>) {
     for (typed, mut decision) in &mut typed {
-        if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+        if typed.author.kind == AuthorKind::User && typed.text.starts_with('!') {
             decision.decide(Decider::plugin("test"), Outcome::custom("ran in a shell"));
         }
     }
@@ -2151,7 +2151,7 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
     let held = |world: &mut World| world.resource::<Judging>().0.is_some();
     assert!(run_until(&mut app, held));
     let note = |text: &str| {
-        let note = Incoming::new(text, DeliveryMode::Note).with_origin(Origin::plugin("check"));
+        let note = Incoming::new(text, DeliveryMode::Note).with_author(Author::plugin("check"));
         (note, ForAgent(agent))
     };
     let kept = app.world_mut().spawn(note("the docs build")).id();
@@ -2404,10 +2404,10 @@ fn an_interrupt_keeps_no_text_of_a_superseded_call() {
 fn retire_when_done(
     settled: On<Add<Settled>>,
     turns: Query<&ForAgent, With<TurnOutcome>>,
-    mut commit: Commit,
+    mut commands: Commands,
 ) {
     if let Ok(&ForAgent(agent)) = turns.get(settled.entity) {
-        commit.retire(agent);
+        commands.trigger(Retire { entity: agent });
     }
 }
 
@@ -3069,7 +3069,7 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     }
     // The plugin's own message: spawning it is all it takes.
     let typed =
-        Incoming::new("go", DeliveryMode::Steer).with_origin(Origin::user().titled("review"));
+        Incoming::new("go", DeliveryMode::Steer).with_author(Author::user().titled("review"));
     let sent = world.spawn((typed, ForAgent(agent), Templated)).id();
     let message = world
         .get::<Effect>(sent)
@@ -3092,8 +3092,8 @@ fn a_message_names_the_turn_it_went_with_and_starts_its_first_call() {
     assert_eq!(delivery.parents, [first_call, Some(task)]);
     // A user's message keeps its title, and goes to the model as typed.
     let conversation = app.world().get::<Conversation>(agent);
-    let origin = conversation.and_then(|conversation| conversation.origin(0, 0));
-    assert_eq!(origin, Some(&Origin::user().titled("review")));
+    let author = conversation.and_then(|conversation| conversation.author(0));
+    assert_eq!(author, Some(&Author::user().titled("review")));
     let said = conversation.map(|conversation| format!("{:?}", conversation.messages()));
     assert!(said.is_some_and(|said| said.contains("\"go\"") && !said.contains("[Output of")));
 }
@@ -3142,7 +3142,7 @@ fn a_tool_the_agent_may_not_use_is_refused_and_reads_as_unknown() {
         sent,
         Some(MessageRecord {
             text: "go".to_owned(),
-            origin: Origin::user(),
+            author: Author::user(),
             mode: DeliveryMode::Steer,
         })
     );

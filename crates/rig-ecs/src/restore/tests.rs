@@ -6,9 +6,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{Reflect, TypePath};
-use rig_cassette::journal::{Entry, Halt, JournalStore, MemoryStore, Origin, STOPPED};
 use rig_core::completion::{Message, Reasoning, Usage};
-use rig_core::message::UserContent;
+use rig_core::conversation::{Author, Change, Entry, Halt, STOPPED};
+use rig_memory::{Files, MemoryStore, Store};
 use serde_json::Value;
 
 use crate::AgentPlugin;
@@ -18,9 +18,9 @@ use crate::agent::{
 };
 use crate::effects::Handler;
 use crate::inbox::{Deliver, DeliveryMode};
-use crate::journal::tests::commit_message;
+use crate::journal::tests::{edit, push_message};
 use crate::journal::{
-    Commit, Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
+    Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
 };
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::{INTERRUPTED, Restored};
@@ -54,7 +54,7 @@ fn first_agent(app: &mut App) -> Option<Entity> {
 }
 
 fn say(app: &mut App, agent: Entity, message: Message) {
-    commit_message(app.world_mut(), agent, message);
+    push_message(app.world_mut(), agent, message);
 }
 
 /// A plugin's per-agent counter, as the plugin guide's example keeps one.
@@ -96,7 +96,7 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     first.world_mut().insert_resource(Compactions(1));
     first.update();
     assert_eq!(
-        store.agents().ok(),
+        store.logs().ok(),
         Some(Vec::new()),
         "nothing said, nothing kept"
     );
@@ -121,20 +121,12 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
         first.world_mut().insert_resource(Compactions(n + 2));
         first.update();
     }
-    let summarize =
-        |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
-            if let Ok(mut conversation) = agents.get_mut(agent) {
-                let summary = Message::user("The user asked three questions.");
-                let summary = Entry::from(summary, Origin::plugin("compaction"));
-                commit.splice(agent, &mut conversation, ..6, [summary]);
-            }
-        };
-    assert!(
-        first
-            .world_mut()
-            .run_system_cached_with(summarize, agent)
-            .is_ok()
-    );
+    edit(first.world_mut(), agent, |conversation| {
+        let summary = Message::user("The user asked three questions.");
+        let compaction = Author::plugin("compaction");
+        let summary = Entry::new(summary).by(compaction.clone());
+        conversation.splice(..6, [summary], compaction);
+    });
     first.update();
     let live = first.world().get::<Conversation>(agent);
     let live = live.map(|conversation| conversation.messages().to_vec());
@@ -144,10 +136,13 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
-    let gone =
-        r#"{"seq":99,"n":99,"t":0,"type":"component","component":"a_plugin::Gone","value":1}"#;
+    let gone = r#"{"seq":99,"n":99,"t":0,"type":"state","key":"a_plugin::Gone","value":1}"#;
     let id = id.unwrap_or_default().0;
-    assert!(store.append(&id, format!("{gone}\n").as_bytes()).is_ok());
+    assert!(
+        store
+            .append_log(&id, format!("{gone}\n").as_bytes())
+            .is_ok()
+    );
 
     let mut second = app(&store);
     // What was saved before the summary still comes back; the resource,
@@ -164,15 +159,15 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     let kept = agent.and_then(|agent| world.get::<Conversation>(agent));
     let kept = kept.map(|conversation| conversation.messages().to_vec());
     assert_eq!(kept, live);
-    // The summary went into the first kept question, so user and model
-    // still take turns.
-    let summary = ["The user asked three questions.", "question 3"].map(UserContent::text);
-    let summary = Message::User {
-        content: summary.into(),
-    };
+    // The summary is its own entry, before the question it kept.
+    let summary = Message::user("The user asked three questions.");
     assert_eq!(
         kept.unwrap_or_default(),
-        [summary, Message::assistant("answer 3")]
+        [
+            summary,
+            Message::user("question 3"),
+            Message::assistant("answer 3")
+        ]
     );
 }
 
@@ -226,15 +221,18 @@ fn every_change_the_log_records_is_committed() {
     app.update();
     let committed = app.world().resource::<Messages<Committed>>();
     let mut cursor = committed.get_cursor();
-    let changes = cursor.read(committed).map(|change| match change {
-        Committed::Message { .. } => "message",
-        Committed::Splice { .. } => "splice",
-        Committed::Halt { .. } => "halt",
-        Committed::Retired { .. } => "retired",
-    });
+    let changes = cursor
+        .read(committed)
+        .map(|change| match change.change.change {
+            Change::Push { .. } => "push",
+            Change::Splice { .. } => "splice",
+            Change::Halt { .. } => "halt",
+            Change::Aside { .. } => "aside",
+            Change::Reset { .. } => "reset",
+        });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["message", "splice", "message", "halt"]
+        ["push", "splice", "push", "halt"]
     );
 }
 
@@ -275,11 +273,9 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
         "and 3 + 3?",
     ];
     // The second is asked for again, and that turn fails and keeps it.
-    let keep = |In(agent): In<Entity>, mut agents: Query<&mut Conversation>, mut commit: Commit| {
-        if let Ok(mut conversation) = agents.get_mut(agent) {
-            assert!(commit.resume(agent, &mut conversation));
-            commit.halt(agent, &mut conversation, Halt::Kept);
-        }
+    let keep = |conversation: &mut Conversation| {
+        assert!(conversation.resume());
+        conversation.halt(Halt::Kept);
     };
     let live = session(&store, |world, agent| {
         for (at, text) in texts.into_iter().enumerate() {
@@ -289,43 +285,20 @@ fn a_message_after_a_stopped_request_says_it_was_stopped_unless_it_was_retried()
             world.trigger(Interrupt::new(agent));
             world.flush();
             if at == 1 {
-                assert!(world.run_system_cached_with(keep, agent).is_ok());
+                edit(world, agent, keep);
             }
         }
     });
     let [first, second, third] = texts;
-    let content = [first, STOPPED, second, third].map(UserContent::text);
-    assert_eq!(
-        live,
-        [Message::User {
-            content: content.into()
-        }]
-    );
+    let said = [first, STOPPED, second, third].map(Message::user);
+    assert_eq!(live, said);
     assert_eq!(session(&store, |_, _| {}), live);
 }
 
 /// A store on a full disk: it reads, but every log write fails.
 struct Full;
 
-impl JournalStore for Full {
-    fn agents(&self) -> io::Result<Vec<String>> {
-        Ok(Vec::new())
-    }
-    fn read(&self, _: &str) -> io::Result<Vec<u8>> {
-        Ok(Vec::new())
-    }
-    fn truncate(&self, _: &str, _: u64) -> io::Result<()> {
-        Ok(())
-    }
-    fn append(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Err(io::Error::other("disk full"))
-    }
-    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
-        Ok(())
-    }
-    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
-        Ok(Vec::new())
-    }
+impl Files for Full {
     fn write_file(&self, _: &str, _: &[u8]) -> io::Result<()> {
         Err(io::Error::other("disk full"))
     }
@@ -336,6 +309,39 @@ impl JournalStore for Full {
         Err(io::ErrorKind::NotFound.into())
     }
     fn remove_file(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
+    fn files(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+}
+
+impl Store for Full {
+    fn logs(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn read_log(&self, _: &str) -> io::Result<Vec<u8>> {
+        Err(io::ErrorKind::NotFound.into())
+    }
+    fn append_log(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Err(io::Error::other("disk full"))
+    }
+    fn truncate_log(&self, _: &str, _: u64) -> io::Result<()> {
+        Ok(())
+    }
+    fn remove_log(&self, _: &str) -> io::Result<()> {
+        Ok(())
+    }
+    fn put_blob(&self, _: &str, _: &[u8]) -> io::Result<()> {
+        Ok(())
+    }
+    fn blob(&self, _: &str) -> io::Result<Vec<u8>> {
+        Err(io::ErrorKind::NotFound.into())
+    }
+    fn blobs(&self) -> io::Result<Vec<String>> {
+        Ok(Vec::new())
+    }
+    fn destroy(&self) -> io::Result<()> {
         Ok(())
     }
 }

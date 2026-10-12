@@ -1,16 +1,16 @@
 //! The agent entity: its components, the calls it owns, and the requests a
 //! view sends it.
 
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::*;
-use rig_cassette::journal::{self, MessageId, short_id};
 use rig_core::completion::{Message, Usage};
+use rig_core::conversation::{self, MessageId, short_id};
 use rig_core::effect::EffectId;
 use serde::{Deserialize, Serialize};
 
-use super::journal::ReflectSaved;
+use super::journal::{ReflectSaved, save_discarded};
 use super::model::Effort;
 use super::stage::moved;
 use super::turn::{NO_MODEL, Recovery, start_turn};
@@ -60,7 +60,7 @@ impl AgentId {
 
     /// The agent among `agents` whose id this is, such as in a
     /// `Query<(Entity, &AgentId)>`: ids name agents across a restart, where
-    /// entities do not, as in an [`Origin`](journal::Origin)'s `from`.
+    /// entities do not, as in an [`Author`](conversation::Author)'s `from`.
     pub fn find_in<'a>(
         &self,
         agents: impl IntoIterator<Item = (Entity, &'a Self)>,
@@ -94,23 +94,60 @@ pub struct Spawned(Vec<Entity>);
 #[serde(transparent)]
 pub struct EffectParent(pub EffectId);
 
-/// The agent's conversation: every message sent to and received from the
-/// model, each with its [`MessageId`], and where each delivered text came
-/// from when it is not the user's own ([`journal::Conversation`], which it
-/// derefs to). Requests send it as it is. It changes only through a
-/// [`Commit`](super::journal::Commit), which logs each change: a message
-/// added, or a [`splice`](super::journal::Commit::splice) that cuts,
-/// replaces or edits messages after the fact.
-#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+/// The agent's conversation, as a component: rig-core's
+/// [`Conversation`](conversation::Conversation), which it derefs to, so a
+/// plugin reads and changes it with that type's methods: every message
+/// sent to and received from the model, each with its [`MessageId`] and,
+/// when it is not the user's own or the model's, its
+/// [`Author`](conversation::Author); the asides that never reach a model;
+/// and why its last user message is unanswered. Requests send it as it
+/// is. The prelude names this component `Conversation`; rig-core's type
+/// is `rig_core::conversation::Conversation`.
+///
+/// Each change is kept in the conversation's outbox until the kernel saves
+/// it to the agent's log and announces it as a
+/// [`Committed`](super::journal::Committed) (see [`journal`](super::journal)).
+/// A value inserted in place of the agent's own is saved as one reset, the
+/// changes the old one had not saved first. It is reflected opaquely and
+/// saved through serde.
+///
+/// ```
+/// use rig_ecs::prelude::*;
+///
+/// // `/undo`: the user's last message and everything after it go.
+/// fn undo(mut agents: Query<&mut Conversation, With<Agent>>) {
+///     for mut conversation in &mut agents {
+///         let last = conversation.entries().rev().find(|entry| entry.is_users_own());
+///         if let Some(last) = last.map(|entry| entry.index) {
+///             conversation.splice(last.., [], Author::plugin("undo"));
+///         }
+///     }
+/// }
+/// # let _ = undo;
+/// ```
+#[derive(Component, Reflect, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[component(on_discard = save_discarded)]
 #[reflect(opaque, Component, Default, Clone, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Conversation(pub(crate) journal::Conversation);
+pub struct Conversation(pub conversation::Conversation);
 
 impl Deref for Conversation {
-    type Target = journal::Conversation;
+    type Target = conversation::Conversation;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl DerefMut for Conversation {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<conversation::Conversation> for Conversation {
+    fn from(conversation: conversation::Conversation) -> Self {
+        Self(conversation)
     }
 }
 
@@ -211,7 +248,9 @@ pub struct Turn {
     /// Where the turn begins in its agent's [`Conversation`]: the id of
     /// the user's message it answers, or, when the conversation does not
     /// end in one, of the first message the turn adds. Its index now is
-    /// [`journal::Conversation::start_of`] it, as splices move messages.
+    /// [`conversation::Conversation::start_of`] it, as splices move messages.
+    /// Not reflected: rig-core's types are not `Reflect`.
+    #[reflect(ignore)]
     pub first_message: MessageId,
     /// The model call whose reply's tool calls run now, their effects'
     /// parent, until their results are committed. Other calls of the turn

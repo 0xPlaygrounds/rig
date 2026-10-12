@@ -2,8 +2,9 @@
 //! agent reporting, a plugin), is an effect entity: an [`Incoming`]
 //! [`ForAgent`] the agent, spawned by [`Deliver`] or by hand, which plugins
 //! edit in Prepare and take over in Gate by answering it. Each carries its
-//! [`Origin`], kept with the conversation and its log; text that is not
+//! [`Author`], kept with the conversation and its log; text that is not
 //! the user's own goes to the model headed by a line naming its sender.
+//! Each message is its own entry: nothing merges into the message before.
 //!
 //! At Start the kernel accepts what is left, in the order it was sent: an
 //! idle agent takes a message into its conversation and starts a turn with
@@ -28,9 +29,9 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_reflect::prelude::*;
-use rig_cassette::journal::{Halt, Origin, OriginKind};
 use rig_core::catalog::ModelSpec;
 use rig_core::completion::Message;
+use rig_core::conversation::{Author, AuthorKind, Entry, Halt};
 use rig_core::effect::{EffectKind, HandlerKey};
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::message::UserContent;
@@ -41,7 +42,6 @@ use super::agent::{
     ActiveTurn, Agent, CallOf, Conversation, EffectParent, Notice, TurnOf, TurnOutcome,
 };
 use super::calls::Wake;
-use super::journal::Commit;
 use super::model::Connection;
 use super::stage::{
     AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
@@ -78,7 +78,7 @@ pub struct Attachment {
     pub content: UserContent,
 }
 
-/// A message to the agent it is [`ForAgent`]: `text`, from `origin`, that
+/// A message to the agent it is [`ForAgent`]: `text`, by `author`, that
 /// goes to the agent's model as `mode` says, after its `attachments`. An
 /// effect that moves through the stages (see the [module](self)): edit it
 /// in Prepare, take it over in Gate by deciding it
@@ -98,8 +98,9 @@ pub struct Attachment {
 pub struct Incoming {
     /// The text.
     pub text: String,
-    /// Where it came from.
-    pub origin: Origin,
+    /// Who wrote it.
+    #[reflect(ignore)]
+    pub author: Author,
     /// When it goes to a busy agent's model.
     pub mode: DeliveryMode,
     /// What goes before the text.
@@ -112,21 +113,21 @@ pub struct Incoming {
 
 impl Incoming {
     /// `text`, as `mode` says, as the user's own text unless
-    /// [`with_origin`](Self::with_origin) names who sent it.
+    /// [`with_author`](Self::with_author) names who wrote it.
     pub fn new(text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
             text: text.into(),
-            origin: Origin::user(),
+            author: Author::user(),
             mode,
             attachments: Vec::new(),
             literal: false,
         }
     }
 
-    /// This message, from `origin`.
+    /// This message, by `author`.
     #[must_use]
-    pub fn with_origin(self, origin: Origin) -> Self {
-        Self { origin, ..self }
+    pub fn with_author(self, author: Author) -> Self {
+        Self { author, ..self }
     }
 
     /// This message sent [`literal`](Self::literal)ly.
@@ -142,7 +143,7 @@ impl Incoming {
     /// commands runs instead of sending this message: the user's text that
     /// starts with `/`, unless it is [`literal`](Self::literal).
     pub fn command(&self) -> Option<&str> {
-        let user = self.origin.kind == OriginKind::User && !self.literal;
+        let user = self.author.kind == AuthorKind::User && !self.literal;
         user.then(|| self.text.trim_start().strip_prefix('/'))
             .flatten()
     }
@@ -163,7 +164,7 @@ pub struct Deliver {
 
 impl Deliver {
     /// `text` for `agent`, as `mode` says, as the user's own text unless
-    /// [`with_origin`](Self::with_origin) names who sent it.
+    /// [`with_author`](Self::with_author) names who wrote it.
     pub fn new(agent: Entity, text: impl Into<String>, mode: DeliveryMode) -> Self {
         Self {
             entity: agent,
@@ -171,11 +172,11 @@ impl Deliver {
         }
     }
 
-    /// This message, from `origin`.
+    /// This message, by `author`.
     #[must_use]
-    pub fn with_origin(self, origin: Origin) -> Self {
+    pub fn with_author(self, author: Author) -> Self {
         Self {
-            message: self.message.with_origin(origin),
+            message: self.message.with_author(author),
             ..self
         }
     }
@@ -258,7 +259,6 @@ fn handled(how: &'static str) -> Outcome {
 pub(crate) fn accept(
     ready: Query<(Entity, &Effect, &Incoming, Option<&ForAgent>), Undecided>,
     mut agents: Query<(&mut Conversation, Option<&Connection>, Has<ActiveTurn>), With<Agent>>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -299,7 +299,7 @@ pub(crate) fn accept(
         // After a failure that kept the user's message, the new text joins it.
         let conversation = &mut *conversation;
         let into = (turn, &mut commands);
-        commit.deliver(
+        deliver(
             agent,
             spec,
             [(entity, message)],
@@ -308,7 +308,9 @@ pub(crate) fn accept(
             into,
         );
         match (turn, joins) {
-            (None, _) => commit.halt(agent, conversation, Halt::Kept),
+            (None, _) => {
+                conversation.halt(Halt::Kept);
+            }
             (Some(turn), None) => {
                 starting.insert(agent, turn);
                 // The turn's first call is the message's work.
@@ -333,7 +335,6 @@ pub(crate) fn carry_on_accepted(
     mut agents: Query<(&mut Conversation, Option<&Connection>, &ActiveTurn)>,
     turns: Query<(&TurnOutcome, Option<&Holds>)>,
     inboxes: Inboxes,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -355,7 +356,7 @@ pub(crate) fn carry_on_accepted(
         let spec = connection.map(|connection| &*connection.spec);
         let conversation = &mut *conversation;
         let into = (Some(turn), &mut commands);
-        commit.deliver(agent, spec, next, conversation, &mut notices, into);
+        deliver(agent, spec, next, conversation, &mut notices, into);
         take_outcome(&mut commands, turn, holds);
         spawn_turn_call(&mut commands, turn, agent);
     }
@@ -429,7 +430,6 @@ pub(crate) fn recall_on_turn_end(
     end: On<Remove<ActiveTurn>>,
     mut agents: Query<(&mut Conversation, Option<&Connection>)>,
     inboxes: Inboxes,
-    mut commit: Commit,
     exiting: Option<Res<Exiting>>,
     mut commands: Commands,
     mut recalled: MessageWriter<Recalled>,
@@ -442,13 +442,13 @@ pub(crate) fn recall_on_turn_end(
     let (typed, sent): (Vec<_>, Vec<_>) = inboxes
         .of(agent)
         .into_iter()
-        .partition(|(_, message)| message.origin.kind == OriginKind::User);
+        .partition(|(_, message)| message.author.kind == AuthorKind::User);
     let spec = connection.map(|connection| &*connection.spec);
     let conversation = &mut *conversation;
     let into = (None, &mut commands);
-    commit.deliver(agent, spec, sent, conversation, &mut notices, into);
+    deliver(agent, spec, sent, conversation, &mut notices, into);
     if exiting.is_none() {
-        commit.halt(agent, conversation, Halt::Kept);
+        conversation.halt(Halt::Kept);
     }
     if typed.is_empty() {
         return;
@@ -470,14 +470,14 @@ pub(crate) fn recall_on_turn_end(
 }
 
 /// What a message's record says of it, its kind's payload: its text,
-/// origin and mode, without its attachments. The record's kind is the
+/// author and mode, without its attachments. The record's kind is the
 /// custom kind `message`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MessageRecord {
     /// The text.
     pub text: String,
-    /// Where it came from.
-    pub origin: Origin,
+    /// Who wrote it.
+    pub author: Author,
     /// When it went to a busy agent's model.
     pub mode: DeliveryMode,
 }
@@ -501,7 +501,7 @@ impl MessageRecord {
 pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
     let record = MessageRecord {
         text: message.text.clone(),
-        origin: message.origin.clone(),
+        author: message.author.clone(),
         mode: message.mode,
     };
     let kind = EffectKind::Custom {
@@ -511,77 +511,75 @@ pub(crate) fn message_kind(message: &Incoming) -> (HandlerKey, EffectKind) {
     (HandlerKey::new(MessageRecord::KIND), kind)
 }
 
-impl Commit<'_, '_> {
-    /// Commits each of `messages`, accepted by `agent`, to its
-    /// `conversation` as [`pending`](Self::pending) does, and answers it
-    /// as delivered, [`DeliveredIn`] the turn `into` names, if any.
-    pub(crate) fn deliver<'a>(
-        &mut self,
-        agent: Entity,
-        spec: Option<&ModelSpec>,
-        messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
-        conversation: &mut Conversation,
-        notices: &mut MessageWriter<Notice>,
-        (into, commands): (Option<Entity>, &mut Commands),
-    ) {
-        for (entity, message) in messages {
-            self.pending(agent, spec, [message], conversation, notices);
-            let mut delivered = commands.entity(entity);
-            delivered.try_insert_if_new(handled("delivered"));
-            if let Some(turn) = into {
-                delivered.try_insert(DeliveredIn(turn));
-            }
+/// Puts each of `messages`, accepted by `agent`, in its `conversation`
+/// as [`pending`] does, and answers it as delivered, [`DeliveredIn`] the
+/// turn `into` names, if any.
+pub(crate) fn deliver<'a>(
+    agent: Entity,
+    spec: Option<&ModelSpec>,
+    messages: impl IntoIterator<Item = (Entity, &'a Incoming)>,
+    conversation: &mut Conversation,
+    notices: &mut MessageWriter<Notice>,
+    (into, commands): (Option<Entity>, &mut Commands),
+) {
+    for (entity, message) in messages {
+        pending(agent, spec, [message], conversation, notices);
+        let mut delivered = commands.entity(entity);
+        delivered.try_insert_if_new(handled("delivered"));
+        if let Some(turn) = into {
+            delivered.try_insert(DeliveredIn(turn));
         }
     }
+}
 
-    /// Commits each of `messages` to `conversation`, that of `agent`, whose
-    /// model is `spec`, as a user message with its origin: its attachments
-    /// the model takes, then its text, trimmed, headed by its origin's line
-    /// when it is not the user's own. The origin is kept, and logged, unless
-    /// it is the plain user's, so a user's message with a title keeps it.
-    /// Each goes into the last message when that is the user's, such as
-    /// the tool results the model waits for, so user and model keep taking
-    /// turns.
-    pub(crate) fn pending<'a>(
-        &mut self,
-        agent: Entity,
-        spec: Option<&ModelSpec>,
-        messages: impl IntoIterator<Item = &'a Incoming>,
-        conversation: &mut Conversation,
-        notices: &mut MessageWriter<Notice>,
-    ) {
-        for message in messages {
-            let mut content = Vec::with_capacity(message.attachments.len() + 1);
-            for Attachment {
-                label,
-                content: item,
-            } in &message.attachments
-            {
-                let refused = match (item, spec) {
-                    (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
-                        "{} does not read images, so {label} is sent as its name only.",
-                        spec.display_name
-                    )),
-                    (UserContent::Image(_), None) => Some(format!(
-                        "No model is connected, so {label} is sent as its name only."
-                    )),
-                    _ => None,
-                };
-                match refused {
-                    Some(note) => {
-                        notices.write(Notice::info(agent, note));
-                    }
-                    None => content.push(item.clone()),
-                }
-            }
-            let text = message.text.trim();
-            let text = match message.origin.header() {
-                None => text.to_owned(),
-                Some(header) => format!("{header}\n{text}"),
+/// Pushes each of `messages` to `conversation`, that of `agent`, whose
+/// model is `spec`, as a user message of its own by its author: its
+/// attachments the model takes, then its text, trimmed, headed by its
+/// author's line when it is not the user's own. The author is kept, and
+/// logged, unless it is the plain user, so a user's message with a title
+/// keeps it.
+pub(crate) fn pending<'a>(
+    agent: Entity,
+    spec: Option<&ModelSpec>,
+    messages: impl IntoIterator<Item = &'a Incoming>,
+    conversation: &mut Conversation,
+    notices: &mut MessageWriter<Notice>,
+) {
+    for message in messages {
+        let mut content = Vec::with_capacity(message.attachments.len() + 1);
+        for Attachment {
+            label,
+            content: item,
+        } in &message.attachments
+        {
+            let refused = match (item, spec) {
+                (UserContent::Image(_), Some(spec)) if !spec.input.image => Some(format!(
+                    "{} does not read images, so {label} is sent as its name only.",
+                    spec.display_name
+                )),
+                (UserContent::Image(_), None) => Some(format!(
+                    "No model is connected, so {label} is sent as its name only."
+                )),
+                _ => None,
             };
-            let origin = (message.origin != Origin::user()).then(|| message.origin.clone());
-            content.push(UserContent::text(text));
-            self.message_from(agent, conversation, Message::User { content }, origin);
+            match refused {
+                Some(note) => {
+                    notices.write(Notice::info(agent, note));
+                }
+                None => content.push(item.clone()),
+            }
         }
+        let text = message.text.trim();
+        let text = match message.author.header() {
+            None => text.to_owned(),
+            Some(header) => format!("{header}\n{text}"),
+        };
+        content.push(UserContent::text(text));
+        let entry = Entry::new(Message::User { content });
+        let entry = match message.author == Author::user() {
+            true => entry,
+            false => entry.by(message.author.clone()),
+        };
+        conversation.push(entry);
     }
 }

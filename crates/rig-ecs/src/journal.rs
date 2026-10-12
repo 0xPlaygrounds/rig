@@ -1,29 +1,32 @@
-//! The session's journal in the app: each agent's log, in the session's
-//! [`SessionStore`], gets a record per change a [`Commit`] made (a message,
-//! a splice, a halt, the agent retired) and per change of a
-//! [`ReflectSaved`] component, such as the agent's model, reasoning
-//! setting, system prompt, tool access and last usage. The format, its
-//! writer and its readers are rig-cassette's ([`rig_cassette::journal`]):
-//! records are queued as they happen and written at the end of the frame,
-//! a subagent's before its parent's, and at once before a tool that may
-//! change something runs. Nothing is ever rewritten;
-//! [`restore`](super::restore) folds the logs back at startup.
+//! The session's journal in the app. Each agent's log, in the session's
+//! [`SessionStore`], gets every change made to the agent's
+//! [`Conversation`] and every change of a [`ReflectSaved`] component, such
+//! as the agent's model, reasoning setting, system prompt, tool access and
+//! last usage. The format, its writer and its readers are rig-memory's.
+//!
+//! A conversation is changed by calling its methods; each change waits in
+//! the conversation's outbox until the kernel saves it: between the stages
+//! of every pass, at the end of the frame, before a tool that may change
+//! something starts, and when a turn is interrupted. Saving queues the
+//! changes for the log, announces each as a [`Committed`], and writes the
+//! queue at the end of the frame, a subagent's log before its parent's.
+//! Nothing is ever rewritten; [`restore`](super::restore) folds the logs
+//! back at startup.
 
-use std::ops::{Bound, RangeBounds};
 use std::sync::Arc;
 
 use bevy_app::prelude::*;
+use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
 use bevy_ecs::system::SystemParam;
+use bevy_ecs::world::DeferredWorld;
 use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
-use rig_cassette::journal::{
-    Entry, Halt, JournalStore, MessageId, Origin, SESSION, Spliced, Writer,
-};
-use rig_core::completion::Message;
+use rig_core::conversation::Recorded;
+use rig_memory::{LoadError, Repair, SESSION, Session, Store, Writer};
 use web_time::{SystemTime, UNIX_EPOCH};
 
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
@@ -40,6 +43,13 @@ use super::{StopTurns, WriteJournal};
 /// to `null` is saved as absent, and so is an agent component removed. A
 /// resource is restored in place of the one its plugin inserted while the
 /// app was built.
+///
+/// A type reflected opaquely with serde, as
+/// `#[reflect(opaque, Component, Saved, Clone, Serialize, Deserialize)]`,
+/// is saved and restored through its serde form: the way to save a
+/// component holding rig-core data that is not `Reflect`, such as a
+/// [`MessageId`](rig_core::conversation::MessageId).
+///
 /// Registration is a runtime fact: a generic type is saved only once
 /// registered (`app.register_type::<T>()`), and a logged type no build
 /// registers any more is reported on restore and kept in the log.
@@ -86,7 +96,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         let key = id.map_or(SESSION, |id| id.0.as_str());
         let starts = id.is_some() && !spawned.contains(entity);
         match serde_json::to_value(value) {
-            Ok(value) => log.0.component(key, name, Some(value), starts),
+            Ok(value) => log.0.state(key, name, Some(value), starts),
             Err(failure) => error!("not logging {name}: {failure}"),
         }
     }
@@ -94,8 +104,7 @@ fn log_changed<T: Component + Reflect + TypePath>(
         if let Ok(id) = agents.get(entity)
             && !changed.contains(entity)
         {
-            log.0
-                .component(&id.0, name, None, !spawned.contains(entity));
+            log.0.state(&id.0, name, None, !spawned.contains(entity));
         }
     }
 }
@@ -107,23 +116,22 @@ pub(crate) fn millis(at: SystemTime) -> u64 {
         .unwrap_or_default()
 }
 
-/// Where the session is kept, such as a rig-cassette `MemoryStore` or
-/// `JsonlDirStore`: inserted while the app is built, before it runs, by
-/// any plugin. Without one nothing is kept.
+/// Where the session is kept, such as a rig-memory `MemoryStore` or
+/// `DirStore`: inserted while the app is built, before it runs, by any
+/// plugin, or by [`open_session`]. Without one nothing is kept.
 #[derive(Resource, Clone)]
-pub struct SessionStore(pub Arc<dyn JournalStore>);
+pub struct SessionStore(pub Arc<dyn Store>);
 
 impl SessionStore {
     /// The session kept in `store`.
-    pub fn new(store: impl JournalStore) -> Self {
+    pub fn new(store: impl Store) -> Self {
         Self(Arc::new(store))
     }
 }
 
-/// The session's agent logs: rig-cassette's [`Writer`] of the records
-/// queued for them and each agent's latest-wins state. Only a [`Commit`]
-/// and the saved components' watchers log; nothing is logged before the
-/// session was restored, or without a [`SessionStore`].
+/// The session's agent logs: rig-memory's [`Writer`] of the records queued
+/// for them and each agent's latest-wins state. Nothing is logged before
+/// the session was restored, or without a [`SessionStore`].
 #[derive(Resource, Clone, Default)]
 pub struct SessionLog(pub(crate) Writer);
 
@@ -136,165 +144,147 @@ impl SessionLog {
 
 /// Inserted once the session was restored from its [`SessionStore`] and is
 /// logged: a choice made afterwards is the user's, such as a model to
-/// remember (`run_if(resource_exists::<SessionRestored>)`). It stays when
-/// a log write fails later, which stops only the logging. An app without
-/// a store never gets one.
-#[derive(Resource, Clone, Copy, Debug, Default)]
-pub struct SessionRestored;
+/// remember (`run_if(resource_exists::<SessionRestored>)`). It holds what
+/// reading the session repaired, such as a last line a crash cut short
+/// and set aside, each also shown as a notice. It stays when a log write
+/// fails later, which stops only the logging. An app without a store, or
+/// whose session was refused, never gets one.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct SessionRestored {
+    /// What reading the session repaired.
+    pub repairs: Vec<Repair>,
+}
 
-/// Changes agents' conversations, the one way they change: each change is
-/// logged, with a message's images stored as blobs, and announced as a
-/// [`Committed`], so a plugin sees every change the log records.
+/// The session [`open_session`] read, until the restore takes it.
+#[derive(Resource)]
+pub(crate) struct Opened(pub(crate) Session);
+
+/// Opens `store` for this app: reads the session it holds, refusing an old
+/// or broken one before anything is written, sets each torn last line
+/// aside, and keeps what it read for the restore at startup. On success
+/// `store` is the app's [`SessionStore`] and its log writes there once the
+/// session is restored; on failure the app keeps nothing of it. An app that
+/// only inserts a `SessionStore` has it opened by the restore, which shows
+/// a refusal as a notice.
+///
+/// # Errors
+///
+/// The [`LoadError`] reading the session gave: a session saved by an older
+/// rig, a log in another format, a record that cannot be read, or the
+/// store failing.
+pub fn open_session(world: &mut World, store: Arc<dyn Store>) -> Result<(), LoadError> {
+    let (writer, session) = Writer::open(store.clone())?;
+    world.insert_resource(SessionStore(store));
+    world.insert_resource(SessionLog(writer));
+    world.insert_resource(Opened(session));
+    Ok(())
+}
+
+/// A change saved from an agent's conversation, in the order made. A
+/// restore makes none; a change made while nothing is logged (no store, or
+/// before the restore) is announced all the same.
+#[derive(Message, Clone, Debug)]
+pub struct Committed {
+    /// The agent.
+    pub agent: Entity,
+    /// The change: what changed, who made it and when.
+    pub change: Recorded,
+}
+
+/// Retires the agent `entity` for good: its log says so, so a restore
+/// brings back neither it nor the agents it spawned, and it is despawned
+/// with them and their work, its conversation saved first.
+#[derive(EntityEvent, Clone, Debug)]
+pub struct Retire {
+    /// The agent.
+    pub entity: Entity,
+}
+
+/// Saves the outbox of `conversation`, that of `agent` whose id is `id`,
+/// to `log`; one [`Committed`] per change saved.
+pub(crate) fn save_conversation(
+    log: &SessionLog,
+    agent: Entity,
+    id: &AgentId,
+    conversation: &mut Conversation,
+) -> Vec<Committed> {
+    let saved = log.0.save(&id.0, conversation);
+    let committed = |change| Committed { agent, change };
+    saved.into_iter().map(committed).collect()
+}
+
+/// Saves every agent conversation changed since it last ran, without
+/// marking any changed again.
 #[derive(SystemParam)]
-pub struct Commit<'w, 's> {
-    ids: Query<'w, 's, &'static AgentId>,
+pub(crate) struct Drain<'w, 's> {
+    agents:
+        Query<'w, 's, (Entity, &'static AgentId, &'static mut Conversation), Changed<Conversation>>,
     log: Res<'w, SessionLog>,
     committed: MessageWriter<'w, Committed>,
-    commands: Commands<'w, 's>,
 }
 
-impl Commit<'_, '_> {
-    /// Adds `message` to `conversation`, that of `agent`: into its last
-    /// message when both are the user's, so user and model keep taking
-    /// turns.
-    pub fn message(&mut self, agent: Entity, conversation: &mut Conversation, message: Message) {
-        self.message_from(agent, conversation, message, None);
-    }
-
-    /// [`Self::message`], with where it came from when not from the user,
-    /// the model or a tool.
-    pub fn message_from(
-        &mut self,
-        agent: Entity,
-        conversation: &mut Conversation,
-        message: Message,
-        origin: Option<Origin>,
-    ) {
-        let Ok(id) = self.ids.get(agent) else {
-            return;
-        };
-        self.log.0.message(&id.0, &message, origin.as_ref());
-        self.committed.write(Committed::Message {
-            agent,
-            message: message.clone(),
-            origin: origin.clone(),
-        });
-        conversation.0.append(message, origin);
-    }
-
-    /// Replaces messages `range` of `conversation`, that of `agent`, with
-    /// `with`, merging a user message into a user message beside it: an
-    /// entry taken with [`entry`](rig_cassette::journal::Conversation::entry)
-    /// keeps its message's id, and
-    /// a merged message keeps the id that was there before. It is logged,
-    /// so a restore makes the same change, and announced as a
-    /// [`Committed::Splice`]. A cut is `splice(agent, c, len.., [])`; an
-    /// edit in place passes `conversation.entry(i)` back changed. A splice
-    /// that reaches the end clears the halt; one before it keeps it.
-    pub fn splice(
-        &mut self,
-        agent: Entity,
-        conversation: &mut Conversation,
-        range: impl RangeBounds<usize>,
-        with: impl IntoIterator<Item = Entry>,
-    ) {
-        let Ok(id) = self.ids.get(agent) else {
-            return;
-        };
-        let len = conversation.messages().len();
-        let to = match range.end_bound() {
-            Bound::Included(&last) => last.saturating_add(1),
-            Bound::Excluded(&end) => end,
-            Bound::Unbounded => len,
+impl Drain<'_, '_> {
+    /// Saves them; an agent whose conversation had changes, if any did.
+    pub(crate) fn save(&mut self) -> Option<Entity> {
+        let mut changed = None;
+        for (agent, id, mut conversation) in &mut self.agents {
+            let conversation = conversation.bypass_change_detection();
+            let saved = save_conversation(&self.log, agent, id, conversation);
+            if !saved.is_empty() {
+                changed = Some(agent);
+                self.committed.write_batch(saved);
+            }
         }
-        .min(len);
-        let from = match range.start_bound() {
-            Bound::Included(&first) => first,
-            Bound::Excluded(&before) => before.saturating_add(1),
-            Bound::Unbounded => 0,
-        }
-        .min(to);
-        let with: Vec<Entry> = with.into_iter().collect();
-        if from == to && with.is_empty() {
-            return;
-        }
-        self.log.0.splice(&id.0, from, to, &with);
-        let Spliced { removed, changed } = conversation.0.splice(from, to, with);
-        self.committed.write(Committed::Splice {
-            agent,
-            removed,
-            changed,
-        });
-    }
-
-    /// Retires `agent` for good: the log says so, so a restore brings back
-    /// neither it nor the agents it spawned, and it is despawned with them
-    /// and their work.
-    pub fn retire(&mut self, agent: Entity) {
-        let Ok(id) = self.ids.get(agent) else {
-            return;
-        };
-        self.log.0.retire(&id.0);
-        self.committed.write(Committed::Retired { agent });
-        self.commands.entity(agent).try_despawn();
-    }
-
-    /// Leaves the user's last message in `conversation`, that of `agent`,
-    /// unanswered for `reason` when the model owes an answer to it, so a
-    /// restore does not send it to the model. Not for a turn the app's
-    /// exit stops: the restart carries that one on.
-    pub fn halt(&mut self, agent: Entity, conversation: &mut Conversation, reason: Halt) {
-        if let Ok(id) = self.ids.get(agent)
-            && conversation.0.halt(reason)
-        {
-            let reason = Some(reason);
-            self.log.0.halt(&id.0, reason);
-            self.committed.write(Committed::Halt { agent, reason });
-        }
-    }
-
-    /// Asks the model again for the user's last message, as a retry does:
-    /// a halted conversation is no longer halted, which the log records.
-    /// Whether the conversation ends in the user's message.
-    pub(crate) fn resume(&mut self, agent: Entity, conversation: &mut Conversation) -> bool {
-        let halted = conversation.halted().is_some();
-        let asks = conversation.0.resume();
-        if halted && let Ok(id) = self.ids.get(agent) {
-            self.log.0.halt(&id.0, None);
-            self.committed.write(Committed::Halt {
-                agent,
-                reason: None,
-            });
-        }
-        asks
+        changed
     }
 }
 
-/// A change a [`Commit`] made to an agent's conversation, in the order
-/// made; a restore makes none.
-#[derive(Message, Clone, Debug)]
-pub enum Committed {
-    /// A message was added, into the last one when both are the user's.
-    Message {
-        agent: Entity,
-        message: Message,
-        /// Where it came from, when not from the user, the model or a tool.
-        origin: Option<Origin>,
-    },
-    /// Messages were spliced: `removed` are the ids no longer in the
-    /// conversation, `changed` those of the messages the splice made or
-    /// changed. Ids stay valid across several splices in one frame; who
-    /// spliced is read from the changed messages' item origins.
-    Splice {
-        agent: Entity,
-        removed: Vec<MessageId>,
-        changed: Vec<MessageId>,
-    },
-    /// The user's last message was left unanswered for `reason`, or, with
-    /// none, asked for again.
-    Halt { agent: Entity, reason: Option<Halt> },
-    /// The agent was retired, and despawned.
-    Retired { agent: Entity },
+/// Saves the conversations changed outside the agent loop, such as by
+/// commands and observers, in `Last` before the frame's records are
+/// written.
+pub(crate) fn save_conversations(mut drain: Drain) {
+    drain.save();
+}
+
+/// Saves what a conversation about to be replaced or removed did not save
+/// yet, so neither a value inserted over it nor its agent despawned loses
+/// a change.
+pub(crate) fn save_discarded(mut world: DeferredWorld, context: HookContext) {
+    let agent = context.entity;
+    let (Some(log), Some(id)) = (
+        world.get_resource::<SessionLog>().cloned(),
+        world.get::<AgentId>(agent).cloned(),
+    ) else {
+        return;
+    };
+    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
+        return;
+    };
+    if conversation.unsaved().is_empty() {
+        return;
+    }
+    let conversation = conversation.bypass_change_detection();
+    for committed in save_conversation(&log, agent, &id, conversation) {
+        world.write_message(committed);
+    }
+}
+
+/// Retires an agent, as [`Retire`] says.
+pub(crate) fn retire(
+    retire: On<Retire>,
+    mut agents: Query<(&AgentId, &mut Conversation)>,
+    log: Res<SessionLog>,
+    mut committed: MessageWriter<Committed>,
+    mut commands: Commands,
+) {
+    let agent = retire.entity;
+    let Ok((id, mut conversation)) = agents.get_mut(agent) else {
+        return;
+    };
+    let conversation = conversation.bypass_change_detection();
+    committed.write_batch(save_conversation(&log, agent, id, conversation));
+    log.0.retire(&id.0);
+    commands.entity(agent).try_despawn();
 }
 
 /// Restores the session at startup, settles what a crash or restart left
@@ -338,7 +328,7 @@ fn open_child_log(
     if let Ok((child, parent)) = agents.get(spawned.entity)
         && let Ok(parent) = ids.get(parent.0)
     {
-        log.0.open(&child.0, Some(&parent.0));
+        log.0.open_log(&child.0, Some(&parent.0));
     }
 }
 

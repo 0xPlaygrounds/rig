@@ -1,10 +1,9 @@
 //! Restoring a session from its agent logs at startup, then one reconcile
 //! pass that settles what a crash or a restart left half done, with
 //! ordinary records, so the next restore finds nothing left to fix. The
-//! logs are read as rig-cassette's
-//! [`Writer::restore`](rig_cassette::journal::Writer::restore) reads them,
-//! a torn last line cut off; a retired agent and the agents it spawned are
-//! not restored.
+//! session is read as [`open_session`] reads it: strictly, refused whole
+//! before anything is written when it cannot be read, a torn last line set
+//! aside; a retired agent and the agents it spawned are not restored.
 //!
 //! A call left without a result whose tool may change something is
 //! answered as interrupted; the work an agent carries on is spawned as
@@ -46,12 +45,15 @@ use bevy_reflect::serde::TypedReflectDeserializer;
 use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
 use rig_core::conversation::pairing::{close_pending_with, pending_calls};
 use rig_core::message::ToolCall;
+use rig_memory::Session;
 use serde::de::DeserializeSeed;
 use serde_json::Value;
 
 use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
-use super::journal::{Commit, ReflectSaved, SessionLog, SessionRestored, SessionStore};
+use super::journal::{
+    Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
+};
 use super::stage::{Effect, ForAgent};
 use super::tools::{Declared, Footprint, Serves, ToolDef, ToolRequest, footprint_of};
 use super::turn::TurnCall;
@@ -76,53 +78,71 @@ pub struct Restored;
 
 /// Spawns the agents of the session's logs, with their conversations and
 /// saved components, links each agent to the agent that spawned it,
-/// restores the saved resources, and starts logging. Anything that does
-/// not load is skipped with a notice.
+/// restores the saved resources, and starts logging. The session is the
+/// one [`open_session`] read, or, when only a [`SessionStore`] was
+/// inserted, the one this opens; a session it refuses is not restored nor
+/// logged to, with a notice. A saved value that does not load is skipped
+/// with a notice; what reading repaired is shown as a notice too.
 pub(crate) fn restore_session(world: &mut World) {
-    let (Some(SessionLog(log)), Some(SessionStore(store))) = (
-        world.get_resource::<SessionLog>().cloned(),
-        world.get_resource::<SessionStore>().cloned(),
-    ) else {
+    let session = match world.remove_resource::<Opened>() {
+        Some(Opened(session)) => session,
+        None => {
+            let Some(SessionStore(store)) = world.remove_resource::<SessionStore>() else {
+                return;
+            };
+            if let Err(failure) = open_session(world, store) {
+                let refused = format!(
+                    "The session cannot be resumed, so nothing of it is changed and this run is \
+                     not saved: {failure}."
+                );
+                world.write_message(Notice::error(None, refused));
+                return;
+            }
+            match world.remove_resource::<Opened>() {
+                Some(Opened(session)) => session,
+                None => return,
+            }
+        }
+    };
+    let Some(SessionLog(log)) = world.get_resource::<SessionLog>().cloned() else {
         return;
     };
-    let mut notices: Vec<String> = Vec::new();
-    let session = log.restore(store).unwrap_or_else(|failure| {
-        notices.push(format!("Could not list the agent logs: {failure}."));
-        Default::default()
-    });
-    for (agent, failure) in session.unreadable {
-        notices.push(format!(
-            "Could not restore the log of agent {agent}: {failure}."
-        ));
-    }
-    for (agent, failure) in session.lost_images {
-        warn!("an image agent {agent} logged is gone: {failure}");
-    }
+    let Session {
+        agents,
+        state,
+        repairs,
+    } = session;
+    let mut notices: Vec<Notice> = repairs
+        .iter()
+        .map(|repair| Notice::warn(None, format!("While resuming the session: {repair}.")))
+        .collect();
     let registry = world.get_resource::<AppTypeRegistry>().cloned();
     let registry = registry.unwrap_or_default();
     let registry = registry.read();
-    for (path, value) in &session.resources {
+    for (path, value) in &state {
         let restored = saved(path, value, &registry).and_then(|(component, value)| {
             let mut resource = resource_entity(world, component)?;
             component.insert(&mut resource, value.as_partial_reflect(), &registry);
             Ok(())
         });
         if let Err(failure) = restored {
-            notices.push(format!("Skipped saved resource `{path}`: {failure}."));
+            let skipped = format!("Skipped saved resource `{path}`: {failure}.");
+            notices.push(Notice::error(None, skipped));
         }
     }
     let mut entities = HashMap::new();
     let mut links = Vec::new();
-    for agent in session.agents {
+    for agent in agents {
         let conversation = Conversation(agent.conversation);
         let id = AgentId(agent.id);
         let mut spawned = world.spawn((Name::new("agent"), Agent, id.clone(), conversation));
-        for (path, value) in &agent.saved {
+        for (path, value) in &agent.state {
             let restored = saved(path, value, &registry).map(|(component, value)| {
                 component.insert(&mut spawned, value.as_partial_reflect(), &registry);
             });
             if let Err(failure) = restored {
-                notices.push(format!("Skipped saved component `{path}`: {failure}."));
+                let skipped = format!("Skipped saved component `{path}`: {failure}.");
+                notices.push(Notice::error(None, skipped));
             }
         }
         let entity = spawned.id();
@@ -151,9 +171,9 @@ pub(crate) fn restore_session(world: &mut World) {
     world.flush();
     log.start();
     world.insert_resource(RestoredAgents(restored));
-    world.insert_resource(SessionRestored);
+    world.insert_resource(SessionRestored { repairs });
     for notice in notices {
-        world.write_message(Notice::error(None, notice));
+        world.write_message(notice);
     }
 }
 
@@ -223,7 +243,6 @@ fn settle(
     mut agents: Query<&mut Conversation>,
     tools: Query<(&ToolDef, &Footprint, Has<Declared>, &Serves)>,
     effects: Res<Effects>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let Ok(mut conversation) = agents.get_mut(agent) else {
@@ -244,8 +263,7 @@ fn settle(
         .into_iter()
         .partition(reruns);
     if !interrupted.is_empty() {
-        let results = close_pending_with(&interrupted, INTERRUPTED);
-        commit.message(agent, &mut conversation, results);
+        conversation.push(close_pending_with(&interrupted, INTERRUPTED));
     }
     if !reruns.is_empty() {
         let reply = effects.next_id();

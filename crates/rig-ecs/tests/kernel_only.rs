@@ -12,7 +12,6 @@ use std::sync::mpsc::{Receiver, channel};
 use std::time::{Duration, Instant};
 
 use bevy_time::{Time, TimeUpdateStrategy, Virtual};
-use rig_cassette::journal::MemoryStore;
 use rig_core::ProviderResponseError;
 use rig_core::catalog::Catalog;
 use rig_core::completion::{Message, Reasoning, Section, ToolDefinition};
@@ -25,6 +24,7 @@ use rig_core::test_utils::{MockCompletionModel, MockError, MockStreamEvent};
 use rig_ecs::effects::{Effects, Handler};
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
+use rig_memory::MemoryStore;
 use serde::Deserialize;
 
 /// How long a turn may take before the test gives up.
@@ -85,7 +85,7 @@ fn kernel(store: &MemoryStore) -> (App, Receiver<()>) {
         .init_resource::<Settles>()
         .add_systems(
             Last,
-            |mut recorded: MessageReader<Recorded>, mut settles: ResMut<Settles>| {
+            |mut recorded: MessageReader<EffectRecorded>, mut settles: ResMut<Settles>| {
                 settles
                     .0
                     .extend(recorded.read().map(|record| record.0.clone()));
@@ -524,7 +524,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let (mut app, _) = kernel(&MemoryStore::default());
     let edit = |mut typed: Query<&mut Incoming, Added<Admitted>>| {
         for mut typed in &mut typed {
-            if typed.origin.kind == OriginKind::User && typed.text == "hi" {
+            if typed.author.kind == AuthorKind::User && typed.text == "hi" {
                 typed.text = "hello".to_owned();
             }
         }
@@ -533,7 +533,7 @@ fn plugins_edit_or_take_over_what_the_user_typed_before_it_is_delivered() {
     let take_over =
         |mut typed: Query<(&Incoming, &mut Decision), (Undecided, IncomingMessages)>| {
             for (typed, mut decision) in &mut typed {
-                if typed.origin.kind == OriginKind::User && typed.text.starts_with('!') {
+                if typed.author.kind == AuthorKind::User && typed.text.starts_with('!') {
                     decision.decide(Decider::plugin("test"), Outcome::custom("shell"));
                 }
             }

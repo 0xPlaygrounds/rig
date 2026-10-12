@@ -62,7 +62,6 @@ use bevy_log::{info_span, warn};
 use bevy_reflect::prelude::*;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool};
 use bevy_time::{Real, Time, Virtual};
-use rig_cassette::journal::now_ms;
 use rig_core::completion::CompletionResponse;
 use rig_core::effect::{
     self, Decider, Disposition, EffectId, EffectKind, EffectRecord, HandlerKey, tool_key,
@@ -70,14 +69,14 @@ use rig_core::effect::{
 use rig_core::error::{ErrorKind, ErrorReport};
 use rig_core::serve::{DispatchContext, Recorder, Reply, cancelled};
 use rig_core::tool::{ToolExecutionError, ToolResult, ToolResultContext};
+use rig_memory::now_ms;
 use web_time::SystemTime;
 
-use super::agent::Notice;
-use super::agent::{AgentId, CallOf, Turn, TurnOutcome};
+use super::agent::{AgentId, CallOf, Conversation, Notice, Turn, TurnOutcome};
 use super::calls::{Running, Wake, arrive};
 use super::effects::{Effects, Handler, Ran};
 use super::inbox::{Incoming, accept, carry_on_accepted, message_kind};
-use super::journal::{SessionLog, millis};
+use super::journal::{Drain, SessionLog, millis};
 use super::tools::{
     CallHandler, Footprint, ToolRequest, ToolStart, ToolStarts, complete_calls, compute_footprints,
     refuse_calls,
@@ -113,7 +112,7 @@ pub enum Stage {
     /// [`ReviewSystems`] phases.
     Review,
     /// The kernel settles what is answered and unheld, writes its
-    /// [`Recorded`], commits replies and their tool results, and ends the
+    /// [`EffectRecorded`], commits replies and their tool results, and ends the
     /// turns nothing holds.
     Commit,
     /// The kernel admits what was spawned since the last pass, builds the
@@ -479,7 +478,7 @@ pub struct Settled;
 /// order, and of the dispatches nested in their handlers. Only effects of a
 /// kind the kernel knows, such as an [`EffectRequest`], have a record.
 #[derive(Message, Clone, Debug)]
-pub struct Recorded(pub EffectRecord);
+pub struct EffectRecorded(pub EffectRecord);
 
 /// On a call of a model's reply that waits for an earlier call of that
 /// reply it must not run beside ([`Footprint`]) to settle. The kernel sets
@@ -571,7 +570,7 @@ thread_local! {
 /// Adds the stages, the loop and their bookkeeping.
 pub(crate) fn build(app: &mut App) {
     app.init_resource::<Passes>()
-        .add_message::<Recorded>()
+        .add_message::<EffectRecorded>()
         .add_message::<StreamDelta>()
         .edit_schedule(AgentPass, |pass| {
             pass.set_executor(SingleThreadedExecutor::new());
@@ -683,6 +682,35 @@ pub(crate) fn build(app: &mut App) {
     for stage in Stage::ALL {
         app.add_systems(AgentPass, entering(stage).in_set(Enter(stage)));
     }
+    // The conversations changed are saved between the stages, so a
+    // `Committed` reader in a later stage of the pass sees the change, and
+    // at the end of the pass.
+    let mut after: Option<Stage> = None;
+    for stage in Stage::ALL {
+        let save = save_in_pass.before(Enter(stage));
+        match after {
+            Some(after) => app.add_systems(AgentPass, save.after(after)),
+            None => app.add_systems(AgentPass, save),
+        };
+        after = Some(stage);
+    }
+    app.add_systems(AgentPass, save_in_pass.after(Stage::Start));
+}
+
+/// Saves the agent conversations changed since it last ran, so a change
+/// made in a stage is announced to the later stages of the pass; one that
+/// saved any counts as a move, so the loop runs another pass, where the
+/// earlier stages see it too.
+fn save_in_pass(mut drain: Drain, mut passes: ResMut<Passes>) {
+    if let Some(agent) = drain.save() {
+        saved_some(&mut passes, agent);
+    }
+}
+
+/// Counts the save of `agent`'s conversation as a move.
+fn saved_some(passes: &mut Passes, agent: Entity) {
+    passes.moved = passes.moved.wrapping_add(1);
+    passes.last = Some((std::any::type_name::<Conversation>(), agent));
 }
 
 /// The marker system that opens `stage`.
@@ -868,7 +896,7 @@ fn record_unsettled(mut world: DeferredWorld, context: HookContext) {
         return;
     }
     if let Some(record) = assemble(&world, context.entity, Some(Disposition::Cancelled)) {
-        world.write_message(Recorded(record));
+        world.write_message(EffectRecorded(record));
     }
 }
 
@@ -958,7 +986,7 @@ fn start(
     (tools, models): (ToolStarts, ModelStarts),
     effects: Res<Effects>,
     wake: Res<Wake>,
-    log: Res<SessionLog>,
+    (log, mut drain): (Res<SessionLog>, Drain),
     mut passes: ResMut<Passes>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
@@ -980,6 +1008,9 @@ fn start(
                 .is_some_and(|footprint| footprint.0.reads_only())
     });
     if changes {
+        if let Some(agent) = drain.save() {
+            saved_some(&mut passes, agent);
+        }
         log.flush();
     }
     // In the order they were spawned, such as a reply's calls in call order.
@@ -1156,7 +1187,7 @@ fn settle_now(world: &mut World, entity: Entity, disposition: Option<Disposition
         effect.remove::<Running>().insert(Settled);
     }
     if let Some(record) = record {
-        world.write_message(Recorded(record));
+        world.write_message(EffectRecorded(record));
     }
 }
 
@@ -1210,7 +1241,7 @@ fn record_nested(world: &mut World, live: &mut QueryState<&Effect, Without<Settl
     for record in buffer.records() {
         if !live.contains(&record.id) {
             buffer.remove(record.id);
-            world.write_message(Recorded(record));
+            world.write_message(EffectRecorded(record));
         }
     }
 }

@@ -2,7 +2,7 @@
 //! a model call, a tool call or a plugin's effect, runs through
 //! [`Effects`] under its effect id, recorded in the kernel's own
 //! [`RecordBuffer`], and its record is written as a
-//! [`Recorded`](super::stage::Recorded) when it settles. A plugin that
+//! [`EffectRecorded`](super::stage::EffectRecorded) when it settles. A plugin that
 //! keeps an effect log reads those, and continues the ids of the log it
 //! appends to with [`Effects::continue_after`].
 //!

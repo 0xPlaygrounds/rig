@@ -27,10 +27,10 @@ bevy_tasks = { workspace = true }
 bevy_time = { workspace = true }
 crossbeam-channel = { workspace = true }
 futures = { workspace = true }
-# The journal: the conversation model, the session log format and its
-# stores, reflected for the components that hold them.
-rig-cassette = { workspace = true, features = ["reflect"] }
 rig-core = { path = "../rig-core", version = "0.44.0", default-features = false }
+# Saving: the session store, its format and the writer the drain appends
+# each agent's conversation changes with.
+rig-memory = { path = "../rig-memory", version = "0.44.0" }
 # Open tools' parameters, derived from their arguments types.
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }

@@ -38,12 +38,12 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use bevy_time::DelayedCommandsExt;
 use crossbeam_channel::{Receiver, Sender};
 use futures::StreamExt;
-use rig_cassette::journal::{Halt, now_ms};
 use rig_core::completion::message::turn_failure;
 use rig_core::completion::{
     self, CompletionRequest, CompletionResponse, GenerationOptions, Message, Section,
 };
 use rig_core::conversation::pairing::close_pending_with;
+use rig_core::conversation::{Author, Halt};
 use rig_core::effect::{self, EffectId};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -51,6 +51,7 @@ use rig_core::message::{ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
+use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{
@@ -58,8 +59,8 @@ use super::agent::{
     Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome, TurnsStarted,
 };
 use super::calls::{Running, Wake};
-use super::inbox::{DeliveryMode, Inboxes, carry_on};
-use super::journal::{Commit, SessionLog};
+use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
+use super::journal::{Committed, SessionLog, save_conversation};
 use super::model::{Connection, Effort};
 use super::prompt::{PromptSection, SectionOf, TOOL_RULES, ToolRules, tool_rules};
 use super::stage::{
@@ -324,7 +325,6 @@ pub(crate) fn spawn_turn_call(commands: &mut Commands, turn: Entity, agent: Enti
 pub(crate) fn on_retry(
     retry: On<Retry>,
     mut agents: Query<(&mut Conversation, Has<ActiveTurn>), With<Agent>>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -336,7 +336,7 @@ pub(crate) fn on_retry(
         notices.write(Notice::turn_running(agent));
         return;
     }
-    if !commit.resume(agent, &mut conversation) {
+    if !conversation.resume() {
         notices.write(Notice::info(
             agent,
             "Nothing to retry: the model answered the last message.",
@@ -392,22 +392,22 @@ pub(crate) struct Ending {
 /// tool call of the last reply gets a result, real, its [`IfStopped`] or
 /// "interrupted", and every call of the turn that has not settled is
 /// answered as interrupted and settled, whatever held it gone. The turn
-/// ends [`TurnOutcome::Stopped`]. The outcome is written to the
+/// ends [`TurnOutcome::Stopped`]. The outcome is saved and written to the
 /// log at once, so a log that ends mid-turn always means a crash or a
 /// restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
-    mut agents: Query<(&mut Conversation, &ActiveTurn)>,
+    mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
     mut turns: Query<(&mut Turn, Option<&Calls>)>,
     replies: Query<ReplyCall>,
     partials: Query<&Partial, (With<TurnCall>, Without<Settled>, Without<SupersededBy>)>,
-    mut commit: Commit,
     log: Res<SessionLog>,
+    mut committed: MessageWriter<Committed>,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
     let agent = interrupt.entity;
-    let Ok((mut conversation, active)) = agents.get_mut(agent) else {
+    let Ok((id, mut conversation, active)) = agents.get_mut(agent) else {
         return;
     };
     let turn = active.turn();
@@ -421,7 +421,7 @@ pub(crate) fn on_interrupt(
         .map(|partial| partial.text.as_str())
         .collect();
     if !aborted.trim().is_empty() {
-        commit.message(agent, &mut conversation, Message::assistant(aborted));
+        conversation.push(Message::assistant(aborted));
     }
     let reason = interrupt.reason.clone();
     let why = match &reason {
@@ -433,9 +433,11 @@ pub(crate) fn on_interrupt(
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));
     let stopped = ToolResult::failed(ToolExecutionError::other(why.clone()));
     if let Some(results) = reply_results(reply.unwrap_or_default(), Some(&stopped)) {
-        commit.message(agent, &mut conversation, results);
+        conversation.push(results);
     }
-    commit.halt(agent, &mut conversation, Halt::Stopped);
+    conversation.halt(Halt::Stopped);
+    let conversation = conversation.bypass_change_detection();
+    committed.write_batch(save_conversation(&log, agent, id, conversation));
     log.flush();
     let calls: Vec<Entity> = calls.into_iter().flat_map(Calls::iter).collect();
     commands.queue(move |world: &mut World| {
@@ -524,7 +526,6 @@ fn log_answered_results(
     turns: Query<(&TurnOf, &Turn, &Calls)>,
     replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
-    mut commit: Commit,
 ) {
     for (&TurnOf(agent), state, calls) in &turns {
         let Some(reply) = state.reply else {
@@ -534,7 +535,7 @@ fn log_answered_results(
         if let Ok(mut conversation) = agents.get_mut(agent)
             && let Some(results) = results
         {
-            commit.message(agent, &mut conversation, results);
+            conversation.push(results);
         }
     }
 }
@@ -611,7 +612,6 @@ pub(crate) fn build_requests(
     mut agents: Query<Builder>,
     inboxes: Inboxes,
     parts: Parts,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -644,7 +644,7 @@ pub(crate) fn build_requests(
             let waiting = waiting.filter(|(_, message)| message.mode != DeliveryMode::Queue);
             let conversation = &mut *builder.conversation;
             let into = (turn, &mut commands);
-            commit.deliver(agent, spec, waiting, conversation, &mut notices, into);
+            deliver(agent, spec, waiting, conversation, &mut notices, into);
         }
         let messages = builder.conversation.messages().to_vec();
         if call.turn_call && messages.is_empty() {
@@ -1046,7 +1046,6 @@ pub(crate) fn commit_turn_calls(
     mut turns: Query<(&TurnOf, &mut Recovery, &mut Turn, Option<&TurnOutcome>)>,
     mut agents: Query<Answered>,
     inboxes: Inboxes,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1076,14 +1075,8 @@ pub(crate) fn commit_turn_calls(
             Ok(effect::Outcome::Completion(response)) => {
                 recovery.retries = 0;
                 let inbox = (&inboxes, &mut commands);
-                let next = commit_reply(
-                    (agent, turn),
-                    response,
-                    &mut answered,
-                    inbox,
-                    &mut commit,
-                    &mut notices,
-                );
+                let next =
+                    commit_reply((agent, turn), response, &mut answered, inbox, &mut notices);
                 match (next, stopped) {
                     (Next::End(outcome, kernel), _) => propose(&mut commands, outcome, kernel),
                     (Next::Call, None) => spawn_turn_call(&mut commands, turn, agent),
@@ -1093,7 +1086,7 @@ pub(crate) fn commit_turn_calls(
                     }
                     (Next::Run(calls), Some(why)) => {
                         let results = close_pending_with(&calls, &format!("not run: {why}"));
-                        commit.message(agent, &mut answered.conversation, results);
+                        answered.conversation.push(results);
                     }
                     (Next::Call, Some(_)) => {}
                 }
@@ -1165,14 +1158,13 @@ fn commit_reply(
     response: &CompletionResponse,
     answered: &mut AnsweredItem,
     (inboxes, commands): (&Inboxes, &mut Commands),
-    commit: &mut Commit,
     notices: &mut MessageWriter<Notice>,
 ) -> Next {
     if response.usage.context_tokens().is_some() {
         *answered.last = LastUsage(Some(response.usage));
     }
     if let Some(message) = response.message() {
-        commit.message(agent, &mut answered.conversation, message);
+        answered.conversation.push(message);
     }
     let tool_calls: Vec<ToolCall> = response.tool_calls().cloned().collect();
     let failure = turn_failure(
@@ -1184,7 +1176,7 @@ fn commit_reply(
         // Every call in the history gets a result, though none ran.
         if !tool_calls.is_empty() {
             let results = close_pending_with(&tool_calls, &format!("not run: {failure}"));
-            commit.message(agent, &mut answered.conversation, results);
+            answered.conversation.push(results);
         }
         let ending = Ending {
             notice: format!("The turn failed: {failure}."),
@@ -1201,7 +1193,7 @@ fn commit_reply(
         let spec = answered.connection.map(|connection| &*connection.spec);
         let conversation = &mut *answered.conversation;
         let into = (Some(turn), commands);
-        commit.deliver(agent, spec, next, conversation, notices, into);
+        deliver(agent, spec, next, conversation, notices, into);
         return Next::Call;
     }
     match answered.conversation.messages().last() {
@@ -1221,7 +1213,6 @@ fn commit_reply(
 fn drop_unanswered(
     agent: Entity,
     conversation: &mut Conversation,
-    commit: &mut Commit,
     notices: &mut MessageWriter<Notice>,
 ) {
     let unanswered = conversation.messages().last().is_some_and(|message| {
@@ -1230,7 +1221,7 @@ fn drop_unanswered(
     });
     if unanswered {
         let last = conversation.messages().len().saturating_sub(1);
-        commit.splice(agent, conversation, last.., []);
+        conversation.splice(last.., [], Author::rig());
         notices.write(Notice::info(
             agent,
             "Your last message was taken out of the conversation; send it again.",
@@ -1356,7 +1347,6 @@ pub(crate) fn commit_replies(
     mut turns: Query<(Entity, &TurnOf, &mut Turn, &Calls, Option<&TurnOutcome>)>,
     replies: Query<ReplyCall>,
     mut agents: Query<&mut Conversation>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     for (turn, &TurnOf(agent), mut state, calls, ending) in &mut turns {
@@ -1373,7 +1363,7 @@ pub(crate) fn commit_replies(
         state.reply = None;
         let unanswered = ToolResult::failed(ToolExecutionError::other("the call had no result"));
         if let Some(results) = reply_results(calls, Some(&unanswered)) {
-            commit.message(agent, &mut conversation, results);
+            conversation.push(results);
         }
         if ending.and_then(TurnOutcome::stops).is_none() {
             spawn_turn_call(&mut commands, turn, agent);
@@ -1402,7 +1392,6 @@ pub(crate) fn end_turns(
     open: Query<(), (With<Effect>, Without<Settled>)>,
     mut agents: Query<(&AgentId, &mut Conversation)>,
     inboxes: Inboxes,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -1424,7 +1413,7 @@ pub(crate) fn end_turns(
         if let Some(ending) = ending {
             notices.write(Notice::error(agent, ending.notice.clone()));
             if ending.take_out {
-                drop_unanswered(agent, &mut conversation, &mut commit, &mut notices);
+                drop_unanswered(agent, &mut conversation, &mut notices);
             }
         }
         let how = match outcome {

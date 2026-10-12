@@ -50,7 +50,7 @@ What it holds, by module:
   it is about to run, once every earlier call of its reply it conflicts
   with settled (`Waiting`). A running effect's owner keeps `IfStopped`
   current, the answer the kernel gives if it stops the effect first. Every
-  settled effect is `Recorded`, with its raw and reviewed outcome. A
+  settled effect is `EffectRecorded`, with its raw and reviewed outcome. A
   failing Prepare, Gate or Review system closes its stage for that pass.
 - `calls`: off-thread work on Bevy's task pools, and `Wake`, which wakes a
   loop that sleeps while nothing happens.
@@ -66,24 +66,24 @@ What it holds, by module:
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
-  and written as `Recorded` when each effect settles.
-- `journal`, `restore`: the append-only session log and its restore. The
-  conversation model and the log format, its writer and readers, are
-  rig-cassette's `journal`; the kernel's `Conversation` component wraps
-  the library's, read-only. Every conversation change goes through
-  `Commit` (add a message, splice messages after the fact, halt, retire
-  the agent) and is seen as a `Committed` message. A splice replaces a
-  range of messages: a cut, a compaction's summary or an edit in place;
-  each message keeps its `MessageId` across splices and restores; a
-  component that says `#[reflect(Component, Saved)]`, or a resource that
-  says `#[reflect(Resource, Saved)]`, is logged and restored by
-  reflection. rig-cassette's `read_session` reads a session's logs without
-  restoring or writing, `write_session` writes one from data, and
-  `fork_session` copies a session as it was when one of its messages was
-  made. The work a restart carries on is marked `Restored` and gated like
-  any. The store (`SessionStore`) is any rig-cassette `JournalStore`,
-  such as `MemoryStore` or, with its feature `jsonl`, `JsonlDirStore`; it
-  also holds the session's other files by name.
+  and written as `EffectRecorded` when each effect settles.
+- `journal`, `restore`: the append-only session log and its restore. An
+  agent's `Conversation` component is rig-core's conversation (it derefs
+  to it): a plugin changes it by calling its methods (push, splice with
+  its own `Author`, halt, asides), and each change waits in the
+  conversation's outbox until the kernel saves it with rig-memory's
+  `Writer`, between the stages of every pass, at the end of the frame and
+  before a tool that may change something, and announces it as a
+  `Committed`. `Retire` retires an agent for good. A component that says
+  `#[reflect(Component, Saved)]`, or a resource that says
+  `#[reflect(Resource, Saved)]`, is logged and restored by reflection; one
+  reflected opaquely with serde (`#[reflect(opaque, Component, Saved,
+  Clone, Serialize, Deserialize)]`) is saved through serde, the way to
+  save rig-core data such as a `MessageId`. The store (`SessionStore`) is
+  any rig-memory `Store`; `open_session` reads it strictly, refusing an old
+  or broken session before anything is written, and sets a torn last line
+  aside (`SessionRestored::repairs`). The work a restart carries on is
+  marked `Restored` and gated like any.
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has
 no features and builds for `wasm32-unknown-unknown`.
