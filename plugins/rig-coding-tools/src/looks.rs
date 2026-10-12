@@ -9,20 +9,20 @@ use rig_tui::{RESULT_LINES, ToolCallView, excerpt};
 
 pub(super) fn read(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
-    let number = |key: &str| view.call.function.arguments.get(key)?.as_u64();
+    let number = |key: &str| usize::try_from(view.call.function.arguments.get(key)?.as_u64()?).ok();
     let range = match (number("offset"), number("limit")) {
-        (Some(offset), Some(limit)) => format!("lines {offset}..{}", offset + limit),
+        (Some(offset), Some(limit)) => format!("lines {offset}..{}", offset.saturating_add(limit)),
         (Some(offset), None) => format!("from line {offset}"),
-        (None, Some(limit)) => format!("first {limit} lines"),
+        (None, Some(limit)) => format!("first {}", lines(limit)),
         (None, None) => String::new(),
     };
-    let mut lines = vec![view.header(format!("read {path}"), range)];
+    let mut rows = vec![view.header(format!("read {path}"), range)];
     match view.result_text() {
-        Some(_) if view.failed() => lines.extend(view.result_lines(RESULT_LINES)),
-        Some(text) => lines.push(Line::from(format!("  ⎿ {} lines", text.lines().count())).dim()),
+        Some(_) if view.failed() => rows.extend(view.result_lines(RESULT_LINES)),
+        Some(text) => rows.push(Line::from(format!("  ⎿ {}", lines(text.lines().count()))).dim()),
         None => {}
     }
-    lines
+    rows
 }
 
 pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
@@ -35,16 +35,13 @@ pub(super) fn edit(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
 pub(super) fn write(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     let path = view.argument("path").unwrap_or_default().to_owned();
     let content = view.argument("content").unwrap_or_default();
-    let mut lines = vec![view.header(
-        format!("write {path}"),
-        format!("{} lines", content.lines().count()),
-    )];
+    let mut rows = vec![view.header(format!("write {path}"), lines(content.lines().count()))];
     if view.failed() {
-        lines.extend(view.result_lines(RESULT_LINES));
+        rows.extend(view.result_lines(RESULT_LINES));
     } else {
-        lines.extend(excerpt(content, RESULT_LINES, Style::new().dim()));
+        rows.extend(excerpt(content, RESULT_LINES, Style::new().dim()));
     }
-    lines
+    rows
 }
 
 pub(super) fn shell(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
@@ -77,3 +74,14 @@ pub(super) fn search(view: &ToolCallView<'_>) -> Vec<Line<'static>> {
     lines.extend(view.result_lines(RESULT_LINES));
     lines
 }
+
+/// `n` lines, said as a count: "1 line", "3 lines".
+fn lines(n: usize) -> String {
+    match n {
+        1 => "1 line".to_owned(),
+        n => format!("{n} lines"),
+    }
+}
+
+#[cfg(test)]
+mod tests;
