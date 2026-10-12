@@ -164,5 +164,25 @@ pub fn shorten(text: &str, width: usize) -> String {
     }
 }
 
+/// How long ago `elapsed` was, roughly, for a list a person reads:
+/// `just now`, `3m ago`, `5h ago`, `2d ago`.
+///
+/// ```
+/// use std::time::Duration;
+/// use rig_tools::ago;
+///
+/// assert_eq!(ago(Duration::from_secs(30)), "just now");
+/// assert_eq!(ago(Duration::from_secs(5 * 3600 + 59)), "5h ago");
+/// ```
+pub fn ago(elapsed: std::time::Duration) -> String {
+    let seconds = elapsed.as_secs();
+    match seconds {
+        0..60 => "just now".to_owned(),
+        60..3600 => format!("{}m ago", seconds / 60),
+        3600..86_400 => format!("{}h ago", seconds / 3600),
+        _ => format!("{}d ago", seconds / 86_400),
+    }
+}
+
 #[cfg(test)]
 mod tests;
