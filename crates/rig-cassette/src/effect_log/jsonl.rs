@@ -31,8 +31,10 @@
 //!   reads it once, on its first append or [`Writer::last_id`], and
 //!   continues its header, requests and ids.
 //!
-//! A [`Writer`] appends to a file by path, or to a session's file in its
-//! [`JournalStore`] ([`Writer::on`]); [`read_from`] reads either back.
+//! A [`Writer`] appends to a file by path, or to a file of a session's
+//! store, such as [`SESSION_EFFECT_LOG`] ([`Writer::on`]); [`read_from`]
+//! reads either back. The effect log is a recording for replay that no
+//! restore reads, not part of the saved session.
 //!
 //! The writer also leaves out the parts of a completion's raw provider
 //! document that echo the request (`instructions`, `tools`) and the
@@ -57,12 +59,15 @@ use std::io::{self, BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use crate::journal::JournalStore;
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, EffectRow};
 use serde::{Deserialize, Serialize};
+use rig_memory::Files;
 use serde_json::Value;
 
 use super::{EffectLog, LogHeader};
+
+/// The file of a session's store ([`Files`]) that holds its effect log.
+pub const SESSION_EFFECT_LOG: &str = "effects.jsonl";
 
 /// Appends effect logs, such as successive [`EffectLogRecorder::take`]s,
 /// to a JSON-lines file.
@@ -83,7 +88,7 @@ pub struct Writer {
 enum Target {
     Path(PathBuf),
     Store {
-        store: Arc<dyn JournalStore>,
+        store: Arc<dyn Files>,
         name: String,
     },
 }
@@ -106,9 +111,8 @@ impl Writer {
     }
 
     /// A writer appending to the file `name` of the session `store` holds,
-    /// such as [`EFFECT_LOG`](crate::journal::EFFECT_LOG), as
-    /// [`Self::new`] appends to a path.
-    pub fn on(store: Arc<dyn JournalStore>, name: impl Into<String>) -> Self {
+    /// such as [`SESSION_EFFECT_LOG`], as [`Self::new`] appends to a path.
+    pub fn on(store: Arc<dyn Files>, name: impl Into<String>) -> Self {
         let name = name.into();
         Self::writing(Target::Store { store, name })
     }
@@ -813,7 +817,7 @@ pub fn read(path: impl AsRef<Path>) -> io::Result<EffectLog> {
 
 /// Reads a JSON-lines log from `lines` as [`read`] reads a file, such as
 /// the bytes of a session's file in its store
-/// ([`JournalStore::read_file`]).
+/// ([`Files::read_file`]).
 ///
 /// # Errors
 ///
