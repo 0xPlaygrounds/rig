@@ -21,13 +21,13 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use rig_compaction::{
-    Compaction, CompactionPlugin, Summarized, Summarizing, Until, summary_origin, unsummarized,
+    Compaction, CompactionPlugin, Summarized, Summarizing, Until, plan, summary_origin,
 };
 use rig_core::catalog::ModelSpec;
-use rig_core::completion::{CompletionRequest, Message};
+use rig_core::completion::Message;
 use rig_core::message::UserContent;
 use rig_harness::prelude::*;
-use rig_memory::{CompactReason, CompactionPolicy, Cut, Summarizer, SummaryPrompts, SummaryState};
+use rig_memory::{CompactReason, CompactionPolicy, Cut, Summarizer, SummaryPrompts};
 use serde::Deserialize;
 
 /// The headings every structured summary has, in order.
@@ -94,10 +94,6 @@ impl Plugin for StructuredCompactionPlugin {
             app.add_plugins(CompactionPlugin);
         }
         app.add_setting::<StructuredCompaction>("compact")
-            .insert_resource(Fallback {
-                prompts: SummaryPrompts::DEFAULT,
-                cut: Cut::Budget,
-            })
             .configure_sets(
                 AgentPass,
                 StructuredCompactionSystems.in_set(PrepareSystems::Edit),
@@ -114,16 +110,16 @@ impl Plugin for StructuredCompactionPlugin {
     }
 
     /// Puts the template and the cut in rig-compaction's policy, once every
-    /// plugin built, keeping what they replace for the fallback.
+    /// plugin built, keeping the policy as it was for the fallback.
     fn finish(&self, app: &mut App) {
         let world = app.world_mut();
         let Some(mut compaction) = world.get_resource_mut::<Compaction>() else {
             return;
         };
-        let policy = &mut compaction.0;
-        let prompts = std::mem::replace(&mut policy.summarizer.prompts, TEMPLATE);
-        let cut = std::mem::replace(&mut policy.cut, Cut::With(Arc::new(before_last_user)));
-        world.insert_resource(Fallback { prompts, cut });
+        let fallback = Fallback(compaction.0.clone());
+        compaction.0.summarizer.prompts = TEMPLATE;
+        compaction.0.cut = Cut::With(Arc::new(before_last_user));
+        world.insert_resource(fallback);
         #[cfg(feature = "tui")]
         tui::add(app);
     }
@@ -152,13 +148,10 @@ impl Default for StructuredCompaction {
     }
 }
 
-/// The summary prompts and cut rig-compaction's policy had before this
-/// plugin, which the fallback compacts with.
+/// rig-compaction's policy as it was before this plugin, which the
+/// fallback compacts with.
 #[derive(Resource)]
-struct Fallback {
-    prompts: SummaryPrompts,
-    cut: Cut,
-}
+struct Fallback(CompactionPolicy);
 
 /// On a summary call in the template: how many summaries were asked for
 /// so far (more than [`TRIES`] means the fallback runs), and the user's
@@ -215,24 +208,6 @@ fn last_typed(conversation: &Conversation, before: usize, count: usize) -> Vec<S
     texts
 }
 
-/// The compaction `policy` with the [`Fallback`]'s prompts and cut would
-/// make: its request, where it ends and the state it goes into.
-fn fallback(
-    policy: CompactionPolicy,
-    conversation: &Conversation,
-    summarized: Option<&Summarized>,
-    (reason, spec): (&CompactReason, &ModelSpec),
-) -> Option<(CompletionRequest, Until, SummaryState)> {
-    let (messages, from) = unsummarized(conversation);
-    let upto = policy.cut(&messages, from, reason, Some(spec))?;
-    let none = SummaryState::default();
-    let state = summarized.map_or(&none, |summarized| &summarized.0);
-    let planned = policy.plan(state, &messages, from, upto, spec, reason);
-    let (state, request) = planned.ok()?;
-    let until = conversation.id(upto).map_or(Until::All, Until::Before);
-    Some((request, until, state))
-}
-
 /// Sends each summary call rig-compaction admits to the configured model;
 /// the fallback gets back the agent's model, the default prompts and cut.
 fn structure(
@@ -247,12 +222,7 @@ fn structure(
         (Added<Admitted>, ModelCalls),
     >,
     agents: Query<(&Conversation, Option<&Summarized>, Option<&Connection>)>,
-    (config, compaction, before, models): (
-        Res<StructuredCompaction>,
-        Res<Compaction>,
-        Res<Fallback>,
-        Res<Models>,
-    ),
+    (config, fallback, models): (Res<StructuredCompaction>, Res<Fallback>, Res<Models>),
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -289,21 +259,16 @@ fn structure(
                 let Ok((conversation, summarized, Some(own))) = agents.get(agent) else {
                     continue;
                 };
-                let policy = CompactionPolicy {
-                    summarizer: Summarizer {
-                        prompts: before.prompts.clone(),
-                        ..compaction.0.summarizer.clone()
-                    },
-                    cut: before.cut.clone(),
-                    ..compaction.0.clone()
-                };
-                let reason = (&summarizing.reason, &*own.spec);
-                if let Some((request, until, state)) =
-                    fallback(policy, conversation, summarized, reason)
-                {
-                    *model = ModelRequest::new(request);
-                    summarizing.until = until;
-                    summarizing.state = state;
+                let reason = summarizing.reason.clone();
+                match plan(conversation, summarized, &fallback.0, reason, &own.spec) {
+                    Ok(Some((planned, request))) => {
+                        *summarizing = planned;
+                        *model = ModelRequest::new(request);
+                    }
+                    Ok(None) => {}
+                    Err(why) => {
+                        notices.write(Notice::warn(agent, format!("Cannot compact: {why}.")));
+                    }
                 }
             }
             Some(_) => {}
