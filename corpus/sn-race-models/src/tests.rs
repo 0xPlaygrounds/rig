@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use futures::FutureExt;
 use futures::channel::oneshot;
-use futures::future::Shared as Opened;
+use futures::future::Shared;
 
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Pricing, Transport};
 use rig_core::completion::Message;
@@ -32,43 +32,18 @@ enum Wait {
     /// Never: it waits until it is cancelled.
     Never,
     /// When the gate opens.
-    Until(Opened<oneshot::Receiver<()>>),
-}
-
-/// What a scripted member saw: the requests sent to it, and those
-/// cancelled before it streamed anything.
-#[derive(Default, Debug)]
-struct Seen {
-    requests: usize,
-    cancelled: usize,
-}
-
-type Shared = Arc<Mutex<Seen>>;
-
-fn seen(shared: &Shared) -> (usize, usize) {
-    let seen = shared.lock().unwrap_or_else(PoisonError::into_inner);
-    (seen.requests, seen.cancelled)
+    Until(Shared<oneshot::Receiver<()>>),
 }
 
 /// A scripted model that starts answering each request when its wait says.
+///
+/// What it was sent is read from the stack (rig-telemetry's spending, the
+/// race's tally), never counted here: a request the kernel sent and then
+/// cancelled may be dropped before its future was ever polled, so a count
+/// kept by the model would depend on when the pool got to it.
 struct Paced {
     inner: ErasedHandler,
     waits: Arc<Mutex<VecDeque<Wait>>>,
-    seen: Shared,
-}
-
-/// Counts a request dropped while it waited to answer as cancelled.
-struct Waiting(Shared, bool);
-
-impl Drop for Waiting {
-    fn drop(&mut self) {
-        if self.1 {
-            self.0
-                .lock()
-                .unwrap_or_else(PoisonError::into_inner)
-                .cancelled += 1;
-        }
-    }
 }
 
 impl Serve for Paced {
@@ -79,17 +54,12 @@ impl Serve for Paced {
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        self.seen
-            .lock()
-            .unwrap_or_else(PoisonError::into_inner)
-            .requests += 1;
         let wait = self
             .waits
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .pop_front()
             .unwrap_or(Wait::Now);
-        let mut waiting = Waiting(self.seen.clone(), true);
         match wait {
             Wait::Now => {}
             Wait::Never => futures::future::pending().await,
@@ -97,19 +67,15 @@ impl Serve for Paced {
                 gate.await.ok();
             }
         }
-        waiting.1 = false;
         self.inner.handle(kind, dispatch).await
     }
 }
 
 /// The catalog with each member answered by its script when its waits
-/// say, all priced, and what each saw.
-fn members<const N: usize>(
-    scripts: [(&str, &MockCompletionModel, Vec<Wait>); N],
-) -> (Models, [Shared; N]) {
+/// say, all priced.
+fn members<const N: usize>(scripts: [(&str, &MockCompletionModel, Vec<Wait>); N]) -> Models {
     let mut connector = Connector::new(Catalog::builtin().clone());
-    let shared: [Shared; N] = std::array::from_fn(|_| Shared::default());
-    for ((reference, model, waits), seen) in scripts.into_iter().zip(shared.clone()) {
+    for (reference, model, waits) in scripts {
         let Some((vendor, id)) = reference.split_once('/') else {
             continue;
         };
@@ -131,12 +97,12 @@ fn members<const N: usize>(
                   -> Result<ErasedHandler, ConnectError> {
                 let inner = ModelAdapter::<Completion>::new(spec.reference(), model.clone());
                 let inner = ErasedHandler::new(inner);
-                let (waits, seen) = (waits.clone(), seen.clone());
-                Ok(ErasedHandler::new(Paced { inner, waits, seen }))
+                let waits = waits.clone();
+                Ok(ErasedHandler::new(Paced { inner, waits }))
             },
         );
     }
-    (Models(connector), shared)
+    Models(connector)
 }
 
 /// How often `probe` ran.
@@ -201,12 +167,18 @@ fn race(models: Models, over: &[&str]) -> (App, Receiver<()>, Entity) {
 }
 
 /// Sends `text` and runs frames until one more turn ended and `also`.
-fn ask(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, also: impl Fn() -> bool) {
+fn ask(
+    app: &mut App,
+    wakes: &Receiver<()>,
+    agent: Entity,
+    text: &str,
+    also: impl Fn(&World) -> bool,
+) {
     let ended = |world: &World| world.resource::<Ended>().0.len();
     let before = ended(app.world());
     app.world_mut()
         .trigger(Deliver::new(agent, text, DeliveryMode::Queue));
-    run_until(app, wakes, |world| ended(world) > before && also());
+    run_until(app, wakes, |world| ended(world) > before && also(world));
 }
 
 /// The agent's messages as text, each with the model that wrote it.
@@ -243,21 +215,20 @@ fn the_faster_member_answers_and_the_slower_are_cancelled_but_paid_for() {
     ]);
     let c = MockCompletionModel::from_stream_turns([reply("from C"), reply("from C")]);
     let slow = || vec![Wait::Never, Wait::Never];
-    let (models, [seen_a, seen_b, seen_c]) = members([
+    let models = members([
         (A, &a, slow()),
         (B, &b, vec![Wait::Now, Wait::Now]),
         (C, &c, slow()),
     ]);
     let (mut app, wakes, agent) = race(models, &[A, B, C]);
-    let (cancelled_a, cancelled_c) = (seen_a.clone(), seen_c.clone());
-    ask(&mut app, &wakes, agent, "Go.", move || {
-        seen(&cancelled_a).1 == 2 && seen(&cancelled_c).1 == 2
+    // Until the race has counted A's and C's cancelled requests: they
+    // settle once the kernel cancelled them, which may be after the turn.
+    ask(&mut app, &wakes, agent, "Go.", |world| {
+        tally(world).cancelled == 4
     });
 
-    // All got each request; A's and C's were cancelled before they streamed.
-    assert_eq!(seen(&seen_a), (2, 2), "A got both requests, both cancelled");
-    assert_eq!(seen(&seen_c), (2, 2), "C got both requests, both cancelled");
-    assert_eq!(seen(&seen_b), (2, 0), "B got both requests and answered");
+    // B answered both requests; A and C were sent each and never answered.
+    assert_eq!(b.request_count(), 2);
     assert_eq!(
         a.request_count() + c.request_count(),
         0,
@@ -280,14 +251,21 @@ fn the_faster_member_answers_and_the_slower_are_cancelled_but_paid_for() {
     assert_eq!(spent_a.calls, 2, "{session:?}");
     assert!(spent_a.tokens.input_tokens.unwrap_or_default() > 0);
     assert!(spent_a.cost > 0.0);
+    let calls_to = |model: &str| session.models.get(model).map(|spent| spent.calls);
+    assert_eq!(calls_to(C), Some(2), "{session:?}");
     assert_eq!(
         session.total.calls, 6,
         "B's two replies and A's and C's two cancelled requests each"
     );
-    let stats = &app.world().resource::<RaceStats>().0;
-    let tally = stats.get("race-fast").cloned().unwrap_or_default();
+    let tally = tally(app.world());
     assert_eq!(tally.members.get(B).map(|b| b.wins), Some(2));
     assert_eq!(tally.cancelled, 4);
+}
+
+/// The race model's tally.
+fn tally(world: &World) -> RaceTally {
+    let stats = &world.resource::<RaceStats>().0;
+    stats.get("race-fast").cloned().unwrap_or_default()
 }
 
 #[test]
@@ -302,7 +280,7 @@ fn a_member_that_fails_first_drops_out_and_both_failing_fails_once() {
     ]);
     // A answers the first request only once B has dropped out.
     let (open, gate) = oneshot::channel();
-    let (models, _) = members([
+    let models = members([
         (A, &a, vec![Wait::Until(gate.shared()), Wait::Now]),
         (B, &b, vec![Wait::Now, Wait::Now]),
     ]);
@@ -317,7 +295,7 @@ fn a_member_that_fails_first_drops_out_and_both_failing_fails_once() {
     });
 
     // B fails at once; A's reply is used, and no error is shown.
-    ask(&mut app, &wakes, agent, "Go.", || true);
+    ask(&mut app, &wakes, agent, "Go.", |_| true);
     let (text, origin) = last_reply(&app, agent).unwrap_or_default();
     assert!(text.contains("from A"), "{text}");
     let origin = origin.unwrap_or_default();
@@ -333,7 +311,7 @@ fn a_member_that_fails_first_drops_out_and_both_failing_fails_once() {
     ));
 
     // Both fail: the request fails once, listing both errors.
-    ask(&mut app, &wakes, agent, "Again.", || true);
+    ask(&mut app, &wakes, agent, "Again.", |_| true);
     let ended = &app.world().resource::<Ended>().0;
     assert_eq!(ended.len(), 2, "{ended:?}");
     let why = match ended.last() {
@@ -356,14 +334,15 @@ fn a_winner_that_fails_mid_stream_is_replaced_by_the_other_member_alone() {
         MockStreamEvent::text("partial"),
         MockStreamEvent::error("cut off"),
     ]]);
-    let (models, [seen_a, _]) = members([
+    let models = members([
         (A, &a, vec![Wait::Never, Wait::Now]),
         (B, &b, vec![Wait::Now]),
     ]);
     let (mut app, wakes, agent) = race(models, &[A, B]);
-    ask(&mut app, &wakes, agent, "Go.", || true);
+    ask(&mut app, &wakes, agent, "Go.", |_| true);
 
-    assert_eq!(seen(&seen_a), (2, 1), "A was cancelled, then asked alone");
+    // A was cancelled, then asked alone: only that request reached it.
+    assert_eq!(a.request_count(), 1, "A answered once");
     let (text, _) = last_reply(&app, agent).unwrap_or_default();
     assert!(text.contains("the whole answer from A"), "{text}");
     let messages = stored(&app, agent);
