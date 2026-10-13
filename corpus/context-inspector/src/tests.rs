@@ -108,6 +108,7 @@ fn why_shows_sections_examples_and_tools_and_full_writes_the_request() {
         "Tools offered: 1",
         "lookup",
         "+ 2 messages added before the conversation (user, assistant;",
+        "tokens), by plugin few-shot-examples",
     ] {
         assert!(why.contains(expected), "`{expected}` in:\n{why}");
     }
