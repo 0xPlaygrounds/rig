@@ -2,21 +2,16 @@
 //!
 //! The input starts in insert mode (`[vim] start = "normal"` in
 //! `settings.toml` changes that), where keys type as without the plugin.
-//! A filter in [`InputSystems::Filter`] reads the frame's
-//! [`TerminalEvents`] in order: Esc goes to normal mode, where it takes the
+//! A filter in [`InputSystems::Filter`] reads each key with the input the
+//! keys before it left: Esc goes to normal mode, where it takes the
 //! keys and runs them through [`editor::Editor`] (motions, counts,
 //! operators, registers, undo and a visual selection), written back into
 //! [`TuiInput`]. While a picker, a question or a panel has the keys
 //! ([`TuiInputState`]), it leaves them alone. Enter stays the view's key,
 //! so it sends in either mode. Twice within [`DOUBLE_ESC`] in normal mode
-//! with an empty input, Esc does the view's own [`InputAction::Stop`]. The
-//! mode shows in the status line, and `/vim on|off` toggles it, kept in
-//! [`PluginData::user`] for every session.
-//!
-//! A filter sees each key with the input the keys before it left. Once a
-//! key it lets through may have changed the input, the keys after it that
-//! an earlier filter made of one go back to the view, which does them
-//! next.
+//! with an empty input, the Esc goes on to the view, doing what it does
+//! without the plugin. The mode shows in the status line, and `/vim on|off`
+//! toggles it, kept in [`PluginData::user`] for every session.
 
 pub mod editor;
 
@@ -25,7 +20,7 @@ use rig_harness::rig_tools::clipboard;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use rig_tui::{
     AppStatus, CopyToClipboard, InputAction, InputSystems, KeyInput, KeyScope, Sent, Side,
-    StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput, TuiInputState, TuiPlugin,
+    StatusItem, StatusSystems, TerminalEvents, Tone, TuiInput, TuiInputState, TuiKeys, TuiPlugin,
 };
 use serde::{Deserialize, Serialize};
 
@@ -77,9 +72,6 @@ pub struct Vim {
     /// When the last Esc with nothing to cancel was pressed, on the real
     /// clock.
     last_esc: Option<Duration>,
-    /// The rest of a frame whose keys may have changed the input, for the
-    /// next frame.
-    held: Vec<KeyInput>,
 }
 
 impl Vim {
@@ -116,18 +108,11 @@ impl Plugin for VimPlugin {
             editor: Editor::new(start),
             start,
             last_esc: None,
-            held: Vec::new(),
         })
         .add_command("vim", "Vim keys in the input: /vim on|off", toggle)
         .add_observer(paste_clipboard)
         .add_systems(Startup, load)
-        .add_systems(
-            rig_tui::TuiKeys,
-            (
-                edit.in_set(InputSystems::Filter),
-                hold.after(InputSystems::Dispatch),
-            ),
-        )
+        .add_systems(TuiKeys, edit.in_set(InputSystems::Filter))
         .add_systems(Update, after_send)
         .add_systems(
             PostUpdate,
@@ -145,10 +130,10 @@ fn load(data: Res<PluginData>, mut vim: ResMut<Vim>) {
     vim.enabled = saved.is_none_or(|saved| saved.enabled);
 }
 
-/// What the filter does with an item of the frame.
+/// What the filter does with a key.
 enum Take {
-    /// Leaves it to the view; whether it may change the input.
-    Pass { changes: bool },
+    /// Leaves it to the view.
+    Pass,
     /// Gives the editor this key.
     Edit(Key),
     /// Enter in normal mode: sends, closing a completion first so it does
@@ -156,7 +141,9 @@ enum Take {
     Send,
 }
 
-/// Takes the frame's keys as the mode says, in their order.
+/// Takes the key as the mode says (several in their order, when an
+/// earlier filter made several of one; the editor's changes then reach the
+/// input before the view does the keys passed on, whatever their order).
 #[allow(clippy::too_many_arguments)]
 fn edit(
     mut events: ResMut<TerminalEvents>,
@@ -180,43 +167,26 @@ fn edit(
         || state.answering().is_some()
         || matches!(state.scope(), KeyScope::Panel(_));
     let mut completion = state.completion().is_some();
-    // Whether the input and the state are still as the filter knows them.
-    let mut known = true;
-    let mut kept = Vec::with_capacity(events.0.len());
-    let mut items = std::mem::take(&mut events.0).into_iter();
-    while let Some(item) = items.next() {
+    for item in std::mem::take(&mut events.0) {
         let take = match &item {
             KeyInput::Event(Event::Key(key)) if key.kind != KeyEventKind::Release => {
-                if !known && might_take(key, vim.mode()) {
-                    vim.held.push(item);
-                    vim.held.extend(items);
-                    break;
-                }
                 take(key, vim.mode(), elsewhere)
             }
-            KeyInput::Event(Event::Key(_) | Event::Resize(..) | Event::Mouse(_)) => {
-                Take::Pass { changes: false }
-            }
-            KeyInput::Event(Event::FocusGained | Event::FocusLost) => Take::Pass { changes: false },
-            KeyInput::Event(Event::Paste(_)) | KeyInput::Action(_) => Take::Pass { changes: true },
+            _ => Take::Pass,
         };
         match take {
-            Take::Pass { changes } => {
-                known &= !changes;
-                kept.push(item);
-            }
+            Take::Pass => events.0.push(item),
             Take::Send => {
-                if completion {
-                    kept.push(KeyInput::Action(InputAction::Stop));
+                if std::mem::take(&mut completion) {
+                    events.0.push(KeyInput::Action(InputAction::Stop));
                 }
-                kept.push(item);
-                known = false;
+                events.0.push(item);
             }
             Take::Edit(key) => {
                 // Esc in insert mode closes a completion as the view's does.
-                if key == Key::Esc && vim.mode() == Mode::Insert && completion {
-                    kept.push(KeyInput::Action(InputAction::Stop));
-                    completion = false;
+                if key == Key::Esc && vim.mode() == Mode::Insert && std::mem::take(&mut completion)
+                {
+                    events.0.push(KeyInput::Action(InputAction::Stop));
                 }
                 match vim.editor.key(key, &mut buffer) {
                     Some(Effect::Copy(text)) => {
@@ -239,8 +209,7 @@ fn edit(
                             .is_some_and(|last| now.saturating_sub(last) <= DOUBLE_ESC);
                         if twice && buffer.text.is_empty() {
                             vim.last_esc = None;
-                            kept.push(KeyInput::Action(InputAction::Stop));
-                            known = false;
+                            events.0.push(item);
                         } else {
                             vim.last_esc = Some(now);
                         }
@@ -250,7 +219,6 @@ fn edit(
             }
         }
     }
-    events.0 = kept;
     if buffer.text != input.text() {
         input.set(buffer.text);
     }
@@ -259,33 +227,18 @@ fn edit(
     }
 }
 
-/// What the filter does with `key` in `mode`, the input's state known.
+/// What the filter does with `key` in `mode`.
 fn take(key: &KeyEvent, mode: Mode, elsewhere: bool) -> Take {
     let plain = key.modifiers.difference(KeyModifiers::SHIFT).is_empty();
     match (key.code, mode) {
-        _ if elsewhere => Take::Pass { changes: true },
+        _ if elsewhere => Take::Pass,
         (KeyCode::Esc, _) if plain => Take::Edit(Key::Esc),
-        (_, Mode::Insert) => Take::Pass { changes: true },
+        (_, Mode::Insert) => Take::Pass,
         (KeyCode::Enter, _) if plain => Take::Send,
         (KeyCode::Char(character), _) if plain => Take::Edit(Key::Char(character)),
         (KeyCode::Char('r'), _) if key.modifiers == KeyModifiers::CONTROL => Take::Edit(Key::Redo),
-        _ => Take::Pass { changes: true },
+        _ => Take::Pass,
     }
-}
-
-/// Whether the editor might take `key` in `mode`, whatever the input's
-/// state: Esc in insert mode, any key in the others.
-fn might_take(key: &KeyEvent, mode: Mode) -> bool {
-    mode != Mode::Insert || key.code == KeyCode::Esc
-}
-
-/// Puts the keys after one that changed the input back, which the view
-/// does next, each with the input it left.
-fn hold(mut vim: ResMut<Vim>, mut events: ResMut<TerminalEvents>) {
-    if vim.held.is_empty() {
-        return;
-    }
-    events.0.append(&mut vim.held);
 }
 
 /// Pastes what a clipboard read brought back.

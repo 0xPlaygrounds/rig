@@ -1,3 +1,5 @@
+use rig_core::completion::CompletionRequest;
+use rig_core::message::{Message, UserContent};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::commands::CommandPlugin;
 use rig_harness::harness_protocol::SessionId;
@@ -33,6 +35,22 @@ fn type_text(app: &mut App, text: &str) {
         };
         press(app, &key);
     }
+}
+
+/// The text of the user messages `request` sends.
+fn said(request: &CompletionRequest) -> Vec<String> {
+    let user = request
+        .chat_history
+        .iter()
+        .filter_map(|message| match message {
+            Message::User { content } => Some(content.iter()),
+            _ => None,
+        });
+    let text = user.flatten().filter_map(|content| match content {
+        UserContent::Text(text) => Some(text.text.clone()),
+        _ => None,
+    });
+    text.collect()
 }
 
 fn input(app: &App) -> String {
@@ -83,15 +101,8 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
         !world.resource::<Ended>().0.is_empty()
     });
     let requests = model.requests();
-    let asked = requests
-        .first()
-        .map(|request| format!("{:?}", request.chat_history));
-    assert!(
-        asked
-            .as_ref()
-            .is_some_and(|asked| asked.contains("world!") && !asked.contains("hello")),
-        "{asked:?}"
-    );
+    let asked = requests.first().map(said).unwrap_or_default();
+    assert_eq!(asked, ["world!"]);
     assert_eq!(
         status(&app),
         "-- INSERT --",
@@ -123,15 +134,20 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
     assert_eq!(input(&app), "abcabc");
     assert_eq!(status(&app), "-- NORMAL --");
 
-    // An open picker takes `j` and Enter: `j` filters it to `jam`, Enter
-    // picks that; the input and its mode stay.
+    // An open picker takes `j`, which moves its selection to `jam`, and
+    // Enter, which picks it; the input and its mode stay.
     let picker = Picker::new("Pick one").item("alpha", "a").item("jam", "j");
     let picker = app.world_mut().spawn(picker).id();
     app.update();
     app.update();
     let picking = app.world().resource::<TuiInputState>().picking();
     assert_eq!(picking, Some(picker));
-    press(&mut app, "j enter");
+    let selection = |app: &App| app.world().resource::<TuiInputState>().selection();
+    assert_eq!(selection(&app), Some(0));
+    press(&mut app, "j");
+    assert_eq!(selection(&app), Some(1));
+    assert_eq!(input(&app), "abcabc");
+    press(&mut app, "enter");
     let picked = app.world().resource::<Picked>().0.clone();
     assert_eq!(picked, vec![Some(Chosen::Item(1))]);
     assert_eq!(input(&app), "abcabc");
@@ -152,9 +168,9 @@ fn edits_the_input_as_vim_does_and_leaves_other_keys_alone() {
         app.world().get::<ActiveTurn>(agent).is_some(),
         "Esc stopped the turn"
     );
-    // Twice in normal mode with nothing typed, it stops the agent as Esc
-    // does without the plugin.
-    press(&mut app, "esc esc");
+    // Twice in normal mode with nothing typed (one frame, so on one clock
+    // reading), it stops the agent as Esc does without the plugin.
+    rig_harness_test_support::press(&mut app, "esc esc");
     run_until(&mut app, &wakes, |world| {
         world.resource::<Ended>().0.len() == 2
     });
