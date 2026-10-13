@@ -97,6 +97,7 @@ pub use renderers::{
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
 pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
+pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
     ScrollTo, ShownNotice, TranscriptItem, TranscriptSlot, TranscriptView,
@@ -133,6 +134,7 @@ impl Plugin for TuiPlugin {
             .add_message::<Sent>()
             .add_message::<TerminalWrite>()
             .add_message::<CopyToClipboard>()
+            .add_message::<PastEffects>()
             .configure_sets(
                 PreUpdate,
                 (InputSystems::Filter, InputSystems::Dispatch).chain(),
@@ -235,6 +237,7 @@ pub fn add_view(app: &mut App) {
                 terminal::run_in_terminal
                     .run_if(any_match_filter::<(With<RunInTerminal>, Without<TerminalExit>)>)
                     .before(TuiSystems::Layout),
+                transcript::note_effects.in_set(TuiSystems::Prepare),
                 (
                     complete::follow_input,
                     transcript::follow_streams,
@@ -259,7 +262,7 @@ pub fn add_view(app: &mut App) {
         )
         .add_observer(view::on_focus)
         .add_observer(view::on_scroll_to)
-        .add_observer(transcript::note_call_facts);
+        .add_observer(transcript::note_agent_name);
 }
 
 /// The look of a failed build's note, which the model reads too.

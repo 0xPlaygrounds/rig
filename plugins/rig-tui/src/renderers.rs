@@ -15,8 +15,8 @@
 //! transcript again.
 //!
 //! A renderer also sees the calls its call started, such as a subagent's
-//! model and tool calls ([`ToolCallView::children`]), and draws them
-//! nested where it likes:
+//! model and tool calls, through the spawn and the brief between them
+//! ([`ToolCallView::children`]), and draws them nested where it likes:
 //!
 //! ```no_run
 //! use rig_harness::prelude::*;
@@ -71,11 +71,10 @@ pub struct ToolCallView<'a> {
     /// Whether it is drawn whole: the user expanded it.
     pub expanded: bool,
     /// What the call published, such as rig-core's `ExitStatus` and
-    /// `FilesChanged`, once it settled in this run; not kept with the
-    /// session.
+    /// `FilesChanged`, once it settled: in this run, or in an earlier one
+    /// of a resumed session whose effect log was kept.
     pub facts: Option<&'a ToolResultContext>,
-    /// How long it ran, once it settled in this run; not kept with the
-    /// session.
+    /// How long it ran, once it settled, as for [`facts`](Self::facts).
     pub took: Option<Duration>,
     /// The output so far of a running call whose tool reports it as it
     /// runs ([`CallOutput`]), such as a command's: cut as tool output is
@@ -85,9 +84,11 @@ pub struct ToolCallView<'a> {
     /// [`CallOutput`]: rig_harness::prelude::CallOutput
     pub output: Option<&'a str>,
     /// The tool and model calls the call started, and those they started,
-    /// in order, each after the one that started it: such as a subagent's
-    /// calls under the call that briefed it. Those of this run only; not
-    /// kept with the session.
+    /// in order, each after the one that started it, through any effect
+    /// between that is no call: such as a subagent's calls under the call
+    /// that spawned it, through the spawn and the brief it was sent. Also
+    /// after a resume, from the session's effect log
+    /// ([`PastEffects`](crate::PastEffects)).
     pub children: &'a [ChildCall],
 }
 

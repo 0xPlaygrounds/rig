@@ -6,21 +6,23 @@ use bevy_ecs::prelude::*;
 use bevy_ecs::system::RunSystemOnce;
 use ratatui::style::Style;
 use ratatui::text::Line;
-use rig_core::completion::Message;
+use rig_core::completion::{CompletionRequest, CompletionResponse, Message, Usage};
+use rig_core::effect::{self, EffectId, EffectKind, EffectRecord};
 use rig_core::message::{
     AssistantContent, AssistantMessage, CallId, ToolCall, ToolFunction, ToolName,
 };
 use rig_core::streaming::{PartKind, StreamEvent};
+use rig_core::tool::ToolResult;
 use rig_ecs::agent::{AgentId, CallOf, Conversation, Partial, TurnOf};
 use rig_ecs::prelude::{Aside, AsideId, Author, Entry, Halt, MessageId};
 use rig_ecs::stage::{
-    Effect, EffectRecorded, ForAgent, HoldOf, Outcome, Settled, Started, SupersededBy,
+    Effect, EffectRecorded, EffectRequest, ForAgent, HoldOf, Outcome, Started, SupersededBy,
 };
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::{ModelRequest, StreamDelta};
 use rig_harness::note::Note;
-use rig_harness::prelude::App;
 use rig_harness::prelude::ToolProgress;
+use rig_harness::prelude::{App, Last, Update};
 use serde_json::json;
 
 use super::{
@@ -30,8 +32,8 @@ use crate::render::CallStates;
 use crate::tests::{drawn_rows, on_screen, press, view_app};
 use crate::{
     AppToolRenderersExt, CallState, DrawnRow, DrawnTranscript, Expanded, Highlight, ItemRow,
-    LineSpan, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem, TranscriptLayout,
-    TranscriptView,
+    LineSpan, PastEffects, RenderToolCall, ScrollTo, ToolCallView, TranscriptItem,
+    TranscriptLayout, TranscriptView,
 };
 
 const WIDTH: u16 = 80;
@@ -737,7 +739,9 @@ fn layout_app() -> (App, Entity) {
         .init_resource::<TranscriptView>()
         .init_resource::<rig_ecs::effects::Effects>()
         .add_message::<EffectRecorded>()
-        .add_observer(super::note_call_facts);
+        .add_message::<PastEffects>()
+        .add_systems(Update, super::note_effects)
+        .add_observer(super::note_agent_name);
     let agent = app
         .world_mut()
         .spawn((
@@ -778,68 +782,116 @@ fn a_race_draws_the_reply_of_its_member_still_running() {
     assert!(!rows.iter().any(|row| row.contains("loser")), "{rows:?}");
 }
 
+/// The records of the effects that settled, as the kernel wrote them.
+#[derive(Resource, Default)]
+struct Records(Vec<EffectRecord>);
+
+/// A model's reply: `text`, then `calls`.
+fn reply(text: &str, calls: Vec<ToolCall>) -> Outcome {
+    let mut choice = vec![AssistantContent::text(text)];
+    choice.extend(calls.into_iter().map(AssistantContent::ToolCall));
+    let origin = rig_core::message::Origin::new("test.api", "test", "model-a");
+    let reply = CompletionResponse::new(choice, Usage::default(), origin, json!({}));
+    Outcome::from(Ok(effect::Outcome::Completion(reply)))
+}
+
+/// Spawns `effect`, answered, under `parent`, and runs a frame, so the
+/// kernel settles it before the next is made, as a reply settles before
+/// its calls start; its id.
+fn settle(app: &mut App, parent: Option<EffectId>, effect: impl Bundle) -> Option<EffectId> {
+    let spawned = app.world_mut().spawn((effect, Effect::child_of(parent)));
+    let id = spawned.get::<Effect>().map(Effect::id);
+    app.update();
+    id
+}
+
+/// A plain effect of a plugin's own, answered.
+fn plain(kind: &str) -> (EffectRequest, Outcome) {
+    let kind = EffectKind::Custom {
+        kind: Arc::from(kind),
+        payload: json!(null),
+    };
+    let request = EffectRequest {
+        kind,
+        handler: None,
+    };
+    (request, Outcome::custom(json!(null)))
+}
+
+/// The rows a `consult` renderer draws of `agent`'s transcript: one per
+/// call under its call, with its depth, name, agent, state and first line.
+fn consult_rows(app: &mut App, agent: Entity) -> Vec<String> {
+    let rows = laid_out(app, agent, Expanded::AsShown);
+    let rows = rows.iter().flat_map(DrawnTranscript::rows);
+    rows.map(|row| row.text.clone()).collect()
+}
+
 #[test]
-fn a_renderer_sees_the_calls_its_call_started_and_theirs() {
-    let (mut app, agent) = layout_app();
-    app.add_tool_renderer("consult", |view| {
-        let children = view.children.iter().map(|child| {
-            let agent = child.agent.as_deref().unwrap_or("-");
-            let line = child.line.as_deref().unwrap_or("-");
-            let (depth, name, state) = (child.depth, &child.name, &child.state);
-            Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+fn a_renderer_sees_the_calls_under_its_call_through_any_effect_and_after_a_resume() {
+    let (mut app, agent) = view_app();
+    let keep = |mut read: MessageReader<EffectRecorded>, mut records: ResMut<Records>| {
+        records
+            .0
+            .extend(read.read().map(|recorded| recorded.0.clone()));
+    };
+    app.init_resource::<Records>().add_systems(Last, keep);
+    let looks = |app: &mut App| {
+        app.add_tool_renderer("consult", |view| {
+            let children = view.children.iter().map(|child| {
+                let agent = child.agent.as_deref().unwrap_or("-");
+                let line = child.line.as_deref().unwrap_or("-");
+                let (depth, name, state) = (child.depth, &child.name, &child.state);
+                Line::from(format!("{depth} {name} {agent} {state:?} {line}"))
+            });
+            children.collect()
         });
-        children.collect()
-    });
+    };
+    looks(&mut app);
     let (Ok(consult), Ok(read)) = (ToolName::new("consult"), ToolName::new("read")) else {
         return;
     };
-    let call = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
-    say(
-        &mut app,
-        agent,
-        Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
-            call.clone(),
-        )])),
-    );
-    let world = app.world_mut();
-    let helper = world.spawn(Name::new("helper")).id();
-    // The consult call runs; its helper's model call runs under it.
-    let consulting = world.spawn((ToolRequest { call }, Effect::default(), ForAgent(agent)));
-    let consulting = consulting.get::<Effect>().map(Effect::id);
-    let started = Started {
-        at: SystemTime::now(),
-    };
-    let model = rig_core::completion::CompletionRequest::new(Message::user("look"));
-    let asking = world.spawn((
-        ModelRequest::new(model),
-        Effect::child_of(consulting),
-        ForAgent(helper),
-        started,
-    ));
-    let asking = asking.get::<Effect>().map(Effect::id);
-    // A read that model call asked for settled already.
-    let read = ToolCall::from_wire("c1", ToolFunction::new(read, json!({ "path": "a.rs" })));
-    let answer = rig_core::tool::ToolResult::success("fn main() {}\n".to_owned().into());
-    let reading = world.spawn((
-        ToolRequest { call: read },
-        Effect::child_of(asking),
-        ForAgent(helper),
-        Outcome::from(answer),
-    ));
-    let reading = reading.id();
-    world.entity_mut(reading).insert(Settled);
-    world.flush();
-    let rows = laid_out(&mut app, agent, Expanded::AsShown);
-    let rows: Vec<&str> = rows
-        .iter()
-        .flat_map(DrawnTranscript::rows)
-        .map(|row| row.text.as_str())
-        .collect();
-    assert_eq!(
-        rows,
-        [
-            "0 model helper Running(None) -",
-            "1 read helper Done fn main() {}"
-        ]
-    );
+    let consulting = ToolCall::from_wire("c1", ToolFunction::new(consult, json!({})));
+    let asked = Message::Assistant(AssistantMessage::new(vec![AssistantContent::ToolCall(
+        consulting.clone(),
+    )]));
+    say(&mut app, agent, asked.clone());
+    let id = app.world().get::<AgentId>(agent).cloned();
+    let helper = (Name::new("helper"), AgentId("helper".to_owned()));
+    let helper = app.world_mut().spawn(helper).id();
+    // The real chain: the agent's model call asks for the consult, which
+    // spawns a helper (a plain effect) and briefs it (another); the
+    // helper's model call, under the brief, asks for a read.
+    let model = |text: &str| ModelRequest::new(CompletionRequest::new(Message::user(text)));
+    let turn = (model("consult"), ForAgent(agent));
+    let turn = settle(&mut app, None, (turn, reply("", vec![consulting.clone()])));
+    let answered = Outcome::from(ToolResult::success("both answered".to_owned().into()));
+    let consulted = (ToolRequest { call: consulting }, ForAgent(agent), answered);
+    let consulted = settle(&mut app, turn, consulted);
+    let spawned = settle(&mut app, consulted, plain("subagent"));
+    let briefed = settle(&mut app, spawned, (plain("message"), ForAgent(helper)));
+    let reading = ToolCall::from_wire("r1", ToolFunction::new(read, json!({ "path": "a.rs" })));
+    let asking = (model("look"), ForAgent(helper));
+    let asking = (asking, reply("looking", vec![reading.clone()]));
+    let asking = settle(&mut app, briefed, asking);
+    let source = ToolResult::success("fn main() {}\n".to_owned().into());
+    let read = (ToolRequest { call: reading }, ForAgent(helper));
+    settle(&mut app, asking, (read, Outcome::from(source)));
+    let expected = [
+        "0 model helper Done looking",
+        "1 read helper Done fn main() {}",
+    ];
+    assert_eq!(consult_rows(&mut app, agent), expected);
+
+    // Resumed: the same records, read back, and no effect left.
+    let records = std::mem::take(&mut app.world_mut().resource_mut::<Records>().0);
+    let (mut resumed, agent) = layout_app();
+    looks(&mut resumed);
+    let world = resumed.world_mut();
+    if let Some(id) = id {
+        world.entity_mut(agent).insert(id);
+    }
+    world.spawn((Name::new("helper"), AgentId("helper".to_owned())));
+    world.write_message(PastEffects(records));
+    say(&mut resumed, agent, asked);
+    assert_eq!(consult_rows(&mut resumed, agent), expected);
 }

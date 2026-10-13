@@ -30,7 +30,7 @@ use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
 use super::terminal::Tui;
 use super::transcript::{
     Below, CallFacts, CallTree, EntryRenderers, Inside, Look, Marks, Part, Renderers, ShownNote,
-    StreamingCalls, Transcript, call_lines, child_call, entry_lines, notice_lines, plain_lines,
+    StreamingCalls, Transcript, call_lines, entry_lines, live_call, notice_lines, plain_lines,
 };
 use super::view::{
     Continuation, DrawnTranscript, Highlight, ShownNotice, TranscriptItem, TranscriptSlot,
@@ -332,9 +332,9 @@ pub(crate) struct ShownAgent<'a> {
     pub(crate) children: BTreeMap<CallId, Vec<ChildCall>>,
 }
 
-/// A tool or model call not settled yet, as [`TranscriptLayout`] reads it
-/// for [`ToolCallView::children`].
-type LiveCall = (
+/// An effect not settled yet, a tool or model call or any other, as
+/// [`TranscriptLayout`] reads it for [`ToolCallView::children`].
+type LiveEffect = (
     Entity,
     &'static Effect,
     (
@@ -404,15 +404,7 @@ pub struct TranscriptLayout<'w, 's> {
     pub(crate) renderers: Query<'w, 's, Ref<'static, ToolRenderer>>,
     pub(crate) entry_renderers: Query<'w, 's, Ref<'static, EntryRenderer>>,
     calls: CallStates<'w, 's>,
-    live: Query<
-        'w,
-        's,
-        LiveCall,
-        (
-            Without<Settled>,
-            Or<(With<ToolRequest>, With<ModelRequest>)>,
-        ),
-    >,
+    live: Query<'w, 's, LiveEffect, Without<Settled>>,
     names: Query<'w, 's, &'static Name>,
     facts: Res<'w, CallFacts>,
     streaming: Res<'w, StreamingCalls>,
@@ -499,12 +491,12 @@ impl TranscriptLayout<'_, '_> {
                     Some(ShownNote { id, aside, note })
                 })
                 .collect(),
-            children: self.facts.calls().of_agent(&self.live_calls(), entity),
+            children: self.facts.calls().of_agent(&self.live_calls(), &id.0),
         })
     }
 
-    /// The tool and model calls not settled yet, by the effects that
-    /// started them, standing as they stand now.
+    /// The effects not settled yet, by the effects that started them, the
+    /// calls standing as they stand now.
     fn live_calls(&self) -> CallTree {
         let mut live = CallTree::default();
         for (entity, effect, requests, (agent, outcome), (started, streams)) in &self.live {
@@ -518,11 +510,11 @@ impl TranscriptLayout<'_, '_> {
             let agent = agent.map(|ForAgent(agent)| *agent);
             let name = agent.and_then(|agent| self.names.get(agent).ok());
             let state = state.unwrap_or(CallState::Waiting);
-            if let Some(child) = child_call(requests, (name, outcome), state) {
-                live.add(effect.parent, effect.id(), child);
-            }
-            if let (Some(request), Some(agent)) = (requests.0, agent) {
-                live.tool_call(effect.id(), agent, request.call.id.clone());
+            let child = live_call(requests, (name, outcome), state);
+            live.add(effect.parent, effect.id(), child);
+            let id = agent.and_then(|agent| self.agents.get(agent).ok());
+            if let (Some(request), Some((id, _))) = (requests.0, id) {
+                live.tool_call(effect.id(), &id.0, request.call.id.clone());
             }
         }
         live
