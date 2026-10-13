@@ -597,7 +597,7 @@ impl Importing<'_> {
         let at_ms = steps.last().map(|step| step.at_ms).unwrap_or_default();
         self.close(at_ms);
         self.flush(at_ms);
-        self.conversation.halt(Halt::Kept);
+        self.dated(at_ms, |conversation| conversation.halt(Halt::Kept));
     }
 
     fn step(&mut self, step: &Step) {
@@ -648,14 +648,21 @@ impl Importing<'_> {
     /// at `at_ms`.
     fn add(&mut self, message: Message, author: Option<Author>, at_ms: u64) {
         let entry = Entry::new(message);
-        self.conversation.push(match author {
+        let entry = match author {
             Some(author) => entry.by(author),
             None => entry,
-        });
-        // The time the source logged it: no route yet to give the change
-        // its time (`Recorded::at`), so saving stamps it with now.
-        let _ = at_ms;
+        };
+        self.dated(at_ms, |conversation| conversation.push(entry));
         self.added += 1;
+    }
+
+    /// Makes `edit` as made at `at_ms`, the source's time; now when the
+    /// source gave none.
+    fn dated<R>(&mut self, at_ms: u64, edit: impl FnOnce(&mut Conversation) -> R) -> R {
+        if at_ms == 0 {
+            return edit(self.conversation);
+        }
+        self.conversation.dated(at_ms, edit)
     }
 
     /// Answers the calls still waiting with [`NO_RESULT`].
