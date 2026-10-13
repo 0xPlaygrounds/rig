@@ -1,5 +1,6 @@
-//! The prompt history: the prompts Up and Down browse, kept in a file
-//! across sessions. It is the [`PromptHistory`] resource, which a plugin
+//! The prompt history: the prompts Up and Down browse, kept across
+//! sessions in the user's
+//! [`PluginData`](rig_harness::prelude::PluginData) as `tui/history.jsonl`. It is the [`PromptHistory`] resource, which a plugin
 //! fills, filters or stops saving, such as to keep secrets out of it; a
 //! [`Sent`] adds a prompt to it.
 //!
@@ -17,41 +18,54 @@
 //! }
 //! ```
 
-use std::path::PathBuf;
+use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bevy_log::warn;
+use rig_harness::prelude::{Files, PluginData};
 
 use super::jsonl::{self, Kept};
 
 /// Prompts kept in the history.
 const KEPT: usize = 500;
 
-/// The prompts Up and Down browse, oldest first, and the file new ones
+/// The file of the history in its [`PromptHistory::file`].
+const HISTORY_FILE: &str = "tui/history.jsonl";
+
+/// The prompts Up and Down browse, oldest first, and the files new ones
 /// are added to; `file: None` saves nothing. The terminal view loads it
-/// from `RIG_HOME` when the app is built, appends each prompt sent in
-/// [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds to the
-/// file those recorded since the last save that are still in `entries`,
-/// then keeps the newest 500. A plugin edits `entries` between the two to
-/// filter what is kept, or replaces them.
-#[derive(Resource, Default, Debug)]
+/// from the user's [`PluginData`] in `PreStartup`, appends each prompt
+/// sent in [`HistorySystems::Record`], and in [`HistorySystems::Save`] adds
+/// to the file those recorded since the last save that are still in
+/// `entries`, then keeps the newest 500. A plugin edits `entries` between
+/// the two to filter what is kept, or replaces them.
+#[derive(Resource, Default)]
 pub struct PromptHistory {
     /// The prompts, oldest first.
     pub entries: Vec<String>,
-    /// Where prompts are saved, one JSON string per line.
-    pub file: Option<PathBuf>,
+    /// The files prompts are saved in, as `tui/history.jsonl`, one JSON
+    /// string per line.
+    pub file: Option<Arc<dyn Files>>,
     /// The prompts recorded since the last save.
     unsaved: Vec<String>,
 }
 
 impl PromptHistory {
-    /// The newest prompts kept in `file`, which new ones are saved to.
-    pub fn load(file: PathBuf) -> Self {
+    /// The newest prompts kept in `files`, which new ones are saved to.
+    pub fn load(files: Arc<dyn Files>) -> Self {
         Self {
-            entries: jsonl::tail(&Kept::Plain(file.clone()), KEPT),
-            file: Some(file),
+            entries: jsonl::tail(&Kept(files.clone(), HISTORY_FILE), KEPT),
+            file: Some(files),
             unsaved: Vec::new(),
         }
+    }
+}
+
+/// Loads the history kept in the user's [`PluginData`], before any
+/// plugin's `Startup` system edits it.
+pub(crate) fn load(data: Option<Res<PluginData>>, mut history: ResMut<PromptHistory>) {
+    if let Some(data) = data {
+        *history = PromptHistory::load(data.user.clone());
     }
 }
 
@@ -93,7 +107,7 @@ pub(crate) fn save(mut history: ResMut<PromptHistory>) {
     let unsaved = std::mem::take(&mut history.unsaved);
     let kept = unsaved.iter().filter(|text| history.entries.contains(text));
     if let Some(file) = &history.file
-        && let Err(failure) = jsonl::append(&Kept::Plain(file.clone()), kept)
+        && let Err(failure) = jsonl::append(&Kept(file.clone(), HISTORY_FILE), kept)
     {
         warn!("could not save the prompt history: {failure}");
     }

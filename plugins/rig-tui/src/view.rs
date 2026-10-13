@@ -3,7 +3,7 @@
 //! shown, and the transcript as plugins read and steer it
 //! ([`TranscriptView`]): what is expanded and selected, the text lit,
 //! where it is scrolled, and recent notices, which are kept in the
-//! session's store for the next build.
+//! session's [`PluginData`] for the next build.
 
 use std::collections::HashSet;
 use std::ops::Range;
@@ -25,20 +25,18 @@ use super::pick::Choosing;
 use super::transcript::Scroll;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, NoticeLevel};
 use rig_ecs::inbox::Recalled;
-use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::{Aside, AsideId, MessageId};
-use rig_harness::prelude::ExitReason;
+use rig_harness::prelude::{ExitReason, PluginData};
 use rig_harness::primary::Shown;
 
 /// Notices kept for display, and read back by the next build.
 const KEPT_NOTICES: usize = 200;
 
-/// The file of the session's store that keeps the notices shown, in the
-/// view's own directory.
+/// The file of the session's [`PluginData`] that keeps the notices shown.
 const NOTICES_FILE: &str = "tui/notices.jsonl";
 
-/// The file of the session's store that keeps what was typed and not sent
-/// for the build a reload starts, in the view's own directory.
+/// The file of the session's [`PluginData`] that keeps what was typed and
+/// not sent for the build a reload starts.
 const DRAFT_FILE: &str = "tui/draft.txt";
 
 /// Ask the view to show the agent and send what is typed to it, such as
@@ -661,12 +659,12 @@ impl TranscriptView {
 }
 
 /// Reads back the notices an earlier build of the session showed, and
-/// keeps the next ones in the session's store.
-pub(crate) fn load_notices(store: Option<Res<SessionStore>>, mut view: ResMut<TranscriptView>) {
-    let Some(store) = store else {
+/// keeps the next ones in the session's [`PluginData`].
+pub(crate) fn load_notices(data: Option<Res<PluginData>>, mut view: ResMut<TranscriptView>) {
+    let Some(data) = data else {
         return;
     };
-    let file = Kept::Stored(store.0.clone(), NOTICES_FILE);
+    let file = Kept(data.session.clone(), NOTICES_FILE);
     view.notices = jsonl::tail(&file, KEPT_NOTICES);
     view.notices_file = Some(file);
 }
@@ -676,10 +674,10 @@ pub(crate) fn load_notices(store: Option<Res<SessionStore>>, mut view: ResMut<Tr
 /// While a question is answered in the input, what was typed before it.
 pub(crate) fn keep_draft(
     reason: Option<Res<ExitReason>>,
-    store: Option<Res<SessionStore>>,
+    data: Option<Res<PluginData>>,
     (input, view): (Res<TuiInput>, Option<Res<TuiView>>),
 ) {
-    let (Some(reason), Some(store)) = (reason, store) else {
+    let (Some(reason), Some(data)) = (reason, data) else {
         return;
     };
     let answering = view.as_deref().and_then(|view| view.choosing.as_ref());
@@ -688,18 +686,18 @@ pub(crate) fn keep_draft(
     if *reason != ExitReason::Reload || text.is_empty() {
         return;
     }
-    if let Err(failure) = store.0.write_file(DRAFT_FILE, text.as_bytes()) {
+    if let Err(failure) = data.session.write_file(DRAFT_FILE, text.as_bytes()) {
         warn!("could not keep the input for the next build: {failure}");
     }
 }
 
 /// Puts back in the input what the build before a reload kept.
-pub(crate) fn load_draft(store: Option<Res<SessionStore>>, mut input: ResMut<TuiInput>) {
-    let Some(store) = store else {
+pub(crate) fn load_draft(data: Option<Res<PluginData>>, mut input: ResMut<TuiInput>) {
+    let Some(data) = data else {
         return;
     };
-    if let Ok(text) = store.0.read_file(DRAFT_FILE) {
-        store.0.remove_file(DRAFT_FILE).ok();
+    if let Ok(text) = data.session.read_file(DRAFT_FILE) {
+        data.session.remove_file(DRAFT_FILE).ok();
         input.set(String::from_utf8_lossy(&text).into_owned());
     }
 }

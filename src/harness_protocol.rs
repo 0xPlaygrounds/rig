@@ -275,12 +275,6 @@ impl Home {
             .ok()
     }
 
-    /// The prompts typed into the terminal view, one JSON string per line,
-    /// shared by every session on this root.
-    pub fn history(&self) -> PathBuf {
-        self.root.join("history.jsonl")
-    }
-
     /// `data/`, where plugins keep files across sessions and projects.
     pub fn data(&self) -> PathBuf {
         self.root.join("data")

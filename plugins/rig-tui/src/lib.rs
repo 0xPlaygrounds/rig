@@ -168,11 +168,8 @@ impl Plugin for TuiPlugin {
             return;
         }
         add_view(app);
-        if let Some(home) = app.world().get_resource::<RigHome>() {
-            let history = PromptHistory::load(home.0.history());
-            app.insert_resource(history);
-        }
-        app.add_systems(Startup, terminal::open_terminal)
+        app.add_systems(PreStartup, history::load)
+            .add_systems(Startup, terminal::open_terminal)
             .add_systems(
                 Last,
                 (
