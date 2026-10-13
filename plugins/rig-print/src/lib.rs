@@ -1,7 +1,8 @@
 //! `--print`: one prompt to the primary agent, driven by rig-harness's
 //! [`headless`](rig_harness::headless) run: it exits once no agent works,
-//! so the subagents it started have answered. The answer's text goes to
-//! stdout and failures to stderr; the exit code is 0 when the turn ended
+//! so the subagents it started have answered, unless a plugin keeps it
+//! going ([`KeepRunning`]); such a run may start without a prompt. Each
+//! answer's text goes to stdout as it comes, and failures to stderr; the exit code is 0 when the turn ended
 //! with an answer, 2 for no prompt or a refused slash command (unknown, or
 //! arguments it does not take), 1 otherwise. Text piped in on stdin
 //! follows the prompt, so `git diff | rig -p "review this"` works.
@@ -97,8 +98,10 @@ impl Plugin for PrintPlugin {
             )
             .add_systems(AgentPass, answer.in_set(PrintSystems))
             .add_systems(Update, (print_notices(command), print_progress))
+            .init_resource::<Printed>()
+            .add_observer(print_answer)
             .add_observer(print_output)
-            .run_headless(full_prompt(&prompt));
+            .run_headless(Some(full_prompt(&prompt)));
     }
 }
 
@@ -166,15 +169,40 @@ fn full_prompt(prompt: &str) -> String {
     }
 }
 
-/// Writes why the run could not send the prompt to stderr, and the answer
-/// with the [`PrintSection`]s to stdout.
-fn print_output(ended: On<HeadlessEnded>, sections: Query<&PrintSection>) {
+/// Whether the run wrote anything to stdout yet.
+#[derive(Resource, Default)]
+struct Printed(bool);
+
+impl Printed {
+    /// Writes `block` to stdout, after an empty line when something came
+    /// before it.
+    fn print(&mut self, block: Option<String>) {
+        if let Some(block) = block {
+            match self.0 {
+                true => println!("\n{block}"),
+                false => println!("{block}"),
+            }
+            self.0 = true;
+        }
+    }
+}
+
+/// Writes each answer to stdout as it comes.
+fn print_answer(ended: On<HeadlessTurnEnded>, mut printed: ResMut<Printed>) {
+    printed.print(output(ended.answer.as_deref(), []));
+}
+
+/// Writes why the run could not send the prompt to stderr, and the
+/// [`PrintSection`]s to stdout.
+fn print_output(
+    ended: On<HeadlessEnded>,
+    sections: Query<&PrintSection>,
+    mut printed: ResMut<Printed>,
+) {
     if let Some(why) = &ended.why {
         eprintln!("rig: {why}");
     }
-    if let Some(output) = output(ended.answer.as_deref(), sections) {
-        println!("{output}");
-    }
+    printed.print(output(None, sections));
 }
 
 /// What the run prints: the answer, then each [`PrintSection`] by tag,

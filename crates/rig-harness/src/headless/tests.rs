@@ -15,13 +15,19 @@ use rig_ecs::effects::Handler;
 use super::*;
 use crate::host::exit::ExitPlugin;
 
-/// How the runs ended.
+/// How the runs ended, and each turn that ended.
 #[derive(Resource, Default)]
-struct Ends(Vec<HeadlessEnded>);
+struct Ends(Vec<HeadlessEnded>, Vec<HeadlessTurnEnded>);
 
 /// A headless run of `prompt`, its model named on the command line when
 /// `model`, until it exits or ten seconds passed; how it ended.
 fn run(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> Vec<HeadlessEnded> {
+    let mut app = run_app(prompt, model, setup);
+    app.world_mut().resource_mut::<Ends>().0.drain(..).collect()
+}
+
+/// The app of [`run`], after the run.
+fn run_app(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> App {
     let mut app = App::new();
     let args = Invocation {
         model: model.then(|| "deepseek/deepseek-flash".to_owned()),
@@ -36,7 +42,10 @@ fn run(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> Vec
     .add_observer(|ended: On<HeadlessEnded>, mut ends: ResMut<Ends>| {
         ends.0.push(ended.event().clone());
     })
-    .run_headless(prompt);
+    .add_observer(|ended: On<HeadlessTurnEnded>, mut ends: ResMut<Ends>| {
+        ends.1.push(ended.event().clone());
+    })
+    .run_headless(Some(prompt.to_owned()));
     app.update();
     let world = app.world_mut();
     let agent = world
@@ -51,7 +60,7 @@ fn run(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> Vec
     }
     // Nothing more once it ended.
     app.update();
-    app.world_mut().resource_mut::<Ends>().0.drain(..).collect()
+    app
 }
 
 /// `model` as the catalog's DeepSeek model.
@@ -254,4 +263,44 @@ fn the_run_waits_for_held_effects() {
         let exits: Vec<_> = ends.into_iter().map(|ended| ended.exit).collect();
         assert_eq!(exits, [ExitReason::Quit], "answered: {answered}");
     }
+}
+
+#[test]
+fn a_kept_run_answers_each_prompt_and_ends_once_nothing_keeps_it() {
+    let model = MockCompletionModel::from_stream_turns(["one", "two"].map(|answer| {
+        vec![
+            MockStreamEvent::text(answer),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]
+    }));
+    let mut app = run_app("hi", true, |world, primary| {
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        let keep = world.spawn(KeepRunning).id();
+        // A plugin sends a second prompt once the first is answered, then
+        // lets the run end.
+        world.add_observer(
+            move |ended: On<HeadlessTurnEnded>, ends: Res<Ends>, mut commands: Commands| match ends
+                .1
+                .len()
+            {
+                0 => commands.trigger(Deliver::new(ended.agent, "again", DeliveryMode::Steer)),
+                _ => commands.entity(keep).despawn(),
+            },
+        );
+    });
+    let ends = app.world_mut().resource_mut::<Ends>();
+    let turns: Vec<_> = ends
+        .1
+        .iter()
+        .map(|turn| (turn.answer.as_deref(), turn.failed))
+        .collect();
+    assert_eq!(turns, [(Some("one"), false), (Some("two"), false)]);
+    let ended: Vec<_> = ends
+        .0
+        .iter()
+        .map(|ended| (ended.answer.as_deref(), &ended.exit))
+        .collect();
+    assert_eq!(ended, [(Some("two"), &ExitReason::Quit)]);
 }

@@ -88,7 +88,7 @@ impl Plugin for JsonStreamPlugin {
         if !rpc {
             // Nobody answers questions: with no `Answerer`, plugins refuse.
             if let Some(prompt) = prompt {
-                app.run_headless(prompt).add_observer(headless_ended);
+                app.run_headless(Some(prompt)).add_observer(headless_ended);
             }
             return;
         }

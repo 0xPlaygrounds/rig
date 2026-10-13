@@ -135,7 +135,7 @@ pub mod prelude {
         AppCommandsExt, CommandArgs, CommandSystems, RunCommand, SlashCommand,
     };
     pub use crate::harness_protocol::Home;
-    pub use crate::headless::{AppHeadlessExt, HeadlessEnded};
+    pub use crate::headless::{AppHeadlessExt, HeadlessEnded, HeadlessTurnEnded, KeepRunning};
     pub use crate::host::cli::{AppCliExt, Flag, Front};
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
