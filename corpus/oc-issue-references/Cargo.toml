@@ -12,9 +12,20 @@ workspace = true
 # Named by the Bevy derives.
 bevy_ecs = { workspace = true }
 bevy_reflect = { workspace = true }
+bevy_tasks = { workspace = true }
+futures = { workspace = true }
+# The HTTP client rig-harness already builds on (through rig-reqwest).
+reqwest = { workspace = true }
+# Ordered after the `@path` attachments, which edit the same messages.
+rig-coding-tools = { path = "../../plugins/rig-coding-tools" }
 rig-harness = { path = "../../crates/rig-harness" }
+# `#` completion in the terminal view's input.
+rig-tui = { path = "../../plugins/rig-tui" }
+schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+# Each reference's deadline, on the agent's `TokioRuntime`.
+tokio = { workspace = true, features = ["time"] }
 
 [dev-dependencies]
 rig-core = { workspace = true, features = ["test-utils"] }
