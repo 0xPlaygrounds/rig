@@ -34,6 +34,9 @@ What it holds, by module:
   turn ends with a `TurnOutcome` on it: the kernel proposes one, Review
   may edit it in place, hold it or carry the turn on, a plugin may fail
   or stop the turn, and once its calls settled the turn ends, `Settled`.
+  Each turn is recorded in its agent's conversation (a `rig.turn` aside,
+  rig-core's `TurnRecord`: where it began and how it ended), and a reply
+  an interrupt cut short is kept as an aborted reply no model reads again.
 - `stage`: effects as entities. An effect's components are its request and
   its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
@@ -68,7 +71,11 @@ What it holds, by module:
   (`MessagePart`): plugins edit it in Prepare and take it over in Gate, as
   rig-harness does to run a user's `/` line as a slash command; the kernel
   accepts it at Start, and an agent's accepted, unanswered messages are its
-  inbox.
+  inbox, saved with the conversation (a `rig.inbox` aside each). A message
+  taken back leaves it at once. The messages a turn ended without sending
+  are `Unsent`: a plugin keeps one in the inbox or takes it over in Gate,
+  and otherwise the kernel hands the user's back to the views (`Recalled`)
+  and puts the others in the conversation, in `GateSystems::Fallback`.
 - `model`: the agent's catalog model and how it is connected, through
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
@@ -98,7 +105,8 @@ What it holds, by module:
   or broken session before anything is written, and sets a torn last line
   aside (`SessionRestored::repairs`). The work a restart carries on is
   marked `Restored` and gated like any, a turn keeping its index and first
-  message. A tool call that may change something is marked in the
+  message from its `rig.turn` record, and the inbox comes back. A tool call
+  that may change something is marked in the
   conversation before it starts (a `rig.call` aside), and any call that
   settles while its reply runs on is marked with its result, so a restart
   can tell those from calls that never started: such a call is restored

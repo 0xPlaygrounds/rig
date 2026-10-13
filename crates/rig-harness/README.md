@@ -23,7 +23,9 @@ changed plugins and restarts in the same session. The
   running one is the kernel's `RewriteSession`, which also maps its scratch
   files and name) and deleting sessions), the kernel, the launcher protocol with how the agent
   was started (`Invoked`: its arguments, the plugins' own options and
-  command, and whether stdin is a terminal), the secrets plugins ask the
+  command, and whether stdin is a terminal) and why (`AppStart`: a new
+  session, a resumed one, a `/reload`, or a restart after a rollback),
+  the secrets plugins ask the
   launcher for (`Secrets`), and how it exits (`Exit`: an effect a plugin
   may hold until its work is done, never cancel), slash commands
   (`add_command`, run from what the user types), and the shared services:
@@ -33,7 +35,9 @@ changed plugins and restarts in the same session. The
   directory (`WorkDir`), child-process policy and tokio runtime, file
   watches, where each plugin keeps its own files per session, project and
   user (`PluginData`), questions and pickers any front answers (`Ask`,
-  `Picker`, one choice or several), plugins' notes in an agent's
+  `Picker`, one choice or several, with a note typed on them), one
+  question for every plugin that wants the user to approve an effect
+  (`NeedsApproval`, asked in `ApprovalSystems`), plugins' notes in an agent's
   transcript (`Note` asides), tools built for each call's place in the
   workspace (`add_tool_per_call`), what a call would change before it
   runs (`Preview`, each change's hunks and text before, each side's size
@@ -49,7 +53,9 @@ changed plugins and restarts in the same session. The
   each system ran, per plugin and schedule (`PluginTimings`). Plugins
   offer fronts and one takes each run: `rig-tui` on an interactive
   terminal, `rig-print` with `-p` or with stdin piped in, or a front whose
-  option or command (`rig <name> …`) was given; an interactive run no
+  option or command (`rig <name> …`) was given, which may keep its runs'
+  session in a store of its own (`Front::session_store`) and continue a
+  resumed one (`rig -r <id or name> <name>`); an interactive run no
   front takes says so and exits. A front nobody sits at runs headless,
   until its agents are idle and no plugin keeps it going (`KeepRunning`). The generated `main.rs` ends with
   `rig_harness::run`, which also answers the launcher's question of what

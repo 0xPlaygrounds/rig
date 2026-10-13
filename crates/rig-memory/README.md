@@ -7,9 +7,11 @@ agent framework, over rig-core's one `Conversation` type:
   `TokenBudget`), never a tool result without its call.
 - compaction: a `CompactionPolicy` that says when (near the model's window)
   and where to cut and plans the summary request, a `SummaryState` carried
-  from one summary to the next, `apply_summary`, and `ClearToolOutputs`,
-  which frees context without a model call. rig-harness's compaction plugin
-  is built on it.
+  from one summary to the next, `apply_summary`, which keeps what each
+  compaction replaced in a `rig.compaction` aside (`Compacted`), so
+  `undo_summary` puts the newest one's entries back with their ids, and
+  `ClearToolOutputs`, which frees context without a model call.
+  rig-harness's compaction plugin is built on it.
 - saving and resuming: the session format `rig-session/2` (one JSON-lines
   log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
   and, with feature `fs`, `DirStore`, and its `Files` half for named files

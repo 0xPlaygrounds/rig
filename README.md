@@ -271,7 +271,11 @@ is used instead when set. `rig -p /login` signs in without the terminal view.
 Typing while the agent works is fine: Enter steers the running turn (the
 message goes to the model with its next call, after the tool results it waits
 for) and Tab queues a follow-up that is sent when the turn would end. Both
-wait under the transcript; Esc stops the turn and puts them back in the input.
+wait under the transcript; Esc stops the turn and puts them back in the input
+(a plugin may keep them for the next turn instead), and what the reply had
+streamed stays in the transcript, saved as stopped, and is not sent to the
+model again. Messages still waiting when the agent exits come back when the
+session is resumed.
 `@path` to a PNG, JPEG, GIF or WebP file attaches the image when the model
 reads images, and Ctrl+V pastes the clipboard's image (through `wl-paste`,
 `xclip` or `pngpaste`) as such a path; a dropped image file becomes one too.
@@ -306,9 +310,11 @@ in follows the prompt (`git diff | rig -p "review this"`), and piped in
 without `-p` it is the prompt: `rig` runs the terminal view only on an
 interactive terminal. `-m vendor/model` picks the model (else the session's,
 else the first one with a key; in the terminal view too), and `-r <id or name>`
-resumes a given session instead of starting a new one. A plugin may keep such
-a run going, sending the agent work over time (`KeepRunning`); each answer is
-then printed as it comes.
+resumes a given session instead of starting a new one; it goes wherever an
+option goes, but not among a command's words or after `--`, and
+`rig -r <id or name> <command>` runs a plugin's command in that session. A
+plugin may keep such a run going, sending the agent work over time
+(`KeepRunning`); each answer is then printed as it comes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
