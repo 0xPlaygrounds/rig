@@ -1,10 +1,10 @@
 use std::fs;
 
 use bevy_time::TimeUpdateStrategy;
-use rig_cassette::journal::MemoryStore;
 use rig_core::catalog::{Catalog, Connector};
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::host::exit::ExitPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{app_on, connect, reply, run_until};
 
 use super::*;
@@ -110,7 +110,7 @@ fn the_title_follows_the_turn_rings_once_and_is_given_back() {
 
     // A turn of 1 s: "working" while it runs, "idle" once it ended, at most
     // three title writes while it ran, and one bell at its end.
-    let go = Deliver::new(agent, "Go.", DeliveryMode::Queue).with_origin(Origin::user());
+    let go = Deliver::new(agent, "Go.", DeliveryMode::Queue);
     app.world_mut().trigger(go);
     run_until(&mut app, &wakes, |_| {
         written(&buffer)
@@ -153,7 +153,7 @@ fn the_title_follows_the_turn_rings_once_and_is_given_back() {
 
     // With a 10 s threshold, a short turn rings nothing.
     app.world_mut().resource_mut::<TitleSettings>().bell_seconds = 10;
-    let again = Deliver::new(agent, "Again.", DeliveryMode::Queue).with_origin(Origin::user());
+    let again = Deliver::new(agent, "Again.", DeliveryMode::Queue);
     app.world_mut().trigger(again);
     run_until(&mut app, &wakes, |world| {
         model.request_count() == 2 && world.get::<ActiveTurn>(agent).is_none()

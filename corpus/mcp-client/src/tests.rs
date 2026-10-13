@@ -1,8 +1,8 @@
 use std::io::{BufRead, Write};
 
-use rig_cassette::journal::MemoryStore;
 use rig_core::test_utils::MockCompletionModel;
 use rig_harness::services::ServicesPlugin;
+use rig_harness_test_support::MemoryStore;
 use serde_json::{Value, json};
 
 use super::*;

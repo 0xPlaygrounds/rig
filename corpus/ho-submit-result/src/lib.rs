@@ -331,7 +331,7 @@ fn remind(
         if !state.reminded {
             state.reminded = true;
             let reminder = Deliver::new(agent, REMINDER, DeliveryMode::Queue);
-            commands.trigger(reminder.with_origin(Origin::plugin("submit-result")));
+            commands.trigger(reminder.with_author(Author::plugin("submit-result")));
             continue;
         }
         let why = format!("The turn ended twice without calling {TOOL}.");

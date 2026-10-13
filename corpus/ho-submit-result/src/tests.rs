@@ -1,11 +1,11 @@
 use std::path::PathBuf;
 
-use rig_cassette::journal::MemoryStore;
 use rig_coding_tools::ReadTool;
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::Invocation;
 use rig_harness::headless::HeadlessEnded;
 use rig_harness::host::exit::ExitPlugin;
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     ToolOutputs, app_on, calls, connect, first_agent, log_tool_outputs, reply, run_until,
     scratch_home,
