@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use rig_core::completion::Message;
 use rig_ecs::AgentPlugin;
 use rig_ecs::journal::JournalPlugin;
-use rig_ecs::prelude::{SavedAgent, Session, Store};
+use rig_ecs::prelude::{Author, RewriteSession, SavedAgent, Session, Store, Strings};
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
@@ -270,5 +270,42 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
     app.update();
     app.update();
     assert_eq!(Meta::of(&*store).map(|meta| meta.updated), Some(1000));
+    fs::remove_dir_all(home.root()).ok();
+}
+
+#[test]
+fn a_rewritten_session_keeps_its_rewritten_title() {
+    const SECRET: &str = "sk-123";
+    let home = home("rewrite");
+    let Some(mut app) = running(&home, "1-1") else {
+        return;
+    };
+    app.add_plugins(JournalPlugin);
+    app.finish();
+    app.update();
+    app.world_mut().resource_mut::<SessionTitle>().name = Some(format!("key {SECRET}"));
+    app.update();
+    let store = app.world().resource::<SessionStore>().0.clone();
+    let name = || Meta::of(&*store).and_then(|meta| meta.title.name);
+    assert_eq!(name(), Some(format!("key {SECRET}")));
+
+    app.world_mut().trigger(RewriteSession {
+        by: Author::plugin("redact"),
+        with: Arc::new(Strings(|text: &mut String| {
+            let hit = text.contains(SECRET);
+            if hit {
+                *text = text.replace(SECRET, "[REDACTED]");
+            }
+            hit
+        })),
+        asker: None,
+    });
+    app.update();
+    // The next write of the listing keeps the title as rewritten.
+    app.world_mut().spawn(ResumeLabel::new("goal", "ship"));
+    app.update();
+    assert_eq!(name().as_deref(), Some("key [REDACTED]"));
+    let title = app.world().resource::<SessionTitle>().name.clone();
+    assert_eq!(title.as_deref(), Some("key [REDACTED]"));
     fs::remove_dir_all(home.root()).ok();
 }

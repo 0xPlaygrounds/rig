@@ -3,7 +3,8 @@
 //! conversation, title or label rewrites the session's [`Meta`] in its
 //! store (its [`SessionTitle`], the [`ResumeLabel`]s plugins add, such as
 //! rig-telemetry's cost, and when it was updated), which `/resume` lists
-//! and a resumed session reads its title back from. With the default
+//! and a resumed session reads its title back from, as does a session
+//! rewritten through rig-memory (`RewriteSession`). With the default
 //! `tui` feature, `/resume` without arguments is a picker and the terminal
 //! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
@@ -28,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
-use rig_ecs::journal::{Committed, SessionStore};
+use rig_ecs::journal::{Committed, SessionRewritten, SessionStore};
 use rig_ecs::prelude::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::{
@@ -72,11 +73,16 @@ impl Plugin for SessionsPlugin {
             .add_systems(PreStartup, restore_title)
             .add_systems(
                 Last,
-                update_meta.after(WriteJournal).run_if(
-                    on_message::<Committed>
-                        .or_eager(resource_changed::<SessionTitle>)
-                        .or_eager(labels_changed),
-                ),
+                (
+                    reread_title.run_if(on_message::<SessionRewritten>),
+                    update_meta.run_if(
+                        on_message::<Committed>
+                            .or_eager(resource_changed::<SessionTitle>)
+                            .or_eager(labels_changed),
+                    ),
+                )
+                    .chain()
+                    .after(WriteJournal),
             );
         #[cfg(feature = "tui")]
         tui::add(app);
@@ -268,6 +274,20 @@ fn restore_title(
     if let Some(meta) = Meta::of(&*store.0) {
         // Not a change: nothing to write back.
         title.bypass_change_detection().clone_from(&meta.title);
+        *listed = Listed(meta.title, meta.labels);
+    }
+}
+
+/// Reads the title back after the session was rewritten
+/// ([`SessionRewritten`]): the rewrite mapped the listing cache too, so
+/// the title in memory is not written back over it.
+fn reread_title(
+    store: Option<Res<SessionStore>>,
+    mut title: ResMut<SessionTitle>,
+    mut listed: ResMut<Listed>,
+) {
+    if let Some(meta) = store.and_then(|store| Meta::of(&*store.0)) {
+        title.set_if_neq(meta.title.clone());
         *listed = Listed(meta.title, meta.labels);
     }
 }
