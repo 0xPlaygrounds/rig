@@ -12,7 +12,9 @@ agent framework, over rig-core's one `Conversation` type:
   is built on it.
 - saving and resuming: the session format `rig-session/1` (one JSON-lines
   log per agent, images kept as blobs), a `Store` trait with `MemoryStore`
-  and, with feature `fs`, `DirStore`; `load`/`save` for one conversation,
+  and, with feature `fs`, `DirStore`, and its `Files` half for named files
+  on their own (`DirFiles` over a plain directory, where rig-harness keeps
+  plugins' data per project and per user); `load`/`save` for one conversation,
   `Session` for a whole session, `Writer` for a running host, `fork`,
   `history` and `as_of`. Reading is strict: a session that cannot be read
   whole is refused, and nothing is written. `Session::read_lenient` reads

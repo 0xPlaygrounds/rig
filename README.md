@@ -228,11 +228,19 @@ append-only log, `sessions/<id>/logs/<agent-id>.jsonl`, of its messages, setting
 usage and compactions; images are stored once in `blobs/`, and `files/meta.json`
 caches what `/resume` lists. A session saved by an older rig, in another
 format, is refused when resumed, and nothing of it is changed. A tool call that may change something starts
-only once the reply that asked for it is on disk. After a crash, a closed
-terminal or a `/quit` mid-turn, resuming the session reads the logs back and settles what
-was left half done: read-only tool calls run again, other unfinished tool
-calls are answered as interrupted by the restart, and a turn that waited on
-the model carries on.
+only once the reply that asked for it, and a mark that it started, are on
+disk. After a crash, a closed terminal or a `/quit` mid-turn, resuming the
+session reads the logs back and settles what was left half done: a tool
+call that may change something and had started is answered as interrupted
+by the restart (or with its result, if it finished before the crash), and a
+plugin may answer it first; any other unfinished call, one still waiting for
+your approval included, goes through the permission checks again and runs;
+and a turn that waited on the model carries on. Every `shell` call (and any
+other call that may write anywhere) reports the files it changed, from
+snapshots of the project before and after it, kept in the session's scratch
+directory, never in the repository's `.git`; `[checkpoints] enabled = false`
+in `RIG_HOME/settings.toml` turns that off, and `[shell] max_timeout` sets
+the longest timeout a `shell` call may ask for (ten minutes by default).
 Each `rig` starts a new session. `/quit` ends it. `/new` starts a new session, `/name`
 names this one, and `/resume` lists the earlier ones (name or first message,
 cost, directory, age) and resumes the one picked, in its own directory;
@@ -296,18 +304,22 @@ in follows the prompt (`git diff | rig -p "review this"`), and piped in
 without `-p` it is the prompt: `rig` runs the terminal view only on an
 interactive terminal. `-m vendor/model` picks the model (else the session's,
 else the first one with a key; in the terminal view too), and `-r <id>`
-resumes a given session instead of starting a new one.
+resumes a given session instead of starting a new one. A plugin may keep such
+a run going, sending the agent work over time (`KeepRunning`); each answer is
+then printed as it comes.
 
 The system prompt includes the instruction files `AGENTS.md` (or `CLAUDE.md`)
 of `RIG_HOME`, of the working directory and of each directory above it, from
-the most general to the most specific, at most 32 KB each and 64 KB together,
-along with the working directory, platform and date. They are
+the most general to the most specific, at most 32 KB each and 64 KB together
+(`[context] file_bytes` and `total_bytes` in `settings.toml` change that, and a
+file cut short is named in a notice), along with the working directory,
+platform and date. They are
 re-read when a turn starts, so an edited `AGENTS.md` counts from the next
 message; `/context` re-reads them now and lists what the prompt holds.
 
 The input takes several lines: Enter sends, Shift+Enter, Ctrl+J or `\` before
 Enter starts a new line, Up and Down move between lines and through the
-prompts sent before (kept in `RIG_HOME/history.jsonl`), and the usual emacs
+prompts sent before (kept in `RIG_HOME/data/tui/history.jsonl`), and the usual emacs
 keys edit (Ctrl+A/E/K/U/W, Alt+B/F/D). A leading `/` completes command names
 and `@` completes paths of the project (skipping what `.gitignore` leaves out);
 Tab or Enter takes the selected one. A command that is unknown or refused, such
@@ -319,7 +331,7 @@ Shift+Up/Down scroll the transcript.
 
 Every file lives under `RIG_HOME` (default `~/.rig`): the plugin list
 `plugins.toml`, `/login`'s credentials in `auth/`, the generated `project/`, cargo's `target/`, the builds in `bin/`, the last build's output `build.log`,
-the prompt history `history.jsonl`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
+plugins' data across sessions in `data/` (the prompt history `data/tui/history.jsonl`) and per project in `projects/`, the last chosen model and reasoning `defaults.json` (a new session starts with them), and `sessions/<id>/` with the agent logs in `logs/`, the images in `blobs/`, `files/` (`meta.json`, the effect log `effects.jsonl`, plugins' files),
 `spill/` (the whole output of a `shell` call that was cut, which the model reads
 by the path the cut output names) and the log `agent.log`. `target/` holds cargo's build of the agent and takes a few
 gigabytes; set `RIG_HOME` to put everything elsewhere, for example under a

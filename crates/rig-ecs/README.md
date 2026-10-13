@@ -19,18 +19,21 @@ What it holds, by module:
   (`TurnCall`) and a side call built from an agent (`BuildFrom`) have
   their request built by the kernel, with the system prompt in parts
   (rig-core's `SystemPrompt`: the role and tagged sections), a plugin
-  edits it in Prepare (prompt, messages, tools, options, the model it goes
-  to) and pushes its `Adapters` (an `outermost()` one wraps all the
-  others), and Start renders the prompt and fits the request to that
-  model; `ModelStarts::sent` gives what Start will send, and
-  `ModelStarts::prompt` its prompt in parts. Its stream is
+  edits it in Prepare (prompt, tools, options, the model it goes to, and
+  its messages as a view of the agent's conversation, `history`, each
+  edit attributed to its author and never saved) and pushes its
+  `Adapters` (an `outermost()` one wraps all the others), and Start
+  renders the prompt and fits the request to that model, putting on it
+  the options left out (`Fitted`); `ModelStarts::sent` gives what Start
+  will send, and `ModelStarts::prompt` its prompt in parts. Its stream is
   written as `StreamDelta`s (rig-core's `StreamEvent`s: a part's start,
   its fragments, its end) and stamped on the call (`Streamed`). A failed
   call carries its `RetryVerdict`, which Review may act on by superseding
-  the call, such as on another model. A turn ends with a `TurnOutcome` on
-  it: the kernel proposes one, Review may edit it in place, hold it or
-  carry the turn on, a plugin may fail or stop the turn, and once its
-  calls settled the turn ends, `Settled`.
+  the call, such as on another model (any number of effects may be
+  `SupersededBy` one successor, as a race's losers are by its winner). A
+  turn ends with a `TurnOutcome` on it: the kernel proposes one, Review
+  may edit it in place, hold it or carry the turn on, a plugin may fail
+  or stop the turn, and once its calls settled the turn ends, `Settled`.
 - `stage`: effects as entities. An effect's components are its request and
   its outcome, and each frame the `AgentPass` schedule runs its stages
   (Arrive, Review, Commit, Admit, Prepare, Gate, Start) until nothing
@@ -46,7 +49,8 @@ What it holds, by module:
   `ModelCalls`, `IncomingMessages`, `PluginEffects`) tell Bevy which
   effects two systems can never share. A tool call is such an effect
   (`ToolRequest`): as Gate opens, the kernel gives it the `Footprint` of
-  what it reads and writes (rig-core's `Touches`), and Gate sees it when
+  what it reads and writes (rig-core's `Touches`; one a plugin `Declared`
+  on the call in Prepare stands), and Gate sees it when
   it is about to run, once every earlier call of its reply it conflicts
   with settled (`Waiting`). A running effect's owner keeps `IfStopped`
   current, the answer the kernel gives if it stops the effect first. Every
@@ -59,7 +63,8 @@ What it holds, by module:
   `SectionOf` one, that agent alone); tools can also come and go while the
   app runs (`WorldToolsExt`).
 - `inbox`: a message to an agent is an effect too (`Incoming`, spawned by
-  `Deliver`): plugins edit it in Prepare and take it over in Gate, as
+  `Deliver`), its text and attachments in its author's order
+  (`MessagePart`): plugins edit it in Prepare and take it over in Gate, as
   rig-harness does to run a user's `/` line as a slash command; the kernel
   accepts it at Start, and an agent's accepted, unanswered messages are its
   inbox.
@@ -83,7 +88,13 @@ What it holds, by module:
   any rig-memory `Store`; `open_session` reads it strictly, refusing an old
   or broken session before anything is written, and sets a torn last line
   aside (`SessionRestored::repairs`). The work a restart carries on is
-  marked `Restored` and gated like any.
+  marked `Restored` and gated like any. A tool call that may change
+  something is marked in the conversation before it starts (a `rig.call`
+  aside), so a restart can tell one that started, or settled while its
+  reply ran on, from one that never did: such a call is restored
+  `Interrupted`, which no holding gate sees, a plugin may answer in Gate
+  or let run again in Prepare, and the kernel answers after every gate
+  (an error, or the result it had). Nothing is decided before plugins run.
 
 `AgentPlugin` adds Bevy's `TimePlugin` when the app has none. The crate has
 no features and builds for `wasm32-unknown-unknown`.

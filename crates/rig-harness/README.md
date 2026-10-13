@@ -29,14 +29,22 @@ changed plugins and restarts in the same session. The
   project root and the workspace it is in (`ProjectWorkspace`, this
   machine's unless a plugin puts another in), an agent's own working
   directory (`WorkDir`), child-process policy and tokio runtime, file
-  watches, questions any front answers (`Ask`), plugins' notes in an
-  agent's transcript (`Note` asides), a running call's progress and
-  live output (`ToolProgress`, `CallOutput`), and following an effect to
-  the successor that took it over (`follow_successor`, `resend`). Plugins
+  watches, where each plugin keeps its own files per session, project and
+  user (`PluginData`), questions and pickers any front answers (`Ask`,
+  `Picker`, one choice or several), plugins' notes in an agent's
+  transcript (`Note` asides), tools built for each call's place in the
+  workspace (`add_tool_per_call`), what a call would change before it
+  runs (`Preview`), what any call that may write anywhere changed (its
+  `FilesChanged`, from snapshots before and after; `[checkpoints]`), a
+  running call's progress and live output (`ToolProgress`, `CallOutput`),
+  following an effect to the successor that took it over
+  (`follow_successor`, `resend`), and, with the `trace` feature, how long
+  each system ran (`SystemTimings`). Plugins
   offer fronts and one takes each run: `rig-tui` on an interactive
   terminal, `rig-print` with `-p` or with stdin piped in, or a front whose
   option or command (`rig <name> …`) was given; an interactive run no
-  front takes says so and exits. The generated `main.rs` ends with
+  front takes says so and exits. A front nobody sits at runs headless,
+  until its agents are idle and no plugin keeps it going (`KeepRunning`). The generated `main.rs` ends with
   `rig_harness::run`, which also answers the launcher's question of what
   the build's plugins add to the command line.
 - **Everything else is a plugin** in a crate of the repository's
@@ -59,7 +67,7 @@ The default `plugins.toml`, in order:
 | `rig-telemetry` | `UsagePlugin` | what model calls cost; `/usage` |
 | `rig-activity` | `ActivityPlugin` | what each agent is doing, for views |
 | `rig-telemetry` | `EffectLogPlugin` | every model and tool call in the session's `effects.jsonl` |
-| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`DeleteTool` and `MoveTool` are there too, not listed by default) |
+| `rig-coding-tools` | `ReadTool`, `EditTool`, `WriteTool`, `SearchTool`, `ShellTool` | the coding tools of [`rig-tools`](../rig-tools), one plugin each, acting in the app's workspace (`DeleteTool`, `MoveTool` and `ListTool` are there too, not listed by default) |
 | `rig-coding-tools` | `AttachPlugin` | the files the user names as `@path`, from the agent's directory, go with the message |
 | `rig-reload` | `ReloadPlugin` | `/reload` and the `reload` tool, with which the agent rebuilds itself, and the system prompt's section on what the agent is (its plugins, commands and tools) and how it writes plugins |
 | `rig-basics` | `BasicCommandsPlugin` | `/help`, `/retry`, `/quit`, `/agents` |

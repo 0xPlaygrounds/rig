@@ -1,7 +1,9 @@
 # rig-print
 
 `--print` (`PrintPlugin`): one prompt to the primary agent, its answer on
-stdout, and an exit once no agent works. It is the front of every run that is
+stdout, and an exit once no agent works, unless a plugin keeps the run going
+(rig-harness's `KeepRunning`) and sends more work, each answer printed as it
+comes. It is the front of every run that is
 not interactive: one with `-p`, or with stdin piped in, which answers what is
 piped in. Nobody answers its questions unless `--answer=ID[,ID…]` gives the
 choices to answer with; other plugins print after the answer with
