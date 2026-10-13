@@ -16,13 +16,15 @@
 //! - `always: true`: the body is in every agent's system prompt.
 //! - `globs`: the body is added to the result of an agent's first tool
 //!   call that touches a matching path, as "Rules for `src/db/**`
-//!   (db.md): …". The paths a call touched are the files it published
-//!   (rig-core's `FilesRead`, such as a read or a search's hits, and
-//!   `FilesChanged`), else what its `Footprint` names, a directory standing
-//!   for its entries (a listing). Globs follow gitignore's rules from the
-//!   agent's directory: one without `/` matches a name at any depth. Each
-//!   rule reaches an agent once, again once its text changed, and again
-//!   after its conversation was condensed into a summary.
+//!   (db.md): …". The paths a call touched are what it published: the
+//!   files it read (rig-core's `FilesRead`, a read or a search's hits) or
+//!   changed (`FilesChanged`), and the directory and entries it listed
+//!   (rig-tools' `FilesListed`, the `list` tool). Globs follow gitignore's
+//!   rules from the agent's directory: one without `/` matches a name at
+//!   any depth. Each rule reaches an agent once, again once its text
+//!   changed, and again once the result that carried it is no longer in
+//!   the agent's conversation as it was given (condensed into a summary,
+//!   its output cleared, or cut).
 //! - `description`: the rule is listed in the system prompt by name, and
 //!   the `rule` tool returns its body; a glob rule loaded so counts as
 //!   delivered.
@@ -38,13 +40,13 @@ use std::path::{Path, PathBuf};
 
 use ignore::Match;
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use rig_compaction::Summarized;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::effect::Outcome as Answered;
-use rig_harness::rig_core::message::ToolResultContent;
+use rig_harness::rig_core::message::{CallId, Message, ToolResultContent, UserContent};
 use rig_harness::rig_core::tool::{FilesChanged, FilesRead, ToolOutput};
+use rig_harness::rig_tools::FilesListed;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[cfg(test)]
 mod tests;
@@ -62,7 +64,6 @@ impl Plugin for GlobRulesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .init_resource::<RigHome>()
-            .init_resource::<ProjectWorkspace>()
             .init_resource::<Rules>()
             .add_message::<FileChanges>()
             .register_required_components::<Agent, DeliveredRules>()
@@ -83,7 +84,6 @@ impl Plugin for GlobRulesPlugin {
                 "List the project rules and which reached this agent",
                 list_rules,
             )
-            .add_observer(forget_condensed)
             .add_systems(Startup, watch_dirs)
             .add_systems(Update, refresh.before(AgentLoop))
             .configure_sets(AgentPass, GlobRulesSystems.in_set(ReviewSystems::Edit))
@@ -99,11 +99,56 @@ impl Plugin for GlobRulesPlugin {
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GlobRulesSystems;
 
-/// The glob rules that reached this agent, by name, with the body it got.
-/// Saved with the session; emptied when its conversation is condensed.
-#[derive(Component, Reflect, Default, Debug)]
-#[reflect(Component, Saved, Default)]
-pub struct DeliveredRules(pub BTreeMap<String, String>);
+/// The glob rules given to this agent, by name. Saved with the session.
+#[derive(Component, Reflect, Clone, Default, Debug, Serialize, Deserialize)]
+#[reflect(opaque, Component, Saved, Default, Clone, Serialize, Deserialize)]
+pub struct DeliveredRules(pub BTreeMap<String, Given>);
+
+/// A rule as an agent was given it.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Given {
+    /// The body given.
+    pub body: String,
+    /// The tool call whose result carried it.
+    pub call: CallId,
+}
+
+impl Given {
+    /// Whether the agent's `conversation` still holds this rule: the
+    /// call's result carries the body, or the call is there and its
+    /// result is still to come. A summary takes the call away; cleared
+    /// output keeps the call and loses the body.
+    fn holds(&self, conversation: &Conversation) -> bool {
+        let mut called = false;
+        for message in conversation.messages() {
+            match message {
+                Message::Assistant(reply) => {
+                    called |= reply.tool_calls().any(|call| call.id == self.call);
+                }
+                Message::User { content } => {
+                    let result = content.iter().find_map(|item| match item {
+                        UserContent::ToolResult(result) if result.call == self.call => Some(result),
+                        _ => None,
+                    });
+                    if let Some(result) = result {
+                        let mut text = result.content.iter().filter_map(ToolResultContent::as_text);
+                        return text.any(|text| text.contains(&self.body));
+                    }
+                }
+                Message::System { .. } => {}
+            }
+        }
+        called
+    }
+}
+
+impl DeliveredRules {
+    /// Whether the agent of `conversation` holds the rule `name` as `body`.
+    fn holds(&self, name: &str, body: &str, conversation: &Conversation) -> bool {
+        let given = self.0.get(name);
+        given.is_some_and(|given| given.body == body && given.holds(conversation))
+    }
+}
 
 /// Where a rule comes from.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -298,9 +343,9 @@ fn watch_dirs(home: Res<RigHome>, project: Res<ProjectRoot>, mut commands: Comma
     }
 }
 
-/// Reads the rules again when a rule directory is watched or changed,
-/// keeps the prompt section current, and warns once of each newly broken
-/// file.
+/// Reads the rules when the rule directories are first watched, so the
+/// first request has them, and again when one changes; keeps the prompt
+/// section current, and warns once of each newly broken file.
 fn refresh(
     dirs: Query<(&RulesDir, Ref<FileWatch>)>,
     mut changes: MessageReader<FileChanges>,
@@ -337,38 +382,30 @@ fn refresh(
 }
 
 /// Adds to each tool result, before it is committed, the glob rules of the
-/// paths the call touched that its agent was not given yet, or whose text
-/// changed since.
+/// paths the call touched that its agent does not hold: not given yet, its
+/// text changed since, or no longer in its conversation.
 fn deliver(
     mut calls: Query<
-        (
-            Entity,
-            &ForAgent,
-            Option<&Footprint>,
-            Option<&Published>,
-            &mut Outcome,
-        ),
+        (Entity, &ForAgent, &ToolRequest, &Published, &mut Outcome),
         (Unreviewed, ToolCalls, Without<Checked>),
     >,
-    mut agents: Query<(&mut DeliveredRules, Option<&WorkDir>)>,
+    mut agents: Query<(&mut DeliveredRules, &Conversation, Option<&WorkDir>)>,
     rules: Res<Rules>,
-    (root, workspace): (Res<ProjectRoot>, Res<ProjectWorkspace>),
+    root: Res<ProjectRoot>,
     mut commands: Commands,
 ) {
-    for (call, &ForAgent(agent), footprint, published, mut outcome) in &mut calls {
+    for (call, &ForAgent(agent), request, published, mut outcome) in &mut calls {
         commands.entity(call).insert(Checked);
         let Ok(Answered::ToolResult { result }) = &outcome.0 else {
             continue;
         };
-        let Ok((mut delivered, dir)) = agents.get_mut(agent) else {
+        let Ok((mut delivered, conversation, dir)) = agents.get_mut(agent) else {
             continue;
         };
         if result.error().is_some() || rules.found.is_empty() {
             continue;
         }
-        let base = dir.map_or(&root.0, |dir| &dir.0);
-        let local = workspace.0.host().is_none();
-        let touched = touched(footprint, published, base, local);
+        let touched = touched(published, dir.map_or(&root.0, |dir| &dir.0));
         let mut notes = Vec::new();
         for (name, rule) in &rules.found {
             let glob = touched
@@ -377,17 +414,24 @@ fn deliver(
             let Some(glob) = glob else {
                 continue;
             };
-            let changed = match delivered.0.get(name) {
-                None => "",
-                Some(given) if *given != rule.body => ", changed",
-                Some(_) => continue,
-            };
+            if delivered.holds(name, &rule.body, conversation) {
+                continue;
+            }
+            let changed = delivered
+                .0
+                .get(name)
+                .filter(|given| given.body != rule.body)
+                .map_or("", |_| ", changed");
             let file = rule.file_name();
             notes.push(format!(
                 "Rules for `{glob}` ({file}{changed}):\n{}",
                 rule.body
             ));
-            delivered.0.insert(name.clone(), rule.body.clone());
+            let given = Given {
+                body: rule.body.clone(),
+                call: request.call.id.clone(),
+            };
+            delivered.0.insert(name.clone(), given);
         }
         if notes.is_empty() {
             continue;
@@ -407,20 +451,34 @@ fn deliver(
     }
 }
 
-/// The paths a call touched, relative to `base`, each with whether it is a
-/// directory: the files it published it read or changed, else the paths
-/// of its footprint, a directory with its entries (only looked at on this
-/// machine's disk, `local`).
-fn touched(
-    footprint: Option<&Footprint>,
-    published: Option<&Published>,
-    base: &Path,
-    local: bool,
-) -> Vec<(PathBuf, bool)> {
+/// The paths a call published it touched, relative to `base`, each with
+/// whether it is a directory: the files it read or changed, and the
+/// directory it listed with the entries it showed.
+fn touched(published: &Published, base: &Path) -> Vec<(PathBuf, bool)> {
+    let facts = &published.0;
+    let mut paths: Vec<(PathBuf, bool)> = Vec::new();
+    if let Ok(Some(read)) = facts.get::<FilesRead>() {
+        paths.extend(read.paths().map(|path| (PathBuf::from(path), false)));
+    }
+    if let Ok(Some(changed)) = facts.get::<FilesChanged>() {
+        paths.extend(changed.paths().map(|path| (PathBuf::from(path), false)));
+    }
+    if let Ok(Some(listed)) = facts.get::<FilesListed>() {
+        let root = PathBuf::from(&listed.root);
+        let entries = listed
+            .entries
+            .iter()
+            .map(|entry| match entry.strip_suffix('/') {
+                Some(dir) => (root.join(dir), true),
+                None => (root.join(entry), false),
+            });
+        paths.extend(entries);
+        paths.push((root, true));
+    }
     let canonical = base.canonicalize().ok();
-    let relative = |path: &Path| -> Option<PathBuf> {
+    let relative = |path: PathBuf| -> Option<PathBuf> {
         if path.is_relative() {
-            return Some(path.to_path_buf());
+            return Some(path);
         }
         let below = path
             .strip_prefix(base)
@@ -428,57 +486,10 @@ fn touched(
             .or_else(|| path.strip_prefix(canonical.as_deref()?).ok())?;
         Some(below.to_path_buf())
     };
-    let mut files: Vec<PathBuf> = Vec::new();
-    if let Some(published) = published {
-        if let Ok(Some(read)) = published.0.get::<FilesRead>() {
-            files.extend(read.paths().map(PathBuf::from));
-        }
-        if let Ok(Some(changed)) = published.0.get::<FilesChanged>() {
-            files.extend(changed.paths().map(PathBuf::from));
-        }
-    }
-    if !files.is_empty() {
-        return files
-            .iter()
-            .filter_map(|file| Some((relative(file)?, false)))
-            .collect();
-    }
-    let named = match footprint.map(|footprint| &footprint.0) {
-        Some(Touches::Reads(Scope::Paths(paths)) | Touches::Writes(Scope::Paths(paths))) => paths,
-        _ => return Vec::new(),
-    };
-    let mut paths = Vec::new();
-    for path in named {
-        let Some(below) = relative(path) else {
-            continue;
-        };
-        let is_dir = local && path.is_dir();
-        if is_dir {
-            let entries = std::fs::read_dir(path).into_iter().flatten().flatten();
-            for entry in entries {
-                let is_dir = entry.file_type().is_ok_and(|kind| kind.is_dir());
-                paths.push((below.join(entry.file_name()), is_dir));
-            }
-        }
-        paths.push((below, is_dir));
-    }
     paths
-}
-
-/// A conversation condensed into a summary lost the rules given in the
-/// results it summarized: the agent gets each again on its next touch. A
-/// summary restored with the session is no new one.
-fn forget_condensed(
-    summarized: On<Insert<Summarized>>,
-    restored: Option<Res<SessionRestored>>,
-    mut agents: Query<&mut DeliveredRules>,
-) {
-    if restored.is_some()
-        && let Ok(mut delivered) = agents.get_mut(summarized.entity)
-        && !delivered.0.is_empty()
-    {
-        delivered.0.clear();
-    }
+        .into_iter()
+        .filter_map(|(path, is_dir)| Some((relative(path)?, is_dir)))
+        .collect()
 }
 
 /// `rule`'s arguments.
@@ -503,7 +514,11 @@ fn look_up(
             if !rule.globs.is_empty()
                 && let Ok(mut delivered) = agents.get_mut(called.agent)
             {
-                delivered.0.insert(name.to_owned(), rule.body.clone());
+                let given = Given {
+                    body: rule.body.clone(),
+                    call: called.tool_call.id.clone(),
+                };
+                delivered.0.insert(name.to_owned(), given);
             }
             ToolResult::success(rule.body.clone().into())
         }
@@ -523,17 +538,23 @@ fn look_up(
 fn list_rules(
     In(args): In<CommandArgs>,
     rules: Res<Rules>,
-    agents: Query<&DeliveredRules>,
+    agents: Query<(&DeliveredRules, &Conversation)>,
     mut notices: MessageWriter<Notice>,
 ) {
-    let delivered = agents.get(args.agent).ok();
-    let given = |name: &str| delivered.is_some_and(|delivered| delivered.0.contains_key(name));
+    let agent = agents.get(args.agent).ok();
+    let given = |name: &str, body: &str| {
+        agent.is_some_and(|(delivered, conversation)| delivered.holds(name, body, conversation))
+    };
     let mut lines = vec![format!(
         "Rules ({}; * reached this agent):",
         rules.found.len()
     )];
     for (name, rule) in &rules.found {
-        let mark = if rule.always || given(name) { "*" } else { " " };
+        let mark = if rule.always || given(name, &rule.body) {
+            "*"
+        } else {
+            " "
+        };
         let source = match rule.source {
             Source::Personal => "personal",
             Source::Project => "project",

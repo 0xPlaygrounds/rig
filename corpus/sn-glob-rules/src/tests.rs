@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use rig_coding_tools::ReadTool;
+use rig_coding_tools::{ListTool, ReadTool};
 use rig_compaction::{Compact, CompactionPlugin};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::harness_protocol::SessionId;
@@ -17,8 +17,11 @@ use super::*;
 /// The db rule's body.
 const DB: &str = "Never use SELECT *.";
 
+/// The migrations rule's body.
+const DOWN: &str = "Every migration needs a down section.";
+
 /// A project in `root` with its files and its `.rig/rules`: one always-on,
-/// one for globs, one to look up, and one whose front matter is broken.
+/// two for globs, one to look up, and one whose front matter is broken.
 fn project(root: &Path) -> Option<()> {
     for (file, text) in [
         ("src/db/q.rs", "fn q() {}\n"),
@@ -32,6 +35,10 @@ fn project(root: &Path) -> Option<()> {
         (
             ".rig/rules/db.md",
             &format!("---\nglobs: [\"src/db/**\", \"*.sql\"]\n---\n{DB}\n"),
+        ),
+        (
+            ".rig/rules/migrations.md",
+            &format!("---\nglobs: [\"migrations/*.sql\"]\n---\n{DOWN}\n"),
         ),
         (
             ".rig/rules/style.md",
@@ -84,6 +91,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
             MockStreamEvent::tool_call("r2", "read", path("src/main.rs")),
             MockStreamEvent::final_response_with_default_usage(),
         ],
+        calls("l1", "list", path("migrations")),
         calls("r3", "read", path("migrations/1.sql")),
         calls("r4", RULE, json!({ "name": "style" })),
         reply("Done."),
@@ -107,7 +115,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     app.set_error_handler(rig_harness::error::warn)
         .insert_resource(scripted_models([("test/main", &main), ("test/sub", &sub)]))
         .insert_resource(ProjectRoot(root.clone()))
-        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, ReadTool))
+        .add_plugins((AgentPlugin, JournalPlugin, WatchPlugin, ReadTool, ListTool))
         .add_plugins((SubagentsPlugin, CompactionPlugin, GlobRulesPlugin))
         .init_resource::<Ended>()
         .add_observer(log_ended)
@@ -152,8 +160,16 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
         main_rs.contains("fn main()") && !main_rs.contains("Rules for"),
         "{main_rs}"
     );
+    // A listing touches what it lists: the migrations rule comes with it,
+    // the db rule held already does not; a read of a listed file repeats
+    // neither.
+    let listing = output(app.world(), "l1");
+    assert!(listing.contains("1.sql"), "{listing}");
+    assert!(listing.trim_end().ends_with(DOWN), "{listing}");
+    assert!(!listing.contains(DB), "{listing}");
     let sql = output(app.world(), "r3");
-    assert!(sql.contains("create table") && !sql.contains(DB), "{sql}");
+    assert!(sql.contains("create table"), "{sql}");
+    assert!(!sql.contains(DB) && !sql.contains(DOWN), "{sql}");
     assert_eq!(output(app.world(), "r4"), "Snake case.");
     let notices = &app.world().resource::<Collected<Notice>>().0;
     let warned = notices
@@ -174,7 +190,7 @@ fn rules_reach_the_agent_by_prompt_by_touch_and_on_request() {
     let again = Deliver::new(agent, "Once more, and ask a subagent.", DeliveryMode::Steer);
     app.world_mut().trigger(again);
     run_until(&mut app, &wakes, |world| {
-        world.resource::<ToolOutputs>().0.contains_key("s1") && main.requests().len() >= 8
+        world.resource::<ToolOutputs>().0.contains_key("s1") && main.requests().len() >= 9
     });
     let q = output(app.world(), "r5");
     assert!(q.trim_end().ends_with(DB), "{q}");
