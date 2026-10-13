@@ -17,7 +17,7 @@
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 /// The supervisor's tool.
 pub const VERDICT: &str = "verdict";
@@ -105,8 +105,17 @@ impl Plugin for SupervisorPlugin {
 /// On a supervisor, a helper [`SpawnedBy`] the agent it supervises: what it
 /// holds the worker to, how often it looks, and where its last check left
 /// off.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
+#[derive(Component, Reflect, Clone, Debug, Default, Serialize, Deserialize)]
+#[reflect(
+    opaque,
+    Component,
+    Saved,
+    Default,
+    Clone,
+    Debug,
+    Serialize,
+    Deserialize
+)]
 pub struct Supervisor {
     /// The goal the supervisor holds the worker to.
     pub goal: String,
@@ -184,7 +193,6 @@ fn supervise(
     In(args): In<CommandArgs>,
     workers: Query<(&Conversation, Option<&Spawned>)>,
     supervisors: Query<&mut Supervisor>,
-    mut commit: Commit,
     mut commands: Commands,
     mut notices: MessageWriter<Notice>,
 ) {
@@ -196,7 +204,7 @@ fn supervise(
     if args.args.trim() == "off" {
         match current {
             Some(supervisor) => {
-                commit.retire(supervisor);
+                commands.trigger(Retire { entity: supervisor });
                 notices.write(Notice::info(worker, "Supervision off."));
             }
             None => {
@@ -293,19 +301,22 @@ fn count_calls(
     mut commands: Commands,
 ) {
     for change in committed.read() {
-        let Committed::Message {
-            agent,
-            message: message::Message::User { content },
-            ..
-        } = change
-        else {
+        let Change::Push { entries } = &change.change.change else {
             continue;
         };
-        let results = content
+        let results = entries
             .iter()
+            .filter_map(|entry| match &entry.message {
+                message::Message::User { content } => Some(content),
+                _ => None,
+            })
+            .flatten()
             .filter(|item| matches!(item, UserContent::ToolResult(_)))
             .count();
-        let Ok((conversation, spawned)) = workers.get(*agent) else {
+        if results == 0 {
+            continue;
+        }
+        let Ok((conversation, spawned)) = workers.get(change.agent) else {
             continue;
         };
         let Some(supervisor) = supervisor_of(spawned, &supervisors) else {
@@ -384,7 +395,7 @@ fn send_check(
         unseen(conversation, settings.seen),
     );
     let check = Deliver::new(supervisor, text, DeliveryMode::Queue);
-    commands.trigger(check.with_origin(Origin::plugin(NAME)));
+    commands.trigger(check.with_author(Author::plugin(NAME)));
     settings.checks += 1;
     settings.seen = last_message(conversation);
     settings.calls = 0;
@@ -532,9 +543,9 @@ fn on_verdict(
                 Some(_) => DeliveryMode::Steer,
                 None => DeliveryMode::Note,
             };
-            let origin = Origin::agent(called.caller.clone(), None).titled(NAME);
+            let author = Author::agent(called.caller.clone(), None).titled(NAME);
             answer(Ok("Sent; the worker reads it with its next model call."));
-            commands.trigger(Deliver::new(worker, text, mode).with_origin(origin));
+            commands.trigger(Deliver::new(worker, text, mode).with_author(author));
         }
         (Ruling::Stop, Some(reason)) => {
             answer(Ok("The worker's turn is stopped and the user told why."));

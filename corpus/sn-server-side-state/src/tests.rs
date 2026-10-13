@@ -209,7 +209,7 @@ fn start(home: &Home, id: &SessionId, server: &Server, style: &str) -> (App, Rec
         .init_resource::<Ended>()
         .add_observer(log_ended);
     collect::<Notice>(&mut app);
-    collect::<Recorded>(&mut app);
+    collect::<EffectRecorded>(&mut app);
     app.world_mut()
         .spawn(PromptSection::new(50, "style", style));
     app.finish();
@@ -220,7 +220,7 @@ fn start(home: &Home, id: &SessionId, server: &Server, style: &str) -> (App, Rec
 /// The user types `text` to `agent`; runs until `turns` more turns ended.
 fn say(app: &mut App, wakes: &Receiver<()>, agent: Entity, text: &str, turns: usize) {
     let ended = app.world().resource::<Ended>().0.len() + turns;
-    let typed = Deliver::new(agent, text, DeliveryMode::Queue).with_origin(Origin::user());
+    let typed = Deliver::new(agent, text, DeliveryMode::Queue);
     app.world_mut().trigger(typed);
     run_until(app, wakes, |world| {
         world.resource::<Ended>().0.len() >= ended
@@ -335,11 +335,11 @@ fn sends_only_the_new_part_while_the_server_holds_the_rest() {
         Some((Some("resp_2".to_owned()), vec!["And now?".to_owned()]))
     );
     // The effect log keeps the logical request, the whole conversation.
-    let records = &app.world().resource::<Collected<Recorded>>().0;
+    let records = &app.world().resource::<Collected<EffectRecorded>>().0;
     let logged = records
         .iter()
         .rev()
-        .find_map(|Recorded(record)| match &record.kind {
+        .find_map(|EffectRecorded(record)| match &record.kind {
             EffectKind::Completion { request, .. } => Some(body(request).len()),
             _ => None,
         });
