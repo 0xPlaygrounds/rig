@@ -142,9 +142,9 @@ superseded and never reaches the conversation. Work that takes time holds
 the outcome first, then supersedes it.
 
 **The loop's edge.** Work spawned, answered or released after `AgentLoop`
-ran (in `PostUpdate` or `Last`) waits for the next frame. A system that
-sends messages, answers effects or releases holds every frame runs in
-`Update` `.before(AgentLoop)`.
+ran waits for the next frame, so a system that does so every frame runs in
+`Update` `.before(AgentLoop)`. One that reacts to what the loop did that
+frame (an agent it started, a call it settled) runs `.after(AgentLoop)`.
 
 ```rust,no_run
 use rig_harness::prelude::*;
