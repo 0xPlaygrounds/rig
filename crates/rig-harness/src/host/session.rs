@@ -41,10 +41,11 @@ use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
 use rig_ecs::journal::{SessionRewritten, SessionStore, open_session};
-use rig_memory::{DirStore, Files, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite};
+use rig_memory::{
+    DirStore, Files, ForkedFrom, Keep, LoadError, Rewrite, Rewritten, Store, fork, rewrite,
+};
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
-use serde::{Deserialize, Serialize};
 
 use super::cli::Cli;
 use super::launcher::{LauncherRun, refuse};
@@ -453,61 +454,6 @@ pub struct SessionForked {
     pub asker: Option<Entity>,
 }
 
-/// The session a session was forked from, and where the copy stopped,
-/// as [`ForkSession`] asked, with the text of the message it stopped
-/// before: kept in the forked session's store, so a view of a session's
-/// family reads no other session's log.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ForkedFrom {
-    /// The session it was copied from.
-    pub session: SessionId,
-    /// Where the copy stopped: an agent's id and a message's id.
-    pub before: Option<(AgentId, MessageId)>,
-    /// What the user wrote in the message the copy stopped before, its
-    /// text without attached files; `None` without `before`, or for a
-    /// message with no text of the user's.
-    pub text: Option<String>,
-}
-
-/// How [`ForkedFrom`] is written.
-#[derive(Serialize, Deserialize)]
-struct Parent {
-    session: String,
-    before: Option<(AgentId, MessageId)>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    text: Option<String>,
-}
-
-/// The file of a forked session's store that holds its [`ForkedFrom`].
-const PARENT: &str = "parent.json";
-
-impl ForkedFrom {
-    /// The session the session in `store` was forked from, if it was.
-    /// Generic, so it is passed as it is where a store is any `Files`,
-    /// such as `stores.as_deref().and_then(ForkedFrom::of)`.
-    pub fn of(store: &(impl Files + ?Sized)) -> Option<Self> {
-        let parent: Parent = serde_json::from_slice(&store.read_file(PARENT).ok()?).ok()?;
-        Some(Self {
-            session: parent.session.parse().ok()?,
-            before: parent.before,
-            text: parent.text,
-        })
-    }
-
-    /// Writes it into the forked session's `store`.
-    fn write(&self, store: &dyn Files) -> Result<(), String> {
-        let parent = Parent {
-            session: self.session.to_string(),
-            before: self.before.clone(),
-            text: self.text.clone(),
-        };
-        let text = serde_json::to_vec(&parent).map_err(|failure| failure.to_string())?;
-        store
-            .write_file(PARENT, &text)
-            .map_err(|failure| failure.to_string())
-    }
-}
-
 /// Rewrites the saved session in `dir`, which no rig runs, through
 /// `with`, as done by `by` (rig-memory's `rewrite`): its store opened by
 /// `stores`, then its scratch files, kept in its directory (the text log
@@ -753,8 +699,8 @@ fn fork_into(
     let store = store.ok_or("this session is not stored")?;
     let (to, target) = home.new_session().map_err(|failure| failure.to_string())?;
     let parent = ForkedFrom {
-        session: from.clone(),
-        before: before.cloned(),
+        session: from.to_string(),
+        before: before.map(|(agent, message)| (agent.0.clone(), *message)),
         text,
     };
     let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
@@ -762,7 +708,7 @@ fn fork_into(
         .open(&target)
         .and_then(|copy| fork(&*store.0, &*copy, before, &Keep).map(|_| copy))
         .map_err(|failure| failure.to_string())
-        .and_then(|copy| parent.write(&*copy))
+        .and_then(|copy| parent.write(&*copy).map_err(|failure| failure.to_string()))
         .and_then(|()| match paths.working_directory() {
             Some(directory) => {
                 fs::write(target.directory(), directory.to_string_lossy().as_bytes())

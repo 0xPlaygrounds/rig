@@ -79,15 +79,12 @@ fn naming_another_session_changes_only_its_title() {
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
     store.append_log("a1", b"").ok();
-    let before = Meta {
-        title: SessionTitle {
-            name: None,
-            typed: "Fix the parser".to_owned(),
-        },
+    let before = SessionMeta {
+        title: "Fix the parser".to_owned(),
         labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
         updated: 1000,
     };
-    assert!(write_meta(&*store, &before).is_ok());
+    assert!(before.write(&*store).is_ok());
     let Some(mut app) = running(&home, "2-2") else {
         return;
     };
@@ -96,13 +93,9 @@ fn naming_another_session_changes_only_its_title() {
         name: "The parser".to_owned(),
     });
     app.update();
-    let after = Meta::of(&*store).unwrap_or_default();
-    assert_eq!(after.title.name.as_deref(), Some("The parser"));
-    assert_eq!(after.title.typed, before.title.typed);
-    assert_eq!(
-        (after.labels, after.updated),
-        (before.labels, before.updated)
-    );
+    let name = SessionTitle::read(&*store).and_then(|title| title.name);
+    assert_eq!(name.as_deref(), Some("The parser"));
+    assert_eq!(SessionMeta::read(&*store), Some(before));
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
     let stores = SessionStores::default();
@@ -162,13 +155,13 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
 
     let session = memory.of(dir.path());
     assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
-    let meta = Meta::of(&session).and_then(|meta| meta.title.name);
-    assert_eq!(meta.as_deref(), Some("Parser"));
+    let name = SessionTitle::read(&session).and_then(|title| title.name);
+    assert_eq!(name.as_deref(), Some("Parser"));
     let copy = home.session(&fork);
     let forked = memory.of(copy.path());
     assert!(forked.logs().is_ok_and(|logs| !logs.is_empty()));
-    let parent = ForkedFrom::of(&forked).map(|parent| parent.session);
-    assert_eq!(parent, Some(id.clone()));
+    let parent = ForkedFrom::read(&forked).map(|parent| parent.session);
+    assert_eq!(parent, Some(id.to_string()));
 
     // On disk, only the plain markers the launcher reads.
     let plain = |dir: &SessionDir| -> Vec<String> {
@@ -260,16 +253,19 @@ fn a_session_resumed_as_it_was_listed_keeps_its_listing() {
         return;
     };
     let store = app.world().resource::<SessionStore>().0.clone();
-    let listed = Meta {
+    let listed = SessionMeta {
         labels: BTreeMap::from([("goal".to_owned(), "Ship it".to_owned())]),
         updated: 1000,
-        ..Meta::default()
+        ..SessionMeta::default()
     };
-    assert!(write_meta(&*store, &listed).is_ok());
+    assert!(listed.write(&*store).is_ok());
     app.world_mut().spawn(ResumeLabel::new("goal", "Ship it"));
     app.update();
     app.update();
-    assert_eq!(Meta::of(&*store).map(|meta| meta.updated), Some(1000));
+    assert_eq!(
+        SessionMeta::read(&*store).map(|meta| meta.updated),
+        Some(1000)
+    );
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -286,7 +282,7 @@ fn a_rewritten_session_keeps_its_rewritten_title() {
     app.world_mut().resource_mut::<SessionTitle>().name = Some(format!("key {SECRET}"));
     app.update();
     let store = app.world().resource::<SessionStore>().0.clone();
-    let name = || Meta::of(&*store).and_then(|meta| meta.title.name);
+    let name = || SessionTitle::read(&*store).and_then(|title| title.name);
     assert_eq!(name(), Some(format!("key {SECRET}")));
 
     app.world_mut().trigger(RewriteSession {

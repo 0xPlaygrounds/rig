@@ -24,7 +24,7 @@ use rig_core::effect::{Disposition, EffectId, EffectKind, EffectRecord, Outcome 
 use rig_ecs::journal::SessionStore;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
-use rig_sessions::{Meta, SessionTitle};
+use rig_sessions::SessionTitle;
 use serde::de::DeserializeSeed;
 use serde_json::Value;
 
@@ -201,12 +201,13 @@ impl Sessions<'_> {
                 let store = stores
                     .open(&dir)
                     .map_err(|failure| format!("opening session {id}: {failure}"))?;
-                let name = Meta::of(&*store).map(|meta| listed(&meta.title));
+                let name = SessionTitle::read(&*store).map(|title| title.shown().to_owned());
                 load(&*store, Some(&dir), name.unwrap_or_default(), &registry)?
             }
             None => {
                 let store = self.store.as_ref().ok_or("this session is not saved")?;
-                let name = self.title.as_deref().map(listed).unwrap_or_default();
+                let name = self.title.as_deref().map(SessionTitle::shown);
+                let name = name.unwrap_or_default().to_owned();
                 let dir = self.paths.as_deref().map(|paths| &paths.0);
                 load(store.0.as_ref(), dir, name, &registry)?
             }
@@ -336,11 +337,6 @@ fn saved_value<T: Reflect + TypePath + FromReflect>(
         .deserialize(value)
         .ok()?;
     T::from_reflect(&*reflected)
-}
-
-/// The name `/name` gave, else the start of the first message typed.
-fn listed(title: &SessionTitle) -> String {
-    title.name.clone().unwrap_or_else(|| title.typed.clone())
 }
 
 /// `name` as a file name part: letters, digits and dashes.

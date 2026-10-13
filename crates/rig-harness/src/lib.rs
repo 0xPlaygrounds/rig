@@ -142,8 +142,8 @@ pub mod prelude {
     pub use crate::host::exit::{Exit, ExitReason, ExitRequest};
     pub use crate::host::launcher::{self, Invoked};
     pub use crate::host::session::{
-        DeleteSession, FirstStart, ForkSession, ForkSessions, ForkedFrom, LogEvents, Logged,
-        Scratch, SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
+        DeleteSession, FirstStart, ForkSession, ForkSessions, LogEvents, Logged, Scratch,
+        SessionDeleteFailed, SessionDeleted, SessionForked, SessionPaths, SessionStores,
         first_typed, rewrite_stopped, typed,
     };
     pub use crate::note::Note;
@@ -164,6 +164,7 @@ pub mod prelude {
         HeadlessPlugins, PluginEntity, PluginSource, PluginSystems, ProvidedBy, Provides,
         RigHarnessPlugins,
     };
+    pub use rig_memory::ForkedFrom;
     pub use rig_tools::{Spill, blocking};
 }
 

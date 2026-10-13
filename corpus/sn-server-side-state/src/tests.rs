@@ -292,7 +292,7 @@ fn forked(home: &Home) -> Option<SessionId> {
         .find(|session| {
             SessionStores::default()
                 .open(&home.session(session))
-                .is_ok_and(|store| ForkedFrom::of(&*store).is_some())
+                .is_ok_and(|store| ForkedFrom::read(&*store).is_some())
         })
 }
 

@@ -278,7 +278,7 @@ impl Here<'_, '_> {
                     return None;
                 }
                 let store = stores.open(&dir).ok()?;
-                let parent = ForkedFrom::of(&*store)?.session;
+                let parent = ForkedFrom::read(&*store)?.session.parse().ok()?;
                 Some((id, parent, store))
             })
             .collect();

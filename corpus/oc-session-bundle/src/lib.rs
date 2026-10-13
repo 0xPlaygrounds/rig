@@ -36,9 +36,11 @@ use rig_core::redact;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::{FORMAT, Keep, MemoryStore, Session, Store, fork, now_ms};
+use rig_harness::rig_memory::{
+    FORMAT, Keep, MemoryStore, Session, SessionMeta, Store, fork, now_ms, title_of,
+};
 use rig_harness::rig_tools::process::Launcher;
-use rig_sessions::{Meta, SessionTitle, write_meta};
+use rig_sessions::SessionTitle;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -551,19 +553,16 @@ fn write_session(
         }
     }
     session.save(&*store).map_err(|f| fail(&f))?;
-    let mut meta = Meta::of(&*store).unwrap_or_default();
-    if meta.title.name.is_none() && meta.title.typed.is_empty() {
-        meta.title = SessionTitle {
-            name: Some(manifest.name.clone()),
-            ..meta.title
-        };
+    let mut meta = SessionMeta::read(&*store).unwrap_or_default();
+    if meta.title.is_empty() {
+        meta.title = title_of(&manifest.name);
     }
     meta.labels.insert(
         "bundle".to_owned(),
         format!("from {}", manifest.project_root.display()),
     );
     meta.updated = now_ms();
-    write_meta(&*store, &meta).map_err(|f| fail(&f))?;
+    meta.write(&*store).map_err(|f| fail(&f))?;
     Ok(notes)
 }
 
@@ -675,10 +674,8 @@ impl Running<'_, '_> {
         }
         let session = self.paths.as_ref().and_then(|paths| paths.id());
         let session = session.map(|id| id.to_string()).unwrap_or_default();
-        let name = self.title.as_ref().and_then(|title| {
-            let name = title.name.clone().unwrap_or_else(|| title.typed.clone());
-            (!name.is_empty()).then_some(name)
-        });
+        let name = self.title.as_deref().map(SessionTitle::shown);
+        let name = name.filter(|name| !name.is_empty()).map(str::to_owned);
         let saved = Session::read_lenient(store)
             .map(|(saved, _)| saved)
             .unwrap_or_default();

@@ -272,7 +272,7 @@ fn forget_on_fork(
     if std::mem::replace(&mut *done, true) || first.is_none() {
         return;
     }
-    if store.is_none_or(|store| ForkedFrom::of(&*store.0).is_none()) {
+    if store.is_none_or(|store| ForkedFrom::read(&*store.0).is_none()) {
         return;
     }
     for mut chain in &mut chains {

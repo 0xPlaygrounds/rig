@@ -19,6 +19,8 @@
 //! [`fork`] copies a session as it was before one of its messages, through
 //! a [`Rewrite`], with what the copied messages' asides say now; and
 //! [`history`] and [`as_of`] read how a conversation got where it is.
+//! Beside its logs a store keeps what a listing shows of the session
+//! ([`SessionMeta`]) and the session it was forked from ([`ForkedFrom`]).
 //! [`MemoryStore`] keeps a session in memory; with feature `fs`,
 //! [`DirStore`] keeps it in a directory, and [`DirFiles`] keeps plain
 //! named files under one. Reading is strict: a session it
@@ -66,6 +68,7 @@ mod compaction;
 mod dir;
 mod fork;
 mod format;
+mod meta;
 mod rewrite;
 mod session;
 mod store;
@@ -83,6 +86,7 @@ pub use compaction::{
 pub use dir::{DirFiles, DirStore};
 pub use fork::{Forked, fork};
 pub use format::{FORMAT, LoadError, Repair, Rewrote, SESSION, Stamp, now_ms};
+pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{
     Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
 };

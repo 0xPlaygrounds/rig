@@ -115,11 +115,11 @@ fn a_fork_copies_the_session_and_another_session_can_be_deleted() {
     // The copy names the session it came from, and is saved, so it can be
     // resumed.
     let parent = ForkedFrom {
-        session: id.clone(),
+        session: id.to_string(),
         before: None,
         text: None,
     };
-    let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::of);
+    let parent_of = |session: &SessionDir| dir_store(session).as_ref().and_then(ForkedFrom::read);
     assert_eq!(parent_of(&copy), Some(parent));
     assert_eq!(parent_of(&session), None);
     assert!(copy.is_saved());
@@ -362,10 +362,11 @@ fn a_fork_before_a_message_keeps_its_text_with_its_parent_and_names_who_asked() 
     assert_eq!(forked.as_ref().and_then(|forked| forked.asker), Some(asker));
     let parent = forked.and_then(|forked| {
         let copy = dir_store(&home.session(&forked.to))?;
-        ForkedFrom::of(&copy)
+        ForkedFrom::read(&copy)
     });
     let text = parent.as_ref().and_then(|parent| parent.text.as_deref());
     assert_eq!(text, Some("two"), "{parent:?}");
+    let before = before.map(|(agent, message)| (agent.0, message));
     assert_eq!(parent.and_then(|parent| parent.before), before);
     drop(std::panic::take_hook());
     std::fs::remove_dir_all(&root).ok();

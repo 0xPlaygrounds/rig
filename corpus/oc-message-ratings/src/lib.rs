@@ -526,8 +526,9 @@ fn root_of(id: &SessionId, home: &Home, stores: &SessionStores) -> String {
     let mut root = id.clone();
     for _ in 0..FORK_DEPTH {
         let parent = stores.open(&home.session(&root)).ok();
-        match parent.as_deref().and_then(ForkedFrom::of) {
-            Some(parent) => root = parent.session,
+        let parent = parent.as_deref().and_then(ForkedFrom::read);
+        match parent.and_then(|parent| parent.session.parse().ok()) {
+            Some(parent) => root = parent,
             None => break,
         }
     }
@@ -545,10 +546,13 @@ fn across_project(agents: &Query<(Entity, &AgentId, &Conversation)>, project: &P
     let mut gathered = Gathered::default();
     let here = current.as_ref().and_then(|(_, id)| id.clone());
     let this_root = match (&here, &project.store) {
-        (Some(id), Some(store)) => match ForkedFrom::of(&*store.0) {
-            Some(parent) => root_of(&parent.session, &home, &stores),
-            None => id.to_string(),
-        },
+        (Some(id), Some(store)) => {
+            let parent = ForkedFrom::read(&*store.0);
+            match parent.and_then(|parent| parent.session.parse().ok()) {
+                Some(parent) => root_of(&parent, &home, &stores),
+                None => id.to_string(),
+            }
+        }
         _ => "this session".to_owned(),
     };
     for (_, id, conversation) in agents {
@@ -590,11 +594,12 @@ fn carry_into_fork(
     let (Some(_), Some(store)) = (first, &project.store) else {
         return;
     };
-    let Some(parent) = ForkedFrom::of(&*store.0) else {
+    let parent = ForkedFrom::read(&*store.0);
+    let Some(parent) = parent.and_then(|parent| parent.session.parse::<SessionId>().ok()) else {
         return;
     };
     let (home, stores) = project.home_and_stores();
-    let parent_store = stores.open(&home.session(&parent.session));
+    let parent_store = stores.open(&home.session(&parent));
     let Some((saved, _)) = parent_store
         .ok()
         .and_then(|store| Session::read_lenient(&*store).ok())

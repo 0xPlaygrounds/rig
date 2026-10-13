@@ -431,7 +431,7 @@ fn inherit(
     agents: Query<(&AgentId, &Conversation)>,
     mut bookmarks: ResMut<Bookmarks>,
 ) {
-    let Some(store) = store.filter(|store| ForkedFrom::of(&*store.0).is_some()) else {
+    let Some(store) = store.filter(|store| ForkedFrom::read(&*store.0).is_some()) else {
         return;
     };
     let handed = store.0.read_file(HANDED).ok();
