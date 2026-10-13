@@ -61,9 +61,11 @@ use rig_memory::Session;
 use serde::de::DeserializeSeed;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use web_time::SystemTime;
 
 use super::agent::{Agent, AgentId, CallOf, Conversation, Notice, SpawnedBy, Turn, TurnOf};
 use super::effects::Effects;
+use super::inbox::{Unsent, kept};
 use super::journal::{
     Opened, ReflectSaved, SessionLog, SessionRestored, SessionStore, open_session,
 };
@@ -246,10 +248,12 @@ pub(crate) fn answer_interrupted(
 pub(crate) struct RestoredAgents(Vec<(usize, Entity)>);
 
 /// On the work a restore carries on for an agent: its turn, the turn's
-/// calls left without a result and its model calls. Gate sees each as it
-/// sees new work; a turn stopped there
+/// calls left without a result and its model calls, and the messages in
+/// its inbox. Gate sees each call as it sees new work; a turn stopped there
 /// (`TurnOutcome::Stopped(Some("restart"))`) starts none of it, and its
-/// calls are answered as stopped.
+/// calls are answered as stopped. A message is accepted already
+/// ([`Started`]): it goes with the agent's next model call, or, to an idle
+/// agent, is [`Unsent`].
 #[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Default)]
 pub struct Restored;
@@ -421,9 +425,10 @@ pub(crate) fn reconcile(world: &mut World) {
     }
 }
 
-/// Carries on one restored agent, as [`reconcile`] says, and removes the
-/// marks of calls that have a result. The calls are a reply of a fresh
-/// effect id, as the model call that asked for them is gone.
+/// Carries on one restored agent, as [`reconcile`] says, removes the
+/// marks of calls that have a result, and puts back the messages its inbox
+/// kept. The calls are a reply of a fresh effect id, as the model call
+/// that asked for them is gone.
 fn settle(
     In(agent): In<Entity>,
     mut agents: Query<&mut Conversation>,
@@ -434,6 +439,7 @@ fn settle(
         return;
     };
     let pending = conversation.pending_calls();
+    let idle = pending.is_empty() && !conversation.awaits_model();
     let mut marked = HashMap::new();
     for (id, mark) in marks(&conversation) {
         if pending.iter().any(|call| &call.id == mark.call()) {
@@ -468,6 +474,14 @@ fn settle(
     } else if conversation.awaits_model() {
         let turn = commands.spawn((TurnOf(agent), Restored)).id();
         commands.spawn((TurnCall, CallOf(turn), ForAgent(agent), Restored));
+    }
+    let at = SystemTime::now();
+    for (mark, message) in kept(&conversation) {
+        let mut message =
+            commands.spawn((message, ForAgent(agent), Started { at }, Restored, mark));
+        if idle {
+            message.insert(Unsent { ended: None });
+        }
     }
 }
 

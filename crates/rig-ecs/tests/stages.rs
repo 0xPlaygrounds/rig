@@ -2329,6 +2329,93 @@ fn a_steering_message_taken_back_as_the_next_call_is_built_is_never_sent() {
     );
 }
 
+/// Whether [`keep_on_stop`] keeps what a stopped turn did not send.
+#[derive(Resource, Default)]
+struct KeepUnsent(bool);
+
+/// The text each [`Recalled`] handed back.
+#[derive(Resource, Default)]
+struct RecalledTexts(Vec<String>);
+
+/// Keeps the messages a turn the user stopped did not send, when
+/// [`KeepUnsent`] says so.
+fn keep_on_stop(
+    unsent: Query<(Entity, &Unsent), Added<Unsent>>,
+    keep: Res<KeepUnsent>,
+    mut commands: Commands,
+) {
+    for (message, unsent) in &unsent {
+        if keep.0 && matches!(unsent.ended, Some(TurnOutcome::Stopped(None))) {
+            commands.entity(message).remove::<Unsent>();
+        }
+    }
+}
+
+/// What a stopped turn did not send is handed back to the user, unless a
+/// plugin keeps it in Gate, the pass the turn ended in: then it goes with
+/// the next turn's first call.
+#[test]
+fn a_message_a_stopped_turn_did_not_send_is_handed_back_unless_a_plugin_keeps_it() {
+    let mut app = app();
+    app.init_resource::<Reviewing>()
+        .init_resource::<KeepUnsent>()
+        .init_resource::<RecalledTexts>()
+        .add_systems(
+            AgentPass,
+            (
+                hold_results.in_set(Stage::Review),
+                keep_on_stop.in_set(Stage::Gate),
+            ),
+        )
+        .add_systems(
+            Last,
+            |mut read: MessageReader<Recalled>, mut texts: ResMut<RecalledTexts>| {
+                texts.0.extend(read.read().map(|it| it.text.clone()));
+            },
+        );
+    let turns = [
+        reply(&[("look", "1")]),
+        reply(&[("look", "2")]),
+        answer("done"),
+    ];
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = agent_on(&mut app, &model);
+    let stop_with = |app: &mut App, text: &str| {
+        let held = |world: &mut World| !world.resource::<Reviewing>().0.is_empty();
+        assert!(run_until(app, held));
+        let message = (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+        let message = app.world_mut().spawn(message).id();
+        assert!(run_until(app, |world| world
+            .get::<Started>(message)
+            .is_some()));
+        app.world_mut().trigger(Interrupt::new(agent));
+        app.world_mut().resource_mut::<Reviewing>().0.clear();
+        app.update();
+        message
+    };
+    stop_with(&mut app, "first steer");
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["first steer"]);
+    app.world_mut().resource_mut::<KeepUnsent>().0 = true;
+    app.world_mut()
+        .trigger(Deliver::new(agent, "again", DeliveryMode::Steer));
+    let kept = stop_with(&mut app, "second steer");
+    for _ in 0..3 {
+        app.update();
+    }
+    assert!(has::<Started>(&app, kept) && !has::<Outcome>(&app, kept));
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["first steer"]);
+    app.world_mut()
+        .trigger(Deliver::new(agent, "and now?", DeliveryMode::Steer));
+    let done =
+        |world: &mut World| model.request_count() == 3 && world.get::<ActiveTurn>(agent).is_none();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let last = model.requests().last().map(serde_json::to_string);
+    assert!(
+        matches!(&last, Some(Ok(sent)) if sent.contains("second steer") && !sent.contains("first steer")),
+        "{last:?}"
+    );
+}
+
 /// A reply cut off at the length limit before it answered.
 fn cut_off() -> Vec<MockStreamEvent> {
     vec![

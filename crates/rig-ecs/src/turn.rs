@@ -482,8 +482,9 @@ pub(crate) fn on_interrupt(
             turn.despawn_related::<Holds>();
         }
         if let Ok(mut turn) = world.get_entity_mut(turn) {
-            turn.remove::<(TurnOf, Ending)>()
-                .insert((TurnOutcome::Stopped(reason), Settled));
+            turn.insert(TurnOutcome::Stopped(reason))
+                .remove::<(TurnOf, Ending)>()
+                .insert(Settled);
         }
     });
     notices.write(Notice::info(agent, "Interrupted."));
@@ -1438,8 +1439,9 @@ pub(crate) fn commit_replies(
 /// Ends each turn whose [`TurnOutcome`] nothing holds and whose calls all
 /// settled, in [`Stage::Commit`], before this pass's proposals are made, so
 /// Review sees each proposal first: what the kernel proposed shows its
-/// error and may take the user's unanswered message out, the turn is no
-/// longer [`TurnOf`] its agent, and it is [`Settled`].
+/// error and may take the user's unanswered message out, a message left
+/// unanswered is halted, the turn is no longer [`TurnOf`] its agent, and
+/// it is [`Settled`].
 /// An `Answered` turn waits while a message that would carry it on is on
 /// its way to its agent. Not when a Review system failed.
 pub(crate) fn end_turns(
@@ -1479,6 +1481,9 @@ pub(crate) fn end_turns(
             if ending.take_out {
                 drop_unanswered(agent, &mut conversation, &mut notices);
             }
+        }
+        if !matches!(outcome, TurnOutcome::Answered(_)) {
+            conversation.halt(Halt::Kept);
         }
         let how = match outcome {
             TurnOutcome::Answered(_) => "answered",

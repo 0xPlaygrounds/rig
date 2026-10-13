@@ -17,7 +17,7 @@ use crate::agent::{
     TurnOf, TurnOutcome,
 };
 use crate::effects::Handler;
-use crate::inbox::{Deliver, DeliveryMode};
+use crate::inbox::{Deliver, DeliveryMode, Incoming, Recalled, Unsent};
 use crate::journal::tests::{edit, push_message};
 use crate::journal::{
     Committed, JournalPlugin, ReflectSaved, SessionLog, SessionRestored, SessionStore,
@@ -25,8 +25,8 @@ use crate::journal::{
 use crate::model::{Connection, Effort, ModelChoice};
 use crate::restore::{INTERRUPTED, Interrupted, Restored};
 use crate::stage::{
-    AgentPass, Decision, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started, Undecided,
-    Unreviewed,
+    AgentPass, Decision, ForAgent, HoldOf, Outcome, PrepareSystems, Settled, Stage, Started,
+    Undecided, Unreviewed,
 };
 use crate::tools::{AppToolsExt, ToolRequest};
 use crate::turn::{RetryVerdict, TurnCall};
@@ -878,4 +878,93 @@ fn a_read_that_finished_before_a_crash_keeps_its_result() {
         decided,
         &[("look".to_owned(), rig.clone()), ("wait".to_owned(), rig)]
     );
+}
+
+/// Keeps every message a turn did not send in the inbox.
+fn keep_unsent(unsent: Query<Entity, Added<Unsent>>, mut commands: Commands) {
+    for message in &unsent {
+        commands.entity(message).remove::<Unsent>();
+    }
+}
+
+/// A session that exited with "also the docs" in its agent's inbox: while
+/// a gate held the agent's `touch` call, or, `stopped`, after the user
+/// stopped that turn and a plugin kept the message.
+fn pending_at_exit(stopped: bool) -> MemoryStore {
+    let store = MemoryStore::default();
+    let call = |id: &str, tool: &str| MockStreamEvent::tool_call(id, tool, serde_json::json!({}));
+    let model = MockCompletionModel::from_stream_turns([vec![
+        call("t1", "touch"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |app| {
+        app.add_systems(AgentPass, (hold_touches, keep_unsent).in_set(Stage::Gate));
+    });
+    let Some(agent) = first_agent(&mut app) else {
+        return store;
+    };
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, "go", DeliveryMode::Steer));
+    let held = |world: &World| !world.resource::<Gated>().0.is_empty();
+    assert!(run_until(&mut app, held));
+    let steer = Incoming::new("also the docs", DeliveryMode::Steer);
+    let message = app.world_mut().spawn((steer, ForAgent(agent))).id();
+    assert!(run_until(&mut app, |world| {
+        world.get::<Started>(message).is_some()
+    }));
+    if stopped {
+        app.world_mut().trigger(Interrupt::new(agent));
+        app.update();
+    }
+    app.world_mut().write_message(AppExit::Success);
+    app.update();
+    store
+}
+
+/// The kinds of the asides of the first agent's conversation.
+fn aside_kinds(app: &mut App) -> Vec<String> {
+    let agent = first_agent(app);
+    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
+    let asides = conversation.into_iter().flat_map(|it| it.asides());
+    asides.map(|(_, aside)| aside.kind.clone()).collect()
+}
+
+#[test]
+fn a_message_in_the_inbox_at_exit_goes_with_the_restored_turns_next_call() {
+    let store = pending_at_exit(false);
+    let model = MockCompletionModel::from_stream_turns([vec![
+        MockStreamEvent::text("done"),
+        MockStreamEvent::final_response_with_default_usage(),
+    ]]);
+    let mut app = tools_app(&store, &model, |_| {});
+    let ended = |world: &World| !world.resource::<Ended>().0.is_empty();
+    assert!(run_until(&mut app, ended));
+    let sent = serde_json::to_string(&model.requests()).unwrap_or_default();
+    assert!(sent.contains("also the docs"), "{sent}");
+    // Given once, its mark gone with it.
+    assert_eq!(said(&mut app).matches("also the docs").count(), 1);
+    assert!(!aside_kinds(&mut app).iter().any(|kind| kind == "rig.inbox"));
+}
+
+/// The text each [`Recalled`] handed back.
+#[derive(Resource, Default)]
+struct RecalledTexts(Vec<String>);
+
+#[test]
+fn a_message_kept_for_an_idle_agent_comes_back_to_the_user_after_a_restart() {
+    let store = pending_at_exit(true);
+    let model = MockCompletionModel::from_stream_turns(Vec::<Vec<MockStreamEvent>>::new());
+    let mut app = tools_app(&store, &model, |app| {
+        app.init_resource::<RecalledTexts>().add_systems(
+            Last,
+            |mut read: MessageReader<Recalled>, mut texts: ResMut<RecalledTexts>| {
+                texts.0.extend(read.read().map(|it| it.text.clone()));
+            },
+        );
+    });
+    let recalled = |world: &World| !world.resource::<RecalledTexts>().0.is_empty();
+    assert!(run_until(&mut app, recalled));
+    assert_eq!(app.world().resource::<RecalledTexts>().0, ["also the docs"]);
+    assert!(!said(&mut app).contains("also the docs"));
+    assert_eq!(model.request_count(), 0);
 }

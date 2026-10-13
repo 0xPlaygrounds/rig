@@ -60,7 +60,7 @@ pub mod prelude {
     pub use crate::calls::{Done, PollCalls, Running, Wake};
     pub use crate::inbox::{
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
-        Recalled,
+        Recalled, Unsent,
     };
     pub use crate::journal::{
         Committed, JournalPlugin, ReflectSaved, Retire, RewriteSession, SessionRestored,
@@ -198,7 +198,8 @@ impl Plugin for AgentPlugin {
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)
-            .add_observer(inbox::recall_on_turn_end)
+            .add_observer(inbox::unsent_on_turn_end)
+            .add_observer(inbox::unmark)
             .add_observer(model::on_set_model)
             .add_observer(model::connect)
             .add_observer(model::check_effort)
