@@ -17,8 +17,9 @@
 //! lands on its call. A turn's end is a proposal a reviewer carries on
 //! from, holds or replaces, and a new turn call carries on after a length
 //! cutoff; a message taken over in Gate never reaches the agent, one
-//! accepted carries an answered turn on, and an accepted note its sender
-//! decides is withdrawn; a turn a plugin fails starts nothing more; an interrupt ends a
+//! accepted carries an answered turn on, and an accepted note or steering
+//! message its sender decides is withdrawn, even as the next call is
+//! built; a turn a plugin fails starts nothing more; an interrupt ends a
 //! turn at once, settling its held and streaming calls.
 //!
 //! Of the design's twelve rule tests (design.md §5), these land here: 1
@@ -2270,6 +2271,62 @@ fn an_accepted_note_withdrawn_by_deciding_it_is_never_delivered() {
         "{said}"
     );
     assert_eq!(model.request_count(), 1);
+}
+
+/// The holds a reviewer put on tool calls as they answered.
+#[derive(Resource, Default)]
+struct Reviewing(Vec<Entity>);
+
+/// Holds each tool call's answer while it is reviewed.
+fn hold_results(
+    calls: Query<Entity, (Unreviewed, ToolCalls, Added<Outcome>)>,
+    mut reviewing: ResMut<Reviewing>,
+    mut commands: Commands,
+) {
+    for call in &calls {
+        reviewing.0.push(commands.spawn(HoldOf(call)).id());
+    }
+}
+
+/// A steering message its sender takes back by deciding it is never sent,
+/// even when the turn's next call is built in the frame it was decided,
+/// and the message sent in its place goes instead.
+#[test]
+fn a_steering_message_taken_back_as_the_next_call_is_built_is_never_sent() {
+    let mut app = app();
+    app.init_resource::<Reviewing>()
+        .add_systems(AgentPass, hold_results.in_set(Stage::Review));
+    let turns = [reply(&[("look", "1")]), answer("ok"), answer("done")];
+    let model = MockCompletionModel::from_stream_turns(turns);
+    let agent = agent_on(&mut app, &model);
+    let held = |world: &mut World| !world.resource::<Reviewing>().0.is_empty();
+    assert!(run_until(&mut app, held));
+    let steer = |text: &str| (Incoming::new(text, DeliveryMode::Steer), ForAgent(agent));
+    let old = app.world_mut().spawn(steer("use tabs")).id();
+    let accepted = |world: &mut World| world.get::<Started>(old).is_some();
+    assert!(run_until(&mut app, accepted));
+    // In one frame: taken back, sent again changed, and the result let go.
+    let world = app.world_mut();
+    if let Some(mut decision) = world.get_mut::<Decision>(old) {
+        decision.decide(Decider::plugin("test"), Outcome::custom("taken back"));
+    }
+    world.spawn(steer("use spaces"));
+    for hold in std::mem::take(&mut world.resource_mut::<Reviewing>().0) {
+        world.despawn(hold);
+    }
+    let done =
+        |world: &mut World| model.request_count() == 3 && world.get::<ActiveTurn>(agent).is_none();
+    assert!(run_until(&mut app, done), "{:?}", notices(&app));
+    let sent = serde_json::to_string(&model.requests()).unwrap_or_default();
+    assert!(
+        !sent.contains("use tabs") && sent.contains("use spaces"),
+        "{sent}"
+    );
+    let said = serde_json::to_string(&conversation(&app, agent)).unwrap_or_default();
+    assert!(
+        !said.contains("use tabs") && said.contains("use spaces"),
+        "{said}"
+    );
 }
 
 /// A reply cut off at the length limit before it answered.

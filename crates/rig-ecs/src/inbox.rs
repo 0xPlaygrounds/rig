@@ -44,7 +44,8 @@ use super::agent::{
 use super::calls::Wake;
 use super::model::Connection;
 use super::stage::{
-    AgentWork, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided, failed_in,
+    AgentWork, Decision, Effect, ForAgent, Holds, Outcome, Settled, Stage, Started, Undecided,
+    failed_in,
 };
 use super::turn::{Exiting, TurnCall, spawn_turn_call, take_outcome};
 
@@ -412,39 +413,49 @@ pub(crate) fn carry_on_accepted(
 }
 
 /// The messages agents accepted and were not given yet, as the kernel
-/// reads them.
+/// reads them. A message decided is out the moment it is, though its
+/// decision becomes its [`Outcome`] only at Start.
 #[derive(SystemParam)]
 pub(crate) struct Inboxes<'w, 's> {
     work: Query<'w, 's, &'static AgentWork>,
     accepted: Query<
         'w,
         's,
-        (Entity, &'static Effect, &'static Incoming),
+        (
+            Entity,
+            &'static Effect,
+            &'static Incoming,
+            &'static Decision,
+        ),
         (With<Started>, Without<Outcome>, Without<Settled>),
     >,
-    on_the_way: Query<'w, 's, &'static Incoming, (Without<Started>, Without<Outcome>)>,
+    on_the_way:
+        Query<'w, 's, (&'static Incoming, &'static Decision), (Without<Started>, Without<Outcome>)>,
 }
 
 impl Inboxes<'_, '_> {
     /// What `agent` accepted and was not given yet, oldest first.
     pub(crate) fn of(&self, agent: Entity) -> Vec<(Entity, &Incoming)> {
         let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
-        let mut waiting: Vec<_> = self.accepted.iter_many(work).flatten().collect();
-        waiting.sort_unstable_by_key(|(_, effect, _)| effect.id());
+        let accepted = self.accepted.iter_many(work).flatten();
+        let mut waiting: Vec<_> = accepted
+            .filter(|(.., decision)| !decision.is_decided())
+            .collect();
+        waiting.sort_unstable_by_key(|(_, effect, ..)| effect.id());
         waiting
             .into_iter()
-            .map(|(entity, _, message)| (entity, message))
+            .map(|(entity, _, message, _)| (entity, message))
             .collect()
     }
 
     /// Whether a Steer or Queue message to `agent` is on its way: spawned,
-    /// not accepted, not answered.
+    /// not accepted, not decided.
     pub(crate) fn coming(&self, agent: Entity) -> bool {
         let work = self.work.get(agent).into_iter().flat_map(AgentWork::iter);
         self.on_the_way
             .iter_many(work)
             .flatten()
-            .any(|message| message.mode != DeliveryMode::Note)
+            .any(|(message, decision)| message.mode != DeliveryMode::Note && !decision.is_decided())
     }
 }
 
