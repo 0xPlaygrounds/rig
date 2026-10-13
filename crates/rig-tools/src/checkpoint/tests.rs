@@ -302,6 +302,35 @@ fn a_scan_keeps_content_when_it_may() {
     std::fs::remove_dir_all(keep).ok();
 }
 
+/// A scan reuses an earlier scan's hash only for a file that had not just
+/// changed when that scan began: one rewritten at once to the same size,
+/// its change time the same (as a coarse clock leaves it), is still a
+/// change.
+#[test]
+fn a_scan_reads_again_a_file_that_had_just_changed() {
+    let dir = scratch("checkpoint-scan-racy");
+    let a = dir.join("a.txt");
+    std::fs::write(&a, "one\n").ok();
+    let first = snapshot(&Local, &dir, &Taking::default(), None);
+    assert!(first.is_ok(), "{first:?}");
+    let Ok(first) = first else { return };
+    let modified = std::fs::metadata(&a).and_then(|meta| meta.modified());
+    assert!(modified.is_ok(), "{modified:?}");
+    let Ok(modified) = modified else { return };
+    std::fs::write(&a, "two\n").ok();
+    let file = std::fs::File::options().write(true).open(&a);
+    assert!(file.and_then(|file| file.set_modified(modified)).is_ok());
+    let second = snapshot(&Local, &dir, &Taking::default(), Some(&first));
+    let changes = second.and_then(|second| second.changes_since(&first));
+    let kinds: Vec<_> = changes
+        .unwrap_or_default()
+        .into_iter()
+        .map(|change| change.kind)
+        .collect();
+    assert_eq!(kinds, [ChangeKind::Modified]);
+    std::fs::remove_dir_all(dir).ok();
+}
+
 /// A path named in `also` counts although `.gitignore` leaves it out: a
 /// file created there is a change, and is none without it.
 #[test]

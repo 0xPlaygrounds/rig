@@ -9,7 +9,7 @@ use std::io::{self, ErrorKind};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex, PoisonError};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use rig_core::completion::UnsupportedOption;
 use rig_core::effect::{EffectKind, HandlerDescriptor};
@@ -43,10 +43,11 @@ pub struct Snapshot(Taken);
 enum Taken {
     /// A git tree in a private object directory.
     Git { git: Git, tree: String },
-    /// Each file's [`Seen`], by path, and the directory its content is
-    /// kept in, by hash, when it is.
+    /// Each file's [`Seen`], by path, when the scan began, and the
+    /// directory its content is kept in, by hash, when it is.
     Scan {
-        files: BTreeMap<PathBuf, Seen>,
+        files: Arc<BTreeMap<PathBuf, Seen>>,
+        began: SystemTime,
         blobs: Option<PathBuf>,
     },
 }
@@ -97,7 +98,11 @@ impl Seen {
 /// only the files whose size or change time differ from `earlier`'s (every
 /// file when there is none, or the workspace cannot tell the time), and
 /// with `keep` writes the content of each file it hashed to `keep`, once
-/// per hash.
+/// per hash. A file that changed just before `earlier` began is hashed
+/// again too: a write within its change time's precision after `earlier`
+/// read it would leave its size and time as they were (what git calls
+/// "racily clean"). The kept content is scratch, not forced to disk: no
+/// run after this one reads it ([`forget_kept`]).
 ///
 /// Blocking: run it off a thread that must not wait ([`blocking`]).
 ///
@@ -134,12 +139,18 @@ pub fn snapshot(
         }
         None => {
             let before = match earlier.map(|it| &it.0) {
-                Some(Taken::Scan { files, .. }) => Some(files),
+                Some(Taken::Scan { files, began, .. }) => Some((&**files, *began)),
                 _ => None,
             };
             let blobs = keep.map(|keep| private(keep, root).join("blobs"));
+            let began = SystemTime::now();
             let files = scan(workspace, root, &also, before, blobs.as_deref())?;
-            Ok(Snapshot(Taken::Scan { files, blobs }))
+            let files = Arc::new(files);
+            Ok(Snapshot(Taken::Scan {
+                files,
+                began,
+                blobs,
+            }))
         }
     }
 }
@@ -186,7 +197,7 @@ impl Snapshot {
             (Taken::Git { tree: before, .. }, Taken::Git { git, tree }) => {
                 git.changes(before, tree)
             }
-            (Taken::Scan { files: before, .. }, Taken::Scan { files, blobs }) => {
+            (Taken::Scan { files: before, .. }, Taken::Scan { files, blobs, .. }) => {
                 Ok(scan_changes(before, files, blobs.as_deref()))
             }
             _ => Err(io::Error::new(
@@ -201,7 +212,7 @@ impl Snapshot {
     pub fn content(&self, path: &Path) -> Option<io::Result<Vec<u8>>> {
         match &self.0 {
             Taken::Git { git, tree } => Some(git.content(tree, path)),
-            Taken::Scan { files, blobs } => {
+            Taken::Scan { files, blobs, .. } => {
                 let blobs = blobs.as_deref()?;
                 Some(match files.get(path).map(|seen| &seen.hash) {
                     Some(Some(hash)) => std::fs::read(blobs.join(&hash.0)),
@@ -217,14 +228,15 @@ impl Snapshot {
 }
 
 /// The files under `root`, and every file under each of `also`, with what
-/// a scan sees of them, reusing `earlier`'s hash of a file whose size and
-/// change time are the same; with `blobs`, the content of each file it
-/// read is kept there, by hash.
+/// a scan sees of them, reusing the hash of the scan `earlier` (its files
+/// and when it began) for a file whose size and change time are the same
+/// and that had not just changed when it began ([`snapshot`]); with
+/// `blobs`, the content of each file it read is kept there, by hash, once.
 fn scan(
     workspace: &dyn Workspace,
     root: &Path,
     also: &[PathBuf],
-    earlier: Option<&BTreeMap<PathBuf, Seen>>,
+    earlier: Option<(&BTreeMap<PathBuf, Seen>, SystemTime)>,
     blobs: Option<&Path>,
 ) -> io::Result<BTreeMap<PathBuf, Seen>> {
     if let Some(blobs) = blobs {
@@ -239,9 +251,11 @@ fn scan(
         let Ok(Stat::File { size, modified, .. }) = workspace.stat(&path) else {
             continue;
         };
-        let same = earlier
-            .and_then(|earlier| earlier.get(&path))
-            .filter(|was| modified.is_some() && was.size == size && was.modified == modified);
+        let same = earlier.and_then(|(files, began)| {
+            let was = files.get(&path)?;
+            let settled = modified.is_some_and(|modified| settled_before(modified, began));
+            (settled && was.size == size && was.modified == modified).then_some(was)
+        });
         let file = match same {
             Some(was) => was.clone(),
             None => {
@@ -253,7 +267,7 @@ fn scan(
                 if let (Some(blobs), Some(bytes), Some(hash)) = (blobs, &bytes, &hash) {
                     let blob = blobs.join(&hash.0);
                     if !blob.exists() {
-                        crate::fs::write_atomic(&blob, bytes).ok();
+                        crate::fs::write_scratch(&blob, bytes).ok();
                     }
                 }
                 Seen {
@@ -267,6 +281,28 @@ fn scan(
         seen.insert(path, file);
     }
     Ok(seen)
+}
+
+/// Whether a file last changed at `modified` had not just changed when a
+/// scan began at `began`, so a write after the scan read it changes its
+/// time: older than `began` by more than its time's precision, two seconds
+/// for a time in whole seconds (FAT keeps even seconds, some file systems
+/// whole ones), else a tenth of a second (the kernel's clock for file
+/// times ticks every few milliseconds). Times come from this machine's
+/// clock and the workspace's file system; for a workspace on another
+/// machine, a clock ahead of this one only hashes more.
+fn settled_before(modified: SystemTime, began: SystemTime) -> bool {
+    let whole_seconds = modified
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .is_ok_and(|since| since.subsec_nanos() == 0);
+    let precision = if whole_seconds {
+        Duration::from_secs(2)
+    } else {
+        Duration::from_millis(100)
+    };
+    began
+        .checked_sub(precision)
+        .is_some_and(|settled| modified < settled)
 }
 
 /// What changed from the scan `before` to the scan `after`; with `blobs`,
@@ -547,8 +583,8 @@ fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange
 /// it: a process outside the call that wrote in that time, such as the
 /// user's editor, is in it. A change made between two calls is in neither.
 ///
-/// `newest`, shared between the calls one host checkpoints, is the newest
-/// snapshot any of them took: each call hands it to [`snapshot`] as
+/// `newest`, shared between the calls one host checkpoints with the same
+/// `root`, is the newest snapshot any of them took: each call hands it to [`snapshot`] as
 /// `earlier`, so a scan hashes again only what changed and git's private
 /// index stays warm, but never takes it as its "before". `first`, shared
 /// the same way, keeps the first "before" taken, the files as they were

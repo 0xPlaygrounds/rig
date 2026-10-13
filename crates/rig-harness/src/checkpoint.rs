@@ -24,7 +24,9 @@
 //!
 //! The state before a turn's first checkpointed call is kept
 //! ([`TurnCheckpoint::first`]), to tell what the whole turn changed or read
-//! a file as it was ([`Snapshot::content`]). In a git work tree on this
+//! a file as it was ([`Snapshot::content`]). Each call's snapshots start
+//! from the newest one taken of its directory in the run, in any turn, so
+//! a scan hashes again only what changed. In a git work tree on this
 //! machine a snapshot is a tree written with a private index and object
 //! directory in the session's [`Scratch`], so the user's repository is
 //! never written to; elsewhere it is a scan of the workspace's files, whose
@@ -106,12 +108,16 @@ impl Default for Checkpoints {
 #[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct CheckpointAlso(pub Vec<PathBuf>);
 
-/// On a turn: the snapshots its checkpointed calls share.
+/// On a turn: the snapshot before its first checkpointed call.
 #[derive(Component, Clone, Debug, Default)]
 pub struct TurnCheckpoint {
     first: Arc<Mutex<Option<Snapshot>>>,
-    newest: Arc<Mutex<Option<Snapshot>>>,
 }
+
+/// The newest snapshot of each checkpointed directory in the run, which
+/// the next call's snapshots start from ([`Checkpointed::newest`]).
+#[derive(Resource, Default)]
+struct Newest(HashMap<PathBuf, Arc<Mutex<Option<Snapshot>>>>);
 
 impl TurnCheckpoint {
     /// The files as they were before the turn's first checkpointed call
@@ -140,6 +146,7 @@ impl Plugin for CheckpointPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
+            .init_resource::<Newest>()
             .add_setting::<Checkpoints>("checkpoints");
         let also = app.world().get_resource::<Checkpoints>();
         let also = also.map(|it| it.also.clone()).unwrap_or_default();
@@ -187,6 +194,7 @@ fn checkpoint(
     >,
     turns: Query<&TurnCheckpoint>,
     dirs: Query<&WorkDir>,
+    mut newest: ResMut<Newest>,
     (workspace, root, scratch, also): (
         Res<ProjectWorkspace>,
         Res<ProjectRoot>,
@@ -218,12 +226,12 @@ fn checkpoint(
         let wrapped = Checkpointed {
             inner: handler.0.0.clone(),
             workspace: workspace.0.clone(),
+            newest: newest.0.entry(root.clone()).or_default().clone(),
             root,
             taking: Taking {
                 keep: scratch.as_ref().and_then(|scratch| scratch.0.clone()),
                 also: also.as_ref().map(|also| also.0.clone()).unwrap_or_default(),
             },
-            newest: shared.newest,
             first: shared.first,
         };
         *handler = CallHandler(Handler(ErasedHandler::new(wrapped)));

@@ -79,8 +79,6 @@ pub fn read_prefix(path: &Path, cap: usize) -> io::Result<Prefix> {
 /// text) and makes this process the file's owner. A crash between create
 /// and rename can leave a `.name.<pid>-<n>.tmp` beside the file.
 pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
-    /// Tells apart the temporary files of writes running at once.
-    static NEXT: AtomicU64 = AtomicU64::new(0);
     let (target, permissions) = match fs::metadata(path) {
         Ok(meta) if !meta.is_file() => {
             return Err(io::Error::new(
@@ -107,12 +105,7 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     let name = target
         .file_name()
         .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
-    let temporary = target.with_file_name(format!(
-        ".{}.{}-{}.tmp",
-        name.to_string_lossy(),
-        std::process::id(),
-        NEXT.fetch_add(1, Ordering::Relaxed)
-    ));
+    let temporary = temporary_beside(&target, name);
     let written = File::create_new(&temporary).and_then(|mut file| {
         if let Some(permissions) = permissions {
             file.set_permissions(permissions)?;
@@ -124,6 +117,36 @@ pub fn write_atomic(path: &Path, contents: &[u8]) -> io::Result<()> {
     written.inspect_err(|_| {
         fs::remove_file(&temporary).ok();
     })
+}
+
+/// Writes `contents` to the file `path` names in one step, as
+/// [`write_atomic`] does, but without forcing it to disk, and with none of
+/// its checks: for scratch that no run after a crash reads, such as a
+/// checkpoint's kept content. A reader never sees it half written.
+pub(crate) fn write_scratch(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(ErrorKind::InvalidInput, "names no file"))?;
+    let temporary = temporary_beside(path, name);
+    let written = File::create_new(&temporary)
+        .and_then(|mut file| file.write_all(contents))
+        .and_then(|()| fs::rename(&temporary, path));
+    written.inspect_err(|_| {
+        fs::remove_file(&temporary).ok();
+    })
+}
+
+/// A temporary file's path beside `target`, whose file name is `name`:
+/// `.name.<pid>-<n>.tmp`, unique among this process's writes.
+fn temporary_beside(target: &Path, name: &std::ffi::OsStr) -> PathBuf {
+    /// Tells apart the temporary files of writes running at once.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    target.with_file_name(format!(
+        ".{}.{}-{}.tmp",
+        name.to_string_lossy(),
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ))
 }
 
 /// The JSON file at `path` as a `T`, or `None` when it is missing or is
