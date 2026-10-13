@@ -7,13 +7,18 @@
 //!   while git lists the untracked files before it runs, and its answer
 //!   while git lists them again; what is new in between is the call's.
 //!   Ignored files count only when they match a `watch_ignored` pathspec.
+//!   The harness's checkpoint of such a call is not used in a git work
+//!   tree: it skips ignored files, and it starts from the state the turn's
+//!   last such call left, so a file made between two calls would count as
+//!   the second one's. Outside git, the checkpoint's created files count.
 //!   A subagent's files count for the agent at the top of its tree.
 //! - When a top-level agent's turn would end, the end is held while the
 //!   files still there are measured. Where someone can answer, a
-//!   [`StrayPicker`] "Files created this turn" offers them, scratch-looking
-//!   names selected; picking a file toggles it, then **Delete selected**
-//!   moves them into `.rig/trash/<timestamp>/`, **Add selected to
-//!   .gitignore** ignores them, **Keep all** leaves them. A run nobody
+//!   multiple [`StrayPicker`] "Files created this turn" offers them,
+//!   scratch-looking names ticked; then a [`StrayActions`] picker asks what
+//!   to do with the ticked ones: **Delete selected** moves them into
+//!   `.rig/trash/<timestamp>/`, **Add selected to .gitignore** ignores
+//!   them, **Keep all** (or closing either picker) leaves them. A run nobody
 //!   answers, such as `--print`, deletes nothing and prints the list after
 //!   the answer.
 //! - The agent's next message carries a note naming the files deleted.
@@ -106,16 +111,23 @@ pub struct Stray {
     pub size: u64,
 }
 
-/// On the picker "Files created this turn": the files and which are
-/// selected. Picking a file toggles it and shows the picker again.
+/// On the multiple picker "Files created this turn": the files, in the
+/// picker's order.
 #[derive(Component, Clone, Debug)]
 pub struct StrayPicker {
     /// The agent whose turn made them.
     pub agent: Entity,
     /// The files.
     pub files: Vec<Stray>,
-    /// Whether each file is selected.
-    pub selected: Vec<bool>,
+}
+
+/// On the picker that asks what to do with the files ticked.
+#[derive(Component, Clone, Debug)]
+pub struct StrayActions {
+    /// The agent whose turn made them.
+    pub agent: Entity,
+    /// The files ticked.
+    pub files: Vec<Stray>,
 }
 
 /// The stray plugin's stage systems: the Prepare system that adds the
@@ -152,7 +164,8 @@ impl Plugin for StrayFilesPlugin {
             .add_observer(files_written)
             .add_observer(listed)
             .add_observer(measured)
-            .add_observer(picked)
+            .add_observer(ticked)
+            .add_observer(act)
             .add_observer(reported)
             .add_observer(batches_listed);
         app.world_mut()
@@ -349,16 +362,22 @@ fn listed(
     commands.entity(done.entity).despawn();
 }
 
-/// Keeps the files a tool call published as created.
+/// Keeps the files a tool call published as created, unless git listed
+/// them around the call: the harness's checkpoint of a `Writes(Anything)`
+/// call starts from the state the turn's last such call left, so it would
+/// count a file someone made between two calls as the second one's.
 fn files_written(
     settled: On<Add<Settled>>,
-    calls: Query<(&Published, &ForAgent), With<ToolRequest>>,
+    calls: Query<(&Published, &ForAgent, Option<&Before>), With<ToolRequest>>,
     parents: Query<&SpawnedBy>,
     mut agents: Query<&mut Strays>,
 ) {
-    let Ok((published, &ForAgent(agent))) = calls.get(settled.entity) else {
+    let Ok((published, &ForAgent(agent), before)) = calls.get(settled.entity) else {
         return;
     };
+    if matches!(before, Some(Before(Some(_)))) {
+        return;
+    }
     let Ok(Some(FilesChanged(changes))) = published.0.get::<FilesChanged>() else {
         return;
     };
@@ -418,16 +437,20 @@ fn measured(
         return;
     }
     if answerers.can_answer(Some(agent)) {
-        let selected = files
-            .iter()
-            .map(|file| looks_scratch(&settings.scratch, &file.path))
-            .collect();
-        let offer = StrayPicker {
-            agent,
-            files: files.clone(),
-            selected,
-        };
-        commands.spawn((offer.picker(0), offer));
+        let mut picker = Picker::new(TITLE)
+            .for_agent(agent)
+            .body("Tick the files to act on.")
+            .multiple();
+        for file in files {
+            picker.items.push(PickItem {
+                label: file.path.clone(),
+                command: String::new(),
+                detail: Some(size(file.size)),
+                checked: looks_scratch(&settings.scratch, &file.path),
+            });
+        }
+        let files = files.clone();
+        commands.spawn((picker, StrayPicker { agent, files }));
         return;
     }
     let lines: Vec<String> = files
@@ -440,63 +463,48 @@ fn measured(
     }
 }
 
-impl StrayPicker {
-    /// The picker showing the files and the actions, `at` selected.
-    fn picker(&self, at: usize) -> Picker {
-        let mut picker = Picker::new(TITLE)
-            .for_agent(self.agent)
-            .body("Pick a file to select or unselect it, then an action.");
-        for (file, on) in self.files.iter().zip(&self.selected) {
-            picker.items.push(PickItem {
-                label: format!("[{}] {}", if *on { "x" } else { " " }, file.path),
-                command: String::new(),
-                detail: Some(size(file.size)),
-                checked: false,
-            });
-        }
-        picker.selected = at;
-        picker
-            .item("Delete selected", "")
-            .item("Add selected to .gitignore", "")
-            .item("Keep all", "")
-    }
-
-    /// The files selected.
-    fn chosen(&self) -> Vec<Stray> {
-        let selected = self.files.iter().zip(&self.selected);
-        selected
-            .filter(|(_, on)| **on)
-            .map(|(file, _)| file.clone())
-            .collect()
-    }
-}
-
-/// Toggles a file and shows the picker again, or acts on the selection.
-fn picked(picked: On<Picked>, offers: Query<&StrayPicker>, work: Work, mut commands: Commands) {
+/// Asks what to do with the files ticked.
+fn ticked(picked: On<Picked>, offers: Query<&StrayPicker>, mut commands: Commands) {
     let Ok(offer) = offers.get(picked.entity) else {
         return;
     };
-    let (count, chosen) = (offer.files.len(), offer.chosen());
-    let job = Job { agent: offer.agent };
+    let positions = match &picked.chosen {
+        Some(Chosen::Item(at)) => vec![*at],
+        Some(Chosen::Items(positions)) => positions.clone(),
+        // Closed: keep all.
+        _ => return,
+    };
+    let files: Vec<Stray> = (positions.iter())
+        .filter_map(|at| offer.files.get(*at).cloned())
+        .collect();
+    if files.is_empty() {
+        return;
+    }
+    let names: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    let picker = Picker::new(TITLE)
+        .for_agent(offer.agent)
+        .body(format!("Selected: {}", names.join(", ")))
+        .item("Delete selected", "")
+        .item("Add selected to .gitignore", "")
+        .item("Keep all", "");
+    let agent = offer.agent;
+    commands.spawn((picker, StrayActions { agent, files }));
+}
+
+/// Deletes or ignores the files ticked, or keeps them.
+fn act(picked: On<Picked>, actions: Query<&StrayActions>, work: Work, mut commands: Commands) {
+    let Ok(StrayActions { agent, files }) = actions.get(picked.entity) else {
+        return;
+    };
+    let (job, files) = (Job { agent: *agent }, files.clone());
     match picked.chosen {
-        Some(Chosen::Item(at)) if at < count => {
-            let mut next = offer.clone();
-            if let Some(on) = next.selected.get_mut(at) {
-                *on = !*on;
-            }
-            commands.spawn((next.picker(at), next));
+        Some(Chosen::Item(0)) => {
+            let running = work.run(move |workspace, root| trash(workspace, root, &files));
+            commands.spawn((job, running));
         }
-        Some(Chosen::Item(at)) if at == count && !chosen.is_empty() => {
-            commands.spawn((
-                job,
-                work.run(move |workspace, root| trash(workspace, root, &chosen)),
-            ));
-        }
-        Some(Chosen::Item(at)) if at == count + 1 && !chosen.is_empty() => {
-            commands.spawn((
-                job,
-                work.run(move |workspace, root| ignore(workspace, root, &chosen)),
-            ));
+        Some(Chosen::Item(1)) => {
+            let running = work.run(move |workspace, root| ignore(workspace, root, &files));
+            commands.spawn((job, running));
         }
         // Keep all, or closed.
         _ => {}

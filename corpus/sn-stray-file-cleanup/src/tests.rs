@@ -95,22 +95,37 @@ fn after_a_turn(
     (app, wakes, agent)
 }
 
-/// Every open picker with its stray offer, if it has one.
-fn pickers(world: &World) -> Vec<(Entity, Picker, Option<StrayPicker>)> {
-    let Some(mut query) = world.try_query::<(Entity, &Picker, Option<&StrayPicker>)>() else {
+/// Every open picker.
+fn pickers(world: &World) -> Vec<(Entity, Picker)> {
+    let Some(mut query) = world.try_query::<(Entity, &Picker)>() else {
         return Vec::new();
     };
     query
         .iter(world)
-        .map(|(entity, picker, offer)| (entity, picker.clone(), offer.cloned()))
+        .map(|(entity, picker)| (entity, picker.clone()))
         .collect()
 }
 
 /// The open picker titled `title`.
-fn picker(world: &World, title: &str) -> Option<(Entity, Picker, Option<StrayPicker>)> {
+fn picker(world: &World, title: &str) -> Option<(Entity, Picker)> {
     pickers(world)
         .into_iter()
-        .find(|(_, picker, _)| picker.title == title)
+        .find(|(_, picker)| picker.title == title)
+}
+
+/// The open picker carrying `T`.
+fn picker_with<T: Component>(world: &World) -> Option<(Entity, Picker)> {
+    pickers(world)
+        .into_iter()
+        .find(|(entity, _)| world.get::<T>(*entity).is_some())
+}
+
+/// Answers the open picker carrying `T` with `chosen`.
+fn answer<T: Component>(app: &mut App, chosen: Chosen) {
+    let open = picker_with::<T>(app.world()).map(|(entity, _)| entity);
+    let entity = open.unwrap_or(Entity::PLACEHOLDER);
+    app.world_mut().trigger(Pick::person(entity, Some(chosen)));
+    app.update();
 }
 
 /// The file `name` in some batch of the trash.
@@ -132,11 +147,12 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
     ]);
     let (mut app, wakes, agent) = after_a_turn(&dir, &model, true);
 
-    let offer = picker(app.world(), TITLE).and_then(|(_, _, offer)| offer);
+    let offer = picker_with::<StrayPicker>(app.world());
     let files: Vec<(String, bool)> = offer
         .iter()
-        .flat_map(|offer| offer.files.iter().zip(&offer.selected))
-        .map(|(file, on)| (file.path.clone(), *on))
+        .filter(|(_, picker)| picker.multiple && picker.title == TITLE)
+        .flat_map(|(_, picker)| &picker.items)
+        .map(|item| (item.label.clone(), item.checked))
         .collect();
     let expected = [
         ("out.log".to_owned(), true),
@@ -148,16 +164,9 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
         Some("// two\n")
     );
 
-    // Unselect out.log, then delete what is selected.
-    let pick = |app: &mut App, at: usize| {
-        let open = picker(app.world(), TITLE).map(|(entity, ..)| entity);
-        let entity = open.unwrap_or(Entity::PLACEHOLDER);
-        app.world_mut()
-            .trigger(Pick::person(entity, Some(Chosen::Item(at))));
-        app.update();
-    };
-    pick(&mut app, 0);
-    pick(&mut app, 2);
+    // Tick scratch.py only, then delete it.
+    answer::<StrayPicker>(&mut app, Chosen::Items(vec![1]));
+    answer::<StrayActions>(&mut app, Chosen::Item(0));
     let told = |world: &World| {
         world
             .get::<Strays>(agent)
@@ -189,7 +198,7 @@ fn the_files_a_turn_created_are_offered_deleted_and_restored() {
     run_until(&mut app, &wakes, |world| {
         picker(world, RESTORE_TITLE).is_some()
     });
-    let batch = picker(app.world(), RESTORE_TITLE).map(|(entity, ..)| entity);
+    let batch = picker(app.world(), RESTORE_TITLE).map(|(entity, _)| entity);
     app.world_mut().trigger(Pick::person(
         batch.unwrap_or(Entity::PLACEHOLDER),
         Some(Chosen::Item(0)),
