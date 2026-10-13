@@ -33,7 +33,7 @@ use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::now_ms;
 use rig_harness::commands::{AppCommandsExt, CommandArgs};
 use rig_harness::prelude::{
-    Exit, ExitReason, JournalStore, RigHome, SessionPaths, SessionStores, first_typed,
+    Exit, ExitReason, Files, RigHome, SessionPaths, SessionStores, first_typed,
 };
 use rig_harness::primary::primary_order;
 use rig_telemetry::SessionSpending;
@@ -45,7 +45,8 @@ mod tui;
 const TITLE_CHARS: usize = 60;
 /// Most sessions `/resume` lists.
 const LISTED: usize = 200;
-/// The file of a session's store that holds its [`Meta`].
+/// The file of a session's store that holds its [`Meta`]
+/// (`files/meta.json` in its directory).
 const META: &str = "meta.json";
 
 /// `/new`, `/resume`, `/name`, and the listing cache written at the end of
@@ -165,7 +166,7 @@ pub struct Meta {
 
 impl Meta {
     /// The listing of the session kept in `store`, if it has one.
-    pub fn of(store: &dyn JournalStore) -> Option<Self> {
+    pub fn of(store: &dyn Files) -> Option<Self> {
         serde_json::from_slice(&store.read_file(META).ok()?).ok()
     }
 }
@@ -175,7 +176,7 @@ impl Meta {
 /// # Errors
 ///
 /// When the store cannot write it.
-pub fn write_meta(store: &dyn JournalStore, meta: &Meta) -> io::Result<()> {
+pub fn write_meta(store: &dyn Files, meta: &Meta) -> io::Result<()> {
     store.write_file(META, &serde_json::to_vec_pretty(meta)?)
 }
 
@@ -425,7 +426,7 @@ fn name_session(
     let written = if dir.path().is_dir() {
         stores
             .open(&dir)
-            .and_then(|store| rename(&*store, name))
+            .and_then(|store| Ok(rename(&*store, name)?))
             .map_err(|failure| failure.to_string())
     } else {
         Err("there is no such session".to_owned())
@@ -437,7 +438,7 @@ fn name_session(
 }
 
 /// Names the session in `store` `name`, keeping the rest of its listing.
-fn rename(store: &dyn JournalStore, name: String) -> io::Result<()> {
+fn rename(store: &dyn Files, name: String) -> io::Result<()> {
     let meta = Meta::of(store).unwrap_or_else(|| Meta {
         updated: now_ms(),
         ..Meta::default()

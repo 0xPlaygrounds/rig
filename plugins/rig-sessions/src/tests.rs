@@ -2,15 +2,16 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_cassette::journal::{EFFECT_LOG, MemoryStore, SavedAgent, SavedSession, write_session};
+use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_core::completion::Message;
 use rig_core::effect::{EffectId, EffectKind, EffectRecord, Outcome};
 use rig_ecs::AgentPlugin;
 use rig_ecs::journal::JournalPlugin;
-use rig_ecs::stage::Recorded;
+use rig_ecs::prelude::{SavedAgent, Session, Store};
+use rig_ecs::stage::EffectRecorded;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
-use rig_harness_test_support::{app_in, commit_message, first_agent, scratch_home};
+use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
 use rig_telemetry::EffectLogPlugin;
 
 use super::*;
@@ -27,7 +28,7 @@ fn running(home: &Home, id: &str) -> Option<App> {
     let dir = home.session(&id);
     fs::create_dir_all(dir.path()).ok()?;
     let store = SessionStores::default().open(&dir).ok()?;
-    store.append("a1", b"").ok()?;
+    store.append_log("a1", b"").ok()?;
     let mut app = App::new();
     app.insert_resource(RigHome(home.clone()))
         .insert_resource(SessionPaths(dir))
@@ -81,7 +82,7 @@ fn naming_another_session_changes_only_its_title() {
     let store = SessionStores::default().open(&dir);
     assert!(store.is_ok(), "the default store opens");
     let Ok(store) = store else { return };
-    store.append("a1", b"").ok();
+    store.append_log("a1", b"").ok();
     let before = Meta {
         title: SessionTitle {
             name: None,
@@ -131,7 +132,7 @@ impl InMemory {
     /// The app's stores, as a plugin puts them in.
     fn stores(&self) -> SessionStores {
         let kept = self.clone();
-        SessionStores::new(move |dir| Ok(Arc::new(kept.of(dir.path())) as Arc<dyn JournalStore>))
+        SessionStores::new(move |dir| Ok(Arc::new(kept.of(dir.path())) as Arc<dyn Store>))
     }
 }
 
@@ -165,7 +166,7 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
         payload: serde_json::Value::Null,
     });
     let record = EffectRecord::new(EffectId::from_raw(1), "plugin".into(), kind, outcome);
-    app.world_mut().write_message(Recorded(record));
+    app.world_mut().write_message(EffectRecorded(record));
     app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
     app.update();
     app.world_mut().trigger(ForkSession::default());
@@ -179,13 +180,13 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     drop(app);
 
     let session = memory.of(dir.path());
-    assert!(session.agents().is_ok_and(|agents| !agents.is_empty()));
+    assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
     let meta = Meta::of(&session).and_then(|meta| meta.title.name);
     assert_eq!(meta.as_deref(), Some("Parser"));
-    assert!(session.read_file(EFFECT_LOG).is_ok());
+    assert!(session.read_file(SESSION_EFFECT_LOG).is_ok());
     let copy = home.session(&fork);
     let forked = memory.of(copy.path());
-    assert!(forked.agents().is_ok_and(|agents| !agents.is_empty()));
+    assert!(forked.logs().is_ok_and(|logs| !logs.is_empty()));
     let parent = ForkedFrom::of(&forked).map(|parent| parent.session);
     assert_eq!(parent, Some(id.clone()));
 
@@ -222,16 +223,12 @@ fn a_session_written_through_the_stores_is_listed() {
         id: "imported".to_owned(),
         ..SavedAgent::default()
     };
-    agent
-        .conversation
-        .append(Message::user("Port the CLI"), None);
-    let session = SavedSession {
+    agent.conversation.push(Message::user("Port the CLI"));
+    let mut session = Session {
         agents: vec![agent],
-        ..SavedSession::default()
+        ..Session::default()
     };
-    let written = stores
-        .open(&dir)
-        .and_then(|store| write_session(&*store, &session));
+    let written = stores.open(&dir).and_then(|store| session.save(&*store));
     assert!(written.is_ok(), "{written:?}");
     let listed = list(&home, &stores, Path::new("/nowhere"));
     let ids: Vec<_> = listed.iter().map(|entry| entry.id.clone()).collect();

@@ -39,4 +39,5 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # The app in a session directory, and stores a test keeps in memory.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-cassette = { workspace = true }
+# The name of the effect log a session's store holds.
+rig-cassette = { workspace = true, features = ["jsonl"] }
