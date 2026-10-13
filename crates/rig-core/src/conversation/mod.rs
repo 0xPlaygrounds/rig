@@ -50,7 +50,7 @@ pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
 pub use lineage::Lineage;
 
-use pairing::PairingError;
+use pairing::{Normalized, PairingError};
 
 /// A conversation: its entries (each a message with an id and, when it is
 /// not the user's own or the model's, an author), its asides, why its last
@@ -897,6 +897,94 @@ impl Conversation {
         ids
     }
 
+    /// Repairs the entries as [`pairing::normalize`] does, saved with
+    /// [`set_entries`](Self::set_entries) as made by `by`, so merged
+    /// entries keep the first's id, author and made-time. An aside that
+    /// followed an entry merged into another follows that one; one that
+    /// followed a dropped entry follows the entry before it (each move
+    /// recorded, by `by`). What it repaired.
+    pub fn normalize(&mut self, by: Author) -> Normalized {
+        let entries = (0..self.messages.len()).filter_map(|at| self.entry(at));
+        let normalized = pairing::normalize(entries.collect());
+        let into: HashMap<MessageId, MessageId> = normalized
+            .merged
+            .iter()
+            .map(|(kept, gone)| (*gone, *kept))
+            .collect();
+        let dropped: HashSet<MessageId> = normalized.dropped.iter().copied().collect();
+        // Where an aside that followed `id` goes: the entry it went into,
+        // or for a dropped one, the entry before it that stays.
+        let anchor = |id: MessageId| -> Option<MessageId> {
+            let before = self.meta.iter().rev().skip_while(|meta| meta.id != id);
+            before
+                .map(|meta| meta.id)
+                .find_map(|id| match into.get(&id) {
+                    Some(kept) => Some(*kept),
+                    None => (!dropped.contains(&id)).then_some(id),
+                })
+        };
+        let moves: Vec<(AsideId, Option<MessageId>)> = self
+            .asides
+            .iter()
+            .filter_map(|(at, aside)| {
+                let after = aside.after?;
+                let moves = into.contains_key(&after) || dropped.contains(&after);
+                moves.then(|| (*at, anchor(after)))
+            })
+            .collect();
+        self.set_entries(normalized.entries.clone(), by.clone());
+        for (id, after) in moves {
+            self.move_aside(id, after, &by);
+        }
+        normalized
+    }
+
+    /// Takes everything a log holds from `from_log`, a value read from that
+    /// log: entries, saved asides, halt, next ids, lineage and revision.
+    /// This value's unsaved asides stay, with their ids. For a host whose
+    /// log was rewritten under the value it holds.
+    ///
+    /// # Errors
+    ///
+    /// [`ApplyError::Mismatch`], changing nothing, while either value has
+    /// unsaved changes, or when an unsaved aside's id is a saved one's in
+    /// `from_log`.
+    pub fn reread(&mut self, from_log: Conversation) -> Result<(), ApplyError> {
+        if !self.unsaved.is_empty() || !from_log.unsaved.is_empty() {
+            return Err(mismatch(
+                "a value with unsaved changes is not reread".to_owned(),
+            ));
+        }
+        let mut asides = from_log.asides;
+        asides.retain(|(_, aside)| aside.saved);
+        let unsaved = self.asides.iter().filter(|(_, aside)| !aside.saved);
+        if let Some((id, _)) = unsaved
+            .clone()
+            .find(|(id, _)| asides.iter().any(|(saved, _)| saved == id))
+        {
+            return Err(mismatch(format!("aside id {} is saved in the log", id.0)));
+        }
+        let next_aside = unsaved
+            .clone()
+            .map(|(id, _)| id.0.saturating_add(1))
+            .fold(from_log.next_aside, u64::max);
+        asides.extend(unsaved.cloned());
+        asides.sort_by_key(|(id, _)| *id);
+        *self = Self {
+            messages: from_log.messages,
+            meta: from_log.meta,
+            asides,
+            halted: from_log.halted,
+            next_id: from_log.next_id,
+            next_aside,
+            revision: from_log.revision,
+            lineage: from_log.lineage,
+            unsaved: Vec::new(),
+            clock: self.clock,
+        };
+        Ok(())
+    }
+
     /// Leaves the user's last message unanswered, for `halt`. Whether it
     /// was halted now: not when the model owes no answer.
     pub fn halt(&mut self, halt: Halt) -> bool {
@@ -963,6 +1051,21 @@ impl Conversation {
             self.log(Change::Aside { id, aside: None }, None);
         }
         Some(aside)
+    }
+
+    /// Makes aside `id` follow `after`, recorded as made by `by` when it is
+    /// saved.
+    fn move_aside(&mut self, id: AsideId, after: Option<MessageId>, by: &Author) {
+        let Some(aside) = self.aside(id).cloned() else {
+            return;
+        };
+        let aside = aside.after(after);
+        if aside.saved {
+            let aside = Some(aside);
+            self.record(Change::Aside { id, aside }, Some(by.clone()));
+        } else {
+            self.place_aside(id, aside);
+        }
     }
 
     /// Puts `aside` as `id` without recording it: in place of the aside

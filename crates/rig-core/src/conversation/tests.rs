@@ -423,3 +423,92 @@ fn restore_puts_entries_back_with_their_ids_and_the_fold_accepts_them() {
         Spliced::default()
     );
 }
+
+/// `normalize` saves the repair with ids kept: an aside on a merged entry
+/// follows the entry it went into, one on a dropped entry follows the
+/// entry before it, each move by the normalizer, and a fold of the outbox
+/// equals the live value.
+#[test]
+fn normalize_keeps_ids_and_reanchors_asides() {
+    use crate::message::{CallId, ToolName};
+    let ghost = Message::tool_result(
+        CallId::from_wire("ghost"),
+        ToolName::new("add").expect("a tool name"),
+        "3",
+    );
+    let mut live = Conversation::from_messages([
+        Message::user("q"),
+        Message::assistant("a"),
+        ghost,
+        Message::assistant("b"),
+    ]);
+    let before = ids(&live);
+    let at = |index: usize| before.get(index).copied();
+    let aside = |kind: &str, after| {
+        Aside::new(kind, Author::plugin("rate"), serde_json::Value::Null).after(after)
+    };
+    let rating = live.add_aside(aside("rating", at(3)));
+    let note = live.add_aside(aside("note", at(2)));
+    let scratch = live.add_aside(aside("scratch", at(3)).unsaved());
+    let saved = live.take_unsaved();
+
+    let normalized = live.normalize(Author::plugin("tidy"));
+    assert_eq!(
+        normalized.merged,
+        at(1).zip(at(3)).into_iter().collect::<Vec<_>>()
+    );
+    assert_eq!(normalized.dropped, at(2).into_iter().collect::<Vec<_>>());
+    assert_eq!(
+        ids(&live),
+        [at(0), at(1)].into_iter().flatten().collect::<Vec<_>>()
+    );
+    for aside in [rating, note, scratch] {
+        assert_eq!(live.aside(aside).and_then(|aside| aside.after), at(1));
+    }
+    let moves = live
+        .unsaved()
+        .iter()
+        .filter(|recorded| matches!(recorded.change, Change::Aside { .. }));
+    assert!(
+        moves.clone().count() == 2
+            && moves
+                .clone()
+                .all(|recorded| recorded.by == Some(Author::plugin("tidy")))
+    );
+    let mut all = saved;
+    all.extend(live.unsaved().iter().cloned());
+    assert_eq!(fold(&all), live);
+}
+
+/// `reread` takes what the log holds, lineage and revision too, and keeps
+/// the value's unsaved asides with their ids; it is refused while the
+/// value has unsaved changes.
+#[test]
+fn reread_takes_the_log_and_keeps_unsaved_asides() {
+    let mut live = Conversation::from_messages([Message::user("my secret")]);
+    let note = Aside::new("note", Author::plugin("n"), serde_json::json!("secret"));
+    let note = live.add_aside(note);
+    let scratch = Aside::new("scratch", Author::rig(), serde_json::Value::Null).unsaved();
+    let scratch = live.add_aside(scratch);
+    let mut log = fold(live.unsaved());
+    log.edit_each(Author::plugin("redact"), |_| {
+        Some(Message::user("my [redacted]"))
+    });
+    let redacted = Aside::new("note", Author::plugin("n"), serde_json::json!("[redacted]"));
+    log.replace_aside(note, redacted.clone());
+    let changes = u64::try_from(log.take_unsaved().len()).unwrap_or_default();
+    log.continue_log(Lineage::fresh(), changes);
+
+    assert!(live.reread(log.clone()).is_err(), "unsaved changes");
+    live.take_unsaved();
+    live.reread(log.clone()).expect("reread");
+    assert_eq!(live, log);
+    assert_eq!(
+        (live.lineage(), live.revision()),
+        (log.lineage(), log.revision())
+    );
+    assert_eq!(live.aside(note), Some(&redacted));
+    assert!(live.aside(scratch).is_some_and(|aside| !aside.saved));
+    let next = live.add_aside(Aside::new("next", Author::rig(), serde_json::Value::Null));
+    assert!(next > scratch);
+}

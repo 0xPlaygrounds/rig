@@ -1,6 +1,7 @@
 //! The rules pairing a conversation's tool calls with their results:
-//! validation and repair of a message list, the calls a cut-short
-//! conversation still owes, and where a window of it may start.
+//! validation and repair of a message list, the same repair over entries
+//! that keeps their ids ([`normalize`]), the calls a cut-short conversation
+//! still owes, and where a window of it may start.
 //!
 //! ```
 //! use rig_core::{conversation::pairing, message::Message};
@@ -9,6 +10,9 @@
 //! # Ok::<(), pairing::PairingError>(())
 //! ```
 
+use std::collections::HashSet;
+
+use super::{Author, Entry, MessageId};
 use crate::message::{AssistantContent, AssistantMessage, CallId, Message, ToolCall, UserContent};
 use crate::tool::feedback::tool_result_message;
 
@@ -99,37 +103,150 @@ pub struct Paired {
 /// turn left directly after another is merged into it; `repairs` reports
 /// the input as [`pair`] read it.
 pub fn repair(messages: Vec<Message>) -> Paired {
-    let canonical = |messages: Vec<Message>| {
-        pair(
-            messages.into_iter().map(Some).collect(),
-            Pairing::canonical(),
-        )
-    };
-    let mut paired = canonical(messages);
-    // Each merge removes a turn, so this ends.
-    while merge_turns(&mut paired.messages) {
-        paired.messages = canonical(std::mem::take(&mut paired.messages)).messages;
+    let shaped = shape(messages, true);
+    Paired {
+        messages: shaped.messages,
+        repairs: shaped.repairs,
     }
-    paired
+}
+
+/// `entries` repaired as [`repair`] repairs messages, keeping ids: what
+/// the conversation holds after [`Conversation::normalize`].
+///
+/// [`Conversation::normalize`]: super::Conversation::normalize
+#[derive(Debug, Clone, PartialEq)]
+pub struct Normalized {
+    /// The repaired entries, each with the id, author and made-time of the
+    /// first entry it holds anything of; made-up results that no user
+    /// entry follows to take them are a new entry by [`Author::rig`].
+    pub entries: Vec<Entry>,
+    /// What was repaired, as [`repair`] reports it.
+    pub repairs: Vec<PairingError>,
+    /// Each entry merged into another: the id kept, and the id merged into
+    /// it.
+    pub merged: Vec<(MessageId, MessageId)>,
+    /// The ids of entries nothing was kept of, such as one holding only
+    /// results no call asked for.
+    pub dropped: Vec<MessageId>,
+}
+
+/// `entries` repaired as [`repair`] repairs their messages, but that user
+/// entries side by side stay apart: an assistant entry directly after
+/// another is merged into it (the later stop standing) and keeps the
+/// first's id, author and made-time; a result no call waits for is
+/// dropped, and an entry left empty with it; a made-up result for a call
+/// nothing answered goes into the next user entry, else a new entry by
+/// [`Author::rig`]; a system entry arriving while calls wait moves after
+/// the entries that answer them. A list [`repair`] leaves as it is comes
+/// back unchanged.
+pub fn normalize(entries: Vec<Entry>) -> Normalized {
+    let (messages, metas): (Vec<Message>, Vec<Meta>) = entries
+        .into_iter()
+        .map(|entry| (entry.message, (entry.author, entry.id, entry.made)))
+        .unzip();
+    let shaped = shape(messages, false);
+    let mut used = HashSet::new();
+    let mut merged = Vec::new();
+    let mut entries = Vec::with_capacity(shaped.messages.len());
+    for (message, sources) in shaped.messages.into_iter().zip(shaped.sources) {
+        let mut free = sources.iter().filter(|source| used.insert(**source));
+        let kept = free.next().and_then(|source| metas.get(*source));
+        let into = kept.and_then(|(_, id, _)| *id);
+        for gone in free.filter_map(|source| metas.get(*source)?.1) {
+            if let Some(into) = into {
+                merged.push((into, gone));
+            }
+        }
+        let entry = match kept {
+            Some((author, id, made)) => Entry {
+                message,
+                author: author.clone(),
+                id: *id,
+                made: *made,
+            },
+            // Part of an entry already kept, by its author, or results
+            // made up, by rig.
+            None => {
+                let first = sources.first().and_then(|source| metas.get(*source));
+                Entry {
+                    message,
+                    author: first
+                        .map_or_else(|| Some(Author::rig()), |(author, ..)| author.clone()),
+                    id: None,
+                    made: None,
+                }
+            }
+        };
+        entries.push(entry);
+    }
+    let dropped = metas.iter().enumerate();
+    let dropped = dropped.filter(|(source, _)| !used.contains(source));
+    Normalized {
+        entries,
+        repairs: shaped.repairs,
+        merged,
+        dropped: dropped.filter_map(|(_, (_, id, _))| *id).collect(),
+    }
+}
+
+/// An entry without its message: author, id and made-time.
+type Meta = (Option<Author>, Option<MessageId>, Option<u64>);
+
+/// Messages after [`pair`]'s walk and [`merge_turns`], each with the input
+/// indices it holds anything of (the first is the one it stands for), and
+/// what the first walk repaired.
+struct Shaped {
+    messages: Vec<Message>,
+    sources: Vec<Vec<usize>>,
+    repairs: Vec<PairingError>,
+}
+
+/// `messages` read as a canonical conversation and paired, with adjacent
+/// user messages made one when `merge_users`, then adjacent turns merged,
+/// paired again until none is left.
+fn shape(messages: Vec<Message>, merge_users: bool) -> Shaped {
+    let canonical = |messages: Vec<Message>| {
+        let history = messages.into_iter().map(Some).collect();
+        walk(history, Pairing::canonical(), merge_users)
+    };
+    let mut shaped = canonical(messages);
+    // Each merge removes a turn, so this ends.
+    while merge_turns(&mut shaped) {
+        let again = canonical(std::mem::take(&mut shaped.messages));
+        let sources = again.sources.iter().map(|sources| {
+            let earlier = sources.iter().filter_map(|at| shaped.sources.get(*at));
+            earlier.flatten().copied().collect()
+        });
+        shaped.sources = sources.collect();
+        shaped.messages = again.messages;
+    }
+    shaped
 }
 
 /// Merge every assistant turn directly after another into it, the later
 /// turn's stop standing; whether any was merged.
-fn merge_turns(messages: &mut Vec<Message>) -> bool {
-    let before = messages.len();
-    let mut merged: Vec<Message> = Vec::with_capacity(before);
-    for mut message in messages.drain(..) {
+fn merge_turns(shaped: &mut Shaped) -> bool {
+    let before = shaped.messages.len();
+    let mut messages: Vec<Message> = Vec::with_capacity(before);
+    let mut sources: Vec<Vec<usize>> = Vec::with_capacity(before);
+    let all = shaped.messages.drain(..).zip(shaped.sources.drain(..));
+    for (mut message, mut from) in all {
         if let Message::Assistant(turn) = &mut message
-            && let Some(Message::Assistant(previous)) = merged.last_mut()
+            && let Some(Message::Assistant(previous)) = messages.last_mut()
         {
             previous.content.append(&mut turn.content);
             previous.stop = turn.stop.take();
+            if let Some(into) = sources.last_mut() {
+                into.append(&mut from);
+            }
             continue;
         }
-        merged.push(message);
+        messages.push(message);
+        sources.push(from);
     }
-    *messages = merged;
-    messages.len() < before
+    shaped.messages = messages;
+    shaped.sources = sources;
+    shaped.messages.len() < before
 }
 
 /// The one rule for when a tool call is answered, after pi's pairing pass.
@@ -145,10 +262,23 @@ fn merge_turns(messages: &mut Vec<Message>) -> bool {
 /// - Adjacent non-empty user messages become one, and a system message
 ///   arriving while calls wait is held until they are answered.
 pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
+    let shaped = walk(history, pairing, true);
+    Paired {
+        messages: shaped.messages,
+        repairs: shaped.repairs,
+    }
+}
+
+/// [`pair`]'s walk, noting where each message came from. Without
+/// `merge_users`, the content of adjacent user messages answers calls as
+/// one but stays in the message it came from, and a held system message
+/// goes after them whole.
+fn walk(history: Vec<Option<Message>>, pairing: Pairing, merge_users: bool) -> Shaped {
     // The ids results before the first turn took, when calls are stored.
     let mut stored = pairing.stored.then(Vec::new);
     let mut walk = Walk {
         answers: pairing.answers,
+        merge_users,
         ..Walk::default()
     };
     for step in steps(history) {
@@ -167,31 +297,32 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
                     walk.waiting = turn.tool_calls().cloned().collect();
                     walk.waiting_at = index;
                 }
-                walk.shaped.push(Message::Assistant(turn));
+                walk.put(Message::Assistant(turn), vec![index]);
             }
-            Step::System(system) => {
+            Step::System(index, system) => {
                 walk.after_assistant = false;
                 if walk.waiting.is_empty() {
                     walk.gap = false;
-                    walk.shaped.push(system);
+                    walk.put(system, vec![index]);
                 } else {
-                    walk.held.push(system);
+                    walk.held.push((index, system));
                 }
             }
-            Step::User(parts) => {
+            Step::User(first, parts) => {
                 walk.after_assistant = false;
                 if parts.is_empty() {
                     walk.close();
-                    walk.shaped.push(Message::User {
+                    let empty = Message::User {
                         content: Vec::new(),
-                    });
+                    };
+                    walk.put(empty, vec![first]);
                     walk.gap = false;
                     continue;
                 }
                 let mut content = Vec::with_capacity(parts.len());
                 for (index, part) in parts {
                     let UserContent::ToolResult(result) = part else {
-                        content.push(part);
+                        content.push((Some(index), part));
                         continue;
                     };
                     let answers = match &mut stored {
@@ -203,7 +334,7 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
                         None => answer(&mut walk.waiting, &result.call, |call| &call.id),
                     };
                     if answers {
-                        content.push(UserContent::ToolResult(result));
+                        content.push((Some(index), UserContent::ToolResult(result)));
                     } else {
                         walk.repairs.push(PairingError::OrphanToolResult {
                             index,
@@ -215,10 +346,8 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
                     // Only results nothing waits for: the gap stays open.
                     continue;
                 }
-                let only_results = !content.is_empty()
-                    && content
-                        .iter()
-                        .all(|part| matches!(part, UserContent::ToolResult(_)));
+                let only_results =
+                    !content.is_empty() && content.iter().all(|(_, part)| is_result(part));
                 if walk.pending.is_empty() {
                     walk.pending_gap = walk.gap;
                 }
@@ -234,10 +363,15 @@ pub fn pair(history: Vec<Option<Message>>, pairing: Pairing) -> Paired {
         }
     }
     walk.close();
-    Paired {
+    Shaped {
         messages: walk.shaped,
+        sources: walk.sources,
         repairs: walk.repairs,
     }
+}
+
+fn is_result(part: &UserContent) -> bool {
+    matches!(part, UserContent::ToolResult(_))
 }
 
 /// Why a batch of results does not answer a turn's calls ([`answers`]).
@@ -311,10 +445,10 @@ fn answer<T>(waiting: &mut Vec<T>, id: &CallId, id_of: impl Fn(&T) -> &CallId) -
 enum Step {
     /// An assistant turn, or `None` for one the caller emptied.
     Turn(usize, Option<AssistantMessage>),
-    System(Message),
-    /// A run of adjacent non-empty user messages, or one empty one, with the
-    /// index each part came from.
-    User(Vec<(usize, UserContent)>),
+    System(usize, Message),
+    /// A run of adjacent non-empty user messages, or one empty one: the
+    /// index of the first, and the index each part came from.
+    User(usize, Vec<(usize, UserContent)>),
 }
 
 /// `history` as steps, each run of adjacent non-empty user messages made
@@ -325,15 +459,15 @@ fn steps(history: Vec<Option<Message>>) -> Vec<Step> {
         match message {
             None => steps.push(Step::Turn(index, None)),
             Some(Message::Assistant(turn)) => steps.push(Step::Turn(index, Some(turn))),
-            Some(system @ Message::System { .. }) => steps.push(Step::System(system)),
+            Some(system @ Message::System { .. }) => steps.push(Step::System(index, system)),
             Some(Message::User { content }) => {
                 let joins = !content.is_empty();
                 let parts = content.into_iter().map(|part| (index, part));
                 match steps.last_mut() {
-                    Some(Step::User(previous)) if joins && !previous.is_empty() => {
+                    Some(Step::User(_, previous)) if joins && !previous.is_empty() => {
                         previous.extend(parts)
                     }
-                    _ => steps.push(Step::User(parts.collect())),
+                    _ => steps.push(Step::User(index, parts.collect())),
                 }
             }
         }
@@ -345,28 +479,40 @@ fn steps(history: Vec<Option<Message>>) -> Vec<Step> {
 #[derive(Default)]
 struct Walk {
     answers: bool,
+    /// Whether the content of adjacent user messages becomes one message.
+    merge_users: bool,
     shaped: Vec<Message>,
+    /// Parallel to `shaped`: the input indices each holds anything of.
+    sources: Vec<Vec<usize>>,
     repairs: Vec<PairingError>,
     /// Every occurrence of the last turn's calls still waiting, in call
     /// order, and the turn's index.
     waiting: Vec<ToolCall>,
     waiting_at: usize,
-    /// System messages that arrived while calls waited.
-    held: Vec<Message>,
+    /// System messages that arrived while calls waited, with their indices.
+    held: Vec<(usize, Message)>,
     /// Whether a turn was emptied since the last message pushed.
     gap: bool,
-    /// Results answering some waiting calls while others still wait.
-    pending: Vec<UserContent>,
+    /// Results answering some waiting calls while others still wait, and
+    /// content after them, each with its index (none for one made up).
+    pending: Vec<(Option<usize>, UserContent)>,
     pending_gap: bool,
     after_assistant: bool,
 }
 
 impl Walk {
+    fn put(&mut self, message: Message, sources: Vec<usize>) {
+        self.shaped.push(message);
+        self.sources.push(sources);
+    }
+
     /// Push the pending user content with a result added for each waiting
     /// call, then the held system messages. The results go before its first
     /// non-result part, in call order. Nothing is pushed for empty content,
     /// and content after a gap is appended to a user message that ends
-    /// `shaped`.
+    /// `shaped`. Without `merge_users`, each message's content stays its
+    /// own, the made-up results go into the first, and the held system
+    /// messages follow them all.
     fn close(&mut self) {
         let mut content = std::mem::take(&mut self.pending);
         let merge = std::mem::take(&mut self.pending_gap);
@@ -382,19 +528,23 @@ impl Walk {
         } else {
             Vec::new()
         };
+        if !self.merge_users {
+            self.close_apart(content, missing);
+            return;
+        }
         let at = content
             .iter()
-            .position(|part| !matches!(part, UserContent::ToolResult(_)))
+            .position(|(_, part)| !is_result(part))
             .unwrap_or(content.len());
-        content.splice(at..at, missing);
+        content.splice(at..at, missing.into_iter().map(|part| (None, part)));
         // Results come first: Anthropic requires it, and Chat sends them as
         // tool messages that must follow the turn directly.
-        content.sort_by_key(|part| !matches!(part, UserContent::ToolResult(_)));
+        content.sort_by_key(|(_, part)| !is_result(part));
         // A held system message goes right after the results, before the
         // user's own text, as pi places it.
         let at = content
             .iter()
-            .position(|part| !matches!(part, UserContent::ToolResult(_)))
+            .position(|(_, part)| !is_result(part))
             .unwrap_or(content.len());
         let text = if self.held.is_empty() {
             Vec::new()
@@ -402,16 +552,73 @@ impl Walk {
             content.split_off(at)
         };
         if !content.is_empty() {
-            match self.shaped.last_mut() {
-                Some(Message::User { content: previous }) if merge => previous.extend(content),
-                _ => self.shaped.push(Message::User { content }),
+            let (sources, content) = sourced(content);
+            match (self.shaped.last_mut(), self.sources.last_mut()) {
+                (Some(Message::User { content: previous }), Some(from)) if merge => {
+                    previous.extend(content);
+                    from.extend(sources);
+                }
+                _ => self.put(Message::User { content }, sources),
             }
         }
-        self.shaped.append(&mut self.held);
+        for (index, system) in std::mem::take(&mut self.held) {
+            self.put(system, vec![index]);
+        }
         if !text.is_empty() {
-            self.shaped.push(Message::User { content: text });
+            let (sources, content) = sourced(text);
+            self.put(Message::User { content }, sources);
         }
     }
+
+    /// [`close`](Self::close) without `merge_users`: each input message's
+    /// pending content as its own message, results first, the `missing`
+    /// results in the first (else a message of their own), then the held
+    /// system messages.
+    fn close_apart(
+        &mut self,
+        content: Vec<(Option<usize>, UserContent)>,
+        missing: Vec<UserContent>,
+    ) {
+        let mut messages: Vec<(Option<usize>, Vec<UserContent>)> = Vec::new();
+        for (source, part) in content {
+            match messages.last_mut() {
+                Some((last, parts)) if *last == source => parts.push(part),
+                _ => messages.push((source, vec![part])),
+            }
+        }
+        match messages.first_mut() {
+            Some((_, parts)) => {
+                let at = parts.iter().position(|part| !is_result(part));
+                let at = at.unwrap_or(parts.len());
+                parts.splice(at..at, missing);
+            }
+            None if !missing.is_empty() => messages.push((None, missing)),
+            None => {}
+        }
+        for (source, mut content) in messages {
+            content.sort_by_key(|part| !is_result(part));
+            self.put(Message::User { content }, source.into_iter().collect());
+        }
+        for (index, system) in std::mem::take(&mut self.held) {
+            self.put(system, vec![index]);
+        }
+    }
+}
+
+/// `content` without its indices, and the indices it holds, each once in
+/// the order first met.
+fn sourced(content: Vec<(Option<usize>, UserContent)>) -> (Vec<usize>, Vec<UserContent>) {
+    let mut sources: Vec<usize> = Vec::new();
+    let parts = content.into_iter().map(|(source, part)| {
+        if let Some(source) = source
+            && !sources.contains(&source)
+        {
+            sources.push(source);
+        }
+        part
+    });
+    let parts = parts.collect();
+    (sources, parts)
 }
 
 /// The tool calls of the last assistant message in `messages` that no

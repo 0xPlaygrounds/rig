@@ -319,3 +319,72 @@ fn a_window_starts_past_results_whose_calls_it_cuts_off() {
     assert_eq!(safe_start(&history, 5), 6);
     assert_eq!(safe_start(&history, 9), 6);
 }
+
+/// `normalize` repairs entries as `repair` repairs messages, keeping ids
+/// and leaving user entries apart: adjacent turns merge into the first's
+/// id, author and made-time with the later stop standing, an entry of
+/// orphan results is dropped, a made-up result goes into the next user
+/// entry or, with none, a new entry by rig. Its result normalizes to
+/// itself.
+#[test]
+fn normalize_keeps_ids_merges_turns_and_never_merges_user_entries() {
+    let entry = |id: u64, message: Message| Entry {
+        message,
+        author: None,
+        id: Some(MessageId(id)),
+        made: Some(id * 10),
+    };
+    let first_turn = assistant(vec![AssistantContent::text("a")]);
+    let Message::Assistant(second_turn) = assistant(vec![AssistantContent::text("b"), call("c1")])
+    else {
+        return;
+    };
+    let second_turn = Message::Assistant(second_turn.with_stop(StopReason::ToolUse));
+    let normalized = normalize(vec![
+        entry(0, Message::user("q")),
+        entry(1, Message::user("more")),
+        entry(2, first_turn),
+        entry(3, results(&["ghost"])),
+        Entry {
+            author: Some(Author::plugin("continue")),
+            ..entry(4, second_turn)
+        },
+        entry(5, Message::user("next")),
+        entry(6, assistant(vec![call("c2")])),
+    ]);
+    assert_eq!(normalized.merged, [(MessageId(2), MessageId(4))]);
+    assert_eq!(normalized.dropped, [MessageId(3)]);
+    assert!(!normalized.repairs.is_empty());
+    let ids: Vec<Option<MessageId>> = normalized.entries.iter().map(|entry| entry.id).collect();
+    let id = |id| Some(MessageId(id));
+    assert_eq!(ids, [id(0), id(1), id(2), id(5), id(6), None]);
+    let merged = normalized.entries.get(2).expect("the merged turn");
+    assert_eq!((merged.author.clone(), merged.made), (None, Some(20)));
+    let Message::Assistant(turn) = &merged.message else {
+        panic!("a turn: {merged:?}");
+    };
+    assert_eq!(
+        (turn.content.len(), turn.stop.clone()),
+        (3, Some(StopReason::ToolUse))
+    );
+    let next = normalized.entries.get(3).map(|entry| &entry.message);
+    let made_up = close_pending([&tool_call("c1")]);
+    let Some(Message::User { content }) = next else {
+        panic!("a user entry: {next:?}");
+    };
+    let Message::User { content: result } = made_up else {
+        panic!("results are a user message");
+    };
+    assert_eq!(
+        content.first(),
+        result.first(),
+        "the made-up result goes in"
+    );
+    let last = normalized.entries.last().expect("an entry");
+    assert_eq!(last.author, Some(Author::rig()));
+    assert_eq!(last.message, close_pending([&tool_call("c2")]));
+
+    let again = normalize(normalized.entries.clone());
+    assert_eq!(again.entries, normalized.entries);
+    assert!(again.merged.is_empty() && again.dropped.is_empty() && again.repairs.is_empty());
+}
