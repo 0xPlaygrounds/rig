@@ -64,6 +64,7 @@ pub mod headless;
 pub mod host;
 mod load;
 pub mod note;
+pub mod per_call;
 pub mod pick;
 pub mod primary;
 pub mod progress;
@@ -140,6 +141,7 @@ pub mod prelude {
         SessionDeleted, SessionForked, SessionPaths, SessionStores, first_typed, typed,
     };
     pub use crate::note::Note;
+    pub use crate::per_call::{AppPerCallExt, Place};
     pub use crate::pick::{Chosen, Pick, PickItem, Picked, Picker};
     pub use crate::primary::{PrimaryQuery, Shown, primary};
     pub use crate::progress::{CallOutput, ToolProgress};
