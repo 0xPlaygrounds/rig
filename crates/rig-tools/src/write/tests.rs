@@ -7,7 +7,7 @@ use crate::{Edit, EditArgs, Replacement};
 
 /// Writing and editing a file publish what they did to it, by its absolute
 /// path: created with its lines, then modified with the lines added and
-/// removed, each with its diff.
+/// removed, each with its hunks and the text it was made to.
 #[test]
 fn writes_and_edits_publish_the_files_they_changed() {
     let write_tool = Write::default();
@@ -31,13 +31,20 @@ fn writes_and_edits_publish_the_files_they_changed() {
         WriteArgs::new(&path, "one\ntwo\n"),
     );
     assert!(futures::executor::block_on(written).is_ok());
+    let created = changed(&context).0;
     assert_eq!(
-        changed(&context).0,
-        [FileChange::created(&path, 2)
-            .with_diff(format!(
-                "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
-            ))
-            .with_after(FileState::of(b"one\ntwo\n"))]
+        created.iter().map(FileChange::unified).collect::<Vec<_>>(),
+        [format!(
+            "--- /dev/null\n+++ {path}\n@@ -0,0 +1,2 @@\n+one\n+two\n"
+        )]
+    );
+    let without_hunks = |change: FileChange| FileChange {
+        hunks: Vec::new(),
+        ..change
+    };
+    assert_eq!(
+        created.into_iter().map(without_hunks).collect::<Vec<_>>(),
+        [FileChange::created(&path, 2).with_after(FileState::of(b"one\ntwo\n"))]
     );
 
     let mut context = ToolContext::new();
@@ -74,10 +81,20 @@ fn writes_and_edits_publish_the_files_they_changed() {
         Some(content_hash(b"1\n2\n3\n"))
     );
     assert_eq!(
-        change.and_then(|change| change.diff),
+        change.as_ref().map(FileChange::unified),
         Some(format!(
             "--- {path}\n+++ {path}\n@@ -1,3 +1,3 @@\n-one\n+1\n 2\n-three\n+3\n"
         ))
+    );
+    assert_eq!(
+        change
+            .as_ref()
+            .and_then(|change| change.before_text.as_deref()),
+        Some("one\n2\nthree\n")
+    );
+    assert_eq!(
+        change.and_then(|change| change.after_text()).as_deref(),
+        Some("1\n2\n3\n")
     );
     assert_eq!(
         std::fs::read_to_string(&path).ok().as_deref(),

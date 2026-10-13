@@ -32,6 +32,8 @@
 //! # Ok::<(), rig_core::tool::ToolContextError>(())
 //! ```
 
+use std::fmt::{self, Write as _};
+
 use serde::{Deserialize, Serialize};
 
 use super::ContextValue;
@@ -160,9 +162,16 @@ pub struct FileChange {
     pub added: usize,
     /// Lines removed.
     pub removed: usize,
-    /// The change as a unified diff, when the tool made one.
+    /// The change as hunks, each line with its ending, with three lines of
+    /// context; none when the tool did not diff the file (such as one too
+    /// large to read). [`unified`](Self::unified) renders them as a diff.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hunks: Vec<Hunk>,
+    /// The file's text before the change, when the tool read it whole as
+    /// UTF-8 within its read limit; `None` for a created file.
+    /// [`after_text`](Self::after_text) is it with the hunks applied.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub diff: Option<String>,
+    pub before_text: Option<String>,
     /// The file before the change, when the tool or a checkpoint around it
     /// knows it; `None` for a created file.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -226,7 +235,8 @@ impl FileChange {
             kind: ChangeKind::Created,
             added: lines,
             removed: 0,
-            diff: None,
+            hunks: Vec::new(),
+            before_text: None,
             before: None,
             after: None,
         }
@@ -239,7 +249,8 @@ impl FileChange {
             kind: ChangeKind::Modified,
             added,
             removed,
-            diff: None,
+            hunks: Vec::new(),
+            before_text: None,
             before: None,
             after: None,
         }
@@ -252,17 +263,142 @@ impl FileChange {
             kind: ChangeKind::Deleted,
             added: 0,
             removed: lines,
-            diff: None,
+            hunks: Vec::new(),
+            before_text: None,
             before: None,
             after: None,
         }
     }
 
-    /// This change with `diff`, its unified diff.
+    /// This change, made by `hunks`.
     #[must_use]
-    pub fn with_diff(mut self, diff: impl Into<String>) -> Self {
-        self.diff = Some(diff.into());
+    pub fn with_hunks(mut self, hunks: Vec<Hunk>) -> Self {
+        self.hunks = hunks;
         self
+    }
+
+    /// This change, made to a file that held `text`.
+    #[must_use]
+    pub fn with_before_text(mut self, text: impl Into<String>) -> Self {
+        self.before_text = Some(text.into());
+        self
+    }
+
+    /// The change as a unified diff, its hunks under a `---`/`+++` header
+    /// naming the path (`/dev/null` on the side with no file); empty when
+    /// it has no hunks.
+    ///
+    /// ```
+    /// use rig_core::tool::{FileChange, Hunk, HunkLine, Lines};
+    ///
+    /// let change = FileChange::modified("a.rs", 1, 1).with_hunks(vec![Hunk {
+    ///     old: Lines { start: 1, count: 2 },
+    ///     new: Lines { start: 1, count: 2 },
+    ///     lines: vec![
+    ///         HunkLine::Same("one\n".into()),
+    ///         HunkLine::Removed("two\n".into()),
+    ///         HunkLine::Added("2".into()),
+    ///     ],
+    /// }]);
+    /// assert_eq!(
+    ///     change.unified(),
+    ///     "--- a.rs\n+++ a.rs\n@@ -1,2 +1,2 @@\n one\n-two\n+2\n\\ No newline at end of file\n"
+    /// );
+    /// ```
+    pub fn unified(&self) -> String {
+        if self.hunks.is_empty() {
+            return String::new();
+        }
+        let side = |gone| {
+            if self.kind == gone {
+                "/dev/null"
+            } else {
+                self.path.as_str()
+            }
+        };
+        let mut out = format!(
+            "--- {}\n+++ {}\n",
+            side(ChangeKind::Created),
+            side(ChangeKind::Deleted)
+        );
+        for hunk in &self.hunks {
+            let _ = writeln!(out, "@@ -{} +{} @@", hunk.old, hunk.new);
+            for line in &hunk.lines {
+                out.push(line.sign());
+                out.push_str(line.text());
+                if !line.text().ends_with(['\r', '\n']) {
+                    out.push_str("\n\\ No newline at end of file\n");
+                }
+            }
+        }
+        out
+    }
+
+    /// The file's text after the change: [`before_text`](Self::before_text)
+    /// (empty for a created file) with the hunks applied. `None` for a
+    /// deleted file, when the text before is not known, or when the hunks
+    /// do not make the whole change (they do not count the lines
+    /// [`added`](Self::added) and [`removed`](Self::removed), or do not fit
+    /// the text before).
+    ///
+    /// ```
+    /// use rig_core::tool::{FileChange, Hunk, HunkLine, Lines};
+    ///
+    /// let change = FileChange::modified("a.rs", 1, 1)
+    ///     .with_before_text("one\ntwo\n")
+    ///     .with_hunks(vec![Hunk {
+    ///         old: Lines { start: 2, count: 1 },
+    ///         new: Lines { start: 2, count: 1 },
+    ///         lines: vec![HunkLine::Removed("two\n".into()), HunkLine::Added("2\n".into())],
+    ///     }]);
+    /// assert_eq!(change.after_text().as_deref(), Some("one\n2\n"));
+    /// assert_eq!(change.changed_lines().collect::<Vec<_>>(), [2]);
+    /// ```
+    pub fn after_text(&self) -> Option<String> {
+        let before = match self.kind {
+            ChangeKind::Deleted => return None,
+            ChangeKind::Created => "",
+            ChangeKind::Modified => self.before_text.as_deref()?,
+        };
+        let lines = self.hunks.iter().flat_map(|hunk| &hunk.lines);
+        let counted = |sign| lines.clone().filter(|line| line.sign() == sign).count();
+        if (counted('+'), counted('-')) != (self.added, self.removed) {
+            return None;
+        }
+        let mut old = text_lines(before);
+        let mut next = 1;
+        let mut out = String::with_capacity(before.len());
+        for hunk in &self.hunks {
+            while next < hunk.old.start {
+                out.push_str(old.next()?);
+                next += 1;
+            }
+            for line in &hunk.lines {
+                if let HunkLine::Added(text) = line {
+                    out.push_str(text);
+                    continue;
+                }
+                if old.next()? != line.text() {
+                    return None;
+                }
+                next += 1;
+                if let HunkLine::Same(text) = line {
+                    out.push_str(text);
+                }
+            }
+        }
+        out.extend(old);
+        Some(out)
+    }
+
+    /// The lines the change added or rewrote, counted from 1 in the file
+    /// after it.
+    pub fn changed_lines(&self) -> impl Iterator<Item = usize> + '_ {
+        self.hunks.iter().flat_map(|hunk| {
+            let new = hunk.lines.iter().filter(|line| line.sign() != '-');
+            new.zip(hunk.new.start..)
+                .filter_map(|(line, at)| matches!(line, HunkLine::Added(_)).then_some(at))
+        })
     }
 
     /// This change, made to the file `before`.
@@ -278,6 +414,112 @@ impl FileChange {
         self.after = Some(after);
         self
     }
+}
+
+/// One run of a [`FileChange`]: the lines it removed and added, between
+/// the lines around them it kept.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Hunk {
+    /// The lines of the file before the change that it spans.
+    pub old: Lines,
+    /// The lines of the file after the change that it spans.
+    pub new: Lines,
+    /// Its lines in order, each with its line ending (`\n`, `\r\n` or a
+    /// lone `\r`; none on a last line that has none).
+    pub lines: Vec<HunkLine>,
+}
+
+/// Lines of a file that a [`Hunk`] spans: `count` lines from line `start`,
+/// counted from 1. An empty span starts at the line it comes before. Shown
+/// as a unified diff's range (`3,2`; `3`; `2,0` for an empty one before
+/// line 3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Lines {
+    /// The first line.
+    pub start: usize,
+    /// How many lines.
+    pub count: usize,
+}
+
+impl fmt::Display for Lines {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.count {
+            1 => write!(f, "{}", self.start),
+            0 => write!(f, "{},0", self.start.saturating_sub(1)),
+            count => write!(f, "{},{count}", self.start),
+        }
+    }
+}
+
+/// A line of a [`Hunk`], with its ending. Its wire form is the line as a
+/// unified diff shows it: its sign (` `, `-` or `+`), then its text.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(into = "String", try_from = "String")]
+pub enum HunkLine {
+    /// A line the change kept, around those it changed.
+    Same(String),
+    /// A line of the file before that the change removed.
+    Removed(String),
+    /// A line of the file after that the change added.
+    Added(String),
+}
+
+impl HunkLine {
+    /// The line's text, with its ending.
+    pub fn text(&self) -> &str {
+        match self {
+            Self::Same(text) | Self::Removed(text) | Self::Added(text) => text,
+        }
+    }
+
+    /// Its sign in a unified diff: ` `, `-` or `+`.
+    pub fn sign(&self) -> char {
+        match self {
+            Self::Same(_) => ' ',
+            Self::Removed(_) => '-',
+            Self::Added(_) => '+',
+        }
+    }
+}
+
+impl From<HunkLine> for String {
+    fn from(line: HunkLine) -> Self {
+        let sign = line.sign();
+        let (HunkLine::Same(mut text) | HunkLine::Removed(mut text) | HunkLine::Added(mut text)) =
+            line;
+        text.insert(0, sign);
+        text
+    }
+}
+
+impl TryFrom<String> for HunkLine {
+    type Error = String;
+
+    fn try_from(mut line: String) -> Result<Self, Self::Error> {
+        let make = match line.chars().next() {
+            Some(' ') => Self::Same,
+            Some('-') => Self::Removed,
+            Some('+') => Self::Added,
+            _ => return Err(format!("a hunk line starts with ' ', '-' or '+': {line:?}")),
+        };
+        line.remove(0);
+        Ok(make(line))
+    }
+}
+
+/// `text`'s lines, each with its ending: `\n`, `\r\n` or a lone `\r`, as
+/// hunks count them.
+fn text_lines(mut text: &str) -> impl Iterator<Item = &str> {
+    std::iter::from_fn(move || {
+        let end = match text.find(['\r', '\n']) {
+            Some(at) if text.get(at..).is_some_and(|rest| rest.starts_with("\r\n")) => at + 2,
+            Some(at) => at + 1,
+            None => text.len(),
+        };
+        let (line, rest) = text.split_at_checked(end)?;
+        text = rest;
+        (!line.is_empty()).then_some(line)
+    })
 }
 
 /// What a tool call did to a file.

@@ -357,10 +357,11 @@ fn record_changes(
         let after = (!deleted)
             .then(|| read_file(&*workspace.0, Path::new(&change.path)).flatten())
             .flatten();
+        let diff = (!change.hunks.is_empty()).then(|| change.unified());
         branch.files.push(FileRecord {
             path: change.path,
             at,
-            diff: change.diff,
+            diff,
             after,
             deleted,
         });

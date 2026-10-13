@@ -306,7 +306,8 @@ fn settled_before(modified: SystemTime, began: SystemTime) -> bool {
 }
 
 /// What changed from the scan `before` to the scan `after`; with `blobs`,
-/// where both kept their content, each change with its diff.
+/// where both kept their content, each change with its hunks and text
+/// before.
 fn scan_changes(
     before: &BTreeMap<PathBuf, Seen>,
     after: &BTreeMap<PathBuf, Seen>,
@@ -554,7 +555,8 @@ impl Git {
 }
 
 /// The change from `before` to `after` (`None`: no file) of the file
-/// `path`, with its diff when both are small enough to diff.
+/// `path`, with its hunks and text before when both are small enough to
+/// diff.
 fn change(path: &str, before: Option<&[u8]>, after: Option<&[u8]>) -> FileChange {
     let small =
         |bytes: Option<&[u8]>| bytes.is_none_or(|bytes| bytes.len() as u64 <= MAX_FILE_BYTES);

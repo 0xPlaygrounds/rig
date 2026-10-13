@@ -382,9 +382,10 @@ fn measured(
         Ok((Some(name), false)) => name.to_string(),
         _ => "the agent".to_owned(),
     };
-    let diffs: Vec<&str> = large
+    let diffs: Vec<String> = large
         .iter()
-        .filter_map(|change| change.file.diff.as_deref())
+        .map(|change| change.file.unified())
+        .filter(|diff| !diff.is_empty())
         .collect();
     let ask = Ask::new(format!("{who}: {line}"))
         .body(format!(

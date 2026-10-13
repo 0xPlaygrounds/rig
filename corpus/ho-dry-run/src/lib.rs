@@ -269,12 +269,12 @@ fn written(
     let args = parse::<WriteArgs>(arguments)?;
     let path = place(dir, &args.path)?;
     let before = overlay.current(&path).ok();
-    let diff = file_change(&path, before.as_deref(), Some(&args.content)).diff;
+    let diff = file_change(&path, before.as_deref(), Some(&args.content)).unified();
     let change = Change {
         path,
         content: args.content,
     };
-    Ok((change, diff.unwrap_or_default()))
+    Ok((change, diff))
 }
 
 /// What an `edit` would leave, made against the overlay as `edit` makes
@@ -288,7 +288,7 @@ fn edited(
     let path = place(dir, &args.path)?;
     let text = overlay.current(&path)?;
     let applied = apply(&path, &text, &args.edits)?;
-    let mut shown = applied.change.diff.unwrap_or_default();
+    let mut shown = applied.change.unified();
     for note in applied.notes {
         shown.push_str(&format!("Note: {note}\n"));
     }

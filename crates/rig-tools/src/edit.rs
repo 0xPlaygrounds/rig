@@ -181,7 +181,7 @@ fn edit(
         out.push_str(&format!("\nNote: {note}"));
     }
     out.push('\n');
-    out.push_str(&shown(applied.change.diff.as_deref().unwrap_or_default()));
+    out.push_str(&shown(&applied.change.unified()));
     Ok((out, applied.change))
 }
 
@@ -191,7 +191,7 @@ pub struct Applied {
     /// The edited text, with the byte-order mark and line endings the file
     /// had: what [`Edit`] writes.
     pub text: String,
-    /// What the edit does to the file, with its diff, the hash of the text
+    /// What the edit does to the file, with its hunks, the hash of the text
     /// it was made to and that of [`text`](Self::text).
     pub change: FileChange,
     /// How many places were replaced.

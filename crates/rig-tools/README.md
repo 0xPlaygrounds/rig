@@ -40,8 +40,8 @@ object directory, never the repository's own, elsewhere a scan keeping content
 under `Taking::keep`), `clipboard` (the system
 clipboard's text and images), `context` (the `AGENTS.md`/`CLAUDE.md`
 instruction files from the working directory up, read within `Limits`), `fs`
-(`write_atomic`, capped reads, `resolve`, `file_change`, a deletion's diff
-too), `process` (process
+(`write_atomic`, capped reads, `resolve`, `file_change`: a change's hunks
+and the text before it), `process` (process
 groups and the `Launcher`), `blocking`, and the text helpers `shorten` and `ago`.
 
 The tools run on the file system and processes, so the crate is native only.

@@ -76,10 +76,10 @@ impl Overlay {
 
     /// What the writes kept here would do to the files of the workspace
     /// under it, in the order each file was first touched: created,
-    /// modified or deleted, with its diff and the [`FileState`] of each
-    /// side (the [`FileState::unread`] size of a file too large to read). A
-    /// file written back as it was, or created and removed again, is no
-    /// change.
+    /// modified or deleted, with its hunks, its text before and the
+    /// [`FileState`] of each side (the [`FileState::unread`] size of a file
+    /// too large to read). A file written back as it was, or created and
+    /// removed again, is no change.
     ///
     /// [`FileState`]: rig_core::tool::FileState
     /// [`FileState::unread`]: rig_core::tool::FileState::unread

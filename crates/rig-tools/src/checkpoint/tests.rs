@@ -63,7 +63,7 @@ fn git_in(repo: &Path, args: &[&str]) -> bool {
 }
 
 /// In a git work tree, a write between two snapshots is one modified file
-/// with its content before and after and its diff, the earlier snapshot
+/// with its content before and after and its hunks, the earlier snapshot
 /// still has the old bytes, a scan is never compared with it, and nothing
 /// in the repository's `.git` changed.
 #[test]
@@ -90,13 +90,14 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
         .unwrap_or_default()
         .into_iter()
         .map(|change| {
+            let after = change.after_text();
             (
                 change.path,
                 change.kind,
                 change.added,
                 change.before.and_then(|it| it.hash),
                 change.after.and_then(|it| it.hash),
-                change.diff.is_some(),
+                after,
             )
         })
         .collect();
@@ -108,7 +109,7 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
             1,
             Some(content_hash(b"one\n")),
             Some(content_hash(b"one\ntwo\n")),
-            true
+            Some("one\ntwo\n".to_owned())
         )]
     );
     assert_eq!(
@@ -286,9 +287,12 @@ fn a_scan_keeps_content_when_it_may() {
     let diffs: Vec<_> = changes
         .unwrap_or_default()
         .into_iter()
-        .map(|change| (change.kind, change.added, change.diff.is_some()))
+        .map(|change| (change.kind, change.added, change.after_text()))
         .collect();
-    assert_eq!(diffs, [(ChangeKind::Modified, 1, true)]);
+    assert_eq!(
+        diffs,
+        [(ChangeKind::Modified, 1, Some("one\ntwo\n".to_owned()))]
+    );
     let a = dir.join("a.txt");
     assert_eq!(
         first.content(&a).and_then(Result::ok),

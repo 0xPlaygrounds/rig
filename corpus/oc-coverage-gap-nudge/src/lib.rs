@@ -198,18 +198,18 @@ fn track_changes(
         return;
     }
     for change in changes {
-        match (&change.after, &change.diff) {
-            (None, _) => {
+        match &change.after {
+            None => {
                 state.tracked.remove(&change.path);
             }
-            (Some(_), Some(diff)) => {
+            Some(_) if !change.hunks.is_empty() => {
                 let lines = state.tracked.remove(&change.path).unwrap_or_default();
-                let moved = through_diff(&lines, diff);
+                let moved = through_diff(&lines, &change.unified());
                 if !moved.is_empty() {
                     state.tracked.insert(change.path.clone(), moved);
                 }
             }
-            (Some(_), None) => {}
+            Some(_) => {}
         }
     }
 }

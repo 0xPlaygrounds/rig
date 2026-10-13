@@ -277,7 +277,7 @@ fn track(
         let (file, at) = files.touch(&change.path, by);
         file.added += change.added;
         file.removed += change.removed;
-        file.diffs.extend(change.diff);
+        file.diffs.push(change.unified());
         file.changed_at = Some(at);
         file.gone = change.kind == ChangeKind::Deleted;
     }

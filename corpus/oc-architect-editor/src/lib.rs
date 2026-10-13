@@ -588,11 +588,8 @@ fn report(work: &Implementing, said: &str) -> String {
             out.push_str(&format!("\n- {path}: +{added} -{removed}"));
         }
         for (path, _, _, changes) in &files {
-            let diff: Vec<&str> = changes
-                .iter()
-                .filter_map(|change| change.diff.as_deref())
-                .flat_map(str::lines)
-                .collect();
+            let diffs: Vec<String> = changes.iter().map(|change| change.unified()).collect();
+            let diff: Vec<&str> = diffs.iter().flat_map(|diff| diff.lines()).collect();
             if diff.is_empty() {
                 continue;
             }

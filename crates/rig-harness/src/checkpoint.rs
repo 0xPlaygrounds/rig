@@ -6,7 +6,8 @@
 //! agent's [`WorkDir`] (else the [`ProjectRoot`]) just before and just
 //! after it runs and publishes the difference as its `FilesChanged`, each
 //! change with the [`FileState`] of each side and, where the content was
-//! kept, its diff. A reviewer reads them as any tool's facts:
+//! kept, its hunks, the text before and so the text after. A reviewer
+//! reads them as any tool's facts:
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -16,7 +17,8 @@
 //!     for published in &calls {
 //!         let changes = published.0.get::<FilesChanged>().ok().flatten();
 //!         for change in changes.map(|it| it.0).unwrap_or_default() {
-//!             // change.path, change.kind, change.before, change.after, change.diff
+//!             // change.path, change.kind, change.hunks, change.before_text,
+//!             // change.after_text(), change.unified()
 //!         }
 //!     }
 //! }

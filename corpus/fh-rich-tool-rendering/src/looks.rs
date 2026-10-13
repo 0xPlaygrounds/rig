@@ -1,7 +1,7 @@
 //! The looks of the built-in tools' calls, each a function of the call as
 //! the terminal view gives it ([`ToolCallView`]).
 
-use rig_harness::rig_core::tool::{ExitStatus, FilesChanged, FilesRead, LinesShown};
+use rig_harness::rig_core::tool::{ExitStatus, FileChange, FilesChanged, FilesRead, LinesShown};
 use rig_tools::fs::file_change;
 use rig_tools::{SearchHits, split_status};
 use rig_tui::ratatui::style::{Color, Style, Stylize};
@@ -71,8 +71,9 @@ fn diffs(view: &ToolCallView<'_>, path: &str) -> Vec<String> {
         .and_then(|facts| facts.get::<FilesChanged>().ok().flatten());
     if let Some(FilesChanged(changes)) = published {
         return changes
-            .into_iter()
-            .filter_map(|change| change.diff)
+            .iter()
+            .map(FileChange::unified)
+            .filter(|diff| !diff.is_empty())
             .collect();
     }
     let arguments = &view.call.function.arguments;
@@ -80,7 +81,10 @@ fn diffs(view: &ToolCallView<'_>, path: &str) -> Vec<String> {
         let text = value.get(key).and_then(Value::as_str).unwrap_or_default();
         format!("{}\n", text.trim_end_matches('\n'))
     };
-    let made = |before: Option<&str>, after: &str| file_change(path, before, Some(after)).diff;
+    let made = |before: Option<&str>, after: &str| {
+        let diff = file_change(path, before, Some(after)).unified();
+        (!diff.is_empty()).then_some(diff)
+    };
     match arguments.get("edits").and_then(Value::as_array) {
         Some(edits) => edits
             .iter()

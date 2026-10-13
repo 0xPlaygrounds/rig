@@ -19,7 +19,7 @@ use crate::{MAX_FILE_BYTES, blocking};
 /// is refused, and so is an existing file at the new path unless the call
 /// says to overwrite it. Publishes the files it changed ([`FilesChanged`]),
 /// by their [resolved](Workspace) paths: the old one deleted, and
-/// the new one created (or, overwritten, changed) with its diff.
+/// the new one created (or, overwritten, changed) with its hunks.
 #[derive(Clone, Debug)]
 pub struct Move {
     /// Where the file is moved.
