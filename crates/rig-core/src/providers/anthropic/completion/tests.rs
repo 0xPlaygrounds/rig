@@ -2392,3 +2392,61 @@ fn a_message_cache_point_follows_its_messages_through_adapting() {
         "{value:#}"
     );
 }
+
+/// A point within a message marks the last block of its items, in an
+/// assistant turn as in a user message; items that send no block end the
+/// point at the turn before, and a point past the last turn marks nothing.
+#[test]
+fn a_cache_point_within_a_message_marks_the_last_block_of_its_items() {
+    use completion::CachePoint::Within;
+    use message::{AssistantContent, AssistantMessage, Message, UserContent};
+
+    let wire = AnthropicConfig::new("test-key").completion(CLAUDE_SONNET_4_6);
+    let marks = |message: usize, items: usize| -> Vec<Vec<bool>> {
+        let mut request = completion_request_with_history(
+            vec![
+                Message::user("a"),
+                Message::Assistant(AssistantMessage::new(vec![
+                    AssistantContent::text("b1"),
+                    AssistantContent::text("b2"),
+                ])),
+                Message::User {
+                    content: vec![UserContent::text("c1"), UserContent::text("c2")],
+                },
+            ],
+            None,
+        );
+        request.cache_points = vec![Within { message, items }];
+        let value = serde_json::to_value(body(&wire, &request, Mode::Unary).unwrap()).unwrap();
+        value["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|message| {
+                message["content"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|block| block.get("cache_control").is_some())
+                    .collect()
+            })
+            .collect()
+    };
+
+    assert_eq!(
+        marks(1, 1),
+        [vec![false], vec![true, false], vec![false, false]]
+    );
+    assert_eq!(
+        marks(2, 1),
+        [vec![false], vec![false, false], vec![true, false]]
+    );
+    assert_eq!(
+        marks(2, 0),
+        [vec![false], vec![false, true], vec![false, false]]
+    );
+    assert_eq!(
+        marks(3, 1),
+        [vec![false], vec![false, false], vec![false, false]]
+    );
+}
