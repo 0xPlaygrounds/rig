@@ -10,8 +10,12 @@
 //! something starts, and when a turn is interrupted. Saving queues the
 //! changes for the log, announces each as a [`Committed`], and writes the
 //! queue at the end of the frame, a subagent's log before its parent's.
-//! Nothing is ever rewritten; [`restore`](super::restore) folds the logs
-//! back at startup.
+//!
+//! Records are appended while the session runs. Nothing is rewritten
+//! except through rig-memory: a [`RewriteSession`] maps every saved record
+//! in place, keeping each record's place and stamp, and the agents'
+//! conversations and saved values become the rewritten ones;
+//! [`restore`](super::restore) folds the logs back at startup.
 
 use std::sync::Arc;
 
@@ -20,17 +24,19 @@ use bevy_ecs::lifecycle::HookContext;
 use bevy_ecs::prelude::*;
 use bevy_ecs::reflect::AppTypeRegistry;
 use bevy_ecs::resource::IsResource;
+use bevy_ecs::schedule::SystemSet;
 use bevy_ecs::system::SystemParam;
 use bevy_ecs::world::DeferredWorld;
 use bevy_log::error;
 use bevy_reflect::serde::TypedReflectSerializer;
 use bevy_reflect::{CreateTypeData, Reflect, TypePath};
-use rig_core::conversation::Recorded;
-use rig_memory::{LoadError, Repair, SESSION, Session, Store, Writer};
+use rig_core::conversation::{Author, Recorded};
+use rig_memory::{LoadError, Place, Repair, Rewrite, Rewritten, SESSION, Session, Store, Writer};
 use web_time::{SystemTime, UNIX_EPOCH};
 
+use super::WriteJournal;
 use super::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy};
-use super::{StopTurns, WriteJournal};
+use super::restore::{resource_entity, saved, saved_type};
 
 /// Saves an agent component or a resource with the session: derive
 /// `Reflect` and add `Saved` to its `#[reflect(..)]`, as
@@ -63,8 +69,7 @@ impl<T: Component + Reflect + TypePath> CreateTypeData<T> for ReflectSaved {
         // `Changed` also sees an immutable value inserted in place of
         // another.
         let watch = |app: &mut App| {
-            let log = log_changed::<T>.after(StopTurns).before(WriteJournal);
-            app.add_systems(Last, log);
+            app.add_systems(Last, log_changed::<T>.in_set(Saving));
         };
         Self { watch }
     }
@@ -285,6 +290,164 @@ pub(crate) fn retire(
     committed.write_batch(save_conversation(&log, agent, id, conversation));
     log.0.retire(&id.0);
     commands.entity(agent).try_despawn();
+}
+
+/// The systems in `Last` that queue what the frame changed for the log:
+/// after the turns stopped on exit, before [`apply_rewrites`] and
+/// [`WriteJournal`].
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct Saving;
+
+/// Rewrites this session's saved history through rig-memory
+/// ([`Writer::rewrite`]) at the end of the frame, once everything the
+/// frame saved is queued and before it is written: every record of every
+/// log, kept in its place with its stamp, and every file of the store, go
+/// through `with`. Then every agent's conversation is the rewritten one
+/// (its unsaved asides kept, passed through `with` too), and every saved
+/// component or resource whose newest value changed is inserted again
+/// from it, as a restore inserts it, so `On<Insert<T>>` observers see it.
+/// [`SessionRewritten`] follows in the same frame.
+///
+/// A running turn keeps running; what it adds after the rewrite was not
+/// mapped, nor was what a plugin keeps a copy of: a `Conversation` copied
+/// before the rewrite and put back is saved whole, with the old text. Text
+/// already sent to a model is not reached. Without a session store there
+/// is no saved history, and nothing is rewritten. The map is any
+/// [`Rewrite`], such as [`Strings`](rig_memory::Strings) for a redaction.
+#[derive(Event, Clone)]
+pub struct RewriteSession {
+    /// Who rewrites it, kept in each rewritten log's header.
+    pub by: Author,
+    /// The map.
+    pub with: Arc<dyn Rewrite>,
+    /// Who asked, such as an entity of the plugin's own:
+    /// [`SessionRewritten`] says so.
+    pub asker: Option<Entity>,
+}
+
+/// A [`RewriteSession`] done, or why not, in the frame it ran, before
+/// [`WriteJournal`]. The owners of what the kernel does not keep re-read
+/// or map theirs on it, with the same `with`: the effect log's writer,
+/// the session's listing, the scratch files.
+#[derive(Message, Clone)]
+pub struct SessionRewritten {
+    /// Who asked, as [`RewriteSession`] said.
+    pub asker: Option<Entity>,
+    /// The map the session was rewritten through.
+    pub with: Arc<dyn Rewrite>,
+    /// What was rewritten, or why nothing was: nothing is changed when
+    /// the session cannot be read, or a rewritten log would not read.
+    pub result: Result<Rewritten, String>,
+}
+
+/// The rewrites asked for this frame.
+#[derive(Resource, Default)]
+pub(crate) struct Rewrites(Vec<RewriteSession>);
+
+/// Queues a [`RewriteSession`] for the end of the frame.
+pub(crate) fn ask_rewrite(asked: On<RewriteSession>, mut rewrites: ResMut<Rewrites>) {
+    rewrites.0.push(asked.event().clone());
+}
+
+/// Whether a rewrite was asked for this frame.
+pub(crate) fn rewrites_asked(rewrites: Res<Rewrites>) -> bool {
+    !rewrites.0.is_empty()
+}
+
+/// Runs the rewrites asked for, as [`RewriteSession`] says.
+pub(crate) fn apply_rewrites(world: &mut World) {
+    let asked = world
+        .get_resource_mut::<Rewrites>()
+        .map(|mut rewrites| std::mem::take(&mut rewrites.0))
+        .unwrap_or_default();
+    let log = world
+        .get_resource::<SessionLog>()
+        .cloned()
+        .unwrap_or_default();
+    for RewriteSession { by, with, asker } in asked {
+        let result = log.0.rewrite(by, &*with);
+        let result = result.map_err(|failure| failure.to_string());
+        if let Ok(rewritten) = &result {
+            for failure in reread(world, rewritten, &*with) {
+                let failure = format!("After rewriting the session: {failure}.");
+                world.write_message(Notice::error(None, failure));
+            }
+        }
+        world.write_message(SessionRewritten {
+            asker,
+            with,
+            result,
+        });
+    }
+}
+
+/// Makes each live agent's conversation and each saved value the
+/// rewritten one, mapping its unsaved asides through `with`; what failed.
+fn reread(world: &mut World, rewritten: &Rewritten, with: &dyn Rewrite) -> Vec<String> {
+    let mut agents = world.query_filtered::<(Entity, &AgentId), With<Agent>>();
+    let agents: Vec<(Entity, String)> = agents
+        .iter(world)
+        .map(|(agent, id)| (agent, id.0.clone()))
+        .collect();
+    let registry = world.get_resource::<AppTypeRegistry>().cloned();
+    let registry = registry.unwrap_or_default();
+    let registry = registry.read();
+    let mut failures = Vec::new();
+    for log in &rewritten.logs {
+        let agent = agents.iter().find(|(_, id)| *id == log.log);
+        let agent = match (agent, log.log == SESSION) {
+            (Some(&(agent, _)), _) => Some(agent),
+            (None, true) => None,
+            // Not live, such as a retired agent's.
+            (None, false) => continue,
+        };
+        if let Some(mut conversation) = agent.and_then(|agent| world.get_mut::<Conversation>(agent))
+        {
+            let at = Place::Unsaved { log: &log.log };
+            let unsaved: Vec<_> = conversation
+                .asides()
+                .filter(|(_, aside)| !aside.saved)
+                .map(|(id, aside)| (id, aside.clone()))
+                .collect();
+            for (id, mut aside) in unsaved {
+                if with.aside(&at, &mut aside) {
+                    conversation.replace_aside(id, aside.unsaved());
+                }
+            }
+            if let Err(failure) = conversation.reread(log.conversation.clone()) {
+                failures.push(format!(
+                    "the conversation of {} was not reread: {failure}",
+                    log.log
+                ));
+            }
+        }
+        for key in &log.changed_keys {
+            let inserted = match log.state.get(key) {
+                Some(value) => saved(key, value, &registry).and_then(|(component, value)| {
+                    let mut entity = match agent {
+                        Some(agent) => world
+                            .get_entity_mut(agent)
+                            .map_err(|failure| failure.to_string())?,
+                        None => resource_entity(world, component)?,
+                    };
+                    component.insert(&mut entity, value.as_partial_reflect(), &registry);
+                    Ok(())
+                }),
+                // A value the rewrite made null is gone, from an agent.
+                None => saved_type(key, &registry).map(|(_, component)| {
+                    if let Some(mut entity) =
+                        agent.and_then(|agent| world.get_entity_mut(agent).ok())
+                    {
+                        component.remove(&mut entity);
+                    }
+                }),
+            };
+            if let Err(failure) = inserted {
+                failures.push(format!("the saved value `{key}` was not reread: {failure}"));
+            }
+        }
+    }
+    failures
 }
 
 /// Restores the session at startup, settles what a crash or restart left

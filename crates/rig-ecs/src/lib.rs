@@ -42,7 +42,7 @@ pub mod turn;
 /// (`message::Message` is the conversation's message; the prelude's own
 /// `Message` is Bevy's message trait; `Conversation` is the agent's
 /// component, which derefs to `rig_core::conversation::Conversation`), and
-/// rig-memory's session store and reading.
+/// rig-memory's session store, reading and rewriting.
 pub mod prelude {
     pub use bevy_app::prelude::*;
     pub use bevy_ecs::entity_disabling::Disabled;
@@ -62,7 +62,10 @@ pub mod prelude {
         Attachment, Deliver, DeliveredIn, DeliveryMode, Incoming, MessagePart, MessageRecord,
         Recalled,
     };
-    pub use crate::journal::{Committed, JournalPlugin, ReflectSaved, Retire, SessionRestored};
+    pub use crate::journal::{
+        Committed, JournalPlugin, ReflectSaved, Retire, RewriteSession, SessionRestored,
+        SessionRewritten,
+    };
     pub use crate::model::{Connection, Effort, ModelChoice, Models, SetEffort, SetModel};
     pub use crate::prompt::{AgentSections, PromptSection, SectionOf, ToolRules};
     pub use crate::restore::{Interrupted, Restored};
@@ -92,7 +95,8 @@ pub mod prelude {
         PortableTool, Scope, Tool, ToolExecutionError, ToolResult, Touches, args_schema,
     };
     pub use rig_memory::{
-        Files, Keep, Repair, SavedAgent, Session, Stamp, Store, as_of, fork, history, now_ms,
+        Files, Keep, Place, Repair, Rewrite, Rewritten, SavedAgent, Session, Stamp, Store, Strings,
+        as_of, fork, history, now_ms,
     };
 }
 
@@ -103,7 +107,7 @@ use bevy_time::TimePlugin;
 
 use agent::{Agent, Notice};
 use calls::{PollCalls, Wake, poll_calls, settle};
-use journal::{SessionLog, save_conversations};
+use journal::{Saving, SessionLog, save_conversations};
 
 /// The system in `Last`, on exit, that stops the running turns and leaves
 /// them for the restart, unended. It runs before
@@ -154,6 +158,8 @@ impl Plugin for AgentPlugin {
             .add_message::<Notice>()
             .add_message::<journal::Committed>()
             .add_message::<inbox::Recalled>()
+            .add_message::<journal::SessionRewritten>()
+            .init_resource::<journal::Rewrites>()
             // Notices and commits are written by systems that never meet
             // on one effect, and their order within a pass means nothing.
             .allow_ambiguous_resource::<Messages<Notice>>()
@@ -164,6 +170,7 @@ impl Plugin for AgentPlugin {
                     .chain()
                     .in_set(bevy_app::OnAppExitSystems),
             )
+            .configure_sets(Last, Saving.after(StopTurns).before(WriteJournal))
             .add_systems(Startup, spawn_first_agent)
             // A reply that came in this frame has its calls started in it.
             .configure_sets(Update, PollCalls.before(stage::AgentLoop))
@@ -179,10 +186,15 @@ impl Plugin for AgentPlugin {
                     turn::stop_turns_on_exit
                         .in_set(StopTurns)
                         .run_if(on_message::<AppExit>),
-                    save_conversations.after(StopTurns).before(WriteJournal),
+                    save_conversations.in_set(Saving),
+                    journal::apply_rewrites
+                        .after(Saving)
+                        .before(WriteJournal)
+                        .run_if(journal::rewrites_asked),
                 ),
             )
             .add_observer(journal::retire)
+            .add_observer(journal::ask_rewrite)
             .add_observer(inbox::on_deliver)
             .add_observer(turn::on_retry)
             .add_observer(turn::on_interrupt)

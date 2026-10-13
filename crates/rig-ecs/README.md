@@ -73,14 +73,20 @@ What it holds, by module:
   rig-core's `catalog::Connector`.
 - `effects`: the one dispatch path, recorded into the kernel's own buffer
   and written as `EffectRecorded` when each effect settles.
-- `journal`, `restore`: the append-only session log and its restore. An
+- `journal`, `restore`: the session log, appended to while the session
+  runs, and its restore. An
   agent's `Conversation` component is rig-core's conversation (it derefs
   to it): a plugin changes it by calling its methods (push, splice with
   its own `Author`, halt, asides), and each change waits in the
   conversation's outbox until the kernel saves it with rig-memory's
   `Writer`, between the stages of every pass, at the end of the frame and
   before a tool that may change something, and announces it as a
-  `Committed`. `Retire` retires an agent for good. A component that says
+  `Committed`. `Retire` retires an agent for good. Nothing is rewritten
+  except through rig-memory: a `RewriteSession` maps every saved record in
+  place, keeping each record's place and stamp, the agents' conversations
+  and saved values become the rewritten ones, and `SessionRewritten` tells
+  the owners of other state (the effect log, the listing, scratch files).
+  A component that says
   `#[reflect(Component, Saved)]`, or a resource that says
   `#[reflect(Resource, Saved)]`, is logged and restored by reflection; one
   reflected opaquely with serde (`#[reflect(opaque, Component, Saved,

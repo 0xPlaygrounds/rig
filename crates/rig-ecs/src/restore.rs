@@ -51,7 +51,7 @@ use bevy_ecs::reflect::{AppTypeRegistry, ReflectComponent};
 use bevy_log::warn;
 use bevy_reflect::prelude::ReflectDefault;
 use bevy_reflect::serde::TypedReflectDeserializer;
-use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistry};
+use bevy_reflect::{Reflect, ReflectFromReflect, TypeRegistration, TypeRegistry};
 use rig_core::completion::Message;
 use rig_core::conversation::{Aside, AsideId, Author};
 use rig_core::effect::Decider;
@@ -357,17 +357,12 @@ pub(crate) fn restore_session(world: &mut World) {
 
 /// The saved component of the type path `path` from its logged `value`,
 /// with the reflection that inserts it, in place of an immutable one too.
-fn saved<'r>(
+pub(crate) fn saved<'r>(
     path: &str,
     value: &Value,
     registry: &'r TypeRegistry,
 ) -> Result<(&'r ReflectComponent, Box<dyn Reflect>), String> {
-    let registration = registry
-        .get_with_type_path(path)
-        .filter(|registration| registration.data::<ReflectSaved>().is_some())
-        .ok_or("no plugin saves it in this build")?;
-    let component = registration.data::<ReflectComponent>();
-    let component = component.ok_or("it is not a reflected component")?;
+    let (registration, component) = saved_type(path, registry)?;
     let reflected = TypedReflectDeserializer::new(registration, registry)
         .deserialize(value)
         .map_err(|failure| format!("its saved value no longer fits: {failure}"))?;
@@ -378,9 +373,24 @@ fn saved<'r>(
     Ok((component, value))
 }
 
+/// The registration of the saved component of the type path `path`, with
+/// the reflection that inserts and removes it.
+pub(crate) fn saved_type<'r>(
+    path: &str,
+    registry: &'r TypeRegistry,
+) -> Result<(&'r TypeRegistration, &'r ReflectComponent), String> {
+    let registration = registry
+        .get_with_type_path(path)
+        .filter(|registration| registration.data::<ReflectSaved>().is_some())
+        .ok_or("no plugin saves it in this build")?;
+    let component = registration.data::<ReflectComponent>();
+    let component = component.ok_or("it is not a reflected component")?;
+    Ok((registration, component))
+}
+
 /// The entity of the resource `component` reflects: the one its plugin
 /// inserted, else a new one, which the resource's insert makes its own.
-fn resource_entity<'w>(
+pub(crate) fn resource_entity<'w>(
     world: &'w mut World,
     component: &ReflectComponent,
 ) -> Result<EntityWorldMut<'w>, String> {
