@@ -10,7 +10,10 @@
 //! terminal view, a restored session's log is read back once, off the main
 //! thread, and sent to the view as `rig_tui::PastEffects`, so a resumed
 //! session's tool calls show the calls they started and what they
-//! published.
+//! published. When the session is rewritten ([`SessionRewritten`]), the
+//! file was rewritten with the rest of the store: the writer forgets what
+//! it knew of the old lines, and the records not written yet go through
+//! the same map.
 
 use std::io;
 use std::sync::Arc;
@@ -21,6 +24,7 @@ use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
+use rig_core::serde_json;
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
 #[cfg(feature = "tui")]
@@ -30,6 +34,8 @@ use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
 #[cfg(feature = "tui")]
 use rig_harness::prelude::AppCliExt;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 
 /// Records every effect into the session's effect log, in its store, once
 /// the harness opened it; without a store it records nothing.
@@ -255,20 +261,37 @@ fn describe_model(
     }
 }
 
-/// Writes the effects settled since the last frame, in id order. A failure
-/// is shown once.
+/// Writes the effects settled since the last frame, in id order, mapped
+/// through each rewrite of the session this frame. A failure is shown once.
 fn write_effects(
     mut log: ResMut<EffectLogFile>,
-    mut recorded: MessageReader<EffectRecorded>,
+    (mut recorded, mut rewrites): (
+        MessageReader<EffectRecorded>,
+        MessageReader<SessionRewritten>,
+    ),
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
     let mut records: Vec<_> = recorded.read().map(|recorded| recorded.0.clone()).collect();
+    let EffectLogFile { header, writer } = &mut *log;
+    for rewritten in rewrites.read() {
+        // The file pass rewrote the file: nothing of its old lines is kept.
+        writer.forget();
+        let with = &*rewritten.with;
+        *header = mapped(header.clone(), with).unwrap_or_default();
+        let before = records.len();
+        records = records
+            .into_iter()
+            .filter_map(|record| mapped(record, with))
+            .collect();
+        if records.len() < before {
+            error!("effect records the rewrite left unreadable were not logged");
+        }
+    }
     if records.is_empty() {
         return;
     }
     records.sort_by_key(|record| record.id);
-    let EffectLogFile { header, writer } = &mut *log;
     for record in &records {
         let family = record.kind.family();
         header
@@ -290,6 +313,22 @@ fn write_effects(
             format!("Writing the effect log failed: {failure}"),
         ));
     }
+}
+
+/// `item` mapped through `with` by its serde form, as the rewrite's file
+/// pass maps a line of the log; `None` when the mapped form does not read
+/// back.
+fn mapped<T: Serialize + DeserializeOwned>(item: T, with: &dyn Rewrite) -> Option<T> {
+    let at = Place::File {
+        name: SESSION_EFFECT_LOG,
+    };
+    let Ok(mut value) = serde_json::to_value(&item) else {
+        return Some(item);
+    };
+    if !with.value(&at, SESSION_EFFECT_LOG, &mut value) {
+        return Some(item);
+    }
+    serde_json::from_value(value).ok()
 }
 
 #[cfg(test)]
