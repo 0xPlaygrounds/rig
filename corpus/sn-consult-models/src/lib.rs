@@ -10,13 +10,14 @@
 //! took and what it cost; a consultant that fails, times out or hits the
 //! step limit shows as `model: failed (why)` while the others still answer.
 //!
-//! The consultants' requests are effects under the `consult` call, so their
-//! model and tool calls are recorded under it in the session's effect log,
-//! and each tool call they make is a line of the call's live output. Their
-//! model calls are ordinary model calls, so they count toward the session's
-//! spending per model. Interrupting the asking agent, or the call ending any
-//! other way, stops every consultant still at work; a model call of a
-//! consultant whose consult ended is refused before it is sent.
+//! The consultants' requests are effects under the `consult` call, so the
+//! session's effect log keeps their work under it, and with the default
+//! `tui` feature the call's renderer draws the calls the view finds under
+//! it ([`ToolCallView::children`](rig_tui::ToolCallView::children)). Their model calls are
+//! ordinary model calls, so they count toward the session's spending per
+//! model (rig-telemetry), which also gives each consultant's cost.
+//! Interrupting the asking agent, or the call ending any other way, retires
+//! every consultant still at work, briefed or not.
 //!
 //! `/consult <question>` asks the same for the user: the answers show in a
 //! picker, whose **Send to agent** adds them to the agent's conversation as
@@ -29,7 +30,7 @@ use rig_core::completion::UsageTotals;
 use rig_core::effect::EffectId;
 use rig_harness::prelude::*;
 use rig_subagents::{SpawnSubagent, SpawnedAgent, SubagentsPlugin};
-use rig_tools::Live;
+use rig_telemetry::Spending;
 use rig_tools::workspace::Workspace;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -108,7 +109,6 @@ impl Plugin for ConsultPlugin {
         app.add_setting::<ConsultConfig>("consult")
             .init_resource::<ProjectRoot>()
             .init_resource::<ProjectWorkspace>()
-            .register_type::<Consultant>()
             .add_open_tool(CONSULT, DESCRIPTION, options, on_consult)
             .add_command(
                 "consult",
@@ -127,21 +127,15 @@ impl Plugin for ConsultPlugin {
             .add_observer(start_consultants)
             .add_observer(link_agent)
             .add_observer(request_settled)
-            .add_observer(show_tool_call)
-            .add_observer(add_spending)
             .add_observer(turn_settled)
             .add_observer(timed_out)
             .add_observer(finish)
             .add_observer(stop_consultants)
             .add_observer(cancel_on_interrupt);
+        #[cfg(feature = "tui")]
+        rig_tui::AppToolRenderersExt::add_tool_renderer(app, CONSULT, render::consult);
     }
 }
-
-/// On a consultant agent: its model. Saved, so that a restart, which ends
-/// every consult, keeps the restored consultant from going on.
-#[derive(Component, Reflect, Clone, Debug, Default)]
-#[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Consultant(pub String);
 
 /// One consultant of a [`Consultation`].
 #[derive(Clone, Debug, Default)]
@@ -150,7 +144,8 @@ pub struct Slot {
     pub model: String,
     /// Its agent, once spawned.
     pub agent: Option<Entity>,
-    /// Whether its agent's turn runs.
+    /// Whether its agent is still at work: spawned, and its turn not
+    /// ended (a once-helper retires itself when it ends).
     pub running: bool,
     /// The model calls it made.
     pub steps: u32,
@@ -178,20 +173,17 @@ pub struct Consultation {
     /// The call's effect, which the consultants' requests are recorded
     /// under.
     effect: Option<EffectId>,
-    /// The call's live output, a line per consultant step.
-    live: Option<Live>,
 }
 
 impl Consultation {
-    /// Writes `text` as a line of the call's live output.
-    fn say(&self, text: &str) {
-        if let Some(live) = &self.live {
-            live.line(&format!("{text}\n"));
-        }
-    }
-
-    /// Ends `slot` with `result`, unless it ended already; whether it did.
-    fn end(&mut self, slot: usize, result: Result<String, String>) -> bool {
+    /// Ends `slot` with `result` and what its agent spent, unless it ended
+    /// already; whether it did.
+    fn end(
+        &mut self,
+        slot: usize,
+        result: Result<String, String>,
+        spending: &Query<&Spending>,
+    ) -> bool {
         let Some(slot) = self
             .slots
             .get_mut(slot)
@@ -199,12 +191,9 @@ impl Consultation {
         else {
             return false;
         };
-        let line = match &result {
-            Ok(_) => format!("{}: answered", slot.model),
-            Err(why) => format!("{}: failed ({why})", slot.model),
-        };
+        let spent = slot.agent.and_then(|agent| spending.get(agent).ok());
+        slot.spent = spent.map(|spent| spent.total).unwrap_or_default();
         slot.result = Some(result);
-        self.say(&line);
         true
     }
 
@@ -336,10 +325,6 @@ fn start(start: &Start, asked: Asked, commands: &mut Commands) -> Result<(), Str
         asked.question.trim(),
         summary(conversation)
     );
-    let (output, live) = CallOutput::new(&start.wake);
-    if let Some((call, _)) = asked.call {
-        commands.entity(call).insert(output);
-    }
     let slots = config.models.iter().map(|model| Slot {
         model: model.clone(),
         ..Slot::default()
@@ -351,7 +336,6 @@ fn start(start: &Start, asked: Asked, commands: &mut Commands) -> Result<(), Str
         slots: slots.collect(),
         tools,
         effect: asked.call.map(|(_, effect)| effect),
-        live: asked.call.map(|_| live),
     };
     let pool = bevy_tasks::IoTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let read = briefing(start.workspace.0.clone(), base, asked.paths, head);
@@ -509,11 +493,9 @@ fn link_agent(
     };
     seat.agent = Some(agent);
     seat.running = true;
-    let model = seat.model.clone();
-    consult.say(&format!("{model}: started"));
     commands
         .entity(agent)
-        .insert((Consultant(model), SlotOf { consultation, slot }));
+        .insert((Name::new(seat.model.clone()), SlotOf { consultation, slot }));
 }
 
 /// A consultant whose request was refused has failed.
@@ -521,6 +503,7 @@ fn request_settled(
     settled: On<Add<Settled>>,
     requests: Query<(&SlotRequest, &Outcome, Has<SpawnedAgent>)>,
     mut consultations: Query<&mut Consultation>,
+    spending: Query<&Spending>,
     mut commands: Commands,
 ) {
     let Ok((&SlotRequest { consultation, slot }, outcome, spawned)) = requests.get(settled.entity)
@@ -533,7 +516,7 @@ fn request_settled(
         Ok(_) => return,
     };
     if let Ok(mut consult) = consultations.get_mut(consultation)
-        && consult.end(slot, Err(why))
+        && consult.end(slot, Err(why), &spending)
     {
         commands.trigger(CheckDone {
             entity: consultation,
@@ -542,49 +525,42 @@ fn request_settled(
 }
 
 /// Counts each model call of a consultant as it is about to start, and
-/// refuses the one past the step limit, or of a consultant whose consult
-/// ended (such as one a restart brought back).
+/// refuses the one past the step limit.
 fn count_steps(
     mut calls: Query<
         (Entity, &ForAgent, &mut Decision),
         (Undecided, ModelCalls, With<TurnCall>, Without<Counted>),
     >,
-    agents: Query<Option<&SlotOf>, With<Consultant>>,
+    agents: Query<&SlotOf>,
     mut consultations: Query<&mut Consultation>,
+    spending: Query<&Spending>,
     config: Res<ConsultConfig>,
     mut commands: Commands,
 ) {
     for (call, &ForAgent(agent), mut decision) in &mut calls {
-        let Ok(slot_of) = agents.get(agent) else {
+        let Ok(&SlotOf { consultation, slot }) = agents.get(agent) else {
             continue;
         };
         if decision.is_decided() {
             continue;
         }
         commands.entity(call).insert(Counted);
-        let open = slot_of.and_then(|&SlotOf { consultation, slot }| {
-            let consult = consultations.get_mut(consultation).ok()?;
-            let open = consult.slots.get(slot)?.result.is_none();
-            open.then_some((consult, consultation, slot))
-        });
-        let Some((mut consult, consultation, slot)) = open else {
-            let refused = Outcome::refused("the consult this consultant worked for ended");
-            decision.decide(Decider::plugin(CONSULT), refused);
+        let Ok(mut consult) = consultations.get_mut(consultation) else {
             continue;
         };
         let Some(seat) = consult.slots.get_mut(slot) else {
             continue;
         };
-        if seat.steps >= config.max_steps {
-            consult.end(slot, Err("step limit".to_owned()));
-            commands.trigger(CheckDone {
-                entity: consultation,
-            });
-            let refused = Outcome::refused("the consultant reached its step limit");
-            decision.decide(Decider::plugin(CONSULT), refused);
+        if seat.steps < config.max_steps {
+            seat.steps += 1;
             continue;
         }
-        seat.steps += 1;
+        consult.end(slot, Err("step limit".to_owned()), &spending);
+        commands.trigger(CheckDone {
+            entity: consultation,
+        });
+        let refused = Outcome::refused("the consultant reached its step limit");
+        decision.decide(Decider::plugin(CONSULT), refused);
     }
 }
 
@@ -592,64 +568,12 @@ fn count_steps(
 /// deadline, and the other consultants answer meanwhile.
 fn no_retries(
     mut failed: Query<(&ForAgent, &mut RetryVerdict), (Unreviewed, ModelCalls)>,
-    consultants: Query<(), With<Consultant>>,
+    consultants: Query<(), With<SlotOf>>,
 ) {
     for (&ForAgent(agent), mut verdict) in &mut failed {
         if consultants.contains(agent) && !matches!(verdict.0, Verdict::Final) {
             verdict.0 = Verdict::Final;
         }
-    }
-}
-
-/// Writes each tool call of a consultant as a line of the consult call's
-/// output.
-fn show_tool_call(
-    added: On<Add<ToolRequest>>,
-    calls: Query<(&ToolRequest, &ForAgent)>,
-    agents: Query<&SlotOf>,
-    consultations: Query<&Consultation>,
-) {
-    let Ok((request, &ForAgent(agent))) = calls.get(added.entity) else {
-        return;
-    };
-    let Ok(&SlotOf { consultation, slot }) = agents.get(agent) else {
-        return;
-    };
-    let Ok(consult) = consultations.get(consultation) else {
-        return;
-    };
-    let Some(seat) = consult.slots.get(slot) else {
-        return;
-    };
-    let mut args = serde_json::to_string(&request.call.function.arguments).unwrap_or_default();
-    if let Some((at, _)) = args.char_indices().nth(80) {
-        args.truncate(at);
-        args.push('…');
-    }
-    let tool = request.call.function.name.as_str();
-    consult.say(&format!("{}: {tool} {args}", seat.model));
-}
-
-/// Adds what each settled model call of a consultant used to its slot.
-fn add_spending(
-    settled: On<Add<Settled>>,
-    calls: Query<(&Outcome, &ForAgent), With<ModelRequest>>,
-    agents: Query<&SlotOf>,
-    mut consultations: Query<&mut Consultation>,
-) {
-    let Ok((outcome, &ForAgent(agent))) = calls.get(settled.entity) else {
-        return;
-    };
-    let Some(response) = outcome.completion() else {
-        return;
-    };
-    let Ok(&SlotOf { consultation, slot }) = agents.get(agent) else {
-        return;
-    };
-    if let Ok(mut consult) = consultations.get_mut(consultation)
-        && let Some(seat) = consult.slots.get_mut(slot)
-    {
-        seat.spent.record(&response.usage);
     }
 }
 
@@ -659,6 +583,7 @@ fn turn_settled(
     turns: Query<(&TurnOutcome, &ForAgent), With<Turn>>,
     agents: Query<&SlotOf>,
     mut consultations: Query<&mut Consultation>,
+    spending: Query<&Spending>,
     mut commands: Commands,
 ) {
     let Ok((outcome, &ForAgent(agent))) = turns.get(settled.entity) else {
@@ -680,7 +605,7 @@ fn turn_settled(
         TurnOutcome::Failed(why) => Err(why.clone()),
         TurnOutcome::Stopped(why) => Err(why.clone().unwrap_or_else(|| "stopped".to_owned())),
     };
-    consult.end(slot, result);
+    consult.end(slot, result, &spending);
     commands.trigger(CheckDone {
         entity: consultation,
     });
@@ -690,13 +615,14 @@ fn turn_settled(
 fn timed_out(
     due: On<Add<Due>>,
     mut consultations: Query<&mut Consultation>,
+    spending: Query<&Spending>,
     mut commands: Commands,
 ) {
     let Ok(mut consult) = consultations.get_mut(due.entity) else {
         return;
     };
     for slot in 0..consult.slots.len() {
-        consult.end(slot, Err("timeout".to_owned()));
+        consult.end(slot, Err("timeout".to_owned()), &spending);
     }
     commands.trigger(CheckDone { entity: due.entity });
 }
@@ -752,8 +678,9 @@ fn show(commands: &mut Commands, asker: Entity, report: String) {
         });
 }
 
-/// A consult that ends stops every consultant still at work: its
-/// consultants' requests not answered yet go with it, as its children.
+/// A consult that ends retires every consultant still at work, briefed or
+/// not, with its work; its consultants' requests not answered yet go with
+/// it, as its children.
 fn stop_consultants(
     removed: On<Remove<Consultation>>,
     consultations: Query<&Consultation>,
@@ -762,13 +689,9 @@ fn stop_consultants(
     let Ok(consult) = consultations.get(removed.entity) else {
         return;
     };
-    for slot in &consult.slots {
-        if let (Some(agent), true) = (slot.agent, slot.running) {
-            commands.trigger(Interrupt {
-                entity: agent,
-                reason: Some("the consult ended".to_owned()),
-            });
-        }
+    let working = consult.slots.iter().filter(|slot| slot.running);
+    for agent in working.filter_map(|slot| slot.agent) {
+        commands.trigger(Retire { entity: agent });
     }
 }
 
@@ -784,6 +707,9 @@ fn cancel_on_interrupt(
         }
     }
 }
+
+#[cfg(feature = "tui")]
+mod render;
 
 #[cfg(test)]
 mod tests;

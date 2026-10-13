@@ -2,13 +2,17 @@ use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::time::Instant;
 
+use bevy_ecs::system::RunSystemOnce;
 use rig_coding_tools::{EditTool, ReadTool, ShellTool, WriteTool};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::clock::ClockPlugin;
 use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::{
     ToolOutputs, app_on, calls, first_agent, log_tool_outputs, reply, run_until, scripted_models,
+    tui_view,
 };
+use rig_telemetry::UsagePlugin;
+use rig_tui::{DrawnRow, Expanded, TranscriptLayout, TranscriptView};
 use serde_json::json;
 
 use super::*;
@@ -81,9 +85,11 @@ fn consulting(
         .insert_resource(Hold(hold.iter().map(|&model| model.to_owned()).collect()))
         .add_plugins((AgentPlugin, JournalPlugin, ClockPlugin))
         .add_plugins((ReadTool, EditTool, WriteTool, ShellTool, ConsultPlugin))
+        .add_plugins(UsagePlugin)
         .add_systems(AgentPass, hold_calls.in_set(Stage::Gate))
         .init_resource::<ToolOutputs>()
         .add_observer(log_tool_outputs);
+    tui_view(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -102,6 +108,16 @@ fn consulting(
 fn main_model() -> MockCompletionModel {
     let args = json!({ "question": QUESTION, "paths": ["src/cache.rs"] });
     MockCompletionModel::from_stream_turns([calls("m1", CONSULT, args), reply("done")])
+}
+
+/// The rows of `agent`'s transcript as the terminal view lays it out.
+fn transcript(app: &mut App, agent: Entity) -> Vec<String> {
+    let lay_out = move |layout: TranscriptLayout, view: Res<TranscriptView>| {
+        layout.lay_out(&view, agent, 120, Expanded::AsShown)
+    };
+    let drawn = app.world_mut().run_system_once(lay_out).ok().flatten();
+    let rows = drawn.iter().flat_map(|drawn| drawn.rows().iter());
+    rows.map(|row: &DrawnRow| row.text.clone()).collect()
 }
 
 /// What request `at` of `model` carried.
@@ -129,7 +145,7 @@ fn consultants_read_only_answer_side_by_side_and_a_failure_shows() {
         ]),
         b: MockCompletionModel::from_stream_turns([vec![MockStreamEvent::error("overloaded")]]),
     };
-    let (mut app, wakes, _) = consulting("sn-consult-files", &models, 120, &[]);
+    let (mut app, wakes, agent) = consulting("sn-consult-files", &models, 120, &[]);
     run_until(&mut app, &wakes, |_| models.main.request_count() >= 2);
 
     for consultant in [&models.a, &models.b] {
@@ -148,6 +164,15 @@ fn consultants_read_only_answer_side_by_side_and_a_failure_shows() {
     assert!(result.contains("scripted-a"), "{result}");
     assert!(result.contains("Use a BTreeMap"), "{result}");
     assert!(result.contains("scripted-b: failed"), "{result}");
+
+    // The view draws the call with its question, then the answers.
+    let rows = transcript(&mut app, agent);
+    let at = |text: &str| rows.iter().position(|row| row.contains(text));
+    let header = at("Consult HashMap or BTreeMap");
+    assert!(
+        header.is_some() && at("Second opinions on") > header,
+        "{rows:#?}"
+    );
 }
 
 #[test]
@@ -191,7 +216,7 @@ fn interrupting_the_agent_stops_its_consultants() {
     app.world_mut().resource_mut::<Hold>().0.clear();
     let gone = |world: &World| {
         world
-            .try_query_filtered::<(), Or<(With<Consultant>, With<Consultation>)>>()
+            .try_query_filtered::<(), Or<(With<SlotOf>, With<Consultation>)>>()
             .is_some_and(|mut left| left.iter(world).next().is_none())
     };
     run_until(&mut app, &wakes, gone);
