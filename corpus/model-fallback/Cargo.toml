@@ -24,7 +24,6 @@ corpus-ho-api-key-pool = { path = "../ho-api-key-pool" }
 rig-defaults-test-support = { path = "../../test-support/rig-defaults-test-support" }
 # The app on a session store and the scripted models the test runs on.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-rig-cassette = { workspace = true }
 rig-core = { workspace = true, features = ["test-utils"] }
 # The manual clock the cooldown is advanced on.
 bevy_time = { workspace = true }
