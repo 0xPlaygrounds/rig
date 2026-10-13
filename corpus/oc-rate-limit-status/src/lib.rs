@@ -32,7 +32,8 @@ use rig_harness::rig_core::http_client::{
 use rig_harness::rig_core::serve::Serving;
 use rig_harness::rig_core::wasm_compat::WasmCompatSend;
 
-#[cfg(test)]
+// The test drives the status item, which only the terminal view has.
+#[cfg(all(test, feature = "tui"))]
 mod tests;
 
 /// The `(limit, remaining, reset)` headers of a request allowance, in the
