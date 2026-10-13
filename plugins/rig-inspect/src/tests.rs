@@ -54,8 +54,13 @@ fn inspect_reads_the_world_and_nothing_else() {
         !discovered.contains("world.mutate_components"),
         "{discovered}"
     );
+    // `ModelChoice` is saved under its stable key `rig::model`.
     let saved = json!({ "type_limit": { "with": ["Saved"] } });
-    assert!(ask(&mut app, "registry.schema", saved).contains("\"ModelChoice\""));
+    let schema = ask(&mut app, "registry.schema", saved);
+    assert!(
+        schema.contains("\"model\":{\"shortPath\":\"model\""),
+        "{schema}"
+    );
 
     // A method that writes is refused before it reaches Bevy's mailbox.
     let params = json!({ "entity": 0, "component": "Name", "path": "", "value": "x" });
