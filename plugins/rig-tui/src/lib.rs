@@ -9,9 +9,12 @@
 //! ([`PromptHistory`]) and completion (`/`, `@` and plugins' markers). Answers are drawn as markdown and
 //! edits as diffs; a plugin draws its own tools' calls with
 //! [`AppToolRenderersExt::add_tool_renderer`], also while their arguments
-//! stream, and its transcript notes
+//! stream, its transcript notes
 //! ([`Note`](rig_harness::note::Note)) and
-//! delivered texts with [`AppToolRenderersExt::add_entry_renderer`]. The
+//! delivered texts with [`AppToolRenderersExt::add_entry_renderer`], a
+//! kind of content block (images, audio, video, documents) with
+//! [`AppToolRenderersExt::add_content_renderer`], and rows under every
+//! call with [`AppToolRenderersExt::add_call_decorator`]. The
 //! [`TranscriptView`] says, and lets a plugin set, what is expanded and
 //! selected (Alt+Up and Alt+Down select, Ctrl+O expands) and the text lit;
 //! [`ScrollTo`] scrolls to an item or to a row of it a highlight lights,
@@ -22,6 +25,9 @@
 //! drawn cut and the matches it lit. [`TranscriptLayout`] lays out any
 //! agent's transcript the same way without drawing it, cut as drawn or
 //! whole ([`Expanded`]), for an export, a copy or a search.
+//! [`TuiFrame`] says where the last frame drew the transcript, the input,
+//! the status line and what covers them, and a test draws the view to a
+//! [`TuiTestScreen`] in memory.
 //!
 //! It is the front ([`FRONT`]) of a run where someone sits at the
 //! terminal ([`Invoked::interactive`](rig_harness::prelude::Invoked::interactive)):
@@ -92,14 +98,16 @@ pub use keys::{
 };
 pub use panel::{Focused, PanelCanvas, Placement, RequestRedraw, TuiPanel, TuiScreen, TuiSystems};
 pub use ratatui;
-pub use render::{Expanded, TranscriptLayout};
+pub use render::{Expanded, TranscriptLayout, TuiFrame};
 pub use renderers::{
     AppToolRenderersExt, CallDecorator, CallState, ChildCall, ContentBlock, ContentKind,
     ContentRenderer, ContentView, EntryRenderer, EntryView, RESULT_LINES, RenderContent,
     RenderEntry, RenderToolCall, ToolCallView, ToolRenderer, excerpt,
 };
 pub use status::{AppStatus, Side, StatusItem, StatusItems, StatusSystems, Tone};
-pub use terminal::{CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite};
+pub use terminal::{
+    CopyToClipboard, RunInTerminal, TerminalExit, TerminalFocus, TerminalWrite, TuiTestScreen,
+};
 pub use transcript::PastEffects;
 pub use view::{
     Continuation, DrawnLine, DrawnRow, DrawnTranscript, Focus, Highlight, ItemRow, LineSpan,
@@ -124,6 +132,7 @@ impl Plugin for TuiPlugin {
         keys::add_built_in(app);
         app.add_entry_renderer(BUILD_ORIGIN, build_failed);
         app.init_resource::<render::FrameLayout>()
+            .init_resource::<TuiFrame>()
             .init_resource::<TranscriptView>()
             .init_resource::<transcript::CallFacts>()
             .init_resource::<transcript::StreamingCalls>()
@@ -256,24 +265,28 @@ pub fn add_view(app: &mut App) {
                 (
                     complete::follow_input,
                     transcript::follow_streams,
-                    render::layout
-                        .run_if(resource_exists::<terminal::Tui>.and_then(render::needs_redraw)),
+                    render::layout.run_if(terminal::has_screen.and_then(render::needs_redraw)),
                 )
                     .chain()
                     .in_set(TuiSystems::Layout),
-                (terminal::report_releases, render::render)
+                (
+                    terminal::report_releases.run_if(resource_exists::<terminal::Tui>),
+                    render::render,
+                )
                     .chain()
                     .in_set(TuiSystems::Render)
-                    .run_if(resource_exists::<terminal::Tui>),
+                    .run_if(terminal::has_screen),
             ),
         )
         // After the frame, and after what runs on the way out, which may
         // write to the terminal before the view lets it go.
         .add_systems(
             Last,
-            (terminal::write_to_terminal, clipboard::copy_to_system)
-                .after(bevy_app::OnAppExitSystems)
-                .run_if(resource_exists::<terminal::Tui>),
+            (
+                terminal::write_to_terminal.run_if(terminal::has_screen),
+                clipboard::copy_to_system.run_if(resource_exists::<terminal::Tui>),
+            )
+                .after(bevy_app::OnAppExitSystems),
         )
         .add_observer(keys::release_focus)
         .add_observer(view::on_focus)

@@ -7,9 +7,7 @@ use std::time::{Duration, Instant};
 
 use bevy_ecs::prelude::*;
 use bevy_ecs::system::SystemParam;
-use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::terminal::{BeginSynchronizedUpdate, EndSynchronizedUpdate};
-use crossterm::{execute, queue};
+use crossterm::cursor::MoveTo;
 use ratatui::Frame;
 use ratatui::layout::{Constraint, Layout, Rect};
 use ratatui::style::{Modifier, Style, Stylize};
@@ -28,7 +26,7 @@ use super::renderers::{
     ToolRenderer, UNNAMED_HOLD,
 };
 use super::status::{AppStatus, Side, StatusItem, StatusItems, Tone};
-use super::terminal::Tui;
+use super::terminal::{Tui, TuiTestScreen};
 use super::transcript::{
     Below, CallFacts, CallTree, ChildCalls, Inside, Look, Marks, Part, ShownNote, StreamingCalls,
     Transcript, live_call, notice_lines, plain_lines,
@@ -200,12 +198,17 @@ pub(crate) fn frame_due(frame: Res<FrameLayout>) -> bool {
 /// it; the other panels take their sides of the rest, in entity order, and
 /// the transcript what they leave.
 pub(crate) fn layout(
-    tui: Res<Tui>,
+    screens: (Option<Res<Tui>>, Option<Res<TuiTestScreen>>),
     (input, view): (Res<TuiInput>, Res<TuiView>),
     mut frame: ResMut<FrameLayout>,
     mut panels: Query<(Entity, &TuiPanel, &mut PanelCanvas)>,
 ) {
-    let Ok(size) = tui.terminal.size() else {
+    let size = match screens {
+        (Some(tui), _) => tui.terminal.size().ok(),
+        (None, Some(test)) => Some(test.size()),
+        (None, None) => None,
+    };
+    let Some(size) = size else {
         return;
     };
     let screen = Rect::new(0, 0, size.width, size.height);
@@ -900,7 +903,8 @@ fn input_hint(turn_running: bool, empty: bool, panel_keys: bool) -> &'static str
 /// their panels. The transcript's rows are kept between frames in a
 /// [`Transcript`], so only changed messages are laid out again.
 pub(crate) fn render(
-    mut tui: ResMut<Tui>,
+    (mut tui, mut test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
+    mut drew: ResMut<TuiFrame>,
     (mut view, mut shown_view): (ResMut<TuiView>, ResMut<TranscriptView>),
     (typed, focus, choices, shown_agent): (Res<TuiInput>, Res<KeyFocus>, Choices, Res<Shown>),
     mut frame_layout: ResMut<FrameLayout>,
@@ -938,135 +942,196 @@ pub(crate) fn render(
         .filter(|choosing| choosing.draft.is_some())
         .and_then(|choosing| choices.shown(choosing.entity));
     let inline = view.inline.first().and_then(|&ask| choices.shown(ask));
-    // The frame is written in one synchronized update with the cursor
-    // hidden, so the cursor never shows travelling across the screen; it
-    // is shown at the input once the frame is out, when the input has the
-    // keys.
+    // The cursor is shown at the input once the frame is out, when the
+    // input has the keys.
     let mut cursor = None;
-    queue!(tui.terminal.backend_mut(), BeginSynchronizedUpdate, Hide)?;
-    let drawn = tui
-        .terminal
-        .draw(|frame| {
-            // A resize since the layout leaves nothing outside the screen.
-            let screen = frame.area();
-            let transcript_area = frame_layout.transcript.intersection(screen);
-            let status_area = frame_layout.status.intersection(screen);
-            let input = frame_layout.input.intersection(screen);
-            let layout = input_rows;
-            // The input box scrolls to keep the cursor in sight.
-            let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
-            let sources = Sources {
-                view: transcript_view,
-                renderers: &renderers,
-                facts: from.facts(),
-                whole: false,
-                note_cut: drawn.is_some(),
-            };
-            let parts = lay_out_transcript(
-                &mut transcript,
-                &sources,
-                shown.as_ref(),
-                transcript_area.width,
-            );
-            let visible = transcript.visible(
-                &parts,
-                (transcript_area.width, usize::from(transcript_area.height)),
-                &mut view.scroll,
-                &transcript_view.highlights,
-            );
-            if let Some(drawn) = &mut drawn {
-                let (agent, highlights) = (shown.as_ref(), &transcript_view.highlights);
-                let agent = agent.map(|shown| shown.entity);
-                let on_screen = visible.first..visible.first + visible.rows.len();
-                drawn.set_if_neq(transcript.laid_out(agent, &parts, highlights, on_screen));
+    let mut areas = TuiFrame::default();
+    let draw_frame = |frame: &mut Frame| {
+        // A resize since the layout leaves nothing outside the screen.
+        let screen = frame.area();
+        let transcript_area = frame_layout.transcript.intersection(screen);
+        let status_area = frame_layout.status.intersection(screen);
+        let input = frame_layout.input.intersection(screen);
+        let layout = input_rows;
+        // The input box scrolls to keep the cursor in sight.
+        let input_top = (layout.cursor_row + 1).saturating_sub(frame_layout.input_height);
+        let sources = Sources {
+            view: transcript_view,
+            renderers: &renderers,
+            facts: from.facts(),
+            whole: false,
+            note_cut: drawn.is_some(),
+        };
+        let parts = lay_out_transcript(
+            &mut transcript,
+            &sources,
+            shown.as_ref(),
+            transcript_area.width,
+        );
+        let visible = transcript.visible(
+            &parts,
+            (transcript_area.width, usize::from(transcript_area.height)),
+            &mut view.scroll,
+            &transcript_view.highlights,
+        );
+        if let Some(drawn) = &mut drawn {
+            let (agent, highlights) = (shown.as_ref(), &transcript_view.highlights);
+            let agent = agent.map(|shown| shown.entity);
+            let on_screen = visible.first..visible.first + visible.rows.len();
+            drawn.set_if_neq(transcript.laid_out(agent, &parts, highlights, on_screen));
+        }
+        let rows = decorate(
+            visible.rows,
+            visible.first,
+            &visible.marks,
+            transcript_view.selected.as_ref(),
+        );
+        frame.render_widget(Paragraph::new(rows), transcript_area);
+        draw_below(frame, visible.below, transcript_area);
+        view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
+        noted = Some((visible.top, transcript_area.width));
+        let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
+        let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
+        let app = status.1.as_deref().map(|app| &app.0);
+        let (mut left, mut right) = status_pieces(shown_agent.is_some(), [app, agent, turn]);
+        fit(&mut left, &mut right, usize::from(status_area.width));
+        let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
+        let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
+        let [status, meter] =
+            Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
+                .areas(status_area);
+        frame.render_widget(line, status);
+        frame.render_widget(usage, meter);
+        let hint = match &edit {
+            Some(_) => " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses ",
+            None => input_hint(turn.is_some(), typed.is_empty(), focus.0.is_some()),
+        };
+        let mut block = Block::bordered().title_bottom(Line::from(hint).dim().right_aligned());
+        let mut body = None;
+        if let Some(edit) = &edit {
+            block = block.title(Line::from(format!(" {} ", edit.title)).bold());
+            body = draw_body(frame, edit.body, input);
+        }
+        frame.render_widget(
+            Paragraph::new(layout.rows)
+                .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
+                .block(block),
+            input,
+        );
+        let strip = frame_layout.strip.intersection(screen);
+        if let Some(inline) = &inline {
+            frame.render_widget(inline_line(inline), strip);
+        }
+        let mut overlays = Vec::new();
+        for (_, panel, canvas) in &panels {
+            canvas.copy_to(frame.buffer_mut());
+            if matches!(panel.placement, Placement::Over { .. }) {
+                overlays.push(canvas.area());
             }
-            let rows = decorate(
-                visible.rows,
-                visible.first,
-                &visible.marks,
-                transcript_view.selected.as_ref(),
-            );
-            frame.render_widget(Paragraph::new(rows), transcript_area);
-            draw_below(frame, visible.below, transcript_area);
-            view.items = visible.marks.into_iter().map(|(item, _)| item).collect();
-            noted = Some((visible.top, transcript_area.width));
-            let agent = shown_agent.and_then(|agent| status.0.get(agent).ok());
-            let turn = turn.and_then(|turn| status.0.get(turn.turn()).ok());
-            let app = status.1.as_deref().map(|app| &app.0);
-            let (mut left, mut right) = status_pieces(shown_agent.is_some(), [app, agent, turn]);
-            fit(&mut left, &mut right, usize::from(status_area.width));
-            let (line, usage) = (join(left, LEFT_GAP), join(right, RIGHT_GAP));
-            let usage_width = u16::try_from(usage.width()).unwrap_or(u16::MAX);
-            let [status, meter] =
-                Layout::horizontal([Constraint::Min(0), Constraint::Length(usage_width)])
-                    .areas(status_area);
-            frame.render_widget(line, status);
-            frame.render_widget(usage, meter);
-            let hint = match &edit {
-                Some(_) => " Enter answers · Shift+Enter or Ctrl+J new line · Esc refuses ",
-                None => input_hint(turn.is_some(), typed.is_empty(), focus.0.is_some()),
-            };
-            let mut block = Block::bordered().title_bottom(Line::from(hint).dim().right_aligned());
-            if let Some(edit) = &edit {
-                block = block.title(Line::from(format!(" {} ", edit.title)).bold());
-                draw_body(frame, edit.body, input);
-            }
-            frame.render_widget(
-                Paragraph::new(layout.rows)
-                    .scroll((u16::try_from(input_top).unwrap_or(u16::MAX), 0))
-                    .block(block),
-                input,
-            );
-            let strip = frame_layout.strip.intersection(screen);
-            if let Some(inline) = &inline {
-                frame.render_widget(inline_line(inline), strip);
-            }
-            for (.., canvas) in &panels {
-                canvas.copy_to(frame.buffer_mut());
-            }
-            let shown = view
-                .choosing
-                .as_mut()
-                .filter(|choosing| choosing.draft.is_none())
-                .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
-            match shown {
-                Some((shown, choosing)) => draw_choice(frame, choosing, &shown),
-                None if focus.0.is_some() => {}
-                None => {
-                    if let Some(completion) = &view.completion {
-                        draw_completion(frame, completion, input);
-                    }
-                    let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
-                    let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
-                    cursor = Some(MoveTo(
-                        input.x.saturating_add(1).saturating_add(column),
-                        input.y.saturating_add(1).saturating_add(row),
-                    ));
+        }
+        overlays.extend(body);
+        let shown = view
+            .choosing
+            .as_mut()
+            .filter(|choosing| choosing.draft.is_none())
+            .and_then(|choosing| Some((choices.shown(choosing.entity)?, choosing)));
+        match shown {
+            Some((shown, choosing)) => overlays.push(draw_choice(frame, choosing, &shown)),
+            None if focus.0.is_some() => {}
+            None => {
+                if let Some(completion) = &view.completion {
+                    overlays.extend(draw_completion(frame, completion, input));
                 }
+                let column = u16::try_from(layout.cursor_column).unwrap_or(u16::MAX);
+                let row = u16::try_from(layout.cursor_row - input_top).unwrap_or(0);
+                cursor = Some(MoveTo(
+                    input.x.saturating_add(1).saturating_add(column),
+                    input.y.saturating_add(1).saturating_add(row),
+                ));
             }
-        })
-        .map(|_| ());
+        }
+        areas = TuiFrame {
+            screen,
+            transcript: transcript_area,
+            status: status_area,
+            strip,
+            input,
+            overlays,
+        };
+    };
+    let drawn = match (tui.as_deref_mut(), test.as_deref_mut()) {
+        (Some(tui), _) => {
+            tui.begin_frame()?;
+            let drawn = tui.terminal.draw(draw_frame).map(|_| ());
+            tui.end_frame(cursor.filter(|_| drawn.is_ok()))?;
+            drawn
+        }
+        (None, Some(test)) => {
+            test.draw(draw_frame);
+            Ok(())
+        }
+        (None, None) => Ok(()),
+    };
     if let Some((top, width)) = noted {
         TranscriptView::note_drawn(&mut shown_view, top, width);
     }
-    let backend = tui.terminal.backend_mut();
-    if drawn.is_ok()
-        && let Some(cursor) = cursor
-    {
-        queue!(backend, cursor, Show)?;
-    }
-    // Ended even after a failed draw, so the terminal shows the screen
-    // again.
-    execute!(backend, EndSynchronizedUpdate)?;
+    drew.set_if_neq(areas);
     drawn?;
     Ok(())
 }
 
+/// Where the last frame drew each part of the screen: for a plugin that
+/// writes to the terminal itself after the frame ([`TerminalWrite`]),
+/// such as an image over the rows its content renderer left blank,
+/// which finds those rows in the [`DrawnTranscript`] (see
+/// [`TuiFrame::screen_row`]) and leaves out what an overlay covers. The
+/// view writes it after each frame it draws, in
+/// [`TuiSystems::Render`](crate::TuiSystems::Render); read it after that.
+/// All empty in a run without the terminal.
+///
+/// [`TerminalWrite`]: crate::TerminalWrite
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
+pub struct TuiFrame {
+    /// The whole screen.
+    pub screen: Rect,
+    /// The transcript.
+    pub transcript: Rect,
+    /// The status line.
+    pub status: Rect,
+    /// The strip above the input of a question shown beside the work;
+    /// no rows without one.
+    pub strip: Rect,
+    /// The input box.
+    pub input: Rect,
+    /// What was drawn over the rest: the panels placed over the screen,
+    /// the picker or question, the completion list, a question's text
+    /// above the input.
+    pub overlays: Vec<Rect>,
+}
+
+impl TuiFrame {
+    /// The screen row the `row` of `drawn` (the transcript this frame
+    /// drew) is on, when it is on screen.
+    pub fn screen_row(&self, drawn: &DrawnTranscript, row: usize) -> Option<u16> {
+        let on_screen = drawn.on_screen();
+        if !on_screen.contains(&row) {
+            return None;
+        }
+        let below_top = u16::try_from(row - on_screen.start).ok()?;
+        Some(self.transcript.y.saturating_add(below_top))
+    }
+
+    /// Whether an overlay covers any of `area`.
+    pub fn covered(&self, area: Rect) -> bool {
+        self.overlays.iter().any(|over| over.intersects(area))
+    }
+}
+
 /// What a question answered in the input is about, in a box just above
-/// the input box.
-fn draw_body(frame: &mut Frame, body: &str, input: Rect) {
+/// the input box; where, if it is drawn.
+fn draw_body(frame: &mut Frame, body: &str, input: Rect) -> Option<Rect> {
     if body.trim().is_empty() {
-        return;
+        return None;
     }
     let lines = wrap_all(
         &plain_lines(body, Style::new()),
@@ -1075,11 +1140,12 @@ fn draw_body(frame: &mut Frame, body: &str, input: Rect) {
     let rows = u16::try_from(lines.len()).unwrap_or(u16::MAX);
     let height = rows.saturating_add(2).min(input.y);
     if height < 3 {
-        return;
+        return None;
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(lines).block(Block::bordered().dim()), area);
+    Some(area)
 }
 
 /// The strip of a question shown beside the work: its title and the keys
@@ -1116,12 +1182,12 @@ fn draw_below(frame: &mut Frame, below: Below, area: Rect) {
     frame.render_widget(Line::from(text).cyan().reversed(), marker);
 }
 
-/// The completion list, just above the input box.
-fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
+/// The completion list, just above the input box; where, if it fit.
+fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) -> Option<Rect> {
     let rows = completion.items.len().min(COMPLETION_ROWS);
     let height = u16::try_from(rows + 2).unwrap_or(3).min(input.y);
     if height < 3 {
-        return;
+        return None;
     }
     let area = Rect::new(input.x, input.y - height, input.width, height);
     frame.render_widget(Clear, area);
@@ -1153,6 +1219,7 @@ fn draw_completion(frame: &mut Frame, completion: &Completion, input: Rect) {
         area,
         &mut state,
     );
+    Some(area)
 }
 
 /// A piece of the status line, from a [`StatusItem`]. When the line does
@@ -1309,7 +1376,7 @@ const LEAST_LIST: usize = 3;
 /// scrolled to `choosing.scroll` (kept within it), what is typed, then the
 /// rows it leaves, each with its detail at the right and, in a choice of
 /// several, its tick box; for free text, the typed answer.
-fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) {
+fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) -> Rect {
     let area = frame.area();
     let width = area.width.saturating_mul(4) / 5;
     let body = wrap_all(
@@ -1391,6 +1458,7 @@ fn draw_choice(frame: &mut Frame, choosing: &mut Choosing, shown: &Listing<'_>) 
         list,
         &mut state,
     );
+    popup
 }
 
 /// The messages the agent accepted and has not sent yet, under the

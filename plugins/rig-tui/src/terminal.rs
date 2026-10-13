@@ -14,17 +14,20 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD;
 use bevy_ecs::prelude::*;
 use bevy_log::error;
+use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{
     DisableBracketedPaste, DisableFocusChange, EnableBracketedPaste, EnableFocusChange,
     KeyboardEnhancementFlags, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
 };
-use crossterm::execute;
 use crossterm::terminal::{
-    Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+    BeginSynchronizedUpdate, Clear, ClearType, EndSynchronizedUpdate, EnterAlternateScreen,
+    LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-use ratatui::layout::Rect;
+use crossterm::{execute, queue};
+use ratatui::backend::{CrosstermBackend, TestBackend};
+use ratatui::buffer::Buffer;
+use ratatui::layout::{Rect, Size};
+use ratatui::{Frame, Terminal};
 
 use super::input::TerminalInput;
 use super::keys::KeyBinding;
@@ -156,6 +159,21 @@ impl Tui {
         pastes.and(alternate).and(cursor).and(disable_raw_mode())
     }
 
+    /// Starts a frame: one synchronized update with the cursor hidden, so
+    /// the cursor never shows travelling across the screen.
+    pub(crate) fn begin_frame(&mut self) -> io::Result<()> {
+        queue!(self.terminal.backend_mut(), BeginSynchronizedUpdate, Hide)
+    }
+
+    /// Ends the frame, showing the cursor at `cursor`, if any.
+    pub(crate) fn end_frame(&mut self, cursor: Option<MoveTo>) -> io::Result<()> {
+        let backend = self.terminal.backend_mut();
+        if let Some(cursor) = cursor {
+            queue!(backend, cursor, Show)?;
+        }
+        execute!(backend, EndSynchronizedUpdate)
+    }
+
     /// Asks the terminal to report key releases, or no longer.
     fn report_releases(&mut self, releases: bool) {
         if self.releases == releases {
@@ -200,6 +218,67 @@ where
     terminal.swap_buffers();
     terminal.swap_buffers();
     Ok(())
+}
+
+/// A screen in memory that the view draws to, for a test of what a plugin
+/// shows: inserted in a run with the view's systems but no terminal (as
+/// `rig_harness_test_support::tui_view` builds), each frame due is drawn
+/// to it as it would be to the terminal, and the bytes sent for the
+/// terminal ([`TerminalWrite`], [`CopyToClipboard`]) are kept. A test
+/// reads what is shown, never a whole screen to compare.
+#[derive(Resource)]
+pub struct TuiTestScreen {
+    terminal: Terminal<TestBackend>,
+    written: Vec<u8>,
+}
+
+impl TuiTestScreen {
+    /// A screen `width` columns wide and `height` rows high.
+    pub fn new(width: u16, height: u16) -> Self {
+        let Ok(terminal) = Terminal::new(TestBackend::new(width, height));
+        Self {
+            terminal,
+            written: Vec::new(),
+        }
+    }
+
+    /// Its size.
+    pub fn size(&self) -> Size {
+        let area = self.buffer().area;
+        Size::new(area.width, area.height)
+    }
+
+    /// What the last frame drew.
+    pub fn buffer(&self) -> &Buffer {
+        self.terminal.backend().buffer()
+    }
+
+    /// Each row's text as the last frame drew it.
+    pub fn rows(&self) -> Vec<String> {
+        let buffer = self.buffer();
+        let area = buffer.area;
+        (area.top()..area.bottom())
+            .map(|y| {
+                let cells = (area.left()..area.right()).filter_map(|x| buffer.cell((x, y)));
+                cells.map(|cell| cell.symbol()).collect()
+            })
+            .collect()
+    }
+
+    /// The bytes sent for the terminal so far, in order.
+    pub fn written(&self) -> &[u8] {
+        &self.written
+    }
+
+    /// Draws a frame with `draw`.
+    pub(crate) fn draw(&mut self, draw: impl FnOnce(&mut Frame)) {
+        let Ok(_) = self.terminal.draw(draw);
+    }
+}
+
+/// Whether the view has a screen to draw to: the terminal, or a test's.
+pub(crate) fn has_screen(tui: Option<Res<Tui>>, test: Option<Res<TuiTestScreen>>) -> bool {
+    tui.is_some() || test.is_some()
 }
 
 impl Drop for Tui {
@@ -249,7 +328,7 @@ pub(crate) fn keep_screen_on_reload(reason: Option<Res<ExitReason>>, tui: Option
 /// each, after the frame and after Bevy's `OnAppExitSystems`, so bytes
 /// sent on the way out are written too.
 pub(crate) fn write_to_terminal(
-    mut tui: ResMut<Tui>,
+    (tui, test): (Option<ResMut<Tui>>, Option<ResMut<TuiTestScreen>>),
     mut writes: MessageReader<TerminalWrite>,
     mut copies: MessageReader<CopyToClipboard>,
 ) {
@@ -261,6 +340,11 @@ pub(crate) fn write_to_terminal(
     if bytes.is_empty() {
         return;
     }
+    let mut tui = match (tui, test) {
+        (Some(tui), _) => tui,
+        (None, Some(mut test)) => return test.written.extend(bytes),
+        (None, None) => return,
+    };
     let backend = tui.terminal.backend_mut();
     if let Err(failure) = backend.write_all(&bytes).and_then(|()| backend.flush()) {
         error!("could not write to the terminal: {failure}");
