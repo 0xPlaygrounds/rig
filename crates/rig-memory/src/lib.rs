@@ -16,7 +16,8 @@
 //! [`FORMAT`], the blobs its images are kept in, and its [`Files`] by
 //! name. [`load`] and [`save`] keep one conversation; [`Session`] reads
 //! and saves a whole session; a running host appends with a [`Writer`].
-//! [`fork`] copies a session as it was before one of its messages, and
+//! [`fork`] copies a session as it was before one of its messages, through
+//! a [`Rewrite`], with what the copied messages' asides say now; and
 //! [`history`] and [`as_of`] read how a conversation got where it is.
 //! [`MemoryStore`] keeps a session in memory; with feature `fs`,
 //! [`DirStore`] keeps it in a directory, and [`DirFiles`] keeps plain
@@ -63,6 +64,7 @@ mod blobs;
 mod compaction;
 #[cfg(feature = "fs")]
 mod dir;
+mod fork;
 mod format;
 mod rewrite;
 mod session;
@@ -79,11 +81,12 @@ pub use compaction::{
 };
 #[cfg(feature = "fs")]
 pub use dir::{DirFiles, DirStore};
+pub use fork::{Forked, fork};
 pub use format::{FORMAT, LoadError, Repair, Rewrote, SESSION, Stamp, now_ms};
 pub use rewrite::{
     Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
 };
-pub use session::{Record, SavedAgent, Session, Unreadable, as_of, fork, history, load, save};
+pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load, save};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};
 pub use writer::Writer;

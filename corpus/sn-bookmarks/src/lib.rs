@@ -348,7 +348,7 @@ fn saved_history(
     let mut before = oldest_newer(now)?;
     for _ in 0..DEPTH {
         let copy = MemoryStore::default();
-        fork(store, &copy, Some((agent, before))).ok()?;
+        fork(store, &copy, Some((agent, before)), &Keep).ok()?;
         let session = Session::read(&copy).ok()?;
         let then = session
             .agents

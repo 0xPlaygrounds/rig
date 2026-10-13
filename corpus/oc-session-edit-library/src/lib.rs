@@ -26,7 +26,7 @@ use std::path::{Path, PathBuf};
 use rig::harness_protocol::{Home, SessionDir, SessionId};
 use rig_core::conversation::{Author, Conversation, Entry, pairing};
 use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, UserContent};
-use rig_memory::{DirStore, Files, LoadError, Repair, SavedAgent, Session, fork, now_ms};
+use rig_memory::{DirStore, Files, Keep, LoadError, Repair, SavedAgent, Session, fork, now_ms};
 use serde_json::{Map, Value};
 
 /// The saved value an agent's model is kept under: the type path of
@@ -688,7 +688,7 @@ fn save(
             let (id, new) = home.new_session()?;
             let made = (|| {
                 let to = DirStore::open(new.path())?;
-                fork(&store, &to, None)?;
+                fork(&store, &to, None, &Keep)?;
                 if let Ok(directory) = fs::read(dir.directory()) {
                     fs::write(new.directory(), directory)?;
                 }

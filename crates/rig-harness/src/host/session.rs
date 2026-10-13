@@ -38,7 +38,7 @@ use rig_core::message::UserContent;
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{self, AgentId, Notice};
 use rig_ecs::journal::{SessionStore, open_session};
-use rig_memory::{DirStore, Files, LoadError, Store, fork};
+use rig_memory::{DirStore, Files, Keep, LoadError, Store, fork};
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 use serde::{Deserialize, Serialize};
@@ -619,7 +619,7 @@ fn fork_into(
     let before = before.map(|(agent, message)| (agent.0.as_str(), *message));
     let copied = stores
         .open(&target)
-        .and_then(|copy| fork(&*store.0, &*copy, before).map(|()| copy))
+        .and_then(|copy| fork(&*store.0, &*copy, before, &Keep).map(|_| copy))
         .map_err(|failure| failure.to_string())
         .and_then(|copy| parent.write(&*copy))
         .and_then(|()| match paths.working_directory() {

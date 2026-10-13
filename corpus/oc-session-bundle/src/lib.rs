@@ -36,7 +36,7 @@ use rig_core::redact;
 use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
-use rig_harness::rig_memory::{FORMAT, MemoryStore, Session, Store, fork, now_ms};
+use rig_harness::rig_memory::{FORMAT, Keep, MemoryStore, Session, Store, fork, now_ms};
 use rig_harness::rig_tools::process::Launcher;
 use rig_sessions::{Meta, SessionTitle, write_meta};
 use serde::{Deserialize, Serialize};
@@ -520,7 +520,7 @@ fn write_session(
     let fail = |failure: &dyn std::fmt::Display| failure.to_string();
     let manifest = &plan.bundle.manifest;
     let store = here.stores.open(dir).map_err(|f| fail(&f))?;
-    fork(staged, &*store, None).map_err(|f| fail(&f))?;
+    fork(staged, &*store, None, &Keep).map_err(|f| fail(&f))?;
     for name in staged.files().map_err(|f| fail(&f))? {
         if !name.starts_with("plugins/") {
             let bytes = staged.read_file(&name).map_err(|f| fail(&f))?;

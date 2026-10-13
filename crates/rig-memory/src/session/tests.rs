@@ -5,8 +5,8 @@ use rig_core::conversation::{Aside, Author, Change, Conversation, Entry, Halt};
 use rig_core::message::{ImageMediaType, UserContent};
 use serde_json::json;
 
-use super::{Record, SavedAgent, Session, as_of, fork, history, load, save};
-use crate::{Files, LoadError, MemoryStore, Repair, Store, Writer};
+use super::{Record, SavedAgent, Session, as_of, history, load, save};
+use crate::{Files, Keep, LoadError, MemoryStore, Repair, Store, Writer, fork};
 
 /// A conversation with an image, an authored entry, a splice that keeps an
 /// id, a stopped request, and a saved and an unsaved aside.
@@ -146,7 +146,7 @@ fn only_the_conversation_a_log_holds_continues_it() {
 
     // A fork's log is its own.
     let forked = MemoryStore::default();
-    fork(&store, &forked, None).expect("forked");
+    fork(&store, &forked, None, &Keep).expect("forked");
     let mut theirs = load(&forked, "a").expect("loaded");
     theirs.push(Message::assistant("theirs"));
     save(&forked, "a", &mut theirs).expect("saved");
@@ -336,7 +336,7 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     );
 
     let forked = MemoryStore::default();
-    fork(&store, &forked, Some(("main", three))).expect("forked");
+    fork(&store, &forked, Some(("main", three)), &Keep).expect("forked");
     let read = Session::read(&forked).expect("read");
     let ids: Vec<&str> = read.agents.iter().map(|agent| agent.id.as_str()).collect();
     assert_eq!(ids, ["main"], "the subagent came later");
@@ -347,6 +347,6 @@ fn fork_history_and_as_of_cut_by_the_record_that_made_a_message() {
     assert_eq!(forked.files().expect("files"), ["plugins/notes.json"]);
 
     let whole = MemoryStore::default();
-    fork(&store, &whole, None).expect("forked");
+    fork(&store, &whole, None, &Keep).expect("forked");
     assert_eq!(Session::read(&whole).expect("read").agents.len(), 2);
 }

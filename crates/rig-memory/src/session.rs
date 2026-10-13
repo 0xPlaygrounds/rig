@@ -1,21 +1,19 @@
-//! Reading a session back, saving to it from data, forking it, and its
-//! history: [`Session::read`] folds every log, strictly, without writing
-//! anything, and [`Session::read_lenient`] every log that reads;
-//! [`Session::save`], [`load`] and [`save`] are for programs that
-//! keep a conversation over time without a running [`Writer`](crate::Writer);
-//! [`fork`] copies a session as it was before one of its messages was made;
-//! [`history`] and [`as_of`] read one log's records and its conversation as
-//! of a record.
+//! Reading a session back, saving to it from data, and its history:
+//! [`Session::read`] folds every log, strictly, without writing anything,
+//! and [`Session::read_lenient`] every log that reads; [`Session::save`],
+//! [`load`] and [`save`] are for programs that keep a conversation over
+//! time without a running [`Writer`](crate::Writer); [`history`] and
+//! [`as_of`] read one log's records and its conversation as of a record.
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::ops::ControlFlow;
 
-use rig_core::conversation::{Change, Conversation, Lineage, MessageId, Recorded};
+use rig_core::conversation::{AsideId, Author, Change, Conversation, MessageId, Recorded};
 use serde_json::Value;
 
 use crate::blobs::{entries_mut, load_images, load_images_with};
-use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of, write_meta};
+use crate::format::{Body, Header, LogLines, Meta, SESSION, parse, stamp_of};
 use crate::writer::Book;
 use crate::{FORMAT, LoadError, Repair, Rewrote, Stamp, Store};
 
@@ -84,6 +82,9 @@ pub(crate) struct Folded {
     pub conversation: Conversation,
     /// The record that made each message.
     pub made: HashMap<MessageId, Stamp>,
+    /// The last record that put, replaced or removed each aside (a reset
+    /// counts for every aside before and after it), and who made it.
+    pub asides_set: HashMap<AsideId, (Stamp, Option<Author>)>,
     pub state: BTreeMap<String, Value>,
     pub retired: bool,
     /// The `seq` after the last record's.
@@ -210,6 +211,7 @@ pub(crate) fn fold_lines(
 ) -> Result<Option<Folded>, LoadError> {
     let mut conversation = Conversation::new();
     let mut made = HashMap::new();
+    let mut asides_set = HashMap::new();
     let mut state = BTreeMap::new();
     let mut retired = false;
     let mut lost = Vec::new();
@@ -235,6 +237,15 @@ pub(crate) fn fold_lines(
                         }
                     }
                 }
+                let set = |id| (id, (stamp, recorded.by.clone()));
+                match &recorded.change {
+                    Change::Aside { id, .. } => asides_set.extend([set(*id)]),
+                    Change::Reset { state } => {
+                        let ids = conversation.asides().chain(state.asides());
+                        asides_set.extend(ids.map(|(id, _)| set(id)));
+                    }
+                    _ => {}
+                }
                 conversation
                     .apply(&recorded)
                     .map_err(|error| error.to_string())?;
@@ -258,6 +269,7 @@ pub(crate) fn fold_lines(
         header: read.header,
         conversation,
         made,
+        asides_set,
         state,
         retired,
         next_seq: read.last.seq.saturating_add(1),
@@ -540,94 +552,6 @@ fn next_n(store: &dyn Store) -> Result<u64, LoadError> {
         }
     }
     Ok(next)
-}
-
-/// Copies the session in `from` into `to`, an empty store, as it was
-/// before message `before` (a log and the id of a message of its
-/// conversation) was made: every log up to the records made before the
-/// one that made that message, leaving out a log with no change of its
-/// conversation by then (such as an agent spawned later). Without
-/// `before`, every log whole. Either way every blob, and the session's
-/// plugin files (`plugins/…`) as they are now. A torn tail is never
-/// copied. Each copied log gets a lineage of its own, so a conversation
-/// of one never passes as a continuation of the other.
-///
-/// # Errors
-///
-/// When a store fails, or `before`'s log cannot be read or never made
-/// that message.
-pub fn fork(
-    from: &dyn Store,
-    to: &dyn Store,
-    before: Option<(&str, MessageId)>,
-) -> Result<(), LoadError> {
-    let until = match before {
-        None => None,
-        Some((log, id)) => {
-            let folded = fold(from, log, Fold::default())?;
-            let made = folded.and_then(|folded| folded.made.get(&id).copied());
-            let Some(made) = made else {
-                let why = format!("the log {log} made no message {id:?}");
-                return Err(io::Error::new(io::ErrorKind::InvalidInput, why).into());
-            };
-            Some(made.n)
-        }
-    };
-    for name in from.logs()? {
-        let lines = LogLines::parse(from.read_log(&name)?);
-        let keep = match until {
-            None => lines.len(),
-            Some(until) => {
-                let mut keep = 0;
-                let mut changes = name == SESSION;
-                for (_, end, line) in lines.iter() {
-                    let Ok((stamp, change)) = stamp_of(line) else {
-                        break;
-                    };
-                    if stamp.n >= until {
-                        break;
-                    }
-                    changes |= change;
-                    keep = end;
-                }
-                if changes { keep } else { 0 }
-            }
-        };
-        if keep > 0 {
-            to.append_log(&name, &own_lineage(&lines, keep)?)?;
-        }
-    }
-    for name in from.blobs()? {
-        to.put_blob(&name, &from.blob(&name)?)?;
-    }
-    for name in from.files()? {
-        if name.starts_with("plugins/") {
-            to.write_file(&name, &from.read_file(&name)?)?;
-        }
-    }
-    Ok(())
-}
-
-/// The first `keep` bytes of a log's `lines`, its header given a fresh
-/// lineage. A first line that is no header is copied as it is.
-fn own_lineage(lines: &LogLines, keep: u64) -> Result<Vec<u8>, LoadError> {
-    let prefix = lines.prefix(keep);
-    let first = lines.iter().next();
-    let Some((stamp, header, end)) = first.and_then(|(_, end, line)| match parse(line) {
-        Ok((stamp, Body::Meta(Meta::Header(header)))) => Some((stamp, header, end)),
-        _ => None,
-    }) else {
-        return Ok(prefix.to_vec());
-    };
-    let header = Header {
-        lineage: Lineage::fresh(),
-        ..header
-    };
-    let mut out = Vec::with_capacity(prefix.len());
-    write_meta(&mut out, stamp, &Meta::Header(header)).map_err(io::Error::from)?;
-    let rest = usize::try_from(end).ok().and_then(|end| prefix.get(end..));
-    out.extend_from_slice(rest.unwrap_or_default());
-    Ok(out)
 }
 
 /// Every record of the log `log` of `store` after its header, in order,
