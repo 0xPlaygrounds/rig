@@ -6087,7 +6087,6 @@ name = "corpus-sn-consult-models"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "bevy_tasks",
  "futures",
  "rig-coding-tools",
@@ -6096,7 +6095,9 @@ dependencies = [
  "rig-harness",
  "rig-harness-test-support",
  "rig-subagents",
+ "rig-telemetry",
  "rig-tools",
+ "rig-tui",
  "schemars 1.2.1",
  "serde",
  "serde_json",
