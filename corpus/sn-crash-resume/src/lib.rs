@@ -564,14 +564,12 @@ fn resolve(
                 let at = first.map_or(conversation.messages().len(), |id| {
                     conversation.start_of(id)
                 });
-                // The user's own message is among the user entries the
-                // turn began at: results and notes come before it.
-                let asked = conversation.messages().get(at..).unwrap_or_default();
-                let asked = asked
-                    .iter()
-                    .take_while(|message| matches!(message, Chat::User { .. }))
-                    .count();
-                let typed = (at..at + asked).find_map(|at| typed(&conversation, at));
+                // The user's own message is among the entries the turn
+                // answers: results and notes come before it.
+                let typed = first
+                    .into_iter()
+                    .flat_map(|id| conversation.asked(id))
+                    .find_map(|entry| typed(&conversation, entry.index));
                 conversation.splice(at.., [], Author::plugin(ORIGIN));
                 if let (None, Some(text), Some(input)) = (parent, typed, input.as_mut()) {
                     input.set(text);

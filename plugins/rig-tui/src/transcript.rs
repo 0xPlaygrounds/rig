@@ -33,7 +33,7 @@ use super::view::{
 };
 use super::wrap::wrap;
 use rig_ecs::agent::{Conversation, NoticeLevel, Partial};
-use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind, STOPPED};
+use rig_ecs::prelude::{Aside, AsideId, Author, AuthorKind};
 use rig_ecs::stage::{Published, Settled, Started};
 use rig_ecs::tools::ToolRequest;
 use rig_ecs::turn::StreamDelta;
@@ -927,6 +927,10 @@ fn message_lines(
     let mut message_cut = false;
     let id = conversation.id(at);
     let author = conversation.author(at);
+    let stopped = conversation
+        .entries()
+        .nth(at)
+        .is_some_and(|entry| entry.is_stopped_note());
     let expanded = id.is_some_and(|id| look.is_expanded(&TranscriptItem::Message(id)));
     let inside = look.inside(at);
     let inside_before = |item: usize,
@@ -963,8 +967,7 @@ fn message_lines(
                             lines.push(Line::from(format!("  [{label}, {count} lines]")).dim());
                             continue;
                         }
-                        let by_rig = author.is_some_and(|author| author.kind == AuthorKind::Rig);
-                        if by_rig && text.text == STOPPED {
+                        if stopped {
                             lines.push(Line::from("  [stopped before it was answered]").dim());
                             continue;
                         }

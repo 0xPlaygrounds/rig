@@ -1,6 +1,7 @@
 use std::sync::mpsc::Receiver;
 
 use rig_core::catalog::{Catalog, Connector, ModelSpec, Transport};
+use rig_core::message::Message;
 use rig_core::operation::Completion;
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::ErasedHandler;

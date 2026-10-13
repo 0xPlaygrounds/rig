@@ -332,8 +332,8 @@ fn start_turn(
     commands.entity(add.entity).insert(span);
 }
 
-/// Ends a turn's span with how the turn ended, and the length of the user
-/// message it answered.
+/// Ends a turn's span with how the turn ended, and the length of the
+/// message that asked for it.
 fn end_turn(
     settled: On<Add<Settled>>,
     turns: Query<(&TurnOutcome, &Turn, &ForAgent, &Span)>,
@@ -343,13 +343,9 @@ fn end_turn(
         return;
     };
     let span = context.span();
-    // The user's own message among those the turn answers: a stopped
-    // turn's results and the stopped note come before it.
     let asked = conversations.get(agent).ok().and_then(|conversation| {
-        let entries = conversation.entries();
-        let mut answered = entries.skip(conversation.start_of(turn.first_message));
-        answered
-            .find(EntryRef::is_users_own)
+        conversation
+            .request(turn.first_message)
             .map(|entry| entry.message)
     });
     if let Some(message::Message::User { content }) = asked {

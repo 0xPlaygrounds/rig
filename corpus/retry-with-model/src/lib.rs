@@ -10,7 +10,6 @@
 //! `/retry-with`'s argument to the models the agent can reach.
 
 use rig_harness::prelude::*;
-use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::tool::FilesChanged;
 use rig_tui::ArgCompletion;
 use serde::{Deserialize, Serialize};
@@ -173,11 +172,8 @@ fn note_turn(
     let Ok((conversation, mut alternatives, connection)) = agents.get_mut(agent) else {
         return;
     };
-    let asked = conversation
-        .messages()
-        .get(conversation.start_of(turn.first_message));
-    if !matches!(outcome, TurnOutcome::Answered(_)) || !matches!(asked, Some(Message::User { .. }))
-    {
+    let asked = conversation.request(turn.first_message).is_some();
+    if !matches!(outcome, TurnOutcome::Answered(_)) || !asked {
         return;
     }
     if retry.is_none() && alternatives.turn != Some(turn.first_message) {
@@ -240,13 +236,10 @@ fn complete(
 /// Where the answer to the last turn starts: after the user entries the
 /// turn answered, when the conversation still holds them.
 fn last_turn(conversation: &Conversation, alternatives: &Alternatives) -> Option<usize> {
-    let turn = conversation.index_of(alternatives.turn?)?;
-    let messages = conversation.messages().get(turn..)?;
-    let asked = messages
-        .iter()
-        .take_while(|message| matches!(message, Message::User { .. }))
-        .count();
-    (asked > 0).then_some(turn + asked)
+    let turn = alternatives.turn?;
+    conversation.index_of(turn)?;
+    let asked = conversation.asked(turn).last()?;
+    asked.index.checked_add(1)
 }
 
 /// The author of this plugin's edits.

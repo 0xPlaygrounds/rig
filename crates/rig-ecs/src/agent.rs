@@ -249,6 +249,9 @@ pub struct Turn {
     /// the user's message it answers, or, when the conversation does not
     /// end in one, of the first message the turn adds. Its index now is
     /// [`conversation::Conversation::start_of`] it, as splices move messages.
+    /// The entries it answers are
+    /// [`conversation::Conversation::asked`], the message that asked for it
+    /// [`conversation::Conversation::request`].
     /// Not reflected: rig-core's types are not `Reflect`.
     #[reflect(ignore)]
     pub first_message: MessageId,

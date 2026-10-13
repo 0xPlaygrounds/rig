@@ -397,13 +397,14 @@ fn stream_reply(
 fn blocks_of(conversation: &Conversation, opened: &HashSet<BlockKey>) -> Vec<Block> {
     let messages = conversation.messages();
     let mut blocks = Vec::new();
-    for (index, message) in messages.iter().enumerate() {
-        match message {
+    for entry in conversation.entries() {
+        let index = entry.index;
+        match entry.message {
             Message::System { .. } => {}
             Message::User { content } => {
                 for part in content {
                     match part {
-                        UserContent::Text(text) if text.text == STOPPED => {
+                        UserContent::Text(_) if entry.is_stopped_note() => {
                             blocks.push(Block::Stopped);
                         }
                         UserContent::Text(text) => match conversation.author(index) {

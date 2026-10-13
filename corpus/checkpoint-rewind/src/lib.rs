@@ -200,9 +200,7 @@ fn snapshot(
             continue;
         };
         commands.entity(turn_entity).insert(Snapshotted);
-        let Some((message, text)) =
-            user_text(conversation, conversation.start_of(turn.first_message))
-        else {
+        let Some((message, text)) = user_text(conversation, turn.first_message) else {
             continue;
         };
         // A retried or restored turn answers a message that has one.
@@ -571,7 +569,7 @@ impl Rewinder<'_, '_> {
             let stopped = message
                 .checked_sub(1)
                 .and_then(|before| conversation.entries().nth(before))
-                .is_some_and(is_stopped_note);
+                .is_some_and(|entry| entry.is_stopped_note());
             let from = if stopped {
                 message.saturating_sub(1)
             } else {
@@ -688,13 +686,12 @@ fn prune(mut deleted: MessageReader<SessionDeleted>, repo: Repo) {
     }
 }
 
-/// The user's own message of the turn whose first message is entry `from`,
-/// and what they typed in it and any they sent after it: plugins' entries,
-/// tool results and the stopped note are left out.
-fn user_text(conversation: &Conversation, from: usize) -> Option<(MessageId, String)> {
+/// The user's own message of the turn that began at `start`, and what
+/// they typed in it and any they sent after it: plugins' entries, tool
+/// results and the stopped note are left out.
+fn user_text(conversation: &Conversation, start: MessageId) -> Option<(MessageId, String)> {
     let own: Vec<EntryRef<'_>> = conversation
-        .entries()
-        .skip(from)
+        .asked(start)
         .filter(EntryRef::is_users_own)
         .collect();
     let id = own.first()?.id;
@@ -711,17 +708,6 @@ fn user_text(conversation: &Conversation, from: usize) -> Option<(MessageId, Str
         })
         .collect();
     (!texts.is_empty()).then(|| (id, texts.join("\n")))
-}
-
-/// Whether `entry` is the note rig puts between a request the user stopped
-/// and what they sent next.
-fn is_stopped_note(entry: EntryRef<'_>) -> bool {
-    let by_rig = entry
-        .author
-        .is_some_and(|author| author.kind == AuthorKind::Rig);
-    let text = matches!(entry.message, message::Message::User { content }
-        if matches!(content.as_slice(), [UserContent::Text(text)] if text.text == STOPPED));
-    by_rig && text
 }
 
 /// Takes the snapshot of turn `index`: a new ref, or the last one when the

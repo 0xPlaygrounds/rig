@@ -328,7 +328,7 @@ fn commit_turn(
         || {
             clip(&format!(
                 "rig: {}",
-                request(conversation, conversation.start_of(turn.first_message))
+                request(conversation, turn.first_message)
             ))
         },
         |subject| subject.0.clone(),
@@ -441,30 +441,26 @@ fn toggle(
     notices.write(Notice::info(args.agent, format!("Auto-commit is {says}.")));
 }
 
-/// The first line of the request a turn answers, the user messages from
-/// the conversation's entry `at` on, each after the header naming who sent
-/// it when that was not the user.
-fn request(conversation: &Conversation, at: usize) -> String {
-    let found = conversation
-        .entries()
-        .skip(at)
-        .map_while(|entry| match entry.message {
-            Message::User { content } => Some((entry, content)),
-            _ => None,
+/// The first line of the request that asked for the turn that began at
+/// `start`, after the header naming who sent it when that was not the
+/// user.
+fn request(conversation: &Conversation, start: MessageId) -> String {
+    let found = conversation.request(start).and_then(|entry| {
+        let Message::User { content } = entry.message else {
+            return None;
+        };
+        let skip = usize::from(entry.author.and_then(Author::header).is_some());
+        content.iter().find_map(|content| {
+            let UserContent::Text(text) = content else {
+                return None;
+            };
+            text.text
+                .lines()
+                .skip(skip)
+                .map(str::trim)
+                .find(|line| !line.is_empty())
         })
-        .find_map(|(entry, content)| {
-            let skip = usize::from(entry.author.and_then(Author::header).is_some());
-            content.iter().find_map(|content| {
-                let UserContent::Text(text) = content else {
-                    return None;
-                };
-                text.text
-                    .lines()
-                    .skip(skip)
-                    .map(str::trim)
-                    .find(|line| !line.is_empty())
-            })
-        });
+    });
     found.unwrap_or("changes").to_owned()
 }
 
