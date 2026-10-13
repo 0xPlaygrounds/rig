@@ -40,7 +40,7 @@ use std::ops::{Bound, Range, RangeBounds};
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::completion::Message;
-use crate::message::{ToolCall, UserContent};
+use crate::message::{StopReason, ToolCall, UserContent};
 
 mod aside;
 mod author;
@@ -581,10 +581,16 @@ impl Conversation {
         self.halted
     }
 
-    /// Whether the model owes an answer: the last message is the user's,
-    /// and it was not halted.
+    /// Whether the model owes an answer: the last message a model reads is
+    /// the user's, and it was not halted. A failed or stopped reply after it
+    /// is never read ([`StopReason::is_failure`]), so the answer is still
+    /// owed.
     pub fn awaits_model(&self) -> bool {
-        self.halted.is_none() && matches!(self.messages.last(), Some(Message::User { .. }))
+        let read = self.messages.iter().rev().find(|message| {
+            !matches!(message, Message::Assistant(turn)
+                if turn.stop.as_ref().is_some_and(StopReason::is_failure))
+        });
+        self.halted.is_none() && matches!(read, Some(Message::User { .. }))
     }
 
     /// The tool calls of the last assistant message that nothing answers

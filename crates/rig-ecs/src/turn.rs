@@ -48,7 +48,7 @@ use rig_core::conversation::{Author, Halt};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
-use rig_core::message::{ToolCall, UserContent};
+use rig_core::message::{AssistantContent, AssistantMessage, ToolCall, UserContent};
 use rig_core::serve::{Reply, stream_truncated};
 use rig_core::streaming::{Item, Relayed, StreamEvent};
 use rig_core::tool::{ToolExecutionError, ToolResult};
@@ -421,8 +421,9 @@ pub(crate) struct Ending {
     take_out: bool,
 }
 
-/// Stops a running turn at once. The text a streaming reply had sent is
-/// kept as the model's message, unless its call was superseded; every
+/// Stops a running turn at once. What a streaming reply had sent is kept
+/// as the model's message, aborted, so no model reads it again and the
+/// user's request is halted as stopped, unless its call was superseded; every
 /// tool call of the last reply gets a result, real, its [`IfStopped`] or
 /// "interrupted", and every call of the turn that has not settled is
 /// answered as interrupted and settled, whatever held it gone. The turn
@@ -449,19 +450,24 @@ pub(crate) fn on_interrupt(
         Ok((mut state, calls)) => (state.reply.take(), calls),
         Err(_) => (None, None),
     };
-    let aborted: String = partials
-        .iter_many(calls.into_iter().flat_map(Calls::iter))
-        .flatten()
-        .map(|partial| partial.text.as_str())
-        .collect();
-    if !aborted.trim().is_empty() {
-        conversation.push(Message::assistant(aborted));
-    }
     let reason = interrupt.reason.clone();
     let why = match &reason {
         Some(reason) => format!("interrupted: {reason}"),
         None => "interrupted by the user".to_owned(),
     };
+    let streamed = partials.iter_many(calls.into_iter().flat_map(Calls::iter));
+    let (mut reasoning, mut text) = (String::new(), String::new());
+    for partial in streamed.flatten() {
+        reasoning.push_str(&partial.reasoning);
+        text.push_str(&partial.text);
+    }
+    let reasoning = (!reasoning.trim().is_empty()).then(|| AssistantContent::reasoning(reasoning));
+    let text = (!text.trim().is_empty()).then(|| AssistantContent::text(text));
+    let content: Vec<_> = reasoning.into_iter().chain(text).collect();
+    if !content.is_empty() {
+        let aborted = AssistantMessage::aborted(None, content, why.clone());
+        conversation.push(Message::Assistant(aborted));
+    }
     let reply = reply
         .zip(calls)
         .map(|(reply, calls)| reply_calls(reply, calls, &replies));

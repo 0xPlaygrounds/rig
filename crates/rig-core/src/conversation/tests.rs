@@ -227,6 +227,26 @@ fn a_stopped_request_gets_its_note_and_halts_clear() {
     assert!(conversation.awaits_model());
 }
 
+/// A reply stopped halfway is kept aborted and never read, so the user's
+/// message is still owed an answer: a stop halts it, and the next message
+/// comes after the stopped note.
+#[test]
+fn a_reply_stopped_halfway_leaves_the_request_owed() {
+    use crate::message::{AssistantContent, AssistantMessage};
+    let partial = vec![AssistantContent::text("The answer is")];
+    let aborted = AssistantMessage::aborted(None, partial, "stopped by the user");
+    let mut conversation =
+        Conversation::from_messages([Message::user("what is it?"), Message::Assistant(aborted)]);
+    assert!(conversation.awaits_model());
+    assert!(conversation.halt(Halt::Stopped));
+    conversation.push(Message::user("never mind"));
+    let notes: Vec<bool> = conversation
+        .entries()
+        .map(|entry| entry.is_stopped_note())
+        .collect();
+    assert_eq!(notes, [false, false, true, false]);
+}
+
 /// The turn after a stopped one answers the stopped reply's results and
 /// rig's note before the user's message: the request is the user's.
 #[test]

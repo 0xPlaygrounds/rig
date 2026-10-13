@@ -50,7 +50,7 @@ use rig_core::effect::{
     Disposition, EffectKind, EffectRecord, FamilyDescriptor, HandlerDescriptor, HandlerKey,
 };
 use rig_core::error::ErrorKind;
-use rig_core::message::{Message, ToolFunction, ToolName};
+use rig_core::message::{Message, StopReason, ToolFunction, ToolName};
 use rig_core::operation::{Completion, Finish};
 use rig_core::providers::registry::ProviderId;
 use rig_core::serve::adapters::{ModelAdapter, ToolAdapter};
@@ -2573,6 +2573,18 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     let said = conversation(&app, agent);
     let kept = said.last().and_then(|message| message.final_answer());
     assert_eq!(kept.as_deref(), Some("The answer is"), "{said:?}");
+    // Kept as stopped, never as an answer: the request is halted, and the
+    // next message comes after the stopped note.
+    let aborted = matches!(said.last(), Some(Message::Assistant(reply))
+        if matches!(reply.stop, Some(StopReason::Aborted(_))));
+    assert!(aborted, "{said:?}");
+    let world = app.world_mut();
+    if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
+        assert_eq!(conversation.halted(), Some(Halt::Stopped));
+        conversation.push(Message::user("never mind"));
+        let note = conversation.entries().rev().nth(1);
+        assert!(note.is_some_and(|entry| entry.is_stopped_note()));
+    }
     // A late release starts nothing.
     for _ in 0..3 {
         app.update();
