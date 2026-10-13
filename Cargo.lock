@@ -5793,13 +5793,11 @@ name = "corpus-oc-approval-batching"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-coding-tools",
  "rig-core",
  "rig-defaults-test-support",
  "rig-harness",
  "rig-harness-test-support",
- "rig-tui",
  "serde",
  "serde_json",
  "toml",
