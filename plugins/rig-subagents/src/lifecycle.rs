@@ -31,6 +31,7 @@ pub(super) fn add(app: &mut App) {
             AgentPass,
             stop_restored
                 .after(GateSystems::After)
+                .before(ApprovalSystems)
                 .before(GateSystems::Fallback),
         );
 }
@@ -342,8 +343,8 @@ pub(super) struct Considered;
 /// reports each request as interrupted, unless a plugin claimed any of the
 /// turn's restored work in Gate: held, decided or superseded one of its
 /// calls, or ended the turn. It looks at each restored turn once, after
-/// every gate of the pass its calls are admitted in, before the kernel's
-/// own answers.
+/// every gate of the pass its calls are admitted in, before the user is
+/// asked to approve any of them and the kernel's own answers.
 pub(super) fn stop_restored(
     turns: Query<
         (Entity, &TurnOf, &Calls),

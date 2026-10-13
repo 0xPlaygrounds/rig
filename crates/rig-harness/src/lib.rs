@@ -57,6 +57,7 @@
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
 pub mod agent_title;
+pub mod approval;
 pub mod ask;
 pub mod checkpoint;
 pub mod clock;
@@ -132,6 +133,7 @@ pub mod prelude {
     pub use bevy_app::OnAppExitSystems;
 
     pub use crate::agent_title::AgentTitle;
+    pub use crate::approval::{ApprovalReason, ApprovalSystems, Approved, NeedsApproval};
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::checkpoint::{
         CallCheckpoint, CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint,
@@ -178,7 +180,8 @@ pub mod prelude {
 /// session logs, the launcher protocol with the plugins' options and
 /// fronts ([`host`]), slash commands ([`commands`]), why the app exits,
 /// wall-clock wakes ([`clock`]),
-/// file watches ([`watch`]), questions for the user ([`ask`]), pickers
+/// file watches ([`watch`]), questions for the user ([`ask`]) and their
+/// approval of what plugins want approved ([`approval`]), pickers
 /// with the agent the user looks at ([`pick`]), previews of what a tool
 /// call would leave on disk ([`preview`]) and what every call that may
 /// write anywhere changed ([`checkpoint`]).
@@ -199,6 +202,7 @@ impl PluginGroup for RigHarnessPlugins {
             .add(clock::ClockPlugin)
             .add(watch::WatchPlugin)
             .add(ask::AskPlugin)
+            .add(approval::ApprovalPlugin)
             .add(pick::PickPlugin)
             .add(progress::ProgressPlugin)
             .add(preview::PreviewPlugin)

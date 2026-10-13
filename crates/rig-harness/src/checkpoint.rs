@@ -63,6 +63,7 @@ use rig_ecs::prelude::{
 use rig_tools::checkpoint::{Checkpointed, Snapshot, Taking};
 use serde::Deserialize;
 
+use crate::approval::ApprovalSystems;
 use crate::host::session::Scratch;
 use crate::per_call::base;
 use crate::preview::PreviewSystems;
@@ -179,6 +180,7 @@ impl Plugin for CheckpointPlugin {
             checkpoint
                 .after(GateSystems::After)
                 .after(PreviewSystems)
+                .after(ApprovalSystems)
                 .before(Stage::Start)
                 .run_if(|checkpoints: Res<Checkpoints>| checkpoints.enabled),
         )
