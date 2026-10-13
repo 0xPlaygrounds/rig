@@ -142,7 +142,7 @@ fn an_override_wins_field_by_field() {
     let base = models_dev(SAMPLE).expect("parses");
     let overrides = Catalog::from_overrides(
         r#"{"anthropic": {"models": {
-            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true}},
+            "claude-x": {"limit": {"output": 128000}, "cost": {"input": 5}, "rig": {"binds_context": true, "prefill": true}},
             "claude-y": {"name": "Claude Y", "reasoning": false, "tool_call": true, "modalities": {"input": ["text"]}}
         }}}"#,
         &base,
@@ -156,6 +156,7 @@ fn an_override_wins_field_by_field() {
     let pricing = claude.pricing.expect("priced");
     assert_eq!((pricing.input, pricing.output), (5.0, 15.0));
     assert!(claude.compat.binds_context && claude.compat.adaptive_thinking);
+    assert!(claude.compat.prefill);
     assert_eq!(
         claude.reasoning.default_effort(),
         Some(Effort::High),
@@ -683,6 +684,27 @@ fn a_spec_row_overrides_what_the_spec_knows() {
         "an unknown limit is kept"
     );
     assert!(claude.pricing.is_some(), "unknown prices are kept");
+}
+
+/// Claude models before 4.6 continue a prefilled reply; later ones refuse
+/// it (Anthropic's prompting guide), and a gateway row carries the fact.
+#[test]
+fn the_catalog_says_which_models_continue_a_prefill() {
+    let catalog = Catalog::builtin();
+    for (vendor, model, prefill) in [
+        ("anthropic", "claude-haiku-4-5", true),
+        ("anthropic", "claude-sonnet-4-5", true),
+        ("vertexai", "claude-sonnet-4-5@20250929", true),
+        ("anthropic", "claude-opus-4-6", false),
+        ("anthropic", "claude-opus-5-5", false),
+        ("openai", "gpt-5", false),
+    ] {
+        assert_eq!(
+            spec(catalog, vendor, model).compat.prefill,
+            prefill,
+            "{vendor}/{model}"
+        );
+    }
 }
 
 /// A gateway row of a Claude model carries the Anthropic model's wire facts

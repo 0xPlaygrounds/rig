@@ -263,6 +263,11 @@ pub struct Compat {
     /// OpenAI: Chat Completions takes the model's tools only while its
     /// reasoning is off.
     pub chat_tools_need_reasoning_off: bool,
+    /// The model continues a request that ends in an assistant message (a
+    /// prefill) from where that message stops, instead of refusing it, as
+    /// Anthropic's models before Claude 4.6 do while their reasoning is
+    /// off. Unknown is `false`.
+    pub prefill: bool,
 }
 
 impl Compat {
@@ -312,6 +317,12 @@ impl Compat {
     /// These facts with Chat tools needing reasoning off set to `on`.
     pub fn with_chat_tools_need_reasoning_off(mut self, on: bool) -> Self {
         self.chat_tools_need_reasoning_off = on;
+        self
+    }
+
+    /// These facts with prefill continuation set to `on`.
+    pub fn with_prefill(mut self, on: bool) -> Self {
+        self.prefill = on;
         self
     }
 }
