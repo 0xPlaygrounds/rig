@@ -5,7 +5,8 @@
 //! [`MessageId`] that survives edits and, when it is not the user's own or
 //! the model's, an [`Author`]), its [`Aside`]s, which never reach a model,
 //! and why its last user message is unanswered ([`Halt`]); other
-//! continuations from one of its entries are [`Branch`]es kept as asides. Every edit is a
+//! continuations from one of its entries are [`Branch`]es and how each
+//! turn went is a [`TurnRecord`], both kept as asides. Every edit is a
 //! [`Change`], applied by the same code whether it is made live or read
 //! back from a log, and kept in the conversation's outbox
 //! ([`unsaved`](Conversation::unsaved)) until whoever saves it takes it.
@@ -47,11 +48,13 @@ mod author;
 mod branch;
 mod lineage;
 pub mod pairing;
+mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
 pub use branch::{BRANCH, Branch, BranchError};
 pub use lineage::Lineage;
+pub use turn::{TURN, TurnEnd, TurnRecord};
 
 use pairing::{Normalized, PairingError};
 
@@ -343,15 +346,16 @@ impl EntryRef<'_> {
 pub const STOPPED: &str = "[The request above was stopped by the user before it was answered. \
                            Do not carry it out unless asked again.]";
 
-/// Why the user's last message is left without an answer.
+/// Why the user's last message is left without an answer, so a restore
+/// does not answer it. How a turn ended is its [`TurnRecord`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Halt {
     /// The user stopped the turn answering it: the next entry pushed goes
     /// after [`STOPPED`].
     Stopped,
-    /// It was left for the next turn, such as a note to an idle agent or a
-    /// request whose turn failed.
+    /// It is left for the next turn: a note to an idle agent, or a request
+    /// whose turn failed or a plugin stopped.
     #[default]
     Kept,
 }

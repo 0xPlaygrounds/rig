@@ -532,3 +532,36 @@ fn reread_takes_the_log_and_keeps_unsaved_asides() {
     let next = live.add_aside(Aside::new("next", Author::rig(), serde_json::Value::Null));
     assert!(next > scratch);
 }
+
+/// A turn record opens after the last entry, numbered after the last one,
+/// and ends once: a record already ended, or none, is left alone. The
+/// records fold back from the outbox.
+#[test]
+fn turn_records_open_numbered_and_end_once() {
+    let mut conversation = Conversation::from_messages([Message::user("hi")]);
+    let asked = conversation.id(0).expect("the request");
+    let first = conversation.open_turn();
+    assert_eq!((first.index, first.start, first.end), (0, asked, None));
+    let answer = conversation.push(Message::assistant("hello"));
+    assert!(conversation.end_turn(TurnEnd::Answered { by: Some(answer) }));
+    assert!(!conversation.end_turn(TurnEnd::Failed { why: "late".into() }));
+    conversation.push(Message::user("and?"));
+    assert_eq!(conversation.open_turn().index, 1);
+    assert!(conversation.end_turn(TurnEnd::Stopped { why: None }));
+
+    let records: Vec<_> = conversation.turns().map(|(_, record)| record).collect();
+    let ends: Vec<_> = records.iter().map(|record| record.end.clone()).collect();
+    let stopped = Some(TurnEnd::Stopped { why: None });
+    assert_eq!(
+        ends,
+        [Some(TurnEnd::Answered { by: Some(answer) }), stopped]
+    );
+    let second = records
+        .get(1)
+        .and_then(|record| conversation.request(record.start));
+    assert_eq!(
+        second.map(|entry| entry.message),
+        Some(&Message::user("and?"))
+    );
+    assert_eq!(fold(&conversation.take_unsaved()), conversation);
+}

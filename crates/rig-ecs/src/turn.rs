@@ -44,7 +44,7 @@ use rig_core::completion::{
     UnsupportedOption,
 };
 use rig_core::conversation::pairing::close_pending_with;
-use rig_core::conversation::{Author, Halt};
+use rig_core::conversation::{Author, Halt, TurnEnd};
 use rig_core::effect::{self, EffectId, EffectKind};
 use rig_core::error::retry::{RetryPolicy, Verdict};
 use rig_core::error::{ErrorKind, ErrorReport};
@@ -56,9 +56,8 @@ use rig_memory::now_ms;
 use web_time::Instant;
 
 use super::agent::{
-    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastTurn,
-    LastUsage, Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
-    TurnsStarted,
+    ActiveTurn, Agent, AgentId, CallOf, Calls, Conversation, EffectParent, Interrupt, LastUsage,
+    Notice, Partial, Retry, SystemPrompt, ToolAccess, Turn, TurnOf, TurnOutcome,
 };
 use super::calls::{Running, Wake};
 use super::inbox::{DeliveryMode, Inboxes, carry_on, deliver};
@@ -372,12 +371,11 @@ pub(crate) fn on_retry(
     spawn_turn_call(&mut commands, turn, agent);
 }
 
-/// Fills in a new turn's [`Turn`]: its index from its agent's count, which
-/// it bumps, and where it begins in the agent's conversation. A
-/// [`Restored`] turn is the agent's last turn carried on, with that turn's
-/// index and start. The turn is [`ForAgent`] its agent from the start, so
-/// it is part of the agent's work and its end inserts nothing but
-/// [`Settled`].
+/// Fills in a new turn's [`Turn`] from a turn record it opens in its
+/// agent's conversation. A [`Restored`] turn is the agent's last turn
+/// carried on, with that turn's record while it is open. The turn is
+/// [`ForAgent`] its agent from the start, so it is part of the agent's
+/// work and its end inserts nothing but [`Settled`].
 pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
     let Some(&TurnOf(agent)) = world.get::<TurnOf>(context.entity) else {
         return;
@@ -386,28 +384,34 @@ pub(crate) fn start_turn(mut world: DeferredWorld, context: HookContext) {
         .commands()
         .entity(context.entity)
         .try_insert(ForAgent(agent));
-    let last = world
-        .get::<TurnsStarted>(agent)
-        .and_then(|started| started.0);
-    let carried = last.filter(|_| world.get::<Restored>(context.entity).is_some());
-    let (index, first_message) = match carried {
-        Some(last) => (last.count.saturating_sub(1), last.start),
-        None => {
-            let start = world
-                .get::<Conversation>(agent)
-                .map(|conversation| conversation.turn_start())
-                .unwrap_or_default();
-            let index = last.map_or(0, |last| last.count);
-            if let Some(mut started) = world.get_mut::<TurnsStarted>(agent) {
-                let count = index.saturating_add(1);
-                started.0 = Some(LastTurn { count, start });
-            }
-            (index, start)
-        }
+    let restored = world.get::<Restored>(context.entity).is_some();
+    let Some(mut conversation) = world.get_mut::<Conversation>(agent) else {
+        return;
+    };
+    let last = conversation.turns().last().map(|(_, record)| record);
+    let record = match last.filter(|record| restored && record.end.is_none()) {
+        Some(record) => record,
+        None => conversation.open_turn(),
     };
     if let Some(mut turn) = world.get_mut::<Turn>(context.entity) {
-        turn.index = index;
-        turn.first_message = first_message;
+        turn.index = record.index;
+        turn.first_message = record.start;
+    }
+}
+
+/// How `outcome` ends a turn in its record, the answer being the last
+/// entry of `conversation`.
+fn turn_end(outcome: &TurnOutcome, conversation: &Conversation) -> TurnEnd {
+    match outcome {
+        TurnOutcome::Answered(_) => {
+            let last = conversation.entries().next_back();
+            let answer = last.filter(|entry| matches!(entry.message, Message::Assistant(_)));
+            TurnEnd::Answered {
+                by: answer.map(|entry| entry.id),
+            }
+        }
+        TurnOutcome::Failed(why) => TurnEnd::Failed { why: why.clone() },
+        TurnOutcome::Stopped(why) => TurnEnd::Stopped { why: why.clone() },
     }
 }
 
@@ -427,9 +431,9 @@ pub(crate) struct Ending {
 /// tool call of the last reply gets a result, real, its [`IfStopped`] or
 /// "interrupted", and every call of the turn that has not settled is
 /// answered as interrupted and settled, whatever held it gone. The turn
-/// ends [`TurnOutcome::Stopped`]. The outcome is saved and written to the
-/// log at once, so a log that ends mid-turn always means a crash or a
-/// restart.
+/// ends [`TurnOutcome::Stopped`], in its record too. The conversation is
+/// saved and written to the log at once, so a log that ends mid-turn
+/// always means a crash or a restart.
 pub(crate) fn on_interrupt(
     interrupt: On<Interrupt>,
     mut agents: Query<(&AgentId, &mut Conversation, &ActiveTurn)>,
@@ -476,6 +480,9 @@ pub(crate) fn on_interrupt(
         commit_results(&mut conversation, results);
     }
     conversation.halt(Halt::Stopped);
+    conversation.end_turn(TurnEnd::Stopped {
+        why: reason.clone(),
+    });
     let conversation = conversation.bypass_change_detection();
     committed.write_batch(save_conversation(&log, agent, id, conversation));
     log.flush();
@@ -1491,6 +1498,8 @@ pub(crate) fn end_turns(
         if !matches!(outcome, TurnOutcome::Answered(_)) {
             conversation.halt(Halt::Kept);
         }
+        let end = turn_end(outcome, &conversation);
+        conversation.end_turn(end);
         let how = match outcome {
             TurnOutcome::Answered(_) => "answered",
             TurnOutcome::Failed(_) => "failed",

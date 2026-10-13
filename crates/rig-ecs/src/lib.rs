@@ -85,7 +85,7 @@ pub mod prelude {
     };
     pub use rig_core::conversation::{
         Aside, AsideId, Author, AuthorKind, Change, Entry, EntryRef, Halt, MessageId, Recorded,
-        RequestId, STOPPED, Spliced,
+        RequestId, STOPPED, Spliced, TurnEnd, TurnRecord,
     };
     pub use rig_core::effect::Decider;
     pub use rig_core::error::retry::Verdict;

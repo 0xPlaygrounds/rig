@@ -211,7 +211,8 @@ fn a_restored_model_that_cannot_be_used_is_reported_once() {
 fn every_change_the_log_records_is_committed() {
     let mut app = app(&MemoryStore::default());
     // No model answers it, and a reviewer takes that as final, so the
-    // message is taken out; a note is left halted.
+    // message is taken out, between the turn's record opening and ending;
+    // a note is left halted.
     let finally = |calls: Query<Entity, (Unreviewed, With<TurnCall>)>, mut commands: Commands| {
         for call in &calls {
             commands.entity(call).insert(RetryVerdict(Verdict::Final));
@@ -240,7 +241,7 @@ fn every_change_the_log_records_is_committed() {
         });
     assert_eq!(
         changes.collect::<Vec<_>>(),
-        ["push", "splice", "push", "halt"]
+        ["push", "aside", "splice", "aside", "push", "halt"]
     );
 }
 
@@ -665,10 +666,8 @@ fn restart_after(
     assert!(run_until(&mut app, ended));
     let said = said(&mut app);
     // Every mark goes with the results.
-    let agent = first_agent(&mut app);
-    let conversation = agent.and_then(|agent| app.world().get::<Conversation>(agent));
-    let marks = conversation.map(|conversation| conversation.asides().count());
-    assert_eq!(marks, Some(0), "{said}");
+    let marks = aside_kinds(&mut app);
+    assert!(!marks.iter().any(|kind| kind == "rig.call"), "{said}");
     (app, said, store)
 }
 
@@ -694,10 +693,8 @@ fn a_restart_answers_what_a_crash_interrupted_after_every_gate() {
     app.update();
     let saved = rig_memory::Session::read(&store).map(|session| session.agents);
     let marks = saved.map(|agents| {
-        agents
-            .iter()
-            .map(|it| it.conversation.asides().count())
-            .sum()
+        let asides = agents.iter().flat_map(|it| it.conversation.asides());
+        asides.filter(|(_, aside)| aside.kind == "rig.call").count()
     });
     assert_eq!(marks.ok(), Some(0usize));
 }
@@ -800,9 +797,17 @@ fn a_turn_a_crash_cut_short_carries_on_where_it_began() {
             .map(|entry| entry.id)
     });
     assert!(go.is_some());
-    // The same, first turn, carried on from the message that started it.
+    // The same, first turn, carried on from the message that started it,
+    // its one record left open by the crash and closed by the restart.
     let began = &app.world().resource::<Began>().0;
     assert_eq!(began.first().copied(), go.map(|go| (0, go)), "{began:?}");
+    let records = conversation
+        .into_iter()
+        .flat_map(|conversation| conversation.turns());
+    let records: Vec<_> = records
+        .map(|(_, record)| (record.index, Some(record.start), record.end.is_some()))
+        .collect();
+    assert_eq!(records, [(0, go, true)]);
 }
 
 /// The holds a gate put on restored calls while it asked someone.

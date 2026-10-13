@@ -1754,6 +1754,60 @@ fn a_retry_waits_on_a_hold_and_an_interrupt_during_the_wait_sends_nothing() {
     assert_eq!(world.query::<&TurnCall>().iter(world).count(), 0);
 }
 
+/// Whether [`refuse_when_asked`] refuses the turns' model calls.
+#[derive(Resource, Default)]
+struct Refusing(bool);
+
+fn refuse_when_asked(
+    refusing: Res<Refusing>,
+    mut calls: Query<&mut Decision, (Undecided, ModelCalls, With<TurnCall>)>,
+) {
+    for mut decision in calls.iter_mut().filter(|_| refusing.0) {
+        decision.decide(Decider::plugin("test"), Outcome::refused("not now"));
+    }
+}
+
+/// Each turn is recorded in its agent's conversation with how it ended:
+/// an answer by its entry, a failure with why, the request it left halted;
+/// a note to an idle agent starts no turn and no record.
+#[test]
+fn each_turn_is_recorded_with_how_it_ended() {
+    let mut app = app();
+    app.init_resource::<Refusing>()
+        .init_resource::<Ended>()
+        .add_observer(log_ended)
+        .add_systems(AgentPass, refuse_when_asked.in_set(Stage::Gate));
+    let model = MockCompletionModel::from_stream_turns([answer("hello")]);
+    let agent = agent_on(&mut app, &model);
+    let ended_once = |world: &mut World| world.resource::<Ended>().0.len() == 1;
+    assert!(run_until(&mut app, ended_once));
+    let world = app.world_mut();
+    let note = Deliver::new(agent, "fyi", DeliveryMode::Note).with_author(Author::plugin("check"));
+    world.trigger(note);
+    world.resource_mut::<Refusing>().0 = true;
+    world.trigger(Deliver::new(agent, "and?", DeliveryMode::Steer));
+    let ended_twice = |world: &mut World| world.resource::<Ended>().0.len() == 2;
+    assert!(run_until(&mut app, ended_twice));
+    let Some(conversation) = app.world().get::<Conversation>(agent) else {
+        return;
+    };
+    let hello = conversation
+        .entries()
+        .find(|entry| entry.message.final_answer().as_deref() == Some("hello"));
+    let records: Vec<_> = conversation
+        .turns()
+        .map(|(_, record)| (record.index, record.end))
+        .collect();
+    let failed = TurnEnd::Failed {
+        why: "not now".to_owned(),
+    };
+    let answered = TurnEnd::Answered {
+        by: hello.map(|entry| entry.id),
+    };
+    assert_eq!(records, [(0, Some(answered)), (1, Some(failed))]);
+    assert_eq!(conversation.halted(), Some(Halt::Kept));
+}
+
 #[test]
 fn a_refused_turn_call_ends_the_turn_keeps_the_message_and_is_not_retried() {
     let mut app = app();
@@ -2581,6 +2635,11 @@ fn an_interrupt_ends_the_turn_at_once_and_settles_its_held_and_streaming_calls()
     let world = app.world_mut();
     if let Some(mut conversation) = world.get_mut::<Conversation>(agent) {
         assert_eq!(conversation.halted(), Some(Halt::Stopped));
+        let ended = conversation
+            .turns()
+            .last()
+            .and_then(|(_, record)| record.end);
+        assert_eq!(ended, Some(TurnEnd::Stopped { why: None }));
         conversation.push(Message::user("never mind"));
         let note = conversation.entries().rev().nth(1);
         assert!(note.is_some_and(|entry| entry.is_stopped_note()));
