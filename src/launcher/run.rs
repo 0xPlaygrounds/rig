@@ -15,7 +15,9 @@
 //!
 //! The command line is read once the agent is built, against what its
 //! plugins add ([`Described::invocation`]), and the agent gets it in its
-//! canonical form ([`Invocation`]). A headless run (`--print`, stdin piped
+//! canonical form ([`Invocation`]). A plugin's command runs in a new
+//! session, or with `--resume` in that one, unless its front keeps no
+//! session, which the agent refuses. A headless run (`--print`, stdin piped
 //! in, which the agent answers as `--print` does, or a plugin's command
 //! that does not take the terminal) is not restarted on the reload code,
 //! nor run again on the previous build when its new build is rolled back;
@@ -114,15 +116,7 @@ pub fn run(home: &Home, args: &[String]) -> Result<ExitCode> {
     }
     let notice: Vec<String> = claim_notice.into_iter().chain(build_notice).collect();
     let notice = (!notice.is_empty()).then(|| notice.join("\n"));
-    let invocation = report
-        .invocation(args)
-        .and_then(|invocation| match &invocation.command {
-            Some(command) if resume.is_some() || invocation.print.is_some() => Err(format!(
-                "the command `{command}` takes neither --resume nor --print"
-            )),
-            _ => Ok(invocation),
-        });
-    let invocation = match invocation {
+    let invocation = match report.invocation(args) {
         Ok(invocation) => invocation,
         Err(why) => {
             claimed.discard_if_unsaved(home);

@@ -26,7 +26,9 @@
 //! interactive run that no front takes says so and exits. A front whose
 //! runs leave nothing to resume, such as one replaying a recording, is
 //! [`Front::sessionless`]: a run it takes removes its session's directory
-//! when it ends, and a run of a resumed session is refused.
+//! when it ends, and a run of a resumed session is refused. A front whose
+//! runs keep their session elsewhere, such as with a chat thread, opens it
+//! with [`Front::session_store`].
 //!
 //! ```
 //! use rig_harness::prelude::*;
@@ -61,13 +63,15 @@
 //! ```
 
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{RESERVED_COMMANDS, StartReason};
+use rig::harness_protocol::{RESERVED_COMMANDS, SessionDir, StartReason};
+use rig_memory::{LoadError, Store};
 
 use super::launcher::Invoked;
-use super::session::AppStart;
+use super::session::{AppStart, SessionStores};
 use crate::describe::Describing;
 use crate::secrets::Secret;
 
@@ -122,7 +126,7 @@ pub struct Command {
 }
 
 /// A front a plugin offers, and which runs it can take.
-#[derive(Component, Clone, Debug, PartialEq, Eq)]
+#[derive(Component, Clone, Debug)]
 pub struct Front {
     /// Its name, which [`AppCliExt::runs_front`] asks about.
     pub name: &'static str,
@@ -143,6 +147,9 @@ pub struct Front {
     /// session's directory when it ends, and a resumed session's run is
     /// refused.
     pub sessionless: bool,
+    /// Where a run it takes keeps its session, in place of
+    /// [`SessionStores`] ([`Self::session_store`]).
+    pub session_store: Option<SessionStores>,
 }
 
 impl Front {
@@ -155,6 +162,7 @@ impl Front {
             flag: None,
             command: None,
             sessionless: false,
+            session_store: None,
         }
     }
 
@@ -173,6 +181,20 @@ impl Front {
     /// Its runs keep no session.
     pub fn sessionless(mut self) -> Self {
         self.sessionless = true;
+        self
+    }
+
+    /// A run it takes keeps its session in the store `open` opens for the
+    /// session's directory, such as one of a chat thread's, instead of the
+    /// one [`SessionStores`] opens. Only the running session's store comes
+    /// from it: forks, imports and listings still open theirs with
+    /// [`SessionStores`]. The front is chosen, and the store opened, once
+    /// every plugin is built.
+    pub fn session_store(
+        mut self,
+        open: impl Fn(&SessionDir) -> Result<Arc<dyn Store>, LoadError> + Send + Sync + 'static,
+    ) -> Self {
+        self.session_store = Some(SessionStores::new(open));
         self
     }
 
@@ -217,7 +239,8 @@ impl Cli {
         self.chosen().is_some_and(|front| front.sessionless)
     }
 
-    fn chosen(&self) -> Option<&Front> {
+    /// The front of this run, once chosen.
+    pub(crate) fn chosen(&self) -> Option<&Front> {
         self.chosen.as_ref()?.as_ref().ok()?.as_ref()
     }
 }
@@ -290,7 +313,7 @@ fn refusal_of(world: &mut World, invoked: &Invoked) -> Option<String> {
 
 /// Chooses the front of the run, once: none while the build describes
 /// itself.
-fn choose(world: &mut World) -> Option<&'static str> {
+pub(crate) fn choose(world: &mut World) -> Option<&'static str> {
     if world.get_resource_or_init::<Cli>().chosen.is_none() {
         let chosen = if world.contains_resource::<Describing>() {
             Ok(None)

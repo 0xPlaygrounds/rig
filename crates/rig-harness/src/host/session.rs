@@ -47,7 +47,7 @@ use rig_memory::{
 use rig_tools::Spill;
 use rig_tools::attach::attached_file;
 
-use super::cli::Cli;
+use super::cli::{self, Cli};
 use super::launcher::{LauncherRun, refuse};
 use crate::describe::Describing;
 use crate::plugin_data::PluginData;
@@ -74,8 +74,10 @@ impl Deref for SessionPaths {
 /// an import's, one `/resume` lists. A plugin replaces it while the app is
 /// built, such as with a store that seals what it keeps:
 /// `app.insert_resource(SessionStores::new(|dir| ..))`. Once every plugin
-/// is built, the harness opens the running session's [`SessionStore`] from
-/// it, unless one is there, and reads the session before anything is
+/// is built, the harness chooses the run's front and opens the running
+/// session's [`SessionStore`] from the front's own store
+/// ([`Front::session_store`](super::cli::Front::session_store)), else from
+/// this, unless one is there, and reads the session before anything is
 /// written; a run whose store does not open, or whose session cannot be
 /// read, is refused, and nothing of the session is changed. Every store it
 /// opens marks its session saved ([`SessionDir::mark_saved`]) the first
@@ -109,6 +111,12 @@ impl SessionStores {
             dir: dir.clone(),
             marked: AtomicBool::new(false),
         }))
+    }
+}
+
+impl Debug for SessionStores {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("SessionStores")
     }
 }
 
@@ -333,9 +341,9 @@ impl Plugin for SessionPlugin {
             );
     }
 
-    /// Every plugin chose the stores and the scratch place by now: opens
-    /// the session's store, or the one a test or a nested tool put in, and
-    /// reads the session; only then moves the text log where [`Scratch`]
+    /// Every plugin chose the stores and the scratch place and offered its
+    /// fronts by now: chooses the run's front, opens the session's store,
+    /// or the one a test or a nested tool put in, and reads the session; only then moves the text log where [`Scratch`]
     /// says. A session that cannot be opened or read refuses the run, and
     /// the run writes nothing into its directory (`leave_session`). A
     /// build describing itself opens none.
@@ -381,17 +389,20 @@ fn insert_plugin_data(world: &mut World) {
     world.insert_resource(data);
 }
 
-/// Opens the session's store, the one in the world or else the one
-/// [`SessionStores`] opens for [`SessionPaths`], and reads the session it
-/// holds ([`open_session`]), before anything is written to it.
+/// Opens the session's store, the one in the world or else the one the
+/// run's front or [`SessionStores`] opens for [`SessionPaths`], and reads
+/// the session it holds ([`open_session`]), before anything is written to
+/// it.
 fn open_store(world: &mut World) -> Result<(), LoadError> {
     let store = match world.remove_resource::<SessionStore>() {
         Some(SessionStore(store)) => store,
         None => {
-            let (Some(paths), Some(stores)) = (
-                world.get_resource::<SessionPaths>(),
-                world.get_resource::<SessionStores>(),
-            ) else {
+            cli::choose(world);
+            let front = world.get_resource::<Cli>().and_then(Cli::chosen);
+            let stores = front
+                .and_then(|front| front.session_store.as_ref())
+                .or_else(|| world.get_resource::<SessionStores>());
+            let (Some(paths), Some(stores)) = (world.get_resource::<SessionPaths>(), stores) else {
                 return Ok(());
             };
             stores.open(paths)?

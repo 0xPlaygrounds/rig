@@ -6,14 +6,14 @@ use std::sync::Arc;
 use bevy_app::TaskPoolPlugin;
 use bevy_app::prelude::*;
 use bevy_ecs::prelude::*;
-use rig::harness_protocol::{Home, SessionDir, SessionId, StartReason};
+use rig::harness_protocol::{Home, Invocation, SessionDir, SessionId, StartReason};
 use rig_core::completion::Message;
 use rig_core::conversation::{self, Author, Entry};
 use rig_ecs::agent::{AgentId, Conversation, Notice};
 use rig_ecs::journal::{JournalPlugin, RewriteSession, SessionStore};
 use rig_ecs::{AgentPlugin, WriteJournal};
 use rig_harness_test_support::{commit_message, first_agent, scratch_home};
-use rig_memory::{DirStore, Files, Strings, load, save};
+use rig_memory::{DirStore, Files, MemoryStore, Store, Strings, load, save};
 
 use super::{
     AppStart, DeleteSession, ForkSession, ForkSessions, ForkedFrom, Scratch, SessionDeleteFailed,
@@ -21,7 +21,7 @@ use super::{
     log_layer, rewrite_stopped, typed,
 };
 use crate::host::cli::{AppCliExt, Front};
-use crate::host::launcher::LauncherRun;
+use crate::host::launcher::{Invoked, LauncherRun};
 use crate::plugin_data::PluginData;
 use crate::services::RigHome;
 
@@ -441,6 +441,51 @@ fn a_sessionless_front_refuses_a_resumed_session_and_keeps_it() {
     let why = "the front `export` keeps no session, so it cannot resume one";
     assert_eq!(resumed, Some((Some(why.to_owned()), true)));
     assert_eq!(reloaded, Some((None, false)));
+}
+
+/// A front with a store of its own keeps the session of a run it takes
+/// there, such as `rig -r X reply` with a chat thread's store; any other
+/// run keeps its session as [`SessionStores`] does.
+#[test]
+fn a_fronts_own_store_keeps_only_the_sessions_of_its_runs() {
+    let home = scratch_home("rig-front-store");
+    let run = |command: Option<&str>| {
+        let id: SessionId = "1700000000-11".parse().ok()?;
+        let session = home.session(&id);
+        fs::create_dir_all(session.path()).ok();
+        let thread = MemoryStore::default();
+        let opened = thread.clone();
+        let reply = Front::new("reply")
+            .on_command("reply", "", "Answer a thread")
+            .session_store(move |_| Ok(Arc::new(opened.clone())));
+        let invoked = Invoked {
+            args: Invocation {
+                command: command.map(str::to_owned),
+                ..Invocation::default()
+            },
+            terminal: false,
+        };
+        let mut app = App::new();
+        app.add_message::<Notice>()
+            .insert_resource(RigHome(home.clone()))
+            .insert_resource(SessionPaths(session.clone()))
+            .insert_resource(invoked)
+            .add_plugins(SessionPlugin)
+            .add_front(reply)
+            .add_front(Front::new("print").headless());
+        app.finish();
+        let mut said = conversation::Conversation::from_messages([Message::user("hi")]);
+        let store = app.world().get_resource::<SessionStore>()?.0.clone();
+        save(&*store, "agent-1", &mut said).ok()?;
+        let kept_in_thread = !thread.logs().ok()?.is_empty();
+        Some((app.runs_front("reply"), kept_in_thread))
+    };
+    let reply = run(Some("reply"));
+    let print = run(None);
+    drop(std::panic::take_hook());
+    fs::remove_dir_all(home.root()).ok();
+    assert_eq!(reply, Some((true, true)));
+    assert_eq!(print, Some((false, false)));
 }
 
 #[test]
