@@ -3,18 +3,19 @@
 //! `/redact <text>`, `/redact --regex <pattern>`, or `/redact` alone for a
 //! picker of the likely secrets in the session (key shapes rig-core's
 //! `redact` knows, private key blocks, `NAME=value` lines of env files).
-//! A preview question counts the occurrences per message of each agent,
-//! in the session's saved files and in each session forked from it; on
-//! Redact (and a second question naming the forks) every occurrence
-//! becomes `[REDACTED-<n>]`, one number per secret for the session's
-//! life: the live conversations are edited in place, then, once the
-//! frame's records are written, every saved log, named file and spilled
-//! output of this session and of its forks is rewritten without it. The
+//! A preview question counts the occurrences per message of each agent
+//! and each branch, in each saved log and file, and in each session forked
+//! from this one; on Redact (and a second question naming the forks)
+//! every occurrence becomes `[REDACTED-<n>]`, one number per secret for
+//! the session's life. This session goes through the kernel's
+//! [`RewriteSession`] (saved records, store files, effect log, scratch and
+//! the live conversations), the forks through [`rewrite_stopped`]. The
 //! user's next message carries a one-line note for the model.
 //! `/redact --check <text>` says whether the text is still saved anywhere.
 
-use std::collections::VecDeque;
-use std::sync::Arc;
+use std::fs;
+use std::io;
+use std::sync::{Arc, Mutex};
 
 use bevy_ecs::system::SystemParam;
 use regex::Regex;
@@ -24,13 +25,11 @@ use rig_harness::rig_core::message::Message;
 use rig_harness::rig_core::redact;
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_ecs::{StopTurns, WriteJournal};
+use rig_harness::rig_memory::{self, MemoryStore, Place, map_strings};
+use serde::Serialize;
 use serde_json::Value;
 
-use crate::scrub::Pair;
-
-mod scrub;
-
-/// Who edits history for this plugin, in the log and the conversation.
+/// Who edits history for this plugin, in the log's header.
 const NAME: &str = "redact";
 
 /// The note the model reads with the user's next message.
@@ -60,9 +59,9 @@ pub struct RedactSystems;
 pub struct Redacted {
     /// The placeholders put in, one per secret.
     pub placeholders: Vec<String>,
-    /// The live messages rewritten, over every agent.
-    pub messages: usize,
-    /// The saved logs and files of this session rewritten.
+    /// The saved records of this session rewritten, over every log.
+    pub records: usize,
+    /// The store files of this session rewritten.
     pub files: usize,
     /// The forked sessions rewritten.
     pub forks: Vec<SessionId>,
@@ -102,9 +101,9 @@ impl Plugin for RetroactiveRedactPlugin {
                 Last,
                 (
                     withhold_arguments.after(StopTurns).before(WriteJournal),
-                    rewrite_saved
+                    rewritten
                         .after(WriteJournal)
-                        .run_if(resource_exists::<RewriteDue>),
+                        .run_if(on_message::<SessionRewritten>),
                 ),
             );
     }
@@ -161,14 +160,13 @@ struct Confirm {
     about_forks: bool,
 }
 
-/// A redaction made live this frame, whose saved data is rewritten once
-/// the frame's records are written.
-#[derive(Resource, Clone, Debug)]
-struct RewriteDue {
+/// The asker of a [`RewriteSession`] this plugin sent: what to do once it
+/// is done.
+#[derive(Component, Clone, Debug)]
+struct Pending {
     agent: Entity,
-    pairs: Vec<Pair>,
+    placeholders: Vec<String>,
     forks: Vec<SessionId>,
-    messages: usize,
 }
 
 /// What `/redact` was asked.
@@ -216,20 +214,116 @@ fn masked(secret: &str) -> String {
     format!("{head}…{tail}")
 }
 
-/// The string values of `message`: its text, tool call arguments and tool
-/// results.
-fn message_strings(message: &Message) -> Vec<String> {
-    let mut out = Vec::new();
-    if let Ok(value) = serde_json::to_value(message) {
-        scrub::strings(&value, &mut out);
+/// How often `secrets` appear in `text`.
+fn occurrences(text: &str, secrets: &[String]) -> usize {
+    secrets
+        .iter()
+        .map(|secret| text.matches(secret.as_str()).count())
+        .sum()
+}
+
+/// Every string of `item`'s serde form, keys included.
+fn strings_of(item: &impl Serialize) -> Vec<String> {
+    let found = Mutex::new(Vec::new());
+    if let Ok(mut value) = serde_json::to_value(item) {
+        map_strings(&mut value, &|text: &mut String| {
+            if let Ok(mut found) = found.lock() {
+                found.push(text.clone());
+            }
+            false
+        });
     }
-    out
+    found.into_inner().unwrap_or_default()
+}
+
+/// A [`Rewrite`] that changes nothing and gathers every string it is
+/// shown, with where it is kept.
+#[derive(Default)]
+struct Gather(Mutex<Vec<(String, String)>>);
+
+impl Gather {
+    fn push(&self, at: &Place<'_>, texts: Vec<String>) {
+        let place = match at {
+            Place::Record { log, .. } | Place::Unsaved { log } => format!("log {log}"),
+            Place::File { name } => name.to_string(),
+        };
+        if let Ok(mut found) = self.0.lock() {
+            found.extend(texts.into_iter().map(|text| (place.clone(), text)));
+        }
+    }
+
+    fn found(self) -> Vec<(String, String)> {
+        self.0.into_inner().unwrap_or_default()
+    }
+}
+
+impl Rewrite for Gather {
+    fn message(&self, at: &Place<'_>, message: &mut Message) -> bool {
+        self.push(at, strings_of(message));
+        false
+    }
+
+    fn aside(&self, at: &Place<'_>, aside: &mut Aside) -> bool {
+        self.push(at, strings_of(aside));
+        false
+    }
+
+    fn value(&self, at: &Place<'_>, _: &str, value: &mut Value) -> bool {
+        self.push(at, strings_of(value));
+        false
+    }
+
+    fn text(&self, at: &Place<'_>, text: &mut String) -> bool {
+        self.push(at, vec![text.clone()]);
+        false
+    }
+}
+
+/// Every string `store` keeps (each record of each log, spliced-out
+/// history and branches included, and every file), with where: a
+/// rewrite that changes nothing, run on a copy, so the writer of a
+/// running session is not touched.
+fn saved_strings(store: &dyn Store) -> Result<Vec<(String, String)>, String> {
+    let copy = MemoryStore::default();
+    let copied = (|| -> io::Result<()> {
+        for name in store.logs()? {
+            copy.append_log(&name, &store.read_log(&name)?)?;
+        }
+        for name in store.files()? {
+            copy.write_file(&name, &store.read_file(&name)?)?;
+        }
+        for name in store.blobs()? {
+            copy.put_blob(&name, &store.blob(&name)?)?;
+        }
+        Ok(())
+    })();
+    copied.map_err(|failure| failure.to_string())?;
+    let gather = Gather::default();
+    rig_memory::rewrite(&copy, Author::plugin(NAME), &gather)
+        .map_err(|failure| failure.to_string())?;
+    Ok(gather.found())
+}
+
+/// The secrets each place holds, and how often, places in order.
+fn tally(strings: &[(String, String)], secrets: &[String]) -> Vec<(String, usize)> {
+    let mut found: Vec<(String, usize)> = Vec::new();
+    for (place, text) in strings {
+        let times = occurrences(text, secrets);
+        if times == 0 {
+            continue;
+        }
+        match found.iter_mut().find(|(known, _)| known == place) {
+            Some((_, total)) => *total += times,
+            None => found.push((place.clone(), times)),
+        }
+    }
+    found
 }
 
 /// What `/redact` reads of the session.
 #[derive(SystemParam)]
 struct Here<'w, 's> {
-    agents: Query<'w, 's, (Entity, &'static AgentId, &'static Conversation)>,
+    agents: Query<'w, 's, (&'static AgentId, &'static Conversation)>,
     turns: Query<'w, 's, (), With<TurnOf>>,
     store: Option<Res<'w, SessionStore>>,
     paths: Option<Res<'w, SessionPaths>>,
@@ -240,79 +334,94 @@ struct Here<'w, 's> {
 }
 
 impl Here<'_, '_> {
-    /// Every text of the session: its live conversations' and its saved
-    /// data's, spliced-out history and saved values included.
+    /// Every string this session saved, with where.
+    fn saved(&self) -> Result<Vec<(String, String)>, String> {
+        self.store
+            .as_ref()
+            .map_or(Ok(Vec::new()), |store| saved_strings(&*store.0))
+    }
+
+    /// Every text of the session: its live conversations' (branches
+    /// included) and its saved data's.
     fn texts(&self) -> Vec<String> {
         let mut texts = Vec::new();
-        for (_, _, conversation) in &self.agents {
+        for (_, conversation) in &self.agents {
             for message in conversation.messages() {
-                texts.extend(message_strings(message));
+                texts.extend(strings_of(message));
             }
             for (_, aside) in conversation.asides() {
-                scrub::strings(&aside.value, &mut texts);
+                texts.extend(strings_of(aside));
             }
         }
-        if let Some(store) = &self.store {
-            texts.extend(scrub::texts(&*store.0));
-        }
+        let saved = self.saved().unwrap_or_default();
+        texts.extend(saved.into_iter().map(|(_, text)| text));
         texts
     }
 
-    /// Every session forked from this one, and from those, that no other
-    /// rig runs.
+    /// Every session forked from this one, and from those.
     fn forks(&self) -> Vec<(SessionId, Arc<dyn Store>)> {
-        let (Some(home), Some(stores), Some(root)) = (
-            &self.home,
-            &self.stores,
-            self.paths.as_ref().and_then(|paths| paths.id()),
-        ) else {
+        let (Some(home), Some(stores), Some(paths)) = (&self.home, &self.stores, &self.paths)
+        else {
             return Vec::new();
         };
-        let entries = std::fs::read_dir(home.0.sessions()).into_iter().flatten();
-        let ids = entries.filter_map(|entry| entry.ok()?.file_name().to_str()?.parse().ok());
-        let family: Vec<(SessionId, SessionId, Arc<dyn Store>)> = ids
-            .filter(|id: &SessionId| *id != root)
-            .filter_map(|id| {
-                let dir = home.0.session(&id);
-                if dir.is_deleting() || dir.runs_elsewhere() {
-                    return None;
-                }
-                let store = stores.open(&dir).ok()?;
-                let parent = ForkedFrom::read(&*store)?.session.parse().ok()?;
-                Some((id, parent, store))
-            })
-            .collect();
-        let mut found = Vec::new();
-        let mut todo = VecDeque::from([root]);
-        while let Some(parent) = todo.pop_front() {
+        let Some(root) = paths.id() else {
+            return Vec::new();
+        };
+        let family: Vec<(SessionId, String, Arc<dyn Store>)> =
+            rig_sessions::list(&home.0, stores, paths.path())
+                .into_iter()
+                .filter_map(|entry| {
+                    let store = stores.open(&home.0.session(&entry.id)).ok()?;
+                    let parent = ForkedFrom::read(&*store)?.session;
+                    Some((entry.id, parent, store))
+                })
+                .collect();
+        let mut found: Vec<(SessionId, Arc<dyn Store>)> = Vec::new();
+        let mut todo = vec![root.to_string()];
+        while let Some(parent) = todo.pop() {
             for (id, of, store) in &family {
                 if *of == parent && !found.iter().any(|(known, _)| known == id) {
                     found.push((id.clone(), store.clone()));
-                    todo.push_back(id.clone());
+                    todo.push(id.to_string());
                 }
             }
         }
         found
     }
 
-    /// `/redact --check`: where `text` is still saved.
+    /// `/redact --check`: where `text` is still saved, the files beside
+    /// the store (spilled output, the text log, the name) included.
     fn check(&self, text: &str) -> String {
         let secrets = [text.to_owned()];
-        let mut found = self
-            .store
-            .as_ref()
-            .and_then(|store| scrub::found_in(&*store.0, &secrets).ok())
-            .unwrap_or_default();
-        if let Some(Spill(dir)) = self.scratch.as_ref().and_then(|scratch| scratch.spill()) {
-            found.extend(scrub::found_under(&dir, &secrets));
+        let mut strings = match self.saved() {
+            Ok(strings) => strings,
+            Err(why) => return format!("The saved session does not read: {why}"),
+        };
+        let gather = Gather::default();
+        let spill = self.scratch.as_ref().and_then(|scratch| scratch.spill());
+        let spilled = spill
+            .and_then(|Spill(dir)| fs::read_dir(dir).ok())
+            .into_iter()
+            .flatten()
+            .flatten();
+        let log = self.scratch.as_ref().and_then(|scratch| scratch.log());
+        for path in spilled.map(|entry| entry.path()).chain(log) {
+            if let Ok(mut bytes) = fs::read(&path) {
+                gather.file(&path.display().to_string(), &mut bytes);
+            }
         }
+        if let Some(mut name) = self.paths.as_ref().and_then(|paths| paths.name()) {
+            gather.text(&Place::File { name: "name" }, &mut name);
+        }
+        strings.extend(gather.found());
+        let found = tally(&strings, &secrets);
         let shown = masked(text);
         if found.is_empty() {
             return format!("`{shown}`: not found in this session's saved data.");
         }
         let places: Vec<String> = found
             .iter()
-            .map(|(name, times)| format!("{name} ×{times}"))
+            .map(|(place, times)| format!("{place} ×{times}"))
             .collect();
         format!("`{shown}` is still saved in: {}", places.join(", "))
     }
@@ -338,39 +447,51 @@ impl Here<'_, '_> {
             return;
         }
         let mut lines = vec![format!("Secrets: {}", shown.join(", "))];
-        let mut total = 0;
-        for (_, id, conversation) in &self.agents {
-            let per_message: Vec<String> = conversation
+        for (id, conversation) in &self.agents {
+            let count = |message: &Message| occurrences(&strings_of(message).concat(), &secrets);
+            let mut places: Vec<String> = conversation
                 .messages()
                 .iter()
                 .enumerate()
                 .filter_map(|(at, message)| {
-                    let times: usize = message_strings(message)
-                        .iter()
-                        .map(|text| scrub::occurrences(text.as_bytes(), &secrets))
-                        .sum();
-                    total += times;
+                    let times = count(message);
                     (times > 0).then(|| format!("message {} ×{times}", at + 1))
                 })
                 .collect();
-            if !per_message.is_empty() {
+            for (_, _, branch) in conversation.branches() {
+                let times: usize = branch.entries.iter().map(|e| count(&e.message)).sum();
+                if times > 0 {
+                    places.push(format!("branch \"{}\" ×{times}", branch.title));
+                }
+            }
+            if !places.is_empty() {
                 let agent = rig_harness::rig_core::conversation::short_id(&id.0);
-                lines.push(format!("Agent {agent}: {}", per_message.join(", ")));
+                lines.push(format!("Agent {agent}: {}", places.join(", ")));
             }
         }
-        if let Some(store) = &self.store {
-            let found = scrub::found_in(&*store.0, &secrets).unwrap_or_default();
-            let times: usize = found.iter().map(|(_, times)| times).sum();
-            total += times;
-            lines.push(format!(
-                "Saved data of this session: ×{times} in {} files (every branch of every agent's log, spliced-out history and saved values included)",
-                found.len()
-            ));
+        let saved = match self.saved() {
+            Ok(saved) => tally(&saved, &secrets),
+            Err(why) => {
+                notices.write(Notice::error(
+                    agent,
+                    format!("The saved session does not read: {why}"),
+                ));
+                return;
+            }
+        };
+        let mut total: usize = saved.iter().map(|(_, times)| times).sum();
+        for (place, times) in &saved {
+            lines.push(format!("Saved {place}: ×{times}"));
         }
         let mut forks = Vec::new();
         for (id, store) in self.forks() {
-            let found = scrub::found_in(&*store, &secrets).unwrap_or_default();
-            let times: usize = found.iter().map(|(_, times)| times).sum();
+            let times: usize = match saved_strings(&*store) {
+                Ok(strings) => tally(&strings, &secrets).iter().map(|(_, n)| n).sum(),
+                Err(why) => {
+                    lines.push(format!("Forked session {id}: does not read ({why})"));
+                    continue;
+                }
+            };
             if times > 0 {
                 total += times;
                 lines.push(format!("Forked session {id}: ×{times}"));
@@ -516,75 +637,14 @@ fn pick(agent: Entity, here: &Here, commands: &mut Commands, notices: &mut Messa
     );
 }
 
-/// The live redaction: every agent's conversation edited in place.
-#[derive(SystemParam)]
-struct Live<'w, 's> {
-    agents: Query<'w, 's, (Entity, &'static mut Conversation)>,
-    turns: Query<'w, 's, (), With<TurnOf>>,
-    redactions: ResMut<'w, Redactions>,
-    commands: Commands<'w, 's>,
-    notices: MessageWriter<'w, Notice>,
-}
-
-impl Live<'_, '_> {
-    /// Redacts `secrets` from every live conversation now, and from the
-    /// saved data of this session and of `forks` once the frame's records
-    /// are written.
-    fn redact(&mut self, agent: Entity, secrets: &[String], forks: Vec<SessionId>) {
-        if !self.turns.is_empty() {
-            let why = "A turn started meanwhile: nothing was redacted; /redact once it ends.";
-            self.notices.write(Notice::warn(agent, why));
-            return;
-        }
-        let pairs: Vec<Pair> = secrets
-            .iter()
-            .map(|secret| (secret.clone(), self.redactions.placeholder(secret)))
-            .collect();
-        let mut messages = 0;
-        for (entity, mut conversation) in &mut self.agents {
-            let edited = redact_conversation(&mut conversation, &pairs);
-            if edited > 0 {
-                messages += edited;
-                self.commands.entity(entity).insert(NoteDue(true));
-            }
-        }
-        self.commands.insert_resource(RewriteDue {
-            agent,
-            pairs,
-            forks,
-            messages,
-        });
-    }
-}
-
-/// Rewrites every message and aside of `conversation` holding a secret,
-/// each keeping its id and author; how many messages.
-fn redact_conversation(conversation: &mut Conversation, pairs: &[Pair]) -> usize {
-    let edited = conversation.edit_each(Author::plugin(NAME), |entry| {
-        let mut value = serde_json::to_value(entry.message).ok()?;
-        if !scrub::scrub_value(&mut value, pairs) {
-            return None;
-        }
-        serde_json::from_value(value).ok()
-    });
-    let asides: Vec<(AsideId, Aside)> = conversation
-        .asides()
-        .filter_map(|(id, aside)| {
-            let mut aside = aside.clone();
-            scrub::scrub_value(&mut aside.value, pairs).then_some((id, aside))
-        })
-        .collect();
-    for (id, aside) in asides {
-        conversation.replace_aside(id, aside);
-    }
-    edited.len()
-}
-
-/// Acts on each answer to a `/redact` question.
+/// Acts on each answer to a `/redact` question; on Redact, asks the
+/// kernel to rewrite the session.
 fn answered(
     added: On<Add<Outcome>>,
     asks: Query<(&Confirm, &Outcome)>,
-    mut live: Live,
+    turns: Query<(), With<TurnOf>>,
+    mut redactions: ResMut<Redactions>,
+    mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
     let Ok((confirm, outcome)) = asks.get(added.entity) else {
@@ -593,100 +653,131 @@ fn answered(
     let answer = Answer::of(outcome);
     let yes = |id: &str| answer.as_ref().is_some_and(|answer| answer.is(id));
     let agent = confirm.agent;
-    if confirm.about_forks {
-        let forks = if yes("yes") {
-            confirm.forks.clone()
-        } else {
-            Vec::new()
-        };
-        live.redact(agent, &confirm.secrets, forks);
-        return;
-    }
-    if !yes("redact") {
-        live.notices
-            .write(Notice::info(agent, "Nothing was redacted."));
-        return;
-    }
-    if confirm.forks.is_empty() {
-        live.redact(agent, &confirm.secrets, Vec::new());
-        return;
-    }
-    let names: Vec<String> = confirm.forks.iter().map(ToString::to_string).collect();
-    let ask = Ask::new(FORKS)
-        .body(format!("Forked from this session: {}", names.join(", ")))
-        .choice("yes", "Redact them too")
-        .choice("no", "Only this session");
-    let confirm = Confirm {
-        about_forks: true,
-        ..confirm.clone()
+    let forks = match (confirm.about_forks, yes("redact")) {
+        (true, _) if yes("yes") => confirm.forks.clone(),
+        (true, _) => Vec::new(),
+        (false, false) => {
+            notices.write(Notice::info(agent, "Nothing was redacted."));
+            return;
+        }
+        (false, true) if confirm.forks.is_empty() => Vec::new(),
+        (false, true) => {
+            let names: Vec<String> = confirm.forks.iter().map(ToString::to_string).collect();
+            let ask = Ask::new(FORKS)
+                .body(format!("Forked from this session: {}", names.join(", ")))
+                .choice("yes", "Redact them too")
+                .choice("no", "Only this session");
+            let confirm = Confirm {
+                about_forks: true,
+                ..confirm.clone()
+            };
+            commands.spawn((ask, ForAgent(agent), confirm));
+            return;
+        }
     };
-    commands.spawn((ask, ForAgent(agent), confirm));
+    if !turns.is_empty() {
+        let why = "A turn started meanwhile: nothing was redacted; /redact once it ends.";
+        notices.write(Notice::warn(agent, why));
+        return;
+    }
+    let pairs: Vec<(String, String)> = confirm
+        .secrets
+        .iter()
+        .map(|secret| (secret.clone(), redactions.placeholder(secret)))
+        .collect();
+    let placeholders = pairs.iter().map(|(_, placeholder)| placeholder.clone());
+    let pending = Pending {
+        agent,
+        placeholders: placeholders.collect(),
+        forks,
+    };
+    let asker = commands.spawn(pending).id();
+    commands.trigger(RewriteSession {
+        by: Author::plugin(NAME),
+        with: Arc::new(Strings(move |text: &mut String| {
+            let mut hit = false;
+            for (secret, placeholder) in &pairs {
+                if text.contains(secret.as_str()) {
+                    *text = text.replace(secret.as_str(), placeholder);
+                    hit = true;
+                }
+            }
+            hit
+        })),
+        asker: Some(asker),
+    });
 }
 
-/// Rewrites the saved data once the frame's records, the redacted
-/// messages' included, are written: this session's logs and files, its
-/// spilled output, and the forks the user named.
-fn rewrite_saved(
-    due: Res<RewriteDue>,
-    store: Option<Res<SessionStore>>,
-    (stores, home, scratch): (
+/// Once the kernel rewrote this session: the note made due for each agent
+/// whose history changed, and the forks rewritten through the same map.
+fn rewritten(
+    mut done: MessageReader<SessionRewritten>,
+    pending: Query<&Pending>,
+    agents: Query<(Entity, &AgentId)>,
+    (stores, home, paths): (
         Option<Res<SessionStores>>,
         Option<Res<RigHome>>,
-        Option<Res<Scratch>>,
+        Option<Res<SessionPaths>>,
     ),
     mut redacted: MessageWriter<Redacted>,
     mut notices: MessageWriter<Notice>,
     mut commands: Commands,
 ) {
-    commands.remove_resource::<RewriteDue>();
-    let mut done = Redacted {
-        placeholders: due
-            .pairs
-            .iter()
-            .map(|(_, placeholder)| placeholder.clone())
-            .collect(),
-        messages: due.messages,
-        ..Redacted::default()
-    };
-    if let Some(store) = &store {
-        match scrub::scrub_store(&*store.0, &due.pairs) {
-            Ok(scrubbed) => done.files += scrubbed.logs + scrubbed.files,
-            Err(why) => done.failures.push(format!("this session: {why}")),
-        }
-    }
-    if let Some(Spill(dir)) = scratch.as_ref().and_then(|scratch| scratch.spill()) {
-        done.files += scrub::scrub_dir(&dir, &due.pairs);
-    }
-    for id in &due.forks {
-        let (Some(stores), Some(home)) = (&stores, &home) else {
-            break;
-        };
-        let dir = home.0.session(id);
-        if dir.runs_elsewhere() {
-            done.failures.push(format!("{id}: another rig runs it"));
+    for rewrite in done.read() {
+        let Some(asker) = rewrite.asker else {
             continue;
+        };
+        let Ok(pending) = pending.get(asker) else {
+            continue;
+        };
+        commands.entity(asker).despawn();
+        let mut report = Redacted {
+            placeholders: pending.placeholders.clone(),
+            ..Redacted::default()
+        };
+        let result = match &rewrite.result {
+            Ok(result) => result,
+            Err(why) => {
+                let why = format!("Nothing was redacted: {why}");
+                notices.write(Notice::error(pending.agent, why));
+                continue;
+            }
+        };
+        report.files = result.files.len();
+        for log in result.logs.iter().filter(|log| log.records > 0) {
+            report.records += log.records;
+            let agent = agents.iter().find(|(_, id)| id.0 == log.log);
+            if let Some((agent, _)) = agent {
+                commands.entity(agent).insert(NoteDue(true));
+            }
         }
-        let scrubbed = stores
-            .open(&dir)
-            .map_err(|why| why.to_string())
-            .and_then(|store| scrub::scrub_store(&*store, &due.pairs));
-        match scrubbed {
-            Ok(_) => done.forks.push(id.clone()),
-            Err(why) => done.failures.push(format!("{id}: {why}")),
+        for id in &pending.forks {
+            let (Some(stores), Some(home), Some(paths)) = (&stores, &home, &paths) else {
+                report
+                    .failures
+                    .push(format!("{id}: no saved sessions here"));
+                continue;
+            };
+            let dir = home.0.session(id);
+            let by = Author::plugin(NAME);
+            match rewrite_stopped(stores, paths, &dir, by, &*rewrite.with) {
+                Ok(_) => report.forks.push(id.clone()),
+                Err(why) => report.failures.push(format!("{id}: {why}")),
+            }
         }
+        let mut said = format!(
+            "Redacted as {}: {} saved records, {} saved files, {} forked sessions.",
+            report.placeholders.join(", "),
+            report.records,
+            report.files,
+            report.forks.len()
+        );
+        if !report.failures.is_empty() {
+            said.push_str(&format!(" Not rewritten: {}", report.failures.join("; ")));
+        }
+        notices.write(Notice::info(pending.agent, said));
+        redacted.write(report);
     }
-    let mut said = format!(
-        "Redacted as {}: {} messages, {} saved files, {} forked sessions.",
-        done.placeholders.join(", "),
-        done.messages,
-        done.files,
-        done.forks.len()
-    );
-    if !done.failures.is_empty() {
-        said.push_str(&format!(" Not rewritten: {}", done.failures.join("; ")));
-    }
-    notices.write(Notice::info(due.agent, said));
-    redacted.write(done);
 }
 
 /// Adds [`NOTE`] to the next message the user sends an agent whose
@@ -711,40 +802,28 @@ fn add_note(
 }
 
 /// Keeps the arguments of `/redact` lines, the secret itself, out of the
-/// effect log.
+/// effect log (a `--check` or a cancelled redaction would save it again).
 fn withhold_arguments(mut records: MessageMutator<EffectRecorded>) {
+    let withhold = |text: &mut String| {
+        let rest = text
+            .trim_start()
+            .strip_prefix("/redact")
+            .unwrap_or_default();
+        let withheld = rest.starts_with(char::is_whitespace) && !rest.trim().is_empty();
+        if withheld {
+            WITHHELD.clone_into(text);
+        }
+        withheld
+    };
     for EffectRecorded(record) in records.read() {
         let Ok(mut json) = serde_json::to_value(&*record) else {
             continue;
         };
-        if withhold(&mut json)
+        if map_strings(&mut json, &withhold)
             && let Ok(clean) = serde_json::from_value(json)
         {
             *record = clean;
         }
-    }
-}
-
-/// Replaces each string of `value` that is a `/redact` line with
-/// arguments; whether any was.
-fn withhold(value: &mut Value) -> bool {
-    match value {
-        Value::String(text) => {
-            let line = text.trim_start();
-            let rest = line.strip_prefix("/redact").unwrap_or_default();
-            let withheld = rest.starts_with(char::is_whitespace) && !rest.trim().is_empty();
-            if withheld {
-                WITHHELD.clone_into(text);
-            }
-            withheld
-        }
-        Value::Array(items) => items
-            .iter_mut()
-            .fold(false, |changed, item| withhold(item) | changed),
-        Value::Object(map) => map
-            .values_mut()
-            .fold(false, |changed, item| withhold(item) | changed),
-        _ => false,
     }
 }
 

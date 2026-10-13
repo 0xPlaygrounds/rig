@@ -15,7 +15,9 @@ bevy_reflect = { workspace = true }
 # `/redact --regex`.
 regex = { workspace = true }
 rig-harness = { path = "../../crates/rig-harness" }
-serde = { workspace = true, features = ["derive"] }
+# Its listing, to find the sessions forked from this one.
+rig-sessions = { path = "../../plugins/rig-sessions", default-features = false }
+serde = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

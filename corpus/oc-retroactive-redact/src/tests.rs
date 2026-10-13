@@ -179,6 +179,7 @@ fn a_redacted_secret_is_gone_from_the_session_its_fork_and_the_next_request() {
     let done = done.unwrap_or_default();
     assert_eq!(done.placeholders, ["[REDACTED-1]"]);
     assert_eq!(done.forks, std::slice::from_ref(&fork));
+    assert!(done.records > 0, "{done:?}");
     assert!(done.failures.is_empty(), "{:?}", done.failures);
 
     // The next request is redacted and says so.
