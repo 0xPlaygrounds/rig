@@ -21,11 +21,12 @@
 //!
 //! Subagents the crash interrupted are listed in their parent's entry and
 //! follow its choice. A run nobody can answer, such as `--resume --print`,
-//! continues. A torn last line in an agent's log is reported as a warning.
+//! continues. A torn last line in an agent's log is reported as a warning
+//! by the kernel's restore, which sets it aside.
 
 use std::collections::HashMap;
 
-use rig_cassette::journal::LogLines;
+use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_core::conversation::pairing::pending_calls;
 use rig_harness::rig_core::message::{Message as Chat, ToolResult as Answered};
@@ -33,10 +34,10 @@ use rig_harness::rig_ecs::journal::SessionStore;
 use rig_tui::TuiInput;
 use serde::{Deserialize, Serialize};
 
-/// The origin of the transcript entry and of the message that asks the
-/// model to carry on.
+/// The author (a plugin name) of the transcript note, of the message that
+/// asks the model to carry on and of the plugin's edits.
 pub const ORIGIN: &str = "crash-resume";
-/// The title of the transcript entry and of the question.
+/// The title of the transcript note and of the question.
 pub const TITLE: &str = "Interrupted turn";
 /// The result of a call that started and has no result.
 pub const UNKNOWN: &str =
@@ -81,7 +82,7 @@ pub fn progress_file(id: &AgentId) -> String {
 }
 
 /// The saved progress of `id`'s unfinished turn, if any.
-pub fn read_progress(store: &dyn JournalStore, id: &AgentId) -> Option<Progress> {
+pub fn read_progress(store: &dyn Files, id: &AgentId) -> Option<Progress> {
     let bytes = store.read_file(&progress_file(id)).ok()?;
     serde_json::from_slice(&bytes).ok()
 }
@@ -102,8 +103,9 @@ pub enum Recover {
 pub struct Interrupted {
     /// What the turn did.
     pub progress: Progress,
-    /// The transcript entry showing it.
-    pub entry: Option<Entity>,
+    /// The transcript note showing it, an unsaved aside of the agent's
+    /// conversation.
+    pub entry: Option<AsideId>,
     ask: Option<Entity>,
     choice: Option<Recover>,
     left: bool,
@@ -149,23 +151,6 @@ impl Plugin for CrashResumePlugin {
                         .after(AskSystems),
                 ),
             );
-    }
-
-    /// Warns of a torn last line in an agent's log, before the restore
-    /// cuts it off.
-    fn cleanup(&self, app: &mut App) {
-        let Some(SessionStore(store)) = app.world().get_resource::<SessionStore>().cloned() else {
-            return;
-        };
-        for agent in store.agents().unwrap_or_default() {
-            if LogLines::read(&*store, &agent).is_ok_and(|log| log.torn()) {
-                let text = format!(
-                    "The log of agent {agent} ended in a torn line, from a crash while it was \
-                     written; it was left out and everything before it loaded."
-                );
-                app.world_mut().write_message(Notice::warn(None, text));
-            }
-        }
     }
 }
 
@@ -345,13 +330,13 @@ fn save_text(
 }
 
 /// On resume: each agent with a saved unfinished turn is [`Interrupted`],
-/// the turn the restore carries on for it is stopped, and its entry,
+/// the turn the restore carries on for it is stopped, and its note,
 /// listing its interrupted subagents too, goes in the transcript.
 fn recover(
-    agents: Query<(
+    mut agents: Query<(
         Entity,
         &AgentId,
-        &Conversation,
+        &mut Conversation,
         Option<&SpawnedBy>,
         Option<&Name>,
     )>,
@@ -372,7 +357,8 @@ fn recover(
             commands.entity(turn).insert(stopped);
         }
     }
-    for (agent, _, conversation, parent, _) in &agents {
+    let mut notes = Vec::new();
+    for (agent, _, _, parent, _) in &agents {
         let Some(progress) = found.get(&agent) else {
             continue;
         };
@@ -389,14 +375,17 @@ fn recover(
             }
         }
         let nested = parent.is_some_and(|parent| found.contains_key(&parent.0));
-        let entry = (!nested).then(|| {
+        notes.push((agent, progress, (!nested).then_some(text)));
+    }
+    for (agent, progress, text) in notes {
+        let Ok((_, _, mut conversation, ..)) = agents.get_mut(agent) else {
+            continue;
+        };
+        let entry = text.map(|text| {
             let after = conversation.messages().len().checked_sub(1);
             let after = after.and_then(|at| conversation.id(at));
-            let entry = TranscriptEntry {
-                saved: false,
-                ..TranscriptEntry::new(ORIGIN, after, TITLE, text)
-            };
-            commands.spawn((entry, EntryOf(agent))).id()
+            let note = Note::new(TITLE, text).aside(Author::plugin(ORIGIN), after);
+            conversation.add_aside(note.unsaved())
         });
         commands.entity(agent).insert(Interrupted {
             progress: progress.clone(),
@@ -499,7 +488,7 @@ fn hold_messages(
     mut commands: Commands,
 ) {
     for (message, incoming, &ForAgent(agent), decision) in &messages {
-        if incoming.origin.kind != OriginKind::User || decision.is_decided() {
+        if incoming.author.kind != AuthorKind::User || decision.is_decided() {
             continue;
         }
         let Ok(mut interrupted) = agents.get_mut(agent) else {
@@ -528,10 +517,8 @@ fn resolve(
         Has<ActiveTurn>,
     )>,
     holds: Query<(Entity, &CrashHold)>,
-    mut entries: Query<&mut TranscriptEntry>,
     mut input: Option<ResMut<TuiInput>>,
     store: Option<Res<SessionStore>>,
-    mut commit: Commit,
     mut commands: Commands,
 ) {
     let chosen: HashMap<Entity, Recover> = agents
@@ -563,12 +550,12 @@ fn resolve(
             Recover::Leave => "Interrupted turn (left as it was)",
             Recover::Continue => {
                 let sends = held.is_empty();
-                carry_on(agent, &interrupted.progress, &mut conversation, &mut commit);
+                carry_on(&interrupted.progress, &mut conversation);
                 if sends && conversation.awaits_model() {
                     commands.trigger(Retry { entity: agent });
                 } else if sends {
                     let note = Deliver::new(agent, CARRY_ON, DeliveryMode::Queue);
-                    commands.trigger(note.with_origin(Origin::plugin(ORIGIN)));
+                    commands.trigger(note.with_author(Author::plugin(ORIGIN)));
                 }
                 "Interrupted turn (continued)"
             }
@@ -577,19 +564,27 @@ fn resolve(
                 let at = first.map_or(conversation.messages().len(), |id| {
                     conversation.start_of(id)
                 });
-                let typed = typed(&conversation, at);
-                commit.splice(agent, &mut conversation, at.., []);
+                // The user's own message is among the user entries the
+                // turn began at: results and notes come before it.
+                let asked = conversation.messages().get(at..).unwrap_or_default();
+                let asked = asked
+                    .iter()
+                    .take_while(|message| matches!(message, Chat::User { .. }))
+                    .count();
+                let typed = (at..at + asked).find_map(|at| typed(&conversation, at));
+                conversation.splice(at.., [], Author::plugin(ORIGIN));
                 if let (None, Some(text), Some(input)) = (parent, typed, input.as_mut()) {
                     input.set(text);
                 }
                 "Interrupted turn (discarded)"
             }
         };
-        if let Some(mut entry) = interrupted
-            .entry
-            .and_then(|entry| entries.get_mut(entry).ok())
+        if let Some(id) = interrupted.entry
+            && let Some(aside) = conversation.aside(id)
+            && let Some(note) = Note::of(aside)
         {
-            entry.title = title.to_owned();
+            let retitled = Note::new(title, note.text).aside(aside.author.clone(), aside.after);
+            conversation.replace_aside(id, retitled.unsaved());
         }
         save(store.as_deref(), id, None);
         for hold in held {
@@ -602,12 +597,7 @@ fn resolve(
 /// Answers the interrupted reply's calls, each with its real result, else
 /// as started or never started, and keeps the partial text of the model
 /// call the crash cut short, marked incomplete.
-fn carry_on(
-    agent: Entity,
-    progress: &Progress,
-    conversation: &mut Conversation,
-    commit: &mut Commit,
-) {
+fn carry_on(progress: &Progress, conversation: &mut Conversation) {
     let (from, calls) = interrupted_calls(conversation.messages(), progress);
     if !calls.is_empty() {
         let results = calls
@@ -624,8 +614,8 @@ fn carry_on(
                 }
             })
             .collect();
-        commit.splice(agent, conversation, from.., []);
-        commit.message(agent, conversation, Chat::tool_results(results));
+        conversation.splice(from.., [], Author::plugin(ORIGIN));
+        conversation.push(Chat::tool_results(results));
         return;
     }
     // The text is the current model call's: a reply's calls clear it, and
@@ -634,7 +624,7 @@ fn carry_on(
     let owed = matches!(conversation.messages().last(), Some(Chat::User { .. }));
     if !progress.text.trim().is_empty() && owed {
         let text = format!("{}\n\n{INCOMPLETE}", progress.text.trim_end());
-        commit.message(agent, conversation, Chat::assistant(text));
+        conversation.push(Chat::assistant(text));
     }
 }
 

@@ -9,6 +9,7 @@ use rig_core::streaming::{Item, Relayed};
 use rig_core::test_utils::{MockCompletionModel, MockStreamEvent};
 use rig_harness::ask::AskPlugin;
 use rig_harness::harness_protocol::{Home, SessionId};
+use rig_harness::note::Note;
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::effects::Handler;
 use rig_harness::rig_ecs::journal::SessionStore;
@@ -98,13 +99,14 @@ impl Serve for StallsAfterText {
     }
 }
 
-/// The entry the plugin put in the transcript.
-fn entry(world: &mut World) -> Option<TranscriptEntry> {
-    let mut entries = world.query::<&TranscriptEntry>();
-    entries
-        .iter(world)
-        .find(|entry| entry.title.starts_with(TITLE))
-        .cloned()
+/// The note the plugin put in the agent's transcript.
+fn entry(world: &mut World) -> Option<Note> {
+    let agent = first_agent(world)?;
+    let conversation = world.get::<Conversation>(agent)?;
+    let mut notes = conversation
+        .asides()
+        .filter_map(|(_, aside)| Note::of(aside));
+    notes.find(|note| note.title.starts_with(TITLE))
 }
 
 /// Every message of the `n`th model request, as JSON text.
@@ -232,7 +234,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
     if let (Some(store), Some(id)) = (store, id) {
-        assert!(store.append(&id.0, b"{\"half\":").is_ok());
+        assert!(store.append_log(&id.0, b"{\"half\":").is_ok());
     }
 
     let (mut second, wakes) = app(&home, &session);
@@ -240,7 +242,7 @@ fn a_streamed_turn_is_shown_and_discarded_after_a_torn_record() {
     assert!(
         notices
             .iter()
-            .any(|notice| notice.text.contains("torn line")),
+            .any(|notice| notice.text.contains("ended in a line cut short")),
         "{notices:?}"
     );
     let shown = entry(second.world_mut())
