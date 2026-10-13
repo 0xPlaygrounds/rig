@@ -1,14 +1,15 @@
-//! SN-02: the large-change guard. Before a `write`, `edit`, `delete` or
-//! overwriting `move` runs, a Gate system holds it while the file it would
-//! change is measured off the main thread: lines removed and added, the
-//! share of the existing file replaced, the size it would have, and for a
-//! delete whether git tracks the file. Under every threshold the hold goes
-//! at once. Over one, the user is asked, naming the agent (or subagent)
-//! and the damage, with a diff preview: allow, allow this file for the
-//! session (saved with it), deny, or deny with a reason, which the model
-//! reads in the call's refusal. A run nobody can answer follows
-//! `on_headless`. Thresholds are read from `RIG_HOME/large-change.toml`,
-//! then the project's `.rig/large-change.toml`, key by key.
+//! SN-02: the large-change guard. Every call that writes named paths is
+//! previewed first ([`Preview`]): the harness runs its tool on an overlay
+//! of the workspace and puts the files it would change on the call. The
+//! guard then reads those files as they are now, off the main thread, for
+//! the share of each file replaced, the size it would have, and for a
+//! delete whether git tracks it. Under every threshold the call runs at
+//! once. Over one, the user is asked, naming the agent (or subagent) and
+//! the damage, with the diff: allow, allow this file for the session
+//! (saved with it), deny, or deny with a reason, which the model reads in
+//! the call's refusal. A run nobody can answer follows `on_headless`.
+//! Thresholds are read from `RIG_HOME/large-change.toml`, then the
+//! project's `.rig/large-change.toml`, key by key.
 
 use std::ffi::OsString;
 use std::fmt::Write as _;
@@ -17,13 +18,11 @@ use std::sync::Arc;
 
 use bevy_tasks::{IoTaskPool, TaskPool};
 use rig_harness::prelude::*;
-use rig_tools::edit::apply;
+use rig_harness::rig_core::tool::{ChangeKind, FileChange};
+use rig_tools::MAX_FILE_BYTES;
 use rig_tools::fs::file_change;
 use rig_tools::process::{Launcher, Spawn};
 use rig_tools::workspace::{Stat, Workspace};
-use rig_tools::{
-    Delete, DeleteArgs, Edit, EditArgs, MAX_FILE_BYTES, Move, MoveArgs, Write, WriteArgs,
-};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -32,9 +31,6 @@ pub const CONFIG: &str = "large-change.toml";
 
 /// The refusal a run nobody can answer gives under `on_headless = "deny"`.
 pub const HEADLESS: &str = "large change needs approval; not available non-interactively";
-
-/// How many diff lines the question shows.
-const PREVIEW_LINES: usize = 60;
 
 /// Who decides in the effect log.
 const NAME: &str = "large-change-guard";
@@ -90,8 +86,15 @@ pub struct AllowedFiles {
     pub files: Vec<String>,
 }
 
-/// The guard's Gate system, which holds the file-changing calls it
-/// measures, for others to order against.
+impl AllowedFiles {
+    fn has(&self, path: &str) -> bool {
+        self.files.iter().any(|file| file == path)
+    }
+}
+
+/// The guard's Gate systems, which preview the calls that write named
+/// paths and hold them while their files are measured, for others to
+/// order against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LargeChangeSystems;
 
@@ -107,23 +110,29 @@ impl Plugin for LargeChangeGuardPlugin {
             .init_resource::<ProjectWorkspace>()
             .init_resource::<Processes>()
             .configure_sets(AgentPass, LargeChangeSystems.in_set(Stage::Gate))
-            .add_systems(AgentPass, hold_to_measure.in_set(LargeChangeSystems))
+            .add_systems(
+                AgentPass,
+                (preview_writes, measure_previewed).in_set(LargeChangeSystems),
+            )
             .add_observer(measured)
             .add_observer(answered);
     }
 
-    /// Reads the config once every plugin set the project root, unless the
-    /// app has one already, such as a test's.
+    /// Reads the config once every plugin set the project root and its
+    /// workspace, unless the app has one already, such as a test's.
     fn finish(&self, app: &mut App) {
-        if app.world().contains_resource::<LargeChangeConfig>() {
+        let world = app.world();
+        if world.contains_resource::<LargeChangeConfig>() {
             return;
         }
-        let root = app.world().resource::<ProjectRoot>().0.clone();
-        let files = [
-            RigHome::of(app.world()).root().join(CONFIG),
-            root.join(".rig").join(CONFIG),
+        let home = RigHome::of(world).root().join(CONFIG);
+        let project = world.resource::<ProjectRoot>().0.join(".rig").join(CONFIG);
+        let workspace = world.resource::<ProjectWorkspace>().0.clone();
+        let texts = [
+            std::fs::read(&home).ok().map(|bytes| (home, bytes)),
+            bytes_of(&*workspace, &project).map(|bytes| (project, bytes)),
         ];
-        let (config, problems) = read_config::<LargeChangeConfig>(&files);
+        let (config, problems) = read_config::<LargeChangeConfig>(texts.into_iter().flatten());
         app.insert_resource(config);
         for problem in problems {
             app.add_systems(Startup, move |mut notices: MessageWriter<Notice>| {
@@ -135,14 +144,13 @@ impl Plugin for LargeChangeGuardPlugin {
 
 /// `T` from the files' tables, a later file's keys over an earlier one's,
 /// and what did not read.
-fn read_config<T: DeserializeOwned + Default>(files: &[PathBuf]) -> (T, Vec<String>) {
+fn read_config<T: DeserializeOwned + Default>(
+    files: impl IntoIterator<Item = (PathBuf, Vec<u8>)>,
+) -> (T, Vec<String>) {
     let mut table = toml::Table::new();
     let mut problems = Vec::new();
-    for path in files {
-        let Ok(text) = std::fs::read_to_string(path) else {
-            continue;
-        };
-        match text.parse::<toml::Table>() {
+    for (path, bytes) in files {
+        match String::from_utf8_lossy(&bytes).parse::<toml::Table>() {
             Ok(more) => table.extend(more),
             Err(failure) => problems.push(format!("{}: {failure}", path.display())),
         }
@@ -156,55 +164,11 @@ fn read_config<T: DeserializeOwned + Default>(files: &[PathBuf]) -> (T, Vec<Stri
     }
 }
 
-/// What a call would do to a file, as the tool would do it.
-enum Plan {
-    /// The file gets this text.
-    Write(PathBuf, String),
-    /// The file gets these edits.
-    Edit(PathBuf, EditArgs),
-    /// The file is deleted.
-    Delete(PathBuf),
-    /// The file `to` is replaced by `from`.
-    Overwrite { from: PathBuf, to: PathBuf },
-}
-
-impl Plan {
-    /// The plan of a call of one of rig-tools' file tools, on the paths its
-    /// footprint resolved; `None` for any other call.
-    fn of(call: &ToolCall, Footprint(touches): &Footprint) -> Option<Self> {
-        let Touches::Writes(Scope::Paths(paths)) = touches else {
-            return None;
-        };
-        let args = serde_json::Value::Object(call.function.arguments.clone());
-        let first = paths.first()?.clone();
-        Some(match call.function.name.as_str() {
-            Write::NAME => Self::Write(first, parse::<WriteArgs>(args)?.content),
-            Edit::NAME => Self::Edit(first, parse(args)?),
-            Delete::NAME => parse::<DeleteArgs>(args).map(|_| Self::Delete(first))?,
-            Move::NAME if parse::<MoveArgs>(args)?.overwrite => Self::Overwrite {
-                from: first,
-                to: paths.get(1)?.clone(),
-            },
-            _ => return None,
-        })
-    }
-
-    /// The file whose content is at stake.
-    fn path(&self) -> &Path {
-        match self {
-            Self::Write(path, _) | Self::Edit(path, _) | Self::Delete(path) => path,
-            Self::Overwrite { to, .. } => to,
-        }
-    }
-}
-
-fn parse<T: DeserializeOwned>(args: serde_json::Value) -> Option<T> {
-    serde_json::from_value(args).ok()
-}
-
-/// What a call would do to its file.
+/// What a call would do to one file.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
+    /// The file, as the tool resolved it.
+    pub path: String,
     /// Lines removed.
     pub removed: usize,
     /// Lines added.
@@ -234,8 +198,10 @@ impl Change {
     }
 
     /// The damage in a line, such as
-    /// `src/app.rs: −190 / +10 lines (95% of file replaced)`.
-    pub fn line(&self, path: &str) -> String {
+    /// `src/app.rs: −190 / +10 lines (95% of file replaced), 1 KB`.
+    pub fn line(&self, root: &Path) -> String {
+        let path = Path::new(&self.path);
+        let path = path.strip_prefix(root).unwrap_or(path).display();
         let mut line = match self.old_lines {
             None => format!("{path}: new file, +{} lines", self.added),
             Some(old) => {
@@ -257,31 +223,13 @@ impl Change {
         }
         line
     }
-
-    /// The diff, cut to [`PREVIEW_LINES`].
-    fn preview(&self) -> String {
-        let lines: Vec<&str> = self.diff.lines().collect();
-        let mut text = lines
-            .iter()
-            .take(PREVIEW_LINES)
-            .copied()
-            .collect::<Vec<_>>()
-            .join("\n");
-        if let Some(more) = lines.len().checked_sub(PREVIEW_LINES).filter(|n| *n > 0) {
-            let _ = write!(text, "\n… {more} more lines");
-        }
-        text
-    }
 }
 
-/// The text of `path` in `workspace`, lossily, as the file tools diff it;
-/// `None` when there is no file.
-fn text_of(workspace: &dyn Workspace, path: &Path) -> Option<String> {
+/// The bytes of the file `path` in `workspace`; `None` when there is no
+/// file.
+fn bytes_of(workspace: &dyn Workspace, path: &Path) -> Option<Vec<u8>> {
     match workspace.stat(path).ok()? {
-        Stat::File { .. } => {
-            let contents = workspace.read(path, MAX_FILE_BYTES).ok()?;
-            Some(String::from_utf8_lossy(&contents.bytes).into_owned())
-        }
+        Stat::File { .. } => Some(workspace.read(path, MAX_FILE_BYTES).ok()?.bytes),
         Stat::Dir | Stat::Other | Stat::Missing => None,
     }
 }
@@ -301,133 +249,168 @@ fn tracked(workspace: &dyn Workspace, launcher: &Launcher, path: &Path) -> bool 
         .is_ok_and(|output| output.status.success())
 }
 
-/// What `plan` would do; `None` when the tool would refuse it anyway or it
-/// loses nothing, such as a move onto no file.
-fn measure(workspace: &dyn Workspace, launcher: &Launcher, plan: &Plan) -> Option<Change> {
-    let path = plan.path();
-    let before = text_of(workspace, path);
-    let shown = path.to_string_lossy();
-    let (after, deleted) = match plan {
-        Plan::Write(_, content) => (content.clone(), false),
-        Plan::Edit(_, args) => (
-            apply(&shown, before.as_deref()?, &args.edits).ok()?.text,
-            false,
-        ),
-        Plan::Delete(_) => (String::new(), true),
-        Plan::Overwrite { from, .. } => {
-            before.as_ref()?;
-            (text_of(workspace, from)?, false)
+/// The bytes `diff`'s hunks add and remove, each line with its newline.
+/// The preview gives the lines a change adds, not the size it leaves, so
+/// the size is the file's now, grown by this.
+fn bytes_changed(diff: &str) -> (u64, u64) {
+    let hunks = diff.lines().skip_while(|line| !line.starts_with("@@"));
+    hunks.fold((0, 0), |(added, removed), line| {
+        let len = line.len() as u64;
+        match line.as_bytes().first() {
+            Some(b'+') => (added + len, removed),
+            Some(b'-') => (added, removed + len),
+            _ => (added, removed),
         }
-    };
-    let change = file_change(&shown, before.as_deref(), &after);
-    Some(Change {
-        removed: change.removed,
-        added: change.added,
-        old_lines: before.as_deref().map(|text| text.lines().count()),
-        size: after.len() as u64,
-        deleted,
-        tracked: deleted && tracked(workspace, launcher, path),
-        diff: change.diff.unwrap_or_default(),
     })
 }
 
-/// On a call measured already, or allowed.
+/// What `change` does to its file as it is now in `workspace`.
+fn measure(workspace: &dyn Workspace, launcher: &Launcher, change: FileChange) -> Change {
+    let path = PathBuf::from(&change.path);
+    let before = bytes_of(workspace, &path);
+    let text = before.as_deref().map(String::from_utf8_lossy);
+    let deleted = change.kind == ChangeKind::Deleted;
+    // A deletion's preview carries no diff: the lines it loses are the file.
+    let diff = match change.diff {
+        Some(diff) => diff,
+        None if deleted => file_change(&change.path, text.as_deref(), "")
+            .diff
+            .unwrap_or_default(),
+        None => String::new(),
+    };
+    let size = if deleted {
+        0
+    } else {
+        let (added, removed) = bytes_changed(&diff);
+        let now = before.as_ref().map_or(0, |bytes| bytes.len() as u64);
+        (now + added).saturating_sub(removed)
+    };
+    Change {
+        removed: change.removed,
+        added: change.added,
+        old_lines: text.map(|text| text.lines().count()),
+        size,
+        deleted,
+        tracked: deleted && tracked(workspace, launcher, &path),
+        diff,
+        path: change.path,
+    }
+}
+
+/// The changes the user may be asked about: all but those to files
+/// allowed for the session, and a deletion whose content another change
+/// of the call keeps, as a move's source.
+fn at_stake(changes: &[FileChange], allowed: &AllowedFiles) -> Vec<FileChange> {
+    let moved = |change: &FileChange| {
+        change.kind == ChangeKind::Deleted
+            && change.before.is_some()
+            && changes.iter().any(|other| other.after == change.before)
+    };
+    changes
+        .iter()
+        .filter(|change| !allowed.has(&change.path) && !moved(change))
+        .cloned()
+        .collect()
+}
+
+/// On a previewed call measured already.
 #[derive(Component)]
 #[component(storage = "SparseSet")]
 struct Checked;
 
-/// The hold of a call while its file is measured.
+/// The hold of a call while its files are measured.
 #[derive(Component)]
 struct Measuring {
     call: Entity,
     agent: Entity,
-    path: PathBuf,
 }
 
 /// What the measuring found, on the hold.
 #[derive(Component)]
-struct Measured(Option<Change>);
+struct Measured(Vec<Change>);
 
-impl From<Option<Change>> for Measured {
-    fn from(change: Option<Change>) -> Self {
-        Self(change)
+impl From<Vec<Change>> for Measured {
+    fn from(changes: Vec<Change>) -> Self {
+        Self(changes)
     }
 }
 
-/// On the guard's question: the call it holds, its file and the damage.
-#[derive(Component)]
+/// On the guard's question: the call it holds, its large files and the
+/// damage.
+#[derive(Component, Clone)]
 struct GuardAsk {
     call: Entity,
-    path: PathBuf,
+    paths: Vec<String>,
     line: String,
 }
 
-fn pool() -> &'static TaskPool {
-    IoTaskPool::get_or_init(TaskPool::default)
+/// Previews each call about to run that writes named paths, unless every
+/// one is allowed for the session.
+fn preview_writes(
+    calls: Query<(Entity, &Footprint, &Decision), (Undecided, ToolCalls, Without<Preview>)>,
+    allowed: Res<AllowedFiles>,
+    mut commands: Commands,
+) {
+    for (call, Footprint(touches), decision) in &calls {
+        let Touches::Writes(Scope::Paths(paths)) = touches else {
+            continue;
+        };
+        let all_allowed = paths
+            .iter()
+            .all(|path| allowed.has(&path.to_string_lossy()));
+        if !decision.is_decided() && !all_allowed {
+            commands.entity(call).insert(Preview);
+        }
+    }
 }
 
-/// Holds each file-changing call about to run while its file is measured,
-/// unless its file is allowed for the session.
-#[allow(clippy::too_many_arguments)]
-fn hold_to_measure(
+/// Holds each previewed call while the files it would change are measured
+/// as they are now. A call that could not be previewed, such as one the
+/// tool would refuse, runs as it would have.
+fn measure_previewed(
     calls: Query<
-        (Entity, &ToolRequest, &ForAgent, &Footprint, &Decision),
+        (Entity, &Previewed, &ForAgent, &Decision),
         (Undecided, ToolCalls, Without<Checked>),
     >,
     allowed: Res<AllowedFiles>,
     dirs: Query<&WorkDir>,
     root: Res<ProjectRoot>,
-    workspace: Res<ProjectWorkspace>,
-    processes: Res<Processes>,
+    (workspace, processes): (Res<ProjectWorkspace>, Res<Processes>),
     wake: Res<Wake>,
     mut commands: Commands,
 ) {
-    for (call, request, &ForAgent(agent), footprint, decision) in &calls {
-        if decision.is_decided() {
-            continue;
-        }
+    for (call, Previewed(previewed), &ForAgent(agent), decision) in &calls {
         commands.entity(call).insert(Checked);
-        let Some(plan) = Plan::of(&request.call, footprint) else {
+        let Ok(changes) = previewed else {
             continue;
         };
-        let path = plan.path().to_owned();
-        if is_allowed(&allowed, &path) {
+        let changes = at_stake(changes, &allowed);
+        if decision.is_decided() || changes.is_empty() {
             continue;
         }
         let dir = dirs.get(agent).map_or(&root.0, |dir| &dir.0);
         let launcher = processes.launcher().in_dir(dir);
         let workspace: Arc<dyn Workspace> = workspace.0.clone();
         let work = async move {
-            blocking(move || Ok(measure(&*workspace, &launcher, &plan)))
-                .await
-                .ok()
-                .flatten()
+            let measured = move || {
+                let measure = |change| measure(&*workspace, &launcher, change);
+                Ok(changes.into_iter().map(measure).collect::<Vec<_>>())
+            };
+            blocking(measured).await.unwrap_or_default()
         };
-        let name = format!("measuring the change to {}", path.display());
+        let pool = IoTaskPool::get_or_init(TaskPool::default);
         commands.spawn((
-            Name::new(name),
-            Measuring { call, agent, path },
+            Name::new("measuring a file change"),
+            Measuring { call, agent },
             HoldOf(call),
-            Running::spawn_into::<Measured, _>(pool(), &wake, work),
+            Running::spawn_into::<Measured, _>(pool, &wake, work),
         ));
     }
 }
 
-fn is_allowed(allowed: &AllowedFiles, path: &Path) -> bool {
-    let path = path.to_string_lossy();
-    allowed.files.iter().any(|file| *file == path)
-}
-
-/// `path` as the user reads it: from the project's root when under it.
-fn shown(path: &Path, root: &Path) -> String {
-    path.strip_prefix(root)
-        .unwrap_or(path)
-        .display()
-        .to_string()
-}
-
-/// Lets a measured call run when its change is small or its file allowed;
-/// otherwise asks, or follows `on_headless` when nobody can answer.
+/// Lets a measured call run when its changes are small or their files
+/// allowed; otherwise asks, or follows `on_headless` when nobody can
+/// answer.
 #[allow(clippy::too_many_arguments)]
 fn measured(
     added: On<Add<Measured>>,
@@ -441,19 +424,20 @@ fn measured(
     mut commands: Commands,
 ) {
     let hold = added.entity;
-    let Ok((measuring, Measured(change))) = holds.get(hold) else {
+    let Ok((&Measuring { call, agent }, Measured(changes))) = holds.get(hold) else {
         return;
     };
     // The hold goes whatever happens next: a question holds the call instead.
     commands.entity(hold).despawn();
-    let Some(change) = change.as_ref().filter(|change| change.is_large(&config)) else {
-        return;
-    };
-    if is_allowed(&allowed, &measuring.path) {
+    let large: Vec<&Change> = changes
+        .iter()
+        .filter(|change| change.is_large(&config) && !allowed.has(&change.path))
+        .collect();
+    if large.is_empty() {
         return;
     }
-    let line = change.line(&shown(&measuring.path, &root.0));
-    let (call, agent) = (measuring.call, measuring.agent);
+    let lines: Vec<String> = large.iter().map(|change| change.line(&root.0)).collect();
+    let line = lines.join("; ");
     if !answerers.can_answer(Some(agent)) {
         if config.on_headless == OnHeadless::Deny
             && let Ok(mut decision) = calls.get_mut(call)
@@ -470,26 +454,27 @@ fn measured(
         Ok((Some(name), false)) => name.to_string(),
         _ => "the agent".to_owned(),
     };
+    let diffs: Vec<&str> = large.iter().map(|change| change.diff.as_str()).collect();
     let ask = Ask::new(format!("{who}: {line}"))
         .body(format!(
             "{}\n\nType a reason to deny with it.",
-            change.preview()
+            diffs.join("\n")
         ))
         .choice("allow", "Allow")
         .choice("allow_file", "Allow this file for the session")
         .choice("deny", "Deny")
         .choice("deny_reason", "Deny with reason")
         .free_text();
-    let path = measuring.path.clone();
+    let paths = large.iter().map(|change| change.path.clone()).collect();
     commands.spawn((
         ask,
         ForAgent(agent),
         HoldOf(call),
-        GuardAsk { call, path, line },
+        GuardAsk { call, paths, line },
     ));
 }
 
-/// Acts on the user's answer: lets the call run, allows its file for the
+/// Acts on the user's answer: lets the call run, allows its files for the
 /// session, refuses it with the damage and the user's reason, or asks for
 /// the reason.
 fn answered(
@@ -506,19 +491,12 @@ fn answered(
     let refusal = match Answer::of(outcome) {
         Some(answer) if answer.is("allow") => None,
         Some(answer) if answer.is("allow_file") => {
-            allowed
-                .files
-                .push(guard.path.to_string_lossy().into_owned());
+            allowed.files.extend(guard.paths.iter().cloned());
             None
         }
         Some(answer) if answer.is("deny_reason") => {
             let why = Ask::new(format!("Why deny {}?", guard.line)).initial("");
-            let again = GuardAsk {
-                call: guard.call,
-                path: guard.path.clone(),
-                line: guard.line.clone(),
-            };
-            commands.spawn((why, ForAgent(agent), HoldOf(guard.call), again));
+            commands.spawn((why, ForAgent(agent), HoldOf(guard.call), guard.clone()));
             commands.entity(ask).remove::<HoldOf>();
             return;
         }
