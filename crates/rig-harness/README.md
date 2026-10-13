@@ -28,8 +28,8 @@ changed plugins and restarts in the same session. The
   project root and the workspace it is in (`ProjectWorkspace`, this
   machine's unless a plugin puts another in), an agent's own working
   directory (`WorkDir`), child-process policy and tokio runtime, file
-  watches, questions any front answers (`Ask`), plugins' entries in an
-  agent's transcript (`TranscriptEntry`), a running call's progress and
+  watches, questions any front answers (`Ask`), plugins' notes in an
+  agent's transcript (`Note` asides), a running call's progress and
   live output (`ToolProgress`, `CallOutput`), and following an effect to
   the successor that took it over (`follow_successor`, `resend`). Plugins
   offer fronts and one takes each run: `rig-tui` on an interactive

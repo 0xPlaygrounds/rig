@@ -8,7 +8,7 @@
 //! own effects, settings, state kept with the session, time, the
 //! workspace and child processes, sessions and their store, turning off
 //! or replacing what another plugin added, fronts, options and commands of
-//! its own (`rig <name>`), transcript entries, the status line, a
+//! its own (`rig <name>`), transcript notes, the status line, a
 //! terminal panel, and a window. Every name they use comes from
 //! `rig_harness::prelude` or the plugin crate the example names, such as
 //! `rig_tui`; the optional `inspect` tool (crate `rig-inspect`) shows the
