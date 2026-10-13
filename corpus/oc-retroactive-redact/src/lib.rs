@@ -458,10 +458,11 @@ impl Here<'_, '_> {
                     (times > 0).then(|| format!("message {} ×{times}", at + 1))
                 })
                 .collect();
-            for (_, _, branch) in conversation.branches() {
-                let times: usize = branch.entries.iter().map(|e| count(&e.message)).sum();
+            for kept in conversation.branches() {
+                let entries = kept.branch.entries.iter();
+                let times: usize = entries.map(|e| count(&e.message)).sum();
                 if times > 0 {
-                    places.push(format!("branch \"{}\" ×{times}", branch.title));
+                    places.push(format!("branch \"{}\" ×{times}", kept.branch.title));
                 }
             }
             if !places.is_empty() {

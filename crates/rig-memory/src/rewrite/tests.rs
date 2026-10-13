@@ -367,7 +367,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     assert!(text.contains("blob:") && !text.contains("cG5n"), "{text}");
     assert_eq!(store.blobs().map(|blobs| blobs.len()).ok(), Some(1));
     let read = load(&store, "main").expect("read");
-    let stashed = read.branches().next().map(|(_, _, branch)| branch);
+    let stashed = read.branches().into_iter().next().map(|kept| kept.branch);
     let first = stashed.as_ref().and_then(|branch| branch.entries.first());
     assert_eq!(first.map(|entry| &entry.message), Some(&shown));
 
@@ -375,8 +375,14 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
     assert_eq!(rewritten.logs.len(), 1);
     assert_eq!(rewritten.blobs_removed, Vec::<String>::new());
     let mut read = load(&store, "main").expect("read");
-    let (id, _, stashed) = read.branches().next().expect("a branch");
-    assert_eq!(stashed.title, "about [R]");
+    let kept = read.branches().into_iter().next().expect("a branch");
+    let (id, stashed) = (kept.id, kept.branch);
+    assert_eq!(stashed.title, "main");
+    assert_eq!(
+        read.branch_title(),
+        "about [R]",
+        "the title is rewritten too"
+    );
     let texts: Vec<String> = stashed
         .entries
         .iter()
@@ -392,7 +398,7 @@ fn a_rewrite_reaches_a_stashed_branch_and_its_image_is_a_blob() {
         "the image is back"
     );
 
-    read.switch_branch(id, "hello", by).expect("switched");
+    read.switch_branch(id, by).expect("switched");
     let back = read.messages().get(2);
     assert_eq!(back, Some(&Message::assistant("Seen [R].")));
     save(&store, "main", &mut read).expect("saved");

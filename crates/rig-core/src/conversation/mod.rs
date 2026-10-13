@@ -52,7 +52,7 @@ mod turn;
 
 pub use aside::{Aside, AsideId};
 pub use author::{Author, AuthorKind, RequestId};
-pub use branch::{BRANCH, Branch, BranchError};
+pub use branch::{ACTIVE, BRANCH, Branch, BranchError, Kept, MAIN};
 pub use lineage::Lineage;
 pub use turn::{TURN, TurnEnd, TurnRecord};
 

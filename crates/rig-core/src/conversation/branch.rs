@@ -2,12 +2,37 @@
 //! its entries, kept as asides, so they are saved, forked, rewritten and
 //! exported with it and never reach a model.
 
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use super::{Aside, AsideId, Author, Change, Conversation, Entry, Halt, MessageId, Spliced};
 
 /// The kind of an aside holding an inactive [`Branch`].
 pub const BRANCH: &str = "rig.branch";
+
+/// The kind of the aside holding the active continuation's title (a
+/// string), which only rig-core writes. It follows no entry, so it stays
+/// with the active line.
+pub const ACTIVE: &str = "rig.branch.active";
+
+/// The active continuation's title until a branch names it.
+pub const MAIN: &str = "main";
+
+/// An inactive branch, as [`Conversation::branches`] lists it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Kept {
+    /// Its aside: what [`Conversation::switch_branch`] and
+    /// [`Conversation::line`] take.
+    pub id: AsideId,
+    /// The branch it is kept in; `None` for one kept in the active line.
+    pub inside: Option<AsideId>,
+    /// How many entries it shares with the line it is kept in: where its
+    /// own entries start.
+    pub at: usize,
+    /// The branch.
+    pub branch: Branch,
+}
 
 /// A continuation of a conversation that is not the active one: the
 /// entries that followed its point, with their ids, authors and made-times,
@@ -56,50 +81,90 @@ pub enum BranchError {
 }
 
 impl Conversation {
-    /// The inactive branches, in the order put: each aside's id, where its
-    /// entries would go ([`aside_position`](Self::aside_position)), and the
-    /// branch.
-    pub fn branches(&self) -> impl Iterator<Item = (AsideId, usize, Branch)> + '_ {
-        self.asides().filter_map(|(id, aside)| {
-            let branch = Branch::of(aside)?;
-            Some((id, self.aside_position(aside), branch))
-        })
+    /// The active continuation's title: [`MAIN`] until
+    /// [`branch_off`](Self::branch_off) or
+    /// [`switch_branch`](Self::switch_branch) names it.
+    pub fn branch_title(&self) -> &str {
+        let mut asides = self.asides.iter();
+        let title = asides.find(|(_, aside)| aside.kind == ACTIVE);
+        title
+            .and_then(|(_, aside)| aside.value.as_str())
+            .unwrap_or(MAIN)
     }
 
-    /// Keeps entries `at..` and the saved asides that follow them as a
-    /// branch titled `title`, following entry `at - 1`, and takes them out:
-    /// the conversation goes on from that entry. Each change is made by
-    /// `by`. The branch's aside.
+    /// Every inactive branch, those kept inside other branches too: each
+    /// comes after the one it is kept in, in the order put.
+    pub fn branches(&self) -> Vec<Kept> {
+        let active: Vec<MessageId> = self.meta.iter().map(|meta| meta.id).collect();
+        let mut found = Vec::new();
+        for (id, aside) in &self.asides {
+            if let Some(branch) = Branch::of(aside) {
+                let at = self.aside_position(aside);
+                keep(&mut found, (*id, None, at), branch, &active);
+            }
+        }
+        found
+    }
+
+    /// The entries of the line branch `id` continues, from the first: the
+    /// entries it shares with the line it is kept in, then its own. With
+    /// `None`, the active line. `None` when `id` is no branch.
+    pub fn line(&self, id: Option<AsideId>) -> Option<Vec<Entry>> {
+        let mut line: Vec<Entry> = (0..self.messages.len())
+            .filter_map(|at| self.entry(at))
+            .collect();
+        let Some(id) = id else {
+            return Some(line);
+        };
+        let kept = self.branches();
+        for kept in path(&kept, id)? {
+            line.truncate(kept.at);
+            line.extend(kept.branch.entries.iter().cloned());
+        }
+        Some(line)
+    }
+
+    /// Keeps entries `at..`, maybe none, with the saved asides that follow
+    /// them and the halt, as a branch titled as the active continuation is
+    /// ([`branch_title`](Self::branch_title)), following entry `at - 1`,
+    /// and takes them out: the conversation goes on from that entry as the
+    /// branch titled `title`. `at` may be the length: a new branch at the
+    /// end. Each change is made by `by`. The kept branch's aside.
     ///
     /// # Errors
     ///
-    /// Changing nothing: [`BranchError::NoEntry`] when there is no entry
-    /// `at`, [`BranchError::PartsCall`] when an entry before `at` has a
-    /// call answered at or after it.
+    /// Changing nothing: [`BranchError::NoEntry`] when `at` is past the
+    /// end, [`BranchError::PartsCall`] when an entry before `at` has a call
+    /// answered at or after it.
     pub fn branch_off(
         &mut self,
         at: usize,
         title: impl Into<String>,
         by: Author,
     ) -> Result<AsideId, BranchError> {
-        if at >= self.messages.len() {
+        let len = self.messages.len();
+        if at > len {
             return Err(BranchError::NoEntry(at));
         }
         let before = self.messages.get(..at).unwrap_or_default();
-        if !super::pairing::pending_calls(before).is_empty() {
+        if at < len && !super::pairing::pending_calls(before).is_empty() {
             return Err(BranchError::PartsCall);
         }
         let point = at.checked_sub(1).and_then(|at| self.id(at));
-        let branch = self.stash(at, title.into(), &by)?;
-        Ok(self.add_aside(Aside::new(BRANCH, by, branch).after(point)))
+        let left = self.branch_title().to_owned();
+        let branch = self.stash(at, left, &by)?;
+        let id = self.add_aside(Aside::new(BRANCH, by.clone(), branch).after(point));
+        self.title_branch(title.into(), &by);
+        Ok(id)
     }
 
-    /// Makes branch `id` the active continuation: the entries after its
-    /// point, with the saved asides that follow them and the halt, are kept
-    /// as a branch titled `keep_as` (even with no entries), and the branch's
-    /// entries come back with their ids and made-times
-    /// ([`restore`](Self::restore)), its asides with theirs and its halt. Each change is made by `by`. What the restore
-    /// changed.
+    /// Makes the kept branch `id` the active continuation, wherever it is
+    /// kept (through each branch it is kept in): each continuation it
+    /// leaves is kept under its title with its saved asides and halt, even
+    /// with no entries of its own, and the branch's entries come back with
+    /// their ids and made-times ([`restore`](Self::restore)), its asides
+    /// with theirs, its halt and its title. Each change is made by `by`.
+    /// What changed from the line left.
     ///
     /// ```
     /// use rig_core::completion::Message;
@@ -111,12 +176,15 @@ impl Conversation {
     /// ]);
     /// let red = conversation.id(1);
     /// let by = Author::plugin("tree");
-    /// let first = conversation.branch_off(1, "red", by.clone())?;
+    /// let first = conversation.branch_off(1, "blue", by.clone())?;
     /// conversation.push(Message::assistant("Blue."));
-    /// conversation.switch_branch(first, "blue", by)?;
+    /// assert_eq!(conversation.branch_title(), "blue");
+    /// conversation.switch_branch(first, by)?;
     /// assert_eq!(conversation.messages().get(1), Some(&Message::assistant("Red.")));
     /// assert_eq!(conversation.id(1), red);
-    /// assert_eq!(conversation.branches().count(), 1);
+    /// assert_eq!(conversation.branch_title(), "main");
+    /// let kept = conversation.branches();
+    /// assert_eq!(kept.iter().map(|kept| kept.branch.title.as_str()).collect::<Vec<_>>(), ["blue"]);
     /// # Ok::<(), rig_core::conversation::BranchError>(())
     /// ```
     ///
@@ -124,17 +192,41 @@ impl Conversation {
     ///
     /// Changing nothing: [`BranchError::NotABranch`] when aside `id` is not
     /// a branch.
-    pub fn switch_branch(
-        &mut self,
-        id: AsideId,
-        keep_as: impl Into<String>,
-        by: Author,
-    ) -> Result<Spliced, BranchError> {
+    pub fn switch_branch(&mut self, id: AsideId, by: Author) -> Result<Spliced, BranchError> {
+        let kept = self.branches();
+        let path: Vec<AsideId> = path(&kept, id)
+            .ok_or(BranchError::NotABranch(id))?
+            .iter()
+            .map(|kept| kept.id)
+            .collect();
+        let before: Vec<MessageId> = self.meta.iter().map(|meta| meta.id).collect();
+        let (mut changed, mut restored) = (Vec::new(), Vec::new());
+        for id in path {
+            let spliced = self.switch_one(id, &by)?;
+            changed.extend(spliced.changed);
+            restored.extend(spliced.restored);
+        }
+        let now: HashSet<MessageId> = self.meta.iter().map(|meta| meta.id).collect();
+        let still = |ids: Vec<MessageId>| -> Vec<MessageId> {
+            let mut seen = HashSet::new();
+            let ids = ids.into_iter().filter(|id| now.contains(id));
+            ids.filter(|id| seen.insert(*id)).collect()
+        };
+        Ok(Spliced {
+            removed: before.into_iter().filter(|id| !now.contains(id)).collect(),
+            changed: still(changed),
+            restored: still(restored),
+        })
+    }
+
+    /// Makes branch `id`, kept in the active line, the active continuation.
+    fn switch_one(&mut self, id: AsideId, by: &Author) -> Result<Spliced, BranchError> {
         let aside = self.aside(id).ok_or(BranchError::NotABranch(id))?;
         let branch = Branch::of(aside).ok_or(BranchError::NotABranch(id))?;
         let (point, at) = (aside.after, self.aside_position(aside));
-        self.forget_aside(id, &by);
-        let kept = self.stash(at, keep_as.into(), &by)?;
+        let left = self.branch_title().to_owned();
+        self.forget_aside(id, by);
+        let kept = self.stash(at, left, by)?;
         let spliced = self.restore(at.., branch.entries, by.clone());
         for (id, aside) in branch.asides {
             let aside = Some(aside);
@@ -144,8 +236,26 @@ impl Conversation {
             let halt = branch.halted;
             self.record(Change::Halt { halt }, Some(by.clone()));
         }
-        self.add_aside(Aside::new(BRANCH, by, kept).after(point));
+        self.add_aside(Aside::new(BRANCH, by.clone(), kept).after(point));
+        self.title_branch(branch.title, by);
         Ok(spliced)
+    }
+
+    /// Titles the active continuation `title`: one [`ACTIVE`] aside,
+    /// replaced in place, and none for [`MAIN`].
+    fn title_branch(&mut self, title: String, by: &Author) {
+        if self.branch_title() == title {
+            return;
+        }
+        let known = self.asides().find(|(_, aside)| aside.kind == ACTIVE);
+        let known = known.map(|(id, _)| id);
+        let aside = Aside::new(ACTIVE, by.clone(), serde_json::Value::String(title));
+        match known {
+            Some(id) if aside.value == MAIN => self.forget_aside(id, by),
+            Some(id) => drop(self.replace_aside(id, aside)),
+            None if aside.value == MAIN => {}
+            None => drop(self.add_aside(aside)),
+        }
     }
 
     /// Takes entries `at..` and the saved asides that follow them out, as
@@ -189,6 +299,56 @@ impl Conversation {
             None => {}
         }
     }
+}
+
+/// Lists `branch`, kept as `id` in `inside` sharing `at` entries of
+/// `line` (the ids of the line it is kept in), then the branches kept in it.
+fn keep(
+    found: &mut Vec<Kept>,
+    (id, inside, at): (AsideId, Option<AsideId>, usize),
+    branch: Branch,
+    line: &[MessageId],
+) {
+    let mut own: Vec<MessageId> = line.get(..at).unwrap_or(line).to_vec();
+    own.extend(branch.entries.iter().filter_map(|entry| entry.id));
+    let inner: Vec<(AsideId, usize, Branch)> = branch
+        .asides
+        .iter()
+        .filter_map(|(inner, aside)| {
+            let branch = Branch::of(aside)?;
+            let at = aside.after.map_or(0, |after| {
+                let at = own.iter().position(|id| *id == after);
+                at.map_or(own.len(), |at| at.saturating_add(1))
+            });
+            Some((*inner, at, branch))
+        })
+        .collect();
+    found.push(Kept {
+        id,
+        inside,
+        at,
+        branch,
+    });
+    for (inner, at, branch) in inner {
+        keep(found, (inner, Some(id), at), branch, &own);
+    }
+}
+
+/// The branches from the active line to branch `id` in `kept`, outermost
+/// first; `None` when it is not there. Each branch's enclosing one is
+/// listed before it, so the walk only goes back.
+fn path(kept: &[Kept], id: AsideId) -> Option<Vec<&Kept>> {
+    let mut path = Vec::new();
+    let mut next = Some(id);
+    let mut before = kept.len();
+    while let Some(id) = next {
+        let at = kept.get(..before)?.iter().position(|kept| kept.id == id)?;
+        let found = kept.get(at)?;
+        path.push(found);
+        (next, before) = (found.inside, at);
+    }
+    path.reverse();
+    Some(path)
 }
 
 #[cfg(test)]

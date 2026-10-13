@@ -1370,10 +1370,10 @@ it hold a whole list, such as a transcript edited as text, as one
 restore of what differs; `normalize(by)` merges adjacent assistant
 entries and repairs tool-call pairing, a merged entry keeping the
 first's id and author and its asides following it. **Branches** are
-other continuations kept as asides (`BRANCH`), so they are saved,
-forked and rewritten with it: `branch_off(at, title, by)` sets entries
-`at..` aside, `switch_branch(id, keep_as, by)` brings a branch back with
-its ids and keeps the current tail, `branches()` lists them.
+other continuations kept as asides (`BRANCH`; saved, forked, rewritten):
+`branch_off(at, title, by)` keeps entries `at..` (maybe none) aside and
+goes on as `title` (`branch_title()`); `switch_branch(id, by)` brings
+any kept branch back, nested too; `branches()` lists all, `line(id)`.
 
 **Asides** never reach a model: an `Aside { kind, after, author, value }`
 follows the entry `after` and is saved, restored and forked with the

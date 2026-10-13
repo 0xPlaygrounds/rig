@@ -6,8 +6,7 @@
 //! conversation, and a branch switched back keeps its ids. `/branch <name>`
 //! starts a branch at the end of the active one (the one left goes on as
 //! an empty branch there), `/switch <name>` makes another branch the
-//! active one, through the branches it is kept in. The active branch's
-//! name is an aside of this plugin's.
+//! active one, through the branches it is kept in.
 //!
 //! Each tool call's published `FilesChanged` is kept as an aside after the
 //! entry that made the call, so it goes with that entry's branch.
@@ -27,9 +26,7 @@ use std::path::PathBuf;
 
 use rig_harness::prelude::*;
 use rig_harness::rig_core::completion::CompletionRequest;
-use rig_harness::rig_core::conversation::{
-    Aside, AsideId, BRANCH, Branch, Entry, MessageId, MessageKey,
-};
+use rig_harness::rig_core::conversation::{Aside, AsideId, Branch, Entry, MessageKey};
 use rig_harness::rig_core::message::{Message, UserContent};
 use rig_harness::rig_core::tool::{ChangeKind, FileChange, FilesChanged};
 use serde::{Deserialize, Serialize};
@@ -42,9 +39,6 @@ pub const ROOT: &str = "main";
 
 /// The text every merge note starts with.
 pub const MERGED: &str = "Merged from branch";
-
-/// The kind of the aside naming the active branch.
-pub const ACTIVE: &str = "branch-merge.active";
 
 /// The kind of the aside after a merge note: a [`MergeRecord`].
 pub const MERGE: &str = "branch-merge.merge";
@@ -119,27 +113,7 @@ impl Line {
 
 /// The active branch's name.
 pub fn active_name(conversation: &Conversation) -> String {
-    conversation
-        .asides()
-        .filter(|(_, aside)| aside.kind == ACTIVE)
-        .find_map(|(_, aside)| aside.value.get("name")?.as_str().map(str::to_owned))
-        .unwrap_or_else(|| ROOT.to_owned())
-}
-
-fn set_active_name(conversation: &mut Conversation, name: &str) {
-    let value = serde_json::json!({ "name": name });
-    let aside = Aside::new(ACTIVE, Author::plugin(NAME), value);
-    let known = conversation
-        .asides()
-        .find(|(_, aside)| aside.kind == ACTIVE);
-    match known.map(|(id, _)| id) {
-        Some(id) => {
-            conversation.replace_aside(id, aside);
-        }
-        None => {
-            conversation.add_aside(aside);
-        }
-    }
+    conversation.branch_title().to_owned()
 }
 
 /// Every branch of `conversation`: the active one first, then each kept
@@ -152,7 +126,9 @@ pub fn lines(conversation: &Conversation) -> Vec<Line> {
             message: entry.message.clone(),
         })
         .collect();
-    let kept: Vec<(AsideId, usize, Branch)> = conversation.branches().collect();
+    let kept = conversation.branches().into_iter();
+    let kept = kept.filter(|kept| kept.inside.is_none());
+    let kept: Vec<(AsideId, usize, Branch)> = kept.map(|k| (k.id, k.at, k.branch)).collect();
     let own = kept.iter().map(|(_, at, _)| *at).max().unwrap_or_default();
     let mut found = Vec::new();
     for (id, at, branch) in kept {
@@ -256,33 +232,10 @@ fn shared(a: &Line, b: &Line) -> usize {
 fn go_to(conversation: &mut Conversation, title: &str) -> Result<(), String> {
     let found = lines(conversation);
     let line = found.iter().find(|line| line.title == title);
-    let path = line
-        .map(|line| line.path.clone())
-        .ok_or(format!("No branch {title}."))?;
-    let by = Author::plugin(NAME);
-    let mut current = active_name(conversation);
-    for id in path {
-        let aside = conversation.aside(id).cloned();
-        let aside = aside.ok_or(format!("Branch {title} moved."))?;
-        let branch = Branch::of(&aside).ok_or(format!("Branch {title} moved."))?;
-        let spliced = conversation.switch_branch(id, current.clone(), by.clone());
-        spliced.map_err(|failure| failure.to_string())?;
-        current = branch.title;
-    }
-    set_active_name(conversation, title);
-    Ok(())
-}
-
-/// Keeps an empty branch titled `title` following entry `after`.
-fn keep_empty(conversation: &mut Conversation, title: String, after: Option<MessageId>) {
-    let branch = Branch {
-        title,
-        ..Branch::default()
-    };
-    if let Ok(value) = serde_json::to_value(branch) {
-        let aside = Aside::new(BRANCH, Author::plugin(NAME), value).after(after);
-        conversation.add_aside(aside);
-    }
+    let id = line.and_then(|line| line.path.last().copied());
+    let id = id.ok_or(format!("No branch {title}."))?;
+    let spliced = conversation.switch_branch(id, Author::plugin(NAME));
+    spliced.map(drop).map_err(|failure| failure.to_string())
 }
 
 /// A model call summarizing a branch for a merge.
@@ -452,10 +405,11 @@ fn branch(
         return;
     }
     let left = active_name(&conversation);
-    let end = conversation.messages().len().checked_sub(1);
-    let after = end.and_then(|at| conversation.id(at));
-    keep_empty(&mut conversation, left.clone(), after);
-    set_active_name(&mut conversation, name);
+    let end = conversation.messages().len();
+    if let Err(failure) = conversation.branch_off(end, name, Author::plugin(NAME)) {
+        notices.write(Notice::error(args.agent, failure.to_string()));
+        return;
+    }
     notices.write(Notice::info(
         args.agent,
         format!("On branch {name}, from {left}."),
