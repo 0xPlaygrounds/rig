@@ -28,6 +28,13 @@ fn run(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> Vec
 
 /// The app of [`run`], after the run.
 fn run_app(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> App {
+    let mut app = started(prompt, model, setup);
+    run_to_end(&mut app);
+    app
+}
+
+/// The app of [`run`] after its first frame and `setup`, before the run.
+fn started(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) -> App {
     let mut app = App::new();
     let args = Invocation {
         model: model.then(|| "deepseek/deepseek-flash".to_owned()),
@@ -53,14 +60,26 @@ fn run_app(prompt: &str, model: bool, setup: impl FnOnce(&mut World, Entity)) ->
         .iter(world)
         .next();
     setup(world, agent.unwrap_or(Entity::PLACEHOLDER));
+    app
+}
+
+/// Runs `app` until it exits or ten seconds passed, then a frame more.
+fn run_to_end(app: &mut App) {
+    run_until(app, |_| false);
+    // Nothing more once it ended.
+    app.update();
+}
+
+/// Runs `app` until `done`, it exits, or ten seconds passed.
+fn run_until(app: &mut App, done: impl Fn(&mut World) -> bool) {
     let started = Instant::now();
-    while started.elapsed() < Duration::from_secs(10) && app.should_exit().is_none() {
+    while started.elapsed() < Duration::from_secs(10)
+        && app.should_exit().is_none()
+        && !done(app.world_mut())
+    {
         app.update();
         std::thread::sleep(Duration::from_millis(1));
     }
-    // Nothing more once it ended.
-    app.update();
-    app
 }
 
 /// `model` as the catalog's DeepSeek model.
@@ -279,14 +298,16 @@ fn a_kept_run_answers_each_prompt_and_ends_once_nothing_keeps_it() {
         }
         let keep = world.spawn(KeepRunning).id();
         // A plugin sends a second prompt once the first is answered, then
-        // lets the run end.
+        // lets the run end. It counts the turns itself: the order in which
+        // two observers of one event run is not specified, so `Ends` may or
+        // may not hold this turn yet.
         world.add_observer(
-            move |ended: On<HeadlessTurnEnded>, ends: Res<Ends>, mut commands: Commands| match ends
-                .1
-                .len()
-            {
-                0 => commands.trigger(Deliver::new(ended.agent, "again", DeliveryMode::Steer)),
-                _ => commands.entity(keep).despawn(),
+            move |ended: On<HeadlessTurnEnded>, mut seen: Local<usize>, mut commands: Commands| {
+                *seen += 1;
+                match *seen {
+                    1 => commands.trigger(Deliver::new(ended.agent, "again", DeliveryMode::Steer)),
+                    _ => commands.entity(keep).despawn(),
+                }
             },
         );
     });
@@ -303,4 +324,56 @@ fn a_kept_run_answers_each_prompt_and_ends_once_nothing_keeps_it() {
         .map(|ended| (ended.answer.as_deref(), &ended.exit))
         .collect();
     assert_eq!(ended, [(Some("two"), &ExitReason::Quit)]);
+}
+
+/// A turn that starts and ends between two frames of the run, as a fast
+/// model's can within one run of the agent loop, is still reported, and
+/// the run ends once nothing keeps it.
+#[test]
+fn a_turn_the_run_never_saw_working_is_still_reported() {
+    let model = MockCompletionModel::from_stream_turns(["one", "two"].map(|answer| {
+        vec![
+            MockStreamEvent::text(answer),
+            MockStreamEvent::final_response_with_default_usage(),
+        ]
+    }));
+    let mut agent = Entity::PLACEHOLDER;
+    let mut app = started("hi", true, |world, primary| {
+        agent = primary;
+        if let Some(connection) = connection(&model) {
+            world.entity_mut(primary).insert(connection);
+        }
+        let keep = world.spawn(KeepRunning).id();
+        world.add_observer(
+            move |_: On<HeadlessTurnEnded>, mut seen: Local<usize>, mut commands: Commands| {
+                *seen += 1;
+                if *seen == 2 {
+                    commands.entity(keep).despawn();
+                }
+            },
+        );
+    });
+    run_until(&mut app, |world| world.resource::<Ends>().1.len() == 1);
+    // The second prompt's whole turn runs in the agent loop alone.
+    let world = app.world_mut();
+    world.trigger(Deliver::new(agent, "again", DeliveryMode::Steer));
+    let started = Instant::now();
+    let answered = |world: &mut World| {
+        let mut turns = world.query_filtered::<(), With<TurnOf>>();
+        let length = world
+            .get::<Conversation>(agent)
+            .map(|it| it.messages().len());
+        length == Some(4) && turns.iter(world).next().is_none()
+    };
+    while started.elapsed() < Duration::from_secs(10) && !answered(world) {
+        world.run_schedule(AgentPass);
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(answered(world), "the second turn ran");
+    run_to_end(&mut app);
+    let ends = app.world().resource::<Ends>();
+    let turns: Vec<_> = ends.1.iter().map(|turn| turn.answer.as_deref()).collect();
+    assert_eq!(turns, [Some("one"), Some("two")]);
+    let ended: Vec<_> = ends.0.iter().map(|ended| &ended.exit).collect();
+    assert_eq!(ended, [&ExitReason::Quit]);
 }

@@ -78,7 +78,7 @@ impl AppHeadlessExt for App {
             refused: false,
             worst: 0,
         })
-        .add_systems(Update, drive)
+        .add_systems(Update, drive.after(AgentLoop))
         .add_observer(keep_answer)
     }
 }
@@ -292,7 +292,10 @@ fn drive(
                 return;
             }
             let keep = !agents.keep.is_empty();
-            if run.step == (Step::Sent { agent }) || !keep {
+            // A turn may start and end between two runs of this system, as
+            // a fast model's can within one run of the agent loop: the
+            // turn's end, not having seen it work, says it happened.
+            if run.step == (Step::Sent { agent }) || run.turned || !keep {
                 settle(&mut run, agent, &mut commands);
             }
             if keep {
