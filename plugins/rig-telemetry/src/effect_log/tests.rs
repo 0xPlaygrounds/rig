@@ -1,5 +1,5 @@
-use rig_cassette::journal::MemoryStore;
 use rig_core::effect::{EffectId, EffectKind, Outcome};
+use rig_harness_test_support::MemoryStore;
 use rig_harness_test_support::app_on;
 
 use super::*;
@@ -36,7 +36,7 @@ fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
         record(3, "a", "note", 1),
         record(4, "b", "note", 1),
     ] {
-        app.world_mut().write_message(Recorded(record));
+        app.world_mut().write_message(EffectRecorded(record));
     }
     app.update();
 
@@ -52,5 +52,9 @@ fn the_records_of_one_turn_of_an_agent_read_back_from_the_store() {
     assert_eq!(ids(&turn.clone().kind("subagent")), [2]);
     assert_eq!(ids(&EffectFilter::default().turn(1)), [2, 3, 4]);
     assert_eq!(ids(&EffectFilter::default()), [1, 2, 3, 4]);
-    assert!(store.read_file(EFFECT_LOG).is_ok_and(|log| !log.is_empty()));
+    assert!(
+        store
+            .read_file(SESSION_EFFECT_LOG)
+            .is_ok_and(|log| !log.is_empty())
+    );
 }

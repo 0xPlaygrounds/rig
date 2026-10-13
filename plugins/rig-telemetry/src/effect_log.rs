@@ -1,8 +1,7 @@
 //! The effect log: every effect the agents' work settles, model calls,
 //! tool calls, delivered messages and plugins' own effects, recorded with
-//! rig-core's effect types into the session's [`EFFECT_LOG`], a file of its
-//! store:
-//! each effect's [`Recorded`] record, in id order, as it settles. Its
+//! rig-core's effect types into the session's [`SESSION_EFFECT_LOG`], a
+//! file of its store ([`Files`]): each effect's [`EffectRecorded`] record, in id order, as it settles. Its
 //! header describes the tools and the models the agents connect to, and
 //! names each key the records use. Ids continue after the highest one the
 //! log already holds, so a resumed session keeps adding to the same log.
@@ -13,15 +12,14 @@ use std::io;
 use std::sync::Arc;
 
 use bevy_log::error;
+use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_cassette::effect_log::{self, LogHeader, jsonl};
-use rig_cassette::journal::EFFECT_LOG;
 use rig_core::effect::{EffectRecord, HandlerDescriptor};
 use rig_ecs::WriteJournal;
 use rig_ecs::effects::Effects;
 use rig_ecs::journal::SessionStore;
 use rig_ecs::prelude::*;
 use rig_ecs::tools::ToolDef;
-use rig_harness::prelude::JournalStore;
 
 /// Records every effect into the session's effect log, in its store, once
 /// the harness opened it; without a store it records nothing.
@@ -35,7 +33,8 @@ impl Plugin for EffectLogPlugin {
         let Some(SessionStore(store)) = app.world().get_resource::<SessionStore>().cloned() else {
             return;
         };
-        let mut writer = jsonl::Writer::on(store.clone(), EFFECT_LOG);
+        let store: Arc<dyn Files> = store;
+        let mut writer = jsonl::Writer::on(store.clone(), SESSION_EFFECT_LOG);
         let last = writer.last_id().ok().flatten();
         let header = LogHeader::default();
         app.insert_resource(Effects::continue_after(last))
@@ -53,7 +52,7 @@ impl Plugin for EffectLogPlugin {
 /// its `Last`.
 #[derive(Resource, Clone)]
 pub struct EffectLog {
-    store: Arc<dyn JournalStore>,
+    store: Arc<dyn Files>,
 }
 
 impl EffectLog {
@@ -61,7 +60,7 @@ impl EffectLog {
     /// first. It reads the whole file: off the main thread, such as in a
     /// task, for a long session.
     pub fn read(&self) -> io::Result<Vec<EffectRecord>> {
-        match self.store.read_file(EFFECT_LOG) {
+        match self.store.read_file(SESSION_EFFECT_LOG) {
             Ok(bytes) => Ok(jsonl::read_from(bytes.as_slice())?.records),
             Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(Vec::new()),
             Err(error) => Err(error),
@@ -178,7 +177,7 @@ fn describe_model(
 /// is shown once.
 fn write_effects(
     mut log: ResMut<EffectLogFile>,
-    mut recorded: MessageReader<Recorded>,
+    mut recorded: MessageReader<EffectRecorded>,
     mut failed: Local<bool>,
     mut notices: MessageWriter<Notice>,
 ) {
