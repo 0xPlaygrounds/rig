@@ -1,5 +1,5 @@
 //! Handler composition with pre-dispatch decisions and post-answer verdicts.
-//! Recording observes the innermost handler: denied dispatches leave no record,
+//! Recording observes the handler a layer wraps: denied dispatches leave no record,
 //! and replaced answers retain the handler's original outcome for replay.
 //!
 //! ```

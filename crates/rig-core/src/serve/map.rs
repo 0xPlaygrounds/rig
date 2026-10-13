@@ -46,13 +46,15 @@ where
     }
 
     async fn serve(&self, kind: EffectKind, dispatch: Dispatch) -> Reply {
-        let events = match self.inner.handle(kind, dispatch.unobserved()).await {
+        // A driver that reads no facts attached none: they go nowhere.
+        let published = dispatch.scope::<PublishedContext>().unwrap_or_default();
+        // Recorded here, the outermost handler: the record keeps the
+        // rewritten reply.
+        let events = match self.inner.handle(kind, dispatch).await {
             Reply::Stream(events) => events,
             completion @ Reply::Outcome(Ok(Outcome::Completion(_))) => completion.into_stream(),
             other => return other,
         };
-        // A driver that reads no facts attached none: they go nowhere.
-        let published = dispatch.scope::<PublishedContext>().unwrap_or_default();
         let mut map = (self.make)(published);
         Reply::Stream(Box::pin(events.flat_map(move |item| {
             futures::stream::iter(match item {

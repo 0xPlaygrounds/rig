@@ -8,7 +8,10 @@
 //! ```
 
 use std::{
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicUsize, Ordering},
+    },
     task::Poll,
 };
 
@@ -125,8 +128,16 @@ impl<T: Serve> Handler for T {
         let observer = dispatch.observer.clone();
         let folded = dispatch.folded.clone();
         let streaming = dispatch.is_stream();
+        let level = Level::enter(&dispatch.serving);
         Box::pin(async move {
             let reply = self.serve(kind, dispatch).await;
+            // A handler that serves the dispatch inside another one, such
+            // as a wrapper's inner handler, leaves the observer to the
+            // outermost: what the wrapper publishes once its inner handler
+            // answered is part of the record.
+            if !level.outermost() {
+                return reply.observed(streaming, None, None);
+            }
             let seen = observer.and_then(|slot| lock(&slot).take());
             reply.observed(streaming, seen, folded)
         })
@@ -160,6 +171,29 @@ impl<H: Serve + ?Sized> Serve for Arc<H> {
 
     fn check(&self, kind: &EffectKind) -> Vec<UnsupportedOption> {
         (**self).check(kind)
+    }
+}
+
+/// One handler serving a dispatch, counted in the dispatch's handlers that
+/// serve it one inside another until it answers or is dropped.
+struct Level(Arc<AtomicUsize>);
+
+impl Level {
+    fn enter(serving: &Arc<AtomicUsize>) -> Self {
+        serving.fetch_add(1, Ordering::AcqRel);
+        Self(serving.clone())
+    }
+
+    /// Whether no handler serves the dispatch around this one: the inner
+    /// ones answered or were dropped by now.
+    fn outermost(&self) -> bool {
+        self.0.load(Ordering::Acquire) == 1
+    }
+}
+
+impl Drop for Level {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
     }
 }
 
@@ -550,6 +584,9 @@ pub struct Dispatch {
     streaming: bool,
     scopes: Vec<Arc<dyn std::any::Any + Send + Sync>>,
     observer: Option<Arc<Mutex<Option<Observed>>>>,
+    /// How many handlers serve it now, one inside another: only the
+    /// outermost tells the observer and the fold, once it answered.
+    serving: Arc<AtomicUsize>,
     /// The layer whose verdict replaced the answer the consumer receives,
     /// once one did. Shared down the layer chain; a driver reads it after
     /// the reply ([`Dispatch::replaced_by`]).
@@ -580,6 +617,7 @@ impl Dispatch {
             adapter_context_explicit: false,
             scopes: Vec::new(),
             observer: None,
+            serving: Arc::default(),
             replaced_by: Arc::new(Mutex::new(None)),
             folded: None,
         }
@@ -623,6 +661,9 @@ impl Dispatch {
     }
 
     /// Observe the original handler answer independently of layer verdicts.
+    /// A handler that serves the dispatch through an inner one, passing it
+    /// on, is observed once it answered, with what it published by then;
+    /// a [`Layer`](super::Layer) hands the observer to the handler it wraps.
     pub fn with_observer(mut self, observer: Box<dyn Observe>) -> Self {
         if !self.adapter_context_explicit {
             self.adapter_context = observer.adapter_context();
@@ -688,22 +729,6 @@ impl Dispatch {
         Attribution(self.replaced_by.clone())
     }
 
-    /// A dispatch of the same effect for a wrapped handler whose reply the
-    /// wrapper rewrites and is recorded at: the observer and the fold stay
-    /// with this dispatch, so they see the rewritten reply.
-    pub(crate) fn unobserved(&self) -> Self {
-        Self {
-            id: self.id,
-            streaming: self.streaming,
-            adapter_context: self.adapter_context.clone(),
-            adapter_context_explicit: self.adapter_context_explicit,
-            scopes: self.scopes.clone(),
-            observer: None,
-            replaced_by: self.replaced_by.clone(),
-            folded: None,
-        }
-    }
-
     pub(crate) fn inner(&mut self, folded: Option<Folded>) -> Self {
         let observer = self.observer.as_ref().and_then(|slot| lock(slot).take());
         Self {
@@ -713,6 +738,7 @@ impl Dispatch {
             adapter_context_explicit: self.adapter_context_explicit,
             scopes: self.scopes.clone(),
             observer: observer.map(|seen| Arc::new(Mutex::new(Some(seen)))),
+            serving: Arc::default(),
             replaced_by: self.replaced_by.clone(),
             folded,
         }

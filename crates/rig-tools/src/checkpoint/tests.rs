@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 
-use rig_core::effect::EffectKind;
+use rig_core::effect::{EffectId, EffectKind, HandlerKey};
 use rig_core::serve::adapters::ToolAdapter;
-use rig_core::serve::{ErasedHandler, serve_inline_with};
+use rig_core::serve::{Dispatch, DispatchContext, ErasedHandler, RecordBuffer, Recorder};
 use rig_core::tool::{ChangeKind, FilesChanged, PublishedContext, content_hash};
 
 use super::{Checkpointed, Taking, forget_kept, snapshot};
@@ -130,7 +130,8 @@ fn a_git_snapshot_sees_a_write_and_leaves_the_repository_alone() {
 
 /// A shell call wrapped in a checkpoint publishes the files it changed,
 /// created and deleted, found by a scan, each with the hash of the content
-/// it had before.
+/// it had before, and its record keeps them, as a resumed session reads
+/// them.
 #[cfg(unix)]
 #[test]
 fn a_checkpointed_shell_call_publishes_what_it_changed() {
@@ -158,13 +159,35 @@ fn a_checkpointed_shell_call_publishes_what_it_changed() {
         name: "shell".into(),
         args: r#"{"command":"printf new > a.txt; printf b > b.txt; rm gone.txt"}"#.into(),
     };
-    let scopes = vec![published.clone() as Arc<dyn std::any::Any + Send + Sync>];
-    let outcome = futures::executor::block_on(serve_inline_with(&handler, kind, scopes));
+    let buffer = RecordBuffer::new();
+    let recorder: Arc<dyn Recorder + Send + Sync> = Arc::new(buffer.clone());
+    let id = EffectId::from_raw(1);
+    recorder.begin(
+        id,
+        HandlerKey::from("shell"),
+        kind.clone(),
+        DispatchContext::default(),
+    );
+    let dispatch = Dispatch::new(id, false)
+        .with_scope(published.clone())
+        .recorded_by(recorder);
+    let outcome = futures::executor::block_on(async {
+        handler.handle(kind, dispatch).await.into_outcome().await
+    });
     assert!(outcome.is_ok(), "{outcome:?}");
     let changed = published
         .take()
         .and_then(|context| context.result::<FilesChanged>().ok().flatten())
         .unwrap_or_default();
+    let recorded = buffer
+        .take(id)
+        .and_then(|record| record.tool_output)
+        .and_then(|output| output.get::<FilesChanged>().ok().flatten());
+    assert_eq!(
+        recorded.as_ref(),
+        Some(&changed),
+        "the record lacks the changes"
+    );
     let changed: Vec<_> = changed
         .0
         .into_iter()
