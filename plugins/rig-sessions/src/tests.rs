@@ -2,17 +2,13 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use rig_cassette::effect_log::jsonl::SESSION_EFFECT_LOG;
 use rig_core::completion::Message;
-use rig_core::effect::{EffectId, EffectKind, EffectRecord, Outcome};
 use rig_ecs::AgentPlugin;
 use rig_ecs::journal::JournalPlugin;
 use rig_ecs::prelude::{SavedAgent, Session, Store};
-use rig_ecs::stage::EffectRecorded;
 use rig_harness::harness_protocol::Home;
 use rig_harness::prelude::{ForkSession, ForkedFrom, SessionForked};
 use rig_harness_test_support::{MemoryStore, app_in, commit_message, first_agent, scratch_home};
-use rig_telemetry::EffectLogPlugin;
 
 use super::*;
 
@@ -88,10 +84,8 @@ fn naming_another_session_changes_only_its_title() {
             name: None,
             typed: "Fix the parser".to_owned(),
         },
-        cost: Some(0.5),
-        tokens: 1234,
+        labels: BTreeMap::from([("spent".to_owned(), "$0.50".to_owned())]),
         updated: 1000,
-        ..Meta::default()
     };
     assert!(write_meta(&*store, &before).is_ok());
     let Some(mut app) = running(&home, "2-2") else {
@@ -106,15 +100,15 @@ fn naming_another_session_changes_only_its_title() {
     assert_eq!(after.title.name.as_deref(), Some("The parser"));
     assert_eq!(after.title.typed, before.title.typed);
     assert_eq!(
-        (after.cost, after.tokens, after.updated),
-        (before.cost, before.tokens, before.updated)
+        (after.labels, after.updated),
+        (before.labels, before.updated)
     );
     assert_eq!(app.world().resource::<SessionTitle>().name, None);
     let running: SessionId = "2-2".parse().unwrap_or_else(|_| SessionId::generate());
     let stores = SessionStores::default();
     let listed = list(&home, &stores, home.session(&running).path());
     let labels: Vec<String> = listed.iter().map(SessionEntry::label).collect();
-    assert_eq!(labels, ["The parser"]);
+    assert_eq!(labels, ["The parser  · $0.50"]);
     fs::remove_dir_all(home.root()).ok();
 }
 
@@ -147,26 +141,13 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     let dir = home.session(&id);
     let memory = InMemory::default();
     let (mut app, _wakes) = app_in(&home, &id);
-    app.insert_resource(memory.stores()).add_plugins((
-        AgentPlugin,
-        JournalPlugin,
-        EffectLogPlugin,
-        SessionsPlugin,
-    ));
+    app.insert_resource(memory.stores())
+        .add_plugins((AgentPlugin, JournalPlugin, SessionsPlugin));
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
     let said = commit_message(app.world_mut(), agent, Message::user("Fix the parser"));
     assert_eq!(said, Ok(()));
-    let kind = EffectKind::Custom {
-        kind: "note".into(),
-        payload: serde_json::Value::Null,
-    };
-    let outcome = Ok(Outcome::Custom {
-        payload: serde_json::Value::Null,
-    });
-    let record = EffectRecord::new(EffectId::from_raw(1), "plugin".into(), kind, outcome);
-    app.world_mut().write_message(EffectRecorded(record));
     app.world_mut().resource_mut::<SessionTitle>().name = Some("Parser".to_owned());
     app.update();
     app.world_mut().trigger(ForkSession::default());
@@ -183,7 +164,6 @@ fn a_store_a_plugin_puts_in_holds_every_session_file_and_a_fork_is_listed() {
     assert!(session.logs().is_ok_and(|logs| !logs.is_empty()));
     let meta = Meta::of(&session).and_then(|meta| meta.title.name);
     assert_eq!(meta.as_deref(), Some("Parser"));
-    assert!(session.read_file(SESSION_EFFECT_LOG).is_ok());
     let copy = home.session(&fork);
     let forked = memory.of(copy.path());
     assert!(forked.logs().is_ok_and(|logs| !logs.is_empty()));

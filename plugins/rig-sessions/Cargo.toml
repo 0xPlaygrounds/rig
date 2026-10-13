@@ -5,7 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "A rig-harness plugin: /new, /resume and /name, and each session's title and cost."
+description = "A rig-harness plugin: /new, /resume and /name, and each session's title and labels."
 repository = "https://github.com/0xPlaygrounds/rig"
 # Not published yet: the agent builds it from a rig checkout (RIG_SOURCE).
 publish = false
@@ -18,7 +18,7 @@ default = ["tui"]
 # The `/resume` picker and the session's name in the terminal view's status
 # line. An app without the terminal view leaves it out with
 # `default-features = false`.
-tui = ["dep:rig-tui", "rig-telemetry/tui"]
+tui = ["dep:rig-tui"]
 
 [dependencies]
 bevy_app = { workspace = true }
@@ -29,8 +29,6 @@ rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
-# What a session cost, in its metadata.
-rig-telemetry = { path = "../rig-telemetry", default-features = false }
 rig-tools = { path = "../../crates/rig-tools" }
 rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
@@ -39,5 +37,3 @@ serde_json = { workspace = true }
 [dev-dependencies]
 # The app in a session directory, and stores a test keeps in memory.
 rig-harness-test-support = { path = "../../test-support/rig-harness-test-support" }
-# The name of the effect log a session's store holds.
-rig-cassette = { workspace = true, features = ["jsonl"] }

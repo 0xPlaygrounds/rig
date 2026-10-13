@@ -30,6 +30,8 @@ rig-core = { workspace = true }
 rig-ecs = { path = "../../crates/rig-ecs" }
 # The plugin API of the agent it is loaded into.
 rig-harness = { path = "../../crates/rig-harness" }
+# The session's cost in its `/resume` line.
+rig-sessions = { path = "../rig-sessions", default-features = false }
 rig-tui = { path = "../rig-tui", optional = true }
 serde = { workspace = true, features = ["derive"] }
 

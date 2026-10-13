@@ -1,9 +1,9 @@
 //! Sessions beyond the one running: `/new`, `/resume` and `/name`, and
 //! [`NameSession`] for a plugin naming any session. Each change of a
 //! conversation, title or label rewrites the session's [`Meta`] in its
-//! store (its [`SessionTitle`], the [`ResumeLabel`]s other plugins add,
-//! cost and when it was updated), which `/resume` lists and a resumed
-//! session reads its title back from. With the default
+//! store (its [`SessionTitle`], the [`ResumeLabel`]s plugins add, such as
+//! rig-telemetry's cost, and when it was updated), which `/resume` lists
+//! and a resumed session reads its title back from. With the default
 //! `tui` feature, `/resume` without arguments is a picker and the terminal
 //! view's status line shows the session's name. Running another
 //! session is the launcher's job, so the agent stays one session per
@@ -26,7 +26,6 @@ use rig_harness::harness_protocol::{Home, SessionDir, SessionId};
 use rig_tools::{ago, shorten};
 use serde::{Deserialize, Serialize};
 
-use rig_core::completion::{dollars_label, tokens_label};
 use rig_ecs::WriteJournal;
 use rig_ecs::agent::{Agent, AgentId, Conversation, Notice, SpawnedBy, TurnOf};
 use rig_ecs::journal::{Committed, SessionStore};
@@ -36,7 +35,6 @@ use rig_harness::prelude::{
     Exit, ExitReason, Files, RigHome, SessionPaths, SessionStores, first_typed,
 };
 use rig_harness::primary::primary_order;
-use rig_telemetry::SessionSpending;
 
 #[cfg(feature = "tui")]
 mod tui;
@@ -132,7 +130,7 @@ pub struct SwitchSession {
 }
 
 /// Names a session: its title in `/resume`, and nothing else of its
-/// listing, such as what it cost. Naming this session is `/name`'s.
+/// listing, such as its labels. Naming this session is `/name`'s.
 #[derive(Event, Clone, Debug)]
 pub struct NameSession {
     /// The session.
@@ -142,7 +140,7 @@ pub struct NameSession {
 }
 
 /// What `/resume` lists of a session, kept in its store: what it is
-/// listed as, what it cost and when it was updated. The agent logs hold
+/// listed as, its labels and when it was updated. The agent logs hold
 /// the same facts; a plugin that writes a session, such as an import,
 /// writes it with [`write_meta`].
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -151,13 +149,9 @@ pub struct Meta {
     /// What it is listed as.
     #[serde(flatten)]
     pub title: SessionTitle,
-    /// The [`ResumeLabel`]s' texts, by tag.
+    /// The [`ResumeLabel`]s' texts, by tag, such as rig-telemetry's
+    /// `spent`: the session's cost, or its tokens when no call was priced.
     pub labels: BTreeMap<String, String>,
-    /// What the session's model calls cost, in USD, or `None` when no call
-    /// was priced, such as a local or subscription model's.
-    pub cost: Option<f64>,
-    /// The tokens the session's model calls read and wrote.
-    pub tokens: u64,
     /// When it was written, in milliseconds since the Unix epoch.
     pub updated: u64,
 }
@@ -210,17 +204,9 @@ impl SessionEntry {
         label
     }
 
-    /// What it cost, or its tokens, and its age, shown whole beside the
-    /// label.
+    /// How long ago it changed, shown whole beside the label.
     pub fn detail(&self) -> String {
-        let age = ago(self.saved.elapsed().unwrap_or_default());
-        match self.meta.cost {
-            Some(cost) if cost > 0.0 => format!("{} · {age}", dollars_label(cost)),
-            _ if self.meta.tokens > 0 => {
-                format!("{} tokens · {age}", tokens_label(self.meta.tokens))
-            }
-            _ => age,
-        }
+        ago(self.saved.elapsed().unwrap_or_default())
     }
 }
 
@@ -303,7 +289,6 @@ fn update_meta(
     mut committed: MessageReader<Committed>,
     agents: Query<(&AgentId, &Conversation, Has<SpawnedBy>), With<Agent>>,
     labels: Query<&ResumeLabel>,
-    spent: Option<Res<SessionSpending>>,
 ) {
     let changed = committed.read().count() > 0;
     let (Some(_), Some(store)) = (paths.filter(|paths| paths.is_saved()), store) else {
@@ -329,12 +314,9 @@ fn update_meta(
     if !changed && *listed == now {
         return;
     }
-    let spent = spent.map(|spent| spent.0.total).unwrap_or_default();
     let meta = Meta {
         title: now.0.clone(),
         labels: now.1.clone(),
-        cost: (spent.unpriced < spent.calls).then_some(spent.cost),
-        tokens: spent.total_tokens(),
         updated: now_ms(),
     };
     match write_meta(&*store.0, &meta) {

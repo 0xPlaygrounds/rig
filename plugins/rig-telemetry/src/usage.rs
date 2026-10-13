@@ -42,6 +42,7 @@ impl Plugin for UsagePlugin {
                 usage,
             )
             .add_observer(record_spending);
+        super::resume::add(app);
         #[cfg(feature = "tui")]
         status::add(app);
     }
