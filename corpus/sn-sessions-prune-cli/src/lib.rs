@@ -9,30 +9,26 @@
 //! needs: the session a kept fork was copied from, whose spilled output
 //! and pasted images the fork's messages name by path.
 //!
-//! A session is deleted whole: its directory, which holds its store (its
-//! logs, plugins' files, listing) and its plain files (spilled output,
-//! pasted images), and what its store keeps elsewhere when a plugin keeps
-//! sessions out of the directory. Deleting is crash-safe: the directory is
-//! first renamed out of the sessions' names in one step, so a session is
-//! either whole or no longer listed nor resumable; what an interrupted run
-//! left is removed by the next one. Plugins learn of each deletion from
-//! [`SessionDeleted`].
+//! The sessions come from rig-sessions' listing, and each is deleted with
+//! the harness's [`DeleteSession`]: its store wherever it is kept (logs,
+//! plugins' data, listing) and its directory with the plain files beside
+//! the store (spilled output, pasted images). That delete is crash-safe: a
+//! session is marked deleting first, which hides it from listings and
+//! `--resume`, and the next start finishes it. [`SessionDeleted`] says which
+//! sessions went.
 //!
 //! Without `--yes`, a run at a terminal shows the plan and asks; one whose
 //! stdin is not a terminal refuses with exit code 2. `--dry-run` only
 //! shows the plan, and `--json` prints it, or the result, as JSON
 //! ([`PruneReport`]).
 
-use std::cmp::Reverse;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::io::{self, BufRead, Write as _};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use rig_harness::harness_protocol::SessionId;
 use rig_harness::prelude::*;
-use rig_sessions::Meta;
 use serde::Serialize;
 
 /// The command, and the front that runs it.
@@ -40,9 +36,6 @@ const COMMAND: &str = "sessions";
 /// Its usage.
 const USAGE: &str = "prune [--older-than 30d|DATE] [--keep-last N] [--max-size 2GB] \
                      [--project PATH] [--include-named] [--dry-run] [--yes] [--json]";
-/// The start of the name a session's directory is renamed to while it is
-/// deleted: no session id starts so, so nothing lists or resumes it.
-const DELETING: &str = ".pruning-";
 
 /// `rig sessions prune`.
 #[derive(Default)]
@@ -51,19 +44,23 @@ pub struct SessionsPrunePlugin;
 impl Plugin for SessionsPrunePlugin {
     fn build(&self, app: &mut App) {
         let front = Front::new(COMMAND).sessionless();
-        app.init_resource::<RigHome>()
-            .init_resource::<SessionStores>()
-            .add_message::<SessionDeleted>()
-            .add_front(front.on_command(
-                COMMAND,
-                USAGE,
-                "Delete old saved sessions by age, count or size",
-            ));
+        app.add_front(front.on_command(
+            COMMAND,
+            USAGE,
+            "Delete old saved sessions by age, count or size",
+        ));
     }
 
     fn finish(&self, app: &mut App) {
         if app.runs_front(COMMAND) {
-            app.add_systems(Startup, prune_command);
+            app.add_systems(
+                Startup,
+                (
+                    prune_command,
+                    report_deleted.run_if(resource_exists::<Deleting>),
+                )
+                    .chain(),
+            );
         }
     }
 }
@@ -290,8 +287,8 @@ pub struct PruneReport {
     pub projects: BTreeMap<String, ProjectTotal>,
     /// The bytes freed, or that would be.
     pub bytes_freed: u64,
-    /// The sessions that could not be deleted, with why.
-    pub failed: Vec<(String, String)>,
+    /// The sessions that could not be deleted; a notice says why.
+    pub failed: Vec<String>,
 }
 
 /// A saved session, read once.
@@ -301,44 +298,47 @@ struct Found {
     parent: Option<String>,
 }
 
-/// The saved sessions of `home` other than `current`, newest first.
-fn found(home: &Home, stores: &SessionStores, current: Option<&Path>) -> Vec<Found> {
-    let Ok(entries) = fs::read_dir(home.sessions()) else {
-        return Vec::new();
-    };
-    let mut sessions: Vec<Found> = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let id: SessionId = entry.file_name().to_str()?.parse().ok()?;
-            let dir = home.session(&id);
-            if Some(dir.path()) == current || !dir.is_saved() {
-                return None;
-            }
-            let store = stores.open(&dir).ok();
-            let meta = store.as_deref().and_then(Meta::of);
-            let parent = store.as_deref().and_then(ForkedFrom::of);
-            let updated = match &meta {
-                Some(meta) => meta.updated,
-                None => millis(fs::metadata(dir.path()).ok()?.modified().ok()?),
-            };
+/// The saved sessions of `home` other than `current`, newest first, as
+/// rig-sessions lists them for `/resume`.
+fn found(home: &Home, stores: &SessionStores, current: &Path) -> Vec<Found> {
+    rig_sessions::list(home, stores, current)
+        .into_iter()
+        .map(|entry| {
+            let dir = home.session(&entry.id);
+            let parent = stores.open(&dir).ok().as_deref().and_then(ForkedFrom::of);
+            // The directory it names, even one removed since: its sessions
+            // are still one project's.
             let project = fs::read_to_string(dir.directory())
                 .ok()
                 .map(|text| text.trim_end_matches('\n').to_owned());
-            Some(Found {
+            Found {
                 planned: PlannedSession {
-                    id: id.to_string(),
+                    id: entry.id.to_string(),
                     project,
                     bytes: bytes_under(dir.path()),
-                    updated,
-                    name: meta.and_then(|meta| meta.title.name),
+                    updated: millis(entry.saved),
+                    name: entry.meta.title.name,
                 },
                 in_use: dir.runs_elsewhere(),
                 parent: parent.map(|parent| parent.session.to_string()),
-            })
+            }
         })
-        .collect();
-    sessions.sort_by_key(|session| Reverse(session.planned.updated));
-    sessions
+        .collect()
+}
+
+impl PruneReport {
+    /// Counts `session` as deleted.
+    fn delete(&mut self, session: &PlannedSession) {
+        let project = session
+            .project
+            .clone()
+            .unwrap_or_else(|| "(unknown)".to_owned());
+        let total = self.projects.entry(project).or_default();
+        total.sessions += 1;
+        total.bytes += session.bytes;
+        self.bytes_freed += session.bytes;
+        self.deleted.push(session.clone());
+    }
 }
 
 /// Plans a prune of the saved sessions of `home`, but `current`, at `now`
@@ -346,7 +346,7 @@ fn found(home: &Home, stores: &SessionStores, current: Option<&Path>) -> Vec<Fou
 pub fn plan(
     home: &Home,
     stores: &SessionStores,
-    current: Option<&Path>,
+    current: &Path,
     prune: &Prune,
     now: u64,
 ) -> PruneReport {
@@ -441,15 +441,7 @@ pub fn plan(
     for session in &sessions {
         let planned = &session.planned;
         if deleted.contains(planned.id.as_str()) {
-            let project = planned
-                .project
-                .clone()
-                .unwrap_or_else(|| "(unknown)".to_owned());
-            let total = report.projects.entry(project).or_default();
-            total.sessions += 1;
-            total.bytes += planned.bytes;
-            report.bytes_freed += planned.bytes;
-            report.deleted.push(planned.clone());
+            report.delete(planned);
         } else if let Some(because) = kept.remove(planned.id.as_str()) {
             report.kept.push(Kept {
                 session: planned.clone(),
@@ -476,72 +468,15 @@ fn choose<'a>(
     }
 }
 
-/// Deletes what `report` plans, newest first, so a fork goes before the
-/// session it came from, and records what it freed.
-pub fn execute(home: &Home, stores: &SessionStores, report: &mut PruneReport) {
-    sweep(home);
-    let planned = std::mem::take(&mut report.deleted);
-    report.bytes_freed = 0;
-    report.projects.clear();
-    for session in planned {
-        match delete(home, stores, &session.id) {
-            Ok(()) => {
-                let project = session
-                    .project
-                    .clone()
-                    .unwrap_or_else(|| "(unknown)".to_owned());
-                let total = report.projects.entry(project).or_default();
-                total.sessions += 1;
-                total.bytes += session.bytes;
-                report.bytes_freed += session.bytes;
-                report.deleted.push(session);
-            }
-            Err(why) => report.failed.push((session.id, why)),
-        }
-    }
-    report.done = true;
-}
+/// A plan whose sessions were each sent a [`DeleteSession`].
+#[derive(Resource)]
+struct Deleting(PruneReport, Prune);
 
-/// Deletes the session `id`: renames its directory out of the sessions in
-/// one step, empties its store where that is elsewhere, then removes the
-/// directory.
-fn delete(home: &Home, stores: &SessionStores, id: &str) -> Result<(), String> {
-    let id: SessionId = id.parse()?;
-    let dir = home.session(&id);
-    if dir.runs_elsewhere() {
-        return Err("a rig opened it meanwhile".to_owned());
-    }
-    // Opened before the rename: a store kept elsewhere is found by the
-    // session's id.
-    let store = stores.open(&dir).ok();
-    let doomed = home.sessions().join(format!("{DELETING}{id}"));
-    fs::rename(dir.path(), &doomed).map_err(|failure| failure.to_string())?;
-    // What the store keeps outside the directory goes too; a store in the
-    // directory finds nothing there any more.
-    if let Some(store) = store {
-        store.destroy().ok();
-    }
-    fs::remove_dir_all(&doomed).map_err(|failure| failure.to_string())
-}
-
-/// Removes what an interrupted prune left.
-fn sweep(home: &Home) {
-    let Ok(entries) = fs::read_dir(home.sessions()) else {
-        return;
-    };
-    for entry in entries.filter_map(Result::ok) {
-        if entry.file_name().to_string_lossy().starts_with(DELETING) {
-            fs::remove_dir_all(entry.path()).ok();
-        }
-    }
-}
-
-/// `rig sessions prune …`: plans, asks or refuses, deletes, reports, and
-/// exits.
+/// `rig sessions prune …`: plans, then asks or refuses and exits, or sends
+/// a [`DeleteSession`] for each session the plan deletes.
 fn prune_command(
     invoked: Res<Invoked>,
-    (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Option<Res<SessionPaths>>),
-    mut deleted: MessageWriter<SessionDeleted>,
+    (home, stores, paths): (Res<RigHome>, Res<SessionStores>, Res<SessionPaths>),
     mut commands: Commands,
 ) {
     let words = invoked.command().map_or(&[][..], |(_, words)| words);
@@ -553,8 +488,8 @@ fn prune_command(
             return;
         }
     };
-    let current = paths.as_deref().map(|paths| paths.path());
-    let mut report = plan(&home.0, &stores, current, &prune, millis(SystemTime::now()));
+    let now = millis(SystemTime::now());
+    let report = plan(&home.0, &stores, paths.path(), &prune, now);
     let reason = if prune.dry_run || report.deleted.is_empty() {
         show(&report, &prune);
         ExitReason::Quit
@@ -569,19 +504,52 @@ fn prune_command(
         eprintln!("Nothing deleted.");
         ExitReason::Failed(1)
     } else {
-        execute(&home.0, &stores, &mut report);
         for session in &report.deleted {
             if let Ok(id) = session.id.parse() {
-                deleted.write(SessionDeleted(id));
+                commands.trigger(DeleteSession(id));
             }
         }
-        show(&report, &prune);
-        if report.failed.is_empty() {
-            ExitReason::Quit
-        } else {
-            ExitReason::Failed(1)
-        }
+        commands.insert_resource(Deleting(report, prune));
+        return;
     };
+    commands.insert_resource(report);
+    commands.trigger(Exit(reason));
+}
+
+/// Reports which sessions of the plan were deleted ([`SessionDeleted`]),
+/// shows why the others were not, and exits.
+fn report_deleted(
+    deleting: Res<Deleting>,
+    mut deleted: MessageReader<SessionDeleted>,
+    mut notices: MessageReader<Notice>,
+    mut commands: Commands,
+) {
+    let Deleting(planned, prune) = &*deleting;
+    let gone: HashSet<String> = deleted.read().map(|gone| gone.0.to_string()).collect();
+    let mut report = PruneReport {
+        done: true,
+        kept: planned.kept.clone(),
+        ..PruneReport::default()
+    };
+    for session in &planned.deleted {
+        if gone.contains(&session.id) {
+            report.delete(session);
+        } else {
+            report.failed.push(session.id.clone());
+        }
+    }
+    for notice in notices.read() {
+        if notice.level == NoticeLevel::Error {
+            eprintln!("rig: {}", notice.text);
+        }
+    }
+    show(&report, prune);
+    let reason = if report.failed.is_empty() {
+        ExitReason::Quit
+    } else {
+        ExitReason::Failed(1)
+    };
+    commands.remove_resource::<Deleting>();
     commands.insert_resource(report);
     commands.trigger(Exit(reason));
 }
@@ -621,8 +589,8 @@ fn show(report: &PruneReport, prune: &Prune) {
             report.deleted.len(),
             bytes_label(report.bytes_freed)
         );
-        for (id, why) in &report.failed {
-            println!("  could not delete {id}: {why}");
+        for id in &report.failed {
+            println!("  could not delete {id}");
         }
     }
     for kept in &report.kept {

@@ -9,7 +9,7 @@ use rig_harness::host::exit::ExitPlugin;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
 };
-use rig_sessions::{NameSession, SessionsPlugin, write_meta};
+use rig_sessions::{Meta, NameSession, SessionsPlugin, write_meta};
 
 use super::*;
 
@@ -95,7 +95,7 @@ fn prune(home: &Home, words: &[&str]) -> (Option<ExitReason>, PruneReport) {
         },
         terminal: false,
     })
-    .add_plugins((ExitPlugin, AgentPlugin, JournalPlugin, SessionsPrunePlugin));
+    .add_plugins((ExitPlugin, AgentPlugin, SessionsPrunePlugin));
     app.finish();
     app.update();
     let world = app.world();
@@ -185,7 +185,10 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
     app.update();
     drop(app);
     let s7 = simple(&home, "Recent.");
-    for old in [&s1, &s2, &s3, &s4, &s5] {
+    // S8: an earlier prune deleting it was cut short.
+    let s8 = simple(&home, "Cut short.");
+    assert!(home.session(&s8).mark_deleting().is_ok());
+    for old in [&s1, &s2, &s3, &s4, &s5, &s8] {
         age(&home, old, 60);
     }
     age(&home, &s7, 1);
@@ -232,6 +235,10 @@ fn prunes_old_sessions_but_what_is_named_open_or_needed() {
     assert_eq!(kept.len(), 3, "{kept:?}");
     assert!(plan.bytes_freed > 2_000_000);
     assert!(home.session(&s1).is_saved() && spilled.iter().all(|path| path.exists()));
+    assert!(
+        !home.session(&s8).path().exists(),
+        "a delete cut short is never listed, and the next start finishes it"
+    );
 
     // No terminal, no --yes: refused.
     let (exit, _) = prune(&home, &["prune", "--older-than", "30d"]);
