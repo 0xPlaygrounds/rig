@@ -138,6 +138,10 @@ fn a_restored_session_has_its_saved_components_and_resources_and_the_messages_it
     assert_eq!(before.len(), 6, "{before:?}");
     let newest = serde_json::json!({ "read": 4 });
     assert_eq!(before.get(ToolCounts::type_path()), Some(&newest));
+    // The model is saved under the key a library program reads, as a string.
+    assert_eq!(ModelChoice::type_path(), rig_memory::MODEL);
+    let model = serde_json::json!("ollama/deepseek-v4-flash");
+    assert_eq!(before.get(rig_memory::MODEL), Some(&model));
     let id = first.world().get::<AgentId>(agent).cloned();
     drop(first);
     let gone = r#"{"seq":99,"n":99,"t":0,"type":"state","key":"a_plugin::Gone","value":1}"#;

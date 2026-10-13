@@ -28,7 +28,6 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 
-use bevy_reflect::TypePath;
 use flate2::Compression;
 use flate2::read::GzDecoder;
 use flate2::write::GzEncoder;
@@ -37,7 +36,8 @@ use rig_harness::harness_protocol::{SessionDir, SessionId};
 use rig_harness::prelude::*;
 use rig_harness::rig_ecs::journal::SessionStore;
 use rig_harness::rig_memory::{
-    FORMAT, Keep, MemoryStore, Session, SessionMeta, Store, fork, now_ms, title_of,
+    FORMAT, Keep, MODEL, MemoryStore, SavedAgent, Session, SessionMeta, Store, fork, now_ms,
+    title_of,
 };
 use rig_harness::rig_tools::process::Launcher;
 use rig_sessions::SessionTitle;
@@ -536,16 +536,15 @@ fn write_session(
     fs::write(dir.directory(), plan.target.to_string_lossy().as_bytes()).map_err(|f| fail(&f))?;
     let mut notes = Vec::new();
     let mut session = Session::read(&*store).map_err(|f| fail(&f))?;
-    let key = ModelChoice::type_path();
     for agent in &mut session.agents {
-        let Some(model) = agent.state.get(key).and_then(model_of) else {
+        let Some(model) = agent.model() else {
             continue;
         };
         let usable = here
             .models
             .is_some_and(|models| models.connect(&model).is_ok());
         if !usable {
-            agent.state.remove(key);
+            agent.state.remove(MODEL);
             notes.push(format!(
                 "{model} is not available here: agent {} uses the default model.",
                 agent.id
@@ -564,12 +563,6 @@ fn write_session(
     meta.updated = now_ms();
     meta.write(&*store).map_err(|f| fail(&f))?;
     Ok(notes)
-}
-
-/// A saved `ModelChoice` value's model.
-fn model_of(value: &Value) -> Option<String> {
-    let model = value.as_str().or_else(|| value.get(0)?.as_str())?;
-    Some(model.to_owned())
 }
 
 /// Records where the session started, on its first start.
@@ -679,12 +672,7 @@ impl Running<'_, '_> {
         let saved = Session::read_lenient(store)
             .map(|(saved, _)| saved)
             .unwrap_or_default();
-        let key = ModelChoice::type_path();
-        let models: BTreeSet<String> = saved
-            .agents
-            .iter()
-            .filter_map(|agent| model_of(agent.state.get(key)?))
-            .collect();
+        let models: BTreeSet<String> = saved.agents.iter().filter_map(SavedAgent::model).collect();
         let created_ms = now_ms();
         let root = match self.origin.project_root.as_str() {
             "" => self.root.0.clone(),

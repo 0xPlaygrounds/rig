@@ -29,14 +29,6 @@ use rig_core::message::{AssistantContent, CallId, Message, ToolResultContent, Us
 use rig_memory::{DirStore, Files, Keep, LoadError, Repair, SavedAgent, Session, fork, now_ms};
 use serde_json::{Map, Value};
 
-/// The saved value an agent's model is kept under: the type path of
-/// rig-ecs's `ModelChoice`, which saves it as `"vendor/model"`.
-pub const MODEL_KEY: &str = "rig_ecs::model::ModelChoice";
-
-/// The saved values rig-subagents names a spawned agent by: the type paths
-/// of its `Subtask` and `Helper`, each saved as the title.
-pub const SUBAGENT_NAME_KEYS: [&str; 2] = ["rig_subagents::Subtask", "rig_subagents::Helper"];
-
 /// The file of a session's store that rig-sessions lists it by: its name
 /// (`name`), the start of its first message (`title`), labels and when it
 /// was updated.
@@ -290,40 +282,31 @@ fn name_of(meta: &Map<String, Value>) -> Option<&str> {
     text("name").or_else(|| text("title"))
 }
 
-/// The main agent: the first the user started that is not retired.
-fn main_agent(session: &Session) -> Option<&SavedAgent> {
-    let mut roots = session.agents.iter().filter(|a| a.parent.is_none());
-    roots.find(|agent| !agent.retired)
-}
-
 /// The main agent's conversation, to change it.
 fn main_of(session: &mut Session) -> Result<&mut Conversation, Error> {
-    let id = main_agent(session).map(|agent| agent.id.clone());
+    let id = session.main_agent().map(|agent| agent.id.clone());
     let agent = id.and_then(|id| session.agent_mut(&id));
     let agent = agent.ok_or("the session has no main conversation")?;
     Ok(&mut agent.conversation)
 }
 
-/// What a spawned agent is called: its task's title, else its id.
-fn agent_name(agent: &SavedAgent) -> &str {
-    let titled = SUBAGENT_NAME_KEYS
-        .iter()
-        .find_map(|key| agent.state.get(*key));
-    titled.and_then(Value::as_str).unwrap_or(&agent.id)
+/// What a spawned agent is called: its title, else its id.
+fn agent_name(agent: &SavedAgent) -> String {
+    agent.title().unwrap_or_else(|| agent.id.clone())
 }
 
 /// The `list` output.
 fn list(opened: &Opened) -> String {
     let session = &opened.session;
-    let main = main_agent(session);
+    let main = session.main_agent();
     let messages = main
         .map(|agent| agent.conversation.messages())
         .unwrap_or_default();
-    let model = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str());
+    let model = main.and_then(SavedAgent::model);
     let mut lines = vec![
         format!("session: {}", opened.dir.path().display()),
         format!("name: {}", name_of(&opened.meta).unwrap_or("(unnamed)")),
-        format!("model: {}", model.unwrap_or("(unknown)")),
+        format!("model: {}", model.as_deref().unwrap_or("(unknown)")),
         format!("messages: {}", messages.len()),
     ];
     for (at, message) in messages.iter().enumerate() {
@@ -764,9 +747,9 @@ fn markdown_of(opened: &Opened) -> String {
     let session = &opened.session;
     let mut text = String::new();
     let name = name_of(&opened.meta).unwrap_or("Session");
-    let main = main_agent(session);
+    let main = session.main_agent();
     text.push_str(&format!("# {name}\n\n"));
-    if let Some(model) = main.and_then(|agent| agent.state.get(MODEL_KEY)?.as_str()) {
+    if let Some(model) = main.and_then(SavedAgent::model) {
         text.push_str(&format!("Model: `{model}`\n\n"));
     }
     if let Some(main) = main {

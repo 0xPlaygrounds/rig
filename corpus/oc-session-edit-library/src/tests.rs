@@ -10,6 +10,8 @@ use rig_harness_test_support::{
     Ended, app_in, log_ended, reply, run_until, scratch_home, scripted_models,
 };
 
+use rig_memory::{MODEL, TITLE};
+
 use super::*;
 
 /// `result`'s value, failing the test with its error.
@@ -56,7 +58,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
     let main = SavedAgent {
         id: "main".to_owned(),
         conversation: Conversation::from_messages(messages.clone()),
-        state: [(MODEL_KEY.to_owned(), Value::from("test/model"))].into(),
+        state: [(MODEL.to_owned(), Value::from("test/model"))].into(),
         ..SavedAgent::default()
     };
     let sub = SavedAgent {
@@ -66,11 +68,7 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
             Message::user("Count the failed logins."),
             Message::assistant("42."),
         ]),
-        state: [(
-            "rig_subagents::Subtask".to_owned(),
-            Value::from("Count failures"),
-        )]
-        .into(),
+        state: [(TITLE.to_owned(), Value::from("Count failures"))].into(),
         ..SavedAgent::default()
     };
     let (id, dir) = home.new_session()?;
@@ -90,7 +88,9 @@ fn fixture(home: &Home) -> Result<(SessionId, Vec<Message>), Box<dyn std::error:
 fn reopen(home: &Home, named: &str) -> Option<Vec<Message>> {
     let opened = ok(locate(home, named).and_then(open))?;
     Some(
-        main_agent(&opened.session)?
+        opened
+            .session
+            .main_agent()?
             .conversation
             .messages()
             .to_vec(),

@@ -125,16 +125,17 @@ impl Plugin for SubagentsPlugin {
     }
 }
 
-/// On a subagent: its task's short title, which names it.
-#[derive(Component, Reflect, Clone, Debug, Default)]
+/// On a subagent: it runs a task, whose short title is its
+/// [`AgentTitle`], which names it.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Subtask(pub String);
+pub struct Subtask;
 
-/// On a helper a plugin spawned ([`Role::Helper`]): its title, which names
-/// it.
-#[derive(Component, Reflect, Clone, Debug, Default)]
+/// On a helper a plugin spawned ([`Role::Helper`]); its title is its
+/// [`AgentTitle`], which names it.
+#[derive(Component, Reflect, Clone, Copy, Debug, Default)]
 #[reflect(Component, Saved, Default, Clone, Debug)]
-pub struct Helper(pub String);
+pub struct Helper;
 
 /// On a message: it is an agent's report on requests it was sent; its
 /// author names the agent and the last request.

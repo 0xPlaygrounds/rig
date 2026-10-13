@@ -56,6 +56,7 @@
 
 #[doc = include_str!("../PLUGINS.md")]
 pub mod plugin_guide {}
+pub mod agent_title;
 pub mod ask;
 pub mod checkpoint;
 pub mod clock;
@@ -130,6 +131,7 @@ pub mod prelude {
 
     pub use bevy_app::OnAppExitSystems;
 
+    pub use crate::agent_title::AgentTitle;
     pub use crate::ask::{Answer, Answerer, Answerers, Ask, AskSystems, Choice};
     pub use crate::checkpoint::{CheckpointAlso, CheckpointPlugin, Checkpoints, TurnCheckpoint};
     pub use crate::clock::{Due, KeepAwake, WakeAt};

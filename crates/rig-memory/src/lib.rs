@@ -21,6 +21,9 @@
 //! [`history`] and [`as_of`] read how a conversation got where it is.
 //! Beside its logs a store keeps what a listing shows of the session
 //! ([`SessionMeta`]) and the session it was forked from ([`ForkedFrom`]).
+//! A saved agent's model and title are kept under [`MODEL`] and [`TITLE`]
+//! ([`SavedAgent::model`]), and [`Session::main_agent`] is the agent the
+//! user talks to.
 //! [`MemoryStore`] keeps a session in memory; with feature `fs`,
 //! [`DirStore`] keeps it in a directory, and [`DirFiles`] keeps plain
 //! named files under one. Reading is strict: a session it
@@ -70,6 +73,7 @@ mod fork;
 mod format;
 mod meta;
 mod rewrite;
+mod saved;
 mod session;
 mod store;
 mod tokens;
@@ -90,6 +94,7 @@ pub use meta::{ForkedFrom, META, PARENT, SessionMeta, title_of};
 pub use rewrite::{
     Keep, Messages, Place, Rewrite, Rewritten, RewrittenLog, Strings, map_strings, rewrite,
 };
+pub use saved::{MODEL, TITLE, main_order};
 pub use session::{Record, SavedAgent, Session, Unreadable, as_of, history, load, save};
 pub use store::{Files, MemoryStore, Store, check_name};
 pub use tokens::{HeuristicTokenCounter, TokenCounter};

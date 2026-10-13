@@ -381,7 +381,8 @@ fn spawn_requested(
     match request.role {
         Role::Task => {
             child.insert((
-                Subtask(title),
+                Subtask,
+                AgentTitle(title),
                 OpenRequests(vec![Request {
                     id: asked,
                     asker: caller.clone(),
@@ -392,7 +393,7 @@ fn spawn_requested(
             child.insert_if(Peers, || request.peers);
         }
         Role::Helper => {
-            child.insert(Helper(title));
+            child.insert((Helper, AgentTitle(title)));
             child.insert_if(Once, || request.once);
         }
     }

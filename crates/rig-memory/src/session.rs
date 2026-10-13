@@ -326,23 +326,34 @@ pub(crate) fn repairs(folded: &[Folded]) -> Vec<Repair> {
 /// The names of the logs a restore skips: those retired, and the agents
 /// they spawned, all the way down.
 pub(crate) fn retired(logs: &[Folded]) -> HashSet<String> {
+    let logs = logs.iter().map(|log| {
+        let parent = log.header.parent.as_deref();
+        (log.name.as_str(), parent, log.retired)
+    });
+    skipped(logs).into_iter().map(str::to_owned).collect()
+}
+
+/// Of `logs`, each a log's name, its agent's parent and whether it was
+/// retired: those retired, and the agents they spawned, all the way down.
+pub(crate) fn skipped<'a>(
+    logs: impl Iterator<Item = (&'a str, Option<&'a str>, bool)>,
+) -> HashSet<&'a str> {
+    let logs: Vec<_> = logs.collect();
     let parents: HashMap<&str, Option<&str>> = logs
         .iter()
-        .map(|log| (log.name.as_str(), log.header.parent.as_deref()))
+        .map(|&(name, parent, _)| (name, parent))
         .collect();
     let gone: HashSet<&str> = logs
         .iter()
-        .filter(|log| log.retired)
-        .map(|log| log.name.as_str())
+        .filter(|&&(_, _, retired)| retired)
+        .map(|&(name, ..)| name)
         .collect();
     let mut skipped = HashSet::new();
-    for log in logs {
+    for &(name, ..) in &logs {
         // A loop cannot happen, but a bound costs nothing.
-        let up = std::iter::successors(Some(log.name.as_str()), |id| {
-            parents.get(id).copied().flatten()
-        });
+        let up = std::iter::successors(Some(name), |id| parents.get(id).copied().flatten());
         if up.take(logs.len() + 1).any(|id| gone.contains(id)) {
-            skipped.insert(log.name.clone());
+            skipped.insert(name);
         }
     }
     skipped

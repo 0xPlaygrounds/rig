@@ -39,10 +39,13 @@ impl Models {
 
 /// The chosen catalog model, as `vendor/model`. It never changes in place:
 /// choosing another model inserts a new one, which rebuilds the agent's
-/// [`Connection`]. Saved with the session.
+/// [`Connection`]. Saved with the session as a string under rig-memory's
+/// `MODEL` (its type path, `rig::model`), which a library program reads.
 #[derive(Component, Reflect, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[component(immutable)]
 #[reflect(Component, Saved, Clone)]
+#[type_path = "rig"]
+#[type_name = "model"]
 #[serde(transparent)]
 pub struct ModelChoice(pub String);
 

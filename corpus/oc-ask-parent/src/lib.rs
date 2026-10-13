@@ -17,7 +17,7 @@
 //! interrupts the subagents waiting on its answers.
 
 use rig_harness::prelude::*;
-use rig_subagents::{Helper, SpawnSubagent, Subtask};
+use rig_subagents::SpawnSubagent;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -230,12 +230,7 @@ fn ask(
         (Entity, &ToolRequest, &ForAgent, &mut Decision),
         (Undecided, ToolCalls, Without<Asked>),
     >,
-    agents: Query<(
-        &AgentId,
-        Option<&SpawnedBy>,
-        Option<&Subtask>,
-        Option<&Helper>,
-    )>,
+    agents: Query<(&AgentId, Option<&SpawnedBy>, Option<&AgentTitle>)>,
     settings: Res<AskParentSettings>,
     mut commands: Commands,
 ) {
@@ -248,7 +243,7 @@ fn ask(
         let question = args
             .map(|args| args.question.trim().to_owned())
             .unwrap_or_default();
-        let Ok((id, Some(&SpawnedBy(parent)), subtask, helper)) = agents.get(child) else {
+        let Ok((id, Some(&SpawnedBy(parent)), title)) = agents.get(child) else {
             decision.decide(
                 Decider::plugin(DECIDER),
                 refused("No agent started you, so there is nobody to ask."),
@@ -262,7 +257,7 @@ fn ask(
             );
             continue;
         }
-        let task = subtask.map(|it| &it.0).or(helper.map(|it| &it.0));
+        let task = title.map(|title| &title.0);
         let question = Question {
             id: request.call.id.to_string(),
             child,

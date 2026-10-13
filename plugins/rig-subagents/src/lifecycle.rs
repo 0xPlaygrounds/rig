@@ -6,7 +6,7 @@ use rig_core::completion::Message;
 
 use super::tools::{PEER_ROLE, SUBAGENT_ROLE};
 use super::{
-    AwaitedBy, Awaits, Helper, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
+    AwaitedBy, Awaits, Lifecycle, OpenRequests, Peers, Report, Request, Subtask, answered,
 };
 use rig_harness::prelude::*;
 
@@ -40,7 +40,8 @@ pub(super) fn add(app: &mut App) {
 pub(super) struct AgentData {
     pub(super) entity: Entity,
     pub(super) id: &'static AgentId,
-    pub(super) subtask: Option<&'static Subtask>,
+    pub(super) subtask: Has<Subtask>,
+    pub(super) title: Option<&'static AgentTitle>,
     pub(super) peers: Has<Peers>,
     pub(super) busy: Has<ActiveTurn>,
     pub(super) lifecycle: Option<&'static Lifecycle>,
@@ -84,8 +85,8 @@ impl Agents<'_, '_> {
     pub(super) fn author(&self, agent: Entity) -> Option<Author> {
         let agent = self.agents.get(agent).ok()?;
         let author = Author::agent(agent.id.clone(), None);
-        Some(match agent.subtask {
-            Some(subtask) => author.titled(subtask.0.clone()),
+        Some(match agent.title.filter(|_| agent.subtask) {
+            Some(title) => author.titled(title.0.clone()),
             None => author,
         })
     }
@@ -189,19 +190,17 @@ impl Agents<'_, '_> {
     }
 }
 
-/// Names a subagent or a helper by its title, when it is spawned or
-/// restored.
+/// Names an agent by its title, such as a subagent or a helper when it is
+/// spawned or restored.
 fn name_subagent(
-    inserted: On<Insert<(Subtask, Helper)>>,
-    titles: Query<AnyOf<(&Subtask, &Helper)>>,
+    inserted: On<Insert<AgentTitle>>,
+    titles: Query<&AgentTitle>,
     mut commands: Commands,
 ) {
-    let title = match titles.get(inserted.entity) {
-        Ok((Some(Subtask(title)), _) | (_, Some(Helper(title)))) => title,
-        _ => return,
-    };
-    let name = Name::new(title.clone());
-    commands.entity(inserted.entity).insert(name);
+    if let Ok(AgentTitle(title)) = titles.get(inserted.entity) {
+        let name = Name::new(title.clone());
+        commands.entity(inserted.entity).insert(name);
+    }
 }
 
 /// Gives a subagent its role as a prompt section of its own when it is
