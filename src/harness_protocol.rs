@@ -9,6 +9,7 @@ use std::ffi::OsString;
 use std::fmt;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// The exit code with which the agent asks its launcher to restart it on
@@ -98,13 +99,20 @@ pub fn first_errors<'a>(lines: impl IntoIterator<Item = &'a str>, count: usize) 
 pub struct SessionId(String);
 
 impl SessionId {
-    /// A new id: the Unix time in seconds and this process's id.
+    /// A new id: the Unix time in seconds and this process's id, then,
+    /// after the process's first, how many it made before, so no two of
+    /// one process are the same.
     pub fn generate() -> Self {
+        static MADE: AtomicU64 = AtomicU64::new(0);
         let seconds = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map(|elapsed| elapsed.as_secs())
             .unwrap_or_default();
-        Self(format!("{seconds}-{}", std::process::id()))
+        let id = format!("{seconds}-{}", std::process::id());
+        match MADE.fetch_add(1, Ordering::Relaxed) {
+            0 => Self(id),
+            made => Self(format!("{id}-{made}")),
+        }
     }
 
     /// The id in [`env::SESSION`], or `None` when it is unset or empty.

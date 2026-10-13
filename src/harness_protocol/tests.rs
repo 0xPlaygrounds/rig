@@ -156,6 +156,13 @@ fn a_home_at_a_root_lays_out_its_files_under_it() {
 }
 
 #[test]
+fn ids_generated_in_one_second_by_one_process_differ() {
+    let (first, second) = (super::SessionId::generate(), super::SessionId::generate());
+    assert_ne!(first, second);
+    assert!(second.as_str().parse::<super::SessionId>().is_ok());
+}
+
+#[test]
 fn a_session_directory_knows_its_id() {
     let id = "1700000000-42".parse::<super::SessionId>().ok();
     assert!(id.is_some());
