@@ -5,6 +5,7 @@ use rig_harness::harness_protocol::SessionId;
 use rig_harness::pick::PickPlugin;
 use rig_harness_test_support::{
     Ended, app_in, calls, first_agent, log_ended, reply, run_until, scratch_home, scripted_models,
+    tui_view,
 };
 use rig_tui::DrawnRow;
 use rig_tui::crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -45,21 +46,22 @@ fn note_scroll(scroll: On<ScrollTo>, mut scrolls: ResMut<Scrolls>) {
     scrolls.0.push((scroll.item.clone(), scroll.row));
 }
 
-/// Ctrl+F, then `keys` in one frame.
-fn search(app: &mut App, agent: Entity, keys: impl IntoIterator<Item = KeyCode>) {
-    let world = app.world_mut();
-    let mut bindings = world.query::<(Entity, &KeyBinding)>();
-    let binding = bindings
-        .iter(world)
-        .find(|(_, binding)| binding.label == "Search the transcript")
-        .map_or(Entity::PLACEHOLDER, |(entity, _)| entity);
-    world.trigger(KeyPressed {
-        entity: binding,
-        agent: Some(agent),
-        released: false,
-    });
-    app.update();
+/// The agent's turns the view stopped.
+#[derive(Resource, Default)]
+struct Interrupts(usize);
+
+fn note_interrupt(_: On<Interrupt>, mut interrupts: ResMut<Interrupts>) {
+    interrupts.0 += 1;
+}
+
+/// Ctrl+F, then `keys` in the next frame.
+fn search(app: &mut App, keys: impl IntoIterator<Item = KeyCode>) {
+    rig_harness_test_support::press(app, "ctrl+f");
     press(app, keys);
+}
+
+fn input(app: &App) -> &str {
+    app.world().resource::<TuiInput>().text()
 }
 
 /// The terminal reports `keys`; one frame handles them.
@@ -118,8 +120,11 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
         .add_open_tool("shell", "Run a command.", ToolOptions::default(), shell)
         .init_resource::<Ended>()
         .init_resource::<Scrolls>()
+        .init_resource::<Interrupts>()
         .add_observer(log_ended)
-        .add_observer(note_scroll);
+        .add_observer(note_scroll)
+        .add_observer(note_interrupt);
+    tui_view(&mut app);
     app.finish();
     app.update();
     let agent = first_agent(app.world_mut()).unwrap_or(Entity::PLACEHOLDER);
@@ -161,11 +166,24 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
             .position(|row| row.text.contains("E0425"))
     });
 
+    // `/` on the empty input starts a slash command.
+    rig_harness_test_support::press(&mut app, "/");
+    assert_eq!((counter(&mut app), input(&app)), (None, "/"));
+    rig_harness_test_support::press(&mut app, "backspace");
+    assert_eq!(input(&app), "");
+
+    // With an item of the transcript selected, `/` opens the search.
     // Lower case finds it: the view expands the call, lights the match
     // and scrolls to its row; Enter takes it.
+    app.world_mut().resource_mut::<TranscriptView>().selected = Some(call.clone());
+    rig_harness_test_support::press(&mut app, "/");
+    assert_eq!(
+        (counter(&mut app).as_deref(), input(&app)),
+        (Some("0/0"), "")
+    );
     let mut keys = typed("e0425");
     keys.push(KeyCode::Enter);
-    search(&mut app, agent, keys);
+    press(&mut app, keys);
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let view = app.world().resource::<TranscriptView>();
     assert!(view.expanded.contains(&call));
@@ -180,25 +198,29 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     assert!(!drawn.is_cut(&call));
     assert_eq!(drawn.lit_in(&call), 1);
 
-    // Esc after Enter: the view stays at the match, unlit.
+    // Esc after Enter: the view stays at the match, unlit; the bar took
+    // the keys, so none was typed and Esc stopped nothing.
     press(&mut app, [KeyCode::Esc]);
     assert_eq!(counter(&mut app), None);
     let view = app.world().resource::<TranscriptView>();
     assert!(view.highlights.is_empty() && view.expanded.contains(&call));
     assert_eq!(app.world().resource::<Scrolls>().0.len(), 1);
-    app.world_mut()
-        .resource_mut::<TranscriptView>()
-        .expanded
-        .clear();
+    assert_eq!(
+        (input(&app), app.world().resource::<Interrupts>().0),
+        ("", 0)
+    );
+    let mut view = app.world_mut().resource_mut::<TranscriptView>();
+    view.expanded.clear();
+    view.selected = None;
 
     // A capital letter makes the search match case.
-    search(&mut app, agent, typed("E0425"));
+    search(&mut app, typed("E0425"));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     press(&mut app, [KeyCode::Esc]);
 
     // A regular expression counts what the same expression finds in the
     // rendered transcript, every item whole.
-    search(&mut app, agent, typed(r"re:fn \w+\("));
+    search(&mut app, typed(r"re:fn \w+\("));
     let whole = laid_out(&mut app, agent, Expanded::All, u16::MAX);
     let reference = Regex::new(r"fn \w+\(").map_or(0, |regex| {
         let rows = whole.rows().iter();
@@ -213,7 +235,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
 
     // The view lights what the expression matched, not each place the
     // text it matched is: the last reply's `fn main` starts no line.
-    search(&mut app, agent, typed(r"re:^fn \w+"));
+    search(&mut app, typed(r"re:^fn \w+"));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let drawn = laid_out(&mut app, agent, Expanded::AsShown, u16::MAX);
     assert_eq!((lit(&drawn, "fn run(n"), lit(&drawn, "calls it")), (1, 0));
@@ -223,7 +245,7 @@ fn finds_an_error_in_a_cut_tool_output_counts_regex_matches_and_scrolls_back() {
     // search rejoins the line to find it, at the row the view counts it
     // in, and the view lights it across both rows.
     let split = "cannot find function";
-    search(&mut app, agent, typed(split));
+    search(&mut app, typed(split));
     assert_eq!(counter(&mut app).as_deref(), Some("1/1"));
     let narrow = laid_out(&mut app, agent, Expanded::All, 24);
     assert!(narrow.rows().iter().all(|row| !row.text.contains(split)));

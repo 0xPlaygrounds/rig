@@ -1,10 +1,14 @@
 //! FH-20: transcript search, as in `less`.
 //!
 //! Ctrl+F opens a search bar under the transcript (a [`TuiPanel`] that
-//! takes the keys). What is typed searches as it is typed, ignoring case
-//! unless the query has a capital letter; `re:` makes the rest a regular
-//! expression. It searches the transcript as the view lays it out
-//! ([`TranscriptLayout`]), every item whole, at the width it draws at:
+//! takes the keys), and so does `/` while the person reads the transcript
+//! rather than the input: with the input empty, an item selected or the
+//! view scrolled up, and nothing being completed, picked or answered.
+//! Otherwise `/` starts a slash command, as it does without the plugin.
+//! What is typed searches as it is typed, ignoring case unless the query
+//! has a capital letter; `re:` makes the rest a regular expression. It
+//! searches the transcript as the view lays it out ([`TranscriptLayout`]),
+//! every item whole, at the width it draws at:
 //! each line as its renderer draws it, its wrapped rows rejoined, a
 //! collapsed output's cut lines included, the notices where they are drawn
 //! and the reply streaming in.
@@ -18,7 +22,9 @@
 //! Tab searches every agent, naming the agent of the match and showing it. Esc
 //! closes the bar and unlights the matches; unless a match was taken, it
 //! also collapses what the search expanded and scrolls back to where the
-//! view was. The search only reads: it never changes a conversation.
+//! view was. The bar takes the keys it does, so none of them reaches the
+//! input or its bindings: its Esc does not also stop the agent. The search
+//! only reads: it never changes a conversation.
 
 use std::collections::HashMap;
 use std::ops::Range;
@@ -31,9 +37,9 @@ use rig_tui::ratatui::style::{Style, Stylize};
 use rig_tui::ratatui::text::{Line, Span};
 use rig_tui::{
     AppKeyBindingsExt, DrawnLine, DrawnTranscript, Expanded, Highlight, InputSystems, ItemRow,
-    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, LineSpan, PanelCanvas, Placement,
-    RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem, TranscriptLayout, TranscriptView,
-    TuiPanel, TuiPlugin, TuiSystems,
+    KeyBinding, KeyFocus, KeyInput, KeyPress, KeyPressed, KeyScope, LineSpan, PanelCanvas,
+    Placement, RequestRedraw, ScrollTo, TerminalEvents, TranscriptItem, TranscriptLayout,
+    TranscriptView, TuiInput, TuiInputState, TuiPanel, TuiPlugin, TuiSystems,
 };
 
 /// Whose transcript is searched.
@@ -175,6 +181,16 @@ pub struct TranscriptSearch {
     lit: Vec<Highlight>,
 }
 
+/// What the bar did with a key.
+enum Pressed {
+    /// Nothing: it is not one of the bar's.
+    Other,
+    /// Closed the bar.
+    Esc,
+    /// Typed, moved or switched the scope.
+    Done,
+}
+
 /// What tells a match apart across searches.
 type MatchKey = (Entity, Option<TranscriptItem>, usize);
 
@@ -245,6 +261,54 @@ impl TranscriptSearch {
         };
     }
 
+    /// Does `event` in the bar.
+    fn press(&mut self, event: &Event) -> Pressed {
+        match event {
+            Event::Key(key) if key.kind != KeyEventKind::Release => {
+                let shift = key.modifiers.contains(KeyModifiers::SHIFT);
+                let plain = !key
+                    .modifiers
+                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+                match key.code {
+                    KeyCode::Esc => return Pressed::Esc,
+                    KeyCode::Enter if shift => self.step(-1),
+                    KeyCode::Enter if self.editing => {
+                        self.editing = false;
+                        self.taken = self.current.is_some();
+                    }
+                    KeyCode::Enter => self.step(1),
+                    KeyCode::Tab => {
+                        self.scope = match self.scope {
+                            Scope::Shown => Scope::All,
+                            Scope::All => Scope::Shown,
+                        };
+                        self.dirty = true;
+                    }
+                    KeyCode::Backspace => {
+                        self.editing = true;
+                        self.query.pop();
+                        self.dirty = true;
+                    }
+                    KeyCode::Char('n') if plain && !self.editing => self.step(1),
+                    KeyCode::Char('N') if plain && !self.editing => self.step(-1),
+                    KeyCode::Char(typed) if plain => {
+                        self.editing = true;
+                        self.query.push(typed);
+                        self.dirty = true;
+                    }
+                    _ => return Pressed::Other,
+                }
+            }
+            Event::Paste(text) => {
+                self.editing = true;
+                self.query.push_str(text.lines().next().unwrap_or_default());
+                self.dirty = true;
+            }
+            _ => return Pressed::Other,
+        }
+        Pressed::Done
+    }
+
     /// Takes the match `by` matches on, wrapping around.
     fn step(&mut self, by: isize) {
         let count = self.hits.len();
@@ -282,7 +346,8 @@ fn highlights(drawn: &[Hit], shown: Option<&MatchKey>) -> Vec<Highlight> {
         .collect()
 }
 
-/// Transcript search in the terminal view, on Ctrl+F.
+/// Transcript search in the terminal view, on Ctrl+F, or `/` while the
+/// person reads the transcript.
 #[derive(Default)]
 pub struct TranscriptSearchPlugin;
 
@@ -296,29 +361,72 @@ impl Plugin for TranscriptSearchPlugin {
             KeyBinding::new(KeyPress::ctrl('f'), "Search the transcript"),
             open,
         );
-        app.add_systems(PreUpdate, type_in_bar.in_set(InputSystems::Filter))
+        // `/` opens the bar before the frame's other keys type into it.
+        let filters = (slash_opens, type_in_bar).chain();
+        app.add_systems(PreUpdate, filters.in_set(InputSystems::Filter))
             .add_systems(PostUpdate, draw.in_set(TuiSystems::Draw));
     }
 }
 
-/// Ctrl+F: opens the bar with the keys, unless it is open.
-fn open(
-    pressed: On<KeyPressed>,
-    bars: Query<(), With<TranscriptSearch>>,
-    shown: Res<Shown>,
-    view: Res<TranscriptView>,
-    mut focus: ResMut<KeyFocus>,
-    mut commands: Commands,
-) {
-    if pressed.released || !bars.is_empty() {
-        return;
+/// What opening the bar needs.
+#[derive(bevy_ecs::system::SystemParam)]
+struct Opener<'w, 's> {
+    bars: Query<'w, 's, (), With<TranscriptSearch>>,
+    shown: Res<'w, Shown>,
+    view: Res<'w, TranscriptView>,
+    focus: ResMut<'w, KeyFocus>,
+    commands: Commands<'w, 's>,
+}
+
+impl Opener<'_, '_> {
+    /// Opens the bar with the keys, noting where the view was.
+    fn open(&mut self) {
+        let back = self.shown.0.map(|agent| (agent, self.view.top().cloned()));
+        let bar = (
+            TranscriptSearch::new(back),
+            TuiPanel::new(Placement::Bottom(Constraint::Length(1))),
+        );
+        self.focus.0 = Some(self.commands.spawn(bar).id());
     }
-    let back = shown.0.map(|agent| (agent, view.top().cloned()));
-    let bar = (
-        TranscriptSearch::new(back),
-        TuiPanel::new(Placement::Bottom(Constraint::Length(1))),
-    );
-    focus.0 = Some(commands.spawn(bar).id());
+}
+
+/// Ctrl+F: opens the bar, unless it is open.
+fn open(pressed: On<KeyPressed>, mut opener: Opener) {
+    if !pressed.released && opener.bars.is_empty() {
+        opener.open();
+    }
+}
+
+/// `/` first among the frame's keys opens the bar, unless it is open,
+/// while the person reads the transcript rather than the input: the input
+/// has the keys and is empty, no completion, picker or question is open,
+/// and an item is selected or the view is scrolled up. Otherwise the view
+/// gets the `/`, which starts a slash command.
+fn slash_opens(
+    mut events: ResMut<TerminalEvents>,
+    input: Res<TuiInput>,
+    state: Res<TuiInputState>,
+    mut opener: Opener,
+) {
+    let slash = |item: &KeyInput| {
+        let KeyInput::Event(Event::Key(key)) = item else {
+            return false;
+        };
+        let plain = !key
+            .modifiers
+            .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
+        key.code == KeyCode::Char('/') && key.kind != KeyEventKind::Release && plain
+    };
+    let reading = opener.view.selected.is_some() || opener.view.top().is_some();
+    let free = state.scope() == KeyScope::Input
+        && state.completion().is_none()
+        && state.picking().is_none()
+        && state.answering().is_none();
+    let open = reading && free && input.is_empty() && opener.bars.is_empty();
+    if open && events.0.first().is_some_and(slash) {
+        events.0.remove(0);
+        opener.open();
+    }
 }
 
 /// What the bar searches, read live.
@@ -370,80 +478,45 @@ impl Transcripts<'_, '_> {
 /// Types into the open bar, in order, then searches again when the query
 /// or what it searches changed, and shows the match in the transcript. It
 /// closes when it loses the keys, as on an Esc. A filter of the frame's
-/// keys: the keys of the frame it opened in were the input's.
+/// keys.
 fn type_in_bar(
-    events: Res<TerminalEvents>,
-    mut bars: Query<(Entity, &mut TranscriptSearch, Ref<TuiPanel>)>,
+    mut events: ResMut<TerminalEvents>,
+    mut bars: Query<(Entity, &mut TranscriptSearch)>,
     focus: Res<KeyFocus>,
     transcripts: Transcripts,
     mut view: ResMut<TranscriptView>,
     mut redraw: MessageWriter<RequestRedraw>,
     mut commands: Commands,
 ) {
-    let Ok((bar, mut search, opened)) = bars.single_mut() else {
+    let Ok((bar, mut search)) = bars.single_mut() else {
         return;
     };
-    if focus.0 != Some(bar) && !opened.is_added() {
+    if focus.0 != Some(bar) {
         close(bar, &mut search, &mut view, &mut commands);
         return;
     }
+    // The bar takes the keys it does, as the panel with the keys; those
+    // after an Esc are the input's again.
     let (mut closing, mut typed) = (false, false);
-    for item in &events.0 {
+    events.0.retain(|item| {
         let KeyInput::Event(event) = item else {
-            continue;
+            return true;
         };
-        match event {
-            Event::Key(key) if key.kind != KeyEventKind::Release => {
-                let shift = key.modifiers.contains(KeyModifiers::SHIFT);
-                let plain = !key
-                    .modifiers
-                    .intersects(KeyModifiers::CONTROL | KeyModifiers::ALT);
-                match key.code {
-                    KeyCode::Esc => closing = true,
-                    KeyCode::Enter if shift => search.step(-1),
-                    KeyCode::Enter if search.editing => {
-                        search.editing = false;
-                        search.taken = search.current.is_some();
-                    }
-                    KeyCode::Enter => search.step(1),
-                    KeyCode::Tab => {
-                        search.scope = match search.scope {
-                            Scope::Shown => Scope::All,
-                            Scope::All => Scope::Shown,
-                        };
-                        search.dirty = true;
-                    }
-                    KeyCode::Backspace => {
-                        search.editing = true;
-                        search.query.pop();
-                        search.dirty = true;
-                    }
-                    KeyCode::Char('n') if plain && !search.editing => search.step(1),
-                    KeyCode::Char('N') if plain && !search.editing => search.step(-1),
-                    KeyCode::Char(typed) if plain => {
-                        search.editing = true;
-                        search.query.push(typed);
-                        search.dirty = true;
-                    }
-                    _ => continue,
+        if closing {
+            return true;
+        }
+        match search.press(event) {
+            Pressed::Other => return true,
+            Pressed::Esc => closing = true,
+            Pressed::Done => {
+                typed = true;
+                if search.dirty {
+                    search.search(&transcripts, &view);
                 }
             }
-            Event::Paste(text) => {
-                search.editing = true;
-                let line = text.lines().next().unwrap_or_default();
-                search.query.push_str(line);
-                search.dirty = true;
-            }
-            _ => continue,
         }
-        if closing {
-            break;
-        }
-        typed = true;
-        if search.dirty {
-            search.search(&transcripts, &view);
-        }
-    }
+        false
+    });
     if closing {
         close(bar, &mut search, &mut view, &mut commands);
         return;
