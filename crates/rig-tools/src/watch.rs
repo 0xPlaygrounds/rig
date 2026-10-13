@@ -260,6 +260,9 @@ struct Ignores {
     /// The highest directory whose rules count: the work tree's top, or
     /// the root outside one.
     top: PathBuf,
+    /// The watched root: the rules decide about what is below it, never
+    /// about the root itself or a directory it is in.
+    root: PathBuf,
     /// Whether the root is in a git work tree.
     git: bool,
     /// The repository's and the user's excludes, the weakest rules.
@@ -279,6 +282,7 @@ impl Ignores {
         }
         Self {
             top: top.unwrap_or(root).to_path_buf(),
+            root: root.to_path_buf(),
             git: top.is_some(),
             excludes,
             directories: HashMap::new(),
@@ -292,17 +296,22 @@ impl Ignores {
         }
     }
 
-    /// Whether `path`, a file, or a directory it is in, is ignored.
+    /// Whether `path`, a file, or a directory it is in below the root, is
+    /// ignored.
     fn ignored(&mut self, path: &Path) -> bool {
         let Ok(below) = path.strip_prefix(&self.top) else {
             return false;
         };
         let parts = below.components().count();
+        let above = self
+            .root
+            .strip_prefix(&self.top)
+            .map_or(0, |root| root.components().count());
         let mut at = self.top.clone();
         for (index, part) in below.components().enumerate() {
             let directory = at.clone();
             at.push(part);
-            if self.decides(&directory, &at, index + 1 < parts) {
+            if index >= above && self.decides(&directory, &at, index + 1 < parts) {
                 return true;
             }
         }

@@ -71,3 +71,26 @@ fn the_default_watch_sees_a_same_size_edit() {
         Some(vec![note.to_path_buf()])
     );
 }
+
+/// A watch of a directory that an ignore rule above it leaves out still
+/// reports its files, as `files` lists them when asked for that directory.
+#[test]
+fn a_watch_of_an_ignored_directory_reports_what_files_lists_there() {
+    let top = std::env::temp_dir().join(format!("rig-tools-watch-ignored-{}", std::process::id()));
+    std::fs::remove_dir_all(&top).ok();
+    std::fs::create_dir_all(top.join(".git")).ok();
+    std::fs::create_dir_all(top.join("generated")).ok();
+    std::fs::write(top.join(".gitignore"), "generated/\n").ok();
+    let top = std::fs::canonicalize(&top).unwrap_or(top);
+    let root = top.join("generated");
+    let made = root.join("made.txt");
+    let watch = Arc::new(Local).watch(&root, true, false);
+    assert!(watch.is_ok(), "{watch:?}");
+    let Ok(watch) = watch else { return };
+    let batches = batches(watch);
+    std::fs::write(&made, "x").ok();
+    let seen = seen(&batches, Duration::from_secs(2));
+    let listed = Local.files(&root, None).unwrap_or_default();
+    std::fs::remove_dir_all(&top).ok();
+    assert_eq!((listed, seen), (vec![made.clone()], vec![made]));
+}
