@@ -6111,7 +6111,6 @@ name = "corpus-oc-reviewable-compaction"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
- "bevy_reflect",
  "rig-compaction",
  "rig-core",
  "rig-defaults-test-support",
