@@ -17,7 +17,8 @@
 //!   image is dropped with a notice and the model is told so;
 //! - a path reference with nothing there stays plain text, with a warning.
 //!
-//! The attachments go into the conversation as they were sent, so a
+//! Each attachment goes after the message's text: pasted images, then the
+//! `@` mentions in the order the message names them. They go into the conversation as they were sent, so a
 //! resumed session shows the file contents of send time and the images
 //! are stored with the session. Each attached text file is published as
 //! read ([`FilesRead`]) on the message's effect, which the effect log
@@ -525,7 +526,7 @@ impl Adding<'_, '_> {
             .agents
             .get(agent)
             .is_ok_and(|connection| connection.spec.input.image);
-        let mut attached = Vec::new();
+        // Each goes after the text, in the order found.
         for (label, content) in found.attached {
             let content = match content {
                 UserContent::Image(_) if !sees_images => {
@@ -533,9 +534,9 @@ impl Adding<'_, '_> {
                 }
                 content => content,
             };
-            attached.push(MessagePart::Attachment(Attachment { label, content }));
+            let attachment = Attachment { label, content };
+            typed.parts.push(MessagePart::Attachment(attachment));
         }
-        typed.parts.splice(0..0, attached);
         if !found.read.is_empty() {
             let mut published = ToolContext::new();
             if published.insert_result(FilesRead(found.read)).is_ok() {

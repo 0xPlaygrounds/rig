@@ -134,7 +134,15 @@ fn mentions_go_with_the_message_as_sent() {
     );
     let (sent_texts, images) = texts(&sent);
     let file = format!("<file path=\"src/a.rs\">\n{A_RS}</file>");
-    assert!(sent_texts.contains(&TYPED.to_owned()), "{sent_texts:?}");
+    assert_eq!(
+        sent_texts.first(),
+        Some(&TYPED.to_owned()),
+        "the text goes first, as typed"
+    );
+    assert!(
+        matches!(sent.last(), Some(UserContent::Image(_))),
+        "then src/a.rs and shot.png, in order: {sent_texts:?}"
+    );
     assert!(sent_texts.contains(&file), "{sent_texts:?}");
     assert_eq!(images, 1, "{sent_texts:?}");
     assert_eq!(
